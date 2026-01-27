@@ -5,6 +5,13 @@ use std::path::PathBuf;
 
 use super::camera::TabCameraState;
 
+/// Kind of document tab
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabKind {
+    Scene(usize),
+    Script(usize),
+}
+
 /// Build state for Rust plugins
 #[derive(Default, Clone)]
 pub enum BuildState {
@@ -53,6 +60,8 @@ pub struct SceneManagerState {
     pub recently_saved_scenes: Vec<PathBuf>,
     /// Build state for Rust plugin development
     pub build_state: BuildState,
+    /// Unified tab order - stores the order of all tabs (scenes and scripts together)
+    pub tab_order: Vec<TabKind>,
 }
 
 impl Default for SceneManagerState {
@@ -74,6 +83,7 @@ impl Default for SceneManagerState {
             active_script_tab: None,
             recently_saved_scenes: Vec::new(),
             build_state: BuildState::default(),
+            tab_order: vec![TabKind::Scene(0)],
         }
     }
 }

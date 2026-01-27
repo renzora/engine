@@ -1,12 +1,13 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
-use crate::core::{DockingState, SceneManagerState, SceneTab};
+use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
 
 use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE};
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_PADDING: f32 = 12.0;
 const TAB_GAP: f32 = 2.0;
+const TOP_MARGIN: f32 = 4.0;
 
 /// Types of documents that can be created
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +52,13 @@ impl NewDocumentType {
     }
 }
 
+/// Drag state for tab reordering
+#[derive(Clone)]
+struct TabDragState {
+    dragging: Option<usize>, // Index in tab_order being dragged
+    drop_target: Option<usize>, // Index where to drop
+}
+
 pub fn render_document_tabs(
     ctx: &egui::Context,
     scene_state: &mut SceneManagerState,
@@ -64,21 +72,32 @@ pub fn render_document_tabs(
 
     let tab_bar_rect = egui::Rect::from_min_size(
         Pos2::new(left_panel_width, top_y),
-        Vec2::new(available_width, TAB_HEIGHT),
+        Vec2::new(available_width, TAB_HEIGHT + TOP_MARGIN),
     );
 
-    let bg_color = Color32::from_rgb(30, 30, 38);
+    let bg_color = Color32::from_rgb(26, 26, 31);
     let tab_bg = Color32::from_rgb(40, 40, 50);
     let tab_active_bg = Color32::from_rgb(50, 50, 62);
     let tab_hover_bg = Color32::from_rgb(45, 45, 55);
     let text_color = Color32::from_rgb(180, 180, 190);
     let text_active_color = Color32::WHITE;
-    let border_color = Color32::from_rgb(60, 60, 70);
     let scene_accent_color = Color32::from_rgb(100, 160, 255);
     let script_accent_color = Color32::from_rgb(140, 217, 191);
+    let drop_indicator_color = Color32::from_rgb(100, 160, 255);
 
     let mut layout_to_switch: Option<&'static str> = None;
 
+    // Ensure tab_order is in sync with actual tabs
+    sync_tab_order(scene_state);
+
+    // Get drag state from egui memory
+    let drag_id = egui::Id::new("document_tab_drag");
+    let mut drag_state = ctx.memory(|mem| {
+        mem.data.get_temp::<TabDragState>(drag_id).unwrap_or(TabDragState {
+            dragging: None,
+            drop_target: None,
+        })
+    });
 
     egui::Area::new(egui::Id::new("document_tabs_area"))
         .fixed_pos(tab_bar_rect.min)
@@ -87,48 +106,74 @@ pub fn render_document_tabs(
             // Draw background
             ui.painter().rect_filled(tab_bar_rect, CornerRadius::ZERO, bg_color);
 
-            // Bottom border
+            // Bottom border (dark)
             ui.painter().line_segment(
                 [
                     Pos2::new(tab_bar_rect.min.x, tab_bar_rect.max.y),
                     Pos2::new(tab_bar_rect.max.x, tab_bar_rect.max.y),
                 ],
-                Stroke::new(1.0, border_color),
+                Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
             );
 
             let mut x_offset = left_panel_width + 8.0;
-            let mut scene_tab_to_close: Option<usize> = None;
-            let mut scene_tab_to_activate: Option<usize> = None;
-            let mut script_tab_to_close: Option<usize> = None;
-            let mut script_tab_to_activate: Option<usize> = None;
+            let mut tab_to_close: Option<TabKind> = None;
+            let mut tab_to_activate: Option<TabKind> = None;
 
-            // Render scene tabs
-            for (idx, tab) in scene_state.scene_tabs.iter().enumerate() {
-                let is_active = scene_state.active_script_tab.is_none() && idx == scene_state.active_scene_tab;
+            // Store tab rects for drag-drop detection
+            let mut tab_rects: Vec<(usize, egui::Rect)> = Vec::new();
 
-                // Calculate tab width based on text
-                let tab_text = if tab.is_modified {
-                    format!("{}*", tab.name)
-                } else {
-                    tab.name.clone()
+            // Render all tabs in unified order
+            for (order_idx, tab_kind) in scene_state.tab_order.iter().enumerate() {
+                let (tab_text, is_active, icon, accent_color, icon_inactive_color) = match tab_kind {
+                    TabKind::Scene(idx) => {
+                        let tab = &scene_state.scene_tabs[*idx];
+                        let text = if tab.is_modified {
+                            format!("{}*", tab.name)
+                        } else {
+                            tab.name.clone()
+                        };
+                        let active = scene_state.active_script_tab.is_none() && *idx == scene_state.active_scene_tab;
+                        (text, active, FILM_SCRIPT, scene_accent_color, Color32::from_rgb(100, 140, 200))
+                    }
+                    TabKind::Script(idx) => {
+                        let script = &scene_state.open_scripts[*idx];
+                        let text = if script.is_modified {
+                            format!("{}*", script.name)
+                        } else {
+                            script.name.clone()
+                        };
+                        let active = scene_state.active_script_tab == Some(*idx);
+                        (text, active, SCROLL, script_accent_color, Color32::from_rgb(100, 180, 160))
+                    }
                 };
 
+                // Calculate tab width based on text
                 let text_width = ui.fonts(|f| {
                     f.glyph_width(&egui::FontId::proportional(12.0), 'M') * tab_text.len() as f32
                 });
-                let tab_width = text_width + TAB_PADDING * 2.0 + 36.0; // Extra space for icon and close button
+                let tab_width = text_width + TAB_PADDING * 2.0 + 36.0;
 
                 let tab_rect = egui::Rect::from_min_size(
-                    Pos2::new(x_offset, top_y + 2.0),
+                    Pos2::new(x_offset, top_y + TOP_MARGIN + 2.0),
                     Vec2::new(tab_width, TAB_HEIGHT - 2.0),
                 );
 
-                // Tab interaction
-                let tab_response = ui.allocate_rect(tab_rect, egui::Sense::click());
-                let is_hovered = tab_response.hovered();
+                tab_rects.push((order_idx, tab_rect));
 
-                // Draw tab background
-                let bg = if is_active {
+                // Tab interaction - use drag sense
+                let tab_response = ui.allocate_rect(tab_rect, egui::Sense::click_and_drag());
+                let is_hovered = tab_response.hovered();
+                let is_being_dragged = drag_state.dragging == Some(order_idx);
+
+                // Start drag
+                if tab_response.drag_started() {
+                    drag_state.dragging = Some(order_idx);
+                }
+
+                // Draw tab background (dimmed if being dragged)
+                let bg = if is_being_dragged {
+                    Color32::from_rgb(60, 60, 75)
+                } else if is_active {
                     tab_active_bg
                 } else if is_hovered {
                     tab_hover_bg
@@ -138,40 +183,40 @@ pub fn render_document_tabs(
 
                 ui.painter().rect(
                     tab_rect,
-                    CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
+                    CornerRadius::ZERO,
                     bg,
                     Stroke::NONE,
                     StrokeKind::Outside,
                 );
 
                 // Active indicator line at top
-                if is_active {
+                if is_active && !is_being_dragged {
                     ui.painter().line_segment(
                         [
-                            Pos2::new(tab_rect.min.x + 2.0, tab_rect.min.y),
-                            Pos2::new(tab_rect.max.x - 2.0, tab_rect.min.y),
+                            Pos2::new(tab_rect.min.x, tab_rect.min.y),
+                            Pos2::new(tab_rect.max.x, tab_rect.min.y),
                         ],
-                        Stroke::new(2.0, scene_accent_color),
+                        Stroke::new(2.0, accent_color),
                     );
                 }
 
-                // Scene icon
+                // Tab icon
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 8.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    FILM_SCRIPT,
+                    icon,
                     egui::FontId::proportional(12.0),
-                    if is_active { scene_accent_color } else { Color32::from_rgb(100, 140, 200) },
+                    if is_active { accent_color } else { icon_inactive_color },
                 );
 
                 // Tab text
-                let text_color = if is_active { text_active_color } else { text_color };
+                let txt_color = if is_active { text_active_color } else { text_color };
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 24.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     &tab_text,
                     egui::FontId::proportional(12.0),
-                    text_color,
+                    txt_color,
                 );
 
                 // Close button (x)
@@ -183,49 +228,54 @@ pub fn render_document_tabs(
                 let close_response = ui.allocate_rect(close_rect, egui::Sense::click());
                 let close_hovered = close_response.hovered();
 
-                let close_color = if close_hovered {
-                    Color32::from_rgb(255, 100, 100)
-                } else if is_hovered || is_active {
-                    Color32::from_rgb(140, 140, 150)
-                } else {
-                    Color32::from_rgb(80, 80, 90)
+                // Only show close button for scenes if there's more than one tab
+                let can_close = match tab_kind {
+                    TabKind::Scene(_) => scene_state.scene_tabs.len() > 1,
+                    TabKind::Script(_) => true,
                 };
 
-                // Draw X
-                let x_center = close_rect.center();
-                let x_size = 4.0;
-                ui.painter().line_segment(
-                    [
-                        Pos2::new(x_center.x - x_size, x_center.y - x_size),
-                        Pos2::new(x_center.x + x_size, x_center.y + x_size),
-                    ],
-                    Stroke::new(1.5, close_color),
-                );
-                ui.painter().line_segment(
-                    [
-                        Pos2::new(x_center.x + x_size, x_center.y - x_size),
-                        Pos2::new(x_center.x - x_size, x_center.y + x_size),
-                    ],
-                    Stroke::new(1.5, close_color),
-                );
+                if can_close {
+                    let close_color = if close_hovered {
+                        Color32::from_rgb(255, 100, 100)
+                    } else if is_hovered || is_active {
+                        Color32::from_rgb(140, 140, 150)
+                    } else {
+                        Color32::from_rgb(80, 80, 90)
+                    };
+
+                    // Draw X
+                    let x_center = close_rect.center();
+                    let x_size = 4.0;
+                    ui.painter().line_segment(
+                        [
+                            Pos2::new(x_center.x - x_size, x_center.y - x_size),
+                            Pos2::new(x_center.x + x_size, x_center.y + x_size),
+                        ],
+                        Stroke::new(1.5, close_color),
+                    );
+                    ui.painter().line_segment(
+                        [
+                            Pos2::new(x_center.x + x_size, x_center.y - x_size),
+                            Pos2::new(x_center.x - x_size, x_center.y + x_size),
+                        ],
+                        Stroke::new(1.5, close_color),
+                    );
+                }
 
                 // Handle clicks
-                if close_response.clicked() && scene_state.scene_tabs.len() > 1 {
-                    scene_tab_to_close = Some(idx);
-                } else if tab_response.clicked() {
-                    scene_tab_to_activate = Some(idx);
-                    // Switch to Default layout when clicking a scene tab
-                    layout_to_switch = Some("Default");
+                if close_response.clicked() && can_close {
+                    tab_to_close = Some(*tab_kind);
+                } else if tab_response.clicked() && !tab_response.dragged() {
+                    tab_to_activate = Some(*tab_kind);
                 }
 
                 x_offset += tab_width + TAB_GAP;
             }
 
-            // Add document button (+) with dropdown - use a sub-area for the menu
-            let add_btn_pos = Pos2::new(x_offset, top_y + 4.0);
+            // Add document button (+) with dropdown
+            let add_btn_pos = Pos2::new(x_offset, top_y + TOP_MARGIN + 4.0);
             let add_btn_size = Vec2::new(24.0, 22.0);
 
-            // Create a small UI area for the menu button
             let _menu_area = ui.allocate_ui_at_rect(
                 egui::Rect::from_min_size(add_btn_pos, add_btn_size),
                 |ui| {
@@ -250,17 +300,41 @@ pub fn render_document_tabs(
                                 match doc_type {
                                     NewDocumentType::Scene => {
                                         let new_tab_num = scene_state.scene_tabs.len() + 1;
+                                        let new_idx = scene_state.scene_tabs.len();
                                         scene_state.scene_tabs.push(SceneTab {
                                             name: format!("Untitled {}", new_tab_num),
                                             ..Default::default()
                                         });
-                                        scene_state.pending_tab_switch = Some(scene_state.scene_tabs.len() - 1);
+                                        scene_state.tab_order.push(TabKind::Scene(new_idx));
+                                        scene_state.pending_tab_switch = Some(new_idx);
+                                        scene_state.active_script_tab = None;
                                         layout_to_switch = Some("Default");
                                     }
                                     NewDocumentType::Blueprint => {
+                                        let new_tab_num = scene_state.scene_tabs.len() + 1;
+                                        let new_idx = scene_state.scene_tabs.len();
+                                        scene_state.scene_tabs.push(SceneTab {
+                                            name: format!("Blueprint {}", new_tab_num),
+                                            ..Default::default()
+                                        });
+                                        scene_state.tab_order.push(TabKind::Scene(new_idx));
+                                        scene_state.pending_tab_switch = Some(new_idx);
+                                        scene_state.active_script_tab = None;
                                         layout_to_switch = Some("Blueprints");
                                     }
                                     NewDocumentType::Script => {
+                                        let script_num = scene_state.open_scripts.len() + 1;
+                                        let new_idx = scene_state.open_scripts.len();
+                                        scene_state.open_scripts.push(crate::core::OpenScript {
+                                            name: format!("Script {}", script_num),
+                                            path: std::path::PathBuf::new(),
+                                            content: String::new(),
+                                            is_modified: false,
+                                            error: None,
+                                            last_checked_content: String::new(),
+                                        });
+                                        scene_state.tab_order.push(TabKind::Script(new_idx));
+                                        scene_state.active_script_tab = Some(new_idx);
                                         layout_to_switch = Some("Scripting");
                                     }
                                     NewDocumentType::Material => {
@@ -277,175 +351,187 @@ pub fn render_document_tabs(
                 },
             );
 
-            x_offset += 24.0 + TAB_GAP;
+            // Handle drag-drop for reordering
+            if drag_state.dragging.is_some() {
+                let pointer_pos = ui.input(|i| i.pointer.hover_pos());
 
-            // Separator between scene tabs and script tabs
-            if !scene_state.open_scripts.is_empty() {
-                x_offset += 8.0;
-                ui.painter().line_segment(
-                    [
-                        Pos2::new(x_offset, top_y + 6.0),
-                        Pos2::new(x_offset, top_y + TAB_HEIGHT - 6.0),
-                    ],
-                    Stroke::new(1.0, border_color),
-                );
-                x_offset += 12.0;
-            }
+                if let Some(pos) = pointer_pos {
+                    // Find drop target
+                    drag_state.drop_target = None;
+                    for (order_idx, rect) in &tab_rects {
+                        if pos.x < rect.center().x {
+                            drag_state.drop_target = Some(*order_idx);
+                            break;
+                        }
+                    }
+                    // If past all tabs, drop at end
+                    if drag_state.drop_target.is_none() && !tab_rects.is_empty() {
+                        drag_state.drop_target = Some(tab_rects.len());
+                    }
 
-            // Render script tabs
-            for (idx, script) in scene_state.open_scripts.iter().enumerate() {
-                let is_active = scene_state.active_script_tab == Some(idx);
+                    // Draw drop indicator
+                    if let Some(drop_idx) = drag_state.drop_target {
+                        let indicator_x = if drop_idx < tab_rects.len() {
+                            tab_rects[drop_idx].1.min.x - 1.0
+                        } else if let Some((_, last_rect)) = tab_rects.last() {
+                            last_rect.max.x + 1.0
+                        } else {
+                            left_panel_width + 8.0
+                        };
 
-                let tab_text = if script.is_modified {
-                    format!("{}*", script.name)
-                } else {
-                    script.name.clone()
-                };
-
-                let text_width = ui.fonts(|f| {
-                    f.glyph_width(&egui::FontId::proportional(12.0), 'M') * tab_text.len() as f32
-                });
-                let tab_width = text_width + TAB_PADDING * 2.0 + 36.0;
-
-                let tab_rect = egui::Rect::from_min_size(
-                    Pos2::new(x_offset, top_y + 2.0),
-                    Vec2::new(tab_width, TAB_HEIGHT - 2.0),
-                );
-
-                let tab_response = ui.allocate_rect(tab_rect, egui::Sense::click());
-                let is_hovered = tab_response.hovered();
-
-                let bg = if is_active {
-                    tab_active_bg
-                } else if is_hovered {
-                    tab_hover_bg
-                } else {
-                    tab_bg
-                };
-
-                ui.painter().rect(
-                    tab_rect,
-                    CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
-                    bg,
-                    Stroke::NONE,
-                    StrokeKind::Outside,
-                );
-
-                if is_active {
-                    ui.painter().line_segment(
-                        [
-                            Pos2::new(tab_rect.min.x + 2.0, tab_rect.min.y),
-                            Pos2::new(tab_rect.max.x - 2.0, tab_rect.min.y),
-                        ],
-                        Stroke::new(2.0, script_accent_color),
-                    );
+                        ui.painter().line_segment(
+                            [
+                                Pos2::new(indicator_x, top_y + TOP_MARGIN + 4.0),
+                                Pos2::new(indicator_x, top_y + TOP_MARGIN + TAB_HEIGHT - 4.0),
+                            ],
+                            Stroke::new(2.0, drop_indicator_color),
+                        );
+                    }
                 }
 
-                // Script icon
-                ui.painter().text(
-                    Pos2::new(tab_rect.min.x + 8.0, tab_rect.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    SCROLL,
-                    egui::FontId::proportional(12.0),
-                    if is_active { script_accent_color } else { Color32::from_rgb(100, 180, 160) },
-                );
-
-                let text_color = if is_active { text_active_color } else { text_color };
-                ui.painter().text(
-                    Pos2::new(tab_rect.min.x + 24.0, tab_rect.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    &tab_text,
-                    egui::FontId::proportional(12.0),
-                    text_color,
-                );
-
-                // Close button
-                let close_rect = egui::Rect::from_min_size(
-                    Pos2::new(tab_rect.max.x - 20.0, tab_rect.min.y + 6.0),
-                    Vec2::new(14.0, 14.0),
-                );
-
-                let close_response = ui.allocate_rect(close_rect, egui::Sense::click());
-                let close_hovered = close_response.hovered();
-
-                let close_color = if close_hovered {
-                    Color32::from_rgb(255, 100, 100)
-                } else if is_hovered || is_active {
-                    Color32::from_rgb(140, 140, 150)
-                } else {
-                    Color32::from_rgb(80, 80, 90)
-                };
-
-                let x_center = close_rect.center();
-                let x_size = 4.0;
-                ui.painter().line_segment(
-                    [
-                        Pos2::new(x_center.x - x_size, x_center.y - x_size),
-                        Pos2::new(x_center.x + x_size, x_center.y + x_size),
-                    ],
-                    Stroke::new(1.5, close_color),
-                );
-                ui.painter().line_segment(
-                    [
-                        Pos2::new(x_center.x + x_size, x_center.y - x_size),
-                        Pos2::new(x_center.x - x_size, x_center.y + x_size),
-                    ],
-                    Stroke::new(1.5, close_color),
-                );
-
-                if close_response.clicked() {
-                    script_tab_to_close = Some(idx);
-                } else if tab_response.clicked() {
-                    script_tab_to_activate = Some(idx);
-                    // Switch to Scripting layout when clicking a script tab
-                    layout_to_switch = Some("Scripting");
-                }
-
-                x_offset += tab_width + TAB_GAP;
-            }
-
-            // Process scene tab actions
-            if let Some(idx) = scene_tab_to_close {
-                if scene_state.scene_tabs.len() > 1 {
-                    scene_state.pending_tab_close = Some(idx);
+                // End drag on release
+                if ui.input(|i| i.pointer.any_released()) {
+                    if let (Some(from_idx), Some(to_idx)) = (drag_state.dragging, drag_state.drop_target) {
+                        if from_idx != to_idx && from_idx + 1 != to_idx {
+                            // Perform the reorder
+                            let tab = scene_state.tab_order.remove(from_idx);
+                            let insert_idx = if to_idx > from_idx { to_idx - 1 } else { to_idx };
+                            scene_state.tab_order.insert(insert_idx, tab);
+                        }
+                    }
+                    drag_state.dragging = None;
+                    drag_state.drop_target = None;
                 }
             }
 
-            if let Some(idx) = scene_tab_to_activate {
-                if scene_state.active_script_tab.is_some() || idx != scene_state.active_scene_tab {
-                    scene_state.active_script_tab = None; // Deactivate script tab
-                    scene_state.pending_tab_switch = Some(idx);
-                }
+            // Process tab actions
+            if let Some(tab_kind) = tab_to_close {
+                close_tab(scene_state, tab_kind);
             }
 
-            // Process script tab actions
-            if let Some(idx) = script_tab_to_close {
-                close_script_tab(scene_state, idx);
-            }
-
-            if let Some(idx) = script_tab_to_activate {
-                scene_state.active_script_tab = Some(idx);
+            if let Some(tab_kind) = tab_to_activate {
+                activate_tab(scene_state, tab_kind, &mut layout_to_switch);
             }
         });
+
+    // Store drag state back to memory
+    ctx.memory_mut(|mem| {
+        mem.data.insert_temp(drag_id, drag_state);
+    });
 
     // Switch layout if requested
     if let Some(layout_name) = layout_to_switch {
         docking_state.switch_layout(layout_name);
     }
 
-    TAB_HEIGHT
+    TAB_HEIGHT + TOP_MARGIN
 }
 
-fn close_script_tab(scene_state: &mut SceneManagerState, idx: usize) {
-    scene_state.open_scripts.remove(idx);
+/// Ensure tab_order is in sync with actual tabs (handles external additions/removals)
+fn sync_tab_order(scene_state: &mut SceneManagerState) {
+    // Remove invalid entries
+    scene_state.tab_order.retain(|kind| match kind {
+        TabKind::Scene(idx) => *idx < scene_state.scene_tabs.len(),
+        TabKind::Script(idx) => *idx < scene_state.open_scripts.len(),
+    });
 
-    if scene_state.open_scripts.is_empty() {
-        scene_state.active_script_tab = None;
-    } else if let Some(active) = scene_state.active_script_tab {
-        if active >= scene_state.open_scripts.len() {
-            scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
-        } else if active > idx {
-            scene_state.active_script_tab = Some(active - 1);
+    // Add any missing scene tabs
+    for idx in 0..scene_state.scene_tabs.len() {
+        if !scene_state.tab_order.contains(&TabKind::Scene(idx)) {
+            scene_state.tab_order.push(TabKind::Scene(idx));
+        }
+    }
+
+    // Add any missing script tabs
+    for idx in 0..scene_state.open_scripts.len() {
+        if !scene_state.tab_order.contains(&TabKind::Script(idx)) {
+            scene_state.tab_order.push(TabKind::Script(idx));
+        }
+    }
+}
+
+fn close_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind) {
+    // Find position in tab_order
+    let order_pos = scene_state.tab_order.iter().position(|k| *k == tab_kind);
+
+    match tab_kind {
+        TabKind::Scene(idx) => {
+            if scene_state.scene_tabs.len() > 1 {
+                // Determine which tab to switch to
+                let is_active = scene_state.active_script_tab.is_none() && idx == scene_state.active_scene_tab;
+
+                // Remove from tab_order first
+                if let Some(pos) = order_pos {
+                    scene_state.tab_order.remove(pos);
+                }
+
+                // Update tab_order indices for remaining scene tabs
+                for kind in &mut scene_state.tab_order {
+                    if let TabKind::Scene(scene_idx) = kind {
+                        if *scene_idx > idx {
+                            *scene_idx -= 1;
+                        }
+                    }
+                }
+
+                // Set pending close and switch
+                if is_active {
+                    let new_active = if idx + 1 < scene_state.scene_tabs.len() {
+                        idx
+                    } else {
+                        idx.saturating_sub(1)
+                    };
+                    scene_state.pending_tab_switch = Some(new_active);
+                } else if idx < scene_state.active_scene_tab {
+                    scene_state.pending_tab_switch = Some(scene_state.active_scene_tab - 1);
+                }
+                scene_state.pending_tab_close = Some(idx);
+            }
+        }
+        TabKind::Script(idx) => {
+            // Remove from tab_order first
+            if let Some(pos) = order_pos {
+                scene_state.tab_order.remove(pos);
+            }
+
+            // Update tab_order indices for remaining script tabs
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Script(script_idx) = kind {
+                    if *script_idx > idx {
+                        *script_idx -= 1;
+                    }
+                }
+            }
+
+            // Remove the script
+            scene_state.open_scripts.remove(idx);
+
+            // Update active script tab
+            if scene_state.open_scripts.is_empty() {
+                scene_state.active_script_tab = None;
+            } else if let Some(active) = scene_state.active_script_tab {
+                if active >= scene_state.open_scripts.len() {
+                    scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
+                } else if active > idx {
+                    scene_state.active_script_tab = Some(active - 1);
+                }
+            }
+        }
+    }
+}
+
+fn activate_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
+    match tab_kind {
+        TabKind::Scene(idx) => {
+            if scene_state.active_script_tab.is_some() || idx != scene_state.active_scene_tab {
+                scene_state.active_script_tab = None;
+                scene_state.pending_tab_switch = Some(idx);
+                *layout_to_switch = Some("Default");
+            }
+        }
+        TabKind::Script(idx) => {
+            scene_state.active_script_tab = Some(idx);
+            *layout_to_switch = Some("Scripting");
         }
     }
 }

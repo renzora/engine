@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState, DockingState};
-use crate::gizmo::{EditorTool, GizmoMode, GizmoState, SnapSettings};
+use crate::core::{EditorSettings, SelectionState, HierarchyState, PlayModeState, PlayState, DockingState};
+use crate::gizmo::GizmoState;
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
@@ -10,9 +10,7 @@ use crate::ui::docking::builtin_layouts;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
-    ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
-    CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, EYE, IMAGE, POLYGON,
-    SUN, CLOUD, MAGNET, CURSOR, LAYOUT,
+    PLAY, PAUSE, STOP, GEAR, CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, LAYOUT,
 };
 
 pub fn render_toolbar(
@@ -39,68 +37,12 @@ pub fn render_toolbar(
         .show(ctx, |ui| {
             let available_width = ui.available_width();
 
-            ui.horizontal_centered(|ui| {
-                // Calculate approximate width of all toolbar content
-                // 3 transform + sep + 4 dropdowns + sep + 4 toggles + 1 dropdown + sep + 3 play + settings
-                let button_size = Vec2::new(28.0, 24.0);
-                let dropdown_size = 38.0;
-                let sep_size = 16.0;
-                let total_width = (3.0 * button_size.x) + sep_size + (4.0 * dropdown_size) + sep_size
-                    + (4.0 * button_size.x) + dropdown_size + sep_size + (3.0 * button_size.x) + button_size.x + 40.0;
+            let button_size = Vec2::new(28.0, 24.0);
 
-                // Center the content
-                let padding = ((available_width - total_width) / 2.0).max(8.0);
-                ui.add_space(padding);
+            // Horizontal layout with vertical centering
+            ui.horizontal_centered(|ui| {
                 let active_color = Color32::from_rgb(66, 150, 250);
                 let inactive_color = Color32::from_rgb(46, 46, 56);
-
-                // === Select Tool ===
-                let is_select = gizmo.tool == EditorTool::Select;
-                let select_resp = tool_button(ui, CURSOR, button_size, is_select, active_color, inactive_color);
-                if select_resp.clicked() {
-                    gizmo.tool = EditorTool::Select;
-                }
-                select_resp.on_hover_text("Select (Q)");
-
-                separator(ui);
-
-                // === Transform Tools ===
-                let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
-                let translate_resp = tool_button(ui, ARROWS_OUT_CARDINAL, button_size, is_translate, active_color, inactive_color);
-                if translate_resp.clicked() {
-                    gizmo.tool = EditorTool::Transform;
-                    gizmo.mode = GizmoMode::Translate;
-                }
-                translate_resp.on_hover_text("Move (W)");
-
-                let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
-                let rotate_resp = tool_button(ui, ARROW_CLOCKWISE, button_size, is_rotate, active_color, inactive_color);
-                if rotate_resp.clicked() {
-                    gizmo.tool = EditorTool::Transform;
-                    gizmo.mode = GizmoMode::Rotate;
-                }
-                rotate_resp.on_hover_text("Rotate (E)");
-
-                let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
-                let scale_resp = tool_button(ui, ARROWS_OUT, button_size, is_scale, active_color, inactive_color);
-                if scale_resp.clicked() {
-                    gizmo.tool = EditorTool::Transform;
-                    gizmo.mode = GizmoMode::Scale;
-                }
-                scale_resp.on_hover_text("Scale (R)");
-
-                ui.add_space(4.0);
-
-                // === Snap Dropdown ===
-                let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled;
-                let snap_color = if any_snap_enabled {
-                    Color32::from_rgb(140, 191, 242)
-                } else {
-                    Color32::from_rgb(140, 140, 150)
-                };
-                snap_dropdown(ui, MAGNET, "Snap", snap_color, inactive_color, &mut gizmo.snap);
-
-                separator(ui);
 
                 // === Add Object Dropdowns ===
                 let mesh_color = Color32::from_rgb(242, 166, 115);
@@ -173,75 +115,6 @@ pub fn render_toolbar(
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
-                            ui.close();
-                        }
-                    }
-                });
-
-                separator(ui);
-
-                // === Render Toggles ===
-                let toggle_on_color = Color32::from_rgb(66, 150, 250);
-                let toggle_off_color = Color32::from_rgb(60, 60, 70);
-
-                // Textures toggle
-                let tex_resp = tool_button(
-                    ui, IMAGE, button_size,
-                    settings.render_toggles.textures,
-                    toggle_on_color, toggle_off_color
-                );
-                if tex_resp.clicked() {
-                    settings.render_toggles.textures = !settings.render_toggles.textures;
-                }
-                tex_resp.on_hover_text(if settings.render_toggles.textures { "Textures: ON" } else { "Textures: OFF" });
-
-                // Wireframe toggle
-                let wire_resp = tool_button(
-                    ui, POLYGON, button_size,
-                    settings.render_toggles.wireframe,
-                    toggle_on_color, toggle_off_color
-                );
-                if wire_resp.clicked() {
-                    settings.render_toggles.wireframe = !settings.render_toggles.wireframe;
-                }
-                wire_resp.on_hover_text(if settings.render_toggles.wireframe { "Wireframe: ON" } else { "Wireframe: OFF" });
-
-                // Lighting toggle
-                let light_resp = tool_button(
-                    ui, SUN, button_size,
-                    settings.render_toggles.lighting,
-                    toggle_on_color, toggle_off_color
-                );
-                if light_resp.clicked() {
-                    settings.render_toggles.lighting = !settings.render_toggles.lighting;
-                }
-                light_resp.on_hover_text(if settings.render_toggles.lighting { "Lighting: ON" } else { "Lighting: OFF" });
-
-                // Shadows toggle
-                let shadow_resp = tool_button(
-                    ui, CLOUD, button_size,
-                    settings.render_toggles.shadows,
-                    toggle_on_color, toggle_off_color
-                );
-                if shadow_resp.clicked() {
-                    settings.render_toggles.shadows = !settings.render_toggles.shadows;
-                }
-                shadow_resp.on_hover_text(if settings.render_toggles.shadows { "Shadows: ON" } else { "Shadows: OFF" });
-
-                ui.add_space(4.0);
-
-                // === Visualization Mode Dropdown ===
-                let viz_color = Color32::from_rgb(180, 180, 200);
-                dropdown_button(ui, EYE, "Visualization", viz_color, inactive_color, |ui| {
-                    for mode in VisualizationMode::ALL {
-                        let is_selected = settings.visualization_mode == *mode;
-                        let label = if is_selected {
-                            format!("• {}", mode.label())
-                        } else {
-                            format!("  {}", mode.label())
-                        };
-                        if menu_item(ui, &label) {
-                            settings.visualization_mode = *mode;
                             ui.close();
                         }
                     }
@@ -432,128 +305,6 @@ fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
             .min_size(Vec2::new(ui.available_width(), 0.0))
     );
     response.clicked()
-}
-
-fn snap_dropdown(
-    ui: &mut egui::Ui,
-    icon: &str,
-    label: &str,
-    icon_color: Color32,
-    bg_color: Color32,
-    snap: &mut SnapSettings,
-) {
-    let button_id = ui.make_persistent_id("snap_dropdown");
-    let size = Vec2::new(38.0, 24.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-
-    if ui.is_rect_visible(rect) {
-        let hovered = response.hovered();
-        let fill = if hovered {
-            Color32::from_rgb(56, 56, 68)
-        } else {
-            bg_color
-        };
-
-        ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-
-        // Icon
-        ui.painter().text(
-            Pos2::new(rect.left() + 12.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(13.0),
-            icon_color,
-        );
-
-        // Caret
-        ui.painter().text(
-            Pos2::new(rect.right() - 10.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            CARET_DOWN,
-            egui::FontId::proportional(10.0),
-            Color32::from_rgb(140, 140, 150),
-        );
-    }
-
-    if response.clicked() {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(button_id));
-    }
-
-    #[allow(deprecated)]
-    egui::popup_below_widget(
-        ui,
-        button_id,
-        &response,
-        egui::PopupCloseBehavior::CloseOnClickOutside,
-        |ui| {
-            ui.set_min_width(180.0);
-            ui.style_mut().spacing.item_spacing.y = 4.0;
-
-            ui.label(RichText::new("Snapping").small().color(Color32::from_rgb(140, 140, 150)));
-            ui.add_space(4.0);
-
-            // Position snap
-            ui.horizontal(|ui| {
-                let pos_active = snap.translate_enabled;
-                if ui.add(
-                    egui::Button::new(RichText::new("Position").size(12.0))
-                        .fill(if pos_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
-                        .min_size(Vec2::new(70.0, 20.0))
-                ).clicked() {
-                    snap.translate_enabled = !snap.translate_enabled;
-                }
-
-                ui.add(
-                    egui::DragValue::new(&mut snap.translate_snap)
-                        .range(0.01..=100.0)
-                        .speed(0.1)
-                        .max_decimals(2)
-                );
-            });
-
-            // Rotation snap
-            ui.horizontal(|ui| {
-                let rot_active = snap.rotate_enabled;
-                if ui.add(
-                    egui::Button::new(RichText::new("Rotation").size(12.0))
-                        .fill(if rot_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
-                        .min_size(Vec2::new(70.0, 20.0))
-                ).clicked() {
-                    snap.rotate_enabled = !snap.rotate_enabled;
-                }
-
-                ui.add(
-                    egui::DragValue::new(&mut snap.rotate_snap)
-                        .range(1.0..=90.0)
-                        .speed(1.0)
-                        .max_decimals(0)
-                        .suffix("°")
-                );
-            });
-
-            // Scale snap
-            ui.horizontal(|ui| {
-                let scale_active = snap.scale_enabled;
-                if ui.add(
-                    egui::Button::new(RichText::new("Scale").size(12.0))
-                        .fill(if scale_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
-                        .min_size(Vec2::new(70.0, 20.0))
-                ).clicked() {
-                    snap.scale_enabled = !snap.scale_enabled;
-                }
-
-                ui.add(
-                    egui::DragValue::new(&mut snap.scale_snap)
-                        .range(0.01..=10.0)
-                        .speed(0.05)
-                        .max_decimals(2)
-                );
-            });
-        },
-    );
-
-    response.on_hover_text(label);
 }
 
 fn layout_dropdown(

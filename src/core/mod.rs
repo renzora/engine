@@ -16,7 +16,7 @@ pub use resources::{
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenScript, PendingImageDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, RightPanelTab, SceneManagerState,
-    SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TangentImportMethod,
+    SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
     ThumbnailCache, supports_thumbnail,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
 };
