@@ -239,279 +239,271 @@ pub fn render_splash(
                 *mem.data.get_temp_mut_or_default::<SplashAnimationState>(egui::Id::new("splash_anim")) = anim_state;
             });
 
-            let splash_width = 420.0;
-            let splash_height = 500.0;
-            let window_pos = egui::pos2(
-                (screen_rect.width() - splash_width) / 2.0,
-                (screen_rect.height() - splash_height) / 2.0,
-            );
-
-            render_splash_window(ui.ctx(), settings, app_config, commands, next_state, window_pos, splash_width, splash_height);
+            render_two_column_layout(ui, settings, app_config, commands, next_state);
         });
 }
 
-fn render_splash_window(
-    ctx: &egui::Context,
+fn render_two_column_layout(
+    ui: &mut egui::Ui,
     settings: &mut EditorSettings,
     app_config: &mut AppConfig,
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
-    window_pos: egui::Pos2,
-    splash_width: f32,
-    splash_height: f32,
 ) {
-    let panel_bg = Color32::from_rgba_unmultiplied(28, 28, 35, 245);
     let accent_color = Color32::from_rgb(100, 160, 255);
     let text_muted = Color32::from_rgb(140, 140, 155);
     let border_color = Color32::from_rgb(50, 50, 60);
     let item_bg = Color32::from_rgb(35, 35, 45);
     let item_hover = Color32::from_rgb(45, 45, 58);
 
-    egui::Area::new(egui::Id::new("splash_panel"))
-        .fixed_pos(window_pos)
-        .show(ctx, |ui| {
-            let panel_rect = egui::Rect::from_min_size(window_pos, Vec2::new(splash_width, splash_height));
+    let screen_rect = ui.max_rect();
+    let column_gap = 60.0;
+    let content_width = (screen_rect.width() - 120.0 - column_gap).min(900.0);
+    let left_width = content_width * 0.5;
+    let right_width = content_width * 0.5;
+    let content_height = 350.0;
 
-            ui.painter().rect(
-                panel_rect,
-                CornerRadius::same(12),
-                panel_bg,
-                Stroke::new(1.0, border_color),
-                StrokeKind::Outside,
+    let start_x = (screen_rect.width() - content_width - column_gap) / 2.0 + screen_rect.min.x;
+    let start_y = screen_rect.min.y + (screen_rect.height() - content_height) / 2.0;
+
+    // Left column area
+    let left_rect = egui::Rect::from_min_size(
+        egui::pos2(start_x, start_y),
+        Vec2::new(left_width, content_height),
+    );
+
+    // Right column area
+    let right_rect = egui::Rect::from_min_size(
+        egui::pos2(start_x + left_width + column_gap, start_y),
+        Vec2::new(right_width, content_height),
+    );
+    let mut project_to_open: Option<CurrentProject> = None;
+    let mut path_to_remove: Option<usize> = None;
+
+    // Left column - Title, New Project
+    #[allow(deprecated)]
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
+        ui.vertical(|ui| {
+            // Header
+            ui.label(RichText::new("Renzora Engine").size(32.0).color(Color32::WHITE).strong());
+            ui.add_space(4.0);
+            ui.label(RichText::new("Game Development Suite").size(13.0).color(text_muted));
+            ui.add_space(40.0);
+
+            // New Project Section
+            ui.label(RichText::new("NEW PROJECT").size(11.0).color(text_muted).strong());
+            ui.add_space(12.0);
+
+            let input_width = left_width - 10.0;
+            ui.add_sized(
+                Vec2::new(input_width, 36.0),
+                egui::TextEdit::singleline(&mut settings.new_project_name)
+                    .hint_text("Project name...")
+                    .margin(egui::Margin::symmetric(12, 10)),
             );
 
-            #[allow(deprecated)]
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(panel_rect.shrink(24.0)), |ui| {
-                ui.vertical(|ui| {
-                    // Header
-                    ui.add_space(8.0);
-                    ui.label(RichText::new("Renzora Engine").size(24.0).color(Color32::WHITE).strong());
-                    ui.add_space(4.0);
-                    ui.label(RichText::new("Game Development Environment").size(12.0).color(text_muted));
-                    ui.add_space(24.0);
+            ui.add_space(12.0);
 
-                    // New Project Section
-                    ui.label(RichText::new("NEW PROJECT").size(11.0).color(text_muted).strong());
-                    ui.add_space(8.0);
+            // Buttons row
+            ui.horizontal(|ui| {
+                let btn_width = (input_width - 8.0) / 2.0;
 
-                    // Project name input with custom styling
-                    let input_width = splash_width - 48.0;
-                    ui.horizontal(|ui| {
-                        ui.add_sized(
-                            Vec2::new(input_width, 32.0),
-                            egui::TextEdit::singleline(&mut settings.new_project_name)
-                                .hint_text("Project name...")
-                                .margin(egui::Margin::symmetric(12, 8)),
-                        );
-                    });
+                let create_btn = egui::Button::new(
+                    RichText::new("Create Project").color(Color32::WHITE)
+                )
+                .fill(accent_color)
+                .corner_radius(CornerRadius::same(6))
+                .min_size(Vec2::new(btn_width, 36.0));
 
-                    ui.add_space(12.0);
+                if ui.add(create_btn).clicked() {
+                    if let Some(folder) = rfd::FileDialog::new()
+                        .set_title("Select Project Location")
+                        .pick_folder()
+                    {
+                        let project_name = if settings.new_project_name.is_empty() {
+                            "New Project"
+                        } else {
+                            &settings.new_project_name
+                        };
+                        let project_path = folder.join(project_name.replace(' ', "_").to_lowercase());
 
-                    // Create button
-                    let create_btn = egui::Button::new(
-                        RichText::new("Create Project").color(Color32::WHITE)
-                    )
-                    .fill(accent_color)
-                    .corner_radius(CornerRadius::same(6))
-                    .min_size(Vec2::new(input_width, 36.0));
-
-                    if ui.add(create_btn).clicked() {
-                        if let Some(folder) = rfd::FileDialog::new()
-                            .set_title("Select Project Location")
-                            .pick_folder()
-                        {
-                            let project_name = if settings.new_project_name.is_empty() {
-                                "New Project"
-                            } else {
-                                &settings.new_project_name
-                            };
-                            let project_path = folder.join(project_name.replace(' ', "_").to_lowercase());
-
-                            match create_project(&project_path, project_name) {
-                                Ok(project) => {
-                                    app_config.add_recent_project(project_path);
-                                    let _ = app_config.save();
-                                    commands.insert_resource(project);
-                                    next_state.set(AppState::Editor);
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to create project: {}", e);
-                                }
+                        match create_project(&project_path, project_name) {
+                            Ok(project) => {
+                                app_config.add_recent_project(project_path);
+                                let _ = app_config.save();
+                                commands.insert_resource(project);
+                                next_state.set(AppState::Editor);
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to create project: {}", e);
                             }
                         }
                     }
+                }
 
-                    ui.add_space(8.0);
+                let open_btn = egui::Button::new(
+                    RichText::new("Open Project").color(Color32::from_rgb(200, 200, 210))
+                )
+                .fill(item_bg)
+                .stroke(Stroke::new(1.0, border_color))
+                .corner_radius(CornerRadius::same(6))
+                .min_size(Vec2::new(btn_width, 36.0));
 
-                    // Open button
-                    let open_btn = egui::Button::new(
-                        RichText::new("Open Project...").color(Color32::from_rgb(200, 200, 210))
-                    )
-                    .fill(item_bg)
-                    .stroke(Stroke::new(1.0, border_color))
-                    .corner_radius(CornerRadius::same(6))
-                    .min_size(Vec2::new(input_width, 36.0));
-
-                    if ui.add(open_btn).clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .set_title("Open Project")
-                            .add_filter("Project File", &["toml"])
-                            .pick_file()
-                        {
-                            match open_project(&file) {
-                                Ok(project) => {
-                                    app_config.add_recent_project(project.path.clone());
-                                    let _ = app_config.save();
-                                    commands.insert_resource(project);
-                                    next_state.set(AppState::Editor);
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to open project: {}", e);
-                                }
+                if ui.add(open_btn).clicked() {
+                    if let Some(file) = rfd::FileDialog::new()
+                        .set_title("Open Project")
+                        .add_filter("Project File", &["toml"])
+                        .pick_file()
+                    {
+                        match open_project(&file) {
+                            Ok(project) => {
+                                app_config.add_recent_project(project.path.clone());
+                                let _ = app_config.save();
+                                commands.insert_resource(project);
+                                next_state.set(AppState::Editor);
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to open project: {}", e);
                             }
                         }
                     }
-
-                    ui.add_space(24.0);
-
-                    // Recent Projects Section
-                    ui.label(RichText::new("RECENT PROJECTS").size(11.0).color(text_muted).strong());
-                    ui.add_space(8.0);
-
-                    let mut project_to_open: Option<CurrentProject> = None;
-                    let mut path_to_remove: Option<usize> = None;
-
-                    if app_config.recent_projects.is_empty() {
-                        ui.add_space(20.0);
-                        ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("No recent projects").size(13.0).color(text_muted));
-                        });
-                    } else {
-                        egui::ScrollArea::vertical()
-                            .max_height(200.0)
-                            .show(ui, |ui| {
-                                ui.set_width(input_width);
-
-                                for (idx, project_path) in app_config.recent_projects.iter().enumerate() {
-                                    let display_name = project_path
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("Unknown");
-
-                                    let path_display = project_path.to_string_lossy();
-                                    let project_toml = project_path.join("project.toml");
-                                    let exists = project_toml.exists();
-
-                                    let item_rect = ui.available_rect_before_wrap();
-                                    let item_rect = egui::Rect::from_min_size(
-                                        item_rect.min,
-                                        Vec2::new(input_width, 52.0),
-                                    );
-
-                                    let response = ui.allocate_rect(item_rect, egui::Sense::click());
-                                    let is_hovered = response.hovered();
-
-                                    // Draw item background
-                                    let bg_color = if is_hovered && exists { item_hover } else { item_bg };
-                                    ui.painter().rect(
-                                        item_rect,
-                                        CornerRadius::same(6),
-                                        bg_color,
-                                        Stroke::NONE,
-                                        StrokeKind::Outside,
-                                    );
-
-                                    // Draw content
-                                    let text_pos = item_rect.min + Vec2::new(12.0, 10.0);
-                                    let path_pos = item_rect.min + Vec2::new(12.0, 30.0);
-
-                                    if exists {
-                                        ui.painter().text(
-                                            text_pos,
-                                            egui::Align2::LEFT_TOP,
-                                            display_name,
-                                            egui::FontId::proportional(14.0),
-                                            Color32::WHITE,
-                                        );
-
-                                        // Truncate path if too long
-                                        let max_path_len = 45;
-                                        let path_str = if path_display.len() > max_path_len {
-                                            format!("...{}", &path_display[path_display.len() - max_path_len..])
-                                        } else {
-                                            path_display.to_string()
-                                        };
-
-                                        ui.painter().text(
-                                            path_pos,
-                                            egui::Align2::LEFT_TOP,
-                                            path_str,
-                                            egui::FontId::proportional(11.0),
-                                            text_muted,
-                                        );
-
-                                        if response.clicked() {
-                                            match open_project(&project_toml) {
-                                                Ok(project) => {
-                                                    project_to_open = Some(project);
-                                                }
-                                                Err(e) => {
-                                                    eprintln!("Failed to open project: {}", e);
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        ui.painter().text(
-                                            text_pos,
-                                            egui::Align2::LEFT_TOP,
-                                            format!("{} (missing)", display_name),
-                                            egui::FontId::proportional(14.0),
-                                            text_muted,
-                                        );
-
-                                        // Remove button for missing projects
-                                        let remove_rect = egui::Rect::from_min_size(
-                                            item_rect.right_top() + Vec2::new(-60.0, 14.0),
-                                            Vec2::new(48.0, 24.0),
-                                        );
-
-                                        let remove_response = ui.allocate_rect(remove_rect, egui::Sense::click());
-                                        let remove_color = if remove_response.hovered() {
-                                            Color32::from_rgb(255, 100, 100)
-                                        } else {
-                                            text_muted
-                                        };
-
-                                        ui.painter().text(
-                                            remove_rect.center(),
-                                            egui::Align2::CENTER_CENTER,
-                                            "Remove",
-                                            egui::FontId::proportional(11.0),
-                                            remove_color,
-                                        );
-
-                                        if remove_response.clicked() {
-                                            path_to_remove = Some(idx);
-                                        }
-                                    }
-
-                                    ui.add_space(4.0);
-                                }
-                            });
-                    }
-
-                    if let Some(project) = project_to_open {
-                        app_config.add_recent_project(project.path.clone());
-                        let _ = app_config.save();
-                        commands.insert_resource(project);
-                        next_state.set(AppState::Editor);
-                    }
-
-                    if let Some(idx) = path_to_remove {
-                        app_config.recent_projects.remove(idx);
-                        let _ = app_config.save();
-                    }
-                });
+                }
             });
         });
+    });
+
+    // Right column - Recent Projects
+    #[allow(deprecated)]
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("RECENT PROJECTS").size(11.0).color(text_muted).strong());
+            ui.add_space(12.0);
+
+            if app_config.recent_projects.is_empty() {
+                ui.add_space(20.0);
+                ui.label(RichText::new("No recent projects").size(13.0).color(text_muted));
+            } else {
+                egui::ScrollArea::vertical()
+                    .max_height(310.0)
+                    .show(ui, |ui| {
+                        let item_width = right_width - 10.0;
+
+                        for (idx, project_path) in app_config.recent_projects.iter().enumerate() {
+                            let display_name = project_path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Unknown");
+
+                            let path_display = project_path.to_string_lossy();
+                            let project_toml = project_path.join("project.toml");
+                            let exists = project_toml.exists();
+
+                            let item_rect = ui.available_rect_before_wrap();
+                            let item_rect = egui::Rect::from_min_size(
+                                item_rect.min,
+                                Vec2::new(item_width, 52.0),
+                            );
+
+                            let response = ui.allocate_rect(item_rect, egui::Sense::click());
+                            let is_hovered = response.hovered();
+
+                            let bg_color = if is_hovered && exists { item_hover } else { item_bg };
+                            ui.painter().rect(
+                                item_rect,
+                                CornerRadius::same(6),
+                                bg_color,
+                                Stroke::NONE,
+                                StrokeKind::Outside,
+                            );
+
+                            let text_pos = item_rect.min + Vec2::new(12.0, 10.0);
+                            let path_pos = item_rect.min + Vec2::new(12.0, 30.0);
+
+                            if exists {
+                                ui.painter().text(
+                                    text_pos,
+                                    egui::Align2::LEFT_TOP,
+                                    display_name,
+                                    egui::FontId::proportional(14.0),
+                                    Color32::WHITE,
+                                );
+
+                                let max_path_len = 45;
+                                let path_str = if path_display.len() > max_path_len {
+                                    format!("...{}", &path_display[path_display.len() - max_path_len..])
+                                } else {
+                                    path_display.to_string()
+                                };
+
+                                ui.painter().text(
+                                    path_pos,
+                                    egui::Align2::LEFT_TOP,
+                                    path_str,
+                                    egui::FontId::proportional(11.0),
+                                    text_muted,
+                                );
+
+                                if response.clicked() {
+                                    match open_project(&project_toml) {
+                                        Ok(project) => {
+                                            project_to_open = Some(project);
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Failed to open project: {}", e);
+                                        }
+                                    }
+                                }
+                            } else {
+                                ui.painter().text(
+                                    text_pos,
+                                    egui::Align2::LEFT_TOP,
+                                    format!("{} (missing)", display_name),
+                                    egui::FontId::proportional(14.0),
+                                    text_muted,
+                                );
+
+                                let remove_rect = egui::Rect::from_min_size(
+                                    item_rect.right_top() + Vec2::new(-60.0, 14.0),
+                                    Vec2::new(48.0, 24.0),
+                                );
+
+                                let remove_response = ui.allocate_rect(remove_rect, egui::Sense::click());
+                                let remove_color = if remove_response.hovered() {
+                                    Color32::from_rgb(255, 100, 100)
+                                } else {
+                                    text_muted
+                                };
+
+                                ui.painter().text(
+                                    remove_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "Remove",
+                                    egui::FontId::proportional(11.0),
+                                    remove_color,
+                                );
+
+                                if remove_response.clicked() {
+                                    path_to_remove = Some(idx);
+                                }
+                            }
+
+                            ui.add_space(4.0);
+                        }
+                    });
+            }
+        });
+    });
+
+    // Handle project opening/removal after UI
+    if let Some(project) = project_to_open {
+        app_config.add_recent_project(project.path.clone());
+        let _ = app_config.save();
+        commands.insert_resource(project);
+        next_state.set(AppState::Editor);
+    }
+
+    if let Some(idx) = path_to_remove {
+        app_config.recent_projects.remove(idx);
+        let _ = app_config.save();
+    }
 }
