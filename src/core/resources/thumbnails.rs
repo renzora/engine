@@ -86,10 +86,16 @@ impl ThumbnailCache {
     }
 }
 
-/// Identifies which asset types support thumbnails
+/// Identifies which asset types support image thumbnails (loaded directly as images)
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "hdr" | "exr" | "webp")
+}
+
+/// Identifies model files that support 3D preview thumbnails
+pub fn supports_model_preview(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "glb" | "gltf")
 }
 
 /// Identifies model files that could have generated previews (future)

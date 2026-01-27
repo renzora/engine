@@ -4,6 +4,7 @@ mod camera;
 mod camera_preview;
 pub mod camera2d;
 pub mod grid2d;
+pub mod model_preview;
 pub mod render_2d;
 mod texture;
 
@@ -15,6 +16,10 @@ pub use camera2d::{
     camera2d_controller, setup_editor_camera_2d, toggle_viewport_cameras,
 };
 pub use grid2d::draw_grid_2d;
+pub use model_preview::{
+    capture_model_previews, cleanup_orphaned_preview_entities, process_model_preview_queue,
+    register_model_preview_textures, spawn_model_previews, ModelPreviewCache,
+};
 pub use render_2d::{cleanup_2d_visuals, update_2d_visuals};
 pub use texture::{resize_viewport_texture, setup_viewport_texture};
 
@@ -104,6 +109,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<OriginalMaterialStates>()
             .init_resource::<LastRenderState>()
             .init_resource::<Camera2DState>()
+            .init_resource::<ModelPreviewCache>()
             .add_systems(Startup, (setup_viewport_texture, setup_camera_preview_texture))
             .add_systems(
                 Update,
@@ -112,6 +118,18 @@ impl Plugin for ViewportPlugin {
             .add_systems(
                 Update,
                 auto_switch_viewport_mode.run_if(in_state(AppState::Editor)),
+            )
+            // Model preview systems for asset browser thumbnails
+            .add_systems(
+                Update,
+                (
+                    process_model_preview_queue,
+                    spawn_model_previews,
+                    capture_model_previews,
+                    cleanup_orphaned_preview_entities,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Editor)),
             );
     }
 }

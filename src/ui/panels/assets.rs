@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use crate::core::{
     AssetBrowserState, AssetViewMode, BottomPanelTab, ColliderImportType, ConsoleState,
     ConvertAxes, LogLevel, MeshHandling, NormalImportMethod, TangentImportMethod,
-    ViewportState, SceneManagerState, ThumbnailCache, supports_thumbnail,
+    ViewportState, SceneManagerState, ThumbnailCache, supports_thumbnail, supports_model_preview,
 };
+use crate::viewport::ModelPreviewCache;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
@@ -42,6 +43,7 @@ pub fn render_assets(
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
     thumbnail_cache: &mut ThumbnailCache,
+    model_preview_cache: &mut ModelPreviewCache,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let screen_height = ctx.screen_rect().height();
@@ -310,7 +312,7 @@ pub fn render_assets(
                 // Render built-in tabs
                 match viewport.bottom_panel_tab {
                     BottomPanelTab::Assets => {
-                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache);
+                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache);
                     }
                     BottomPanelTab::Console => {
                         render_console_content(ui, console);
@@ -361,6 +363,7 @@ pub fn render_assets_content(
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
     thumbnail_cache: &mut ThumbnailCache,
+    model_preview_cache: &mut ModelPreviewCache,
 ) {
     let ctx = ui.ctx().clone();
     let available_width = ui.available_width();
@@ -402,10 +405,10 @@ pub fn render_assets_content(
 
                 match assets.view_mode {
                     AssetViewMode::Grid => {
-                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
+                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache);
                     }
                     AssetViewMode::List => {
-                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, project);
+                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, project);
                     }
                 }
 
@@ -694,6 +697,7 @@ fn render_grid_view(
     scene_state: &mut SceneManagerState,
     items: &[&AssetItem],
     thumbnail_cache: &mut ThumbnailCache,
+    model_preview_cache: &mut ModelPreviewCache,
 ) {
     let available_width = ui.available_width();
 
@@ -718,7 +722,8 @@ fn render_grid_view(
 
         for item in items {
             let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
-            let has_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
+            let has_image_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
+            let has_model_preview = !item.is_folder && supports_model_preview(&item.name);
 
             let (rect, response) = ui.allocate_exact_size(
                 Vec2::new(tile_size, tile_size + 20.0),
@@ -757,7 +762,8 @@ fn render_grid_view(
 
             let mut thumbnail_shown = false;
 
-            if has_thumbnail {
+            // Try image thumbnails first
+            if has_image_thumbnail {
                 // Try to get cached thumbnail texture ID
                 if let Some(texture_id) = thumbnail_cache.get_texture_id(&item.path) {
                     // Draw the thumbnail image
@@ -781,6 +787,27 @@ fn render_grid_view(
                     thumbnail_cache.request_load(item.path.clone());
                 }
             }
+            // Try 3D model previews
+            else if has_model_preview {
+                if let Some(texture_id) = model_preview_cache.get_texture_id(&item.path) {
+                    // Draw the model preview
+                    let thumb_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
+                        Vec2::splat(thumbnail_size),
+                    );
+
+                    ui.painter().image(
+                        texture_id,
+                        thumb_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    thumbnail_shown = true;
+                } else if !model_preview_cache.is_loading(&item.path) && !model_preview_cache.has_failed(&item.path) {
+                    // Request model preview generation
+                    model_preview_cache.request_preview(item.path.clone());
+                }
+            }
 
             // Fall back to icon if no thumbnail
             if !thumbnail_shown {
@@ -792,8 +819,10 @@ fn render_grid_view(
                     item.color,
                 );
 
-                // Show loading indicator for images being loaded
-                if has_thumbnail && thumbnail_cache.is_loading(&item.path) {
+                // Show loading indicator for thumbnails being loaded
+                let is_loading = (has_image_thumbnail && thumbnail_cache.is_loading(&item.path))
+                    || (has_model_preview && model_preview_cache.is_loading(&item.path));
+                if is_loading {
                     let spinner_rect = egui::Rect::from_center_size(
                         egui::pos2(rect.max.x - 12.0, rect.min.y + 12.0),
                         Vec2::splat(8.0),
@@ -865,6 +894,7 @@ fn render_list_view(
     scene_state: &mut SceneManagerState,
     _items: &[&AssetItem],
     thumbnail_cache: &mut ThumbnailCache,
+    _model_preview_cache: &mut ModelPreviewCache,
     project: &CurrentProject,
 ) {
     // Remove vertical spacing between rows

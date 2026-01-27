@@ -15,6 +15,7 @@ mod scene;
 mod scripting;
 mod shared;
 mod spawn;
+mod thumbnail_cli;
 mod ui;
 mod ui_api;
 mod viewport;
@@ -36,6 +37,13 @@ use crate::core::AppState;
 struct SplashCamera;
 
 fn main() {
+    // Check for headless thumbnail rendering mode
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 4 && args[1] == "--render-thumbnail" {
+        thumbnail_cli::run_thumbnail_renderer(args[2].clone(), args[3].clone());
+        return;
+    }
+
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -148,6 +156,13 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             ui::thumbnail_loading_system
+                .after(ui::editor_ui)
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Model preview texture registration (for 3D model thumbnails)
+        .add_systems(
+            EguiPrimaryContextPass,
+            viewport::register_model_preview_textures
                 .after(ui::editor_ui)
                 .run_if(in_state(AppState::Editor)),
         )

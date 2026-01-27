@@ -15,7 +15,7 @@ use crate::core::{
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
-use crate::viewport::Camera2DState;
+use crate::viewport::{Camera2DState, ModelPreviewCache};
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]
@@ -40,6 +40,7 @@ pub struct EditorResources<'w> {
     pub console: ResMut<'w, ConsoleState>,
     pub command_history: ResMut<'w, CommandHistory>,
     pub thumbnail_cache: ResMut<'w, ThumbnailCache>,
+    pub model_preview_cache: ResMut<'w, ModelPreviewCache>,
     pub component_registry: Res<'w, ComponentRegistry>,
     pub add_component_popup: ResMut<'w, AddComponentPopupState>,
     pub keyboard: Res<'w, ButtonInput<KeyCode>>,
@@ -489,6 +490,7 @@ pub fn editor_ui(
                             &mut editor.assets,
                             &mut editor.scene_state,
                             &mut editor.thumbnail_cache,
+                            &mut editor.model_preview_cache,
                         );
                     });
                 }

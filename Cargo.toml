@@ -6,7 +6,7 @@ default-run = "renzora_editor"
 
 [features]
 default = ["editor"]
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "bevy/dynamic_linking"]
+editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "bevy/dynamic_linking"]
 runtime = []
 
 [[bin]]
@@ -28,6 +28,8 @@ toml = "0.8"
 dirs = "5.0"
 zstd = "0.13"
 gltf = "1.4"
+
+image = { version = "0.25", optional = true }
 
 # Editor-only dependencies
 bevy_egui = { version = "0.37", optional = true }

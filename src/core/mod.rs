@@ -17,7 +17,7 @@ pub use resources::{
     NormalImportMethod, OpenScript, PendingImageDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, RightPanelTab, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
-    ThumbnailCache, supports_thumbnail,
+    ThumbnailCache, supports_thumbnail, supports_model_preview,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
 };
 
