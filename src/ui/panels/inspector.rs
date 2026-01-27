@@ -61,6 +61,43 @@ pub fn property_row(ui: &mut egui::Ui, row_index: usize, add_contents: impl FnOn
         });
 }
 
+/// Width reserved for property labels
+pub const LABEL_WIDTH: f32 = 80.0;
+
+/// Minimum width for the inspector content area
+pub const MIN_INSPECTOR_WIDTH: f32 = 220.0;
+
+/// Helper to render an inline property with label on left, widget immediately after
+/// Returns whether the value changed
+pub fn inline_property<R>(
+    ui: &mut egui::Ui,
+    row_index: usize,
+    label: &str,
+    add_widget: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let available_width = ui.available_width().max(MIN_INSPECTOR_WIDTH);
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(4, 2))
+        .show(ui, |ui| {
+            ui.set_min_width(available_width - 8.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                // Fixed-width label with smaller text
+                ui.add_sized(
+                    [LABEL_WIDTH, 16.0],
+                    egui::Label::new(egui::RichText::new(label).size(11.0)).truncate()
+                );
+                // Widget fills remaining space, left-aligned
+                add_widget(ui)
+            })
+            .inner
+        })
+        .inner
+}
+
 /// Category accent colors for different component types
 struct CategoryStyle {
     accent_color: Color32,

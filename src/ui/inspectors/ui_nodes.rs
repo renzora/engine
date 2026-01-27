@@ -1,73 +1,54 @@
 //! Inspector widgets for UI nodes
 
-use bevy_egui::egui::{self, Color32, RichText};
+use bevy_egui::egui;
 
 use crate::shared::{UIButtonData, UIImageData, UILabelData, UIPanelData};
-use crate::ui::property_row;
+use crate::ui::inline_property;
 
 /// Render the UIPanel inspector
 pub fn render_ui_panel_inspector(ui: &mut egui::Ui, panel_data: &mut UIPanelData) -> bool {
     let mut changed = false;
+    let mut row = 0;
 
     // Size
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Size");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut panel_data.height).speed(1.0).range(10.0..=2000.0).prefix("H: ")).changed() {
-                    changed = true;
-                }
-                if ui.add(egui::DragValue::new(&mut panel_data.width).speed(1.0).range(10.0..=2000.0).prefix("W: ")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    inline_property(ui, row, "Size", |ui| {
+        if ui.add(egui::DragValue::new(&mut panel_data.width).speed(1.0).range(10.0..=2000.0).prefix("W ")).changed() {
+            changed = true;
+        }
+        if ui.add(egui::DragValue::new(&mut panel_data.height).speed(1.0).range(10.0..=2000.0).prefix("H ")).changed() {
+            changed = true;
+        }
     });
+    row += 1;
 
     // Background color
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Background");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    panel_data.background_color.x,
-                    panel_data.background_color.y,
-                    panel_data.background_color.z,
-                    panel_data.background_color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    panel_data.background_color.x = color[0];
-                    panel_data.background_color.y = color[1];
-                    panel_data.background_color.z = color[2];
-                    panel_data.background_color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Background", |ui| {
+        let mut color = [
+            panel_data.background_color.x,
+            panel_data.background_color.y,
+            panel_data.background_color.z,
+            panel_data.background_color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            panel_data.background_color.x = color[0];
+            panel_data.background_color.y = color[1];
+            panel_data.background_color.z = color[2];
+            panel_data.background_color.w = color[3];
+        }
+        resp
     });
+    row += 1;
 
     // Border radius
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Border Radius");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut panel_data.border_radius).speed(0.5).range(0.0..=50.0).suffix(" px")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Border Radius", |ui| {
+        ui.add(egui::DragValue::new(&mut panel_data.border_radius).speed(0.5).range(0.0..=50.0).suffix(" px")).changed()
     });
+    row += 1;
 
     // Padding
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Padding");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut panel_data.padding).speed(0.5).range(0.0..=100.0).suffix(" px")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Padding", |ui| {
+        ui.add(egui::DragValue::new(&mut panel_data.padding).speed(0.5).range(0.0..=100.0).suffix(" px")).changed()
     });
 
     changed
@@ -76,51 +57,36 @@ pub fn render_ui_panel_inspector(ui: &mut egui::Ui, panel_data: &mut UIPanelData
 /// Render the UILabel inspector
 pub fn render_ui_label_inspector(ui: &mut egui::Ui, label_data: &mut UILabelData) -> bool {
     let mut changed = false;
+    let mut row = 0;
 
     // Text content
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Text");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::TextEdit::singleline(&mut label_data.text).desired_width(150.0)).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Text", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut label_data.text).desired_width(120.0)).changed()
     });
+    row += 1;
 
     // Font size
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Font Size");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut label_data.font_size).speed(0.5).range(8.0..=72.0).suffix(" px")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Font Size", |ui| {
+        ui.add(egui::DragValue::new(&mut label_data.font_size).speed(0.5).range(8.0..=72.0).suffix(" px")).changed()
     });
+    row += 1;
 
     // Text color
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Color");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    label_data.color.x,
-                    label_data.color.y,
-                    label_data.color.z,
-                    label_data.color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    label_data.color.x = color[0];
-                    label_data.color.y = color[1];
-                    label_data.color.z = color[2];
-                    label_data.color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Color", |ui| {
+        let mut color = [
+            label_data.color.x,
+            label_data.color.y,
+            label_data.color.z,
+            label_data.color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            label_data.color.x = color[0];
+            label_data.color.y = color[1];
+            label_data.color.z = color[2];
+            label_data.color.w = color[3];
+        }
+        resp
     });
 
     changed
@@ -129,135 +95,104 @@ pub fn render_ui_label_inspector(ui: &mut egui::Ui, label_data: &mut UILabelData
 /// Render the UIButton inspector
 pub fn render_ui_button_inspector(ui: &mut egui::Ui, button_data: &mut UIButtonData) -> bool {
     let mut changed = false;
+    let mut row = 0;
 
     // Text content
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Text");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::TextEdit::singleline(&mut button_data.text).desired_width(150.0)).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Text", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut button_data.text).desired_width(120.0)).changed()
     });
+    row += 1;
 
     // Size
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Size");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut button_data.height).speed(1.0).range(20.0..=200.0).prefix("H: ")).changed() {
-                    changed = true;
-                }
-                if ui.add(egui::DragValue::new(&mut button_data.width).speed(1.0).range(40.0..=500.0).prefix("W: ")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    inline_property(ui, row, "Size", |ui| {
+        if ui.add(egui::DragValue::new(&mut button_data.width).speed(1.0).range(40.0..=500.0).prefix("W ")).changed() {
+            changed = true;
+        }
+        if ui.add(egui::DragValue::new(&mut button_data.height).speed(1.0).range(20.0..=200.0).prefix("H ")).changed() {
+            changed = true;
+        }
     });
+    row += 1;
 
     // Font size
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Font Size");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut button_data.font_size).speed(0.5).range(8.0..=48.0).suffix(" px")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Font Size", |ui| {
+        ui.add(egui::DragValue::new(&mut button_data.font_size).speed(0.5).range(8.0..=48.0).suffix(" px")).changed()
     });
-
-    ui.add_space(4.0);
-    ui.label(RichText::new("Colors").strong());
+    row += 1;
 
     // Normal color
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Normal");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    button_data.normal_color.x,
-                    button_data.normal_color.y,
-                    button_data.normal_color.z,
-                    button_data.normal_color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    button_data.normal_color.x = color[0];
-                    button_data.normal_color.y = color[1];
-                    button_data.normal_color.z = color[2];
-                    button_data.normal_color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Normal", |ui| {
+        let mut color = [
+            button_data.normal_color.x,
+            button_data.normal_color.y,
+            button_data.normal_color.z,
+            button_data.normal_color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            button_data.normal_color.x = color[0];
+            button_data.normal_color.y = color[1];
+            button_data.normal_color.z = color[2];
+            button_data.normal_color.w = color[3];
+        }
+        resp
     });
+    row += 1;
 
     // Hover color
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Hover");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    button_data.hover_color.x,
-                    button_data.hover_color.y,
-                    button_data.hover_color.z,
-                    button_data.hover_color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    button_data.hover_color.x = color[0];
-                    button_data.hover_color.y = color[1];
-                    button_data.hover_color.z = color[2];
-                    button_data.hover_color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Hover", |ui| {
+        let mut color = [
+            button_data.hover_color.x,
+            button_data.hover_color.y,
+            button_data.hover_color.z,
+            button_data.hover_color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            button_data.hover_color.x = color[0];
+            button_data.hover_color.y = color[1];
+            button_data.hover_color.z = color[2];
+            button_data.hover_color.w = color[3];
+        }
+        resp
     });
+    row += 1;
 
     // Pressed color
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Pressed");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    button_data.pressed_color.x,
-                    button_data.pressed_color.y,
-                    button_data.pressed_color.z,
-                    button_data.pressed_color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    button_data.pressed_color.x = color[0];
-                    button_data.pressed_color.y = color[1];
-                    button_data.pressed_color.z = color[2];
-                    button_data.pressed_color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Pressed", |ui| {
+        let mut color = [
+            button_data.pressed_color.x,
+            button_data.pressed_color.y,
+            button_data.pressed_color.z,
+            button_data.pressed_color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            button_data.pressed_color.x = color[0];
+            button_data.pressed_color.y = color[1];
+            button_data.pressed_color.z = color[2];
+            button_data.pressed_color.w = color[3];
+        }
+        resp
     });
+    row += 1;
 
     // Text color
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Text Color");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    button_data.text_color.x,
-                    button_data.text_color.y,
-                    button_data.text_color.z,
-                    button_data.text_color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    button_data.text_color.x = color[0];
-                    button_data.text_color.y = color[1];
-                    button_data.text_color.z = color[2];
-                    button_data.text_color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Text Color", |ui| {
+        let mut color = [
+            button_data.text_color.x,
+            button_data.text_color.y,
+            button_data.text_color.z,
+            button_data.text_color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            button_data.text_color.x = color[0];
+            button_data.text_color.y = color[1];
+            button_data.text_color.z = color[2];
+            button_data.text_color.w = color[3];
+        }
+        resp
     });
 
     changed
@@ -266,64 +201,41 @@ pub fn render_ui_button_inspector(ui: &mut egui::Ui, button_data: &mut UIButtonD
 /// Render the UIImage inspector
 pub fn render_ui_image_inspector(ui: &mut egui::Ui, image_data: &mut UIImageData) -> bool {
     let mut changed = false;
+    let mut row = 0;
 
     // Texture path
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Texture");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::TextEdit::singleline(&mut image_data.texture_path).desired_width(150.0)).changed() {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Texture", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut image_data.texture_path).desired_width(120.0)).changed()
     });
+    row += 1;
 
     // Size
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Size");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut image_data.height).speed(1.0).range(1.0..=2000.0).prefix("H: ")).changed() {
-                    changed = true;
-                }
-                if ui.add(egui::DragValue::new(&mut image_data.width).speed(1.0).range(1.0..=2000.0).prefix("W: ")).changed() {
-                    changed = true;
-                }
-            });
-        });
+    inline_property(ui, row, "Size", |ui| {
+        if ui.add(egui::DragValue::new(&mut image_data.width).speed(1.0).range(1.0..=2000.0).prefix("W ")).changed() {
+            changed = true;
+        }
+        if ui.add(egui::DragValue::new(&mut image_data.height).speed(1.0).range(1.0..=2000.0).prefix("H ")).changed() {
+            changed = true;
+        }
     });
+    row += 1;
 
     // Tint color
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Tint");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    image_data.tint.x,
-                    image_data.tint.y,
-                    image_data.tint.z,
-                    image_data.tint.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    image_data.tint.x = color[0];
-                    image_data.tint.y = color[1];
-                    image_data.tint.z = color[2];
-                    image_data.tint.w = color[3];
-                    changed = true;
-                }
-            });
-        });
-    });
-
-    // Info
-    property_row(ui, 1, |ui| {
-        ui.label(
-            RichText::new("UI image. Set texture path relative to assets folder.")
-                .color(Color32::from_rgb(100, 100, 110))
-                .small()
-                .italics(),
-        );
+    changed |= inline_property(ui, row, "Tint", |ui| {
+        let mut color = [
+            image_data.tint.x,
+            image_data.tint.y,
+            image_data.tint.z,
+            image_data.tint.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            image_data.tint.x = color[0];
+            image_data.tint.y = color[1];
+            image_data.tint.z = color[2];
+            image_data.tint.w = color[3];
+        }
+        resp
     });
 
     changed

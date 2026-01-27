@@ -25,7 +25,14 @@ pub use resources::{
 pub use crate::gizmo::GizmoState;
 
 use bevy::prelude::*;
-use crate::shared::SkyMode;
+use bevy::anti_alias::fxaa::Fxaa;
+use bevy::camera::Exposure;
+use bevy::core_pipeline::tonemapping::Tonemapping as BevyTonemapping;
+use bevy::pbr::{DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections};
+use bevy::post_process::bloom::Bloom;
+use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
+use bevy::post_process::motion_blur::MotionBlur;
+use crate::shared::{SkyMode, TonemappingMode};
 
 /// Marker for the procedural sky sun light
 #[derive(Component)]
@@ -130,7 +137,8 @@ fn apply_world_environment(
     mut commands: Commands,
     world_envs: Query<(&WorldEnvironmentMarker, &EditorEntity)>,
     mut ambient_light: ResMut<AmbientLight>,
-    mut cameras: Query<&mut Camera, With<ViewportCamera>>,
+    cameras: Query<Entity, With<ViewportCamera>>,
+    mut camera_query: Query<&mut Camera, With<ViewportCamera>>,
     mut sun_query: Query<(Entity, &mut DirectionalLight, &mut Transform), With<ProceduralSkySun>>,
 ) {
     // Find the first visible WorldEnvironment in the scene and apply its settings
@@ -145,11 +153,107 @@ fn apply_world_environment(
         );
         ambient_light.brightness = data.ambient_brightness;
 
+        // Apply post-processing to cameras
+        for camera_entity in cameras.iter() {
+            // MSAA (component-based in Bevy 0.17)
+            let msaa = match data.msaa_samples {
+                1 => Msaa::Off,
+                2 => Msaa::Sample2,
+                4 => Msaa::Sample4,
+                8 => Msaa::Sample8,
+                _ => Msaa::Sample4,
+            };
+            commands.entity(camera_entity).insert(msaa);
+            // Fog
+            if data.fog_enabled {
+                commands.entity(camera_entity).insert(DistanceFog {
+                    color: Color::srgba(data.fog_color.0, data.fog_color.1, data.fog_color.2, 1.0),
+                    falloff: FogFalloff::Linear {
+                        start: data.fog_start,
+                        end: data.fog_end,
+                    },
+                    ..default()
+                });
+            } else {
+                commands.entity(camera_entity).remove::<DistanceFog>();
+            }
+
+            // FXAA
+            if data.fxaa_enabled {
+                commands.entity(camera_entity).insert(Fxaa::default());
+            } else {
+                commands.entity(camera_entity).remove::<Fxaa>();
+            }
+
+            // Bloom
+            if data.bloom_enabled {
+                commands.entity(camera_entity).insert(Bloom {
+                    intensity: data.bloom_intensity,
+                    low_frequency_boost: data.bloom_threshold * 0.5,
+                    ..default()
+                });
+            } else {
+                commands.entity(camera_entity).remove::<Bloom>();
+            }
+
+            // Tonemapping
+            let bevy_tonemap = match data.tonemapping {
+                TonemappingMode::None => BevyTonemapping::None,
+                TonemappingMode::Reinhard => BevyTonemapping::Reinhard,
+                TonemappingMode::ReinhardLuminance => BevyTonemapping::ReinhardLuminance,
+                TonemappingMode::AcesFitted => BevyTonemapping::AcesFitted,
+                TonemappingMode::AgX => BevyTonemapping::AgX,
+                TonemappingMode::SomewhatBoringDisplayTransform => BevyTonemapping::SomewhatBoringDisplayTransform,
+                TonemappingMode::TonyMcMapface => BevyTonemapping::TonyMcMapface,
+                TonemappingMode::BlenderFilmic => BevyTonemapping::BlenderFilmic,
+            };
+            commands.entity(camera_entity).insert(bevy_tonemap);
+
+            // Exposure
+            commands.entity(camera_entity).insert(Exposure { ev100: data.exposure });
+
+            // SSAO
+            if data.ssao_enabled {
+                commands.entity(camera_entity).insert(ScreenSpaceAmbientOcclusion::default());
+            } else {
+                commands.entity(camera_entity).remove::<ScreenSpaceAmbientOcclusion>();
+            }
+
+            // SSR
+            if data.ssr_enabled {
+                commands.entity(camera_entity).insert(ScreenSpaceReflections::default());
+            } else {
+                commands.entity(camera_entity).remove::<ScreenSpaceReflections>();
+            }
+
+            // Depth of Field
+            if data.dof_enabled {
+                commands.entity(camera_entity).insert(DepthOfField {
+                    focal_distance: data.dof_focal_distance,
+                    aperture_f_stops: data.dof_aperture,
+                    mode: DepthOfFieldMode::Bokeh,
+                    ..default()
+                });
+            } else {
+                commands.entity(camera_entity).remove::<DepthOfField>();
+            }
+
+            // Motion Blur
+            if data.motion_blur_enabled {
+                commands.entity(camera_entity).insert(MotionBlur {
+                    shutter_angle: data.motion_blur_intensity * 360.0,
+                    samples: 4,
+                });
+            } else {
+                commands.entity(camera_entity).remove::<MotionBlur>();
+            }
+        }
+
         // Apply sky settings based on mode
         match data.sky_mode {
             SkyMode::Color => {
                 // Simple solid color background
-                for mut camera in cameras.iter_mut() {
+                for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(
                         data.clear_color.0,
                         data.clear_color.1,
@@ -166,7 +270,7 @@ fn apply_world_environment(
 
                 // Use sky horizon color as clear color (approximation of procedural sky)
                 // A proper implementation would use a skybox shader
-                for mut camera in cameras.iter_mut() {
+                for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(
                         sky.sky_horizon_color.0,
                         sky.sky_horizon_color.1,
@@ -208,7 +312,9 @@ fn apply_world_environment(
             SkyMode::Panorama => {
                 // HDR panorama - would need to load and apply the HDR texture as skybox
                 // For now, use a neutral gray as placeholder
-                for mut camera in cameras.iter_mut() {
+                // Note: Full panorama skybox support requires loading KTX2/HDR files
+                // and using the Skybox component, which is complex due to asset loading
+                for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
                 }
                 // Remove procedural sun if exists
@@ -222,8 +328,26 @@ fn apply_world_environment(
         ambient_light.color = Color::WHITE;
         ambient_light.brightness = 200.0;
 
+        // Reset camera settings to defaults
+        for camera_entity in cameras.iter() {
+            // Reset MSAA to default
+            commands.entity(camera_entity).insert(Msaa::Sample4);
+            // Remove all post-processing components
+            commands.entity(camera_entity).remove::<DistanceFog>();
+            commands.entity(camera_entity).remove::<Fxaa>();
+            commands.entity(camera_entity).remove::<Bloom>();
+            commands.entity(camera_entity).remove::<ScreenSpaceAmbientOcclusion>();
+            commands.entity(camera_entity).remove::<ScreenSpaceReflections>();
+            commands.entity(camera_entity).remove::<DepthOfField>();
+            commands.entity(camera_entity).remove::<MotionBlur>();
+
+            // Reset tonemapping and exposure to defaults
+            commands.entity(camera_entity).insert(BevyTonemapping::Reinhard);
+            commands.entity(camera_entity).insert(Exposure::default());
+        }
+
         // Reset camera clear color to default dark gray
-        for mut camera in cameras.iter_mut() {
+        for mut camera in camera_query.iter_mut() {
             camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12));
         }
 

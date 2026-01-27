@@ -72,7 +72,7 @@ use panels::{
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
     render_console_content, render_history_content,
 };
-pub use panels::{handle_window_actions, property_row};
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
 

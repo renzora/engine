@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
 
 use crate::shared::{CameraNodeData, CameraRigData};
-use crate::ui::property_row;
+use crate::ui::inline_property;
 
 /// Render the camera rig inspector
 pub fn render_camera_rig_inspector(
@@ -41,131 +41,43 @@ pub fn render_camera_rig_inspector(
             });
     }
 
-    ui.add_space(8.0);
-
-    // Rig Settings header
-    ui.label(RichText::new("Rig Settings").strong());
     ui.add_space(4.0);
 
-    // Distance
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Distance");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.distance).speed(0.1).range(0.5..=50.0).suffix(" m"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    // Rig Settings
+    let mut row = 0;
+
+    changed |= inline_property(ui, row, "Distance", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.distance).speed(0.1).range(0.5..=50.0).suffix(" m")).changed()
     });
+    row += 1;
 
-    // Height
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Height");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.height).speed(0.1).range(-10.0..=20.0).suffix(" m"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Height", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.height).speed(0.1).range(-10.0..=20.0).suffix(" m")).changed()
     });
+    row += 1;
 
-    // Horizontal Offset (for over-the-shoulder cameras)
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Horizontal Offset");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.horizontal_offset).speed(0.1).range(-10.0..=10.0).suffix(" m"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Horizontal Offset", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.horizontal_offset).speed(0.1).range(-10.0..=10.0).suffix(" m")).changed()
     });
+    row += 1;
 
-    ui.add_space(8.0);
-
-    // Camera Settings header
-    ui.label(RichText::new("Camera Settings").strong());
-    ui.add_space(4.0);
-
-    // Field of View
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Field of View");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.fov).speed(1.0).range(10.0..=120.0).suffix("°"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Field of View", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.fov).speed(1.0).range(10.0..=120.0).suffix("°")).changed()
     });
+    row += 1;
 
-    ui.add_space(8.0);
-
-    // Smoothing Settings header
-    ui.label(RichText::new("Smoothing").strong());
-    ui.add_space(4.0);
-
-    // Follow Smoothing
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Follow Speed");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.follow_smoothing).speed(0.1).range(0.1..=50.0))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Follow Speed", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.follow_smoothing).speed(0.1).range(0.1..=50.0)).changed()
     });
+    row += 1;
 
-    // Look Smoothing
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Look Speed");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut rig_data.look_smoothing).speed(0.1).range(0.1..=50.0))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Look Speed", |ui| {
+        ui.add(egui::DragValue::new(&mut rig_data.look_smoothing).speed(0.1).range(0.1..=50.0)).changed()
     });
+    row += 1;
 
-    ui.add_space(8.0);
-
-    // Default Camera checkbox
-    property_row(ui, 0, |ui| {
-        if ui.checkbox(&mut rig_data.is_default_camera, "Default Camera").changed() {
-            changed = true;
-        }
-    });
-
-    // Info
-    property_row(ui, 1, |ui| {
-        ui.label(
-            RichText::new("Third-person camera. Follows parent entity at runtime.")
-                .color(Color32::from_rgb(100, 100, 110))
-                .small()
-                .italics(),
-        );
+    changed |= inline_property(ui, row, "Default Camera", |ui| {
+        ui.checkbox(&mut rig_data.is_default_camera, "").changed()
     });
 
     changed
@@ -207,29 +119,11 @@ pub fn render_camera_inspector(
             });
     }
 
-    // Field of View
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Field of View");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut camera_data.fov).speed(1.0).range(10.0..=120.0).suffix("°"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
-    });
+    ui.add_space(4.0);
 
-    // Info
-    property_row(ui, 1, |ui| {
-        ui.label(
-            RichText::new("Runtime camera. Position controlled by Transform.")
-                .color(Color32::from_rgb(100, 100, 110))
-                .small()
-                .italics(),
-        );
+    // Field of View
+    changed |= inline_property(ui, 0, "Field of View", |ui| {
+        ui.add(egui::DragValue::new(&mut camera_data.fov).speed(1.0).range(10.0..=120.0).suffix("°")).changed()
     });
 
     changed

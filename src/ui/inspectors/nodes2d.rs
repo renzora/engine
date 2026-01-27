@@ -1,86 +1,59 @@
 //! Inspector widgets for 2D nodes
 
-use bevy_egui::egui::{self, Color32, RichText};
+use bevy_egui::egui;
 
 use crate::shared::{Camera2DData, Sprite2DData};
-use crate::ui::property_row;
+use crate::ui::inline_property;
 
 /// Render the Sprite2D inspector
 pub fn render_sprite2d_inspector(ui: &mut egui::Ui, sprite_data: &mut Sprite2DData) -> bool {
     let mut changed = false;
+    let mut row = 0;
 
     // Texture path
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Texture");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut path = sprite_data.texture_path.clone();
-                if ui.add(egui::TextEdit::singleline(&mut path).desired_width(150.0)).changed() {
-                    sprite_data.texture_path = path;
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Texture", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut sprite_data.texture_path).desired_width(120.0)).changed()
     });
+    row += 1;
 
     // Color tint
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Color");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut color = [
-                    sprite_data.color.x,
-                    sprite_data.color.y,
-                    sprite_data.color.z,
-                    sprite_data.color.w,
-                ];
-                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
-                    sprite_data.color.x = color[0];
-                    sprite_data.color.y = color[1];
-                    sprite_data.color.z = color[2];
-                    sprite_data.color.w = color[3];
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, row, "Color", |ui| {
+        let mut color = [
+            sprite_data.color.x,
+            sprite_data.color.y,
+            sprite_data.color.z,
+            sprite_data.color.w,
+        ];
+        let resp = ui.color_edit_button_rgba_unmultiplied(&mut color).changed();
+        if resp {
+            sprite_data.color.x = color[0];
+            sprite_data.color.y = color[1];
+            sprite_data.color.z = color[2];
+            sprite_data.color.w = color[3];
+        }
+        resp
     });
+    row += 1;
 
     // Flip controls
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut sprite_data.flip_x, "Flip X").changed() {
-                changed = true;
-            }
-            if ui.checkbox(&mut sprite_data.flip_y, "Flip Y").changed() {
-                changed = true;
-            }
-        });
+    inline_property(ui, row, "Flip", |ui| {
+        if ui.checkbox(&mut sprite_data.flip_x, "X").changed() {
+            changed = true;
+        }
+        if ui.checkbox(&mut sprite_data.flip_y, "Y").changed() {
+            changed = true;
+        }
     });
+    row += 1;
 
     // Anchor
-    property_row(ui, 1, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Anchor");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(4.0);
-                if ui.add(egui::DragValue::new(&mut sprite_data.anchor.y).speed(0.01).range(0.0..=1.0).prefix("Y: ")).changed() {
-                    changed = true;
-                }
-                if ui.add(egui::DragValue::new(&mut sprite_data.anchor.x).speed(0.01).range(0.0..=1.0).prefix("X: ")).changed() {
-                    changed = true;
-                }
-            });
-        });
-    });
-
-    // Info
-    property_row(ui, 0, |ui| {
-        ui.label(
-            RichText::new("2D sprite. Set texture path relative to assets folder.")
-                .color(Color32::from_rgb(100, 100, 110))
-                .small()
-                .italics(),
-        );
+    inline_property(ui, row, "Anchor", |ui| {
+        if ui.add(egui::DragValue::new(&mut sprite_data.anchor.x).speed(0.01).range(0.0..=1.0).prefix("X ")).changed() {
+            changed = true;
+        }
+        if ui.add(egui::DragValue::new(&mut sprite_data.anchor.y).speed(0.01).range(0.0..=1.0).prefix("Y ")).changed() {
+            changed = true;
+        }
     });
 
     changed
@@ -91,35 +64,13 @@ pub fn render_camera2d_inspector(ui: &mut egui::Ui, camera_data: &mut Camera2DDa
     let mut changed = false;
 
     // Zoom
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Zoom");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut camera_data.zoom).speed(0.01).range(0.1..=10.0).suffix("x"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
-        });
+    changed |= inline_property(ui, 0, "Zoom", |ui| {
+        ui.add(egui::DragValue::new(&mut camera_data.zoom).speed(0.01).range(0.1..=10.0).suffix("x")).changed()
     });
 
     // Default camera checkbox
-    property_row(ui, 1, |ui| {
-        if ui.checkbox(&mut camera_data.is_default_camera, "Default Camera").changed() {
-            changed = true;
-        }
-    });
-
-    // Info
-    property_row(ui, 0, |ui| {
-        ui.label(
-            RichText::new("2D orthographic camera for 2D scenes.")
-                .color(Color32::from_rgb(100, 100, 110))
-                .small()
-                .italics(),
-        );
+    changed |= inline_property(ui, 1, "Default Camera", |ui| {
+        ui.checkbox(&mut camera_data.is_default_camera, "").changed()
     });
 
     changed

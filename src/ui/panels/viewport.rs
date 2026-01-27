@@ -111,6 +111,24 @@ fn render_viewport_tabs(
     let text_muted = theme.text.muted.to_color32();
     let button_size = Vec2::new(28.0, 20.0);
     let button_y = tabs_rect.min.y + (VIEWPORT_TABS_HEIGHT - button_size.y) / 2.0;
+    let tab_height = VIEWPORT_TABS_HEIGHT - 4.0;
+    let tab_y = tabs_rect.min.y + 2.0;
+    let tab_width = 36.0;
+
+    // Calculate section widths
+    // Left section: 3D/2D tabs
+    let left_section_width = tab_width * 2.0 + 2.0 + 8.0; // Two tabs + gap + padding
+
+    // Center section: Select + Transform tools (4 buttons) + Snap dropdown
+    let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown
+
+    // Right section: 4 render toggles + viz dropdown
+    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown
+
+    // Calculate positions
+    let left_start = tabs_rect.min.x + 4.0;
+    let center_start = tabs_rect.center().x - center_section_width / 2.0;
+    let right_start = tabs_rect.max.x - right_section_width - 4.0;
 
     egui::Area::new(egui::Id::new("viewport_tabs"))
         .fixed_pos(tabs_rect.min)
@@ -121,12 +139,8 @@ fn render_viewport_tabs(
             // Background
             ui.painter().rect_filled(tabs_rect, 0.0, theme.surfaces.panel.to_color32());
 
-            let tab_height = VIEWPORT_TABS_HEIGHT - 4.0;
-            let tab_y = tabs_rect.min.y + 2.0;
-            let mut x_pos = tabs_rect.min.x + 4.0;
-
-            // === 3D/2D Mode Tabs ===
-            let tab_width = 36.0;
+            // === LEFT SECTION: 3D/2D Mode Tabs ===
+            let mut x_pos = left_start;
 
             // 3D tab
             let tab_3d_rect = Rect::from_min_size(
@@ -168,16 +182,11 @@ fn render_viewport_tabs(
                 FontId::proportional(11.0),
                 if is_2d_active { text_color } else { text_muted },
             );
-            x_pos += tab_width + 8.0;
 
-            // Separator
-            ui.painter().line_segment(
-                [Pos2::new(x_pos, tab_y + 3.0), Pos2::new(x_pos, tab_y + tab_height - 3.0)],
-                Stroke::new(1.0, border_color),
-            );
-            x_pos += 8.0;
+            // === CENTER SECTION: Transform Tools ===
+            x_pos = center_start;
 
-            // === Selection Tool ===
+            // Selection Tool
             let is_select = gizmo.tool == EditorTool::Select;
             let select_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
             let select_resp = viewport_tool_button(ui, select_rect, CURSOR, is_select, active_color, inactive_color, hovered_color);
@@ -187,7 +196,7 @@ fn render_viewport_tabs(
             select_resp.on_hover_text("Select (Q)");
             x_pos += button_size.x + 2.0;
 
-            // === Transform Tools ===
+            // Translate
             let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
             let translate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
             let translate_resp = viewport_tool_button(ui, translate_rect, ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
@@ -198,6 +207,7 @@ fn render_viewport_tabs(
             translate_resp.on_hover_text("Move (W)");
             x_pos += button_size.x + 2.0;
 
+            // Rotate
             let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
             let rotate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
             let rotate_resp = viewport_tool_button(ui, rotate_rect, ARROW_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
@@ -208,6 +218,7 @@ fn render_viewport_tabs(
             rotate_resp.on_hover_text("Rotate (E)");
             x_pos += button_size.x + 2.0;
 
+            // Scale
             let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
             let scale_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
             let scale_resp = viewport_tool_button(ui, scale_rect, ARROWS_OUT, is_scale, active_color, inactive_color, hovered_color);
@@ -218,7 +229,7 @@ fn render_viewport_tabs(
             scale_resp.on_hover_text("Scale (R)");
             x_pos += button_size.x + 4.0;
 
-            // === Snap Dropdown ===
+            // Snap Dropdown
             let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled;
             let snap_color = if any_snap_enabled {
                 active_color
@@ -227,16 +238,10 @@ fn render_viewport_tabs(
             };
             let snap_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
             viewport_snap_dropdown(ui, ctx, snap_rect, MAGNET, snap_color, inactive_color, hovered_color, text_muted, &mut gizmo.snap, theme);
-            x_pos += 36.0 + 8.0;
 
-            // Separator
-            ui.painter().line_segment(
-                [Pos2::new(x_pos, tab_y + 3.0), Pos2::new(x_pos, tab_y + tab_height - 3.0)],
-                Stroke::new(1.0, border_color),
-            );
-            x_pos += 8.0;
+            // === RIGHT SECTION: Render Settings ===
+            x_pos = right_start;
 
-            // === Render Toggles ===
             let toggle_on_color = active_color;
             let toggle_off_color = inactive_color;
 
@@ -276,7 +281,7 @@ fn render_viewport_tabs(
             shadow_resp.on_hover_text(if settings.render_toggles.shadows { "Shadows: ON" } else { "Shadows: OFF" });
             x_pos += button_size.x + 4.0;
 
-            // === Visualization Mode Dropdown ===
+            // Visualization Mode Dropdown
             let viz_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
             let viz_color = theme.text.secondary.to_color32();
             viewport_viz_dropdown(ui, ctx, viz_rect, EYE, viz_color, inactive_color, hovered_color, text_muted, settings);
