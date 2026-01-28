@@ -55,6 +55,8 @@ impl PinId {
 pub enum PinType {
     /// Execution flow (white triangle)
     Flow,
+    /// Execution flow alias for behavior nodes
+    Execution,
     /// Floating point number (green)
     Float,
     /// Integer number (cyan)
@@ -67,31 +69,77 @@ pub enum PinType {
     Vec2,
     /// 3D vector (orange)
     Vec3,
+    /// 4D vector (pink) - for shader materials
+    Vec4,
     /// Color value (purple)
     Color,
+    /// 2D texture reference (blue) - for shader materials
+    Texture2D,
+    /// Sampler reference (teal) - for shader materials
+    Sampler,
     /// Any type (gray) - for generic nodes
     Any,
+    /// Entity reference (light blue)
+    Entity,
+    /// Array of entities
+    EntityArray,
+    /// Array of strings
+    StringArray,
+    /// Asset reference (gold)
+    Asset,
+    /// Audio handle (purple-pink)
+    AudioHandle,
+    /// Timer handle (green-cyan)
+    TimerHandle,
+    /// Scene handle (orange-red)
+    SceneHandle,
+    /// Prefab handle (yellow-green)
+    PrefabHandle,
+    /// GLTF handle (brown)
+    GltfHandle,
 }
 
 impl PinType {
     /// Get the display color for this pin type (egui Color32)
     pub fn color(&self) -> [u8; 3] {
         match self {
-            PinType::Flow => [255, 255, 255],   // White
-            PinType::Float => [100, 200, 100],  // Green
-            PinType::Int => [100, 200, 200],    // Cyan
-            PinType::Bool => [200, 100, 100],   // Red
-            PinType::String => [200, 100, 200], // Magenta
-            PinType::Vec2 => [200, 200, 100],   // Yellow
-            PinType::Vec3 => [200, 150, 100],   // Orange
-            PinType::Color => [150, 100, 200],  // Purple
-            PinType::Any => [150, 150, 150],    // Gray
+            PinType::Flow | PinType::Execution => [255, 255, 255], // White
+            PinType::Float => [100, 200, 100],    // Green
+            PinType::Int => [100, 200, 200],      // Cyan
+            PinType::Bool => [200, 100, 100],     // Red
+            PinType::String => [200, 100, 200],   // Magenta
+            PinType::Vec2 => [200, 200, 100],     // Yellow
+            PinType::Vec3 => [200, 150, 100],     // Orange
+            PinType::Vec4 => [220, 130, 180],     // Pink
+            PinType::Color => [150, 100, 200],    // Purple
+            PinType::Texture2D => [100, 150, 220],// Blue
+            PinType::Sampler => [100, 180, 180],  // Teal
+            PinType::Any => [150, 150, 150],      // Gray
+            PinType::Entity => [100, 180, 220],   // Light blue
+            PinType::EntityArray => [80, 160, 200], // Darker blue
+            PinType::StringArray => [180, 80, 180], // Darker magenta
+            PinType::Asset => [220, 180, 80],     // Gold
+            PinType::AudioHandle => [200, 100, 180], // Purple-pink
+            PinType::TimerHandle => [100, 180, 160], // Green-cyan
+            PinType::SceneHandle => [220, 140, 100], // Orange-red
+            PinType::PrefabHandle => [180, 200, 100], // Yellow-green
+            PinType::GltfHandle => [180, 140, 100], // Brown
         }
     }
 
     /// Check if this type can connect to another type
     pub fn can_connect_to(&self, other: &PinType) -> bool {
         if *self == PinType::Any || *other == PinType::Any {
+            return true;
+        }
+        // Flow and Execution are interchangeable
+        if (*self == PinType::Flow || *self == PinType::Execution)
+            && (*other == PinType::Flow || *other == PinType::Execution) {
+            return true;
+        }
+        // Color and Vec4 are compatible (both are 4-component vectors)
+        if (*self == PinType::Color && *other == PinType::Vec4)
+            || (*self == PinType::Vec4 && *other == PinType::Color) {
             return true;
         }
         *self == *other
@@ -102,15 +150,34 @@ impl PinType {
     pub fn name(&self) -> &'static str {
         match self {
             PinType::Flow => "Flow",
+            PinType::Execution => "Execution",
             PinType::Float => "Float",
             PinType::Int => "Int",
             PinType::Bool => "Bool",
             PinType::String => "String",
             PinType::Vec2 => "Vec2",
             PinType::Vec3 => "Vec3",
+            PinType::Vec4 => "Vec4",
             PinType::Color => "Color",
+            PinType::Texture2D => "Texture2D",
+            PinType::Sampler => "Sampler",
             PinType::Any => "Any",
+            PinType::Entity => "Entity",
+            PinType::EntityArray => "Entity[]",
+            PinType::StringArray => "String[]",
+            PinType::Asset => "Asset",
+            PinType::AudioHandle => "AudioHandle",
+            PinType::TimerHandle => "TimerHandle",
+            PinType::SceneHandle => "SceneHandle",
+            PinType::PrefabHandle => "PrefabHandle",
+            PinType::GltfHandle => "GltfHandle",
         }
+    }
+
+    /// Returns true if this is a shader-only type
+    #[allow(dead_code)]
+    pub fn is_shader_type(&self) -> bool {
+        matches!(self, PinType::Texture2D | PinType::Sampler | PinType::Vec4)
     }
 }
 
@@ -187,7 +254,30 @@ pub enum PinValue {
     String(String),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
+    Vec4([f32; 4]),
     Color([f32; 4]),
+    /// Texture asset path (for shader materials)
+    Texture2D(String),
+    /// Sampler configuration (for shader materials) - not typically edited directly
+    Sampler,
+    /// Entity ID (for behavior nodes)
+    Entity(u64),
+    /// Array of entity IDs
+    EntityArray(Vec<u64>),
+    /// Array of strings
+    StringArray(Vec<String>),
+    /// Asset path
+    Asset(String),
+    /// Audio handle ID
+    AudioHandle(u64),
+    /// Timer handle ID
+    TimerHandle(u64),
+    /// Scene handle ID
+    SceneHandle(u64),
+    /// Prefab handle ID
+    PrefabHandle(u64),
+    /// GLTF handle ID
+    GltfHandle(u64),
 }
 
 impl PinValue {
@@ -202,7 +292,19 @@ impl PinValue {
             PinValue::String(_) => PinType::String,
             PinValue::Vec2(_) => PinType::Vec2,
             PinValue::Vec3(_) => PinType::Vec3,
+            PinValue::Vec4(_) => PinType::Vec4,
             PinValue::Color(_) => PinType::Color,
+            PinValue::Texture2D(_) => PinType::Texture2D,
+            PinValue::Sampler => PinType::Sampler,
+            PinValue::Entity(_) => PinType::Entity,
+            PinValue::EntityArray(_) => PinType::EntityArray,
+            PinValue::StringArray(_) => PinType::StringArray,
+            PinValue::Asset(_) => PinType::Asset,
+            PinValue::AudioHandle(_) => PinType::AudioHandle,
+            PinValue::TimerHandle(_) => PinType::TimerHandle,
+            PinValue::SceneHandle(_) => PinType::SceneHandle,
+            PinValue::PrefabHandle(_) => PinType::PrefabHandle,
+            PinValue::GltfHandle(_) => PinType::GltfHandle,
         }
     }
 
@@ -210,15 +312,27 @@ impl PinValue {
     #[allow(dead_code)]
     pub fn default_for_type(pin_type: PinType) -> Self {
         match pin_type {
-            PinType::Flow => PinValue::Flow,
+            PinType::Flow | PinType::Execution => PinValue::Flow,
             PinType::Float => PinValue::Float(0.0),
             PinType::Int => PinValue::Int(0),
             PinType::Bool => PinValue::Bool(false),
             PinType::String => PinValue::String(String::new()),
             PinType::Vec2 => PinValue::Vec2([0.0, 0.0]),
             PinType::Vec3 => PinValue::Vec3([0.0, 0.0, 0.0]),
+            PinType::Vec4 => PinValue::Vec4([0.0, 0.0, 0.0, 0.0]),
             PinType::Color => PinValue::Color([1.0, 1.0, 1.0, 1.0]),
+            PinType::Texture2D => PinValue::Texture2D(String::new()),
+            PinType::Sampler => PinValue::Sampler,
             PinType::Any => PinValue::Float(0.0),
+            PinType::Entity => PinValue::Entity(0),
+            PinType::EntityArray => PinValue::EntityArray(Vec::new()),
+            PinType::StringArray => PinValue::StringArray(Vec::new()),
+            PinType::Asset => PinValue::Asset(String::new()),
+            PinType::AudioHandle => PinValue::AudioHandle(0),
+            PinType::TimerHandle => PinValue::TimerHandle(0),
+            PinType::SceneHandle => PinValue::SceneHandle(0),
+            PinType::PrefabHandle => PinValue::PrefabHandle(0),
+            PinType::GltfHandle => PinValue::GltfHandle(0),
         }
     }
 
@@ -232,7 +346,42 @@ impl PinValue {
             PinValue::String(v) => format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
             PinValue::Vec2(v) => format!("vec2({:.6}, {:.6})", v[0], v[1]),
             PinValue::Vec3(v) => format!("vec3({:.6}, {:.6}, {:.6})", v[0], v[1], v[2]),
+            PinValue::Vec4(v) => format!("vec4({:.6}, {:.6}, {:.6}, {:.6})", v[0], v[1], v[2], v[3]),
             PinValue::Color(v) => format!("color({:.6}, {:.6}, {:.6}, {:.6})", v[0], v[1], v[2], v[3]),
+            PinValue::Texture2D(path) => format!("\"{}\"", path),
+            PinValue::Sampler => "sampler".to_string(),
+            PinValue::Entity(id) => format!("entity({})", id),
+            PinValue::EntityArray(ids) => format!("[{}]", ids.iter().map(|id| format!("entity({})", id)).collect::<Vec<_>>().join(", ")),
+            PinValue::StringArray(strings) => format!("[{}]", strings.iter().map(|s| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))).collect::<Vec<_>>().join(", ")),
+            PinValue::Asset(path) => format!("asset(\"{}\")", path),
+            PinValue::AudioHandle(id) => format!("audio_handle({})", id),
+            PinValue::TimerHandle(id) => format!("timer_handle({})", id),
+            PinValue::SceneHandle(id) => format!("scene_handle({})", id),
+            PinValue::PrefabHandle(id) => format!("prefab_handle({})", id),
+            PinValue::GltfHandle(id) => format!("gltf_handle({})", id),
+        }
+    }
+
+    /// Convert to WGSL code representation (for shader materials)
+    pub fn to_wgsl(&self) -> String {
+        match self {
+            PinValue::Flow => String::new(),
+            PinValue::Float(v) => format!("{:.6}", v),
+            PinValue::Int(v) => format!("{}i", v),
+            PinValue::Bool(v) => format!("{}", v),
+            PinValue::String(v) => format!("\"{}\"", v),
+            PinValue::Vec2(v) => format!("vec2<f32>({:.6}, {:.6})", v[0], v[1]),
+            PinValue::Vec3(v) => format!("vec3<f32>({:.6}, {:.6}, {:.6})", v[0], v[1], v[2]),
+            PinValue::Vec4(v) => format!("vec4<f32>({:.6}, {:.6}, {:.6}, {:.6})", v[0], v[1], v[2], v[3]),
+            PinValue::Color(v) => format!("vec4<f32>({:.6}, {:.6}, {:.6}, {:.6})", v[0], v[1], v[2], v[3]),
+            PinValue::Texture2D(_) => "/* texture */".to_string(),
+            PinValue::Sampler => "/* sampler */".to_string(),
+            // These types are not used in shaders
+            PinValue::Entity(_) | PinValue::EntityArray(_) | PinValue::StringArray(_) |
+            PinValue::Asset(_) | PinValue::AudioHandle(_) | PinValue::TimerHandle(_) |
+            PinValue::SceneHandle(_) | PinValue::PrefabHandle(_) | PinValue::GltfHandle(_) => {
+                "/* runtime type */".to_string()
+            }
         }
     }
 }
@@ -327,6 +476,48 @@ impl BlueprintNode {
     }
 }
 
+/// Type of blueprint graph
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BlueprintType {
+    /// Behavior blueprint - compiles to Rhai script for entity logic
+    #[default]
+    Behavior,
+    /// Material blueprint - compiles to WGSL shader for custom materials
+    Material,
+}
+
+impl BlueprintType {
+    /// Get display name for this type
+    pub fn name(&self) -> &'static str {
+        match self {
+            BlueprintType::Behavior => "Behavior",
+            BlueprintType::Material => "Material",
+        }
+    }
+
+    /// Get file extension for this type
+    pub fn extension(&self) -> &'static str {
+        match self {
+            BlueprintType::Behavior => "blueprint",
+            BlueprintType::Material => "material_bp",
+        }
+    }
+
+    /// Check if a node category is valid for this blueprint type
+    pub fn is_category_allowed(&self, category: &str) -> bool {
+        match self {
+            BlueprintType::Behavior => {
+                // Behavior blueprints use non-shader categories
+                !category.starts_with("Shader")
+            }
+            BlueprintType::Material => {
+                // Material blueprints use shader categories + shared Math nodes
+                category.starts_with("Shader") || category == "Math"
+            }
+        }
+    }
+}
+
 /// A variable defined at the graph level
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlueprintVariable {
@@ -376,6 +567,9 @@ impl BlueprintVariable {
 pub struct BlueprintGraph {
     /// Name of the blueprint
     pub name: String,
+    /// Type of blueprint (Behavior or Material)
+    #[serde(default)]
+    pub graph_type: BlueprintType,
     /// All nodes in the graph
     pub nodes: Vec<BlueprintNode>,
     /// Connections between nodes
@@ -390,6 +584,7 @@ impl Default for BlueprintGraph {
     fn default() -> Self {
         Self {
             name: "New Blueprint".to_string(),
+            graph_type: BlueprintType::default(),
             nodes: Vec::new(),
             connections: Vec::new(),
             variables: Vec::new(),
@@ -399,12 +594,41 @@ impl Default for BlueprintGraph {
 }
 
 impl BlueprintGraph {
-    /// Create a new empty blueprint with the given name
+    /// Create a new empty behavior blueprint with the given name
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
+            graph_type: BlueprintType::Behavior,
             ..Default::default()
         }
+    }
+
+    /// Create a new empty material blueprint with the given name
+    pub fn new_material(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            graph_type: BlueprintType::Material,
+            ..Default::default()
+        }
+    }
+
+    /// Create a new blueprint with the given name and type
+    pub fn new_with_type(name: impl Into<String>, graph_type: BlueprintType) -> Self {
+        Self {
+            name: name.into(),
+            graph_type,
+            ..Default::default()
+        }
+    }
+
+    /// Check if this is a material blueprint
+    pub fn is_material(&self) -> bool {
+        self.graph_type == BlueprintType::Material
+    }
+
+    /// Check if this is a behavior blueprint
+    pub fn is_behavior(&self) -> bool {
+        self.graph_type == BlueprintType::Behavior
     }
 
     /// Generate a new unique node ID

@@ -155,6 +155,8 @@ pub struct ScriptRuntimeState {
     pub initialized: bool,
     /// Frame count when script was last run
     pub last_frame: u64,
+    /// Whether the script has a load/compile error (to avoid log spam)
+    pub has_error: bool,
 }
 
 /// Defines a variable that can be exposed in the inspector

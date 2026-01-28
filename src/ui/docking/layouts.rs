@@ -184,11 +184,11 @@ pub fn debug_layout() -> DockTree {
 ///
 /// ```text
 /// ┌───────────┬──────────────────────┬───────────┐
-/// │           │                      │           │
-/// │   Node    │   Blueprint Editor   │           │
-/// │  Library  │                      │  Assets   │
+/// │           │                      │  Material │
+/// │   Node    │   Blueprint Editor   │  Preview  │
+/// │  Library  │                      ├───────────┤
 /// │           ├──────────────────────┤           │
-/// │           │      Viewport        │           │
+/// │           │      Console         │  Assets   │
 /// └───────────┴──────────────────────┴───────────┘
 /// ```
 pub fn blueprints_layout() -> DockTree {
@@ -197,13 +197,17 @@ pub fn blueprints_layout() -> DockTree {
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf(PanelId::Blueprint),
-                DockTree::leaf(PanelId::Viewport),
-                0.6,
+                DockTree::leaf(PanelId::Console),
+                0.7,
             ),
-            DockTree::leaf(PanelId::Assets),
-            0.8,
+            DockTree::vertical(
+                DockTree::leaf(PanelId::MaterialPreview),
+                DockTree::leaf(PanelId::Assets),
+                0.4,
+            ),
+            0.75,
         ),
-        0.10,
+        0.12,
     )
 }
 

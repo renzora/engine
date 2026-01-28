@@ -210,7 +210,7 @@ fn apply_world_environment(
             commands.entity(camera_entity).insert(bevy_tonemap);
 
             // Exposure
-            commands.entity(camera_entity).insert(Exposure { ev100: data.exposure });
+            commands.entity(camera_entity).insert(Exposure { ev100: data.ev100 });
 
             // SSAO
             if data.ssao_enabled {
@@ -249,7 +249,7 @@ fn apply_world_environment(
             }
         }
 
-        // Apply sky settings based on mode
+        // Apply sky/background settings based on mode
         match data.sky_mode {
             SkyMode::Color => {
                 // Simple solid color background
@@ -260,14 +260,9 @@ fn apply_world_environment(
                         data.clear_color.2,
                     ));
                 }
-                // Remove procedural sun if exists
-                for (entity, _, _) in sun_query.iter() {
-                    commands.entity(entity).despawn();
-                }
             }
             SkyMode::Procedural => {
                 let sky = &data.procedural_sky;
-
                 // Use sky horizon color as clear color (approximation of procedural sky)
                 // A proper implementation would use a skybox shader
                 for mut camera in camera_query.iter_mut() {
@@ -277,51 +272,47 @@ fn apply_world_environment(
                         sky.sky_horizon_color.2,
                     ));
                 }
-
-                // Calculate sun direction from azimuth and elevation
-                let azimuth_rad = sky.sun_angle_azimuth.to_radians();
-                let elevation_rad = sky.sun_angle_elevation.to_radians();
-
-                // Convert spherical to cartesian (Y-up coordinate system)
-                let sun_dir = Vec3::new(
-                    elevation_rad.cos() * azimuth_rad.sin(),
-                    elevation_rad.sin(),
-                    elevation_rad.cos() * azimuth_rad.cos(),
-                ).normalize();
-
-                // Update or create sun directional light
-                if let Some((_, mut light, mut transform)) = sun_query.iter_mut().next() {
-                    // Update existing sun
-                    light.color = Color::srgb(sky.sun_color.0, sky.sun_color.1, sky.sun_color.2);
-                    light.illuminance = sky.sun_energy * 10000.0; // Scale to reasonable illuminance
-                    *transform = Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, -sun_dir));
-                } else {
-                    // Create new sun
-                    commands.spawn((
-                        DirectionalLight {
-                            color: Color::srgb(sky.sun_color.0, sky.sun_color.1, sky.sun_color.2),
-                            illuminance: sky.sun_energy * 10000.0,
-                            shadows_enabled: true,
-                            ..default()
-                        },
-                        Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, -sun_dir)),
-                        ProceduralSkySun,
-                    ));
-                }
             }
             SkyMode::Panorama => {
                 // HDR panorama - would need to load and apply the HDR texture as skybox
                 // For now, use a neutral gray as placeholder
-                // Note: Full panorama skybox support requires loading KTX2/HDR files
-                // and using the Skybox component, which is complex due to asset loading
                 for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
                 }
-                // Remove procedural sun if exists
-                for (entity, _, _) in sun_query.iter() {
-                    commands.entity(entity).despawn();
-                }
             }
+        }
+
+        // Sun directional light - works in ALL sky modes
+        // The sun provides scene lighting regardless of background type
+        let sky = &data.procedural_sky;
+        let azimuth_rad = sky.sun_angle_azimuth.to_radians();
+        let elevation_rad = sky.sun_angle_elevation.to_radians();
+
+        // Convert spherical to cartesian (Y-up coordinate system)
+        let sun_dir = Vec3::new(
+            elevation_rad.cos() * azimuth_rad.sin(),
+            elevation_rad.sin(),
+            elevation_rad.cos() * azimuth_rad.cos(),
+        ).normalize();
+
+        // Update or create sun directional light
+        if let Some((_, mut light, mut transform)) = sun_query.iter_mut().next() {
+            // Update existing sun
+            light.color = Color::srgb(sky.sun_color.0, sky.sun_color.1, sky.sun_color.2);
+            light.illuminance = sky.sun_energy * 10000.0;
+            *transform = Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, -sun_dir));
+        } else {
+            // Create new sun
+            commands.spawn((
+                DirectionalLight {
+                    color: Color::srgb(sky.sun_color.0, sky.sun_color.1, sky.sun_color.2),
+                    illuminance: sky.sun_energy * 10000.0,
+                    shadows_enabled: true,
+                    ..default()
+                },
+                Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, -sun_dir)),
+                ProceduralSkySun,
+            ));
         }
     } else {
         // No WorldEnvironment - reset to defaults

@@ -171,6 +171,7 @@ fn main() {
             plugin_core::PluginCorePlugin,
             play_mode::PlayModePlugin,
             blueprint::BlueprintPlugin,
+            blueprint::MaterialPreviewPlugin,
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)

@@ -36,7 +36,10 @@ pub enum BlueprintValue {
     String(String),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
+    Vec4([f32; 4]),
     Color([f32; 4]),
+    /// Texture asset path (for shader materials)
+    Texture2D(String),
 }
 
 impl From<PinValue> for BlueprintValue {
@@ -49,7 +52,17 @@ impl From<PinValue> for BlueprintValue {
             PinValue::String(v) => BlueprintValue::String(v),
             PinValue::Vec2(v) => BlueprintValue::Vec2(v),
             PinValue::Vec3(v) => BlueprintValue::Vec3(v),
+            PinValue::Vec4(v) => BlueprintValue::Vec4(v),
             PinValue::Color(v) => BlueprintValue::Color(v),
+            PinValue::Texture2D(path) => BlueprintValue::Texture2D(path),
+            PinValue::Sampler => BlueprintValue::Bool(false), // Samplers don't need to be stored
+            // Runtime types - convert to reasonable defaults
+            PinValue::Entity(id) => BlueprintValue::Int(id as i32),
+            PinValue::EntityArray(_) | PinValue::StringArray(_) => BlueprintValue::Bool(false),
+            PinValue::Asset(path) => BlueprintValue::String(path),
+            PinValue::AudioHandle(id) | PinValue::TimerHandle(id) |
+            PinValue::SceneHandle(id) | PinValue::PrefabHandle(id) |
+            PinValue::GltfHandle(id) => BlueprintValue::Int(id as i32),
         }
     }
 }
@@ -63,7 +76,9 @@ impl From<BlueprintValue> for PinValue {
             BlueprintValue::String(v) => PinValue::String(v),
             BlueprintValue::Vec2(v) => PinValue::Vec2(v),
             BlueprintValue::Vec3(v) => PinValue::Vec3(v),
+            BlueprintValue::Vec4(v) => PinValue::Vec4(v),
             BlueprintValue::Color(v) => PinValue::Color(v),
+            BlueprintValue::Texture2D(path) => PinValue::Texture2D(path),
         }
     }
 }

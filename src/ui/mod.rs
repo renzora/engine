@@ -48,7 +48,9 @@ pub struct EditorResources<'w> {
     pub blueprint_editor: ResMut<'w, BlueprintEditorState>,
     pub blueprint_canvas: ResMut<'w, BlueprintCanvasState>,
     pub blueprint_nodes: Res<'w, BlueprintNodeRegistry>,
+    pub material_preview: ResMut<'w, MaterialPreviewState>,
     pub theme_manager: ResMut<'w, ThemeManager>,
+    pub input_focus: ResMut<'w, InputFocusState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -56,7 +58,7 @@ use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
 use crate::plugin_core::PluginHost;
-use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, nodes::NodeRegistry as BlueprintNodeRegistry};
+use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry};
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use docking::{
@@ -180,8 +182,8 @@ pub fn editor_ui(
     app_state: Res<State<AppState>>,
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
+    material_preview_image: Option<Res<MaterialPreviewImage>>,
     mut ui_renderer: Local<UiRenderer>,
-    mut input_focus: ResMut<InputFocusState>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -203,12 +205,19 @@ pub fn editor_ui(
         })
     });
 
+    // Register and get material preview texture ID from egui
+    let material_preview_texture_id = material_preview_image.as_ref().map(|img| {
+        contexts.image_id(&img.0).unwrap_or_else(|| {
+            contexts.add_image(EguiTextureHandle::Weak(img.0.id()))
+        })
+    });
+
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
 
     // Update input focus state - this lets other systems know if egui has keyboard focus
-    input_focus.egui_wants_keyboard = ctx.wants_keyboard_input();
+    editor.input_focus.egui_wants_keyboard = ctx.wants_keyboard_input();
 
     apply_editor_style_with_theme(ctx, &editor.theme_manager.active_theme, editor.settings.font_size);
 
@@ -589,6 +598,8 @@ pub fn editor_ui(
                             &mut editor.blueprint_canvas,
                             &editor.blueprint_nodes,
                             current_project.as_deref(),
+                            &mut editor.assets,
+                            &mut editor.thumbnail_cache,
                         );
                     });
                 }
@@ -600,6 +611,18 @@ pub fn editor_ui(
                             &mut editor.blueprint_editor,
                             &editor.blueprint_canvas,
                             &editor.blueprint_nodes,
+                        );
+                    });
+                }
+
+                PanelId::MaterialPreview => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        panels::render_material_preview_content(
+                            ui,
+                            ctx,
+                            &mut editor.material_preview,
+                            &editor.blueprint_editor,
+                            material_preview_texture_id,
                         );
                     });
                 }

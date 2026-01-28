@@ -121,7 +121,8 @@ pub struct WorldEnvironmentData {
     pub bloom_threshold: f32,
     // Tonemapping
     pub tonemapping: TonemappingMode,
-    pub exposure: f32,
+    /// Exposure value in EV100 (higher = darker, typical outdoor ~9.7)
+    pub ev100: f32,
     // Depth of Field
     pub dof_enabled: bool,
     pub dof_focal_distance: f32,
@@ -168,7 +169,7 @@ impl Default for WorldEnvironmentData {
             bloom_threshold: 1.0,
             // Tonemapping
             tonemapping: TonemappingMode::Reinhard,
-            exposure: 1.0,
+            ev100: 9.7,
             // Depth of Field
             dof_enabled: false,
             dof_focal_distance: 10.0,

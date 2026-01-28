@@ -61,14 +61,4 @@ pub fn setup_editor_camera(
         editor_camera_layers(),
     ));
 
-    // Add a directional light for the editor
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 15000.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.7, 0.4, 0.0)),
-        EditorOnly,
-    ));
 }

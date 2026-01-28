@@ -1,23 +1,33 @@
 //! Blueprint Visual Scripting System
 //!
-//! A node-based visual scripting editor that compiles to Rhai scripts.
-//! Blueprints can be attached to entities and executed at runtime.
+//! A node-based visual editor for creating:
+//! - **Behavior Blueprints**: Compile to Rhai scripts for entity logic
+//! - **Material Blueprints**: Compile to WGSL shaders for custom materials
+//!
+//! Behavior blueprints can be attached to entities and executed at runtime.
+//! Material blueprints generate shader code that can be used to create custom materials.
 
 pub mod canvas;
 mod codegen;
+mod codegen_wgsl;
 mod component;
 mod graph;
 pub mod interactions;
+pub mod material;
 pub mod nodes;
+pub mod preview;
 pub mod serialization;
 
 pub use canvas::*;
 pub use codegen::*;
+pub use codegen_wgsl::*;
 #[allow(unused_imports)]
 pub use component::*;
 pub use graph::*;
 #[allow(unused_imports)]
 pub use interactions::*;
+pub use material::*;
+pub use preview::{MaterialPreviewPlugin, MaterialPreviewState, MaterialPreviewImage, PreviewMeshShape};
 #[allow(unused_imports)]
 pub use serialization::*;
 

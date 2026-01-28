@@ -374,8 +374,8 @@ pub fn render_world_environment_inspector(ui: &mut egui::Ui, world_env: &mut Wor
         });
         row += 1;
 
-        changed |= inline_property(ui, row, "Exposure", |ui| {
-            ui.add(egui::DragValue::new(&mut data.exposure).speed(0.1).range(0.1..=5.0)).changed()
+        changed |= inline_property(ui, row, "EV100", |ui| {
+            ui.add(egui::DragValue::new(&mut data.ev100).speed(0.1).range(0.0..=16.0)).changed()
         });
     }
 

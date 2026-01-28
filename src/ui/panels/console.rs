@@ -6,7 +6,7 @@ use crate::core::{ConsoleState, LogLevel};
 use crate::theming::Theme;
 
 use egui_phosphor::regular::{
-    TRASH, FUNNEL, INFO, CHECK_CIRCLE, WARNING, X_CIRCLE, MAGNIFYING_GLASS,
+    TRASH, FUNNEL, INFO, CHECK_CIRCLE, WARNING, X_CIRCLE, MAGNIFYING_GLASS, CLIPBOARD,
 };
 
 /// Render the console content
@@ -26,6 +26,32 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         // Clear button
         if ui.button(RichText::new(format!("{} Clear", TRASH)).size(12.0)).clicked() {
             console.clear();
+        }
+
+        // Copy to clipboard button
+        if ui.button(RichText::new(format!("{} Copy", CLIPBOARD)).size(12.0))
+            .on_hover_text("Copy filtered logs to clipboard")
+            .clicked()
+        {
+            let filtered: Vec<_> = console.filtered_entries().collect();
+            let text = filtered
+                .iter()
+                .map(|e| {
+                    let level = match e.level {
+                        LogLevel::Info => "INFO",
+                        LogLevel::Success => "SUCCESS",
+                        LogLevel::Warning => "WARNING",
+                        LogLevel::Error => "ERROR",
+                    };
+                    if e.category.is_empty() {
+                        format!("[{}] {}", level, e.message)
+                    } else {
+                        format!("[{}] [{}] {}", level, e.category, e.message)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            ui.ctx().copy_text(text);
         }
 
         ui.separator();

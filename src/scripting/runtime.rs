@@ -5,8 +5,10 @@ use bevy::prelude::*;
 use super::{
     ScriptCommand, ScriptComponent, ScriptContext, ScriptInput, ScriptRegistry,
     ScriptTime, ScriptTransform, RhaiScriptEngine, RhaiScriptContext, ChildNodeInfo,
+    RhaiCommand,
 };
-use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker};
+use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
+use crate::core::resources::console::{console_log, LogLevel};
 use crate::project::CurrentProject;
 
 /// System that runs all scripts
@@ -15,9 +17,15 @@ pub fn run_scripts(
     time: Res<Time>,
     input: Res<ScriptInput>,
     registry: Res<ScriptRegistry>,
+    play_mode: Res<PlayModeState>,
     mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform)>,
     frame_count: Local<u64>,
 ) {
+    // Only run scripts during play mode
+    if !play_mode.is_playing() {
+        return;
+    }
+
     let script_time = ScriptTime {
         elapsed: time.elapsed_secs_f64(),
         delta: time.delta_secs(),
@@ -114,16 +122,24 @@ struct TransformChange {
 
 /// System that runs Rhai file-based scripts
 pub fn run_rhai_scripts(
+    mut commands: Commands,
     time: Res<Time>,
     input: Res<ScriptInput>,
     rhai_engine: Res<RhaiScriptEngine>,
     current_project: Option<Res<CurrentProject>>,
+    play_mode: Res<PlayModeState>,
     mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>)>,
     mut all_transforms: Query<&mut Transform, Without<ScriptComponent>>,
     editor_entities: Query<&EditorEntity>,
     mut world_environments: Query<&mut WorldEnvironmentMarker>,
+    mut visibility_query: Query<&mut Visibility>,
 ) {
     use std::collections::HashMap;
+
+    // Only run scripts during play mode
+    if !play_mode.is_playing() {
+        return;
+    }
 
     let Some(_project) = current_project else {
         return;
@@ -139,8 +155,10 @@ pub fn run_rhai_scripts(
     // Collect parent and child changes to apply after the main loop
     let mut parent_changes: HashMap<Entity, TransformChange> = HashMap::new();
     let mut child_changes: HashMap<Entity, TransformChange> = HashMap::new();
+    // Collect all Rhai commands to process after the main loop
+    let mut all_rhai_commands: Vec<(Entity, RhaiCommand)> = Vec::new();
 
-    for (_entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
+    for (entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
         if !script_comp.enabled {
             continue;
         }
@@ -150,14 +168,34 @@ pub fn run_rhai_scripts(
             continue;
         };
 
-        // Load/reload the script
-        let Ok(compiled) = rhai_engine.load_script(script_path) else {
-            continue;
+        // Load/reload the script (supports both .rhai and .blueprint files)
+        let compiled = match rhai_engine.load_script_file(script_path) {
+            Ok(c) => {
+                // Clear any previous error state
+                if script_comp.runtime_state.has_error {
+                    console_log(LogLevel::Success, "Script", format!("'{}' loaded successfully", c.name));
+                    script_comp.runtime_state.has_error = false;
+                }
+                c
+            }
+            Err(_e) => {
+                // Error already logged by load_script_file, just mark error state
+                script_comp.runtime_state.has_error = true;
+                continue;
+            }
         };
 
         // Create Rhai context
         let script_transform = ScriptTransform::from_transform(&transform);
         let mut ctx = RhaiScriptContext::new(script_time, script_transform);
+
+        // Set self entity info
+        ctx.self_entity_id = entity.to_bits();
+        ctx.self_entity_name = editor_entities
+            .get(entity)
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
+
         ctx.input_movement = input.get_movement_vector();
         ctx.mouse_position = input.mouse_position;
         ctx.mouse_delta = input.mouse_delta;
@@ -231,6 +269,7 @@ pub fn run_rhai_scripts(
 
         // Call on_ready if not initialized
         if !script_comp.runtime_state.initialized {
+            console_log(LogLevel::Info, "Script", format!("Initializing '{}'", compiled.name));
             rhai_engine.call_on_ready(&compiled, &mut ctx, &script_comp.variables);
             script_comp.runtime_state.initialized = true;
         }
@@ -252,6 +291,17 @@ pub fn run_rhai_scripts(
             );
         }
 
+        // Apply rotation delta (degrees per frame)
+        if let Some(rot_delta) = ctx.rotation_delta {
+            let delta_quat = Quat::from_euler(
+                EulerRot::XYZ,
+                rot_delta.x.to_radians(),
+                rot_delta.y.to_radians(),
+                rot_delta.z.to_radians(),
+            );
+            transform.rotation = delta_quat * transform.rotation;
+        }
+
         if let Some(delta) = ctx.translation {
             if delta.length_squared() > 0.0001 {
                 info!("[Rhai] Translating by {:?}", delta);
@@ -260,7 +310,7 @@ pub fn run_rhai_scripts(
         }
 
         if let Some(msg) = ctx.print_message {
-            info!("[Rhai] {}", msg);
+            console_log(LogLevel::Info, "Script", msg);
         }
 
         // Collect parent transform changes
@@ -290,25 +340,41 @@ pub fn run_rhai_scripts(
         }
 
         // Apply environment changes (to all WorldEnvironmentMarker entities)
-        let has_env_changes = ctx.env_sun_azimuth.is_some()
-            || ctx.env_sun_elevation.is_some()
+        let has_env_changes = ctx.env_sky_mode.is_some()
+            || ctx.env_clear_color.is_some()
             || ctx.env_ambient_brightness.is_some()
             || ctx.env_ambient_color.is_some()
+            || ctx.env_ev100.is_some()
             || ctx.env_sky_top_color.is_some()
             || ctx.env_sky_horizon_color.is_some()
+            || ctx.env_sky_curve.is_some()
+            || ctx.env_ground_bottom_color.is_some()
+            || ctx.env_ground_horizon_color.is_some()
+            || ctx.env_ground_curve.is_some()
+            || ctx.env_sun_azimuth.is_some()
+            || ctx.env_sun_elevation.is_some()
+            || ctx.env_sun_color.is_some()
+            || ctx.env_sun_energy.is_some()
+            || ctx.env_sun_disk_scale.is_some()
             || ctx.env_fog_enabled.is_some()
             || ctx.env_fog_color.is_some()
             || ctx.env_fog_start.is_some()
-            || ctx.env_fog_end.is_some()
-            || ctx.env_exposure.is_some();
+            || ctx.env_fog_end.is_some();
 
         if has_env_changes {
+            use crate::shared::SkyMode;
             for mut world_env in world_environments.iter_mut() {
-                if let Some(azimuth) = ctx.env_sun_azimuth {
-                    world_env.data.procedural_sky.sun_angle_azimuth = azimuth;
+                // General
+                if let Some(mode) = ctx.env_sky_mode {
+                    world_env.data.sky_mode = match mode {
+                        0 => SkyMode::Color,
+                        1 => SkyMode::Procedural,
+                        2 => SkyMode::Panorama,
+                        _ => SkyMode::Procedural,
+                    };
                 }
-                if let Some(elevation) = ctx.env_sun_elevation {
-                    world_env.data.procedural_sky.sun_angle_elevation = elevation;
+                if let Some((r, g, b)) = ctx.env_clear_color {
+                    world_env.data.clear_color = (r, g, b);
                 }
                 if let Some(brightness) = ctx.env_ambient_brightness {
                     world_env.data.ambient_brightness = brightness;
@@ -316,12 +382,48 @@ pub fn run_rhai_scripts(
                 if let Some((r, g, b)) = ctx.env_ambient_color {
                     world_env.data.ambient_color = (r, g, b);
                 }
+                if let Some(ev100) = ctx.env_ev100 {
+                    world_env.data.ev100 = ev100;
+                }
+
+                // Procedural Sky
                 if let Some((r, g, b)) = ctx.env_sky_top_color {
                     world_env.data.procedural_sky.sky_top_color = (r, g, b);
                 }
                 if let Some((r, g, b)) = ctx.env_sky_horizon_color {
                     world_env.data.procedural_sky.sky_horizon_color = (r, g, b);
                 }
+                if let Some(curve) = ctx.env_sky_curve {
+                    world_env.data.procedural_sky.sky_curve = curve;
+                }
+                if let Some((r, g, b)) = ctx.env_ground_bottom_color {
+                    world_env.data.procedural_sky.ground_bottom_color = (r, g, b);
+                }
+                if let Some((r, g, b)) = ctx.env_ground_horizon_color {
+                    world_env.data.procedural_sky.ground_horizon_color = (r, g, b);
+                }
+                if let Some(curve) = ctx.env_ground_curve {
+                    world_env.data.procedural_sky.ground_curve = curve;
+                }
+
+                // Sun
+                if let Some(azimuth) = ctx.env_sun_azimuth {
+                    world_env.data.procedural_sky.sun_angle_azimuth = azimuth;
+                }
+                if let Some(elevation) = ctx.env_sun_elevation {
+                    world_env.data.procedural_sky.sun_angle_elevation = elevation;
+                }
+                if let Some((r, g, b)) = ctx.env_sun_color {
+                    world_env.data.procedural_sky.sun_color = (r, g, b);
+                }
+                if let Some(energy) = ctx.env_sun_energy {
+                    world_env.data.procedural_sky.sun_energy = energy;
+                }
+                if let Some(scale) = ctx.env_sun_disk_scale {
+                    world_env.data.procedural_sky.sun_disk_scale = scale;
+                }
+
+                // Fog
                 if let Some(enabled) = ctx.env_fog_enabled {
                     world_env.data.fog_enabled = enabled;
                 }
@@ -334,10 +436,12 @@ pub fn run_rhai_scripts(
                 if let Some(end) = ctx.env_fog_end {
                     world_env.data.fog_end = end;
                 }
-                if let Some(exposure) = ctx.env_exposure {
-                    world_env.data.exposure = exposure;
-                }
             }
+        }
+
+        // Collect Rhai commands for processing after the loop
+        for cmd in ctx.commands.drain(..) {
+            all_rhai_commands.push((entity, cmd));
         }
     }
 
@@ -378,6 +482,237 @@ pub fn run_rhai_scripts(
             if let Some(delta) = change.translation {
                 child_transform.translation += delta;
             }
+        }
+    }
+
+    // Process collected Rhai commands
+    for (source_entity, cmd) in all_rhai_commands {
+        process_rhai_command(&mut commands, &mut visibility_query, source_entity, cmd);
+    }
+}
+
+/// Process a single Rhai command
+fn process_rhai_command(
+    commands: &mut Commands,
+    visibility_query: &mut Query<&mut Visibility>,
+    source_entity: Entity,
+    cmd: RhaiCommand,
+) {
+    match cmd {
+        // ECS Commands
+        RhaiCommand::SpawnEntity { name } => {
+            commands.spawn((
+                Transform::default(),
+                Visibility::default(),
+                EditorEntity {
+                    name,
+                    tag: String::new(),
+                    visible: true,
+                    locked: false,
+                },
+                SceneNode,
+            ));
+        }
+        RhaiCommand::DespawnEntity { entity_id } => {
+            let entity = Entity::from_bits(entity_id);
+            commands.entity(entity).despawn();
+        }
+        RhaiCommand::DespawnSelf => {
+            commands.entity(source_entity).despawn();
+        }
+        RhaiCommand::SetEntityName { entity_id, name } => {
+            let entity = Entity::from_bits(entity_id);
+            commands.entity(entity).insert(EditorEntity {
+                name,
+                tag: String::new(),
+                visible: true,
+                locked: false,
+            });
+        }
+        RhaiCommand::AddTag { entity_id, tag } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            // Tags are stored in EditorEntity.tag - would need to query and modify
+            info!("[Rhai] AddTag '{}' to entity {:?} (not yet implemented)", tag, entity);
+        }
+        RhaiCommand::RemoveTag { entity_id, tag } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] RemoveTag '{}' from entity {:?} (not yet implemented)", tag, entity);
+        }
+
+        // Audio Commands
+        RhaiCommand::PlaySound { path, volume, looping } => {
+            info!("[Rhai] PlaySound '{}' volume={} looping={} (audio system not yet integrated)", path, volume, looping);
+        }
+        RhaiCommand::PlaySound3D { path, volume, position } => {
+            info!("[Rhai] PlaySound3D '{}' at {:?} volume={} (audio system not yet integrated)", path, position, volume);
+        }
+        RhaiCommand::PlayMusic { path, volume, fade_in } => {
+            info!("[Rhai] PlayMusic '{}' volume={} fade_in={} (audio system not yet integrated)", path, volume, fade_in);
+        }
+        RhaiCommand::StopMusic { fade_out } => {
+            info!("[Rhai] StopMusic fade_out={} (audio system not yet integrated)", fade_out);
+        }
+        RhaiCommand::StopAllSounds => {
+            info!("[Rhai] StopAllSounds (audio system not yet integrated)");
+        }
+        RhaiCommand::SetMasterVolume { volume } => {
+            info!("[Rhai] SetMasterVolume {} (audio system not yet integrated)", volume);
+        }
+
+        // Debug Commands
+        RhaiCommand::Log { level, message } => {
+            match level.as_str() {
+                "error" => error!("[Rhai Script] {}", message),
+                "warn" => warn!("[Rhai Script] {}", message),
+                "debug" => debug!("[Rhai Script] {}", message),
+                "trace" => trace!("[Rhai Script] {}", message),
+                _ => info!("[Rhai Script] {}", message),
+            }
+        }
+        RhaiCommand::DrawLine { start, end, color, duration } => {
+            // Debug drawing would need gizmos integration
+            debug!("[Rhai] DrawLine {:?} -> {:?} color={:?} duration={}", start, end, color, duration);
+        }
+        RhaiCommand::DrawRay { origin, direction, length, color, duration } => {
+            debug!("[Rhai] DrawRay {:?} dir={:?} len={} color={:?} duration={}", origin, direction, length, color, duration);
+        }
+        RhaiCommand::DrawSphere { center, radius, color, duration } => {
+            debug!("[Rhai] DrawSphere {:?} r={} color={:?} duration={}", center, radius, color, duration);
+        }
+        RhaiCommand::DrawBox { center, half_extents, color, duration } => {
+            debug!("[Rhai] DrawBox {:?} half_extents={:?} color={:?} duration={}", center, half_extents, color, duration);
+        }
+        RhaiCommand::DrawPoint { position, size, color, duration } => {
+            debug!("[Rhai] DrawPoint {:?} size={} color={:?} duration={}", position, size, color, duration);
+        }
+
+        // Physics Commands
+        RhaiCommand::ApplyForce { entity_id, force } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] ApplyForce {:?} to {:?} (physics not yet integrated)", force, entity);
+        }
+        RhaiCommand::ApplyImpulse { entity_id, impulse } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] ApplyImpulse {:?} to {:?} (physics not yet integrated)", impulse, entity);
+        }
+        RhaiCommand::ApplyTorque { entity_id, torque } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] ApplyTorque {:?} to {:?} (physics not yet integrated)", torque, entity);
+        }
+        RhaiCommand::SetVelocity { entity_id, velocity } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetVelocity {:?} on {:?} (physics not yet integrated)", velocity, entity);
+        }
+        RhaiCommand::SetAngularVelocity { entity_id, velocity } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetAngularVelocity {:?} on {:?} (physics not yet integrated)", velocity, entity);
+        }
+        RhaiCommand::SetGravityScale { entity_id, scale } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetGravityScale {} on {:?} (physics not yet integrated)", scale, entity);
+        }
+        RhaiCommand::Raycast { origin, direction, max_distance, result_var } => {
+            info!("[Rhai] Raycast from {:?} dir={:?} max={} result_var='{}' (physics not yet integrated)", origin, direction, max_distance, result_var);
+        }
+
+        // Timer Commands
+        RhaiCommand::StartTimer { name, duration, repeat } => {
+            info!("[Rhai] StartTimer '{}' duration={} repeat={} (timer system not yet integrated)", name, duration, repeat);
+        }
+        RhaiCommand::StopTimer { name } => {
+            info!("[Rhai] StopTimer '{}' (timer system not yet integrated)", name);
+        }
+        RhaiCommand::PauseTimer { name } => {
+            info!("[Rhai] PauseTimer '{}' (timer system not yet integrated)", name);
+        }
+        RhaiCommand::ResumeTimer { name } => {
+            info!("[Rhai] ResumeTimer '{}' (timer system not yet integrated)", name);
+        }
+
+        // Scene Commands
+        RhaiCommand::LoadScene { path } => {
+            info!("[Rhai] LoadScene '{}' (scene loading not yet integrated)", path);
+        }
+        RhaiCommand::UnloadScene { handle_id } => {
+            info!("[Rhai] UnloadScene {} (scene loading not yet integrated)", handle_id);
+        }
+        RhaiCommand::SpawnPrefab { path, position, rotation } => {
+            info!("[Rhai] SpawnPrefab '{}' at {:?} rotation={:?} (prefab system not yet integrated)", path, position, rotation);
+        }
+
+        // Animation Commands
+        RhaiCommand::PlayAnimation { entity_id, name, looping, speed } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] PlayAnimation '{}' on {:?} looping={} speed={} (animation not yet integrated)", name, entity, looping, speed);
+        }
+        RhaiCommand::StopAnimation { entity_id } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] StopAnimation on {:?} (animation not yet integrated)", entity);
+        }
+        RhaiCommand::SetAnimationSpeed { entity_id, speed } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetAnimationSpeed {} on {:?} (animation not yet integrated)", speed, entity);
+        }
+
+        // Rendering Commands
+        RhaiCommand::SetVisibility { entity_id, visible } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            if let Ok(mut vis) = visibility_query.get_mut(entity) {
+                *vis = if visible { Visibility::Inherited } else { Visibility::Hidden };
+            }
+        }
+        RhaiCommand::SetMaterialColor { entity_id, color: _ } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetMaterialColor on {:?} (material system not yet integrated)", entity);
+        }
+        RhaiCommand::SetLightIntensity { entity_id, intensity } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetLightIntensity {} on {:?} (light system not yet integrated)", intensity, entity);
+        }
+        RhaiCommand::SetLightColor { entity_id, color: _ } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            info!("[Rhai] SetLightColor on {:?} (light system not yet integrated)", entity);
+        }
+
+        // Camera Commands
+        RhaiCommand::SetCameraTarget { position } => {
+            info!("[Rhai] SetCameraTarget {:?} (camera system not yet integrated)", position);
+        }
+        RhaiCommand::SetCameraZoom { zoom } => {
+            info!("[Rhai] SetCameraZoom {} (camera system not yet integrated)", zoom);
+        }
+        RhaiCommand::ScreenShake { intensity, duration } => {
+            info!("[Rhai] ScreenShake intensity={} duration={} (camera system not yet integrated)", intensity, duration);
         }
     }
 }

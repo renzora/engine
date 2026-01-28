@@ -5,6 +5,7 @@ mod document_tabs;
 mod export;
 mod hierarchy;
 mod inspector;
+mod material_preview;
 mod node_library;
 mod plugin_ui;
 mod script_editor;
@@ -17,6 +18,7 @@ mod viewport;
 
 pub use assets::{render_assets_content, render_assets_dialogs};
 pub use blueprint::render_blueprint_panel;
+pub use material_preview::render_material_preview_content;
 pub use node_library::render_node_library_panel;
 pub use console::render_console_content;
 pub use document_tabs::render_document_tabs;

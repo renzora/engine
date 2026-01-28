@@ -2,7 +2,7 @@
 
 use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Sense, Vec2};
 
-use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState};
+use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, BlueprintType};
 use crate::blueprint::nodes::NodeRegistry;
 
 /// Render the node library panel
@@ -33,11 +33,21 @@ pub fn render_node_library_panel(
             .show(ui, |ui| {
                 let search_lower = editor_state.node_search.to_lowercase();
 
+                // Get the current graph type for filtering
+                let graph_type = editor_state.active_graph()
+                    .map(|g| g.graph_type)
+                    .unwrap_or(BlueprintType::Behavior);
+
                 // Sort categories
                 let mut categories: Vec<_> = node_registry.categories().collect();
                 categories.sort();
 
                 for category in categories {
+                    // Filter categories based on blueprint type
+                    if !graph_type.is_category_allowed(category) {
+                        continue;
+                    }
+
                     if let Some(nodes) = node_registry.nodes_in_category(category) {
                         // Filter nodes by search
                         let filtered: Vec<_> = nodes
@@ -129,6 +139,7 @@ pub fn render_node_library_panel(
 /// Get a color for a category
 fn get_category_color(category: &str) -> Color32 {
     match category {
+        // Behavior blueprint categories
         "Events" => Color32::from_rgb(200, 50, 50),
         "Math" => Color32::from_rgb(100, 200, 100),
         "Logic" => Color32::from_rgb(200, 100, 100),
@@ -137,6 +148,13 @@ fn get_category_color(category: &str) -> Color32 {
         "Utility" => Color32::from_rgb(150, 150, 150),
         "Variables" => Color32::from_rgb(150, 100, 200),
         "Time" => Color32::from_rgb(200, 200, 100),
+        // Material/Shader blueprint categories
+        "Shader Input" => Color32::from_rgb(100, 150, 220),
+        "Shader Texture" => Color32::from_rgb(150, 120, 200),
+        "Shader Math" => Color32::from_rgb(120, 180, 120),
+        "Shader Vector" => Color32::from_rgb(200, 180, 100),
+        "Shader Output" => Color32::from_rgb(220, 80, 80),
+        "Shader Noise" => Color32::from_rgb(180, 140, 200),
         _ => Color32::from_rgb(100, 100, 100),
     }
 }
