@@ -20,7 +20,7 @@ pub use assets::{
     AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
     NormalImportMethod, PendingImageDrop, TangentImportMethod,
 };
-pub use camera::{OrbitCameraState, TabCameraState};
+pub use camera::{OrbitCameraState, ProjectionMode, TabCameraState};
 pub use console::{ConsoleState, LogEntry, LogLevel};
 pub use default_camera::DefaultCameraEntity;
 pub use export::{ExportLogLevel, ExportLogger, ExportState};

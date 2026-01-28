@@ -2,6 +2,30 @@
 
 use bevy::prelude::*;
 
+/// Camera projection mode
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ProjectionMode {
+    #[default]
+    Perspective,
+    Orthographic,
+}
+
+impl ProjectionMode {
+    pub fn toggle(&self) -> Self {
+        match self {
+            ProjectionMode::Perspective => ProjectionMode::Orthographic,
+            ProjectionMode::Orthographic => ProjectionMode::Perspective,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ProjectionMode::Perspective => "Perspective",
+            ProjectionMode::Orthographic => "Orthographic",
+        }
+    }
+}
+
 /// Orbit camera state for the editor viewport
 #[derive(Resource)]
 pub struct OrbitCameraState {
@@ -13,6 +37,8 @@ pub struct OrbitCameraState {
     pub yaw: f32,
     /// Vertical rotation angle (radians)
     pub pitch: f32,
+    /// Camera projection mode (perspective or orthographic)
+    pub projection_mode: ProjectionMode,
 }
 
 impl Default for OrbitCameraState {
@@ -22,6 +48,7 @@ impl Default for OrbitCameraState {
             distance: 10.0,
             yaw: 0.3,
             pitch: 0.4,
+            projection_mode: ProjectionMode::default(),
         }
     }
 }
@@ -64,6 +91,7 @@ impl OrbitCameraState {
             orbit_distance: self.distance,
             orbit_yaw: self.yaw,
             orbit_pitch: self.pitch,
+            projection_mode: self.projection_mode,
         }
     }
 
@@ -73,6 +101,7 @@ impl OrbitCameraState {
         self.distance = state.orbit_distance;
         self.yaw = state.orbit_yaw;
         self.pitch = state.orbit_pitch;
+        self.projection_mode = state.projection_mode;
     }
 }
 
@@ -83,4 +112,5 @@ pub struct TabCameraState {
     pub orbit_distance: f32,
     pub orbit_yaw: f32,
     pub orbit_pitch: f32,
+    pub projection_mode: ProjectionMode,
 }

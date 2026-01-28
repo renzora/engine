@@ -212,6 +212,8 @@ fn main() {
                 viewport::resize_viewport_texture,
                 viewport::update_camera_preview,
                 input::handle_selection,
+                input::handle_view_angles,
+                viewport::update_camera_projection,
                 viewport::camera_controller,
                 viewport::camera2d_controller,
                 viewport::toggle_viewport_cameras,

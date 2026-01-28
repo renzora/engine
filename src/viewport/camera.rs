@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
-use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings};
+use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
 use crate::gizmo::ModalTransformState;
 
 pub fn camera_controller(
@@ -151,4 +151,53 @@ pub fn camera_controller(
 
     transform.translation = cam_pos;
     transform.look_at(orbit.focus, Vec3::Y);
+}
+
+/// System to update camera projection based on OrbitCameraState
+pub fn update_camera_projection(
+    orbit: Res<OrbitCameraState>,
+    viewport: Res<ViewportState>,
+    mut camera_query: Query<&mut Projection, With<MainCamera>>,
+) {
+    // Only run when projection mode has changed
+    if !orbit.is_changed() && !viewport.is_changed() {
+        return;
+    }
+
+    let Ok(mut projection) = camera_query.single_mut() else {
+        return;
+    };
+
+    let aspect = if viewport.size[0] > 0.0 && viewport.size[1] > 0.0 {
+        viewport.size[0] / viewport.size[1]
+    } else {
+        16.0 / 9.0
+    };
+
+    match orbit.projection_mode {
+        ProjectionMode::Perspective => {
+            // Switch to perspective if not already
+            if !matches!(*projection, Projection::Perspective(_)) {
+                *projection = Projection::Perspective(PerspectiveProjection {
+                    fov: std::f32::consts::FRAC_PI_4,
+                    aspect_ratio: aspect,
+                    ..default()
+                });
+            } else if let Projection::Perspective(ref mut persp) = *projection {
+                persp.aspect_ratio = aspect;
+            }
+        }
+        ProjectionMode::Orthographic => {
+            // Switch to orthographic if not already
+            if !matches!(*projection, Projection::Orthographic(_)) {
+                let mut ortho = OrthographicProjection::default_3d();
+                // Scale based on orbit distance - larger distance = more visible area
+                ortho.scale = orbit.distance / 5.0;
+                *projection = Projection::Orthographic(ortho);
+            } else if let Projection::Orthographic(ref mut ortho) = *projection {
+                // Update orthographic scale based on orbit distance
+                ortho.scale = orbit.distance / 5.0;
+            }
+        }
+    }
 }

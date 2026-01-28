@@ -8,7 +8,7 @@ pub mod model_preview;
 pub mod render_2d;
 mod texture;
 
-pub use camera::camera_controller;
+pub use camera::{camera_controller, update_camera_projection};
 pub use camera_preview::{
     setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
 };

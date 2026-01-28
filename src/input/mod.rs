@@ -7,7 +7,7 @@ pub use file_drop::{
     handle_scene_hierarchy_drop, load_scene_instances, PendingGltfLoads,
     PendingMeshInstanceLoads,
 };
-pub use shortcuts::handle_selection;
+pub use shortcuts::{handle_selection, handle_view_angles};
 
 use bevy::prelude::*;
 

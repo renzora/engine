@@ -1,14 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, EditorSettings, VisualizationMode};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, EditorSettings, VisualizationMode, ProjectionMode};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::viewport::Camera2DState;
 use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
-    IMAGE, POLYGON, SUN, CLOUD, EYE,
+    IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE,
 };
 
 /// Height of the viewport mode tabs bar
@@ -49,7 +49,7 @@ pub fn render_viewport(
     );
 
     // Render viewport mode tabs at the top (with tools)
-    render_viewport_tabs(ctx, viewport, gizmo, settings, full_viewport_rect, theme);
+    render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme);
 
     // Calculate content rect (below tabs, accounting for rulers in 2D mode)
     let tabs_offset = VIEWPORT_TABS_HEIGHT;
@@ -93,6 +93,7 @@ pub fn render_viewport(
 fn render_viewport_tabs(
     ctx: &egui::Context,
     viewport: &mut ViewportState,
+    orbit: &mut OrbitCameraState,
     gizmo: &mut GizmoState,
     settings: &mut EditorSettings,
     full_rect: Rect,
@@ -122,8 +123,8 @@ fn render_viewport_tabs(
     // Center section: Select + Transform tools (4 buttons) + Snap dropdown
     let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown
 
-    // Right section: 4 render toggles + viz dropdown
-    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown
+    // Right section: 4 render toggles + viz dropdown + view angles dropdown
+    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown + view dropdown
 
     // Calculate positions
     let left_start = tabs_rect.min.x + 4.0;
@@ -285,6 +286,12 @@ fn render_viewport_tabs(
             let viz_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
             let viz_color = theme.text.secondary.to_color32();
             viewport_viz_dropdown(ui, ctx, viz_rect, EYE, viz_color, inactive_color, hovered_color, text_muted, settings);
+            x_pos += 36.0 + 4.0;
+
+            // View Angles Dropdown
+            let view_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
+            let view_color = theme.text.secondary.to_color32();
+            viewport_view_dropdown(ui, ctx, view_rect, CUBE, view_color, inactive_color, hovered_color, text_muted, orbit);
 
             // Handle 3D/2D tab clicks
             if ctx.input(|i| i.pointer.any_click()) {
@@ -543,6 +550,175 @@ fn viewport_viz_dropdown(
     );
 
     response.on_hover_text("Visualization Mode");
+}
+
+/// View angle preset for the camera
+#[derive(Clone, Copy, PartialEq)]
+pub enum ViewAngle {
+    Front,
+    Back,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl ViewAngle {
+    pub const ALL: &'static [ViewAngle] = &[
+        ViewAngle::Front,
+        ViewAngle::Back,
+        ViewAngle::Left,
+        ViewAngle::Right,
+        ViewAngle::Top,
+        ViewAngle::Bottom,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ViewAngle::Front => "Front",
+            ViewAngle::Back => "Back",
+            ViewAngle::Left => "Left",
+            ViewAngle::Right => "Right",
+            ViewAngle::Top => "Top",
+            ViewAngle::Bottom => "Bottom",
+        }
+    }
+
+    pub fn shortcut(&self) -> &'static str {
+        match self {
+            ViewAngle::Front => "Num1",
+            ViewAngle::Back => "Ctrl+Num1",
+            ViewAngle::Left => "Ctrl+Num3",
+            ViewAngle::Right => "Num3",
+            ViewAngle::Top => "Num7",
+            ViewAngle::Bottom => "Ctrl+Num7",
+        }
+    }
+
+    /// Get yaw and pitch for this view angle
+    pub fn yaw_pitch(&self) -> (f32, f32) {
+        match self {
+            ViewAngle::Front => (0.0, 0.0),                                          // Looking from +Z toward origin
+            ViewAngle::Back => (std::f32::consts::PI, 0.0),                           // Looking from -Z toward origin
+            ViewAngle::Right => (std::f32::consts::FRAC_PI_2, 0.0),                   // Looking from +X toward origin
+            ViewAngle::Left => (-std::f32::consts::FRAC_PI_2, 0.0),                   // Looking from -X toward origin
+            ViewAngle::Top => (0.0, std::f32::consts::FRAC_PI_2),                     // Looking from top
+            ViewAngle::Bottom => (0.0, -std::f32::consts::FRAC_PI_2),                 // Looking from bottom
+        }
+    }
+}
+
+/// View angles dropdown for viewport header
+fn viewport_view_dropdown(
+    ui: &mut egui::Ui,
+    _ctx: &egui::Context,
+    rect: Rect,
+    icon: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
+    orbit: &mut OrbitCameraState,
+) {
+    let button_id = ui.make_persistent_id("viewport_view_dropdown");
+    let response = ui.allocate_rect(rect, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            hovered_color
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(3), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(11.0),
+            icon_color,
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(8.0),
+            caret_color,
+        );
+    }
+
+    if response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(160.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+
+            // Projection toggle section
+            ui.label(RichText::new("Projection").small().color(Color32::from_gray(140)));
+            ui.add_space(2.0);
+
+            let persp_selected = orbit.projection_mode == ProjectionMode::Perspective;
+            let persp_label = if persp_selected { "• Perspective" } else { "  Perspective" };
+            if ui.add(
+                egui::Button::new(persp_label)
+                    .fill(Color32::TRANSPARENT)
+                    .corner_radius(CornerRadius::same(2))
+                    .min_size(Vec2::new(ui.available_width(), 0.0))
+            ).clicked() {
+                orbit.projection_mode = ProjectionMode::Perspective;
+            }
+
+            let ortho_selected = orbit.projection_mode == ProjectionMode::Orthographic;
+            let ortho_label = if ortho_selected { "• Orthographic" } else { "  Orthographic" };
+            if ui.add(
+                egui::Button::new(ortho_label)
+                    .fill(Color32::TRANSPARENT)
+                    .corner_radius(CornerRadius::same(2))
+                    .min_size(Vec2::new(ui.available_width(), 0.0))
+            ).clicked() {
+                orbit.projection_mode = ProjectionMode::Orthographic;
+            }
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // View angles section
+            ui.label(RichText::new("View Angles").small().color(Color32::from_gray(140)));
+            ui.add_space(2.0);
+
+            for view in ViewAngle::ALL {
+                let label = format!("{}  ({})", view.label(), view.shortcut());
+                if ui.add(
+                    egui::Button::new(&label)
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(2))
+                        .min_size(Vec2::new(ui.available_width(), 0.0))
+                ).clicked() {
+                    let (yaw, pitch) = view.yaw_pitch();
+                    orbit.yaw = yaw;
+                    orbit.pitch = pitch;
+                    ui.close();
+                }
+            }
+        },
+    );
+
+    response.on_hover_text("View Angle");
 }
 
 /// Render rulers for 2D mode

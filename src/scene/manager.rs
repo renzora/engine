@@ -202,6 +202,7 @@ fn do_tab_switch(world: &mut World, new_tab_idx: usize) {
             orbit_distance: orbit.distance,
             orbit_yaw: orbit.yaw,
             orbit_pitch: orbit.pitch,
+            projection_mode: orbit.projection_mode,
         }
     };
 
@@ -411,6 +412,7 @@ fn do_open_scene(world: &mut World) {
                 orbit_distance: orbit.distance,
                 orbit_yaw: orbit.yaw,
                 orbit_pitch: orbit.pitch,
+                projection_mode: orbit.projection_mode,
             }
         };
 

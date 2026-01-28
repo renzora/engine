@@ -42,6 +42,15 @@ pub enum EditorAction {
 
     // View operations
     ToggleBottomPanel,
+
+    // Camera view angles
+    ViewFront,
+    ViewBack,
+    ViewLeft,
+    ViewRight,
+    ViewTop,
+    ViewBottom,
+    ToggleProjection,
 }
 
 impl EditorAction {
@@ -72,6 +81,13 @@ impl EditorAction {
             EditorAction::NewScene => "New Scene",
             EditorAction::OpenSettings => "Settings",
             EditorAction::ToggleBottomPanel => "Toggle Bottom Panel",
+            EditorAction::ViewFront => "View Front",
+            EditorAction::ViewBack => "View Back",
+            EditorAction::ViewLeft => "View Left",
+            EditorAction::ViewRight => "View Right",
+            EditorAction::ViewTop => "View Top",
+            EditorAction::ViewBottom => "View Bottom",
+            EditorAction::ToggleProjection => "Toggle Ortho/Persp",
         }
     }
 
@@ -105,7 +121,14 @@ impl EditorAction {
             | EditorAction::NewScene
             | EditorAction::OpenSettings => "File",
 
-            EditorAction::ToggleBottomPanel => "View",
+            EditorAction::ToggleBottomPanel
+            | EditorAction::ViewFront
+            | EditorAction::ViewBack
+            | EditorAction::ViewLeft
+            | EditorAction::ViewRight
+            | EditorAction::ViewTop
+            | EditorAction::ViewBottom
+            | EditorAction::ToggleProjection => "View",
         }
     }
 
@@ -144,6 +167,13 @@ impl EditorAction {
             EditorAction::OpenSettings,
             // View
             EditorAction::ToggleBottomPanel,
+            EditorAction::ViewFront,
+            EditorAction::ViewBack,
+            EditorAction::ViewLeft,
+            EditorAction::ViewRight,
+            EditorAction::ViewTop,
+            EditorAction::ViewBottom,
+            EditorAction::ToggleProjection,
         ]
     }
 }
@@ -248,6 +278,15 @@ impl Default for KeyBindings {
 
         // View defaults
         bindings.insert(EditorAction::ToggleBottomPanel, KeyBinding::new(KeyCode::Backquote).ctrl());
+
+        // View angle defaults (Blender-style numpad)
+        bindings.insert(EditorAction::ViewFront, KeyBinding::new(KeyCode::Numpad1));
+        bindings.insert(EditorAction::ViewBack, KeyBinding::new(KeyCode::Numpad1).ctrl());
+        bindings.insert(EditorAction::ViewRight, KeyBinding::new(KeyCode::Numpad3));
+        bindings.insert(EditorAction::ViewLeft, KeyBinding::new(KeyCode::Numpad3).ctrl());
+        bindings.insert(EditorAction::ViewTop, KeyBinding::new(KeyCode::Numpad7));
+        bindings.insert(EditorAction::ViewBottom, KeyBinding::new(KeyCode::Numpad7).ctrl());
+        bindings.insert(EditorAction::ToggleProjection, KeyBinding::new(KeyCode::Numpad5));
 
         Self {
             bindings,
@@ -371,6 +410,16 @@ pub fn key_name(key: KeyCode) -> &'static str {
         KeyCode::Backquote => "`",
         KeyCode::Minus => "-",
         KeyCode::Equal => "=",
+        KeyCode::Numpad0 => "Num0",
+        KeyCode::Numpad1 => "Num1",
+        KeyCode::Numpad2 => "Num2",
+        KeyCode::Numpad3 => "Num3",
+        KeyCode::Numpad4 => "Num4",
+        KeyCode::Numpad5 => "Num5",
+        KeyCode::Numpad6 => "Num6",
+        KeyCode::Numpad7 => "Num7",
+        KeyCode::Numpad8 => "Num8",
+        KeyCode::Numpad9 => "Num9",
         _ => "?",
     }
 }
@@ -398,5 +447,8 @@ pub fn bindable_keys() -> Vec<KeyCode> {
         KeyCode::Comma, KeyCode::Period, KeyCode::Slash, KeyCode::Backslash,
         KeyCode::BracketLeft, KeyCode::BracketRight, KeyCode::Semicolon,
         KeyCode::Quote, KeyCode::Backquote, KeyCode::Minus, KeyCode::Equal,
+        KeyCode::Numpad0, KeyCode::Numpad1, KeyCode::Numpad2, KeyCode::Numpad3,
+        KeyCode::Numpad4, KeyCode::Numpad5, KeyCode::Numpad6, KeyCode::Numpad7,
+        KeyCode::Numpad8, KeyCode::Numpad9,
     ]
 }
