@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::primitives::Aabb;
 use bevy::render::render_resource::{
-    Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    Extent3d, TextureDimension, TextureFormat,
 };
 use bevy::render::gpu_readback::Readback;
 use bevy::scene::SceneRoot;
@@ -354,8 +354,8 @@ pub fn spawn_model_previews(
     mut preview_cache: ResMut<ModelPreviewCache>,
     asset_server: Res<AssetServer>,
     gltfs: Res<Assets<Gltf>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
 ) {
     use bevy::asset::LoadState;
 
@@ -509,7 +509,7 @@ pub fn capture_model_previews(
         }
 
         // Verify scene entity exists
-        let Ok(scene_global_transform) = scene_transform_query.get(scene_entity) else {
+        let Ok(_scene_global_transform) = scene_transform_query.get(scene_entity) else {
             continue;
         };
 

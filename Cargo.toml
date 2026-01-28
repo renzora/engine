@@ -44,6 +44,7 @@ editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"], op
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+winit = "0.30"
 
 [workspace]
 members = ["crates/editor_plugin_api"]
@@ -67,3 +68,6 @@ opt-level = 3
 
 [profile.release]
 lto = "thin"
+
+[build-dependencies]
+winres = "0.1"

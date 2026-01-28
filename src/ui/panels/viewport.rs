@@ -37,7 +37,7 @@ pub fn render_viewport(
     viewport_texture_id: Option<TextureId>,
     theme: &Theme,
 ) {
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
 
     // Calculate the full viewport area
     let full_viewport_rect = Rect::from_min_size(
@@ -106,7 +106,7 @@ fn render_viewport_tabs(
     let active_color = theme.semantic.accent.to_color32();
     let inactive_color = theme.widgets.inactive_bg.to_color32();
     let hovered_color = theme.widgets.hovered_bg.to_color32();
-    let border_color = theme.widgets.border.to_color32();
+    let _border_color = theme.widgets.border.to_color32();
     let text_color = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
     let button_size = Vec2::new(28.0, 20.0);
@@ -117,7 +117,7 @@ fn render_viewport_tabs(
 
     // Calculate section widths
     // Left section: 3D/2D tabs
-    let left_section_width = tab_width * 2.0 + 2.0 + 8.0; // Two tabs + gap + padding
+    let _left_section_width = tab_width * 2.0 + 2.0 + 8.0; // Two tabs + gap + padding
 
     // Center section: Select + Transform tools (4 buttons) + Snap dropdown
     let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown

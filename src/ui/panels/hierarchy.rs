@@ -97,7 +97,7 @@ pub fn render_hierarchy(
     let active_plugin_tab = api.get_active_tab(TabLocation::Left);
 
     // Calculate max width based on screen size (max 500px to match load-time clamping)
-    let screen_width = ctx.screen_rect().width();
+    let screen_width = ctx.content_rect().width();
     let min_viewport_width = 200.0;
     let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
     let display_width = stored_width.clamp(100.0, max_width);
@@ -157,7 +157,7 @@ pub fn render_hierarchy(
 
     // Custom resize handle at the right edge of the panel (full height)
     let resize_x = display_width - 3.0;
-    let resize_height = ctx.screen_rect().height();
+    let resize_height = ctx.content_rect().height();
 
     egui::Area::new(egui::Id::new("hierarchy_resize"))
         .fixed_pos(Pos2::new(resize_x, 0.0))
@@ -244,11 +244,11 @@ pub fn render_hierarchy_content(
 
     // Get theme colors
     let accent_color = theme.semantic.accent.to_color32();
-    let text_primary = theme.text.primary.to_color32();
-    let text_muted = theme.text.muted.to_color32();
-    let text_secondary = theme.text.secondary.to_color32();
-    let border_color = theme.widgets.border.to_color32();
-    let error_color = theme.semantic.error.to_color32();
+    let _text_primary = theme.text.primary.to_color32();
+    let _text_muted = theme.text.muted.to_color32();
+    let _text_secondary = theme.text.secondary.to_color32();
+    let _border_color = theme.widgets.border.to_color32();
+    let _error_color = theme.semantic.error.to_color32();
 
     // Scene root is no longer required - entities can be root-level directly
     let scene_root_entity: Option<Entity> = None;
@@ -498,8 +498,8 @@ fn render_tree_node(
     let drop_line_color = theme.semantic.accent.to_color32();
     let tree_line_color = theme.widgets.border.to_color32();
     let selection_color = theme.semantic.selection.to_color32();
-    let text_primary = theme.text.primary.to_color32();
-    let text_muted = theme.text.muted.to_color32();
+    let _text_primary = theme.text.primary.to_color32();
+    let _text_muted = theme.text.muted.to_color32();
 
     // Track visible entity order for Shift+click range selection (building for next frame)
     hierarchy.building_entity_order.push(entity);

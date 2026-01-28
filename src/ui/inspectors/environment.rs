@@ -1,6 +1,6 @@
 //! Inspector widget for world environment
 
-use bevy_egui::egui::{self, RichText, Color32, Sense};
+use bevy_egui::egui::{self, Color32, Sense};
 
 use crate::core::WorldEnvironmentMarker;
 use crate::shared::{SkyMode, TonemappingMode};

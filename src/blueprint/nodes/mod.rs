@@ -14,6 +14,7 @@ use bevy::prelude::*;
 use super::{BlueprintNode, NodeId, Pin, PinType, PinValue, PinDirection};
 
 /// Definition of a node type
+#[allow(dead_code)]
 pub struct NodeTypeDefinition {
     /// Unique type ID (e.g., "math/add")
     pub type_id: &'static str,

@@ -2,13 +2,13 @@
 //!
 //! Handles node selection, dragging, connection creation, and input events.
 
-use bevy_egui::egui::{self, Key, Modifiers, Pos2, Rect, Response, Sense, Vec2 as EguiVec2};
+use bevy_egui::egui::{self, Key, Pos2, Rect, Response};
 use std::collections::HashMap;
 
 use super::{
     BlueprintCanvasState, BlueprintEditorState, BlueprintGraph, BlueprintNode, NodeId,
-    PinDirection, PinId, PinType, AddNodePopup,
-    canvas::{NODE_PIN_RADIUS, NODE_WIDTH, NODE_HEADER_HEIGHT, NODE_PIN_HEIGHT},
+    PinDirection, PinId, AddNodePopup,
+    canvas::{NODE_PIN_RADIUS, NODE_HEADER_HEIGHT, NODE_PIN_HEIGHT},
     nodes::NodeRegistry,
 };
 
@@ -321,6 +321,7 @@ fn find_clicked_pin(
 }
 
 /// Apply node dragging to selected nodes
+#[allow(dead_code)]
 pub fn apply_node_drag(
     state: &mut BlueprintEditorState,
     graph: &mut BlueprintGraph,

@@ -23,7 +23,6 @@ use egui_phosphor::regular::{
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
     PLUS, X, CHECK, CARET_UP, CARET_DOWN,
 };
-use egui_phosphor::fill::FOLDER as FOLDER_FILL;
 
 const MIN_TILE_SIZE: f32 = 64.0;
 const MAX_TILE_SIZE: f32 = 128.0;
@@ -48,7 +47,7 @@ pub fn render_assets(
     theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
-    let screen_height = ctx.screen_rect().height();
+    let screen_height = ctx.content_rect().height();
     // Ensure bottom panel doesn't exceed safe limits (max 50% of screen or 400px)
     let max_height = (screen_height * 0.5).min(400.0).max(100.0);
     let bar_height = 24.0;

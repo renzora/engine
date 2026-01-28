@@ -217,7 +217,7 @@ pub fn render_script_editor(
         script.error.is_some()
     };
 
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
     let panel_width = screen_rect.width() - left_panel_width - right_panel_width;
 
     let panel_rect = egui::Rect::from_min_size(

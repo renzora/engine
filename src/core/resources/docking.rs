@@ -44,6 +44,7 @@ impl Default for DockingState {
 
 impl DockingState {
     /// Create a new docking state with the given layout
+    #[allow(dead_code)]
     pub fn with_layout(layout: DockTree) -> Self {
         Self {
             dock_tree: layout,
@@ -77,6 +78,7 @@ impl DockingState {
     }
 
     /// Save the current layout with a name
+    #[allow(dead_code)]
     pub fn save_layout(&mut self, name: String) {
         self.config.save_custom_layout(name.clone(), self.dock_tree.clone());
         self.active_layout = name;
@@ -92,6 +94,7 @@ impl DockingState {
     }
 
     /// Delete a custom layout
+    #[allow(dead_code)]
     pub fn delete_layout(&mut self, name: &str) -> bool {
         // Can't delete builtin layouts
         if builtin_layouts().iter().any(|l| l.name == name) {
@@ -110,6 +113,7 @@ impl DockingState {
     }
 
     /// Reset to default layout
+    #[allow(dead_code)]
     pub fn reset_layout(&mut self) {
         self.dock_tree = default_layout();
         self.active_layout = "Default".to_string();
@@ -122,6 +126,7 @@ impl DockingState {
     }
 
     /// Get all available layout names
+    #[allow(dead_code)]
     pub fn layout_names(&self) -> Vec<String> {
         let mut names: Vec<String> = builtin_layouts()
             .iter()

@@ -4,7 +4,7 @@
 
 use super::dock_tree::{DockTree, PanelId, SplitDirection};
 use super::drag_drop::{detect_drop_zone, draw_drop_zone_overlay, DragState, DropTarget};
-use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use crate::theming::Theme;
 
 /// Height of the tab bar in dock leaves
@@ -34,6 +34,7 @@ pub struct DockRenderResult {
 }
 
 /// Context passed to panel render functions
+#[allow(dead_code)]
 pub struct PanelRenderContext<'a> {
     /// The rectangle allocated for this panel's content (excluding tab bar)
     pub rect: Rect,
@@ -394,10 +395,12 @@ fn render_leaf(
 }
 
 /// Get the active panel for a leaf at the given path
+#[allow(dead_code)]
 pub fn get_active_panel_at_rect(tree: &DockTree, rect: Rect, pos: Pos2) -> Option<PanelId> {
     get_active_panel_recursive(tree, rect, pos)
 }
 
+#[allow(dead_code)]
 fn get_active_panel_recursive(node: &DockTree, rect: Rect, pos: Pos2) -> Option<PanelId> {
     match node {
         DockTree::Split {
@@ -449,6 +452,7 @@ fn get_active_panel_recursive(node: &DockTree, rect: Rect, pos: Pos2) -> Option<
 }
 
 /// Calculate the rect for a specific panel's content area
+#[allow(dead_code)]
 pub fn get_panel_content_rect(tree: &DockTree, panel: &PanelId, available_rect: Rect) -> Option<Rect> {
     get_panel_rect_recursive(tree, panel, available_rect)
 }
@@ -550,6 +554,7 @@ pub fn get_legacy_layout_values(tree: &DockTree, available_rect: Rect) -> Option
     }
 }
 
+#[allow(dead_code)]
 fn get_panel_rect_recursive(node: &DockTree, panel: &PanelId, rect: Rect) -> Option<Rect> {
     match node {
         DockTree::Split {

@@ -13,9 +13,12 @@ pub mod serialization;
 
 pub use canvas::*;
 pub use codegen::*;
+#[allow(unused_imports)]
 pub use component::*;
 pub use graph::*;
+#[allow(unused_imports)]
 pub use interactions::*;
+#[allow(unused_imports)]
 pub use serialization::*;
 
 use bevy::prelude::*;
@@ -72,7 +75,7 @@ fn update_blueprints_folder(
 
 /// System to execute blueprints on entities with BlueprintComponent
 fn run_blueprint_scripts(
-    world: &mut World,
+    _world: &mut World,
 ) {
     // Blueprint execution happens through the Rhai engine
     // We compile the blueprint to Rhai code and execute it

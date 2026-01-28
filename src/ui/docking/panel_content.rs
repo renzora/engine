@@ -11,6 +11,7 @@ use super::renderer::TAB_BAR_HEIGHT;
 use crate::theming::Theme;
 
 /// Context for rendering a panel within a docked area
+#[allow(dead_code)]
 pub struct DockedPanelContext {
     /// The full rect allocated to this leaf (including tab bar)
     pub leaf_rect: Rect,
@@ -38,6 +39,7 @@ impl DockedPanelContext {
 }
 
 /// Trait for panels that can be rendered in a docked context
+#[allow(dead_code)]
 pub trait DockablePanel {
     /// Render the panel content into the given UI
     fn render_content(&mut self, ui: &mut Ui, ctx: &DockedPanelContext);
@@ -91,6 +93,7 @@ pub fn render_panel_frame(
 }
 
 /// Placeholder panel content for panels not yet implemented
+#[allow(dead_code)]
 pub fn render_placeholder_content(ui: &mut Ui, panel_id: &PanelId) {
     ui.vertical_centered(|ui| {
         ui.add_space(20.0);
@@ -115,6 +118,7 @@ pub fn render_placeholder_content(ui: &mut Ui, panel_id: &PanelId) {
 }
 
 /// Get the minimum size for a panel type
+#[allow(dead_code)]
 pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
     match panel_id {
         PanelId::Viewport => Vec2::new(200.0, 200.0),

@@ -17,6 +17,7 @@ pub struct WorkspaceLayout {
 }
 
 impl WorkspaceLayout {
+    #[allow(dead_code)]
     pub fn new(name: impl Into<String>, dock_tree: DockTree) -> Self {
         Self {
             name: name.into(),
@@ -304,6 +305,7 @@ pub fn terrain_layout() -> DockTree {
 }
 
 /// Minimal layout: Just viewport
+#[allow(dead_code)]
 pub fn minimal_layout() -> DockTree {
     DockTree::leaf(PanelId::Viewport)
 }
@@ -321,6 +323,7 @@ pub struct DockingLayoutConfig {
 
 impl DockingLayoutConfig {
     /// Get a layout by name (checks custom first, then builtins)
+    #[allow(dead_code)]
     pub fn get_layout(&self, name: &str) -> Option<&DockTree> {
         // Check custom layouts first
         for layout in &self.custom_layouts {
@@ -341,6 +344,7 @@ impl DockingLayoutConfig {
     }
 
     /// Save a custom layout
+    #[allow(dead_code)]
     pub fn save_custom_layout(&mut self, name: String, tree: DockTree) {
         // Remove existing layout with same name if it exists
         self.custom_layouts.retain(|l| l.name != name);
@@ -348,6 +352,7 @@ impl DockingLayoutConfig {
     }
 
     /// Delete a custom layout
+    #[allow(dead_code)]
     pub fn delete_layout(&mut self, name: &str) -> bool {
         let len_before = self.custom_layouts.len();
         self.custom_layouts.retain(|l| l.name != name);
@@ -355,6 +360,7 @@ impl DockingLayoutConfig {
     }
 
     /// Get all available layouts (builtin + custom)
+    #[allow(dead_code)]
     pub fn all_layouts(&self) -> Vec<String> {
         let mut names: Vec<String> = builtin_layouts().iter().map(|l| l.name.clone()).collect();
         names.extend(self.custom_layouts.iter().map(|l| l.name.clone()));

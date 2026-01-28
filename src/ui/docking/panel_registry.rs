@@ -7,6 +7,7 @@ use bevy_egui::egui::{self, Rect, Ui};
 use std::collections::HashSet;
 
 /// Minimum size constraints for panels
+#[allow(dead_code)]
 pub struct PanelConstraints {
     pub min_width: f32,
     pub min_height: f32,
@@ -26,11 +27,13 @@ impl Default for PanelConstraints {
 }
 
 impl PanelConstraints {
+    #[allow(dead_code)]
     pub fn with_min_width(mut self, width: f32) -> Self {
         self.min_width = width;
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_min_height(mut self, height: f32) -> Self {
         self.min_height = height;
         self
@@ -46,6 +49,7 @@ pub struct PanelAvailability {
 
 impl PanelAvailability {
     /// Check if a panel is currently available (not closed)
+    #[allow(dead_code)]
     pub fn is_available(&self, panel: &PanelId) -> bool {
         !self.closed_panels.contains(panel)
     }
@@ -61,12 +65,14 @@ impl PanelAvailability {
     }
 
     /// Get list of closed panels
+    #[allow(dead_code)]
     pub fn get_closed_panels(&self) -> Vec<PanelId> {
         self.closed_panels.iter().cloned().collect()
     }
 }
 
 /// Get constraints for a specific panel type
+#[allow(dead_code)]
 pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
     match panel {
         PanelId::Hierarchy => PanelConstraints::default().with_min_width(150.0),
@@ -84,6 +90,7 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
 }
 
 /// All built-in panel types
+#[allow(dead_code)]
 pub fn all_builtin_panels() -> Vec<PanelId> {
     vec![
         PanelId::Hierarchy,
@@ -100,6 +107,7 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
 }
 
 /// Render a placeholder for an unknown panel type
+#[allow(dead_code)]
 pub fn render_placeholder_panel(ui: &mut Ui, panel: &PanelId, rect: Rect) {
     let _response = ui.allocate_rect(rect, egui::Sense::hover());
 

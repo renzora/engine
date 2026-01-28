@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::{BlueprintGraph, PinValue};
+use super::PinValue;
 
 /// Component that attaches a blueprint to an entity
 #[derive(Component, Clone, Debug, Serialize, Deserialize, Reflect)]
@@ -23,6 +23,7 @@ pub struct BlueprintComponent {
     /// Runtime state (not serialized)
     #[serde(skip)]
     #[reflect(ignore)]
+    #[allow(dead_code)]
     pub runtime_state: BlueprintRuntimeState,
 }
 
@@ -69,6 +70,7 @@ impl From<BlueprintValue> for PinValue {
 
 /// Runtime state for a blueprint instance
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 pub struct BlueprintRuntimeState {
     /// Whether on_ready has been called
     pub initialized: bool,
@@ -93,6 +95,7 @@ impl Default for BlueprintComponent {
 
 impl BlueprintComponent {
     /// Create a new blueprint component with the given path
+    #[allow(dead_code)]
     pub fn new(path: impl Into<String>) -> Self {
         Self {
             blueprint_path: path.into(),
@@ -103,6 +106,7 @@ impl BlueprintComponent {
     }
 
     /// Get the name from the path
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         self.blueprint_path
             .rsplit('/')
@@ -112,6 +116,7 @@ impl BlueprintComponent {
     }
 
     /// Mark as needing recompilation
+    #[allow(dead_code)]
     pub fn invalidate(&mut self) {
         self.runtime_state.compiled_code = None;
     }

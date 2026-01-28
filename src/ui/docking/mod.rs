@@ -28,20 +28,26 @@ mod panel_registry;
 mod renderer;
 
 pub use dock_tree::{DockTree, DropZone, PanelId, SplitDirection};
+#[allow(unused_imports)]
 pub use drag_drop::{DragState, DropTarget};
 pub use layouts::{
-    builtin_layouts, default_layout, animation_layout, debug_layout, scripting_layout,
+    builtin_layouts, default_layout,
     DockingLayoutConfig, WorkspaceLayout,
 };
+#[allow(unused_imports)]
+pub use layouts::{animation_layout, debug_layout, scripting_layout};
 pub use panel_content::{
-    render_panel_frame, render_placeholder_content, get_panel_min_size,
-    DockedPanelContext, DockablePanel,
+    render_panel_frame,
+    DockedPanelContext,
 };
-pub use panel_registry::{
-    all_builtin_panels, get_panel_constraints, PanelAvailability, PanelConstraints,
-};
+#[allow(unused_imports)]
+pub use panel_content::{render_placeholder_content, get_panel_min_size, DockablePanel};
+pub use panel_registry::PanelAvailability;
+#[allow(unused_imports)]
+pub use panel_registry::{all_builtin_panels, get_panel_constraints, PanelConstraints};
 pub use renderer::{
-    calculate_panel_rects, get_legacy_layout_values, get_panel_content_rect,
-    render_dock_tree, DockRenderResult, PanelRenderContext,
-    TAB_BAR_HEIGHT, RESIZE_HANDLE_SIZE,
+    calculate_panel_rects, get_legacy_layout_values,
+    render_dock_tree,
 };
+#[allow(unused_imports)]
+pub use renderer::{DockRenderResult, get_panel_content_rect, PanelRenderContext, TAB_BAR_HEIGHT, RESIZE_HANDLE_SIZE};

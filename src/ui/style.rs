@@ -28,6 +28,7 @@ pub fn init_fonts(ctx: &egui::Context) {
 }
 
 /// Apply the editor's theme styling
+#[allow(dead_code)]
 pub fn apply_editor_style(ctx: &egui::Context) {
     apply_editor_style_with_theme(ctx, &Theme::dark(), 13.0);
 }

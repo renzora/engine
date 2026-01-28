@@ -7,8 +7,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Rect, Stroke, StrokeKin
 use std::collections::HashMap;
 
 use super::{
-    BlueprintGraph, BlueprintNode, Connection, NodeId, Pin, PinDirection, PinId, PinType, PinValue,
-    nodes::NodeRegistry,
+    BlueprintGraph, BlueprintNode, NodeId, Pin, PinDirection, PinId, PinType,
 };
 
 /// State for the blueprint canvas (pan, zoom, etc.)
@@ -21,6 +20,7 @@ pub struct BlueprintCanvasState {
 }
 
 impl BlueprintCanvasState {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             offset: [0.0, 0.0],
@@ -102,10 +102,13 @@ pub struct BlueprintEditorState {
     /// Cached pin positions for the current frame (for connection drawing)
     pub pin_positions: HashMap<PinId, Pos2>,
     /// Comparison mode for Compare nodes
+    #[allow(dead_code)]
     pub compare_modes: HashMap<NodeId, String>,
     /// Key names for IsKeyPressed nodes
+    #[allow(dead_code)]
     pub key_names: HashMap<NodeId, String>,
     /// Variable names for Get/Set Variable nodes
+    #[allow(dead_code)]
     pub var_names: HashMap<NodeId, String>,
     /// Search query for the Node Library panel
     pub node_search: String,
@@ -247,14 +250,14 @@ pub fn draw_grid(painter: &egui::Painter, rect: Rect, canvas: &BlueprintCanvasSt
 
 /// Draw a single node and return pin positions
 pub fn draw_node(
-    ui: &mut egui::Ui,
+    _ui: &mut egui::Ui,
     painter: &egui::Painter,
     node: &BlueprintNode,
     node_def: Option<&super::nodes::NodeTypeDefinition>,
     canvas: &BlueprintCanvasState,
     canvas_rect: Rect,
     is_selected: bool,
-    state: &mut BlueprintEditorState,
+    _state: &mut BlueprintEditorState,
 ) -> (Rect, HashMap<(String, PinDirection), Pos2>) {
     let mut pin_positions = HashMap::new();
 

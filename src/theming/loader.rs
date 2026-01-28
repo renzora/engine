@@ -38,6 +38,7 @@ impl Default for ThemeManager {
 
 impl ThemeManager {
     /// Create a new ThemeManager with the default dark theme
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -152,6 +153,7 @@ impl ThemeManager {
     }
 
     /// Get the path to a custom theme file
+    #[allow(dead_code)]
     pub fn get_theme_path(&self, name: &str) -> Option<PathBuf> {
         if self.is_builtin(name) {
             return None;
@@ -161,6 +163,7 @@ impl ThemeManager {
 
     /// Delete a custom theme
     /// Returns true if successful
+    #[allow(dead_code)]
     pub fn delete_theme(&mut self, name: &str) -> bool {
         if self.is_builtin(name) {
             return false;
@@ -181,6 +184,7 @@ impl ThemeManager {
     }
 
     /// Duplicate a theme with a new name
+    #[allow(dead_code)]
     pub fn duplicate_theme(&mut self, new_name: &str) -> bool {
         let mut theme = self.active_theme.clone();
         theme.meta.name = new_name.to_string();

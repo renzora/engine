@@ -4,7 +4,7 @@
 //! by the scripting engine.
 
 use std::collections::{HashMap, HashSet};
-use super::{BlueprintGraph, BlueprintNode, Connection, NodeId, PinId, PinType, PinValue};
+use super::{BlueprintGraph, BlueprintNode, NodeId, PinId, PinValue};
 
 /// Result of code generation
 pub struct CodegenResult {
@@ -440,7 +440,7 @@ impl<'a> CodegenContext<'a> {
 pub fn generate_rhai_code(graph: &BlueprintGraph) -> CodegenResult {
     let mut ctx = CodegenContext::new(graph);
     let mut code_lines = Vec::new();
-    let mut errors = Vec::new();
+    let errors = Vec::new();
     let mut warnings = Vec::new();
 
     // Generate variable declarations

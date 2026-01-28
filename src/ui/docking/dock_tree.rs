@@ -180,6 +180,7 @@ impl DockTree {
     }
 
     /// Find a leaf containing the given panel
+    #[allow(dead_code)]
     pub fn find_leaf(&self, panel: &PanelId) -> Option<&DockTree> {
         match self {
             DockTree::Split { first, second, .. } => {
@@ -339,12 +340,14 @@ impl DockTree {
     }
 
     /// Get all panels in the tree
+    #[allow(dead_code)]
     pub fn all_panels(&self) -> Vec<PanelId> {
         let mut panels = Vec::new();
         self.collect_panels(&mut panels);
         panels
     }
 
+    #[allow(dead_code)]
     fn collect_panels(&self, panels: &mut Vec<PanelId>) {
         match self {
             DockTree::Split { first, second, .. } => {
@@ -418,6 +421,7 @@ impl DockTree {
     }
 
     /// Count total number of leaves (tab groups) in the tree
+    #[allow(dead_code)]
     pub fn leaf_count(&self) -> usize {
         match self {
             DockTree::Split { first, second, .. } => first.leaf_count() + second.leaf_count(),
@@ -444,6 +448,7 @@ pub enum DropZone {
 
 impl DropZone {
     /// Convert to split direction and whether to insert first
+    #[allow(dead_code)]
     pub fn to_split_params(self) -> Option<(SplitDirection, bool)> {
         match self {
             DropZone::Tab => None,

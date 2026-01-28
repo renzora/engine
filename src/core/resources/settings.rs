@@ -98,6 +98,7 @@ pub struct EditorSettings {
     /// Collision gizmo visibility mode
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     /// Show demo window (debug)
+    #[allow(dead_code)]
     pub show_demo_window: bool,
     /// Splash screen - new project name
     pub new_project_name: String,

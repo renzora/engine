@@ -39,9 +39,11 @@ pub use viewport::render_viewport;
 use bevy_egui::egui::{self, Color32, Vec2};
 
 /// Panel bar height constant
+#[allow(dead_code)]
 pub const PANEL_BAR_HEIGHT: f32 = 24.0;
 
 /// Renders a panel bar with an action button on the right side
+#[allow(dead_code)]
 pub fn render_panel_bar_with_action(
     ui: &mut egui::Ui,
     icon: &str,

@@ -1,6 +1,6 @@
 //! Blueprint visual scripting panel
 
-use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Vec2};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense};
 use std::collections::HashMap;
 
 use crate::blueprint::{
@@ -52,7 +52,7 @@ fn render_blueprint_toolbar(
     ui: &mut egui::Ui,
     editor_state: &mut BlueprintEditorState,
     canvas_state: &mut BlueprintCanvasState,
-    node_registry: &NodeRegistry,
+    _node_registry: &NodeRegistry,
     current_project: Option<&CurrentProject>,
 ) {
     ui.horizontal(|ui| {

@@ -98,6 +98,7 @@ impl PinType {
     }
 
     /// Get display name for this type
+    #[allow(dead_code)]
     pub fn name(&self) -> &'static str {
         match self {
             PinType::Flow => "Flow",
@@ -169,6 +170,7 @@ impl Pin {
     }
 
     /// Mark this pin as required
+    #[allow(dead_code)]
     pub fn required(mut self) -> Self {
         self.required = true;
         self
@@ -190,6 +192,7 @@ pub enum PinValue {
 
 impl PinValue {
     /// Get the pin type for this value
+    #[allow(dead_code)]
     pub fn pin_type(&self) -> PinType {
         match self {
             PinValue::Flow => PinType::Flow,
@@ -204,6 +207,7 @@ impl PinValue {
     }
 
     /// Get a default value for a pin type
+    #[allow(dead_code)]
     pub fn default_for_type(pin_type: PinType) -> Self {
         match pin_type {
             PinType::Flow => PinValue::Flow,
@@ -279,6 +283,7 @@ impl BlueprintNode {
     }
 
     /// Set the position of this node
+    #[allow(dead_code)]
     pub fn with_position(mut self, x: f32, y: f32) -> Self {
         self.position = [x, y];
         self
@@ -316,6 +321,7 @@ impl BlueprintNode {
     }
 
     /// Set an input value override
+    #[allow(dead_code)]
     pub fn set_input_value(&mut self, pin_name: impl Into<String>, value: PinValue) {
         self.input_values.insert(pin_name.into(), value);
     }
@@ -339,6 +345,7 @@ pub struct BlueprintVariable {
 }
 
 impl BlueprintVariable {
+    #[allow(dead_code)]
     pub fn new(name: impl Into<String>, var_type: PinType) -> Self {
         let name = name.into();
         Self {
@@ -351,11 +358,13 @@ impl BlueprintVariable {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_default(mut self, value: PinValue) -> Self {
         self.default_value = value;
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_description(mut self, desc: impl Into<String>) -> Self {
         self.description = desc.into();
         self
@@ -456,6 +465,7 @@ impl BlueprintGraph {
     }
 
     /// Remove a connection
+    #[allow(dead_code)]
     pub fn remove_connection(&mut self, from: &PinId, to: &PinId) {
         self.connections.retain(|c| &c.from != from || &c.to != to);
     }
@@ -492,16 +502,19 @@ impl BlueprintGraph {
     }
 
     /// Add a variable to the graph
+    #[allow(dead_code)]
     pub fn add_variable(&mut self, var: BlueprintVariable) {
         self.variables.push(var);
     }
 
     /// Remove a variable by name
+    #[allow(dead_code)]
     pub fn remove_variable(&mut self, name: &str) {
         self.variables.retain(|v| v.name != name);
     }
 
     /// Get a variable by name
+    #[allow(dead_code)]
     pub fn get_variable(&self, name: &str) -> Option<&BlueprintVariable> {
         self.variables.iter().find(|v| v.name == name)
     }

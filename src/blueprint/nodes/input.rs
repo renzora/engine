@@ -1,6 +1,6 @@
 //! Input handling nodes
 
-use super::{NodeTypeDefinition, Pin, PinType, PinValue};
+use super::{NodeTypeDefinition, Pin, PinType};
 
 /// Get Input Axis - get movement input (-1 to 1 for WASD/arrows)
 pub static GET_INPUT_AXIS: NodeTypeDefinition = NodeTypeDefinition {

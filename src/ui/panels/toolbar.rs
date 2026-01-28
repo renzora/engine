@@ -16,7 +16,7 @@ use egui_phosphor::regular::{
 
 pub fn render_toolbar(
     ctx: &egui::Context,
-    gizmo: &mut GizmoState,
+    _gizmo: &mut GizmoState,
     settings: &mut EditorSettings,
     _menu_bar_height: f32,
     toolbar_height: f32,
@@ -40,7 +40,7 @@ pub fn render_toolbar(
             .fill(theme.surfaces.panel.to_color32())
             .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
         .show(ctx, |ui| {
-            let available_width = ui.available_width();
+            let _available_width = ui.available_width();
 
             let button_size = Vec2::new(28.0, 24.0);
 

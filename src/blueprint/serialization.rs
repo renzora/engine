@@ -103,11 +103,12 @@ pub fn list_blueprints(dir: &Path) -> Vec<std::path::PathBuf> {
 }
 
 /// Export blueprint to Rhai code file
+#[allow(dead_code)]
 pub fn export_to_rhai(graph: &BlueprintGraph, path: &Path) -> Result<(), BlueprintError> {
     let result = super::generate_rhai_code(graph);
 
     // Add header comment
-    let mut code = format!(
+    let code = format!(
         "// Generated from blueprint: {}\n// Do not edit directly - changes will be overwritten\n\n{}",
         graph.name,
         result.code

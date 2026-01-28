@@ -41,7 +41,7 @@ pub fn render_settings_window(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .order(egui::Order::Background)
         .show(ctx, |ui| {
-            let screen_rect = ctx.screen_rect();
+            let screen_rect = ctx.content_rect();
             ui.painter().rect_filled(screen_rect, 0.0, overlay_bg);
 
             // Make overlay clickable to close
@@ -52,7 +52,7 @@ pub fn render_settings_window(
         });
 
     // Modal window
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
     let modal_width = 550.0;
     let modal_height = 580.0;
     let modal_pos = egui::pos2(

@@ -386,7 +386,7 @@ pub fn render_inspector(
     let active_plugin_tab = api.get_active_tab(TabLocation::Right);
 
     // Calculate max width based on screen size (max 500px to match load-time clamping)
-    let screen_width = ctx.screen_rect().width();
+    let screen_width = ctx.content_rect().width();
     let min_viewport_width = 200.0;
     let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
     let display_width = stored_width.clamp(100.0, max_width);
@@ -570,7 +570,7 @@ pub fn render_inspector(
 
     // Custom resize handle at the left edge of the panel (full height)
     let resize_x = screen_width - display_width - 3.0;
-    let resize_height = ctx.screen_rect().height();
+    let resize_height = ctx.content_rect().height();
 
     egui::Area::new(egui::Id::new("inspector_resize"))
         .fixed_pos(egui::Pos2::new(resize_x, 0.0))

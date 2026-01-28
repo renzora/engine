@@ -75,6 +75,7 @@ enum ThumbnailState {
     Loading,
     WaitingForScene,
     WaitingForRender,  // Wait for GPU to render the frame
+    #[allow(dead_code)]
     RequestingReadback,
     WaitingForReadback,
 }
@@ -197,7 +198,7 @@ fn wait_for_model_load(
 }
 
 fn position_camera_and_capture(
-    mut commands: Commands,
+    _commands: Commands,
     mut task: ResMut<ThumbnailTask>,
     mut camera_query: Query<&mut Transform, With<Camera3d>>,
     mut projection_query: Query<&mut Projection, With<Camera3d>>,

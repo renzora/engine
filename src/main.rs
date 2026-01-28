@@ -29,6 +29,7 @@ use bevy::render::{
     RenderPlugin,
 };
 use bevy::window::{WindowMode, WindowResizeConstraints};
+use bevy::winit::WinitWindows;
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::core::AppState;
@@ -36,6 +37,41 @@ use crate::core::AppState;
 /// Marker component for the splash screen camera
 #[derive(Component)]
 struct SplashCamera;
+
+/// Set the window icon from embedded icon data (Windows only)
+#[cfg(windows)]
+fn set_window_icon(windows: Option<NonSend<WinitWindows>>) {
+    let Some(windows) = windows else { return };
+    let icon_bytes = include_bytes!("../icon.ico");
+
+    // Parse ICO file to get the largest image (typically 256x256)
+    if let Some((rgba, width, height)) = parse_ico_largest(icon_bytes) {
+        if let Ok(icon) = winit::window::Icon::from_rgba(rgba, width, height) {
+            for window in windows.windows.values() {
+                window.set_window_icon(Some(icon.clone()));
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn set_window_icon() {}
+
+/// Parse ICO file and extract the largest image as RGBA
+#[cfg(windows)]
+fn parse_ico_largest(data: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    use image::ImageReader;
+    use std::io::Cursor;
+
+    // Use image crate to decode ICO
+    let reader = ImageReader::new(Cursor::new(data))
+        .with_guessed_format()
+        .ok()?;
+    let img = reader.decode().ok()?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Some((rgba.into_raw(), width, height))
+}
 
 fn main() {
     // Check for headless thumbnail rendering mode
@@ -140,8 +176,8 @@ fn main() {
         .add_observer(scene::on_bevy_scene_ready)
         // Initialize app state
         .init_state::<AppState>()
-        // Setup splash camera on startup
-        .add_systems(Startup, setup_splash_camera)
+        // Setup splash camera and window icon on startup
+        .add_systems(Startup, (set_window_icon, setup_splash_camera))
         // Splash screen systems (run when in Splash state)
         .add_systems(
             EguiPrimaryContextPass,

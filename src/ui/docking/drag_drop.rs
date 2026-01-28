@@ -8,6 +8,7 @@ use crate::theming::Theme;
 
 /// State for an ongoing drag operation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DragState {
     /// The panel being dragged
     pub panel: PanelId,
@@ -19,6 +20,7 @@ pub struct DragState {
 
 /// Describes where a panel will be dropped
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DropTarget {
     /// The leaf/panel being dropped onto
     pub target_panel: PanelId,
@@ -41,6 +43,7 @@ impl DragState {
 /// Size of the drop zone areas at panel edges
 const DROP_ZONE_SIZE: f32 = 60.0;
 /// Minimum drag distance before considering it a drag (not a click)
+#[allow(dead_code)]
 const MIN_DRAG_DISTANCE: f32 = 5.0;
 
 /// Determine which drop zone (if any) the cursor is in
@@ -146,6 +149,7 @@ pub fn draw_drop_zone_overlay(ui: &egui::Ui, zone: DropZone, panel_rect: Rect, t
 }
 
 /// Draw the dragged tab preview following the cursor
+#[allow(dead_code)]
 pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2, theme: &Theme) {
     let text = format!("{} {}", panel.icon(), panel.title());
     let rect = Rect::from_center_size(
@@ -175,6 +179,7 @@ pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2, theme
 }
 
 /// Check if the drag has exceeded the minimum distance threshold
+#[allow(dead_code)]
 pub fn is_drag_active(start_pos: Pos2, current_pos: Pos2) -> bool {
     start_pos.distance(current_pos) >= MIN_DRAG_DISTANCE
 }

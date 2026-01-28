@@ -72,6 +72,7 @@ use panels::{
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
     render_console_content, render_history_content,
 };
+#[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
@@ -266,7 +267,7 @@ pub fn editor_ui(
     // Check if we're in play mode
     let in_play_mode = editor.play_mode.is_in_play_mode();
 
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
     let status_bar_height = if in_play_mode { 0.0 } else { 24.0 };
 
     // Suppress unused import warning
@@ -919,7 +920,7 @@ fn handle_global_file_drops(
 fn render_window_resize_edges(ctx: &bevy_egui::egui::Context, window_state: &mut WindowState) {
     use bevy_egui::egui::{self, CursorIcon, Sense, Vec2, Id, Pos2};
 
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
     let edge_size = 5.0;
     let corner_size = 10.0;
 

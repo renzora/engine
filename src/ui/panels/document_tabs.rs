@@ -42,6 +42,7 @@ impl NewDocumentType {
     }
 
     /// Layout to switch to when this document type is activated
+    #[allow(dead_code)]
     pub fn layout(&self) -> &'static str {
         match self {
             NewDocumentType::Scene => "Default",
@@ -69,7 +70,7 @@ pub fn render_document_tabs(
     top_y: f32,
     theme: &Theme,
 ) -> f32 {
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
     let available_width = screen_rect.width() - left_panel_width - right_panel_width;
 
     let tab_bar_rect = egui::Rect::from_min_size(
@@ -284,6 +285,7 @@ pub fn render_document_tabs(
             let add_btn_pos = Pos2::new(x_offset, top_y + TOP_MARGIN + 4.0);
             let add_btn_size = Vec2::new(24.0, 22.0);
 
+            #[allow(deprecated)]
             let _menu_area = ui.allocate_ui_at_rect(
                 egui::Rect::from_min_size(add_btn_pos, add_btn_size),
                 |ui| {
@@ -291,6 +293,7 @@ pub fn render_document_tabs(
                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = tab_hover_bg;
                     ui.style_mut().visuals.widgets.active.weak_bg_fill = tab_hover_bg;
 
+                    #[allow(deprecated)]
                     let _menu_response = egui::menu::menu_button(ui, "+", |ui| {
                         ui.set_min_width(140.0);
 
@@ -352,6 +355,7 @@ pub fn render_document_tabs(
                                         layout_to_switch = Some("Scripting");
                                     }
                                 }
+                                #[allow(deprecated)]
                                 ui.close_menu();
                             }
                         }
