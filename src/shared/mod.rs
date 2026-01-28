@@ -7,6 +7,9 @@
 //! serialization to scene files (.ron).
 
 pub mod components;
+pub mod light_spawner;
+pub mod physics_plugin;
+pub mod physics_spawner;
 
 // Re-export commonly used items
 pub use components::{
@@ -16,10 +19,25 @@ pub use components::{
     PanoramaSkyData, ProceduralSkyData, SkyMode, TonemappingMode, WorldEnvironmentData,
     // Instances
     MeshInstanceData, SceneInstanceData,
+    // Lights
+    DirectionalLightData, PointLightData, SpotLightData,
     // Physics
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
     // Rendering
     MeshNodeData, MeshPrimitiveType, Sprite2DData,
     // UI
     UIButtonData, UIImageData, UILabelData, UIPanelData,
+};
+
+// Light exports
+pub use light_spawner::{
+    despawn_light_components, spawn_directional_light, spawn_entity_lights, spawn_point_light,
+    spawn_spot_light, RuntimeLight,
+};
+
+// Physics exports
+pub use physics_plugin::RenzoraPhysicsPlugin;
+pub use physics_spawner::{
+    despawn_physics_components, spawn_collision_shape, spawn_entity_physics, spawn_physics_body,
+    RuntimePhysics,
 };

@@ -232,6 +232,88 @@ impl<'a> CodegenContext<'a> {
                 self.output_vars.insert(PinId::new(node.id, "x"), x_var);
                 self.output_vars.insert(PinId::new(node.id, "y"), y_var);
             }
+            "input/is_key_just_pressed" => {
+                let key_name = node.input_values.get("key")
+                    .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
+                    .unwrap_or("Space");
+                let result_var = self.next_var("key_just");
+                lines.push(format!("{}let {} = is_key_just_pressed(_keys_just_pressed, \"{}\");", indent, result_var, key_name));
+                self.output_vars.insert(PinId::new(node.id, "pressed"), result_var);
+            }
+            "input/is_key_just_released" => {
+                let key_name = node.input_values.get("key")
+                    .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
+                    .unwrap_or("Space");
+                let result_var = self.next_var("key_rel");
+                lines.push(format!("{}let {} = is_key_just_released(_keys_just_released, \"{}\");", indent, result_var, key_name));
+                self.output_vars.insert(PinId::new(node.id, "released"), result_var);
+            }
+            "input/is_mouse_button_pressed" => {
+                let button = node.input_values.get("button")
+                    .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
+                    .unwrap_or("Left");
+                let result_var = self.next_var("mouse_btn");
+                // Map button name to scope variable
+                let scope_var = match button {
+                    "Left" => "mouse_left",
+                    "Right" => "mouse_right",
+                    "Middle" => "mouse_middle",
+                    _ => "mouse_left",
+                };
+                lines.push(format!("{}let {} = {};", indent, result_var, scope_var));
+                self.output_vars.insert(PinId::new(node.id, "pressed"), result_var);
+            }
+            "input/get_mouse_scroll" => {
+                let x_var = self.next_var("scroll_x");
+                let y_var = self.next_var("scroll_y");
+                // Only vertical scroll is tracked
+                lines.push(format!("{}let {} = 0.0;", indent, x_var));
+                lines.push(format!("{}let {} = mouse_scroll;", indent, y_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+            }
+            "input/get_gamepad_left_stick" => {
+                let x_var = self.next_var("left_stick_x");
+                let y_var = self.next_var("left_stick_y");
+                lines.push(format!("{}let {} = gamepad_left_x;", indent, x_var));
+                lines.push(format!("{}let {} = gamepad_left_y;", indent, y_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+            }
+            "input/get_gamepad_right_stick" => {
+                let x_var = self.next_var("right_stick_x");
+                let y_var = self.next_var("right_stick_y");
+                lines.push(format!("{}let {} = gamepad_right_x;", indent, x_var));
+                lines.push(format!("{}let {} = gamepad_right_y;", indent, y_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+            }
+            "input/is_gamepad_button_pressed" => {
+                let button = node.input_values.get("button")
+                    .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
+                    .unwrap_or("South");
+                let result_var = self.next_var("gp_btn");
+                // Map button name to scope variable
+                let scope_var = match button {
+                    "South" | "A" => "gamepad_a",
+                    "East" | "B" => "gamepad_b",
+                    "West" | "X" => "gamepad_x",
+                    "North" | "Y" => "gamepad_y",
+                    "LeftTrigger" | "LB" => "gamepad_lb",
+                    "RightTrigger" | "RB" => "gamepad_rb",
+                    "Select" | "Back" => "gamepad_select",
+                    "Start" => "gamepad_start",
+                    "LeftThumb" | "L3" => "gamepad_l3",
+                    "RightThumb" | "R3" => "gamepad_r3",
+                    "DPadUp" => "gamepad_dpad_up",
+                    "DPadDown" => "gamepad_dpad_down",
+                    "DPadLeft" => "gamepad_dpad_left",
+                    "DPadRight" => "gamepad_dpad_right",
+                    _ => "gamepad_a",
+                };
+                lines.push(format!("{}let {} = {};", indent, result_var, scope_var));
+                self.output_vars.insert(PinId::new(node.id, "pressed"), result_var);
+            }
 
             // Transform getters
             "transform/get_position" => {
@@ -256,6 +338,17 @@ impl<'a> CodegenContext<'a> {
                 self.output_vars.insert(PinId::new(node.id, "yaw"), yaw_var);
                 self.output_vars.insert(PinId::new(node.id, "roll"), roll_var);
             }
+            "transform/get_scale" => {
+                let x_var = self.next_var("scale_x");
+                let y_var = self.next_var("scale_y");
+                let z_var = self.next_var("scale_z");
+                lines.push(format!("{}let {} = scale_x;", indent, x_var));
+                lines.push(format!("{}let {} = scale_y;", indent, y_var));
+                lines.push(format!("{}let {} = scale_z;", indent, z_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
 
             // Time nodes
             "utility/get_delta" => {
@@ -275,6 +368,219 @@ impl<'a> CodegenContext<'a> {
                     .and_then(|v| if let PinValue::String(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_else(|| "unknown".to_string());
                 self.output_vars.insert(PinId::new(node.id, "value"), var_name);
+            }
+
+            // Physics data nodes
+            "physics/get_velocity" => {
+                // Uses scope variables for self velocity
+                let vx_var = self.next_var("vel_x");
+                let vy_var = self.next_var("vel_y");
+                let vz_var = self.next_var("vel_z");
+                let speed_var = self.next_var("speed");
+                lines.push(format!("{}let {} = velocity_x;", indent, vx_var));
+                lines.push(format!("{}let {} = velocity_y;", indent, vy_var));
+                lines.push(format!("{}let {} = velocity_z;", indent, vz_var));
+                lines.push(format!("{}let {} = sqrt({} * {} + {} * {} + {} * {});",
+                    indent, speed_var, vx_var, vx_var, vy_var, vy_var, vz_var, vz_var));
+                self.output_vars.insert(PinId::new(node.id, "velocity"), format!("vec3({}, {}, {})", vx_var, vy_var, vz_var));
+                self.output_vars.insert(PinId::new(node.id, "speed"), speed_var);
+            }
+            "physics/get_angular_velocity" => {
+                let avx_var = self.next_var("ang_vel_x");
+                let avy_var = self.next_var("ang_vel_y");
+                let avz_var = self.next_var("ang_vel_z");
+                lines.push(format!("{}let {} = angular_velocity_x;", indent, avx_var));
+                lines.push(format!("{}let {} = angular_velocity_y;", indent, avy_var));
+                lines.push(format!("{}let {} = angular_velocity_z;", indent, avz_var));
+                self.output_vars.insert(PinId::new(node.id, "angular_velocity"), format!("vec3({}, {}, {})", avx_var, avy_var, avz_var));
+            }
+            "physics/is_grounded" => {
+                let grounded_var = self.next_var("grounded");
+                lines.push(format!("{}let {} = is_grounded;", indent, grounded_var));
+                self.output_vars.insert(PinId::new(node.id, "grounded"), grounded_var);
+            }
+            "physics/raycast" => {
+                // Generate raycast call and store results
+                let ox = self.get_input_value(node, "origin_x");
+                let oy = self.get_input_value(node, "origin_y");
+                let oz = self.get_input_value(node, "origin_z");
+                let dx = self.get_input_value(node, "direction_x");
+                let dy = self.get_input_value(node, "direction_y");
+                let dz = self.get_input_value(node, "direction_z");
+                let max_dist = self.get_input_value(node, "max_distance");
+                let result_var = self.next_var("raycast_result");
+                lines.push(format!("{}let {} = raycast({}, {}, {}, {}, {}, {}, {}, \"{}\");",
+                    indent, result_var, ox, oy, oz, dx, dy, dz, max_dist, result_var));
+                // Results are stored in scope variables after raycast command is processed
+                self.output_vars.insert(PinId::new(node.id, "hit"), format!("{}_hit", result_var));
+                self.output_vars.insert(PinId::new(node.id, "entity"), format!("{}_entity", result_var));
+                self.output_vars.insert(PinId::new(node.id, "distance"), format!("{}_distance", result_var));
+            }
+
+            // Collision data nodes
+            "physics/has_collision" | "physics/is_colliding" => {
+                let result_var = self.next_var("is_colliding");
+                lines.push(format!("{}let {} = _active_collisions.len() > 0;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "colliding"), result_var);
+            }
+            "physics/get_collisions_entered" => {
+                let result_var = self.next_var("collisions_entered");
+                lines.push(format!("{}let {} = _collisions_entered;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "physics/get_collisions_exited" => {
+                let result_var = self.next_var("collisions_exited");
+                lines.push(format!("{}let {} = _collisions_exited;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "physics/get_active_collisions" => {
+                let result_var = self.next_var("active_collisions");
+                lines.push(format!("{}let {} = _active_collisions;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "physics/collision_count" => {
+                let result_var = self.next_var("collision_count");
+                lines.push(format!("{}let {} = _active_collisions.len();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "count"), result_var);
+            }
+
+            // Rendering data nodes
+            "rendering/get_color" | "rendering/get_material_color" => {
+                let r_var = self.next_var("mat_r");
+                let g_var = self.next_var("mat_g");
+                let b_var = self.next_var("mat_b");
+                let a_var = self.next_var("mat_a");
+                lines.push(format!("{}let {} = self_material_color_r;", indent, r_var));
+                lines.push(format!("{}let {} = self_material_color_g;", indent, g_var));
+                lines.push(format!("{}let {} = self_material_color_b;", indent, b_var));
+                lines.push(format!("{}let {} = self_material_color_a;", indent, a_var));
+                self.output_vars.insert(PinId::new(node.id, "r"), r_var);
+                self.output_vars.insert(PinId::new(node.id, "g"), g_var);
+                self.output_vars.insert(PinId::new(node.id, "b"), b_var);
+                self.output_vars.insert(PinId::new(node.id, "a"), a_var);
+            }
+            "rendering/get_light_intensity" => {
+                let result_var = self.next_var("light_intensity");
+                lines.push(format!("{}let {} = self_light_intensity;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "intensity"), result_var);
+            }
+            "rendering/get_light_color" => {
+                let r_var = self.next_var("light_r");
+                let g_var = self.next_var("light_g");
+                let b_var = self.next_var("light_b");
+                lines.push(format!("{}let {} = self_light_color_r;", indent, r_var));
+                lines.push(format!("{}let {} = self_light_color_g;", indent, g_var));
+                lines.push(format!("{}let {} = self_light_color_b;", indent, b_var));
+                self.output_vars.insert(PinId::new(node.id, "r"), r_var);
+                self.output_vars.insert(PinId::new(node.id, "g"), g_var);
+                self.output_vars.insert(PinId::new(node.id, "b"), b_var);
+            }
+
+            // Health component data nodes
+            "component/get_health" => {
+                let health_var = self.next_var("health");
+                let max_var = self.next_var("max_health");
+                let percent_var = self.next_var("health_pct");
+                lines.push(format!("{}let {} = self_health;", indent, health_var));
+                lines.push(format!("{}let {} = self_max_health;", indent, max_var));
+                lines.push(format!("{}let {} = self_health_percent;", indent, percent_var));
+                self.output_vars.insert(PinId::new(node.id, "health"), health_var);
+                self.output_vars.insert(PinId::new(node.id, "max_health"), max_var);
+                self.output_vars.insert(PinId::new(node.id, "percent"), percent_var);
+            }
+            "component/is_dead" => {
+                let result_var = self.next_var("is_dead");
+                lines.push(format!("{}let {} = self_health <= 0.0;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "dead"), result_var);
+            }
+            "component/is_invincible" => {
+                let result_var = self.next_var("invincible");
+                lines.push(format!("{}let {} = self_is_invincible;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "invincible"), result_var);
+            }
+
+            // ECS query data nodes
+            "ecs/find_entity_by_name" => {
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("found_entity");
+                lines.push(format!("{}let {} = find_entity_by_name(_entities_by_name, {});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+            "ecs/find_by_tag" => {
+                let tag = self.get_input_value(node, "tag");
+                let result_var = self.next_var("tagged_entities");
+                lines.push(format!("{}let {} = get_entities_by_tag(_entities_by_tag, {});", indent, result_var, tag));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "ecs/self_entity" => {
+                let result_var = self.next_var("self_id");
+                lines.push(format!("{}let {} = self_entity_id;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+            "ecs/entity_valid" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("valid");
+                lines.push(format!("{}let {} = {} >= 0;", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "valid"), result_var);
+            }
+            "ecs/get_entity_name" => {
+                // Returns self_entity_name for self
+                let result_var = self.next_var("name");
+                lines.push(format!("{}let {} = self_entity_name;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "name"), result_var);
+            }
+            "ecs/has_tag" => {
+                let tag = self.get_input_value(node, "tag");
+                let result_var = self.next_var("has_tag");
+                lines.push(format!("{}let {} = has_entities_with_tag(_entities_by_tag, {});", indent, result_var, tag));
+                self.output_vars.insert(PinId::new(node.id, "has_tag"), result_var);
+            }
+
+            // Debug data nodes
+            "debug/get_fps" => {
+                let result_var = self.next_var("fps");
+                lines.push(format!("{}let {} = fps;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "fps"), result_var);
+            }
+
+            // Time data nodes
+            "time/delta" => {
+                let delta_var = self.next_var("dt");
+                let delta_ms_var = self.next_var("dt_ms");
+                lines.push(format!("{}let {} = delta;", indent, delta_var));
+                lines.push(format!("{}let {} = delta * 1000.0;", indent, delta_ms_var));
+                self.output_vars.insert(PinId::new(node.id, "delta"), delta_var);
+                self.output_vars.insert(PinId::new(node.id, "delta_ms"), delta_ms_var);
+            }
+            "time/elapsed" => {
+                let secs_var = self.next_var("elapsed_secs");
+                let ms_var = self.next_var("elapsed_ms");
+                lines.push(format!("{}let {} = elapsed;", indent, secs_var));
+                lines.push(format!("{}let {} = elapsed * 1000.0;", indent, ms_var));
+                self.output_vars.insert(PinId::new(node.id, "seconds"), secs_var);
+                self.output_vars.insert(PinId::new(node.id, "milliseconds"), ms_var);
+            }
+            "time/frame_count" => {
+                let frame_var = self.next_var("frame_count");
+                lines.push(format!("{}let {} = frame;", indent, frame_var));
+                self.output_vars.insert(PinId::new(node.id, "frames"), frame_var);
+            }
+            "time/get_scale" => {
+                let scale_var = self.next_var("time_scale");
+                lines.push(format!("{}let {} = time_scale;", indent, scale_var));
+                self.output_vars.insert(PinId::new(node.id, "scale"), scale_var);
+            }
+            "time/is_timer_finished" => {
+                let timer_name = self.get_input_value(node, "timer");
+                let result_var = self.next_var("timer_finished");
+                lines.push(format!("{}let {} = timer_just_finished(timers_finished, {});", indent, result_var, timer_name));
+                self.output_vars.insert(PinId::new(node.id, "finished"), result_var);
+            }
+            "time/get_timer_progress" => {
+                let timer_name = self.get_input_value(node, "timer");
+                let result_var = self.next_var("timer_progress");
+                lines.push(format!("{}let {} = timer_progress(timers_progress, {});", indent, result_var, timer_name));
+                self.output_vars.insert(PinId::new(node.id, "progress"), result_var);
             }
 
             _ => {}
@@ -318,6 +624,329 @@ impl<'a> CodegenContext<'a> {
                 let yaw = self.get_input_value(node, "yaw");
                 let roll = self.get_input_value(node, "roll");
                 lines.push(format!("{}rotate({}, {}, {});", indent, pitch, yaw, roll));
+            }
+            "transform/set_scale" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_scale({}, {}, {});", indent, x, y, z));
+            }
+            "transform/look_at" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}look_at({}, {}, {});", indent, x, y, z));
+            }
+
+            // Physics actions
+            "physics/apply_force" => {
+                let fx = self.get_input_value(node, "force_x");
+                let fy = self.get_input_value(node, "force_y");
+                let fz = self.get_input_value(node, "force_z");
+                lines.push(format!("{}apply_force({}, {}, {});", indent, fx, fy, fz));
+            }
+            "physics/apply_impulse" => {
+                let ix = self.get_input_value(node, "impulse_x");
+                let iy = self.get_input_value(node, "impulse_y");
+                let iz = self.get_input_value(node, "impulse_z");
+                lines.push(format!("{}apply_impulse({}, {}, {});", indent, ix, iy, iz));
+            }
+            "physics/apply_torque" => {
+                let tx = self.get_input_value(node, "torque_x");
+                let ty = self.get_input_value(node, "torque_y");
+                let tz = self.get_input_value(node, "torque_z");
+                lines.push(format!("{}apply_torque({}, {}, {});", indent, tx, ty, tz));
+            }
+            "physics/set_velocity" => {
+                let vx = self.get_input_value(node, "velocity_x");
+                let vy = self.get_input_value(node, "velocity_y");
+                let vz = self.get_input_value(node, "velocity_z");
+                lines.push(format!("{}set_velocity({}, {}, {});", indent, vx, vy, vz));
+            }
+            "physics/set_angular_velocity" => {
+                let avx = self.get_input_value(node, "angular_velocity_x");
+                let avy = self.get_input_value(node, "angular_velocity_y");
+                let avz = self.get_input_value(node, "angular_velocity_z");
+                lines.push(format!("{}set_angular_velocity({}, {}, {});", indent, avx, avy, avz));
+            }
+            "physics/set_gravity_scale" => {
+                let scale = self.get_input_value(node, "scale");
+                lines.push(format!("{}set_gravity_scale({});", indent, scale));
+            }
+
+            // Audio actions
+            "audio/play_sound" => {
+                let sound = self.get_input_value(node, "sound");
+                let volume = self.get_input_value(node, "volume");
+                lines.push(format!("{}play_sound_at_volume({}, {});", indent, sound, volume));
+            }
+            "audio/play_sound_at" => {
+                let sound = self.get_input_value(node, "sound");
+                let volume = self.get_input_value(node, "volume");
+                let px = self.get_input_value(node, "position_x");
+                let py = self.get_input_value(node, "position_y");
+                let pz = self.get_input_value(node, "position_z");
+                lines.push(format!("{}play_sound_3d_at_volume({}, {}, {}, {}, {});", indent, sound, volume, px, py, pz));
+            }
+            "audio/play_music" => {
+                let music = self.get_input_value(node, "music");
+                let volume = self.get_input_value(node, "volume");
+                let fade_in = self.get_input_value(node, "fade_in");
+                lines.push(format!("{}play_music_with_fade({}, {}, {});", indent, music, volume, fade_in));
+            }
+            "audio/stop_music" => {
+                let fade_out = self.get_input_value(node, "fade_out");
+                lines.push(format!("{}stop_music_with_fade({});", indent, fade_out));
+            }
+            "audio/set_volume" | "audio/set_master_volume" => {
+                let volume = self.get_input_value(node, "volume");
+                lines.push(format!("{}set_master_volume({});", indent, volume));
+            }
+            "audio/stop_all_sounds" => {
+                lines.push(format!("{}stop_all_sounds();", indent));
+            }
+
+            // ECS actions
+            "ecs/spawn_entity" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}spawn_entity({});", indent, name));
+            }
+            "ecs/despawn_entity" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}despawn_entity({});", indent, entity));
+            }
+            "ecs/spawn_primitive" | "rendering/spawn_primitive" => {
+                let primitive_type = node.input_values.get("primitive_type")
+                    .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
+                    .unwrap_or("cube");
+                let name = self.get_input_value(node, "name");
+                let x = self.get_input_value(node, "position_x");
+                let y = self.get_input_value(node, "position_y");
+                let z = self.get_input_value(node, "position_z");
+                match primitive_type {
+                    "cube" => lines.push(format!("{}spawn_cube_at({}, {}, {}, {});", indent, name, x, y, z)),
+                    "sphere" => lines.push(format!("{}spawn_sphere_at({}, {}, {}, {});", indent, name, x, y, z)),
+                    "plane" => lines.push(format!("{}spawn_plane_at({}, {}, {}, {});", indent, name, x, y, z)),
+                    "cylinder" => lines.push(format!("{}spawn_cylinder_at({}, {}, {}, {});", indent, name, x, y, z)),
+                    "capsule" => lines.push(format!("{}spawn_capsule_at({}, {}, {}, {});", indent, name, x, y, z)),
+                    _ => lines.push(format!("{}spawn_cube_at({}, {}, {}, {});", indent, name, x, y, z)),
+                }
+            }
+            "ecs/despawn_self" => {
+                lines.push(format!("{}despawn_self();", indent));
+            }
+            "ecs/add_tag" => {
+                let tag = self.get_input_value(node, "tag");
+                lines.push(format!("{}add_tag({});", indent, tag));
+            }
+            "ecs/remove_tag" => {
+                let tag = self.get_input_value(node, "tag");
+                lines.push(format!("{}remove_tag({});", indent, tag));
+            }
+
+            // Rendering actions
+            "rendering/set_color" | "rendering/set_material_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                let a = self.get_input_value(node, "a");
+                lines.push(format!("{}set_color({}, {}, {}, {});", indent, r, g, b, a));
+            }
+            "rendering/set_color_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                let a = self.get_input_value(node, "a");
+                lines.push(format!("{}set_color_of({}, {}, {}, {}, {});", indent, entity, r, g, b, a));
+            }
+            "rendering/set_visibility" => {
+                let visible = self.get_input_value(node, "visible");
+                lines.push(format!("{}set_visible({});", indent, visible));
+            }
+            "rendering/set_visibility_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let visible = self.get_input_value(node, "visible");
+                lines.push(format!("{}set_visible_of({}, {});", indent, entity, visible));
+            }
+            "rendering/show" => {
+                lines.push(format!("{}show();", indent));
+            }
+            "rendering/hide" => {
+                lines.push(format!("{}hide();", indent));
+            }
+            "rendering/set_light_intensity" => {
+                let intensity = self.get_input_value(node, "intensity");
+                lines.push(format!("{}set_light_intensity({});", indent, intensity));
+            }
+            "rendering/set_light_intensity_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let intensity = self.get_input_value(node, "intensity");
+                lines.push(format!("{}set_light_intensity_of({}, {});", indent, entity, intensity));
+            }
+            "rendering/set_light_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_light_color({}, {}, {});", indent, r, g, b));
+            }
+            "rendering/set_light_color_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_light_color_of({}, {}, {}, {});", indent, entity, r, g, b));
+            }
+            "rendering/set_opacity" => {
+                let alpha = self.get_input_value(node, "alpha");
+                lines.push(format!("{}set_opacity({});", indent, alpha));
+            }
+
+            // Animation actions
+            "animation/play" | "animation/play_animation" => {
+                let name = self.get_input_value(node, "name");
+                let looping = self.get_input_value(node, "looping");
+                let speed = self.get_input_value(node, "speed");
+                lines.push(format!("{}play_animation({}, {}, {});", indent, name, looping, speed));
+            }
+            "animation/play_animation_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                let looping = self.get_input_value(node, "looping");
+                let speed = self.get_input_value(node, "speed");
+                lines.push(format!("{}play_animation_of({}, {}, {}, {});", indent, entity, name, looping, speed));
+            }
+            "animation/stop" | "animation/stop_animation" => {
+                lines.push(format!("{}stop_animation();", indent));
+            }
+            "animation/stop_animation_of" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}stop_animation_of({});", indent, entity));
+            }
+            "animation/set_speed" | "animation/set_animation_speed" => {
+                let speed = self.get_input_value(node, "speed");
+                lines.push(format!("{}set_animation_speed({});", indent, speed));
+            }
+            "animation/set_animation_speed_of" => {
+                let entity = self.get_input_value(node, "entity");
+                let speed = self.get_input_value(node, "speed");
+                lines.push(format!("{}set_animation_speed_of({}, {});", indent, entity, speed));
+            }
+
+            // Camera actions
+            "camera/set_target" | "camera/look_at" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}camera_look_at({}, {}, {});", indent, x, y, z));
+            }
+            "camera/set_zoom" => {
+                let zoom = self.get_input_value(node, "zoom");
+                lines.push(format!("{}set_camera_zoom({});", indent, zoom));
+            }
+            "camera/screen_shake" => {
+                let intensity = self.get_input_value(node, "intensity");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}screen_shake({}, {});", indent, intensity, duration));
+            }
+            "camera/follow_entity" => {
+                let entity = self.get_input_value(node, "entity");
+                let offset_x = self.get_input_value(node, "offset_x");
+                let offset_y = self.get_input_value(node, "offset_y");
+                let offset_z = self.get_input_value(node, "offset_z");
+                let smoothing = self.get_input_value(node, "smoothing");
+                lines.push(format!("{}camera_follow({}, {}, {}, {}, {});", indent, entity, offset_x, offset_y, offset_z, smoothing));
+            }
+            "camera/stop_follow" => {
+                lines.push(format!("{}camera_stop_follow();", indent));
+            }
+
+            // Scene actions
+            "scene/load" | "scene/load_scene" => {
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}load_scene({});", indent, path));
+            }
+            "scene/spawn_prefab" => {
+                let path = self.get_input_value(node, "path");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}spawn_prefab({}, {}, {}, {});", indent, path, x, y, z));
+            }
+            "scene/spawn_prefab_rotated" => {
+                let path = self.get_input_value(node, "path");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let rx = self.get_input_value(node, "rotation_x");
+                let ry = self.get_input_value(node, "rotation_y");
+                let rz = self.get_input_value(node, "rotation_z");
+                lines.push(format!("{}spawn_prefab_rotated({}, {}, {}, {}, {}, {}, {});", indent, path, x, y, z, rx, ry, rz));
+            }
+            "scene/spawn_prefab_here" => {
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}spawn_prefab_here({});", indent, path));
+            }
+
+            // Debug actions
+            "debug/log_message" | "debug/print" => {
+                let message = self.get_input_value(node, "message");
+                lines.push(format!("{}log({});", indent, message));
+            }
+            "debug/log_warning" => {
+                let message = self.get_input_value(node, "message");
+                lines.push(format!("{}log_warn({});", indent, message));
+            }
+            "debug/log_error" => {
+                let message = self.get_input_value(node, "message");
+                lines.push(format!("{}log_error({});", indent, message));
+            }
+            "debug/debug_line" => {
+                let sx = self.get_input_value(node, "start_x");
+                let sy = self.get_input_value(node, "start_y");
+                let sz = self.get_input_value(node, "start_z");
+                let ex = self.get_input_value(node, "end_x");
+                let ey = self.get_input_value(node, "end_y");
+                let ez = self.get_input_value(node, "end_z");
+                lines.push(format!("{}draw_line({}, {}, {}, {}, {}, {});", indent, sx, sy, sz, ex, ey, ez));
+            }
+            "debug/debug_sphere" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let radius = self.get_input_value(node, "radius");
+                lines.push(format!("{}draw_sphere({}, {}, {}, {});", indent, x, y, z, radius));
+            }
+            "debug/debug_box" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let hx = self.get_input_value(node, "half_x");
+                let hy = self.get_input_value(node, "half_y");
+                let hz = self.get_input_value(node, "half_z");
+                lines.push(format!("{}draw_box({}, {}, {}, {}, {}, {});", indent, x, y, z, hx, hy, hz));
+            }
+            "debug/debug_point" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let size = self.get_input_value(node, "size");
+                lines.push(format!("{}draw_point({}, {}, {}, {});", indent, x, y, z, size));
+            }
+            "debug/debug_ray" => {
+                let ox = self.get_input_value(node, "origin_x");
+                let oy = self.get_input_value(node, "origin_y");
+                let oz = self.get_input_value(node, "origin_z");
+                let dx = self.get_input_value(node, "direction_x");
+                let dy = self.get_input_value(node, "direction_y");
+                let dz = self.get_input_value(node, "direction_z");
+                let length = self.get_input_value(node, "length");
+                lines.push(format!("{}draw_ray({}, {}, {}, {}, {}, {}, {});", indent, ox, oy, oz, dx, dy, dz, length));
+            }
+            "debug/assert" => {
+                let condition = self.get_input_value(node, "condition");
+                let message = self.get_input_value(node, "message");
+                lines.push(format!("{}assert({}, {});", indent, condition, message));
             }
 
             // Utility actions
@@ -368,6 +997,317 @@ impl<'a> CodegenContext<'a> {
                     let branch_lines = self.follow_flow_from(node.id, &output_name);
                     lines.extend(branch_lines);
                 }
+                return lines;
+            }
+
+            // Timer flow nodes
+            "time/start_timer" => {
+                let name = self.get_input_value(node, "name");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}start_timer({}, {});", indent, name, duration));
+            }
+            "time/start_timer_repeating" => {
+                let name = self.get_input_value(node, "name");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}start_timer_repeating({}, {});", indent, name, duration));
+            }
+            "time/stop_timer" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}stop_timer({});", indent, name));
+            }
+            "time/pause_timer" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}pause_timer({});", indent, name));
+            }
+            "time/resume_timer" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}resume_timer({});", indent, name));
+            }
+            "time/delay" => {
+                let seconds = self.get_input_value(node, "duration");
+                let callback = self.get_input_value(node, "callback");
+                lines.push(format!("{}delay({}, {});", indent, seconds, callback));
+            }
+
+            // Flow control - For loop
+            "flow/for" => {
+                let start = self.get_input_value(node, "start");
+                let end = self.get_input_value(node, "end");
+                let step = self.get_input_value(node, "step");
+                let index_var = self.next_var("i");
+
+                // Make index available as output
+                self.output_vars.insert(PinId::new(node.id, "index"), index_var.clone());
+
+                lines.push(format!("{}for {} in range({}, {}, {}) {{", indent, index_var, start, end, step));
+
+                // Generate loop body
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "loop");
+                lines.extend(body_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+
+                // Follow completed
+                let completed_lines = self.follow_flow_from(node.id, "completed");
+                lines.extend(completed_lines);
+
+                return lines;
+            }
+
+            // Flow control - While loop
+            "flow/while" => {
+                let condition = self.get_input_value(node, "condition");
+
+                lines.push(format!("{}while {} {{", indent, condition));
+
+                // Generate loop body
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "loop");
+                lines.extend(body_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+
+                // Follow completed
+                let completed_lines = self.follow_flow_from(node.id, "completed");
+                lines.extend(completed_lines);
+
+                return lines;
+            }
+
+            // Flow control - break
+            "flow/break" => {
+                lines.push(format!("{}break;", indent));
+                return lines; // Don't follow exec after break
+            }
+
+            // Flow control - continue
+            "flow/continue" => {
+                lines.push(format!("{}continue;", indent));
+                return lines; // Don't follow exec after continue
+            }
+
+            // Switch on int
+            "flow/switch_int" => {
+                let value = self.get_input_value(node, "value");
+                lines.push(format!("{}switch {} {{", indent, value));
+
+                for i in 0..4 {
+                    let case_name = format!("case_{}", i);
+                    self.indent += 1;
+                    let case_lines = self.follow_flow_from(node.id, &case_name);
+                    if !case_lines.is_empty() {
+                        lines.push(format!("{}{} => {{", self.indent_str(), i));
+                        self.indent += 1;
+                        lines.extend(case_lines);
+                        self.indent -= 1;
+                        lines.push(format!("{}}}", self.indent_str()));
+                    }
+                    self.indent -= 1;
+                }
+
+                // Default case
+                self.indent += 1;
+                let default_lines = self.follow_flow_from(node.id, "default");
+                if !default_lines.is_empty() {
+                    lines.push(format!("{}_ => {{", self.indent_str()));
+                    self.indent += 1;
+                    lines.extend(default_lines);
+                    self.indent -= 1;
+                    lines.push(format!("{}}}", self.indent_str()));
+                }
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+                return lines;
+            }
+
+            // Do once
+            "flow/do_once" => {
+                let flag_var = self.next_var("do_once");
+                lines.push(format!("{}if !{} {{", indent, flag_var));
+                lines.push(format!("{}    {} = true;", indent, flag_var));
+
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "exec");
+                lines.extend(body_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+                return lines;
+            }
+
+            // Flip flop
+            "flow/flip_flop" => {
+                let state_var = self.next_var("flip_state");
+                lines.push(format!("{}if {} {{", indent, state_var));
+
+                self.indent += 1;
+                let a_lines = self.follow_flow_from(node.id, "a");
+                lines.extend(a_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}} else {{", indent));
+
+                self.indent += 1;
+                let b_lines = self.follow_flow_from(node.id, "b");
+                lines.extend(b_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+                lines.push(format!("{}{} = !{};", indent, state_var, state_var));
+                return lines;
+            }
+
+            // Do-while loop
+            "flow/do_while" => {
+                let condition = self.get_input_value(node, "condition");
+
+                lines.push(format!("{}loop {{", indent));
+
+                // Generate loop body
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "loop");
+                lines.extend(body_lines);
+
+                // Break condition at end
+                lines.push(format!("{}if !({}) {{ break; }}", self.indent_str(), condition));
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+
+                // Follow completed
+                let completed_lines = self.follow_flow_from(node.id, "completed");
+                lines.extend(completed_lines);
+
+                return lines;
+            }
+
+            // For-each loop (over array)
+            "flow/for_each" => {
+                let array = self.get_input_value(node, "array");
+                let item_var = self.next_var("item");
+                let index_var = self.next_var("idx");
+
+                // Make item and index available as outputs
+                self.output_vars.insert(PinId::new(node.id, "element"), item_var.clone());
+                self.output_vars.insert(PinId::new(node.id, "index"), index_var.clone());
+
+                lines.push(format!("{}let {} = 0;", indent, index_var));
+                lines.push(format!("{}for {} in {} {{", indent, item_var, array));
+
+                // Generate loop body
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "loop");
+                lines.extend(body_lines);
+                lines.push(format!("{}{} += 1;", self.indent_str(), index_var));
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+
+                // Follow completed
+                let completed_lines = self.follow_flow_from(node.id, "completed");
+                lines.extend(completed_lines);
+
+                return lines;
+            }
+
+            // Switch on string
+            "flow/switch_string" => {
+                let value = self.get_input_value(node, "value");
+
+                // Generate if-else chain for string matching
+                let mut first = true;
+                for i in 0..4 {
+                    let case_val = node.input_values.get(&format!("case_{}_value", i))
+                        .and_then(|v| if let PinValue::String(s) = v { Some(s.clone()) } else { None });
+
+                    if let Some(case_str) = case_val {
+                        self.indent += 1;
+                        let case_lines = self.follow_flow_from(node.id, &format!("case_{}", i));
+                        self.indent -= 1;
+
+                        if !case_lines.is_empty() {
+                            if first {
+                                lines.push(format!("{}if {} == \"{}\" {{", indent, value, case_str));
+                                first = false;
+                            } else {
+                                lines.push(format!("{}}} else if {} == \"{}\" {{", indent, value, case_str));
+                            }
+                            self.indent += 1;
+                            lines.extend(case_lines);
+                            self.indent -= 1;
+                        }
+                    }
+                }
+
+                // Default case
+                self.indent += 1;
+                let default_lines = self.follow_flow_from(node.id, "default");
+                self.indent -= 1;
+
+                if !default_lines.is_empty() {
+                    if first {
+                        // No cases matched, just run default
+                        lines.extend(default_lines);
+                    } else {
+                        lines.push(format!("{}}} else {{", indent));
+                        self.indent += 1;
+                        lines.extend(default_lines);
+                        self.indent -= 1;
+                        lines.push(format!("{}}}", indent));
+                    }
+                } else if !first {
+                    lines.push(format!("{}}}", indent));
+                }
+
+                return lines;
+            }
+
+            // Return (early exit from function)
+            "flow/return" => {
+                lines.push(format!("{}return;", indent));
+                return lines; // Don't follow exec after return
+            }
+
+            // Gate (conditional pass-through)
+            "flow/gate" => {
+                let condition = self.get_input_value(node, "open");
+                lines.push(format!("{}if {} {{", indent, condition));
+
+                self.indent += 1;
+                let pass_lines = self.follow_flow_from(node.id, "exec");
+                lines.extend(pass_lines);
+                self.indent -= 1;
+
+                lines.push(format!("{}}}", indent));
+                return lines;
+            }
+
+            // Multi-gate (round robin execution)
+            "flow/multi_gate" => {
+                let state_var = self.next_var("gate_idx");
+                let num_outputs = 4; // Fixed number of outputs
+
+                lines.push(format!("{}switch {} {{", indent, state_var));
+
+                for i in 0..num_outputs {
+                    self.indent += 1;
+                    let out_lines = self.follow_flow_from(node.id, &format!("out_{}", i));
+                    if !out_lines.is_empty() {
+                        lines.push(format!("{}{} => {{", self.indent_str(), i));
+                        self.indent += 1;
+                        lines.extend(out_lines);
+                        self.indent -= 1;
+                        lines.push(format!("{}}}", self.indent_str()));
+                    }
+                    self.indent -= 1;
+                }
+
+                lines.push(format!("{}}}", indent));
+                lines.push(format!("{}{} = ({} + 1) % {};", indent, state_var, state_var, num_outputs));
                 return lines;
             }
 

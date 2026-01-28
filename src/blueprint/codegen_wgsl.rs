@@ -543,6 +543,329 @@ impl<'a> WgslCodegenContext<'a> {
                 self.output_vars.insert(PinId::output(node.id, "value"), result_var);
             }
 
+            // ==================== COLOR MANIPULATION NODES ====================
+            "shader/rgb_to_hsv" => {
+                let rgb = self.get_input_value(node, "rgb");
+                let hsv_var = self.next_var("hsv");
+                self.fragment_lines.push(format!("    let {} = rgb_to_hsv({});", hsv_var, rgb));
+                self.output_vars.insert(PinId::output(node.id, "hsv"), hsv_var.clone());
+                self.output_vars.insert(PinId::output(node.id, "h"), format!("{}.x", hsv_var));
+                self.output_vars.insert(PinId::output(node.id, "s"), format!("{}.y", hsv_var));
+                self.output_vars.insert(PinId::output(node.id, "v"), format!("{}.z", hsv_var));
+            }
+
+            "shader/hsv_to_rgb" => {
+                let h = self.get_input_value(node, "h");
+                let s = self.get_input_value(node, "s");
+                let v = self.get_input_value(node, "v");
+                let result_var = self.next_var("rgb");
+                self.fragment_lines.push(format!("    let {} = hsv_to_rgb(vec3<f32>({}, {}, {}));", result_var, h, s, v));
+                self.output_vars.insert(PinId::output(node.id, "rgb"), result_var);
+            }
+
+            "shader/hue_shift" => {
+                let color = self.get_input_value(node, "color");
+                let shift = self.get_input_value(node, "shift");
+                let result_var = self.next_var("hue_shifted");
+                self.fragment_lines.push(format!("    let hsv_{} = rgb_to_hsv({});", self.var_counter, color));
+                self.fragment_lines.push(format!("    let {} = hsv_to_rgb(vec3<f32>(fract(hsv_{}.x + {}), hsv_{}.y, hsv_{}.z));",
+                    result_var, self.var_counter, shift, self.var_counter, self.var_counter));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/saturation" => {
+                let color = self.get_input_value(node, "color");
+                let amount = self.get_input_value(node, "amount");
+                let result_var = self.next_var("saturated");
+                self.fragment_lines.push(format!(
+                    "    let lum_{} = dot({}, vec3<f32>(0.2126, 0.7152, 0.0722));",
+                    self.var_counter, color
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = mix(vec3<f32>(lum_{}), {}, {});",
+                    result_var, self.var_counter, color, amount
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/brightness" => {
+                let color = self.get_input_value(node, "color");
+                let amount = self.get_input_value(node, "amount");
+                let result_var = self.next_var("bright");
+                self.fragment_lines.push(format!("    let {} = {} + vec3<f32>({});", result_var, color, amount));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/contrast" => {
+                let color = self.get_input_value(node, "color");
+                let amount = self.get_input_value(node, "amount");
+                let result_var = self.next_var("contrast");
+                self.fragment_lines.push(format!("    let {} = ({} - 0.5) * {} + 0.5;", result_var, color, amount));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/desaturate" => {
+                let color = self.get_input_value(node, "color");
+                let amount = self.get_input_value(node, "amount");
+                let lum_var = self.next_var("lum");
+                let result_var = self.next_var("desat");
+                self.fragment_lines.push(format!("    let {} = dot({}, vec3<f32>(0.2126, 0.7152, 0.0722));", lum_var, color));
+                self.fragment_lines.push(format!("    let {} = mix({}, vec3<f32>({}), {});", result_var, color, lum_var, amount));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+                self.output_vars.insert(PinId::output(node.id, "luminance"), lum_var);
+            }
+
+            "shader/invert_color" => {
+                let color = self.get_input_value(node, "color");
+                let result_var = self.next_var("inverted");
+                self.fragment_lines.push(format!("    let {} = vec3<f32>(1.0) - {};", result_var, color));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            // ==================== UV MANIPULATION NODES ====================
+            "shader/uv_tiling" => {
+                let uv = self.get_input_value(node, "uv");
+                let tile_x = self.get_input_value(node, "tile_x");
+                let tile_y = self.get_input_value(node, "tile_y");
+                let result_var = self.next_var("uv_tiled");
+                self.fragment_lines.push(format!("    let {} = fract({} * vec2<f32>({}, {}));", result_var, uv, tile_x, tile_y));
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/uv_offset" => {
+                let uv = self.get_input_value(node, "uv");
+                let offset_x = self.get_input_value(node, "offset_x");
+                let offset_y = self.get_input_value(node, "offset_y");
+                let result_var = self.next_var("uv_offset");
+                self.fragment_lines.push(format!("    let {} = {} + vec2<f32>({}, {});", result_var, uv, offset_x, offset_y));
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/uv_rotate" => {
+                let uv = self.get_input_value(node, "uv");
+                let angle = self.get_input_value(node, "angle");
+                let center_x = self.get_input_value(node, "center_x");
+                let center_y = self.get_input_value(node, "center_y");
+                let result_var = self.next_var("uv_rotated");
+                self.fragment_lines.push(format!(
+                    "    let center_{} = vec2<f32>({}, {});", self.var_counter, center_x, center_y
+                ));
+                self.fragment_lines.push(format!(
+                    "    let cos_a_{} = cos({}); let sin_a_{} = sin({});",
+                    self.var_counter, angle, self.var_counter, angle
+                ));
+                self.fragment_lines.push(format!(
+                    "    let uv_c_{} = {} - center_{};",
+                    self.var_counter, uv, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = vec2<f32>(uv_c_{}.x * cos_a_{} - uv_c_{}.y * sin_a_{}, uv_c_{}.x * sin_a_{} + uv_c_{}.y * cos_a_{}) + center_{};",
+                    result_var, self.var_counter, self.var_counter, self.var_counter, self.var_counter,
+                    self.var_counter, self.var_counter, self.var_counter, self.var_counter, self.var_counter
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/uv_flipbook" => {
+                let uv = self.get_input_value(node, "uv");
+                let columns = self.get_input_value(node, "columns");
+                let rows = self.get_input_value(node, "rows");
+                let frame = self.get_input_value(node, "frame");
+                let result_var = self.next_var("uv_flipbook");
+                self.fragment_lines.push(format!(
+                    "    let frame_idx_{} = u32(floor({})) % u32({} * {});",
+                    self.var_counter, frame, columns, rows
+                ));
+                self.fragment_lines.push(format!(
+                    "    let frame_x_{} = f32(frame_idx_{} % u32({}));",
+                    self.var_counter, self.var_counter, columns
+                ));
+                self.fragment_lines.push(format!(
+                    "    let frame_y_{} = f32(frame_idx_{} / u32({}));",
+                    self.var_counter, self.var_counter, columns
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = ({} + vec2<f32>(frame_x_{}, frame_y_{})) / vec2<f32>({}, {});",
+                    result_var, uv, self.var_counter, self.var_counter, columns, rows
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/triplanar" => {
+                let position = self.get_input_value(node, "position");
+                let normal = self.get_input_value(node, "normal");
+                let scale = self.get_input_value(node, "scale");
+                let blend = self.get_input_value(node, "blend");
+                let weights_var = self.next_var("tri_weights");
+                self.fragment_lines.push(format!(
+                    "    let {} = pow(abs({}), vec3<f32>({}));",
+                    weights_var, normal, blend
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {}_norm = {} / ({}.x + {}.y + {}.z);",
+                    weights_var, weights_var, weights_var, weights_var, weights_var
+                ));
+                self.output_vars.insert(PinId::output(node.id, "uv_x"), format!("{}.yz * {}", position, scale));
+                self.output_vars.insert(PinId::output(node.id, "uv_y"), format!("{}.xz * {}", position, scale));
+                self.output_vars.insert(PinId::output(node.id, "uv_z"), format!("{}.xy * {}", position, scale));
+                self.output_vars.insert(PinId::output(node.id, "weights"), format!("{}_norm", weights_var));
+            }
+
+            // ==================== ADVANCED NOISE NODES ====================
+            "shader/noise_fbm" => {
+                self.uses_noise = true;
+                let uv = self.get_input_value(node, "uv");
+                let octaves = self.get_input_value(node, "octaves");
+                let frequency = self.get_input_value(node, "frequency");
+                let amplitude = self.get_input_value(node, "amplitude");
+                let lacunarity = self.get_input_value(node, "lacunarity");
+                let persistence = self.get_input_value(node, "persistence");
+                let result_var = self.next_var("fbm");
+                self.fragment_lines.push(format!(
+                    "    let {} = fbm_noise({}, i32({}), {}, {}, {}, {});",
+                    result_var, uv, octaves, frequency, amplitude, lacunarity, persistence
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/noise_turbulence" => {
+                self.uses_noise = true;
+                let uv = self.get_input_value(node, "uv");
+                let octaves = self.get_input_value(node, "octaves");
+                let frequency = self.get_input_value(node, "frequency");
+                let amplitude = self.get_input_value(node, "amplitude");
+                let result_var = self.next_var("turbulence");
+                self.fragment_lines.push(format!(
+                    "    let {} = turbulence_noise({}, i32({}), {}, {});",
+                    result_var, uv, octaves, frequency, amplitude
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/noise_ridged" => {
+                self.uses_noise = true;
+                let uv = self.get_input_value(node, "uv");
+                let octaves = self.get_input_value(node, "octaves");
+                let frequency = self.get_input_value(node, "frequency");
+                let sharpness = self.get_input_value(node, "sharpness");
+                let result_var = self.next_var("ridged");
+                self.fragment_lines.push(format!(
+                    "    let {} = ridged_noise({}, i32({}), {}, {});",
+                    result_var, uv, octaves, frequency, sharpness
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/domain_warp" => {
+                self.uses_noise = true;
+                let uv = self.get_input_value(node, "uv");
+                let frequency = self.get_input_value(node, "frequency");
+                let amplitude = self.get_input_value(node, "amplitude");
+                let iterations = self.get_input_value(node, "iterations");
+                let result_uv = self.next_var("warped_uv");
+                let result_val = self.next_var("warp_value");
+                self.fragment_lines.push(format!(
+                    "    var {} = {};", result_uv, uv
+                ));
+                self.fragment_lines.push(format!(
+                    "    for (var warp_i_{} = 0; warp_i_{} < i32({}); warp_i_{}++) {{",
+                    self.var_counter, self.var_counter, iterations, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "        {} = {} + {} * vec2<f32>(gradient_noise({} * {}), gradient_noise({} * {} + vec2<f32>(5.2, 1.3)));",
+                    result_uv, result_uv, amplitude, result_uv, frequency, result_uv, frequency
+                ));
+                self.fragment_lines.push("    }".to_string());
+                self.fragment_lines.push(format!(
+                    "    let {} = gradient_noise({} * {});",
+                    result_val, result_uv, frequency
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_uv);
+                self.output_vars.insert(PinId::output(node.id, "value"), result_val);
+            }
+
+            // ==================== EFFECT NODES ====================
+            "shader/rim_light" => {
+                let normal = self.get_input_value(node, "normal");
+                let view_dir = self.get_input_value(node, "view_dir");
+                let power = self.get_input_value(node, "power");
+                let intensity = self.get_input_value(node, "intensity");
+                let result_var = self.next_var("rim");
+                self.fragment_lines.push(format!(
+                    "    let {} = pow(1.0 - saturate(dot(normalize({}), normalize({}))), {}) * {};",
+                    result_var, normal, view_dir, power, intensity
+                ));
+                self.output_vars.insert(PinId::output(node.id, "rim"), result_var);
+            }
+
+            "shader/parallax" => {
+                let uv = self.get_input_value(node, "uv");
+                let height = self.get_input_value(node, "height");
+                let view_dir = self.get_input_value(node, "view_dir");
+                let scale = self.get_input_value(node, "scale");
+                let result_var = self.next_var("parallax_uv");
+                self.fragment_lines.push(format!(
+                    "    let {} = {} + ({}.xy / {}.z) * (({} - 0.5) * {});",
+                    result_var, uv, view_dir, view_dir, height, scale
+                ));
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/normal_blend" => {
+                let base = self.get_input_value(node, "base");
+                let detail = self.get_input_value(node, "detail");
+                let result_var = self.next_var("blended_normal");
+                // Reoriented Normal Mapping blend
+                self.fragment_lines.push(format!(
+                    "    let t_{} = {} * vec3<f32>(2.0, 2.0, 2.0) + vec3<f32>(-1.0, -1.0, 0.0);",
+                    self.var_counter, base
+                ));
+                self.fragment_lines.push(format!(
+                    "    let u_{} = {} * vec3<f32>(-2.0, -2.0, 2.0) + vec3<f32>(1.0, 1.0, -1.0);",
+                    self.var_counter, detail
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = normalize(t_{} * dot(t_{}, u_{}) - u_{} * t_{}.z);",
+                    result_var, self.var_counter, self.var_counter, self.var_counter, self.var_counter, self.var_counter
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/detail_blend" => {
+                let base = self.get_input_value(node, "base");
+                let detail = self.get_input_value(node, "detail");
+                let amount = self.get_input_value(node, "amount");
+                let result_var = self.next_var("detail_blend");
+                // Overlay blend mode
+                self.fragment_lines.push(format!(
+                    "    let overlay_{} = select({} * {} * 2.0, 1.0 - 2.0 * (1.0 - {}) * (1.0 - {}), {} < vec3<f32>(0.5));",
+                    self.var_counter, base, detail, base, detail, base
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = mix({}, overlay_{}, {});",
+                    result_var, base, self.var_counter, amount
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/posterize" => {
+                let color = self.get_input_value(node, "color");
+                let levels = self.get_input_value(node, "levels");
+                let result_var = self.next_var("posterized");
+                self.fragment_lines.push(format!(
+                    "    let {} = floor({} * {}) / {};",
+                    result_var, color, levels, levels
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
             _ => {}
         }
     }
@@ -621,6 +944,76 @@ fn voronoi_noise(p: vec2<f32>) -> vec2<f32> {
     }
 
     return vec2<f32>(sqrt(min_dist), cell_id);
+}
+
+// Fractal Brownian Motion noise
+fn fbm_noise(p: vec2<f32>, octaves: i32, frequency: f32, amplitude: f32, lacunarity: f32, persistence: f32) -> f32 {
+    var value = 0.0;
+    var freq = frequency;
+    var amp = amplitude;
+    var pos = p;
+
+    for (var i = 0; i < octaves; i++) {
+        value += amp * gradient_noise(pos * freq);
+        freq *= lacunarity;
+        amp *= persistence;
+    }
+
+    return value;
+}
+
+// Turbulence noise (absolute value FBM)
+fn turbulence_noise(p: vec2<f32>, octaves: i32, frequency: f32, amplitude: f32) -> f32 {
+    var value = 0.0;
+    var freq = frequency;
+    var amp = amplitude;
+    var pos = p;
+
+    for (var i = 0; i < octaves; i++) {
+        value += amp * abs(gradient_noise(pos * freq) * 2.0 - 1.0);
+        freq *= 2.0;
+        amp *= 0.5;
+    }
+
+    return value;
+}
+
+// Ridged multifractal noise
+fn ridged_noise(p: vec2<f32>, octaves: i32, frequency: f32, sharpness: f32) -> f32 {
+    var value = 0.0;
+    var freq = frequency;
+    var amp = 0.5;
+    var weight = 1.0;
+    var pos = p;
+
+    for (var i = 0; i < octaves; i++) {
+        var n = 1.0 - abs(gradient_noise(pos * freq) * 2.0 - 1.0);
+        n = pow(n, sharpness);
+        n *= weight;
+        weight = clamp(n, 0.0, 1.0);
+        value += n * amp;
+        freq *= 2.0;
+        amp *= 0.5;
+    }
+
+    return value;
+}
+
+// RGB to HSV conversion
+fn rgb_to_hsv(rgb: vec3<f32>) -> vec3<f32> {
+    let K = vec4<f32>(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    let p = select(vec4<f32>(rgb.bg, K.wz), vec4<f32>(rgb.gb, K.xy), rgb.g < rgb.b);
+    let q = select(vec4<f32>(p.xyw, rgb.r), vec4<f32>(rgb.r, p.yzx), rgb.r < p.x);
+    let d = q.x - min(q.w, q.y);
+    let e = 1.0e-10;
+    return vec3<f32>(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+// HSV to RGB conversion
+fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
+    let K = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    let p = abs(fract(hsv.xxx + K.xyz) * 6.0 - K.www);
+    return hsv.z * mix(K.xxx, clamp(p - K.xxx, vec3<f32>(0.0), vec3<f32>(1.0)), hsv.y);
 }
 "#.to_string()
 }

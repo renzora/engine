@@ -5,9 +5,14 @@
 
 use bevy::prelude::*;
 
+#[cfg(feature = "physics")]
+use avian3d::prelude::*;
+
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
-use crate::shared::CameraNodeData;
-use crate::shared::CameraRigData;
+use crate::shared::{
+    CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData, RuntimePhysics,
+    spawn_entity_physics, despawn_physics_components,
+};
 use crate::{console_info, console_success, console_warn};
 
 pub struct PlayModePlugin;
@@ -19,6 +24,8 @@ impl Plugin for PlayModePlugin {
             (
                 handle_play_mode_input,
                 handle_play_mode_transitions,
+                #[cfg(feature = "physics")]
+                handle_physics_transitions,
             )
                 .chain()
                 .run_if(in_state(AppState::Editor)),
@@ -59,17 +66,98 @@ fn handle_play_mode_transitions(
     camera_rigs: Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
     mut editor_camera: Query<&mut Camera, With<ViewportCamera>>,
+    // Physics queries
+    physics_entities: Query<
+        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
+        Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+    >,
+    runtime_physics_entities: Query<Entity, With<RuntimePhysics>>,
 ) {
     // Handle request to enter play mode
     if play_mode.request_play {
         play_mode.request_play = false;
         enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera);
+
+        // Spawn physics components for all entities with physics data
+        spawn_play_mode_physics(&mut commands, &physics_entities);
     }
 
     // Handle request to exit play mode
     if play_mode.request_stop {
         play_mode.request_stop = false;
         exit_play_mode(&mut commands, &mut play_mode, &play_mode_cameras, &mut editor_camera);
+
+        // Despawn physics components from all entities
+        despawn_play_mode_physics(&mut commands, &runtime_physics_entities);
+    }
+}
+
+/// Handle physics pause/unpause based on play state
+#[cfg(feature = "physics")]
+fn handle_physics_transitions(
+    play_mode: Res<PlayModeState>,
+    mut physics_time: ResMut<Time<Physics>>,
+) {
+    // Only process if play mode state changed
+    if !play_mode.is_changed() {
+        return;
+    }
+
+    match play_mode.state {
+        PlayState::Playing => {
+            if physics_time.is_paused() {
+                physics_time.unpause();
+                info!("Physics unpaused for play mode");
+            }
+        }
+        PlayState::Paused => {
+            if !physics_time.is_paused() {
+                physics_time.pause();
+                info!("Physics paused");
+            }
+        }
+        PlayState::Editing => {
+            if !physics_time.is_paused() {
+                physics_time.pause();
+                info!("Physics paused (editing mode)");
+            }
+        }
+    }
+}
+
+/// Spawn physics components for all entities with PhysicsBodyData or CollisionShapeData
+fn spawn_play_mode_physics(
+    commands: &mut Commands,
+    physics_entities: &Query<
+        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
+        Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+    >,
+) {
+    let mut count = 0;
+    for (entity, body_data, shape_data) in physics_entities.iter() {
+        spawn_entity_physics(commands, entity, body_data, shape_data);
+        count += 1;
+    }
+
+    if count > 0 {
+        console_info!("Physics", "Spawned physics for {} entities", count);
+    }
+}
+
+/// Despawn physics components from all entities marked with RuntimePhysics
+fn despawn_play_mode_physics(
+    commands: &mut Commands,
+    runtime_physics_entities: &Query<Entity, With<RuntimePhysics>>,
+) {
+    let mut count = 0;
+    for entity in runtime_physics_entities.iter() {
+        despawn_physics_components(commands, entity);
+        commands.entity(entity).remove::<RuntimePhysics>();
+        count += 1;
+    }
+
+    if count > 0 {
+        console_info!("Physics", "Cleaned up physics from {} entities", count);
     }
 }
 

@@ -56,6 +56,17 @@ pub fn register(engine: &mut Engine) {
     // Timer State Queries (use scope variables)
     // ===================
 
+    // timer_just_finished(timers_finished, name) - Check if timer just finished this frame
+    // timers_finished is an array of timer names that just finished
+    engine.register_fn("timer_just_finished", |timers_finished: rhai::Array, name: ImmutableString| -> bool {
+        timers_finished.iter().any(|t| {
+            t.clone().try_cast::<ImmutableString>()
+                .map(|n| n.as_str() == name.as_str())
+                .unwrap_or(false)
+        })
+    });
+
+    // Old map-based API for backwards compatibility
     // timer_finished(timers_finished_map, name) - Check if timer just finished
     engine.register_fn("timer_finished", |timers_map: Map, name: ImmutableString| -> bool {
         timers_map.get(name.as_str())

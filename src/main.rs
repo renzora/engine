@@ -133,6 +133,10 @@ fn main() {
         .register_type::<shared::UILabelData>()
         .register_type::<shared::UIButtonData>()
         .register_type::<shared::UIImageData>()
+        // Light components
+        .register_type::<shared::PointLightData>()
+        .register_type::<shared::DirectionalLightData>()
+        .register_type::<shared::SpotLightData>()
         // Environment components
         .register_type::<shared::WorldEnvironmentData>()
         .register_type::<shared::SkyMode>()
@@ -172,6 +176,8 @@ fn main() {
             play_mode::PlayModePlugin,
             blueprint::BlueprintPlugin,
             blueprint::MaterialPreviewPlugin,
+            // Physics plugin (starts paused in editor, activated during play mode)
+            shared::RenzoraPhysicsPlugin::new(true),
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)

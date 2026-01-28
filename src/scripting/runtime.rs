@@ -1,5 +1,6 @@
 //! Script runtime - executes scripts and applies their commands
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use super::{
@@ -7,9 +8,49 @@ use super::{
     ScriptTime, ScriptTransform, RhaiScriptEngine, RhaiScriptContext, ChildNodeInfo,
     RhaiCommand,
 };
+use super::resources::{
+    AnimationCommandQueue, AudioCommand, AudioCommandQueue, CameraCommand, CameraCommandQueue,
+    DebugDrawCommand, DebugDrawQueue, EasingFunction, HealthCommand, HealthCommandQueue,
+    PhysicsCommand, PhysicsCommandQueue, RenderingCommand, RenderingCommandQueue,
+    SceneCommandQueue, ScriptCollisionEvents, ScriptTimers, SpriteAnimationCommandQueue,
+    TweenProperty, array_to_color,
+};
 use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
 use crate::core::resources::console::{console_log, LogLevel};
 use crate::project::CurrentProject;
+
+/// System parameter that bundles all script command queues together
+/// This reduces the parameter count for run_rhai_scripts to stay within Bevy's 16-param limit
+#[derive(SystemParam)]
+pub struct ScriptCommandQueues<'w> {
+    pub physics: ResMut<'w, PhysicsCommandQueue>,
+    pub timers: ResMut<'w, ScriptTimers>,
+    pub debug_draw: ResMut<'w, DebugDrawQueue>,
+    pub audio: ResMut<'w, AudioCommandQueue>,
+    pub rendering: ResMut<'w, RenderingCommandQueue>,
+    pub camera: ResMut<'w, CameraCommandQueue>,
+    pub scene: ResMut<'w, SceneCommandQueue>,
+    pub animation: ResMut<'w, AnimationCommandQueue>,
+    pub health: ResMut<'w, HealthCommandQueue>,
+    pub sprite_animation: ResMut<'w, SpriteAnimationCommandQueue>,
+    // Assets for primitive spawning
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    // Collision events for scripts
+    pub collisions: Res<'w, ScriptCollisionEvents>,
+}
+
+/// System parameter that bundles component queries for reading entity state
+#[derive(SystemParam)]
+pub struct ScriptComponentQueries<'w, 's> {
+    // Light queries for reading current values
+    pub point_lights: Query<'w, 's, &'static PointLight>,
+    pub spot_lights: Query<'w, 's, &'static SpotLight>,
+    pub directional_lights: Query<'w, 's, &'static DirectionalLight>,
+    // Material queries for reading current values
+    pub mesh_materials: Query<'w, 's, &'static MeshMaterial3d<StandardMaterial>>,
+    // Note: material_assets moved to ScriptCommandQueues as ResMut to avoid conflict
+}
 
 /// System that runs all scripts
 pub fn run_scripts(
@@ -130,9 +171,13 @@ pub fn run_rhai_scripts(
     play_mode: Res<PlayModeState>,
     mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>)>,
     mut all_transforms: Query<&mut Transform, Without<ScriptComponent>>,
-    editor_entities: Query<&EditorEntity>,
+    mut editor_entities: Query<(Entity, &mut EditorEntity)>,
     mut world_environments: Query<&mut WorldEnvironmentMarker>,
     mut visibility_query: Query<&mut Visibility>,
+    // Bundled command queues to stay within 16-param limit
+    mut queues: ScriptCommandQueues,
+    // Bundled component queries for reading entity state
+    component_queries: ScriptComponentQueries,
 ) {
     use std::collections::HashMap;
 
@@ -157,6 +202,33 @@ pub fn run_rhai_scripts(
     let mut child_changes: HashMap<Entity, TransformChange> = HashMap::new();
     // Collect all Rhai commands to process after the main loop
     let mut all_rhai_commands: Vec<(Entity, RhaiCommand)> = Vec::new();
+
+    // Pre-compute entity lookups for scripts
+    // Map of entity name → entity ID
+    let mut entities_by_name: HashMap<String, u64> = HashMap::new();
+    // Map of tag → list of entity IDs
+    let mut entities_by_tag: HashMap<String, Vec<u64>> = HashMap::new();
+
+    for entity_data in editor_entities.iter() {
+        let entity_id = entity_data.0.to_bits();
+        let editor_entity = entity_data.1;
+
+        // Add to name lookup
+        entities_by_name.insert(editor_entity.name.clone(), entity_id);
+
+        // Add to tag lookup (tags are comma-separated)
+        if !editor_entity.tag.is_empty() {
+            for tag in editor_entity.tag.split(',') {
+                let tag = tag.trim();
+                if !tag.is_empty() {
+                    entities_by_tag
+                        .entry(tag.to_string())
+                        .or_insert_with(Vec::new)
+                        .push(entity_id);
+                }
+            }
+        }
+    }
 
     for (entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
         if !script_comp.enabled {
@@ -193,8 +265,23 @@ pub fn run_rhai_scripts(
         ctx.self_entity_id = entity.to_bits();
         ctx.self_entity_name = editor_entities
             .get(entity)
-            .map(|e| e.name.clone())
+            .map(|(_, e)| e.name.clone())
             .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
+
+        // Set entity lookup data (cloned per-script to allow concurrent access)
+        ctx.found_entities = entities_by_name.clone();
+        ctx.entities_by_tag = entities_by_tag.clone();
+
+        // Set collision data for this entity
+        ctx.collisions_entered = queues.collisions.get_collisions_entered(entity)
+            .iter().map(|e| e.to_bits()).collect();
+        ctx.collisions_exited = queues.collisions.get_collisions_exited(entity)
+            .iter().map(|e| e.to_bits()).collect();
+        ctx.active_collisions = queues.collisions.get_active_collisions(entity)
+            .iter().map(|e| e.to_bits()).collect();
+
+        // Set timer data - get list of timers that just finished
+        ctx.timers_just_finished = queues.timers.get_just_finished();
 
         ctx.input_movement = input.get_movement_vector();
         ctx.mouse_position = input.mouse_position;
@@ -251,7 +338,7 @@ pub fn run_rhai_scripts(
                 if let Ok(child_transform) = all_transforms.get(child_entity) {
                     let child_name = editor_entities
                         .get(child_entity)
-                        .map(|e| e.name.clone())
+                        .map(|(_, e)| e.name.clone())
                         .unwrap_or_else(|_| format!("Entity_{}", child_entity.index()));
 
                     let (rx, ry, rz) = child_transform.rotation.to_euler(EulerRot::XYZ);
@@ -264,6 +351,26 @@ pub fn run_rhai_scripts(
                     });
                     child_name_to_entity.insert(child_name, child_entity);
                 }
+            }
+        }
+
+        // Get light data if this entity has a light component
+        if let Ok(light) = component_queries.point_lights.get(entity) {
+            ctx.self_light_intensity = light.intensity;
+            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+        } else if let Ok(light) = component_queries.spot_lights.get(entity) {
+            ctx.self_light_intensity = light.intensity;
+            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+        } else if let Ok(light) = component_queries.directional_lights.get(entity) {
+            ctx.self_light_intensity = light.illuminance;
+            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+        }
+
+        // Get material color if this entity has a mesh material
+        if let Ok(material_handle) = component_queries.mesh_materials.get(entity) {
+            if let Some(material) = queues.materials.get(&material_handle.0) {
+                let color = material.base_color.to_srgba();
+                ctx.self_material_color = [color.red, color.green, color.blue, color.alpha];
             }
         }
 
@@ -487,7 +594,25 @@ pub fn run_rhai_scripts(
 
     // Process collected Rhai commands
     for (source_entity, cmd) in all_rhai_commands {
-        process_rhai_command(&mut commands, &mut visibility_query, source_entity, cmd);
+        process_rhai_command(
+            &mut commands,
+            &mut visibility_query,
+            &mut editor_entities,
+            &mut queues.physics,
+            &mut queues.timers,
+            &mut queues.debug_draw,
+            &mut queues.audio,
+            &mut queues.rendering,
+            &mut queues.camera,
+            &mut queues.scene,
+            &mut queues.animation,
+            &mut queues.health,
+            &mut queues.sprite_animation,
+            &mut queues.meshes,
+            &mut queues.materials,
+            source_entity,
+            cmd,
+        );
     }
 }
 
@@ -495,6 +620,19 @@ pub fn run_rhai_scripts(
 fn process_rhai_command(
     commands: &mut Commands,
     visibility_query: &mut Query<&mut Visibility>,
+    editor_entities: &mut Query<(Entity, &mut EditorEntity)>,
+    physics_queue: &mut ResMut<PhysicsCommandQueue>,
+    timers: &mut ResMut<ScriptTimers>,
+    debug_draws: &mut ResMut<DebugDrawQueue>,
+    audio_queue: &mut ResMut<AudioCommandQueue>,
+    rendering_queue: &mut ResMut<RenderingCommandQueue>,
+    camera_queue: &mut ResMut<CameraCommandQueue>,
+    scene: &mut ResMut<SceneCommandQueue>,
+    animation_queue: &mut ResMut<AnimationCommandQueue>,
+    health_queue: &mut ResMut<HealthCommandQueue>,
+    sprite_animation_queue: &mut ResMut<SpriteAnimationCommandQueue>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
     source_entity: Entity,
     cmd: RhaiCommand,
 ) {
@@ -504,6 +642,49 @@ fn process_rhai_command(
             commands.spawn((
                 Transform::default(),
                 Visibility::default(),
+                EditorEntity {
+                    name,
+                    tag: String::new(),
+                    visible: true,
+                    locked: false,
+                },
+                SceneNode,
+            ));
+        }
+        RhaiCommand::SpawnPrimitive { name, primitive_type, position, scale } => {
+            // Create mesh based on primitive type
+            let mesh_handle: Handle<Mesh> = match primitive_type.as_str() {
+                "cube" => meshes.add(Cuboid::default()),
+                "sphere" => meshes.add(Sphere::default()),
+                "plane" => meshes.add(Plane3d::default().mesh().size(10.0, 10.0)),
+                "cylinder" => meshes.add(Cylinder::default()),
+                "capsule" => meshes.add(Capsule3d::default()),
+                _ => {
+                    warn!("[Rhai] Unknown primitive type: {}", primitive_type);
+                    return;
+                }
+            };
+
+            // Create default material (white)
+            let material_handle = materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                ..default()
+            });
+
+            // Build transform
+            let mut transform = Transform::default();
+            if let Some(pos) = position {
+                transform.translation = pos;
+            }
+            if let Some(s) = scale {
+                transform.scale = s;
+            }
+
+            commands.spawn((
+                transform,
+                Visibility::default(),
+                Mesh3d(mesh_handle),
+                MeshMaterial3d(material_handle),
                 EditorEntity {
                     name,
                     tag: String::new(),
@@ -533,34 +714,65 @@ fn process_rhai_command(
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            // Tags are stored in EditorEntity.tag - would need to query and modify
-            info!("[Rhai] AddTag '{}' to entity {:?} (not yet implemented)", tag, entity);
+            // Find and modify the EditorEntity
+            if let Some((_, mut editor_entity)) = editor_entities.iter_mut().find(|(e, _)| *e == entity) {
+                // Check if tag already exists (tags are comma-separated)
+                let existing_tags: Vec<&str> = editor_entity.tag.split(',')
+                    .map(|t| t.trim())
+                    .filter(|t| !t.is_empty())
+                    .collect();
+
+                if !existing_tags.contains(&tag.as_str()) {
+                    // Add the new tag
+                    if editor_entity.tag.is_empty() {
+                        editor_entity.tag = tag.clone();
+                    } else {
+                        editor_entity.tag = format!("{}, {}", editor_entity.tag, tag);
+                    }
+                    debug!("[Rhai] Added tag '{}' to entity {:?}", tag, entity);
+                } else {
+                    debug!("[Rhai] Entity {:?} already has tag '{}'", entity, tag);
+                }
+            } else {
+                warn!("[Rhai] AddTag: entity {:?} not found or has no EditorEntity component", entity);
+            }
         }
         RhaiCommand::RemoveTag { entity_id, tag } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] RemoveTag '{}' from entity {:?} (not yet implemented)", tag, entity);
+            // Find and modify the EditorEntity
+            if let Some((_, mut editor_entity)) = editor_entities.iter_mut().find(|(e, _)| *e == entity) {
+                // Remove the tag from comma-separated list
+                let new_tags: Vec<&str> = editor_entity.tag.split(',')
+                    .map(|t| t.trim())
+                    .filter(|t| !t.is_empty() && *t != tag.as_str())
+                    .collect();
+                editor_entity.tag = new_tags.join(", ");
+                debug!("[Rhai] Removed tag '{}' from entity {:?}", tag, entity);
+            } else {
+                warn!("[Rhai] RemoveTag: entity {:?} not found or has no EditorEntity component", entity);
+            }
         }
 
-        // Audio Commands
+        // Audio Commands - queue for processing by audio system
         RhaiCommand::PlaySound { path, volume, looping } => {
-            info!("[Rhai] PlaySound '{}' volume={} looping={} (audio system not yet integrated)", path, volume, looping);
+            audio_queue.push(AudioCommand::PlaySound { path, volume, looping });
         }
         RhaiCommand::PlaySound3D { path, volume, position } => {
-            info!("[Rhai] PlaySound3D '{}' at {:?} volume={} (audio system not yet integrated)", path, position, volume);
+            audio_queue.push(AudioCommand::PlaySound3D { path, volume, position });
         }
         RhaiCommand::PlayMusic { path, volume, fade_in } => {
-            info!("[Rhai] PlayMusic '{}' volume={} fade_in={} (audio system not yet integrated)", path, volume, fade_in);
+            audio_queue.push(AudioCommand::PlayMusic { path, volume, fade_in });
         }
         RhaiCommand::StopMusic { fade_out } => {
-            info!("[Rhai] StopMusic fade_out={} (audio system not yet integrated)", fade_out);
+            audio_queue.push(AudioCommand::StopMusic { fade_out });
         }
         RhaiCommand::StopAllSounds => {
-            info!("[Rhai] StopAllSounds (audio system not yet integrated)");
+            audio_queue.push(AudioCommand::StopAllSounds);
         }
         RhaiCommand::SetMasterVolume { volume } => {
-            info!("[Rhai] SetMasterVolume {} (audio system not yet integrated)", volume);
+            audio_queue.push(AudioCommand::SetMasterVolume { volume });
         }
 
         // Debug Commands
@@ -574,86 +786,131 @@ fn process_rhai_command(
             }
         }
         RhaiCommand::DrawLine { start, end, color, duration } => {
-            // Debug drawing would need gizmos integration
-            debug!("[Rhai] DrawLine {:?} -> {:?} color={:?} duration={}", start, end, color, duration);
+            debug_draws.push(DebugDrawCommand::Line {
+                start,
+                end,
+                color: array_to_color(color),
+                duration,
+            });
         }
         RhaiCommand::DrawRay { origin, direction, length, color, duration } => {
-            debug!("[Rhai] DrawRay {:?} dir={:?} len={} color={:?} duration={}", origin, direction, length, color, duration);
+            debug_draws.push(DebugDrawCommand::Ray {
+                origin,
+                direction,
+                length,
+                color: array_to_color(color),
+                duration,
+            });
         }
         RhaiCommand::DrawSphere { center, radius, color, duration } => {
-            debug!("[Rhai] DrawSphere {:?} r={} color={:?} duration={}", center, radius, color, duration);
+            debug_draws.push(DebugDrawCommand::Sphere {
+                center,
+                radius,
+                color: array_to_color(color),
+                duration,
+            });
         }
         RhaiCommand::DrawBox { center, half_extents, color, duration } => {
-            debug!("[Rhai] DrawBox {:?} half_extents={:?} color={:?} duration={}", center, half_extents, color, duration);
+            debug_draws.push(DebugDrawCommand::Box {
+                center,
+                half_extents,
+                color: array_to_color(color),
+                duration,
+            });
         }
         RhaiCommand::DrawPoint { position, size, color, duration } => {
-            debug!("[Rhai] DrawPoint {:?} size={} color={:?} duration={}", position, size, color, duration);
+            debug_draws.push(DebugDrawCommand::Point {
+                position,
+                size,
+                color: array_to_color(color),
+                duration,
+            });
         }
 
-        // Physics Commands
+        // Physics Commands - queue for processing by physics system
         RhaiCommand::ApplyForce { entity_id, force } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] ApplyForce {:?} to {:?} (physics not yet integrated)", force, entity);
+            physics_queue.push(PhysicsCommand::ApplyForce { entity, force });
         }
         RhaiCommand::ApplyImpulse { entity_id, impulse } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] ApplyImpulse {:?} to {:?} (physics not yet integrated)", impulse, entity);
+            physics_queue.push(PhysicsCommand::ApplyImpulse { entity, impulse });
         }
         RhaiCommand::ApplyTorque { entity_id, torque } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] ApplyTorque {:?} to {:?} (physics not yet integrated)", torque, entity);
+            physics_queue.push(PhysicsCommand::ApplyTorque { entity, torque });
         }
         RhaiCommand::SetVelocity { entity_id, velocity } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetVelocity {:?} on {:?} (physics not yet integrated)", velocity, entity);
+            physics_queue.push(PhysicsCommand::SetVelocity { entity, velocity });
         }
         RhaiCommand::SetAngularVelocity { entity_id, velocity } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetAngularVelocity {:?} on {:?} (physics not yet integrated)", velocity, entity);
+            physics_queue.push(PhysicsCommand::SetAngularVelocity { entity, velocity });
         }
         RhaiCommand::SetGravityScale { entity_id, scale } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetGravityScale {} on {:?} (physics not yet integrated)", scale, entity);
+            physics_queue.push(PhysicsCommand::SetGravityScale { entity, scale });
         }
         RhaiCommand::Raycast { origin, direction, max_distance, result_var } => {
-            info!("[Rhai] Raycast from {:?} dir={:?} max={} result_var='{}' (physics not yet integrated)", origin, direction, max_distance, result_var);
+            physics_queue.push(PhysicsCommand::Raycast {
+                origin,
+                direction,
+                max_distance,
+                requester: source_entity,
+                result_var,
+            });
         }
 
-        // Timer Commands
+        // Timer Commands - process immediately
         RhaiCommand::StartTimer { name, duration, repeat } => {
-            info!("[Rhai] StartTimer '{}' duration={} repeat={} (timer system not yet integrated)", name, duration, repeat);
+            timers.start(name, duration, repeat);
         }
         RhaiCommand::StopTimer { name } => {
-            info!("[Rhai] StopTimer '{}' (timer system not yet integrated)", name);
+            timers.stop(&name);
         }
         RhaiCommand::PauseTimer { name } => {
-            info!("[Rhai] PauseTimer '{}' (timer system not yet integrated)", name);
+            timers.pause(&name);
         }
         RhaiCommand::ResumeTimer { name } => {
-            info!("[Rhai] ResumeTimer '{}' (timer system not yet integrated)", name);
+            timers.resume(&name);
         }
 
         // Scene Commands
         RhaiCommand::LoadScene { path } => {
-            info!("[Rhai] LoadScene '{}' (scene loading not yet integrated)", path);
+            scene.load_scene(&path);
+            info!("[Rhai] LoadScene '{}' queued", path);
         }
         RhaiCommand::UnloadScene { handle_id } => {
-            info!("[Rhai] UnloadScene {} (scene loading not yet integrated)", handle_id);
+            if handle_id == 0 {
+                // Unload all runtime prefabs
+                scene.unload_all_prefabs();
+                info!("[Rhai] UnloadScene: despawning all runtime prefabs");
+            } else {
+                // Unload specific entity
+                if let Some(entity) = Entity::try_from_bits(handle_id) {
+                    scene.unload_entity(entity);
+                    info!("[Rhai] UnloadScene: despawning entity {:?}", entity);
+                } else {
+                    warn!("[Rhai] UnloadScene: invalid entity id {}", handle_id);
+                }
+            }
         }
         RhaiCommand::SpawnPrefab { path, position, rotation } => {
-            info!("[Rhai] SpawnPrefab '{}' at {:?} rotation={:?} (prefab system not yet integrated)", path, position, rotation);
+            scene.spawn_prefab(&path, position, rotation);
+            info!("[Rhai] SpawnPrefab '{}' at {:?} rotation={:?} queued", path, position, rotation);
         }
 
         // Animation Commands
@@ -661,19 +918,90 @@ fn process_rhai_command(
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] PlayAnimation '{}' on {:?} looping={} speed={} (animation not yet integrated)", name, entity, looping, speed);
+            animation_queue.play(entity, name.clone(), looping, speed);
+            info!("[Rhai] PlayAnimation '{}' on {:?} looping={} speed={}", name, entity, looping, speed);
         }
         RhaiCommand::StopAnimation { entity_id } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] StopAnimation on {:?} (animation not yet integrated)", entity);
+            animation_queue.stop(entity);
+            info!("[Rhai] StopAnimation on {:?}", entity);
+        }
+        RhaiCommand::PauseAnimation { entity_id } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            animation_queue.pause(entity);
+            info!("[Rhai] PauseAnimation on {:?}", entity);
+        }
+        RhaiCommand::ResumeAnimation { entity_id } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            animation_queue.resume(entity);
+            info!("[Rhai] ResumeAnimation on {:?}", entity);
         }
         RhaiCommand::SetAnimationSpeed { entity_id, speed } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetAnimationSpeed {} on {:?} (animation not yet integrated)", speed, entity);
+            animation_queue.set_speed(entity, speed);
+            info!("[Rhai] SetAnimationSpeed {} on {:?}", speed, entity);
+        }
+
+        // Sprite Animation Commands
+        RhaiCommand::PlaySpriteAnimation { entity_id, name, looping } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            sprite_animation_queue.play(entity, name.clone(), looping);
+            debug!("[Rhai] PlaySpriteAnimation '{}' on {:?} looping={}", name, entity, looping);
+        }
+        RhaiCommand::SetSpriteFrame { entity_id, frame } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            sprite_animation_queue.set_absolute_frame(entity, frame as usize);
+            debug!("[Rhai] SetSpriteFrame {} on {:?}", frame, entity);
+        }
+
+        // Tween Commands
+        RhaiCommand::Tween { entity_id, property, target, duration, easing } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            if let Some(prop) = TweenProperty::from_str(&property) {
+                let easing_fn = EasingFunction::from_str(&easing);
+                animation_queue.tween(entity, prop, target, duration, easing_fn);
+                info!("[Rhai] Tween {:?} to {} over {}s on {:?}", prop, target, duration, entity);
+            } else {
+                warn!("[Rhai] Unknown tween property: {}", property);
+            }
+        }
+        RhaiCommand::TweenPosition { entity_id, target, duration, easing } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            let easing_fn = EasingFunction::from_str(&easing);
+            animation_queue.tween_position(entity, target, duration, easing_fn);
+            info!("[Rhai] TweenPosition to {:?} over {}s on {:?}", target, duration, entity);
+        }
+        RhaiCommand::TweenRotation { entity_id, target, duration, easing } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            let easing_fn = EasingFunction::from_str(&easing);
+            animation_queue.tween_rotation(entity, target, duration, easing_fn);
+            info!("[Rhai] TweenRotation to {:?} over {}s on {:?}", target, duration, entity);
+        }
+        RhaiCommand::TweenScale { entity_id, target, duration, easing } => {
+            let entity = entity_id
+                .map(|id| Entity::from_bits(id))
+                .unwrap_or(source_entity);
+            let easing_fn = EasingFunction::from_str(&easing);
+            animation_queue.tween_scale(entity, target, duration, easing_fn);
+            info!("[Rhai] TweenScale to {:?} over {}s on {:?}", target, duration, entity);
         }
 
         // Rendering Commands
@@ -685,34 +1013,67 @@ fn process_rhai_command(
                 *vis = if visible { Visibility::Inherited } else { Visibility::Hidden };
             }
         }
-        RhaiCommand::SetMaterialColor { entity_id, color: _ } => {
+        RhaiCommand::SetMaterialColor { entity_id, color } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetMaterialColor on {:?} (material system not yet integrated)", entity);
+            rendering_queue.push(RenderingCommand::SetMaterialColor { entity, color });
         }
         RhaiCommand::SetLightIntensity { entity_id, intensity } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetLightIntensity {} on {:?} (light system not yet integrated)", intensity, entity);
+            rendering_queue.push(RenderingCommand::SetLightIntensity { entity, intensity });
         }
-        RhaiCommand::SetLightColor { entity_id, color: _ } => {
+        RhaiCommand::SetLightColor { entity_id, color } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            info!("[Rhai] SetLightColor on {:?} (light system not yet integrated)", entity);
+            rendering_queue.push(RenderingCommand::SetLightColor { entity, color });
         }
 
-        // Camera Commands
+        // Camera Commands - queue for processing by camera system
         RhaiCommand::SetCameraTarget { position } => {
-            info!("[Rhai] SetCameraTarget {:?} (camera system not yet integrated)", position);
+            camera_queue.push(CameraCommand::SetTarget { position });
         }
         RhaiCommand::SetCameraZoom { zoom } => {
-            info!("[Rhai] SetCameraZoom {} (camera system not yet integrated)", zoom);
+            camera_queue.push(CameraCommand::SetZoom { zoom });
         }
         RhaiCommand::ScreenShake { intensity, duration } => {
-            info!("[Rhai] ScreenShake intensity={} duration={} (camera system not yet integrated)", intensity, duration);
+            camera_queue.push(CameraCommand::ScreenShake { intensity, duration });
+        }
+
+        // Component Commands - Health
+        RhaiCommand::SetHealth { entity_id, value } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::SetHealth { entity, value });
+        }
+        RhaiCommand::SetMaxHealth { entity_id, value } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::SetMaxHealth { entity, value });
+        }
+        RhaiCommand::Damage { entity_id, amount } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::Damage { entity, amount });
+        }
+        RhaiCommand::Heal { entity_id, amount } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::Heal { entity, amount });
+        }
+        RhaiCommand::SetComponentField { entity_id, component_type, field_name, value } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            // Generic component field setting - log for now, would need reflection system
+            debug!("[Script] SetComponentField({:?}, {}, {}) = {:?}", entity, component_type, field_name, value);
         }
     }
 }

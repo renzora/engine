@@ -21,5 +21,8 @@ pub use instances::{MeshInstanceData, SceneInstanceData};
 pub use physics::{
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
 };
-pub use rendering::{MeshNodeData, MeshPrimitiveType, Sprite2DData};
+pub use rendering::{
+    DirectionalLightData, MeshNodeData, MeshPrimitiveType, PointLightData, SpotLightData,
+    Sprite2DData, SpriteAnimation, SpriteSheetData,
+};
 pub use ui::{UIButtonData, UIImageData, UILabelData, UIPanelData};

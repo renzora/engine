@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use super::{ScriptValue, ScriptVariables, ScriptVariableDefinition};
 use super::rhai_api;
 use super::rhai_context::{RhaiScriptContext, ChildChange};
-use super::rhai_commands::RhaiCommand;
+use super::rhai_commands::{RhaiCommand, ComponentValue};
 use crate::blueprint::{BlueprintFile, generate_rhai_code};
 use crate::core::resources::console::{console_log, LogLevel};
 
@@ -490,12 +490,66 @@ impl RhaiScriptEngine {
         scope.push("self_entity_id", ctx.self_entity_id as i64);
         scope.push("self_entity_name", ctx.self_entity_name.clone());
 
-        // Found entities
+        // Found entities (name → entity_id)
         let mut found_entities_map = Map::new();
         for (name, &id) in &ctx.found_entities {
             found_entities_map.insert(name.clone().into(), Dynamic::from(id as i64));
         }
         scope.push("_found_entities", found_entities_map);
+
+        // Entities by tag (tag → array of entity_ids)
+        let mut entities_by_tag_map = Map::new();
+        for (tag, ids) in &ctx.entities_by_tag {
+            let ids_array: rhai::Array = ids.iter().map(|&id| Dynamic::from(id as i64)).collect();
+            entities_by_tag_map.insert(tag.clone().into(), Dynamic::from(ids_array));
+        }
+        scope.push("_entities_by_tag", entities_by_tag_map);
+
+        // Collision events
+        let collisions_entered: rhai::Array = ctx.collisions_entered.iter()
+            .map(|&id| Dynamic::from(id as i64))
+            .collect();
+        scope.push("collisions_entered", collisions_entered);
+
+        let collisions_exited: rhai::Array = ctx.collisions_exited.iter()
+            .map(|&id| Dynamic::from(id as i64))
+            .collect();
+        scope.push("collisions_exited", collisions_exited);
+
+        let active_collisions: rhai::Array = ctx.active_collisions.iter()
+            .map(|&id| Dynamic::from(id as i64))
+            .collect();
+        scope.push("active_collisions", active_collisions);
+
+        // Check if entity is colliding with anything (convenient bool)
+        scope.push("is_colliding", !ctx.active_collisions.is_empty());
+
+        // Timer data - list of timer names that just finished
+        let timers_finished: rhai::Array = ctx.timers_just_finished.iter()
+            .map(|name| Dynamic::from(name.clone()))
+            .collect();
+        scope.push("timers_finished", timers_finished);
+
+        // Helper: Check if any timer just finished
+        scope.push("any_timer_finished", !ctx.timers_just_finished.is_empty());
+
+        // Component data - Health
+        scope.push("self_health", ctx.self_health as f64);
+        scope.push("self_max_health", ctx.self_max_health as f64);
+        scope.push("self_health_percent", ctx.self_health_percent as f64);
+        scope.push("self_is_invincible", ctx.self_is_invincible);
+
+        // Component data - Light
+        scope.push("self_light_intensity", ctx.self_light_intensity as f64);
+        scope.push("self_light_color_r", ctx.self_light_color[0] as f64);
+        scope.push("self_light_color_g", ctx.self_light_color[1] as f64);
+        scope.push("self_light_color_b", ctx.self_light_color[2] as f64);
+
+        // Component data - Material
+        scope.push("self_material_color_r", ctx.self_material_color[0] as f64);
+        scope.push("self_material_color_g", ctx.self_material_color[1] as f64);
+        scope.push("self_material_color_b", ctx.self_material_color[2] as f64);
+        scope.push("self_material_color_a", ctx.self_material_color[3] as f64);
 
         // Variables
         let mut var_map = Map::new();
@@ -851,6 +905,29 @@ impl RhaiScriptEngine {
                     let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "Entity".to_string());
                     ctx.commands.push(RhaiCommand::SpawnEntity { name });
                 }
+                "spawn_primitive" => {
+                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "Primitive".to_string());
+                    let primitive_type = cmd_map.get("primitive_type").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "cube".to_string());
+                    // Optional position
+                    let position = if cmd_map.contains_key("x") {
+                        let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                        let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                        let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                        Some(Vec3::new(x, y, z))
+                    } else {
+                        None
+                    };
+                    // Optional scale
+                    let scale = if cmd_map.contains_key("sx") {
+                        let sx = cmd_map.get("sx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                        let sy = cmd_map.get("sy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                        let sz = cmd_map.get("sz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                        Some(Vec3::new(sx, sy, sz))
+                    } else {
+                        None
+                    };
+                    ctx.commands.push(RhaiCommand::SpawnPrimitive { name, primitive_type, position, scale });
+                }
                 "despawn_entity" => {
                     let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
                     ctx.commands.push(RhaiCommand::DespawnEntity { entity_id });
@@ -1069,6 +1146,12 @@ impl RhaiScriptEngine {
                     let rz = cmd_map.get("rz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
                     ctx.commands.push(RhaiCommand::SpawnPrefab { path, position: Vec3::new(x, y, z), rotation: Vec3::new(rx, ry, rz) });
                 }
+                "spawn_prefab_here" => {
+                    // Spawn at the calling entity's current position
+                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
+                    let position = ctx.transform.position;
+                    ctx.commands.push(RhaiCommand::SpawnPrefab { path, position, rotation: Vec3::ZERO });
+                }
 
                 // Animation commands
                 "play_animation" => {
@@ -1130,6 +1213,145 @@ impl RhaiScriptEngine {
                     let intensity = cmd_map.get("intensity").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
                     let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
                     ctx.commands.push(RhaiCommand::ScreenShake { intensity, duration });
+                }
+
+                // Component commands - Health
+                "set_health" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(100.0) as f32;
+                    ctx.commands.push(RhaiCommand::SetHealth { entity_id, value });
+                }
+                "set_max_health" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(100.0) as f32;
+                    ctx.commands.push(RhaiCommand::SetMaxHealth { entity_id, value });
+                }
+                "damage" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let amount = cmd_map.get("amount").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
+                    ctx.commands.push(RhaiCommand::Damage { entity_id, amount });
+                }
+                "heal" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let amount = cmd_map.get("amount").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
+                    ctx.commands.push(RhaiCommand::Heal { entity_id, amount });
+                }
+
+                // Component commands - Material emissive
+                "set_material_emissive" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    ctx.commands.push(RhaiCommand::SetComponentField {
+                        entity_id,
+                        component_type: "material".to_string(),
+                        field_name: "emissive".to_string(),
+                        value: ComponentValue::Vec3([r, g, b]),
+                    });
+                }
+
+                // Generic component field setting
+                "set_component_field" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let component_type = cmd_map.get("component_type")
+                        .and_then(|v| v.clone().into_immutable_string().ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+                    let field_name = cmd_map.get("field")
+                        .and_then(|v| v.clone().into_immutable_string().ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+                    let value_type = cmd_map.get("value_type")
+                        .and_then(|v| v.clone().into_immutable_string().ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "float".to_string());
+
+                    let value = match value_type.as_str() {
+                        "float" => ComponentValue::Float(
+                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32
+                        ),
+                        "int" => ComponentValue::Int(
+                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0)
+                        ),
+                        "bool" => ComponentValue::Bool(
+                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false)
+                        ),
+                        "string" => ComponentValue::String(
+                            cmd_map.get("value")
+                                .and_then(|v| v.clone().into_immutable_string().ok())
+                                .map(|s| s.to_string())
+                                .unwrap_or_default()
+                        ),
+                        _ => ComponentValue::Float(0.0),
+                    };
+
+                    ctx.commands.push(RhaiCommand::SetComponentField {
+                        entity_id,
+                        component_type,
+                        field_name,
+                        value,
+                    });
+                }
+
+                // Additional animation commands
+                "pause_animation" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    ctx.commands.push(RhaiCommand::PauseAnimation { entity_id });
+                }
+                "resume_animation" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    ctx.commands.push(RhaiCommand::ResumeAnimation { entity_id });
+                }
+
+                // Sprite animation commands
+                "play_sprite_animation" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
+                    let looping = cmd_map.get("looping").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
+                    ctx.commands.push(RhaiCommand::PlaySpriteAnimation { entity_id, name, looping });
+                }
+                "set_sprite_frame" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let frame = cmd_map.get("frame").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0);
+                    ctx.commands.push(RhaiCommand::SetSpriteFrame { entity_id, frame });
+                }
+
+                // Tween commands
+                "tween" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let property = cmd_map.get("property").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
+                    let target = cmd_map.get("target").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
+                    ctx.commands.push(RhaiCommand::Tween { entity_id, property, target, duration, easing });
+                }
+                "tween_position" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
+                    ctx.commands.push(RhaiCommand::TweenPosition { entity_id, target: Vec3::new(x, y, z), duration, easing });
+                }
+                "tween_rotation" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
+                    ctx.commands.push(RhaiCommand::TweenRotation { entity_id, target: Vec3::new(x, y, z), duration, easing });
+                }
+                "tween_scale" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
+                    ctx.commands.push(RhaiCommand::TweenScale { entity_id, target: Vec3::new(x, y, z), duration, easing });
                 }
 
                 _ => {}

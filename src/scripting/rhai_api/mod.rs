@@ -14,6 +14,8 @@ mod environment;
 mod rendering;
 mod animation;
 mod camera;
+mod components;
+mod scene;
 
 use rhai::Engine;
 
@@ -31,4 +33,6 @@ pub fn register_all(engine: &mut Engine) {
     rendering::register(engine);
     animation::register(engine);
     camera::register(engine);
+    components::register(engine);
+    scene::register(engine);
 }

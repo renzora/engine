@@ -151,6 +151,46 @@ pub struct RuntimePlugin;
 
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((loader::RuntimeLoaderPlugin, camera::RuntimeCameraPlugin));
+        // Register shared component types for scene deserialization
+        app
+            // Light components
+            .register_type::<shared::PointLightData>()
+            .register_type::<shared::DirectionalLightData>()
+            .register_type::<shared::SpotLightData>()
+            // Physics components
+            .register_type::<shared::PhysicsBodyData>()
+            .register_type::<shared::PhysicsBodyType>()
+            .register_type::<shared::CollisionShapeData>()
+            .register_type::<shared::CollisionShapeType>()
+            // Camera components
+            .register_type::<shared::CameraNodeData>()
+            .register_type::<shared::CameraRigData>()
+            .register_type::<shared::Camera2DData>()
+            // Mesh components
+            .register_type::<shared::MeshNodeData>()
+            .register_type::<shared::MeshPrimitiveType>()
+            // Sprite components
+            .register_type::<shared::Sprite2DData>()
+            // Instance components
+            .register_type::<shared::MeshInstanceData>()
+            .register_type::<shared::SceneInstanceData>()
+            // UI components
+            .register_type::<shared::UIPanelData>()
+            .register_type::<shared::UILabelData>()
+            .register_type::<shared::UIButtonData>()
+            .register_type::<shared::UIImageData>()
+            // Environment components
+            .register_type::<shared::WorldEnvironmentData>()
+            .register_type::<shared::SkyMode>()
+            .register_type::<shared::ProceduralSkyData>()
+            .register_type::<shared::PanoramaSkyData>()
+            .register_type::<shared::TonemappingMode>()
+            // Add plugins
+            .add_plugins((
+                loader::RuntimeLoaderPlugin,
+                camera::RuntimeCameraPlugin,
+                // Physics plugin (runs immediately in runtime, not paused)
+                shared::RenzoraPhysicsPlugin::new(false),
+            ));
     }
 }

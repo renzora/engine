@@ -157,8 +157,15 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     // Input
     registry.register(&input::GET_INPUT_AXIS);
     registry.register(&input::IS_KEY_PRESSED);
+    registry.register(&input::IS_KEY_JUST_PRESSED);
+    registry.register(&input::IS_KEY_JUST_RELEASED);
     registry.register(&input::GET_MOUSE_POSITION);
     registry.register(&input::GET_MOUSE_DELTA);
+    registry.register(&input::IS_MOUSE_BUTTON_PRESSED);
+    registry.register(&input::GET_MOUSE_SCROLL);
+    registry.register(&input::GET_GAMEPAD_LEFT_STICK);
+    registry.register(&input::GET_GAMEPAD_RIGHT_STICK);
+    registry.register(&input::IS_GAMEPAD_BUTTON_PRESSED);
 
     // Utility
     registry.register(&utility::PRINT);
@@ -229,6 +236,36 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&shader::NOISE_VORONOI);
     registry.register(&shader::CHECKERBOARD);
     registry.register(&shader::GRADIENT);
+
+    // Shader Color Manipulation
+    registry.register(&shader::RGB_TO_HSV);
+    registry.register(&shader::HSV_TO_RGB);
+    registry.register(&shader::HUE_SHIFT);
+    registry.register(&shader::SATURATION);
+    registry.register(&shader::BRIGHTNESS);
+    registry.register(&shader::CONTRAST);
+    registry.register(&shader::DESATURATE);
+    registry.register(&shader::INVERT_COLOR);
+
+    // Shader UV Manipulation
+    registry.register(&shader::UV_TILING);
+    registry.register(&shader::UV_OFFSET);
+    registry.register(&shader::UV_ROTATE);
+    registry.register(&shader::UV_FLIPBOOK);
+    registry.register(&shader::TRIPLANAR);
+
+    // Shader Advanced Noise
+    registry.register(&shader::NOISE_FBM);
+    registry.register(&shader::NOISE_TURBULENCE);
+    registry.register(&shader::NOISE_RIDGED);
+    registry.register(&shader::DOMAIN_WARP);
+
+    // Shader Effects
+    registry.register(&shader::RIM_LIGHT);
+    registry.register(&shader::PARALLAX);
+    registry.register(&shader::NORMAL_BLEND);
+    registry.register(&shader::DETAIL_BLEND);
+    registry.register(&shader::POSTERIZE);
 
     // =========================================================================
     // BEHAVIOR NODES (for gameplay scripting)

@@ -86,13 +86,45 @@ pub struct RhaiScriptContext {
     pub self_entity: Option<Entity>,
     pub self_entity_id: u64,
     pub self_entity_name: String,
+    /// Map of entity name → entity ID for quick lookups
     pub found_entities: HashMap<String, u64>,
+    /// Map of tag → list of entity IDs that have that tag
+    pub entities_by_tag: HashMap<String, Vec<u64>>,
+
+    // ===================
+    // Collision State
+    // ===================
+    /// Entities that started colliding with self this frame
+    pub collisions_entered: Vec<u64>,
+    /// Entities that stopped colliding with self this frame
+    pub collisions_exited: Vec<u64>,
+    /// Entities currently colliding with self
+    pub active_collisions: Vec<u64>,
 
     // ===================
     // Timer State
     // ===================
     pub active_timers: HashMap<String, TimerState>,
     pub timers_just_finished: Vec<String>,
+
+    // ===================
+    // Component Data - Health
+    // ===================
+    pub self_health: f32,
+    pub self_max_health: f32,
+    pub self_health_percent: f32,
+    pub self_is_invincible: bool,
+
+    // ===================
+    // Component Data - Light
+    // ===================
+    pub self_light_intensity: f32,
+    pub self_light_color: [f32; 3],
+
+    // ===================
+    // Component Data - Material
+    // ===================
+    pub self_material_color: [f32; 4],
 
     // ===================
     // Outputs - Transform
@@ -189,8 +221,19 @@ impl RhaiScriptContext {
             self_entity_id: 0,
             self_entity_name: String::new(),
             found_entities: HashMap::new(),
+            entities_by_tag: HashMap::new(),
+            collisions_entered: Vec::new(),
+            collisions_exited: Vec::new(),
+            active_collisions: Vec::new(),
             active_timers: HashMap::new(),
             timers_just_finished: Vec::new(),
+            self_health: 0.0,
+            self_max_health: 0.0,
+            self_health_percent: 0.0,
+            self_is_invincible: false,
+            self_light_intensity: 0.0,
+            self_light_color: [1.0, 1.0, 1.0],
+            self_material_color: [1.0, 1.0, 1.0, 1.0],
             new_position: None,
             new_rotation: None,
             translation: None,

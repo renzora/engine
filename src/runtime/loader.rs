@@ -9,6 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::pack_asset_reader::PackIndex;
+use super::shared::{
+    CollisionShapeData, DirectionalLightData, PhysicsBodyData, PointLightData,
+    RuntimeLight, RuntimePhysics, SpotLightData, spawn_entity_lights, spawn_entity_physics,
+};
 
 /// Plugin to handle runtime scene loading
 pub struct RuntimeLoaderPlugin;
@@ -16,7 +20,55 @@ pub struct RuntimeLoaderPlugin;
 impl Plugin for RuntimeLoaderPlugin {
     fn build(&self, app: &mut App) {
         // Note: Pack extraction now happens in main() before Bevy initializes
-        app.add_systems(Startup, load_main_scene);
+        app.add_systems(Startup, load_main_scene)
+            // Spawn physics and light components for loaded entities
+            .add_systems(Update, (
+                spawn_physics_for_loaded_entities,
+                spawn_lights_for_loaded_entities,
+            ));
+    }
+}
+
+/// System to spawn physics components for entities that have PhysicsBodyData or CollisionShapeData
+/// but haven't had their physics components created yet
+fn spawn_physics_for_loaded_entities(
+    mut commands: Commands,
+    // Query for entities with physics data that don't have RuntimePhysics marker yet
+    new_physics_entities: Query<
+        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
+        (
+            Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+            Without<RuntimePhysics>,
+        ),
+    >,
+) {
+    for (entity, body_data, shape_data) in new_physics_entities.iter() {
+        spawn_entity_physics(&mut commands, entity, body_data, shape_data);
+        info!("Spawned physics for entity {:?}", entity);
+    }
+}
+
+/// System to spawn light components for entities that have light data components
+/// but haven't had their actual Bevy light components created yet
+fn spawn_lights_for_loaded_entities(
+    mut commands: Commands,
+    // Query for entities with light data that don't have RuntimeLight marker yet
+    new_light_entities: Query<
+        (
+            Entity,
+            Option<&PointLightData>,
+            Option<&DirectionalLightData>,
+            Option<&SpotLightData>,
+        ),
+        (
+            Or<(With<PointLightData>, With<DirectionalLightData>, With<SpotLightData>)>,
+            Without<RuntimeLight>,
+        ),
+    >,
+) {
+    for (entity, point_light, directional_light, spot_light) in new_light_entities.iter() {
+        spawn_entity_lights(&mut commands, entity, point_light, directional_light, spot_light);
+        info!("Spawned lights for entity {:?}", entity);
     }
 }
 

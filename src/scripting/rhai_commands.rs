@@ -9,6 +9,13 @@ pub enum RhaiCommand {
     // ECS Commands
     // ===================
     SpawnEntity { name: String },
+    /// Spawn a primitive mesh (cube, sphere, plane, cylinder, capsule)
+    SpawnPrimitive {
+        name: String,
+        primitive_type: String,
+        position: Option<Vec3>,
+        scale: Option<Vec3>,
+    },
     DespawnEntity { entity_id: u64 },
     DespawnSelf,
     SetEntityName { entity_id: u64, name: String },
@@ -66,7 +73,23 @@ pub enum RhaiCommand {
     // ===================
     PlayAnimation { entity_id: Option<u64>, name: String, looping: bool, speed: f32 },
     StopAnimation { entity_id: Option<u64> },
+    PauseAnimation { entity_id: Option<u64> },
+    ResumeAnimation { entity_id: Option<u64> },
     SetAnimationSpeed { entity_id: Option<u64>, speed: f32 },
+
+    // ===================
+    // Sprite Animation Commands
+    // ===================
+    PlaySpriteAnimation { entity_id: Option<u64>, name: String, looping: bool },
+    SetSpriteFrame { entity_id: Option<u64>, frame: i64 },
+
+    // ===================
+    // Tween Commands
+    // ===================
+    Tween { entity_id: Option<u64>, property: String, target: f32, duration: f32, easing: String },
+    TweenPosition { entity_id: Option<u64>, target: Vec3, duration: f32, easing: String },
+    TweenRotation { entity_id: Option<u64>, target: Vec3, duration: f32, easing: String },
+    TweenScale { entity_id: Option<u64>, target: Vec3, duration: f32, easing: String },
 
     // ===================
     // Rendering Commands
@@ -82,4 +105,32 @@ pub enum RhaiCommand {
     SetCameraTarget { position: Vec3 },
     SetCameraZoom { zoom: f32 },
     ScreenShake { intensity: f32, duration: f32 },
+
+    // ===================
+    // Component Commands
+    // ===================
+    /// Generic set component field
+    SetComponentField {
+        entity_id: Option<u64>,
+        component_type: String,
+        field_name: String,
+        value: ComponentValue,
+    },
+
+    // Health-specific commands
+    SetHealth { entity_id: Option<u64>, value: f32 },
+    SetMaxHealth { entity_id: Option<u64>, value: f32 },
+    Damage { entity_id: Option<u64>, amount: f32 },
+    Heal { entity_id: Option<u64>, amount: f32 },
+}
+
+/// Value types for component fields
+#[derive(Clone, Debug)]
+pub enum ComponentValue {
+    Float(f32),
+    Int(i64),
+    Bool(bool),
+    String(String),
+    Vec3([f32; 3]),
+    Color([f32; 4]),
 }

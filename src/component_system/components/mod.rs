@@ -4,12 +4,15 @@ mod audio;
 mod camera;
 mod effects;
 mod environment;
-mod gameplay;
+pub mod gameplay;
 mod lighting;
 mod physics;
 mod rendering;
 mod scripting;
 mod ui;
+
+// Re-export commonly used gameplay components
+pub use gameplay::HealthData;
 
 use super::ComponentRegistry;
 

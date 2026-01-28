@@ -796,3 +796,401 @@ pub static GRADIENT: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// COLOR MANIPULATION NODES
+// =============================================================================
+
+/// RGB to HSV conversion
+pub static RGB_TO_HSV: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/rgb_to_hsv",
+    display_name: "RGB to HSV",
+    category: "Shader Color",
+    description: "Convert RGB color to HSV (Hue, Saturation, Value)",
+    create_pins: || vec![
+        Pin::input("rgb", "RGB", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("hsv", "HSV", PinType::Vec3),
+        Pin::output("h", "Hue", PinType::Float),
+        Pin::output("s", "Saturation", PinType::Float),
+        Pin::output("v", "Value", PinType::Float),
+    ],
+    color: [220, 120, 180], // Pink for color nodes
+    is_event: false,
+    is_comment: false,
+};
+
+/// HSV to RGB conversion
+pub static HSV_TO_RGB: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/hsv_to_rgb",
+    display_name: "HSV to RGB",
+    category: "Shader Color",
+    description: "Convert HSV color to RGB",
+    create_pins: || vec![
+        Pin::input("h", "Hue", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("s", "Saturation", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("v", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("rgb", "RGB", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Hue shift
+pub static HUE_SHIFT: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/hue_shift",
+    display_name: "Hue Shift",
+    category: "Shader Color",
+    description: "Shift the hue of a color (0-1 range, wraps around)",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("shift", "Shift", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Saturation adjustment
+pub static SATURATION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/saturation",
+    display_name: "Saturation",
+    category: "Shader Color",
+    description: "Adjust color saturation (0 = grayscale, 1 = original, >1 = oversaturated)",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Brightness adjustment
+pub static BRIGHTNESS: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/brightness",
+    display_name: "Brightness",
+    category: "Shader Color",
+    description: "Adjust color brightness (additive)",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Contrast adjustment
+pub static CONTRAST: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/contrast",
+    display_name: "Contrast",
+    category: "Shader Color",
+    description: "Adjust color contrast (1 = original, <1 = less contrast, >1 = more contrast)",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Desaturate (grayscale)
+pub static DESATURATE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/desaturate",
+    display_name: "Desaturate",
+    category: "Shader Color",
+    description: "Convert color to grayscale using luminance weights",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("luminance", "Luminance", PinType::Float),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Invert color
+pub static INVERT_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/invert_color",
+    display_name: "Invert Color",
+    category: "Shader Color",
+    description: "Invert color (1 - color)",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// UV MANIPULATION NODES
+// =============================================================================
+
+/// UV Tiling
+pub static UV_TILING: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/uv_tiling",
+    display_name: "UV Tiling",
+    category: "Shader UV",
+    description: "Tile UV coordinates (repeat texture)",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("tile_x", "Tile X", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("tile_y", "Tile Y", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [120, 200, 150], // Green for UV nodes
+    is_event: false,
+    is_comment: false,
+};
+
+/// UV Offset
+pub static UV_OFFSET: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/uv_offset",
+    display_name: "UV Offset",
+    category: "Shader UV",
+    description: "Offset UV coordinates",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("offset_x", "Offset X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("offset_y", "Offset Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [120, 200, 150],
+    is_event: false,
+    is_comment: false,
+};
+
+/// UV Rotation
+pub static UV_ROTATE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/uv_rotate",
+    display_name: "UV Rotate",
+    category: "Shader UV",
+    description: "Rotate UV coordinates around center",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("center_x", "Center X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("center_y", "Center Y", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [120, 200, 150],
+    is_event: false,
+    is_comment: false,
+};
+
+/// UV Flipbook (sprite sheet animation)
+pub static UV_FLIPBOOK: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/uv_flipbook",
+    display_name: "UV Flipbook",
+    category: "Shader UV",
+    description: "Animate UV through a sprite sheet grid",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("columns", "Columns", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("rows", "Rows", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("frame", "Frame", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [120, 200, 150],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Triplanar Mapping
+pub static TRIPLANAR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/triplanar",
+    display_name: "Triplanar Mapping",
+    category: "Shader UV",
+    description: "Project texture from 3 planes based on surface normal",
+    create_pins: || vec![
+        Pin::input("position", "Position", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::input("normal", "Normal", PinType::Vec3).with_default(PinValue::Vec3([0.0, 1.0, 0.0])),
+        Pin::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("blend", "Blend", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("uv_x", "UV X", PinType::Vec2),
+        Pin::output("uv_y", "UV Y", PinType::Vec2),
+        Pin::output("uv_z", "UV Z", PinType::Vec2),
+        Pin::output("weights", "Weights", PinType::Vec3),
+    ],
+    color: [120, 200, 150],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// ADVANCED NOISE NODES
+// =============================================================================
+
+/// Fractal Brownian Motion noise
+pub static NOISE_FBM: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/noise_fbm",
+    display_name: "FBM Noise",
+    category: "Shader Noise",
+    description: "Fractal Brownian Motion - multiple octaves of noise",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("amplitude", "Amplitude", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("lacunarity", "Lacunarity", PinType::Float).with_default(PinValue::Float(2.0)),
+        Pin::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [180, 140, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Turbulence noise (absolute value FBM)
+pub static NOISE_TURBULENCE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/noise_turbulence",
+    display_name: "Turbulence",
+    category: "Shader Noise",
+    description: "Turbulence - FBM with absolute values for more variety",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("amplitude", "Amplitude", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [180, 140, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Ridge noise (inverted FBM for mountain-like patterns)
+pub static NOISE_RIDGED: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/noise_ridged",
+    display_name: "Ridged Noise",
+    category: "Shader Noise",
+    description: "Ridged multifractal noise - sharp peaks like mountains",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("sharpness", "Sharpness", PinType::Float).with_default(PinValue::Float(2.0)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [180, 140, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Domain warping
+pub static DOMAIN_WARP: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/domain_warp",
+    display_name: "Domain Warp",
+    category: "Shader Noise",
+    description: "Warp UV coordinates using noise for organic distortion",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("amplitude", "Amplitude", PinType::Float).with_default(PinValue::Float(0.1)),
+        Pin::input("iterations", "Iterations", PinType::Float).with_default(PinValue::Float(2.0)),
+        Pin::output("uv", "UV", PinType::Vec2),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [180, 140, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// EFFECT NODES
+// =============================================================================
+
+/// Rim lighting effect
+pub static RIM_LIGHT: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/rim_light",
+    display_name: "Rim Light",
+    category: "Shader Effect",
+    description: "Edge/rim lighting effect based on view angle",
+    create_pins: || vec![
+        Pin::input("normal", "Normal", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 1.0])),
+        Pin::input("view_dir", "View Dir", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 1.0])),
+        Pin::input("power", "Power", PinType::Float).with_default(PinValue::Float(2.0)),
+        Pin::input("intensity", "Intensity", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("rim", "Rim", PinType::Float),
+    ],
+    color: [200, 180, 100], // Gold for effect nodes
+    is_event: false,
+    is_comment: false,
+};
+
+/// Parallax mapping
+pub static PARALLAX: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/parallax",
+    display_name: "Parallax Mapping",
+    category: "Shader Effect",
+    description: "Offset UV based on height map for depth illusion",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("height", "Height", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("view_dir", "View Dir", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 1.0])),
+        Pin::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(0.05)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Normal blend
+pub static NORMAL_BLEND: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/normal_blend",
+    display_name: "Blend Normals",
+    category: "Shader Effect",
+    description: "Blend two normal maps together (Reoriented Normal Mapping)",
+    create_pins: || vec![
+        Pin::input("base", "Base", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 1.0])),
+        Pin::input("detail", "Detail", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Detail texture blending
+pub static DETAIL_BLEND: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/detail_blend",
+    display_name: "Detail Blend",
+    category: "Shader Effect",
+    description: "Blend detail texture over base using overlay mode",
+    create_pins: || vec![
+        Pin::input("base", "Base", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("detail", "Detail", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Posterize effect
+pub static POSTERIZE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/posterize",
+    display_name: "Posterize",
+    category: "Shader Effect",
+    description: "Reduce color levels for a posterized look",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("levels", "Levels", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
