@@ -152,7 +152,7 @@ impl DockingState {
         // Find a suitable place to add the panel
         // Try to add as a tab to a related panel
         let target = match &panel {
-            PanelId::History => Some(PanelId::Inspector),
+            PanelId::History | PanelId::Settings => Some(PanelId::Inspector),
             PanelId::Console | PanelId::Animation => Some(PanelId::Assets),
             PanelId::ScriptEditor => Some(PanelId::Viewport),
             _ => None,

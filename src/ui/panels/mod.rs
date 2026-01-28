@@ -30,7 +30,7 @@ pub use plugin_ui::{render_plugin_panels, render_status_bar};
 pub(crate) use script_editor::render_script_editor;
 pub use script_editor::render_script_editor_content;
 pub use script_editor::open_script;
-pub use settings::render_settings_window;
+pub use settings::render_settings_content;
 pub use splash::render_splash;
 pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};
 pub use toolbar::render_toolbar;

@@ -12,7 +12,7 @@ bevy = ["dep:bevy"]
 
 [dependencies]
 # Bevy - optional, only used by editor for type conversions
-bevy = { version = "0.18", features = ["dynamic_linking"], optional = true }
+bevy = { version = "0.18", optional = true }
 
 # Icons - re-exported for plugins to use directly
 egui-phosphor = { version = "0.11", features = ["regular", "fill"] }

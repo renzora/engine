@@ -66,7 +66,7 @@ use docking::{
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
-    render_document_tabs, render_script_editor, render_script_editor_content, render_settings_window,
+    render_document_tabs, render_script_editor, render_script_editor_content,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
@@ -604,6 +604,20 @@ pub fn editor_ui(
                     });
                 }
 
+                PanelId::Settings => {
+                    // Clone theme to avoid borrow conflict with theme_manager mutation
+                    let theme_for_frame = editor.theme_manager.active_theme.clone();
+                    render_panel_frame(ctx, &panel_ctx, &theme_for_frame, |ui| {
+                        panels::render_settings_content(
+                            ui,
+                            ctx,
+                            &mut editor.settings,
+                            &mut editor.keybindings,
+                            &mut editor.theme_manager,
+                        );
+                    });
+                }
+
                 PanelId::Plugin(name) => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         ui.label(format!("Plugin: {}", name));
@@ -615,9 +629,14 @@ pub fn editor_ui(
 
     // Only show settings/export dialogs in edit mode
     if !in_play_mode {
-        // Ctrl+, to open settings
+        // Ctrl+, to toggle settings panel
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
-            editor.settings.show_settings_window = !editor.settings.show_settings_window;
+            let settings_panel = PanelId::Settings;
+            if editor.docking.is_panel_visible(&settings_panel) {
+                editor.docking.close_panel(&settings_panel);
+            } else {
+                editor.docking.open_panel(settings_panel);
+            }
         }
 
         // Layout switching shortcuts (Ctrl+1/2/3/4)
@@ -681,9 +700,6 @@ pub fn editor_ui(
                 }
             }
         }
-
-        // Render settings window (floating)
-        render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings, &mut editor.theme_manager);
 
         // Render assets dialogs (create script, create folder, import)
         render_assets_dialogs(ctx, &mut editor.assets, &editor.theme_manager.active_theme);

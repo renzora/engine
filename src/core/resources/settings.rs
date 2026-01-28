@@ -81,8 +81,6 @@ pub enum SettingsTab {
 /// Editor settings and preferences
 #[derive(Resource)]
 pub struct EditorSettings {
-    /// Show the settings window
-    pub show_settings_window: bool,
     /// Currently selected settings tab
     pub settings_tab: SettingsTab,
     /// Camera movement speed
@@ -115,7 +113,6 @@ pub struct EditorSettings {
 impl Default for EditorSettings {
     fn default() -> Self {
         Self {
-            show_settings_window: false,
             settings_tab: SettingsTab::default(),
             camera_move_speed: 10.0,
             show_grid: true,

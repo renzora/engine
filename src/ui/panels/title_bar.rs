@@ -641,6 +641,7 @@ fn render_menu_items(
                 PanelId::Console,
                 PanelId::Animation,
                 PanelId::History,
+                PanelId::Settings,
             ];
 
             for panel in all_panels {

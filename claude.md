@@ -76,19 +76,24 @@ Files that skip compression: PNG, JPG, JPEG, MP3, OGG, GLB, GLTF (already compre
 
 ### Build Commands
 
-**Editor (development):**
+**Development (dynamic linking for fast builds):**
 ```bash
-cargo run --features editor
+cargo run       # runs the editor
+cargo build     # builds the editor
 ```
 
-**Runtime (for export):**
-```powershell
-# Windows PowerShell - use separate target dir to force static linking
-$env:CARGO_TARGET_DIR="target-runtime"; cargo build --release --features runtime --bin renzora_runtime
-cp target-runtime/release/renzora_runtime.exe runtimes/windows/
+**Production (static linking for distribution):**
+```bash
+cargo release-editor    # builds static editor
+cargo release-runtime   # builds static runtime
 ```
 
-The separate target directory is required because the editor uses `bevy/dynamic_linking` for fast iteration. Without it, cargo reuses cached dynamic artifacts, producing a tiny (~1.5MB) binary that crashes. The correct runtime should be ~50MB (statically linked Bevy).
+Copy runtime to exports folder:
+```bash
+cp app/release/renzora_runtime.exe runtimes/windows/
+```
+
+The `dynamic` feature (enabled by default) adds `bevy/dynamic_linking`. The release aliases use `--no-default-features` and a separate `app` directory to produce statically linked binaries (~50MB).
 
 ## Key Files
 

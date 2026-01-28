@@ -25,37 +25,35 @@ Then add `.cargo/config.toml` to the project (see Configuration section).
 
 ## Building
 
-### Editor (Development)
+### Development (Dynamic Linking)
 
-The editor uses dynamic linking for fast iteration:
+Debug builds use dynamic linking for fast iteration:
 
 ```bash
-cargo run --features editor
+cargo run       # runs the editor
+cargo build     # builds the editor
 ```
 
-### Runtime (Release)
+### Production (Static Linking)
 
-The runtime must be statically linked for distribution. Use a separate target directory to avoid cargo reusing the editor's dynamic-linked Bevy:
+Release builds use cargo aliases that disable dynamic linking for distributable binaries:
 
-**Windows (PowerShell):**
-```powershell
-$env:CARGO_TARGET_DIR="target-runtime"; cargo build --release --features runtime --bin renzora_runtime
-cp target-runtime/release/renzora_runtime.exe runtimes/windows/
-```
-
-**Windows (Command Prompt):**
-```cmd
-set CARGO_TARGET_DIR=target-runtime && cargo build --release --features runtime --bin renzora_runtime
-copy target-runtime\release\renzora_runtime.exe runtimes\windows\
-```
-
-**Linux/macOS:**
 ```bash
-CARGO_TARGET_DIR=target-runtime cargo build --release --features runtime --bin renzora_runtime
-cp target-runtime/release/renzora_runtime runtimes/linux/  # or runtimes/macos/
+cargo release-editor    # builds static editor (~50MB)
+cargo release-runtime   # builds static runtime (~50MB)
 ```
 
-**Why a separate target directory?** The editor uses `bevy/dynamic_linking` for fast builds. Cargo caches this and would reuse it for the runtime, resulting in a tiny (~1.5MB) binary that crashes. The separate directory forces a clean static build (~50MB).
+Output binaries:
+- `app/release/renzora_editor.exe`
+- `app/release/renzora_runtime.exe`
+
+Copy the runtime to the runtimes folder for exports:
+```bash
+cp app/release/renzora_runtime.exe runtimes/windows/   # Windows
+cp app/release/renzora_runtime runtimes/linux/         # Linux
+```
+
+**How it works:** The `dynamic` feature (enabled by default) adds `bevy/dynamic_linking` for fast dev builds. The release aliases use `--no-default-features` and a separate `app` directory to avoid mixing cached dynamic artifacts with static builds.
 
 ## Project Structure
 
@@ -80,8 +78,11 @@ renzora/
 
 | Feature | Description |
 |---------|-------------|
-| `editor` | Full editor with UI, asset browser, scene editing (default) |
+| `editor` | Full editor with UI, asset browser, scene editing |
 | `runtime` | Minimal runtime for exported games |
+| `dynamic` | Enables dynamic linking for faster dev builds (default) |
+
+Default features: `editor`, `dynamic`
 
 ## Scripting API
 
@@ -794,12 +795,12 @@ The runtime will show crash details and wait for Enter before closing.
 
 ### Small runtime binary (~1.5MB)
 
-This means Bevy was compiled with dynamic linking. Use a separate target directory:
-```powershell
-$env:CARGO_TARGET_DIR="target-runtime"; cargo build --release --features runtime --bin renzora_runtime
+This means Bevy was compiled with dynamic linking. Use the release alias which builds to a separate directory:
+```bash
+cargo release-runtime
 ```
 
-The correct size should be ~50MB (statically linked Bevy).
+The output will be at `app/release/renzora_runtime.exe` (~50MB, statically linked Bevy).
 
 ### Export shows "Runtime not found"
 

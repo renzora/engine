@@ -6,7 +6,7 @@ use crate::gizmo::GizmoState;
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
-use crate::ui::docking::builtin_layouts;
+use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::theming::Theme;
 
 // Phosphor icons for toolbar
@@ -17,7 +17,7 @@ use egui_phosphor::regular::{
 pub fn render_toolbar(
     ctx: &egui::Context,
     _gizmo: &mut GizmoState,
-    settings: &mut EditorSettings,
+    _settings: &mut EditorSettings,
     _menu_bar_height: f32,
     toolbar_height: f32,
     _window_width: f32,
@@ -178,9 +178,15 @@ pub fn render_toolbar(
                 separator(ui, theme);
 
                 // === Settings ===
-                let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
+                let settings_panel = PanelId::Settings;
+                let settings_visible = docking_state.is_panel_visible(&settings_panel);
+                let settings_resp = tool_button(ui, GEAR, button_size, settings_visible, active_color, inactive_color);
                 if settings_resp.clicked() {
-                    settings.show_settings_window = !settings.show_settings_window;
+                    if settings_visible {
+                        docking_state.close_panel(&settings_panel);
+                    } else {
+                        docking_state.open_panel(settings_panel);
+                    }
                 }
                 settings_resp.on_hover_text("Settings");
 

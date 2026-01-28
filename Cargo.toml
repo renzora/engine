@@ -5,9 +5,10 @@ edition = "2021"
 default-run = "renzora_editor"
 
 [features]
-default = ["editor"]
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "bevy/dynamic_linking"]
+default = ["editor", "dynamic"]
+editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image"]
 runtime = []
+dynamic = ["bevy/dynamic_linking"]
 
 [[bin]]
 name = "renzora_editor"
@@ -28,7 +29,6 @@ toml = "0.8"
 dirs = "5.0"
 zstd = "0.13"
 gltf = "1.4"
-
 image = { version = "0.25", optional = true }
 
 # Editor-only dependencies
@@ -47,15 +47,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api"]
-exclude = [
-    "crates/test_plugin",
-    "crates/fps_plugin",
-    "crates/system_monitor_plugin",
-    "crates/entity_test_plugin",
-    "crates/panel_test_plugin",
-    "crates/asset_demo_plugin",
-]
+members = ["crates/editor_plugin_api", "crates/renzora-bevy-dylib"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

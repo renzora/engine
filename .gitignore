@@ -1,5 +1,7 @@
 # Rust
 /target/
+/app/
+/target-runtime/
 Cargo.lock
 
 # IDE
