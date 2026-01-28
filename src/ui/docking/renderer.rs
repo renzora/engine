@@ -268,7 +268,7 @@ fn render_leaf(
         // Calculate tab width based on content
         let icon_width = 14.0;
         let title = panel.title();
-        let text_width = ui.fonts(|f| {
+        let text_width = ui.fonts_mut(|f| {
             f.glyph_width(&egui::FontId::proportional(11.0), 'M') * title.len() as f32 * 0.65
         });
         let close_space = if can_close { close_button_width } else { 0.0 };

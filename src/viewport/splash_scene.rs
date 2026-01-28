@@ -2,6 +2,7 @@
 //! Renders wireframe shapes and a grid with a rotating camera
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
@@ -184,11 +185,11 @@ pub fn setup_splash_scene(mut commands: Commands, mut images: ResMut<Assets<Imag
     commands.spawn((
         Camera3d::default(),
         Camera {
-            target: image_handle.into(),
             clear_color: ClearColorConfig::Custom(Color::srgb(0.02, 0.02, 0.04)),
             order: -10, // Render before everything
             ..default()
         },
+        RenderTarget::Image(image_handle.into()),
         Transform::from_xyz(12.0, 8.0, 12.0).looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y),
         SplashSceneCamera,
         SplashSceneEntity,

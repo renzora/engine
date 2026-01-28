@@ -1,6 +1,7 @@
 //! Camera preview system - renders from selected camera's viewpoint
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
@@ -89,11 +90,11 @@ pub fn update_camera_preview(
                 commands.spawn((
                     Camera3d::default(),
                     Camera {
-                        target: camera_preview_image.0.clone().into(),
                         clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                         order: -1,
                         ..default()
                     },
+                    RenderTarget::Image(camera_preview_image.0.clone().into()),
                     Projection::Perspective(PerspectiveProjection {
                         fov: camera_data.fov.to_radians(),
                         aspect_ratio: PREVIEW_WIDTH as f32 / PREVIEW_HEIGHT as f32,
@@ -120,11 +121,11 @@ pub fn update_camera_preview(
                 commands.spawn((
                     Camera3d::default(),
                     Camera {
-                        target: camera_preview_image.0.clone().into(),
                         clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                         order: -1,
                         ..default()
                     },
+                    RenderTarget::Image(camera_preview_image.0.clone().into()),
                     Projection::Perspective(PerspectiveProjection {
                         fov: rig_data.fov.to_radians(),
                         aspect_ratio: PREVIEW_WIDTH as f32 / PREVIEW_HEIGHT as f32,

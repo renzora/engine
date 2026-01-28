@@ -6,6 +6,7 @@
 
 use bevy::prelude::*;
 use bevy::asset::UnapprovedPathMode;
+use bevy::camera::RenderTarget;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
@@ -138,15 +139,16 @@ fn setup_thumbnail_scene(
     let camera_entity = commands.spawn((
         Camera3d::default(),
         Camera {
-            target: texture_handle.into(),
             clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 0.0)),
             ..default()
         },
+        RenderTarget::Image(texture_handle.into()),
         Projection::Perspective(PerspectiveProjection {
             fov: 45.0_f32.to_radians(),
             aspect_ratio: 1.0,
             near: 0.01,
             far: 1000.0,
+            ..default()
         }),
         Transform::from_translation(Vec3::new(2.0, 2.0, 2.0)).looking_at(Vec3::ZERO, Vec3::Y),
     )).id();

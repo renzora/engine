@@ -166,15 +166,15 @@ pub fn draw_selection_gizmo(
         GizmoMode::Scale => {
             // X axis with box
             gizmos.line(pos, pos + Vec3::X * gizmo_size, x_color);
-            gizmos.cuboid(Transform::from_translation(pos + Vec3::X * gizmo_size).with_scale(Vec3::splat(0.15)), x_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::X * gizmo_size).with_scale(Vec3::splat(0.15)), x_color);
 
             // Y axis with box
             gizmos.line(pos, pos + Vec3::Y * gizmo_size, y_color);
-            gizmos.cuboid(Transform::from_translation(pos + Vec3::Y * gizmo_size).with_scale(Vec3::splat(0.15)), y_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::Y * gizmo_size).with_scale(Vec3::splat(0.15)), y_color);
 
             // Z axis with box
             gizmos.line(pos, pos + Vec3::Z * gizmo_size, z_color);
-            gizmos.cuboid(Transform::from_translation(pos + Vec3::Z * gizmo_size).with_scale(Vec3::splat(0.15)), z_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::Z * gizmo_size).with_scale(Vec3::splat(0.15)), z_color);
         }
     }
 }

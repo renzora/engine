@@ -177,7 +177,7 @@ pub fn load_main_scene(
     info!("Loading scene: {}", main_scene_rel);
 
     // Add ambient light
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         color: Color::WHITE,
         brightness: 200.0,
         ..default()

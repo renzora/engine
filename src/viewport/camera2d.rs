@@ -3,6 +3,7 @@
 //! Provides an orthographic camera for editing 2D scenes and UI nodes.
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
 use crate::core::{ViewportMode, ViewportState};
@@ -31,12 +32,12 @@ pub fn setup_editor_camera_2d(
     commands.spawn((
         Camera2d,
         Camera {
-            target: viewport_image.0.clone().into(),
             clear_color: ClearColorConfig::Custom(Color::srgb(0.12, 0.12, 0.14)),
             order: -1, // Render before 3D camera
             is_active: false, // Start inactive, activated when switching to 2D mode
             ..default()
         },
+        RenderTarget::Image(viewport_image.0.clone().into()),
         Transform::from_translation(cam_pos),
         Editor2DCamera,
         EditorOnly,

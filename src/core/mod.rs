@@ -136,7 +136,7 @@ fn track_asset_loading(
 fn apply_world_environment(
     mut commands: Commands,
     world_envs: Query<(&WorldEnvironmentMarker, &EditorEntity)>,
-    mut ambient_light: ResMut<AmbientLight>,
+    mut ambient_light: ResMut<GlobalAmbientLight>,
     cameras: Query<Entity, With<ViewportCamera>>,
     mut camera_query: Query<&mut Camera, With<ViewportCamera>>,
     mut sun_query: Query<(Entity, &mut DirectionalLight, &mut Transform), With<ProceduralSkySun>>,

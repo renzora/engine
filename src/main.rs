@@ -321,7 +321,7 @@ fn load_project_scene(
     viewport::setup_editor_camera_2d(&mut commands, &viewport_image, &viewport, &camera2d_state);
 
     // Add ambient light
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         color: Color::WHITE,
         brightness: 200.0,
         ..default()

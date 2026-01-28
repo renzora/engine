@@ -843,7 +843,7 @@ fn render_tree_node(
         } else {
             // Allocate space for the name and handle interactions manually
             let font_size = 12.0;
-            let galley = ui.fonts(|f| f.layout_no_wrap(
+            let galley = ui.fonts_mut(|f| f.layout_no_wrap(
                 editor_entity.name.clone(),
                 egui::FontId::proportional(font_size),
                 Color32::WHITE,

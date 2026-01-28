@@ -505,7 +505,7 @@ pub fn render_script_editor(
                                         } else {
                                             highlight_rhai(text.as_str(), font_size)
                                         };
-                                        ui.fonts(|f| f.layout_job(layout_job))
+                                        ui.fonts_mut(|f| f.layout_job(layout_job))
                                     };
 
                                     let editor_width = content_width - gutter_width - 4.0;
@@ -947,7 +947,7 @@ pub fn render_script_editor_content(
                         } else {
                             highlight_rhai(text.as_str(), font_size)
                         };
-                        ui.fonts(|f| f.layout_job(layout_job))
+                        ui.fonts_mut(|f| f.layout_job(layout_job))
                     };
 
                     let editor_width = content_width - gutter_width - 4.0;

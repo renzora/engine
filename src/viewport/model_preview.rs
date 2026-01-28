@@ -7,6 +7,7 @@
 //! - Disk caching for instant loading on subsequent runs
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 use bevy::camera::primitives::Aabb;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
@@ -441,16 +442,17 @@ pub fn spawn_model_previews(
             .spawn((
                 Camera3d::default(),
                 Camera {
-                    target: texture_handle.clone().into(),
                     clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 0.0)),
                     order: -100,
                     ..default()
                 },
+                RenderTarget::Image(texture_handle.clone().into()),
                 Projection::Perspective(PerspectiveProjection {
                     fov: 45.0_f32.to_radians(),
                     aspect_ratio: 1.0,
                     near: 0.01,
                     far: 1000.0,
+                    ..default()
                 }),
                 Transform::from_translation(offset + Vec3::new(2.0, 2.0, 2.0))
                     .looking_at(offset, Vec3::Y),
@@ -688,8 +690,8 @@ pub fn capture_model_previews(
                     if let Err(e) = save_thumbnail_data_to_cache(data, MODEL_PREVIEW_SIZE, MODEL_PREVIEW_SIZE, &cache_path) {
                         warn!("Failed to cache thumbnail: {}", e);
                     }
-                    // Despawn self after saving
-                    commands.entity(trigger.target()).despawn();
+                    // Despawn self after saving (observer entity is the entity we spawned with Readback)
+                    commands.entity(trigger.observer()).despawn();
                 });
 
             // Store the texture handle

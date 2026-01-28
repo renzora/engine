@@ -24,7 +24,7 @@ mod pack;
 #[path = "pack_asset_reader.rs"]
 mod pack_asset_reader;
 
-use bevy::asset::io::{AssetSource, AssetSourceId};
+use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use pack_asset_reader::{PackAssetReader, PackIndex};
@@ -81,7 +81,7 @@ fn run_game() -> Result<(), String> {
         // Register our pack-based asset source BEFORE adding plugins
         app.register_asset_source(
             AssetSourceId::Default,
-            AssetSource::build().with_reader(move || {
+            AssetSourceBuilder::new(move || {
                 Box::new(PackAssetReader::new(pack_clone.clone()))
             }),
         );

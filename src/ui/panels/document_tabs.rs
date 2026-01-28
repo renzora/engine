@@ -156,7 +156,7 @@ pub fn render_document_tabs(
                 };
 
                 // Calculate tab width based on text
-                let text_width = ui.fonts(|f| {
+                let text_width = ui.fonts_mut(|f| {
                     f.glyph_width(&egui::FontId::proportional(12.0), 'M') * tab_text.len() as f32
                 });
                 let tab_width = text_width + TAB_PADDING * 2.0 + 36.0;

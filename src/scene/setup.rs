@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 use bevy::render::view::Hdr;
 
 use crate::core::{MainCamera, ViewportCamera, OrbitCameraState, ViewportState};
@@ -44,10 +45,10 @@ pub fn setup_editor_camera(
         Camera3d::default(),
         Hdr, // Enable HDR for bloom, tonemapping, and other post-processing
         Camera {
-            target: viewport_image.0.clone().into(),
             clear_color: ClearColorConfig::Custom(Color::srgb(0.15, 0.15, 0.18)),
             ..default()
         },
+        RenderTarget::Image(viewport_image.0.clone().into()),
         Projection::Perspective(PerspectiveProjection {
             aspect_ratio: aspect,
             ..default()

@@ -489,7 +489,7 @@ fn draw_filled_cube(gizmos: &mut Gizmos<SelectionGizmoGroup>, pos: Vec3, size: f
     let steps = 3; // Number of fill lines per face
 
     // Draw the cube wireframe
-    gizmos.cuboid(Transform::from_translation(pos).with_scale(Vec3::splat(size)), color);
+    gizmos.cube(Transform::from_translation(pos).with_scale(Vec3::splat(size)), color);
 
     // Fill each face with diagonal lines
     for i in 0..=steps {
