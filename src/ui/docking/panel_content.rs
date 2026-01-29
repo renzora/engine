@@ -133,6 +133,7 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::NodeLibrary => Vec2::new(180.0, 200.0),
         PanelId::MaterialPreview => Vec2::new(200.0, 200.0),
         PanelId::Settings => Vec2::new(300.0, 400.0),
+        PanelId::Gamepad => Vec2::new(250.0, 300.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

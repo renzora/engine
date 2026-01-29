@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use egui_phosphor::regular::{
     TREE_STRUCTURE, SLIDERS_HORIZONTAL, FOLDER_OPEN, TERMINAL,
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
-    GRAPH, LIST_BULLETS, GEAR, CUBE,
+    GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER,
 };
 
 /// Direction of a split in the dock tree
@@ -32,6 +32,7 @@ pub enum PanelId {
     NodeLibrary,
     MaterialPreview,
     Settings,
+    Gamepad,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -52,6 +53,7 @@ impl PanelId {
             PanelId::NodeLibrary => "Node Library",
             PanelId::MaterialPreview => "Material Preview",
             PanelId::Settings => "Settings",
+            PanelId::Gamepad => "Gamepad",
             PanelId::Plugin(name) => name,
         }
     }
@@ -71,6 +73,7 @@ impl PanelId {
             PanelId::NodeLibrary => LIST_BULLETS,
             PanelId::MaterialPreview => CUBE,
             PanelId::Settings => GEAR,
+            PanelId::Gamepad => GAME_CONTROLLER,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

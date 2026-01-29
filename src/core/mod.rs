@@ -12,7 +12,7 @@ pub use resources::{
     AnimationTimelineState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DockingState, EditorSettings,
-    ExportLogLevel, ExportLogger, ExportState,
+    ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenScript, PendingImageDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
@@ -60,12 +60,14 @@ impl Plugin for CorePlugin {
             .init_resource::<ThumbnailCache>()
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
+            .init_resource::<GamepadDebugState>()
             .init_resource::<crate::theming::ThemeManager>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
                 apply_world_environment,
                 track_asset_loading,
                 drain_console_buffer,
+                update_gamepad_debug_state,
             ).run_if(in_state(AppState::Editor)));
     }
 }

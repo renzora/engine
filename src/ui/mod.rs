@@ -10,7 +10,7 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DockingState,
-    EditorEntity, ExportState, InputFocusState, KeyBindings, SelectionState, HierarchyState, ViewportState,
+    EditorEntity, ExportState, GamepadDebugState, InputFocusState, KeyBindings, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
 };
@@ -51,6 +51,7 @@ pub struct EditorResources<'w> {
     pub material_preview: ResMut<'w, MaterialPreviewState>,
     pub theme_manager: ResMut<'w, ThemeManager>,
     pub input_focus: ResMut<'w, InputFocusState>,
+    pub gamepad_debug: Res<'w, GamepadDebugState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -72,7 +73,7 @@ use panels::{
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
-    render_console_content, render_history_content,
+    render_console_content, render_history_content, render_gamepad_content,
 };
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
@@ -638,6 +639,12 @@ pub fn editor_ui(
                             &mut editor.keybindings,
                             &mut editor.theme_manager,
                         );
+                    });
+                }
+
+                PanelId::Gamepad => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_gamepad_content(ui, &editor.gamepad_debug, &editor.theme_manager.active_theme);
                     });
                 }
 

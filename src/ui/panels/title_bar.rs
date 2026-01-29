@@ -642,6 +642,7 @@ fn render_menu_items(
                 PanelId::Animation,
                 PanelId::History,
                 PanelId::Settings,
+                PanelId::Gamepad,
             ];
 
             for panel in all_panels {
