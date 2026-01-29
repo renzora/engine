@@ -189,6 +189,44 @@ impl<'a> WgslCodegenContext<'a> {
                 self.output_vars.insert(PinId::output(node.id, "texture"), tex_name);
             }
 
+            // Color Texture - loads and samples a texture in one node
+            "shader/texture_color" => {
+                // Get texture path from input_values
+                let path = node.input_values.get("path")
+                    .and_then(|v| if let PinValue::Texture2D(s) = v { Some(s.clone()) } else { None })
+                    .unwrap_or_default();
+
+                // Register texture binding
+                let binding = self.next_texture_binding;
+                self.next_texture_binding += 1;
+
+                let tex_name = format!("material_texture_{}", binding);
+                self.texture_bindings.push(TextureBinding {
+                    name: tex_name.clone(),
+                    binding,
+                    asset_path: path,
+                });
+
+                // Get UV input - use in.uv as default if not connected
+                let uv = if self.graph.connection_to(&PinId::input(node.id, "uv")).is_some() {
+                    self.get_input_value(node, "uv")
+                } else {
+                    "in.uv".to_string()
+                };
+
+                // Sample the texture
+                let color_var = self.next_var("tex_color");
+                self.fragment_lines.push(format!(
+                    "    let {} = textureSample({}, {}_sampler, {});",
+                    color_var, tex_name, tex_name, uv
+                ));
+
+                // Output color (vec4), rgb (vec3), and alpha (float)
+                self.output_vars.insert(PinId::output(node.id, "color"), color_var.clone());
+                self.output_vars.insert(PinId::output(node.id, "rgb"), format!("{}.rgb", color_var));
+                self.output_vars.insert(PinId::output(node.id, "a"), format!("{}.a", color_var));
+            }
+
             "shader/sample_texture" => {
                 let tex = self.get_input_value(node, "texture");
                 let uv = self.get_input_value(node, "uv");
@@ -888,11 +926,15 @@ impl<'a> WgslCodegenContext<'a> {
             }
 
             // ==================== BLEND MODE NODES ====================
+            // These work with Color (vec4) - blend RGB, preserve alpha from A
             "shader/blend_multiply" => {
                 let a = self.get_input_value(node, "a");
                 let b = self.get_input_value(node, "b");
                 let result_var = self.next_var("blend_mul");
-                self.fragment_lines.push(format!("    let {} = {} * {};", result_var, a, b));
+                self.fragment_lines.push(format!(
+                    "    let {} = vec4<f32>({}.rgb * {}.rgb, {}.a);",
+                    result_var, a, b, a
+                ));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
@@ -901,8 +943,8 @@ impl<'a> WgslCodegenContext<'a> {
                 let b = self.get_input_value(node, "b");
                 let result_var = self.next_var("blend_screen");
                 self.fragment_lines.push(format!(
-                    "    let {} = vec3<f32>(1.0) - (vec3<f32>(1.0) - {}) * (vec3<f32>(1.0) - {});",
-                    result_var, a, b
+                    "    let {} = vec4<f32>(vec3<f32>(1.0) - (vec3<f32>(1.0) - {}.rgb) * (vec3<f32>(1.0) - {}.rgb), {}.a);",
+                    result_var, a, b, a
                 ));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
@@ -912,8 +954,8 @@ impl<'a> WgslCodegenContext<'a> {
                 let b = self.get_input_value(node, "b");
                 let result_var = self.next_var("blend_overlay");
                 self.fragment_lines.push(format!(
-                    "    let {} = select({} * {} * 2.0, vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - {}) * (vec3<f32>(1.0) - {}), {} < vec3<f32>(0.5));",
-                    result_var, a, b, a, b, a
+                    "    let {} = vec4<f32>(select({}.rgb * {}.rgb * 2.0, vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - {}.rgb) * (vec3<f32>(1.0) - {}.rgb), {}.rgb < vec3<f32>(0.5)), {}.a);",
+                    result_var, a, b, a, b, a, a
                 ));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
@@ -922,7 +964,10 @@ impl<'a> WgslCodegenContext<'a> {
                 let a = self.get_input_value(node, "a");
                 let b = self.get_input_value(node, "b");
                 let result_var = self.next_var("blend_add");
-                self.fragment_lines.push(format!("    let {} = {} + {};", result_var, a, b));
+                self.fragment_lines.push(format!(
+                    "    let {} = vec4<f32>({}.rgb + {}.rgb, {}.a);",
+                    result_var, a, b, a
+                ));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
@@ -932,8 +977,8 @@ impl<'a> WgslCodegenContext<'a> {
                 let result_var = self.next_var("blend_soft");
                 // Soft light formula: (1-2b)*a^2 + 2*b*a
                 self.fragment_lines.push(format!(
-                    "    let {} = (vec3<f32>(1.0) - 2.0 * {}) * {} * {} + 2.0 * {} * {};",
-                    result_var, b, a, a, b, a
+                    "    let {} = vec4<f32>((vec3<f32>(1.0) - 2.0 * {}.rgb) * {}.rgb * {}.rgb + 2.0 * {}.rgb * {}.rgb, {}.a);",
+                    result_var, b, a, a, b, a, a
                 ));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
@@ -1492,10 +1537,15 @@ pub fn generate_wgsl_code(graph: &BlueprintGraph) -> WgslCodegenResult {
     pbr_types::pbr_input_new,
     mesh_view_bindings::view,
     mesh_view_bindings::globals,
+    forward_io::VertexOutput,
 }
 "#
     } else {
-        "#import bevy_pbr::mesh_view_bindings::globals\n"
+        r#"#import bevy_pbr::{
+    mesh_view_bindings::globals,
+    forward_io::VertexOutput,
+}
+"#
     };
 
     let fragment_shader = format!(
@@ -1505,15 +1555,13 @@ pub fn generate_wgsl_code(graph: &BlueprintGraph) -> WgslCodegenResult {
 {pbr_imports}
 {bindings}
 {noise}
-struct VertexOutput {{
-    @builtin(position) position: vec4<f32>,
-    @location(0) world_position: vec3<f32>,
-    @location(1) world_normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-}};
-
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {{
+    // Access vertex data from Bevy's VertexOutput
+    // in.position - clip space position
+    // in.world_position - world space position
+    // in.world_normal - world space normal
+    // in.uv - texture coordinates
 {body}
 }}
 "#,

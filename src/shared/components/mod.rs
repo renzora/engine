@@ -22,7 +22,7 @@ pub use physics::{
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
 };
 pub use rendering::{
-    DirectionalLightData, MeshNodeData, MeshPrimitiveType, PointLightData, SpotLightData,
+    DirectionalLightData, MaterialData, MeshNodeData, MeshPrimitiveType, PointLightData, SpotLightData,
     Sprite2DData, SpriteAnimation, SpriteSheetData,
 };
 pub use ui::{UIButtonData, UIImageData, UILabelData, UIPanelData};

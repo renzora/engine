@@ -141,6 +141,20 @@ impl SpriteSheetData {
 }
 
 // =============================================================================
+// Material Data Components
+// =============================================================================
+
+/// Data component for material blueprints - stores the path to a .material_bp file
+/// When attached to an entity with a mesh, the material will be compiled and applied
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize, Default)]
+#[reflect(Component)]
+pub struct MaterialData {
+    /// Path to the material blueprint file (.material_bp)
+    /// Can be relative to project or absolute
+    pub material_path: Option<String>,
+}
+
+// =============================================================================
 // Light Data Components
 // =============================================================================
 

@@ -506,6 +506,8 @@ pub fn editor_ui(
                             &mut meshes,
                             &mut materials,
                             &mut editor.gizmo,
+                            current_project.as_ref().map(|p| &p.path),
+                            &mut editor.assets,
                         );
                         all_ui_events.extend(events);
                         if changed {
@@ -707,6 +709,11 @@ pub fn editor_ui(
                     });
                 }
             }
+        }
+
+        // Clear any remaining drag if pointer was released and no panel handled it
+        if editor.assets.dragging_asset.is_some() && ctx.input(|i| i.pointer.any_released()) {
+            editor.assets.dragging_asset = None;
         }
     }
 

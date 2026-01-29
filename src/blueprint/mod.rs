@@ -14,6 +14,7 @@ mod component;
 mod graph;
 pub mod interactions;
 pub mod material;
+pub mod material_render;
 pub mod nodes;
 pub mod preview;
 mod preview_eval;
@@ -28,6 +29,11 @@ pub use graph::*;
 #[allow(unused_imports)]
 pub use interactions::*;
 pub use material::*;
+pub use material_render::{
+    BlueprintMaterialRenderPlugin, BlueprintMaterialInstance,
+    BlueprintShaderCache, create_blueprint_material_instance,
+    save_generated_shader,
+};
 pub use preview::{MaterialPreviewPlugin, MaterialPreviewState, MaterialPreviewImage, PreviewMeshShape};
 #[allow(unused_imports)]
 pub use serialization::*;
@@ -48,6 +54,10 @@ impl Plugin for BlueprintPlugin {
         app.insert_resource(registry)
             .init_resource::<BlueprintEditorState>()
             .init_resource::<BlueprintCanvasState>()
+            // Add the blueprint material plugin for custom shader support
+            .add_plugins(BlueprintMaterialPlugin)
+            // Add the custom render pipeline for per-entity shaders
+            .add_plugins(BlueprintMaterialRenderPlugin)
             .add_systems(
                 Update,
                 (

@@ -1940,8 +1940,12 @@ fn is_scene_file(filename: &str) -> bool {
     filename.to_lowercase().ends_with(".ron")
 }
 
+fn is_blueprint_material_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".material_bp")
+}
+
 fn is_draggable_asset(filename: &str) -> bool {
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename)
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename)
 }
 
 fn is_image_file(filename: &str) -> bool {

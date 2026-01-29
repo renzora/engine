@@ -25,6 +25,8 @@ pub struct AssetBrowserState {
     pub pending_image_drop: Option<PendingImageDrop>,
     /// Pending scene drop to hierarchy (scene path, parent entity)
     pub pending_scene_drop: Option<(PathBuf, Option<Entity>)>,
+    /// Pending material blueprint drop (path, cursor position for picking)
+    pub pending_material_drop: Option<PendingMaterialDrop>,
     /// Search filter text
     pub search: String,
     /// Current view mode (grid or list)
@@ -60,6 +62,15 @@ pub struct PendingImageDrop {
     pub position: Vec3,
     /// Whether this drop is in 2D mode
     pub is_2d_mode: bool,
+}
+
+/// Pending material blueprint drop information
+#[derive(Clone, Debug)]
+pub struct PendingMaterialDrop {
+    /// Path to the .material_bp file
+    pub path: PathBuf,
+    /// Cursor position in viewport coordinates for entity picking
+    pub cursor_pos: bevy::math::Vec2,
 }
 
 /// Settings for importing 3D models

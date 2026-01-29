@@ -2,6 +2,7 @@
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use crate::{console_info, console_error};
 use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Sense, TextureId, Vec2};
 
 use crate::component_system::{
@@ -22,12 +23,13 @@ use crate::ui::inspectors::{
     render_ui_panel_inspector, render_ui_label_inspector, render_ui_button_inspector, render_ui_image_inspector,
 };
 use crate::shared::{
-    CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData,
+    CameraNodeData, CameraRigData, CollisionShapeData, MaterialData, PhysicsBodyData,
     // 2D components
     Sprite2DData, Camera2DData,
     // UI components
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
+use crate::input::MaterialApplied;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
@@ -40,7 +42,7 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
     CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK, X,
-    TAG, PENCIL_SIMPLE,
+    TAG, PENCIL_SIMPLE, PALETTE,
 };
 
 /// Background colors for alternating rows
@@ -165,6 +167,13 @@ impl CategoryStyle {
         Self {
             accent_color: Color32::from_rgb(191, 166, 242),  // Light purple
             header_bg: Color32::from_rgb(42, 40, 52),
+        }
+    }
+
+    fn rendering() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(99, 178, 238),   // Blue (same as transform)
+            header_bg: Color32::from_rgb(35, 45, 55),
         }
     }
 }
@@ -355,6 +364,9 @@ pub struct InspectorQueries<'w, 's> {
     pub ui_labels: Query<'w, 's, &'static mut UILabelData>,
     pub ui_buttons: Query<'w, 's, &'static mut UIButtonData>,
     pub ui_images: Query<'w, 's, &'static mut UIImageData>,
+    // Material component
+    pub materials_data: Query<'w, 's, &'static mut MaterialData>,
+    pub materials_applied: Query<'w, 's, &'static MaterialApplied>,
 }
 
 pub fn render_inspector(
@@ -556,12 +568,14 @@ pub fn render_inspector(
                 // Render history tab
                 render_history_content(ui, command_history);
             } else {
-                // Render normal inspector
+                // Render normal inspector (legacy path - no assets drag-drop support)
+                // This function is not actively used - docking uses render_inspector_content directly
+                let mut dummy_assets = crate::core::AssetBrowserState::default();
                 let (events, changed) = render_inspector_content(
                     ui, selection, entities, queries, script_registry, rhai_engine,
                     camera_preview_texture_id, plugin_host, ui_renderer,
                     component_registry, add_component_popup, commands, meshes, materials,
-                    gizmo_state,
+                    gizmo_state, None, &mut dummy_assets,
                 );
                 ui_events.extend(events);
                 scene_changed = changed;
@@ -619,9 +633,20 @@ pub fn render_inspector_content(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     gizmo_state: &mut GizmoState,
+    project_path: Option<&std::path::PathBuf>,
+    assets: &mut crate::core::AssetBrowserState,
 ) -> (Vec<UiEvent>, bool) {
     let mut scene_changed = false;
     let mut component_to_remove: Option<&'static str> = None;
+
+    // Debug: Log if there's a dragging asset when inspector renders
+    if let Some(drag) = &assets.dragging_asset {
+        let released = ui.ctx().input(|i| i.pointer.any_released());
+        if released {
+            console_info!("Inspector", "Has dragging asset on release: {}",
+                drag.file_name().unwrap_or_default().to_string_lossy());
+        }
+    }
 
     // Content area with padding
     egui::Frame::new()
@@ -1051,6 +1076,27 @@ pub fn render_inspector_content(
                     }
                 }
 
+                // Material component (with remove button)
+                if let Ok(mut material_data) = queries.materials_data.get_mut(selected) {
+                    let is_applied = queries.materials_applied.get(selected).is_ok();
+                    if render_category_removable(
+                        ui,
+                        PALETTE,
+                        "Material",
+                        CategoryStyle::rendering(),
+                        "inspector_material",
+                        true,
+                        true, // can_remove
+                        |ui| {
+                            render_material_inspector(
+                                ui, &mut material_data, is_applied, project_path, assets
+                            );
+                        },
+                    ) {
+                        component_to_remove = Some("material");
+                    }
+                }
+
                 // Plugin-registered inspector sections
                 let api = plugin_host.api();
                 for (type_id, inspector_def, _plugin_id) in &api.inspectors {
@@ -1317,4 +1363,250 @@ fn render_component_menu_item(
     }
 
     response.clicked()
+}
+
+/// Render the Material component inspector
+fn render_material_inspector(
+    ui: &mut egui::Ui,
+    material_data: &mut MaterialData,
+    is_applied: bool,
+    project_path: Option<&std::path::PathBuf>,
+    assets: &mut crate::core::AssetBrowserState,
+) {
+
+    let display_path = material_data
+        .material_path
+        .as_ref()
+        .map(|p| {
+            // Show just the filename for brevity
+            std::path::Path::new(p)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(p)
+        })
+        .unwrap_or("None");
+
+    property_row(ui, 0, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Blueprint");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(display_path);
+            });
+        });
+    });
+
+    // Show applied status
+    property_row(ui, 1, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Status");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if material_data.material_path.is_some() {
+                    if is_applied {
+                        ui.colored_label(Color32::from_rgb(100, 200, 100), "Applied");
+                    } else {
+                        ui.colored_label(Color32::from_rgb(200, 200, 100), "Pending...");
+                    }
+                } else {
+                    ui.colored_label(Color32::from_rgb(150, 150, 150), "No material");
+                }
+            });
+        });
+    });
+
+    // Clear button (only shown if material is set)
+    if material_data.material_path.is_some() {
+        property_row(ui, 2, |ui| {
+            if ui.button("Clear Material").clicked() {
+                material_data.material_path = None;
+            }
+        });
+    }
+
+    ui.add_space(4.0);
+
+    // Check if we're dragging a valid asset
+    let is_dragging_valid = assets.dragging_asset.as_ref().map(|p| {
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        ext == "material_bp" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga"
+    }).unwrap_or(false);
+
+    // Create drop zone with browse button
+    let drop_zone_height = 22.0;
+    let available_width = ui.available_width();
+
+    ui.horizontal(|ui| {
+        // Drop zone area - styled like an input box
+        let drop_width = available_width - 30.0;
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(drop_width, drop_zone_height),
+            Sense::click_and_drag(),
+        );
+
+        // Check hover using rect directly (more reliable than response.hovered())
+        let is_hovered = ui.ctx().input(|i| {
+            i.pointer.hover_pos().map_or(false, |pos| rect.contains(pos))
+        });
+
+        // Input box style background
+        let bg_color = if is_dragging_valid && is_hovered {
+            Color32::from_rgb(45, 55, 75)
+        } else {
+            Color32::from_rgb(30, 32, 38)
+        };
+
+        let stroke_color = if is_dragging_valid && is_hovered {
+            Color32::from_rgb(100, 150, 200)
+        } else if is_dragging_valid {
+            Color32::from_rgb(70, 90, 120)
+        } else {
+            Color32::from_rgb(55, 58, 65)
+        };
+
+        ui.painter().rect_filled(rect, 2.0, bg_color);
+        ui.painter().rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0, stroke_color),
+            egui::StrokeKind::Inside,
+        );
+
+        // Text inside - left aligned like an input
+        let text = material_data.material_path.as_ref()
+            .and_then(|p| std::path::Path::new(p).file_stem())
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| if is_dragging_valid { "Drop here...".to_string() } else { "Drop texture here...".to_string() });
+
+        let text_color = if material_data.material_path.is_some() {
+            Color32::from_rgb(200, 200, 210)
+        } else {
+            Color32::from_rgb(100, 100, 110)
+        };
+
+        let text_rect = rect.shrink2(egui::vec2(6.0, 0.0));
+        ui.painter().text(
+            egui::pos2(text_rect.min.x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            text,
+            egui::FontId::proportional(12.0),
+            text_color,
+        );
+
+        // Handle drop from assets panel - check for pointer release while hovering
+        let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
+
+        // Debug: Log every frame when there's ANY dragging asset
+        if let Some(drag_path) = &assets.dragging_asset {
+            let ext = drag_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if pointer_released {
+                console_info!("Material", "DROP: hovered={}, valid={}, ext={}, file={}",
+                    is_hovered, is_dragging_valid, ext,
+                    drag_path.file_name().unwrap_or_default().to_string_lossy());
+            }
+        }
+
+        if is_hovered && is_dragging_valid && pointer_released {
+            // Take the drag immediately to prevent viewport from clearing it
+            if let Some(path) = assets.dragging_asset.take() {
+                let ext = path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+
+                console_info!("Material", "Drop detected: {} (ext: {})",
+                    path.file_name().unwrap_or_default().to_string_lossy(), ext);
+
+                if ext == "material_bp" {
+                    let path_str = path.to_string_lossy().to_string();
+                    console_info!("Material", "Setting blueprint: {}", path_str);
+                    material_data.material_path = Some(path_str);
+                } else if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga") {
+                    console_info!("Material", "Creating material from texture...");
+                    if let Some(project) = project_path {
+                        if let Some(bp_path) = import_texture_and_create_material(&path, project) {
+                            console_info!("Material", "Created blueprint: {}", bp_path);
+                            material_data.material_path = Some(bp_path);
+                        } else {
+                            console_error!("Material", "Failed to create material from texture");
+                        }
+                    } else {
+                        console_error!("Material", "No project path available");
+                    }
+                }
+            }
+        }
+
+        // Browse button with image icon
+        if ui.add_sized([26.0, drop_zone_height], egui::Button::new(IMAGE.to_string())).clicked() {
+            if let Some(texture_path) = rfd::FileDialog::new()
+                .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga"])
+                .pick_file()
+            {
+                if let Some(project) = project_path {
+                    if let Some(bp_path) = import_texture_and_create_material(&texture_path, project) {
+                        material_data.material_path = Some(bp_path);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Import a texture file and create a material blueprint from it
+/// Returns the path to the created blueprint file
+fn import_texture_and_create_material(
+    texture_path: &std::path::Path,
+    project_path: &std::path::PathBuf,
+) -> Option<String> {
+    use crate::blueprint::{BlueprintFile, create_material_from_texture, sanitize_filename};
+
+    // Get texture filename
+    let texture_filename = texture_path.file_name()?.to_str()?;
+    let texture_stem = texture_path.file_stem()?.to_str()?;
+
+    // Determine destination paths
+    let textures_dir = project_path.join("assets").join("textures");
+    let blueprints_dir = project_path.join("blueprints");
+
+    // Create directories if needed
+    if let Err(e) = std::fs::create_dir_all(&textures_dir) {
+        error!("Failed to create textures directory: {}", e);
+        return None;
+    }
+    if let Err(e) = std::fs::create_dir_all(&blueprints_dir) {
+        error!("Failed to create blueprints directory: {}", e);
+        return None;
+    }
+
+    // Copy texture to project's assets/textures folder
+    let dest_texture_path = textures_dir.join(texture_filename);
+    if !dest_texture_path.exists() {
+        if let Err(e) = std::fs::copy(texture_path, &dest_texture_path) {
+            error!("Failed to copy texture: {}", e);
+            return None;
+        }
+        info!("Copied texture to {:?}", dest_texture_path);
+    }
+
+    // Create relative texture path for the blueprint
+    let relative_texture_path = format!("assets/textures/{}", texture_filename);
+
+    // Generate material name from texture name
+    let material_name = sanitize_filename(texture_stem);
+    let blueprint_filename = format!("{}.material_bp", material_name);
+    let blueprint_path = blueprints_dir.join(&blueprint_filename);
+
+    // Create the material blueprint
+    let graph = create_material_from_texture(&material_name, &relative_texture_path);
+    let blueprint_file = BlueprintFile::new(graph);
+
+    // Save the blueprint
+    if let Err(e) = blueprint_file.save(&blueprint_path) {
+        error!("Failed to save material blueprint: {}", e);
+        return None;
+    }
+
+    info!("Created material blueprint: {:?}", blueprint_path);
+
+    Some(blueprint_path.to_string_lossy().to_string())
 }

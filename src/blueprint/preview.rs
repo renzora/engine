@@ -542,7 +542,7 @@ fn resolve_texture_path(path: &str, current_project: Option<&crate::project::Cur
 }
 
 /// Check if a node chain contains procedural patterns that need texture generation
-fn chain_has_procedural_pattern(graph: &BlueprintGraph, node: &BlueprintNode, _pin: &str) -> bool {
+pub fn chain_has_procedural_pattern(graph: &BlueprintGraph, node: &BlueprintNode, _pin: &str) -> bool {
     // Check if this node is a procedural pattern generator
     let procedural_types = [
         "shader/checkerboard",
@@ -583,7 +583,7 @@ fn chain_has_procedural_pattern(graph: &BlueprintGraph, node: &BlueprintNode, _p
 }
 
 /// Generate a procedural texture by evaluating the node graph at each pixel
-fn generate_procedural_texture(
+pub fn generate_procedural_texture(
     graph: &BlueprintGraph,
     output_node: &BlueprintNode,
     pin_name: &str,

@@ -22,7 +22,7 @@ pub mod camera_debug;
 pub use animation_timeline::AnimationTimelineState;
 pub use assets::{
     AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
-    NormalImportMethod, PendingImageDrop, TangentImportMethod,
+    NormalImportMethod, PendingImageDrop, PendingMaterialDrop, TangentImportMethod,
 };
 pub use camera::{OrbitCameraState, ProjectionMode, TabCameraState};
 pub use console::{ConsoleState, LogEntry, LogLevel};

@@ -1,15 +1,20 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
+use bevy::camera::primitives::Aabb;
 use bevy::scene::DynamicSceneRoot;
 use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
-use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress};
-use crate::shared::{MeshInstanceData, SceneInstanceData};
+use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress, ViewportCamera, ViewportState};
+use crate::shared::{MaterialData, MeshInstanceData, SceneInstanceData};
 use crate::spawn::EditorSceneRoot;
 use crate::project::CurrentProject;
 use crate::shared::Sprite2DData;
+use crate::blueprint::{
+    BlueprintFile, compile_material_blueprint, create_material_from_blueprint,
+    preview::{chain_has_procedural_pattern, generate_procedural_texture},
+};
 
 /// Resource to track pending GLB loads
 #[derive(Resource, Default)]
@@ -43,6 +48,14 @@ pub struct MeshInstanceModelLoading;
 /// Marker component to indicate a SceneInstance has had its contents loaded
 #[derive(Component)]
 pub struct SceneInstanceLoaded;
+
+/// Marker component to indicate a MaterialData has had its material applied
+/// Stores the path that was applied to detect when it needs to be reloaded
+#[derive(Component)]
+pub struct MaterialApplied {
+    /// The path that was last applied (to detect changes)
+    pub applied_path: Option<String>,
+}
 
 /// Recursively collect all descendant entities
 fn collect_descendants(world: &World, entity: Entity, result: &mut Vec<Entity>) {
@@ -778,4 +791,277 @@ pub fn load_scene_instances(world: &mut World) {
             info!("Loading scene instance from: {}", load_path.display());
         }
     });
+}
+
+/// System to handle material blueprint drops from the assets panel to viewport
+/// Picks the mesh entity under the cursor and adds a MaterialData component
+pub fn handle_material_panel_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    viewport: Res<ViewportState>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
+    mesh_query: Query<(Entity, &GlobalTransform, Option<&Aabb>), With<Mesh3d>>,
+    parent_query: Query<&ChildOf>,
+    editor_entity_query: Query<&EditorEntity>,
+) {
+    let Some(drop) = assets.pending_material_drop.take() else {
+        return;
+    };
+
+    // Pick the mesh entity under the cursor
+    let target_entity = pick_mesh_at_cursor(
+        drop.cursor_pos,
+        &viewport,
+        &camera_query,
+        &mesh_query,
+    );
+
+    let Some(mesh_entity) = target_entity else {
+        console_warn!("Material", "No mesh found under cursor to apply material");
+        return;
+    };
+
+    // Get the material path as a string
+    let material_path = drop.path.to_string_lossy().to_string();
+
+    // Add MaterialData component to the entity - the apply system will handle compilation
+    commands.entity(mesh_entity).insert(MaterialData {
+        material_path: Some(material_path.clone()),
+    });
+
+    // Get a display name for the entity
+    let entity_name = get_entity_display_name(
+        mesh_entity,
+        &parent_query,
+        &editor_entity_query,
+    );
+
+    console_info!("Material", "Added material to {}", entity_name);
+    info!("Added MaterialData '{}' to entity {:?}", material_path, mesh_entity);
+}
+
+/// System to apply materials to entities with MaterialData components
+/// Watches for new or changed MaterialData and compiles/applies the material
+pub fn apply_material_data(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    asset_server: Res<AssetServer>,
+    query: Query<(Entity, &MaterialData, Option<&MaterialApplied>)>,
+    parent_query: Query<&ChildOf>,
+    editor_entity_query: Query<&EditorEntity>,
+    current_project: Option<Res<CurrentProject>>,
+) {
+    for (entity, material_data, applied) in query.iter() {
+        // Check if we need to apply/update the material
+        let needs_apply = match (&material_data.material_path, applied) {
+            (Some(_), None) => true, // New material, not yet applied
+            (Some(path), Some(applied_marker)) => {
+                // Material changed
+                applied_marker.applied_path.as_ref() != Some(path)
+            }
+            (None, Some(_)) => true, // Material removed, need to clear
+            (None, None) => false,   // No material, nothing to do
+        };
+
+        if !needs_apply {
+            continue;
+        }
+
+        let Some(material_path) = &material_data.material_path else {
+            // Material was removed, remove the applied marker
+            commands.entity(entity).remove::<MaterialApplied>();
+            continue;
+        };
+
+        // Load and compile the blueprint
+        let path = PathBuf::from(material_path);
+        let blueprint_file = match BlueprintFile::load(&path) {
+            Ok(file) => file,
+            Err(e) => {
+                console_error!("Material", "Failed to load blueprint: {}", e);
+                // Mark as applied (with error) to prevent repeated attempts
+                commands.entity(entity).insert(MaterialApplied {
+                    applied_path: Some(material_path.clone()),
+                });
+                continue;
+            }
+        };
+
+        // Compile the material blueprint
+        let compiled = compile_material_blueprint(&blueprint_file.graph);
+        if !compiled.is_ok() {
+            for err in &compiled.errors {
+                console_error!("Material", "Compilation error: {}", err);
+            }
+            // Mark as applied (with error) to prevent repeated attempts
+            commands.entity(entity).insert(MaterialApplied {
+                applied_path: Some(material_path.clone()),
+            });
+            continue;
+        }
+
+        // Log any warnings
+        for warn in &compiled.warnings {
+            console_warn!("Material", "Compilation warning: {}", warn);
+        }
+
+        // Get the project path for resolving relative texture paths
+        let project_path = current_project.as_ref().map(|p| &p.path);
+
+        // Create and apply the material (extracts PBR values from the graph)
+        let mut material = create_material_from_blueprint(&blueprint_file.graph, &compiled, &asset_server, project_path);
+
+        // Check if the material has procedural patterns - if so, generate a texture
+        if let Some(output_node) = blueprint_file.graph.nodes.iter().find(|n| {
+            n.node_type == "shader/pbr_output" || n.node_type == "shader/unlit_output"
+        }) {
+            if chain_has_procedural_pattern(&blueprint_file.graph, output_node, "base_color") {
+                console_info!("Material", "Generating procedural texture for '{}'...", compiled.name);
+
+                // Generate a 256x256 texture from the procedural material
+                if let Some(proc_image) = generate_procedural_texture(
+                    &blueprint_file.graph,
+                    output_node,
+                    "base_color",
+                    256,
+                ) {
+                    let texture_handle = images.add(proc_image);
+                    material.base_color_texture = Some(texture_handle);
+                    material.base_color = Color::WHITE; // Let texture control color
+                    console_success!("Material", "Procedural texture generated for '{}'", compiled.name);
+                }
+            }
+        }
+
+        let material_handle = materials.add(material);
+
+        commands.entity(entity).insert((
+            MeshMaterial3d(material_handle),
+            MaterialApplied {
+                applied_path: Some(material_path.clone()),
+            },
+        ));
+
+        // Get a display name for the entity
+        let entity_name = get_entity_display_name(
+            entity,
+            &parent_query,
+            &editor_entity_query,
+        );
+
+        console_success!("Material", "Applied '{}' to {}", compiled.name, entity_name);
+        info!("Applied material blueprint '{}' to entity {:?}", compiled.name, entity);
+    }
+}
+
+/// Pick the mesh entity closest to the camera at the given cursor position
+fn pick_mesh_at_cursor(
+    cursor_pos: Vec2,
+    viewport: &ViewportState,
+    camera_query: &Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
+    mesh_query: &Query<(Entity, &GlobalTransform, Option<&Aabb>), With<Mesh3d>>,
+) -> Option<Entity> {
+    // Get ray from camera through cursor
+    let ray = get_cursor_ray_from_pos(cursor_pos, viewport, camera_query)?;
+
+    // Check all mesh entities for intersection
+    let mut closest_hit: Option<(Entity, f32)> = None;
+
+    for (entity, transform, aabb_opt) in mesh_query.iter() {
+        // Use AABB if available, otherwise use a default bounding box
+        let (center, half_extents) = if let Some(aabb) = aabb_opt {
+            (aabb.center, aabb.half_extents)
+        } else {
+            // Default small bounding box for meshes without AABB
+            (Vec3A::ZERO, Vec3A::splat(0.5))
+        };
+
+        // Transform AABB to world space
+        let world_center = transform.transform_point(Vec3::from(center));
+        let scale = transform.compute_transform().scale;
+        let world_half_extents = Vec3::from(half_extents) * scale;
+
+        // Ray-AABB intersection test
+        if let Some(t) = ray_aabb_intersection(&ray, world_center, world_half_extents) {
+            if closest_hit.map_or(true, |(_, d)| t < d) {
+                closest_hit = Some((entity, t));
+            }
+        }
+    }
+
+    closest_hit.map(|(e, _)| e)
+}
+
+/// Get a ray from a cursor position in viewport coordinates
+fn get_cursor_ray_from_pos(
+    cursor_pos: Vec2,
+    viewport: &ViewportState,
+    camera_query: &Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
+) -> Option<Ray3d> {
+    let viewport_pos = viewport.position;
+    let viewport_size = viewport.size;
+
+    // Convert screen position to local viewport position
+    let local_x = cursor_pos.x - viewport_pos[0];
+    let local_y = cursor_pos.y - viewport_pos[1];
+
+    // Check if within viewport bounds
+    if local_x < 0.0 || local_y < 0.0 || local_x > viewport_size[0] || local_y > viewport_size[1] {
+        return None;
+    }
+
+    let viewport_cursor = Vec2::new(local_x, local_y);
+
+    let (camera, camera_transform) = camera_query.single().ok()?;
+    camera.viewport_to_world(camera_transform, viewport_cursor).ok()
+}
+
+/// Ray-AABB intersection test, returns distance to intersection or None
+fn ray_aabb_intersection(ray: &Ray3d, center: Vec3, half_extents: Vec3) -> Option<f32> {
+    let min = center - half_extents;
+    let max = center + half_extents;
+
+    let inv_dir = Vec3::new(
+        if ray.direction.x.abs() > 1e-6 { 1.0 / ray.direction.x } else { f32::MAX },
+        if ray.direction.y.abs() > 1e-6 { 1.0 / ray.direction.y } else { f32::MAX },
+        if ray.direction.z.abs() > 1e-6 { 1.0 / ray.direction.z } else { f32::MAX },
+    );
+
+    let t1 = (min - ray.origin) * inv_dir;
+    let t2 = (max - ray.origin) * inv_dir;
+
+    let t_min = t1.min(t2);
+    let t_max = t1.max(t2);
+
+    let t_enter = t_min.x.max(t_min.y).max(t_min.z);
+    let t_exit = t_max.x.min(t_max.y).min(t_max.z);
+
+    if t_enter <= t_exit && t_exit > 0.0 {
+        Some(if t_enter > 0.0 { t_enter } else { t_exit })
+    } else {
+        None
+    }
+}
+
+/// Get a display name for an entity, checking parent for EditorEntity name
+fn get_entity_display_name(
+    entity: Entity,
+    parent_query: &Query<&ChildOf>,
+    editor_entity_query: &Query<&EditorEntity>,
+) -> String {
+    // First check if this entity has an EditorEntity name
+    if let Ok(editor) = editor_entity_query.get(entity) {
+        return editor.name.clone();
+    }
+
+    // Check parent entity for EditorEntity name
+    if let Ok(child_of) = parent_query.get(entity) {
+        if let Ok(parent_editor) = editor_entity_query.get(child_of.0) {
+            return format!("{} (child mesh)", parent_editor.name);
+        }
+    }
+
+    // Fallback to entity ID
+    format!("Entity {:?}", entity)
 }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, EditorSettings, VisualizationMode, ProjectionMode};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::viewport::Camera2DState;
 use crate::theming::Theme;
@@ -950,11 +950,19 @@ pub fn render_viewport_content(
                     let norm_x = local_x / content_rect.width();
                     let norm_y = local_y / content_rect.height();
 
-                    // Check if this is an image file
+                    // Check file type
                     let is_image = is_image_file(&asset_path);
+                    let is_material = is_blueprint_material(&asset_path);
                     let is_2d_mode = viewport.viewport_mode == ViewportMode::Mode2D;
 
-                    if is_2d_mode {
+                    // Handle material blueprint drops (only in 3D mode)
+                    if is_material && !is_2d_mode {
+                        // Store cursor position for entity picking in the system
+                        assets.pending_material_drop = Some(PendingMaterialDrop {
+                            path: asset_path,
+                            cursor_pos: bevy::math::Vec2::new(mouse_pos.x, mouse_pos.y),
+                        });
+                    } else if is_2d_mode {
                         // In 2D mode, calculate position based on 2D camera
                         // For simplicity, use viewport center as origin with offset based on mouse position
                         let pos_x = (norm_x - 0.5) * content_rect.width();
@@ -967,7 +975,7 @@ pub fn render_viewport_content(
                                 is_2d_mode: true,
                             });
                         }
-                        // Note: Models in 2D mode not supported yet
+                        // Note: Models and materials in 2D mode not supported yet
                     } else {
                         // 3D mode - calculate ground plane intersection
                         let camera_pos = calculate_camera_position(
@@ -1023,10 +1031,9 @@ pub fn render_viewport_content(
                     }
                 }
             }
-        } else {
-            // Released outside viewport, cancel the drag
-            assets.dragging_asset = None;
         }
+        // Note: Don't clear dragging_asset when released outside viewport
+        // Other panels (like Inspector) may handle the drop
     }
 }
 
@@ -1038,6 +1045,14 @@ fn is_image_file(path: &std::path::Path) -> bool {
             let ext_lower = ext.to_lowercase();
             matches!(ext_lower.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp")
         })
+        .unwrap_or(false)
+}
+
+/// Check if a file is a material blueprint based on extension
+fn is_blueprint_material(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| ext.to_lowercase() == "material_bp")
         .unwrap_or(false)
 }
 

@@ -25,7 +25,7 @@ pub use components::{
     // Physics
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
     // Rendering
-    MeshNodeData, MeshPrimitiveType, Sprite2DData,
+    MaterialData, MeshNodeData, MeshPrimitiveType, Sprite2DData,
     // UI
     UIButtonData, UIImageData, UILabelData, UIPanelData,
 };

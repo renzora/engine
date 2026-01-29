@@ -282,6 +282,8 @@ fn main() {
                 input::handle_file_drop,
                 input::handle_asset_panel_drop,
                 input::handle_image_panel_drop,
+                input::handle_material_panel_drop,
+                input::apply_material_data,
                 input::handle_scene_hierarchy_drop,
                 input::spawn_loaded_gltfs,
                 input::check_mesh_instance_models,
