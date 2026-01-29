@@ -13,25 +13,11 @@ pub fn render_gamepad_content(
 ) {
     let connected_count = gamepad_state.gamepads.len();
 
+    egui::Frame::NONE
+        .inner_margin(egui::Margin::same(8))
+        .show(ui, |ui| {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.set_width(ui.available_width());
-
-        // Header
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Gamepad Debug").size(14.0).strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let status_color = if connected_count > 0 {
-                    Color32::from_rgb(100, 200, 100)
-                } else {
-                    Color32::from_rgb(150, 150, 150)
-                };
-                ui.label(RichText::new(format!("{} connected", connected_count)).color(status_color));
-            });
-        });
-
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(8.0);
 
         if connected_count == 0 {
             ui.vertical_centered(|ui| {
@@ -52,6 +38,7 @@ pub fn render_gamepad_content(
 
             render_gamepad(ui, idx, gamepad);
         }
+    });
     });
 }
 
@@ -142,6 +129,17 @@ fn render_gamepad(ui: &mut egui::Ui, index: usize, gamepad: &GamepadInfo) {
         render_button(ui, "L3", gamepad.buttons.left_thumb);
         render_button(ui, "R3", gamepad.buttons.right_thumb);
     });
+
+    // Raw axis debug section
+    if !gamepad.raw_axes.is_empty() {
+        ui.add_space(12.0);
+        ui.label(RichText::new("Raw Axes (non-zero)").size(11.0).color(Color32::from_gray(150)));
+        for (name, value) in &gamepad.raw_axes {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{}: {:.3}", name, value)).size(10.0).color(Color32::from_gray(120)));
+            });
+        }
+    }
 }
 
 fn render_stick(ui: &mut egui::Ui, x: f32, y: f32) {

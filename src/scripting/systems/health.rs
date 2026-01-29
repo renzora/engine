@@ -116,16 +116,60 @@ pub fn process_health_commands(
                 }
             }
 
-            HealthCommand::SetInvincible { entity, invincible } => {
+            HealthCommand::SetInvincible { entity, invincible, duration } => {
                 if let Ok(mut health) = health_query.get_mut(entity) {
                     health.invincible = invincible;
-                    debug!(
-                        "Set invincible of {:?} to {}",
-                        entity, invincible
-                    );
+                    // Note: duration-based invincibility would need a timer system
+                    // For now, duration > 0 is logged but not automatically disabled
+                    if duration > 0.0 {
+                        debug!(
+                            "Set invincible of {:?} to {} for {} seconds (auto-disable not yet implemented)",
+                            entity, invincible, duration
+                        );
+                    } else {
+                        debug!(
+                            "Set invincible of {:?} to {}",
+                            entity, invincible
+                        );
+                    }
                 } else {
                     warn!(
                         "SetInvincible: entity {:?} has no HealthData component",
+                        entity
+                    );
+                }
+            }
+
+            HealthCommand::Kill { entity } => {
+                if let Ok(mut health) = health_query.get_mut(entity) {
+                    let old_health = health.current_health;
+                    health.current_health = 0.0;
+
+                    info!("Killed entity {:?} (health: {} -> 0)", entity, old_health);
+
+                    if health.destroy_on_death {
+                        commands.entity(entity).despawn();
+                    }
+                } else {
+                    warn!(
+                        "Kill: entity {:?} has no HealthData component",
+                        entity
+                    );
+                }
+            }
+
+            HealthCommand::Revive { entity } => {
+                if let Ok(mut health) = health_query.get_mut(entity) {
+                    let old_health = health.current_health;
+                    health.current_health = health.max_health;
+
+                    info!(
+                        "Revived entity {:?} (health: {} -> {})",
+                        entity, old_health, health.max_health
+                    );
+                } else {
+                    warn!(
+                        "Revive: entity {:?} has no HealthData component",
                         entity
                     );
                 }

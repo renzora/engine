@@ -9,6 +9,7 @@ mod debug;
 mod ecs;
 mod events;
 mod flow;
+mod health;
 mod hierarchy;
 mod input;
 mod logic;
@@ -296,6 +297,25 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&ecs::FOR_EACH_ENTITY);
     registry.register(&ecs::GET_CLOSEST_ENTITY);
     registry.register(&ecs::GET_ENTITIES_IN_RADIUS);
+
+    // Health - Data
+    registry.register(&health::GET_HEALTH);
+    registry.register(&health::IS_DEAD);
+    registry.register(&health::IS_INVINCIBLE);
+
+    // Health - Actions
+    registry.register(&health::DAMAGE);
+    registry.register(&health::HEAL);
+    registry.register(&health::SET_HEALTH);
+    registry.register(&health::SET_MAX_HEALTH);
+    registry.register(&health::SET_INVINCIBLE);
+    registry.register(&health::KILL);
+    registry.register(&health::REVIVE);
+
+    // Health - Events
+    registry.register(&health::ON_DAMAGE);
+    registry.register(&health::ON_DEATH);
+    registry.register(&health::ON_HEAL);
 
     // Physics - Rigid Body
     registry.register(&physics::ADD_RIGID_BODY);

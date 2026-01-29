@@ -11,9 +11,9 @@ use super::{
 use super::resources::{
     AnimationCommandQueue, AudioCommand, AudioCommandQueue, CameraCommand, CameraCommandQueue,
     DebugDrawCommand, DebugDrawQueue, EasingFunction, HealthCommand, HealthCommandQueue,
-    PhysicsCommand, PhysicsCommandQueue, RenderingCommand, RenderingCommandQueue,
-    SceneCommandQueue, ScriptCollisionEvents, ScriptTimers, SpriteAnimationCommandQueue,
-    TweenProperty, array_to_color,
+    PhysicsCommand, PhysicsCommandQueue, RaycastHit, RaycastResults, RenderingCommand,
+    RenderingCommandQueue, SceneCommandQueue, ScriptCollisionEvents, ScriptTimers,
+    SpriteAnimationCommandQueue, TweenProperty, array_to_color,
 };
 use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
 use crate::core::resources::console::{console_log, LogLevel};
@@ -38,6 +38,8 @@ pub struct ScriptCommandQueues<'w> {
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
     // Collision events for scripts
     pub collisions: Res<'w, ScriptCollisionEvents>,
+    // Raycast results from previous frame
+    pub raycast_results: ResMut<'w, RaycastResults>,
 }
 
 /// System parameter that bundles component queries for reading entity state
@@ -161,14 +163,20 @@ struct TransformChange {
     translation: Option<Vec3>,
 }
 
+/// Marker resource to indicate we're running in standalone runtime mode (no editor)
+#[derive(Resource)]
+pub struct RuntimeMode;
+
 /// System that runs Rhai file-based scripts
+/// Works in both editor (with PlayModeState) and runtime (with RuntimeMode) contexts
 pub fn run_rhai_scripts(
     mut commands: Commands,
     time: Res<Time>,
     input: Res<ScriptInput>,
     rhai_engine: Res<RhaiScriptEngine>,
     current_project: Option<Res<CurrentProject>>,
-    play_mode: Res<PlayModeState>,
+    play_mode: Option<Res<PlayModeState>>,
+    runtime_mode: Option<Res<RuntimeMode>>,
     mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>)>,
     mut all_transforms: Query<&mut Transform, Without<ScriptComponent>>,
     mut editor_entities: Query<(Entity, &mut EditorEntity)>,
@@ -181,14 +189,25 @@ pub fn run_rhai_scripts(
 ) {
     use std::collections::HashMap;
 
-    // Only run scripts during play mode
-    if !play_mode.is_playing() {
+    // Determine if we should run scripts:
+    // - In runtime mode: always run
+    // - In editor mode: only run during play mode
+    let should_run = if runtime_mode.is_some() {
+        true // Runtime mode - always run
+    } else if let Some(ref pm) = play_mode {
+        pm.is_playing() // Editor mode - check play state
+    } else {
+        false // No mode resource - don't run
+    };
+
+    if !should_run {
         return;
     }
 
-    let Some(_project) = current_project else {
+    // In editor mode, require a project. In runtime mode, scripts folder is set externally.
+    if runtime_mode.is_none() && current_project.is_none() {
         return;
-    };
+    }
 
     let script_time = ScriptTime {
         elapsed: time.elapsed_secs_f64(),
@@ -282,6 +301,14 @@ pub fn run_rhai_scripts(
 
         // Set timer data - get list of timers that just finished
         ctx.timers_just_finished = queues.timers.get_just_finished();
+
+        // Set raycast results for this entity
+        // Extract results where the requester entity matches
+        for ((req_entity, var_name), hit) in queues.raycast_results.results.iter() {
+            if *req_entity == entity {
+                ctx.raycast_results.insert(var_name.clone(), hit.clone());
+            }
+        }
 
         ctx.input_movement = input.get_movement_vector();
         ctx.mouse_position = input.mouse_position;
@@ -1042,6 +1069,16 @@ fn process_rhai_command(
         RhaiCommand::ScreenShake { intensity, duration } => {
             camera_queue.push(CameraCommand::ScreenShake { intensity, duration });
         }
+        RhaiCommand::CameraFollow { entity_id, offset, smoothing } => {
+            if let Some(entity) = Entity::try_from_bits(entity_id) {
+                camera_queue.push(CameraCommand::FollowEntity { entity, offset, smoothing });
+            } else {
+                warn!("[Script] CameraFollow: invalid entity id {}", entity_id);
+            }
+        }
+        RhaiCommand::StopCameraFollow => {
+            camera_queue.push(CameraCommand::StopFollow);
+        }
 
         // Component Commands - Health
         RhaiCommand::SetHealth { entity_id, value } => {
@@ -1067,6 +1104,24 @@ fn process_rhai_command(
                 .and_then(|id| Entity::try_from_bits(id))
                 .unwrap_or(source_entity);
             health_queue.push(HealthCommand::Heal { entity, amount });
+        }
+        RhaiCommand::SetInvincible { entity_id, invincible, duration } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::SetInvincible { entity, invincible, duration });
+        }
+        RhaiCommand::Kill { entity_id } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::Kill { entity });
+        }
+        RhaiCommand::Revive { entity_id } => {
+            let entity = entity_id
+                .and_then(|id| Entity::try_from_bits(id))
+                .unwrap_or(source_entity);
+            health_queue.push(HealthCommand::Revive { entity });
         }
         RhaiCommand::SetComponentField { entity_id, component_type, field_name, value } => {
             let entity = entity_id

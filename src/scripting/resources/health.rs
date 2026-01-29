@@ -32,6 +32,16 @@ pub enum HealthCommand {
     SetInvincible {
         entity: Entity,
         invincible: bool,
+        /// Optional duration in seconds (0 = permanent)
+        duration: f32,
+    },
+    /// Kill entity (set health to 0)
+    Kill {
+        entity: Entity,
+    },
+    /// Revive entity (restore to max health)
+    Revive {
+        entity: Entity,
     },
 }
 

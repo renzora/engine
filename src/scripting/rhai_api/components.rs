@@ -42,6 +42,15 @@ pub fn register(engine: &mut Engine) {
         m
     });
 
+    // set_max_health_of(entity_id, value) - Set max health of entity
+    engine.register_fn("set_max_health_of", |entity_id: i64, value: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("set_max_health"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m.insert("value".into(), Dynamic::from(value));
+        m
+    });
+
     // damage(amount) - Deal damage to self
     engine.register_fn("damage", |amount: f64| -> Map {
         let mut m = Map::new();
@@ -73,6 +82,72 @@ pub fn register(engine: &mut Engine) {
         m.insert("_cmd".into(), Dynamic::from("heal"));
         m.insert("entity_id".into(), Dynamic::from(entity_id));
         m.insert("amount".into(), Dynamic::from(amount));
+        m
+    });
+
+    // set_invincible(invincible) - Set invincibility of self
+    engine.register_fn("set_invincible", |invincible: bool| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
+        m.insert("invincible".into(), Dynamic::from(invincible));
+        m
+    });
+
+    // set_invincible_of(entity_id, invincible) - Set invincibility of entity
+    engine.register_fn("set_invincible_of", |entity_id: i64, invincible: bool| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m.insert("invincible".into(), Dynamic::from(invincible));
+        m
+    });
+
+    // set_invincible_duration(invincible, duration) - Set invincibility of self with duration
+    engine.register_fn("set_invincible_duration", |invincible: bool, duration: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
+        m.insert("invincible".into(), Dynamic::from(invincible));
+        m.insert("duration".into(), Dynamic::from(duration));
+        m
+    });
+
+    // set_invincible_of_duration(entity_id, invincible, duration) - Set invincibility of entity with duration
+    engine.register_fn("set_invincible_of_duration", |entity_id: i64, invincible: bool, duration: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m.insert("invincible".into(), Dynamic::from(invincible));
+        m.insert("duration".into(), Dynamic::from(duration));
+        m
+    });
+
+    // kill() - Instantly kill self (set health to 0)
+    engine.register_fn("kill", || -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("kill"));
+        m
+    });
+
+    // kill_entity(entity_id) - Instantly kill entity
+    engine.register_fn("kill_entity", |entity_id: i64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("kill"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m
+    });
+
+    // revive() - Revive self (restore to max health)
+    engine.register_fn("revive", || -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("revive"));
+        m
+    });
+
+    // revive_entity(entity_id) - Revive entity
+    engine.register_fn("revive_entity", |entity_id: i64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("revive"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
         m
     });
 

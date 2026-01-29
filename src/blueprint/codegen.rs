@@ -955,6 +955,42 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}print({});", indent, message));
             }
 
+            // Health actions
+            "component/damage" => {
+                let entity = self.get_input_value(node, "entity");
+                let amount = self.get_input_value(node, "amount");
+                lines.push(format!("{}damage_entity({}, {});", indent, entity, amount));
+            }
+            "component/heal" => {
+                let entity = self.get_input_value(node, "entity");
+                let amount = self.get_input_value(node, "amount");
+                lines.push(format!("{}heal_entity({}, {});", indent, entity, amount));
+            }
+            "component/set_health" => {
+                let entity = self.get_input_value(node, "entity");
+                let health = self.get_input_value(node, "health");
+                lines.push(format!("{}set_health_of({}, {});", indent, entity, health));
+            }
+            "component/set_max_health" => {
+                let entity = self.get_input_value(node, "entity");
+                let max_health = self.get_input_value(node, "max_health");
+                lines.push(format!("{}set_max_health_of({}, {});", indent, entity, max_health));
+            }
+            "component/set_invincible" => {
+                let entity = self.get_input_value(node, "entity");
+                let invincible = self.get_input_value(node, "invincible");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}set_invincible_of_duration({}, {}, {});", indent, entity, invincible, duration));
+            }
+            "component/kill" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}kill_entity({});", indent, entity));
+            }
+            "component/revive" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}revive_entity({});", indent, entity));
+            }
+
             // Variable setter
             "variable/set" => {
                 let var_name = node.input_values.get("var_name")

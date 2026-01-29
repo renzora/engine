@@ -533,6 +533,21 @@ impl RhaiScriptEngine {
         // Helper: Check if any timer just finished
         scope.push("any_timer_finished", !ctx.timers_just_finished.is_empty());
 
+        // Raycast results - push each result as a map with the variable name
+        for (var_name, hit) in &ctx.raycast_results {
+            let mut hit_map = Map::new();
+            hit_map.insert("hit".into(), Dynamic::from(hit.hit));
+            hit_map.insert("entity_id".into(), Dynamic::from(hit.entity.map(|e| e.to_bits() as i64).unwrap_or(-1)));
+            hit_map.insert("point_x".into(), Dynamic::from(hit.point.x as f64));
+            hit_map.insert("point_y".into(), Dynamic::from(hit.point.y as f64));
+            hit_map.insert("point_z".into(), Dynamic::from(hit.point.z as f64));
+            hit_map.insert("normal_x".into(), Dynamic::from(hit.normal.x as f64));
+            hit_map.insert("normal_y".into(), Dynamic::from(hit.normal.y as f64));
+            hit_map.insert("normal_z".into(), Dynamic::from(hit.normal.z as f64));
+            hit_map.insert("distance".into(), Dynamic::from(hit.distance as f64));
+            scope.push(var_name.as_str(), hit_map);
+        }
+
         // Component data - Health
         scope.push("self_health", ctx.self_health as f64);
         scope.push("self_max_health", ctx.self_max_health as f64);
@@ -1214,6 +1229,33 @@ impl RhaiScriptEngine {
                     let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
                     ctx.commands.push(RhaiCommand::ScreenShake { intensity, duration });
                 }
+                "camera_follow" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let offset_x = cmd_map.get("offset_x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let offset_y = cmd_map.get("offset_y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(5.0) as f32;
+                    let offset_z = cmd_map.get("offset_z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
+                    let smoothing = cmd_map.get("smoothing").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.1) as f32;
+                    ctx.commands.push(RhaiCommand::CameraFollow {
+                        entity_id,
+                        offset: Vec3::new(offset_x, offset_y, offset_z),
+                        smoothing,
+                    });
+                }
+                "camera_follow_self" => {
+                    // Use self entity for following
+                    let offset_x = cmd_map.get("offset_x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let offset_y = cmd_map.get("offset_y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(5.0) as f32;
+                    let offset_z = cmd_map.get("offset_z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
+                    let smoothing = cmd_map.get("smoothing").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.1) as f32;
+                    ctx.commands.push(RhaiCommand::CameraFollow {
+                        entity_id: ctx.self_entity_id,
+                        offset: Vec3::new(offset_x, offset_y, offset_z),
+                        smoothing,
+                    });
+                }
+                "camera_stop_follow" => {
+                    ctx.commands.push(RhaiCommand::StopCameraFollow);
+                }
 
                 // Component commands - Health
                 "set_health" => {
@@ -1235,6 +1277,20 @@ impl RhaiScriptEngine {
                     let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
                     let amount = cmd_map.get("amount").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
                     ctx.commands.push(RhaiCommand::Heal { entity_id, amount });
+                }
+                "set_invincible" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    let invincible = cmd_map.get("invincible").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
+                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    ctx.commands.push(RhaiCommand::SetInvincible { entity_id, invincible, duration });
+                }
+                "kill" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    ctx.commands.push(RhaiCommand::Kill { entity_id });
+                }
+                "revive" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
+                    ctx.commands.push(RhaiCommand::Revive { entity_id });
                 }
 
                 // Component commands - Material emissive

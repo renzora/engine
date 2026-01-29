@@ -96,7 +96,7 @@ pub fn register(engine: &mut Engine) {
     // Follow Camera
     // ===================
 
-    // camera_follow(entity_id) - Make camera follow entity
+    // camera_follow(entity_id) - Make camera follow entity with default offset
     engine.register_fn("camera_follow", |entity_id: i64| -> Map {
         let mut m = Map::new();
         m.insert("_cmd".into(), Dynamic::from("camera_follow"));
@@ -104,10 +104,54 @@ pub fn register(engine: &mut Engine) {
         m
     });
 
-    // camera_follow_self() - Make camera follow self
+    // camera_follow_with_offset(entity_id, offset_x, offset_y, offset_z) - Make camera follow entity with offset
+    engine.register_fn("camera_follow_with_offset", |entity_id: i64, offset_x: f64, offset_y: f64, offset_z: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("camera_follow"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m.insert("offset_x".into(), Dynamic::from(offset_x));
+        m.insert("offset_y".into(), Dynamic::from(offset_y));
+        m.insert("offset_z".into(), Dynamic::from(offset_z));
+        m
+    });
+
+    // camera_follow_with_params(entity_id, offset_x, offset_y, offset_z, smoothing) - Full control
+    engine.register_fn("camera_follow_with_params", |entity_id: i64, offset_x: f64, offset_y: f64, offset_z: f64, smoothing: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("camera_follow"));
+        m.insert("entity_id".into(), Dynamic::from(entity_id));
+        m.insert("offset_x".into(), Dynamic::from(offset_x));
+        m.insert("offset_y".into(), Dynamic::from(offset_y));
+        m.insert("offset_z".into(), Dynamic::from(offset_z));
+        m.insert("smoothing".into(), Dynamic::from(smoothing));
+        m
+    });
+
+    // camera_follow_self() - Make camera follow self with default offset
     engine.register_fn("camera_follow_self", || -> Map {
         let mut m = Map::new();
         m.insert("_cmd".into(), Dynamic::from("camera_follow_self"));
+        m
+    });
+
+    // camera_follow_self_with_offset(offset_x, offset_y, offset_z) - Make camera follow self with offset
+    engine.register_fn("camera_follow_self_with_offset", |offset_x: f64, offset_y: f64, offset_z: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("camera_follow_self"));
+        m.insert("offset_x".into(), Dynamic::from(offset_x));
+        m.insert("offset_y".into(), Dynamic::from(offset_y));
+        m.insert("offset_z".into(), Dynamic::from(offset_z));
+        m
+    });
+
+    // camera_follow_self_with_params(offset_x, offset_y, offset_z, smoothing) - Full control
+    engine.register_fn("camera_follow_self_with_params", |offset_x: f64, offset_y: f64, offset_z: f64, smoothing: f64| -> Map {
+        let mut m = Map::new();
+        m.insert("_cmd".into(), Dynamic::from("camera_follow_self"));
+        m.insert("offset_x".into(), Dynamic::from(offset_x));
+        m.insert("offset_y".into(), Dynamic::from(offset_y));
+        m.insert("offset_z".into(), Dynamic::from(offset_z));
+        m.insert("smoothing".into(), Dynamic::from(smoothing));
         m
     });
 
@@ -115,24 +159,6 @@ pub fn register(engine: &mut Engine) {
     engine.register_fn("camera_stop_follow", || -> Map {
         let mut m = Map::new();
         m.insert("_cmd".into(), Dynamic::from("camera_stop_follow"));
-        m
-    });
-
-    // set_camera_follow_offset(x, y, z) - Set offset from followed entity
-    engine.register_fn("set_camera_follow_offset", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_camera_follow_offset"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
-    });
-
-    // set_camera_follow_smoothing(smoothing) - Set follow smoothing (0 = instant, 1 = very smooth)
-    engine.register_fn("set_camera_follow_smoothing", |smoothing: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_camera_follow_smoothing"));
-        m.insert("smoothing".into(), Dynamic::from(smoothing));
         m
     });
 

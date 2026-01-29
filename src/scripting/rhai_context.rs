@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use super::{ScriptTime, ScriptTransform, RhaiCommand};
+use super::resources::RaycastHit;
 
 /// Child node info for scripts
 #[derive(Clone)]
@@ -106,6 +107,12 @@ pub struct RhaiScriptContext {
     // ===================
     pub active_timers: HashMap<String, TimerState>,
     pub timers_just_finished: Vec<String>,
+
+    // ===================
+    // Raycast Results
+    // ===================
+    /// Map of result_var name -> RaycastHit from previous frame
+    pub raycast_results: HashMap<String, RaycastHit>,
 
     // ===================
     // Component Data - Health
@@ -227,6 +234,7 @@ impl RhaiScriptContext {
             active_collisions: Vec::new(),
             active_timers: HashMap::new(),
             timers_just_finished: Vec::new(),
+            raycast_results: HashMap::new(),
             self_health: 0.0,
             self_max_health: 0.0,
             self_health_percent: 0.0,

@@ -16,6 +16,8 @@ pub struct GamepadInfo {
     pub left_trigger: f32,
     pub right_trigger: f32,
     pub buttons: GamepadButtonState,
+    /// Raw axis values for debugging
+    pub raw_axes: Vec<(String, f32)>,
 }
 
 /// State of all gamepad buttons
@@ -47,6 +49,36 @@ pub fn update_gamepad_debug_state(
     debug_state.gamepads.clear();
 
     for gamepad in gamepads.iter() {
+        // Collect all raw axis values
+        let mut raw_axes = Vec::new();
+
+        // Standard axes
+        let axes_to_check = [
+            (GamepadAxis::LeftStickX, "LeftStickX"),
+            (GamepadAxis::LeftStickY, "LeftStickY"),
+            (GamepadAxis::RightStickX, "RightStickX"),
+            (GamepadAxis::RightStickY, "RightStickY"),
+            (GamepadAxis::LeftZ, "LeftZ"),
+            (GamepadAxis::RightZ, "RightZ"),
+        ];
+
+        for (axis, name) in axes_to_check {
+            if let Some(value) = gamepad.get(axis) {
+                if value.abs() > 0.001 {
+                    raw_axes.push((name.to_string(), value));
+                }
+            }
+        }
+
+        // Check Other axes (0-10)
+        for i in 0..10 {
+            if let Some(value) = gamepad.get(GamepadAxis::Other(i)) {
+                if value.abs() > 0.001 {
+                    raw_axes.push((format!("Other({})", i), value));
+                }
+            }
+        }
+
         let info = GamepadInfo {
             left_stick: Vec2::new(
                 gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0),
@@ -76,6 +108,7 @@ pub fn update_gamepad_debug_state(
                 left_thumb: gamepad.pressed(GamepadButton::LeftThumb),
                 right_thumb: gamepad.pressed(GamepadButton::RightThumb),
             },
+            raw_axes,
         };
         debug_state.gamepads.push(info);
     }

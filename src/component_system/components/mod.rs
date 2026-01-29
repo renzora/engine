@@ -1,10 +1,13 @@
 //! Component definitions for the component registry
 
+mod ai;
 mod audio;
 mod camera;
+mod combat;
 mod effects;
 mod environment;
 pub mod gameplay;
+mod interaction;
 mod lighting;
 mod physics;
 mod rendering;
@@ -28,4 +31,7 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     environment::register(registry);
     effects::register(registry);
     gameplay::register(registry);
+    interaction::register(registry);
+    ai::register(registry);
+    combat::register(registry);
 }

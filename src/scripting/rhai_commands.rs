@@ -105,6 +105,8 @@ pub enum RhaiCommand {
     SetCameraTarget { position: Vec3 },
     SetCameraZoom { zoom: f32 },
     ScreenShake { intensity: f32, duration: f32 },
+    CameraFollow { entity_id: u64, offset: Vec3, smoothing: f32 },
+    StopCameraFollow,
 
     // ===================
     // Component Commands
@@ -122,6 +124,9 @@ pub enum RhaiCommand {
     SetMaxHealth { entity_id: Option<u64>, value: f32 },
     Damage { entity_id: Option<u64>, amount: f32 },
     Heal { entity_id: Option<u64>, amount: f32 },
+    SetInvincible { entity_id: Option<u64>, invincible: bool, duration: f32 },
+    Kill { entity_id: Option<u64> },
+    Revive { entity_id: Option<u64> },
 }
 
 /// Value types for component fields

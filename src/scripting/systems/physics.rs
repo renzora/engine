@@ -143,3 +143,21 @@ pub fn process_physics_commands(
         warn!("Physics commands ignored - physics feature not enabled");
     }
 }
+
+use crate::core::PlayModeState;
+
+/// System to clear raycast results when exiting play mode
+pub fn clear_raycast_results_on_stop(
+    play_mode: Res<PlayModeState>,
+    mut raycast_results: ResMut<RaycastResults>,
+    mut last_playing: Local<bool>,
+) {
+    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+
+    // Detect transition from playing to editing
+    if *last_playing && !currently_playing {
+        raycast_results.results.clear();
+    }
+
+    *last_playing = currently_playing;
+}

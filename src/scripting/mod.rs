@@ -16,7 +16,7 @@ pub use registry::*;
 pub use rhai_engine::*;
 pub use rhai_context::*;
 pub use rhai_commands::*;
-pub use runtime::*;
+pub use runtime::{run_rhai_scripts, run_scripts, RuntimeMode, ScriptCommandQueues, ScriptComponentQueries};
 pub use resources::*;
 pub use systems::*;
 
@@ -24,6 +24,7 @@ use bevy::prelude::*;
 use crate::core::{AppState, PlayModeState, PlayState};
 use crate::core::resources::console::{console_log, LogLevel};
 use crate::project::CurrentProject;
+use std::path::PathBuf;
 
 /// System sets for ordering scripting systems
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -145,6 +146,7 @@ impl Plugin for ScriptingPlugin {
                     clear_scene_queue_on_stop,
                     despawn_runtime_prefabs_on_stop,
                     clear_animation_on_stop,
+                    clear_raycast_results_on_stop,
                 )
                     .in_set(ScriptingSet::Cleanup),
             );
@@ -193,5 +195,147 @@ fn update_rhai_scripts_folder(
             let available = rhai_engine.get_available_scripts();
             bevy::log::info!("[Scripting] Found {} scripts: {:?}", available.len(), available.iter().map(|(n, _)| n).collect::<Vec<_>>());
         }
+    }
+}
+
+// =============================================================================
+// RUNTIME SCRIPTING PLUGIN
+// =============================================================================
+
+/// System sets for runtime scripting (no editor state dependencies)
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RuntimeScriptingSet {
+    /// Pre-script systems
+    PreScript,
+    /// Script execution
+    ScriptExecution,
+    /// Command processing
+    CommandProcessing,
+    /// Debug draw
+    DebugDraw,
+}
+
+/// Plugin for runtime scripting (exported games, no editor)
+///
+/// This is a standalone version of ScriptingPlugin that doesn't depend on
+/// editor-specific state like PlayModeState or AppState.
+pub struct RuntimeScriptingPlugin {
+    /// Path to the scripts folder
+    pub scripts_folder: PathBuf,
+}
+
+impl RuntimeScriptingPlugin {
+    pub fn new(scripts_folder: impl Into<PathBuf>) -> Self {
+        Self {
+            scripts_folder: scripts_folder.into(),
+        }
+    }
+}
+
+impl Plugin for RuntimeScriptingPlugin {
+    fn build(&self, app: &mut App) {
+        // Initialize Rhai engine with scripts folder
+        let mut engine = RhaiScriptEngine::new();
+        engine.set_scripts_folder(self.scripts_folder.clone());
+
+        // Log available scripts
+        let available = engine.get_available_scripts();
+        bevy::log::info!("[RuntimeScripting] Scripts folder: {:?}", self.scripts_folder);
+        bevy::log::info!("[RuntimeScripting] Found {} scripts: {:?}",
+            available.len(),
+            available.iter().map(|(n, _)| n).collect::<Vec<_>>()
+        );
+
+        app.insert_resource(engine)
+            .insert_resource(RuntimeMode)
+            .init_resource::<ScriptInput>()
+            .init_resource::<PhysicsCommandQueue>()
+            .init_resource::<RaycastResults>()
+            .init_resource::<ScriptTimers>()
+            .init_resource::<DebugDrawQueue>()
+            .init_resource::<AudioCommandQueue>()
+            .init_resource::<AudioState>()
+            .init_resource::<RenderingCommandQueue>()
+            .init_resource::<CameraCommandQueue>()
+            .init_resource::<ScriptCameraState>()
+            .init_resource::<ScriptCollisionEvents>()
+            .init_resource::<SceneCommandQueue>()
+            .init_resource::<AnimationCommandQueue>()
+            .init_resource::<ActiveTweens>()
+            .init_resource::<SpriteAnimationCommandQueue>()
+            .init_resource::<HealthCommandQueue>()
+            // Configure system set ordering (no run_if conditions - always runs)
+            .configure_sets(
+                Update,
+                (
+                    RuntimeScriptingSet::PreScript,
+                    RuntimeScriptingSet::ScriptExecution,
+                    RuntimeScriptingSet::CommandProcessing,
+                    RuntimeScriptingSet::DebugDraw,
+                ).chain(),
+            )
+            // Pre-script systems
+            .add_systems(
+                Update,
+                (
+                    update_script_input,
+                    update_script_timers,
+                    collect_collision_events,
+                ).in_set(RuntimeScriptingSet::PreScript),
+            )
+            // Initialize scripts on first run
+            .add_systems(
+                Update,
+                initialize_runtime_scripts.in_set(RuntimeScriptingSet::PreScript),
+            )
+            // Script execution
+            .add_systems(
+                Update,
+                run_rhai_scripts.in_set(RuntimeScriptingSet::ScriptExecution),
+            )
+            // Command processing
+            .add_systems(
+                Update,
+                (
+                    process_physics_commands,
+                    process_audio_commands,
+                    update_audio_fades,
+                    process_rendering_commands,
+                    process_camera_commands,
+                    apply_camera_effects,
+                    process_prefab_spawns,
+                    process_animation_commands,
+                    update_animation_playback,
+                    update_tweens,
+                    process_sprite_animation_commands,
+                    update_sprite_animations,
+                    process_health_commands,
+                ).in_set(RuntimeScriptingSet::CommandProcessing),
+            )
+            // Debug draw
+            .add_systems(
+                Update,
+                (tick_debug_draws, render_debug_draws).in_set(RuntimeScriptingSet::DebugDraw),
+            );
+    }
+}
+
+/// System to initialize scripts when running in runtime mode
+fn initialize_runtime_scripts(
+    mut scripts: Query<&mut ScriptComponent>,
+    mut initialized: Local<bool>,
+) {
+    if *initialized {
+        return;
+    }
+
+    let count = scripts.iter().count();
+    if count > 0 {
+        bevy::log::info!("[RuntimeScripting] Initializing {} script(s)", count);
+        for mut script in scripts.iter_mut() {
+            script.runtime_state.initialized = false;
+            script.runtime_state.has_error = false;
+        }
+        *initialized = true;
     }
 }
