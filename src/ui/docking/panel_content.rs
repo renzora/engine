@@ -134,6 +134,13 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::MaterialPreview => Vec2::new(200.0, 200.0),
         PanelId::Settings => Vec2::new(300.0, 400.0),
         PanelId::Gamepad => Vec2::new(250.0, 300.0),
+        PanelId::Performance => Vec2::new(250.0, 300.0),
+        PanelId::RenderStats => Vec2::new(250.0, 300.0),
+        PanelId::EcsStats => Vec2::new(280.0, 320.0),
+        PanelId::MemoryProfiler => Vec2::new(260.0, 300.0),
+        PanelId::PhysicsDebug => Vec2::new(280.0, 350.0),
+        PanelId::CameraDebug => Vec2::new(280.0, 320.0),
+        PanelId::SystemProfiler => Vec2::new(300.0, 280.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

@@ -164,6 +164,7 @@ fn main() {
         .register_type::<std::collections::HashMap<String, scripting::ScriptValue>>()
         .add_plugins((
             core::CorePlugin,
+            core::DiagnosticsPlugin,
             commands::CommandPlugin,
             project::ProjectPlugin,
             component_system::ComponentSystemPlugin,
@@ -270,6 +271,7 @@ fn main() {
                 gizmo::draw_physics_gizmos,
                 gizmo::draw_collider_edit_handles,
                 gizmo::draw_grid,
+                gizmo::draw_camera_gizmos,
                 viewport::draw_grid_2d,
                 // 2D/UI visual rendering
                 viewport::update_2d_visuals,

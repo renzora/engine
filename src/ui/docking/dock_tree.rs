@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use egui_phosphor::regular::{
     TREE_STRUCTURE, SLIDERS_HORIZONTAL, FOLDER_OPEN, TERMINAL,
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
-    GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER,
+    GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
+    STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER,
 };
 
 /// Direction of a split in the dock tree
@@ -33,6 +34,13 @@ pub enum PanelId {
     MaterialPreview,
     Settings,
     Gamepad,
+    Performance,
+    RenderStats,
+    EcsStats,
+    MemoryProfiler,
+    PhysicsDebug,
+    CameraDebug,
+    SystemProfiler,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -54,6 +62,13 @@ impl PanelId {
             PanelId::MaterialPreview => "Material Preview",
             PanelId::Settings => "Settings",
             PanelId::Gamepad => "Gamepad",
+            PanelId::Performance => "Performance",
+            PanelId::RenderStats => "Render Stats",
+            PanelId::EcsStats => "ECS Stats",
+            PanelId::MemoryProfiler => "Memory",
+            PanelId::PhysicsDebug => "Physics Debug",
+            PanelId::CameraDebug => "Camera Debug",
+            PanelId::SystemProfiler => "System Profiler",
             PanelId::Plugin(name) => name,
         }
     }
@@ -74,6 +89,13 @@ impl PanelId {
             PanelId::MaterialPreview => CUBE,
             PanelId::Settings => GEAR,
             PanelId::Gamepad => GAME_CONTROLLER,
+            PanelId::Performance => CHART_LINE,
+            PanelId::RenderStats => CPU,
+            PanelId::EcsStats => STACK,
+            PanelId::MemoryProfiler => CHART_BAR,
+            PanelId::PhysicsDebug => ATOM,
+            PanelId::CameraDebug => VIDEO_CAMERA,
+            PanelId::SystemProfiler => TIMER,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

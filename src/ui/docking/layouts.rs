@@ -150,16 +150,17 @@ pub fn animation_layout() -> DockTree {
     )
 }
 
-/// Debug layout: Hierarchy+Console | Viewport | Inspector
+/// Debug layout: Hierarchy+Console | Viewport | Inspector/Debug panels
 ///
 /// ```text
-/// ┌──────────────────┬─────────────┬──────────┐
-/// │                  │             │          │
-/// │    Hierarchy     │   Viewport  │ Inspector│
-/// │                  │             │          │
-/// ├──────────────────┤             │          │
-/// │     Console      │             │          │
-/// └──────────────────┴─────────────┴──────────┘
+/// ┌──────────────────┬─────────────┬─────────────┐
+/// │                  │             │  Inspector  │
+/// │    Hierarchy     │   Viewport  │   Gamepad   │
+/// │                  │             ├─────────────┤
+/// ├──────────────────┤             │ Performance │
+/// │     Console      │             │ ECS Stats   │
+/// │                  │             │ Memory, etc │
+/// └──────────────────┴─────────────┴─────────────┘
 /// ```
 pub fn debug_layout() -> DockTree {
     DockTree::horizontal(
@@ -170,13 +171,27 @@ pub fn debug_layout() -> DockTree {
         ),
         DockTree::horizontal(
             DockTree::leaf(PanelId::Viewport),
-            DockTree::Leaf {
-                tabs: vec![PanelId::Inspector, PanelId::History],
-                active_tab: 0,
-            },
-            0.75,
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::Gamepad, PanelId::CameraDebug],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec![
+                        PanelId::Performance,
+                        PanelId::RenderStats,
+                        PanelId::EcsStats,
+                        PanelId::MemoryProfiler,
+                        PanelId::PhysicsDebug,
+                        PanelId::SystemProfiler,
+                    ],
+                    active_tab: 0,
+                },
+                0.5,
+            ),
+            0.72,
         ),
-        0.2,
+        0.18,
     )
 }
 

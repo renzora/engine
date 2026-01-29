@@ -3,6 +3,7 @@ mod assets;
 mod camera;
 pub mod console;
 mod default_camera;
+pub mod diagnostics;
 mod docking;
 mod export;
 mod gamepad_debug;
@@ -15,6 +16,8 @@ mod settings;
 mod thumbnails;
 mod viewport;
 mod window;
+pub mod physics_debug;
+pub mod camera_debug;
 
 pub use animation_timeline::AnimationTimelineState;
 pub use assets::{
@@ -37,3 +40,14 @@ pub use window::{WindowState, ResizeEdge};
 pub use docking::DockingState;
 pub use gamepad_debug::{GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state};
 pub use input_focus::InputFocusState;
+pub use diagnostics::{
+    DiagnosticsState, DiagnosticsPlugin, RenderStats,
+    EcsStatsState, MemoryProfilerState, MemoryTrend,
+    SystemTimingState,
+};
+pub use physics_debug::{
+    PhysicsDebugState, ColliderShapeType,
+};
+pub use camera_debug::{
+    CameraDebugState, CameraProjectionType,
+};

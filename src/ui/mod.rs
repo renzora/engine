@@ -9,10 +9,11 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::commands::CommandHistory;
 use crate::core::{
-    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DockingState,
-    EditorEntity, ExportState, GamepadDebugState, InputFocusState, KeyBindings, SelectionState, HierarchyState, ViewportState,
+    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DiagnosticsState, DockingState,
+    EditorEntity, ExportState, GamepadDebugState, InputFocusState, KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
+    EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
@@ -52,6 +53,13 @@ pub struct EditorResources<'w> {
     pub theme_manager: ResMut<'w, ThemeManager>,
     pub input_focus: ResMut<'w, InputFocusState>,
     pub gamepad_debug: Res<'w, GamepadDebugState>,
+    pub diagnostics: Res<'w, DiagnosticsState>,
+    pub render_stats: Res<'w, RenderStats>,
+    pub ecs_stats: ResMut<'w, EcsStatsState>,
+    pub memory_profiler: Res<'w, MemoryProfilerState>,
+    pub physics_debug: ResMut<'w, PhysicsDebugState>,
+    pub camera_debug: ResMut<'w, CameraDebugState>,
+    pub system_timing: Res<'w, SystemTimingState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -73,7 +81,9 @@ use panels::{
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
-    render_console_content, render_history_content, render_gamepad_content,
+    render_console_content, render_history_content, render_gamepad_content, render_performance_content,
+    render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
+    render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
 };
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
@@ -645,6 +655,48 @@ pub fn editor_ui(
                 PanelId::Gamepad => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_gamepad_content(ui, &editor.gamepad_debug, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::Performance => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_performance_content(ui, &editor.diagnostics, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::RenderStats => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_render_stats_content(ui, &editor.render_stats, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::EcsStats => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_ecs_stats_content(ui, &mut editor.ecs_stats, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::MemoryProfiler => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_memory_profiler_content(ui, &editor.memory_profiler, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsDebug => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_debug_content(ui, &mut editor.physics_debug, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::CameraDebug => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_camera_debug_content(ui, &mut editor.camera_debug, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::SystemProfiler => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_system_profiler_content(ui, &editor.diagnostics, &editor.system_timing, &editor.theme_manager.active_theme);
                     });
                 }
 

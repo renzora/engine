@@ -11,7 +11,8 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 pub use resources::{
     AnimationTimelineState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
-    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DockingState, EditorSettings,
+    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState,
+    DockingState, EditorSettings, RenderStats,
     ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenScript, PendingImageDrop,
@@ -19,6 +20,11 @@ pub use resources::{
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
     ThumbnailCache, supports_thumbnail, supports_model_preview,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
+    // New debug/profiler resources
+    EcsStatsState, MemoryProfilerState, MemoryTrend,
+    SystemTimingState,
+    PhysicsDebugState, ColliderShapeType,
+    CameraDebugState, CameraProjectionType,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)

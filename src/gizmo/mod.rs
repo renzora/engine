@@ -6,6 +6,7 @@ pub mod modal_transform;
 mod physics;
 pub mod picking;
 pub mod state;
+pub mod camera_gizmos;
 
 // 2D viewport modules
 pub mod gizmo_2d;
@@ -30,6 +31,9 @@ pub use modal_transform::{
 pub use gizmo_2d::draw_selection_gizmo_2d;
 pub use interaction_2d::{gizmo_2d_hover_system, gizmo_2d_interaction_system, gizmo_2d_drag_system};
 pub use picking_2d::handle_2d_picking;
+
+// Camera gizmo exports
+pub use camera_gizmos::draw_camera_gizmos;
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
