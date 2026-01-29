@@ -165,6 +165,8 @@ pub struct ModalTransformState {
     pub sensitivity: f32,
     /// Whether we just warped the cursor (skip one frame of delta)
     pub just_warped: bool,
+    /// Pending grab mode to start on next frame (for duplicate and move)
+    pub pending_grab: bool,
 }
 
 impl ModalTransformState {
@@ -244,8 +246,14 @@ pub fn modal_transform_input_system(
         return;
     }
 
+    // Check for pending grab (from duplicate and move)
+    let pending = modal.pending_grab;
+    if pending {
+        modal.pending_grab = false;
+    }
+
     // Check for modal transform keybindings
-    let mode = if keybindings.just_pressed(EditorAction::ModalGrab, &keyboard) {
+    let mode = if pending || keybindings.just_pressed(EditorAction::ModalGrab, &keyboard) {
         Some(ModalTransformMode::Grab)
     } else if keybindings.just_pressed(EditorAction::ModalRotate, &keyboard) {
         Some(ModalTransformMode::Rotate)

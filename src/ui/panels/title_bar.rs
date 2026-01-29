@@ -643,6 +643,8 @@ fn render_menu_items(
                 PanelId::History,
                 PanelId::Settings,
                 PanelId::Gamepad,
+                PanelId::Performance,
+                PanelId::RenderStats,
             ];
 
             for panel in all_panels {

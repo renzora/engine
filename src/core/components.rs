@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 /// Marker component for entities visible in the editor hierarchy
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Reflect)]
 #[reflect(Component, Default)]
 pub struct EditorEntity {
     pub name: String,

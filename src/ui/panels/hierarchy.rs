@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
-use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
+use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
 use crate::component_system::{ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
@@ -970,7 +970,8 @@ fn render_tree_node(
 
         // Duplicate
         if ui.button(format!("{} Duplicate", COPY)).clicked() {
-            // TODO: Implement duplicate
+            queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
+            *scene_changed = true;
             ui.close();
         }
 

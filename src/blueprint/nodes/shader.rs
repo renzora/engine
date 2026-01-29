@@ -843,9 +843,9 @@ pub static HUE_SHIFT: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Shift the hue of a color (0-1 range, wraps around)",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
         Pin::input("shift", "Shift", PinType::Float).with_default(PinValue::Float(0.0)),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("result", "Result", PinType::Color),
     ],
     color: [220, 120, 180],
     is_event: false,
@@ -859,9 +859,9 @@ pub static SATURATION: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Adjust color saturation (0 = grayscale, 1 = original, >1 = oversaturated)",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
         Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("result", "Result", PinType::Color),
     ],
     color: [220, 120, 180],
     is_event: false,
@@ -875,9 +875,9 @@ pub static BRIGHTNESS: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Adjust color brightness (additive)",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
         Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(0.0)),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("result", "Result", PinType::Color),
     ],
     color: [220, 120, 180],
     is_event: false,
@@ -891,9 +891,9 @@ pub static CONTRAST: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Adjust color contrast (1 = original, <1 = less contrast, >1 = more contrast)",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
         Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("result", "Result", PinType::Color),
     ],
     color: [220, 120, 180],
     is_event: false,
@@ -907,9 +907,9 @@ pub static DESATURATE: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Convert color to grayscale using luminance weights",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
         Pin::input("amount", "Amount", PinType::Float).with_default(PinValue::Float(1.0)),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::output("result", "Result", PinType::Color),
         Pin::output("luminance", "Luminance", PinType::Float),
     ],
     color: [220, 120, 180],
@@ -924,10 +924,44 @@ pub static INVERT_COLOR: NodeTypeDefinition = NodeTypeDefinition {
     category: "Shader Color",
     description: "Invert color (1 - color)",
     create_pins: || vec![
-        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
-        Pin::output("result", "Result", PinType::Vec3),
+        Pin::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Color),
     ],
     color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Lerp between two colors
+pub static LERP_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/lerp_color",
+    display_name: "Lerp Color",
+    category: "Shader Color",
+    description: "Linear interpolation between two colors by T (0 = A, 1 = B)",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Color).with_default(PinValue::Color([0.0, 0.0, 0.0, 1.0])),
+        Pin::input("b", "B", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+        Pin::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("result", "Result", PinType::Color),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Lerp between two Vec3 values
+pub static LERP_VEC3: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/lerp_vec3",
+    display_name: "Lerp Vec3",
+    category: "Shader Math",
+    description: "Linear interpolation between two Vec3 values by T (0 = A, 1 = B)",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [120, 180, 120],
     is_event: false,
     is_comment: false,
 };

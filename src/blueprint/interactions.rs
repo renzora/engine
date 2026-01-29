@@ -90,13 +90,16 @@ pub fn process_canvas_interactions(
     // Handle keyboard shortcuts
     let modifiers = ui.input(|i| i.modifiers);
 
-    // Delete key - delete selected nodes
-    if ui.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
+    // Check if any text input has focus (don't process shortcuts when typing)
+    let text_input_focused = ui.ctx().wants_keyboard_input();
+
+    // Delete key - delete selected nodes (but not when a text input is focused)
+    if !text_input_focused && ui.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
         result.nodes_to_delete = state.selected_nodes.clone();
     }
 
-    // Ctrl+A - select all
-    if modifiers.ctrl && ui.input(|i| i.key_pressed(Key::A)) {
+    // Ctrl+A - select all nodes (but not when a text input is focused - let it select text instead)
+    if !text_input_focused && modifiers.ctrl && ui.input(|i| i.key_pressed(Key::A)) {
         state.selected_nodes = graph.nodes.iter().map(|n| n.id).collect();
         result.selection_changed = true;
     }

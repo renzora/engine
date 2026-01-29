@@ -27,6 +27,8 @@ pub enum EditorAction {
 
     // Selection
     Delete,
+    Duplicate,
+    DuplicateAndMove,
     Deselect,
 
     // Edit operations
@@ -42,6 +44,13 @@ pub enum EditorAction {
 
     // View operations
     ToggleBottomPanel,
+    ToggleWireframe,
+    ToggleLighting,
+    ToggleGrid,
+
+    // Play mode
+    PlayStop,
+    PlayScriptsOnly,
 
     // Camera view angles
     ViewFront,
@@ -72,6 +81,8 @@ impl EditorAction {
             EditorAction::ModalRotate => "Rotate",
             EditorAction::ModalScale => "Scale",
             EditorAction::Delete => "Delete",
+            EditorAction::Duplicate => "Duplicate",
+            EditorAction::DuplicateAndMove => "Duplicate & Move",
             EditorAction::Deselect => "Deselect",
             EditorAction::Undo => "Undo",
             EditorAction::Redo => "Redo",
@@ -81,6 +92,11 @@ impl EditorAction {
             EditorAction::NewScene => "New Scene",
             EditorAction::OpenSettings => "Settings",
             EditorAction::ToggleBottomPanel => "Toggle Bottom Panel",
+            EditorAction::ToggleWireframe => "Toggle Wireframe",
+            EditorAction::ToggleLighting => "Toggle Lighting",
+            EditorAction::ToggleGrid => "Toggle Grid",
+            EditorAction::PlayStop => "Play/Stop",
+            EditorAction::PlayScriptsOnly => "Run Scripts Only",
             EditorAction::ViewFront => "View Front",
             EditorAction::ViewBack => "View Back",
             EditorAction::ViewLeft => "View Left",
@@ -111,7 +127,7 @@ impl EditorAction {
             | EditorAction::ModalRotate
             | EditorAction::ModalScale => "Transform",
 
-            EditorAction::Delete | EditorAction::Deselect => "Selection",
+            EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
 
             EditorAction::Undo | EditorAction::Redo => "Edit",
 
@@ -122,6 +138,9 @@ impl EditorAction {
             | EditorAction::OpenSettings => "File",
 
             EditorAction::ToggleBottomPanel
+            | EditorAction::ToggleWireframe
+            | EditorAction::ToggleLighting
+            | EditorAction::ToggleGrid
             | EditorAction::ViewFront
             | EditorAction::ViewBack
             | EditorAction::ViewLeft
@@ -129,6 +148,8 @@ impl EditorAction {
             | EditorAction::ViewTop
             | EditorAction::ViewBottom
             | EditorAction::ToggleProjection => "View",
+
+            EditorAction::PlayStop | EditorAction::PlayScriptsOnly => "Play",
         }
     }
 
@@ -155,6 +176,8 @@ impl EditorAction {
             EditorAction::ModalScale,
             // Selection
             EditorAction::Delete,
+            EditorAction::Duplicate,
+            EditorAction::DuplicateAndMove,
             EditorAction::Deselect,
             // Edit
             EditorAction::Undo,
@@ -167,6 +190,9 @@ impl EditorAction {
             EditorAction::OpenSettings,
             // View
             EditorAction::ToggleBottomPanel,
+            EditorAction::ToggleWireframe,
+            EditorAction::ToggleLighting,
+            EditorAction::ToggleGrid,
             EditorAction::ViewFront,
             EditorAction::ViewBack,
             EditorAction::ViewLeft,
@@ -174,6 +200,9 @@ impl EditorAction {
             EditorAction::ViewTop,
             EditorAction::ViewBottom,
             EditorAction::ToggleProjection,
+            // Play
+            EditorAction::PlayStop,
+            EditorAction::PlayScriptsOnly,
         ]
     }
 }
@@ -263,6 +292,8 @@ impl Default for KeyBindings {
 
         // Selection defaults
         bindings.insert(EditorAction::Delete, KeyBinding::new(KeyCode::Delete));
+        bindings.insert(EditorAction::Duplicate, KeyBinding::new(KeyCode::KeyD).ctrl());
+        bindings.insert(EditorAction::DuplicateAndMove, KeyBinding::new(KeyCode::KeyD).alt());
         bindings.insert(EditorAction::Deselect, KeyBinding::new(KeyCode::Escape));
 
         // Edit defaults
@@ -278,6 +309,13 @@ impl Default for KeyBindings {
 
         // View defaults
         bindings.insert(EditorAction::ToggleBottomPanel, KeyBinding::new(KeyCode::Backquote).ctrl());
+        bindings.insert(EditorAction::ToggleWireframe, KeyBinding::new(KeyCode::KeyZ));
+        bindings.insert(EditorAction::ToggleLighting, KeyBinding::new(KeyCode::KeyZ).shift());
+        bindings.insert(EditorAction::ToggleGrid, KeyBinding::new(KeyCode::KeyH));
+
+        // Play mode
+        bindings.insert(EditorAction::PlayStop, KeyBinding::new(KeyCode::F5));
+        bindings.insert(EditorAction::PlayScriptsOnly, KeyBinding::new(KeyCode::F5).shift());
 
         // View angle defaults (Blender-style numpad)
         bindings.insert(EditorAction::ViewFront, KeyBinding::new(KeyCode::Numpad1));

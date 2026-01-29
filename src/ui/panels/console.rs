@@ -1,13 +1,19 @@
 //! Console panel for displaying logs
 
-use bevy_egui::egui::{self, Color32, RichText, ScrollArea};
+use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Rounding};
 
-use crate::core::{ConsoleState, LogLevel};
+use crate::core::{ConsoleState, LogEntry, LogLevel};
 use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     TRASH, FUNNEL, INFO, CHECK_CIRCLE, WARNING, X_CIRCLE, MAGNIFYING_GLASS, CLIPBOARD,
 };
+
+/// A grouped log entry that combines consecutive identical messages
+struct GroupedLogEntry<'a> {
+    entry: &'a LogEntry,
+    count: usize,
+}
 
 /// Render the console content
 pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, theme: &Theme) {
@@ -140,8 +146,9 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
     ui.separator();
     ui.add_space(2.0);
 
-    // Log entries
-    let filtered_entries: Vec<_> = console.filtered_entries().cloned().collect();
+    // Log entries - group consecutive identical messages
+    let filtered_entries: Vec<_> = console.filtered_entries().collect();
+    let grouped_entries = group_consecutive_entries(&filtered_entries);
 
     let scroll_area = ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -152,12 +159,12 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
     scroll_area.show(ui, |ui| {
         ui.set_min_width(ui.available_width());
 
-        for entry in &filtered_entries {
-            render_log_entry(ui, entry, text_color, category_color, theme);
+        for grouped in &grouped_entries {
+            render_log_entry(ui, grouped.entry, grouped.count, text_color, category_color, theme);
         }
 
         // Empty state
-        if filtered_entries.is_empty() {
+        if grouped_entries.is_empty() {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
                 ui.label(
@@ -170,7 +177,36 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
     });
 }
 
-fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry, text_color: Color32, category_color: Color32, theme: &Theme) {
+/// Group consecutive identical log entries
+fn group_consecutive_entries<'a>(entries: &[&'a LogEntry]) -> Vec<GroupedLogEntry<'a>> {
+    let mut grouped = Vec::new();
+
+    for entry in entries {
+        // Check if this entry matches the previous one
+        let should_group = grouped.last().map_or(false, |last: &GroupedLogEntry| {
+            last.entry.level == entry.level
+                && last.entry.category == entry.category
+                && last.entry.message == entry.message
+        });
+
+        if should_group {
+            // Increment count of the last grouped entry
+            if let Some(last) = grouped.last_mut() {
+                last.count += 1;
+            }
+        } else {
+            // Start a new group
+            grouped.push(GroupedLogEntry {
+                entry,
+                count: 1,
+            });
+        }
+    }
+
+    grouped
+}
+
+fn render_log_entry(ui: &mut egui::Ui, entry: &LogEntry, count: usize, text_color: Color32, category_color: Color32, theme: &Theme) {
     // Get log level color from theme
     let color = match entry.level {
         LogLevel::Info => theme.semantic.accent.to_color32(),
@@ -180,6 +216,39 @@ fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry, text_color
     };
 
     ui.horizontal(|ui| {
+        // Count badge (shown when count > 1)
+        if count > 1 {
+            let badge_text = if count > 999 {
+                "999+".to_string()
+            } else {
+                count.to_string()
+            };
+
+            // Draw badge background
+            let badge_color = color.gamma_multiply(0.3);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(24.0, 16.0),
+                egui::Sense::hover()
+            );
+
+            ui.painter().rect_filled(
+                rect,
+                Rounding::same(8),
+                badge_color
+            );
+
+            // Draw badge text centered
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &badge_text,
+                egui::FontId::proportional(10.0),
+                color
+            );
+
+            ui.add_space(2.0);
+        }
+
         // Level icon
         let icon = match entry.level {
             LogLevel::Info => INFO,

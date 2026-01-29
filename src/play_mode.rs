@@ -73,7 +73,7 @@ fn handle_play_mode_transitions(
     >,
     runtime_physics_entities: Query<Entity, With<RuntimePhysics>>,
 ) {
-    // Handle request to enter play mode
+    // Handle request to enter play mode (fullscreen)
     if play_mode.request_play {
         play_mode.request_play = false;
         enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera);
@@ -82,13 +82,24 @@ fn handle_play_mode_transitions(
         spawn_play_mode_physics(&mut commands, &physics_entities);
     }
 
+    // Handle request to enter scripts-only mode (no camera switch)
+    if play_mode.request_scripts_only {
+        play_mode.request_scripts_only = false;
+        enter_scripts_only_mode(&mut commands, &mut play_mode, &physics_entities);
+    }
+
     // Handle request to exit play mode
     if play_mode.request_stop {
         play_mode.request_stop = false;
-        exit_play_mode(&mut commands, &mut play_mode, &play_mode_cameras, &mut editor_camera);
 
-        // Despawn physics components from all entities
-        despawn_play_mode_physics(&mut commands, &runtime_physics_entities);
+        // Check if we're in scripts-only mode (no camera cleanup needed)
+        if play_mode.is_scripts_only() {
+            exit_scripts_only_mode(&mut commands, &mut play_mode, &runtime_physics_entities);
+        } else {
+            exit_play_mode(&mut commands, &mut play_mode, &play_mode_cameras, &mut editor_camera);
+            // Despawn physics components from all entities
+            despawn_play_mode_physics(&mut commands, &runtime_physics_entities);
+        }
     }
 }
 
@@ -104,13 +115,13 @@ fn handle_physics_transitions(
     }
 
     match play_mode.state {
-        PlayState::Playing => {
+        PlayState::Playing | PlayState::ScriptsOnly => {
             if physics_time.is_paused() {
                 physics_time.unpause();
                 info!("Physics unpaused for play mode");
             }
         }
-        PlayState::Paused => {
+        PlayState::Paused | PlayState::ScriptsPaused => {
             if !physics_time.is_paused() {
                 physics_time.pause();
                 info!("Physics paused");
@@ -123,6 +134,37 @@ fn handle_physics_transitions(
             }
         }
     }
+}
+
+/// Enter scripts-only mode: run scripts without switching camera
+fn enter_scripts_only_mode(
+    commands: &mut Commands,
+    play_mode: &mut PlayModeState,
+    physics_entities: &Query<
+        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
+        Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+    >,
+) {
+    console_info!("Scripts", "Running scripts in editor...");
+
+    // Spawn physics components
+    spawn_play_mode_physics(commands, physics_entities);
+
+    play_mode.state = PlayState::ScriptsOnly;
+    console_success!("Scripts", "Scripts active - editor camera retained");
+}
+
+/// Exit scripts-only mode
+fn exit_scripts_only_mode(
+    commands: &mut Commands,
+    play_mode: &mut PlayModeState,
+    runtime_physics_entities: &Query<Entity, With<RuntimePhysics>>,
+) {
+    // Despawn physics components
+    despawn_play_mode_physics(commands, runtime_physics_entities);
+
+    play_mode.state = PlayState::Editing;
+    console_info!("Scripts", "Scripts stopped");
 }
 
 /// Spawn physics components for all entities with PhysicsBodyData or CollisionShapeData

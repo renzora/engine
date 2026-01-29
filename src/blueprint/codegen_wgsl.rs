@@ -240,7 +240,7 @@ impl<'a> WgslCodegenContext<'a> {
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
-            "math/lerp" | "shader/lerp" => {
+            "math/lerp" | "shader/lerp" | "shader/lerp_color" | "shader/lerp_vec3" => {
                 let a = self.get_input_value(node, "a");
                 let b = self.get_input_value(node, "b");
                 let t = self.get_input_value(node, "t");
@@ -566,10 +566,15 @@ impl<'a> WgslCodegenContext<'a> {
             "shader/hue_shift" => {
                 let color = self.get_input_value(node, "color");
                 let shift = self.get_input_value(node, "shift");
+                let rgb_var = self.next_var("rgb");
                 let result_var = self.next_var("hue_shifted");
-                self.fragment_lines.push(format!("    let hsv_{} = rgb_to_hsv({});", self.var_counter, color));
-                self.fragment_lines.push(format!("    let {} = hsv_to_rgb(vec3<f32>(fract(hsv_{}.x + {}), hsv_{}.y, hsv_{}.z));",
+                // Extract RGB from Color (vec4)
+                self.fragment_lines.push(format!("    let {} = {}.rgb;", rgb_var, color));
+                self.fragment_lines.push(format!("    let hsv_{} = rgb_to_hsv({});", self.var_counter, rgb_var));
+                self.fragment_lines.push(format!("    let {}_rgb = hsv_to_rgb(vec3<f32>(fract(hsv_{}.x + {}), hsv_{}.y, hsv_{}.z));",
                     result_var, self.var_counter, shift, self.var_counter, self.var_counter));
+                // Output as vec4 with original alpha
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.var_counter += 1;
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
@@ -577,15 +582,20 @@ impl<'a> WgslCodegenContext<'a> {
             "shader/saturation" => {
                 let color = self.get_input_value(node, "color");
                 let amount = self.get_input_value(node, "amount");
+                let rgb_var = self.next_var("rgb");
                 let result_var = self.next_var("saturated");
+                // Extract RGB from Color (vec4)
+                self.fragment_lines.push(format!("    let {} = {}.rgb;", rgb_var, color));
                 self.fragment_lines.push(format!(
                     "    let lum_{} = dot({}, vec3<f32>(0.2126, 0.7152, 0.0722));",
-                    self.var_counter, color
+                    self.var_counter, rgb_var
                 ));
                 self.fragment_lines.push(format!(
-                    "    let {} = mix(vec3<f32>(lum_{}), {}, {});",
-                    result_var, self.var_counter, color, amount
+                    "    let {}_rgb = mix(vec3<f32>(lum_{}), {}, {});",
+                    result_var, self.var_counter, rgb_var, amount
                 ));
+                // Output as vec4 with original alpha
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.var_counter += 1;
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
@@ -594,7 +604,9 @@ impl<'a> WgslCodegenContext<'a> {
                 let color = self.get_input_value(node, "color");
                 let amount = self.get_input_value(node, "amount");
                 let result_var = self.next_var("bright");
-                self.fragment_lines.push(format!("    let {} = {} + vec3<f32>({});", result_var, color, amount));
+                // Extract RGB, add brightness, output as vec4
+                self.fragment_lines.push(format!("    let {}_rgb = {}.rgb + vec3<f32>({});", result_var, color, amount));
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
@@ -602,17 +614,24 @@ impl<'a> WgslCodegenContext<'a> {
                 let color = self.get_input_value(node, "color");
                 let amount = self.get_input_value(node, "amount");
                 let result_var = self.next_var("contrast");
-                self.fragment_lines.push(format!("    let {} = ({} - 0.5) * {} + 0.5;", result_var, color, amount));
+                // Extract RGB, apply contrast, output as vec4
+                self.fragment_lines.push(format!("    let {}_rgb = ({}.rgb - 0.5) * {} + 0.5;", result_var, color, amount));
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
             "shader/desaturate" => {
                 let color = self.get_input_value(node, "color");
                 let amount = self.get_input_value(node, "amount");
+                let rgb_var = self.next_var("rgb");
                 let lum_var = self.next_var("lum");
                 let result_var = self.next_var("desat");
-                self.fragment_lines.push(format!("    let {} = dot({}, vec3<f32>(0.2126, 0.7152, 0.0722));", lum_var, color));
-                self.fragment_lines.push(format!("    let {} = mix({}, vec3<f32>({}), {});", result_var, color, lum_var, amount));
+                // Extract RGB from Color (vec4)
+                self.fragment_lines.push(format!("    let {} = {}.rgb;", rgb_var, color));
+                self.fragment_lines.push(format!("    let {} = dot({}, vec3<f32>(0.2126, 0.7152, 0.0722));", lum_var, rgb_var));
+                self.fragment_lines.push(format!("    let {}_rgb = mix({}, vec3<f32>({}), {});", result_var, rgb_var, lum_var, amount));
+                // Output as vec4 with original alpha
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
                 self.output_vars.insert(PinId::output(node.id, "luminance"), lum_var);
             }
@@ -620,7 +639,9 @@ impl<'a> WgslCodegenContext<'a> {
             "shader/invert_color" => {
                 let color = self.get_input_value(node, "color");
                 let result_var = self.next_var("inverted");
-                self.fragment_lines.push(format!("    let {} = vec3<f32>(1.0) - {};", result_var, color));
+                // Invert RGB, preserve alpha
+                self.fragment_lines.push(format!("    let {}_rgb = vec3<f32>(1.0) - {}.rgb;", result_var, color));
+                self.fragment_lines.push(format!("    let {} = vec4<f32>({}_rgb, {}.a);", result_var, result_var, color));
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 

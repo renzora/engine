@@ -70,8 +70,9 @@ pub fn camera_controller(
         return;
     }
 
-    // WASD navigation - move the orbit focus point (only when keyboard not captured by UI)
-    if keyboard_enabled {
+    // WASD navigation - move the orbit focus point
+    // Only active when right-click is held (fly mode) to avoid conflicts with tool shortcuts
+    if keyboard_enabled && right_pressed {
         let mut move_delta = Vec3::ZERO;
 
         // Get camera forward/right on XZ plane

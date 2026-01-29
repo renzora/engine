@@ -132,25 +132,33 @@ pub fn render_toolbar(
                 let play_color = theme.semantic.success.to_color32();
                 let is_playing = play_mode.state == PlayState::Playing;
                 let is_paused = play_mode.state == PlayState::Paused;
+                let is_scripts_only = play_mode.is_scripts_only();
+                let is_scripts_paused = play_mode.state == PlayState::ScriptsPaused;
                 let is_in_play_mode = play_mode.is_in_play_mode();
 
-                // Play button - green when playing
-                let play_resp = tool_button(ui, PLAY, button_size, is_playing, play_color, inactive_color);
-                if play_resp.clicked() {
-                    if is_paused {
-                        // Resume from pause
-                        play_mode.state = PlayState::Playing;
-                    } else if !is_playing {
-                        // Start playing
-                        play_mode.request_play = true;
-                    }
-                }
-                play_resp.on_hover_text(if is_paused { "Resume (F5)" } else { "Play (F5)" });
+                // Play dropdown button - green when playing
+                let scripts_color = theme.semantic.accent.to_color32();
+                let current_play_color = if is_scripts_only { scripts_color } else { play_color };
+                play_dropdown(
+                    ui,
+                    PLAY,
+                    button_size,
+                    is_playing || is_scripts_only,
+                    current_play_color,
+                    inactive_color,
+                    play_mode,
+                    theme,
+                );
 
                 // Pause button - active when paused
-                let pause_resp = tool_button(ui, PAUSE, button_size, is_paused, active_color, inactive_color);
-                if pause_resp.clicked() && is_playing {
-                    play_mode.state = PlayState::Paused;
+                let any_paused = is_paused || is_scripts_paused;
+                let pause_resp = tool_button(ui, PAUSE, button_size, any_paused, active_color, inactive_color);
+                if pause_resp.clicked() {
+                    if is_playing {
+                        play_mode.state = PlayState::Paused;
+                    } else if play_mode.state == PlayState::ScriptsOnly {
+                        play_mode.state = PlayState::ScriptsPaused;
+                    }
                 }
                 pause_resp.on_hover_text("Pause (F6)");
 
@@ -423,4 +431,169 @@ fn layout_dropdown(
     );
 
     response.on_hover_text("Layout");
+}
+
+fn play_dropdown(
+    ui: &mut egui::Ui,
+    icon: &str,
+    size: Vec2,
+    active: bool,
+    active_color: Color32,
+    inactive_color: Color32,
+    play_mode: &mut PlayModeState,
+    theme: &Theme,
+) {
+    let button_id = ui.make_persistent_id("play_dropdown");
+    let total_size = Vec2::new(size.x + 14.0, size.y); // Extra width for dropdown arrow
+    let (rect, response) = ui.allocate_exact_size(total_size, Sense::hover());
+
+    // Define sub-areas
+    let main_rect = egui::Rect::from_min_max(rect.min, Pos2::new(rect.right() - 14.0, rect.max.y));
+    let dropdown_rect = egui::Rect::from_min_max(Pos2::new(rect.right() - 14.0, rect.min.y), rect.max);
+
+    // Check hover on each area
+    let main_response = ui.interact(main_rect, button_id.with("main"), Sense::click());
+    let dropdown_response = ui.interact(dropdown_rect, button_id.with("dropdown"), Sense::click());
+
+    let is_hovered = response.hovered() || main_response.hovered() || dropdown_response.hovered();
+
+    if ui.is_rect_visible(rect) {
+        // Background color based on state
+        let bg_color = if active {
+            active_color
+        } else if is_hovered {
+            let [r, g, b, _] = inactive_color.to_array();
+            Color32::from_rgb(r.saturating_add(20), g.saturating_add(20), b.saturating_add(25))
+        } else {
+            inactive_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(4), bg_color);
+
+        // Highlight main area on hover
+        if main_response.hovered() && !active {
+            ui.painter().rect_filled(
+                main_rect.shrink(1.0),
+                CornerRadius::same(3),
+                Color32::from_white_alpha(15),
+            );
+        }
+
+        // Highlight dropdown area on hover
+        if dropdown_response.hovered() && !active {
+            ui.painter().rect_filled(
+                dropdown_rect.shrink(1.0),
+                CornerRadius::same(3),
+                Color32::from_white_alpha(15),
+            );
+        }
+
+        // Main icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(14.0),
+            Color32::WHITE,
+        );
+
+        // Divider line
+        let divider_x = rect.right() - 14.0;
+        ui.painter().line_segment(
+            [
+                Pos2::new(divider_x, rect.top() + 4.0),
+                Pos2::new(divider_x, rect.bottom() - 4.0),
+            ],
+            egui::Stroke::new(1.0, Color32::from_white_alpha(40)),
+        );
+
+        // Dropdown arrow
+        ui.painter().text(
+            Pos2::new(rect.right() - 7.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            egui::FontId::proportional(9.0),
+            Color32::from_white_alpha(180),
+        );
+    }
+
+    // Handle main button click - quick play
+    if main_response.clicked() {
+        if play_mode.state == PlayState::Paused {
+            play_mode.state = PlayState::Playing;
+        } else if play_mode.state == PlayState::ScriptsPaused {
+            play_mode.state = PlayState::ScriptsOnly;
+        } else if play_mode.is_editing() {
+            play_mode.request_play = true;
+        }
+    }
+
+    // Handle dropdown click - show menu
+    if dropdown_response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(160.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+
+            let play_icon_color = theme.semantic.success.to_color32();
+            let scripts_icon_color = theme.semantic.accent.to_color32();
+
+            // Play (Fullscreen)
+            if play_menu_item(ui, PLAY, "Play (Fullscreen)", "F5", play_icon_color) {
+                if play_mode.is_editing() {
+                    play_mode.request_play = true;
+                }
+                ui.close();
+            }
+
+            // Run Scripts Only
+            if play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_icon_color) {
+                if play_mode.is_editing() {
+                    play_mode.request_scripts_only = true;
+                }
+                ui.close();
+            }
+        },
+    );
+
+    // Tooltip
+    let tooltip = if play_mode.is_paused() || play_mode.state == PlayState::ScriptsPaused {
+        "Resume"
+    } else if play_mode.is_in_play_mode() {
+        "Playing..."
+    } else {
+        "Play (click arrow for options)"
+    };
+    response.on_hover_text(tooltip);
+}
+
+fn play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
+    let response = ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.colored_label(icon_color, icon);
+        ui.label(label);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(4.0);
+            ui.label(RichText::new(shortcut).small().weak());
+        });
+    }).response;
+
+    let clicked = response.interact(Sense::click()).clicked();
+    if response.hovered() {
+        ui.painter().rect_filled(
+            response.rect,
+            CornerRadius::same(2),
+            Color32::from_white_alpha(15),
+        );
+    }
+    clicked
 }

@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::core::{EditorEntity, SceneNode, SelectionState};
+use crate::core::{EditorEntity, SceneNode, SceneTabId, SelectionState};
 
 use super::command::{Command, CommandContext, CommandResult};
 
@@ -737,7 +737,270 @@ impl Command for SetLockedCommand {
 // Spawn Mesh Instance Command (for undo of asset drops)
 // ============================================================================
 
-use crate::shared::MeshInstanceData;
+use crate::shared::{
+    MeshInstanceData, SceneInstanceData,
+    MeshNodeData, Sprite2DData,
+    CameraNodeData, CameraRigData, Camera2DData,
+    PointLightData, DirectionalLightData, SpotLightData,
+    PhysicsBodyData, CollisionShapeData,
+    UIPanelData, UILabelData, UIButtonData, UIImageData,
+    WorldEnvironmentMarker, HealthData, ScriptComponent,
+};
+
+// ============================================================================
+// Duplicate Entity Command
+// ============================================================================
+
+/// Command to duplicate an entity and all its children
+pub struct DuplicateEntityCommand {
+    /// Entity to duplicate
+    pub entity: Entity,
+    /// The duplicated entity (set after execution)
+    duplicated_entity: Option<Entity>,
+    /// Previous selection (for undo)
+    previous_selection: Option<Entity>,
+}
+
+impl DuplicateEntityCommand {
+    pub fn new(entity: Entity) -> Self {
+        Self {
+            entity,
+            duplicated_entity: None,
+            previous_selection: None,
+        }
+    }
+
+    /// Recursively duplicate an entity and its children
+    fn duplicate_recursive(world: &mut World, source: Entity, new_parent: Option<Entity>) -> Option<Entity> {
+        // Get source entity data
+        let editor_entity = world.get::<EditorEntity>(source)?.clone();
+        let transform = world.get::<Transform>(source).copied().unwrap_or_default();
+        let scene_tab_id = world.get::<SceneTabId>(source).copied();
+
+        // Generate new name with "(Copy)" suffix
+        let new_name = if editor_entity.name.ends_with(" (Copy)") || editor_entity.name.contains(" (Copy ") {
+            // Already a copy, increment the number
+            if let Some(base) = editor_entity.name.strip_suffix(" (Copy)") {
+                format!("{} (Copy 2)", base)
+            } else if let Some(idx) = editor_entity.name.rfind(" (Copy ") {
+                let base = &editor_entity.name[..idx];
+                let suffix = &editor_entity.name[idx + 7..];
+                if let Some(num_str) = suffix.strip_suffix(')') {
+                    if let Ok(num) = num_str.parse::<u32>() {
+                        format!("{} (Copy {})", base, num + 1)
+                    } else {
+                        format!("{} (Copy)", editor_entity.name)
+                    }
+                } else {
+                    format!("{} (Copy)", editor_entity.name)
+                }
+            } else {
+                format!("{} (Copy)", editor_entity.name)
+            }
+        } else {
+            format!("{} (Copy)", editor_entity.name)
+        };
+
+        // Create the new entity with base components
+        let visibility = if editor_entity.visible { Visibility::Inherited } else { Visibility::Hidden };
+        let mut new_entity = world.spawn((
+            transform,
+            visibility,
+            EditorEntity {
+                name: new_name,
+                tag: editor_entity.tag.clone(),
+                visible: editor_entity.visible,
+                locked: editor_entity.locked,
+            },
+            SceneNode,
+        ));
+
+        // Add scene tab ID if present
+        if let Some(tab_id) = scene_tab_id {
+            new_entity.insert(tab_id);
+        }
+
+        // Add parent relationship
+        if let Some(parent) = new_parent {
+            new_entity.insert(ChildOf(parent));
+        }
+
+        let new_id = new_entity.id();
+
+        // Copy optional components - we need to clone them before inserting
+        // to avoid borrowing issues
+
+        // Mesh components
+        if let Some(data) = world.get::<MeshNodeData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<MeshInstanceData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<SceneInstanceData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // 2D rendering
+        if let Some(data) = world.get::<Sprite2DData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Camera components
+        if let Some(data) = world.get::<CameraNodeData>(source).cloned() {
+            // Don't copy is_default_camera flag - only one camera can be default
+            let mut cam_data = data;
+            cam_data.is_default_camera = false;
+            world.entity_mut(new_id).insert(cam_data);
+        }
+        if let Some(data) = world.get::<CameraRigData>(source).cloned() {
+            let mut cam_data = data;
+            cam_data.is_default_camera = false;
+            world.entity_mut(new_id).insert(cam_data);
+        }
+        if let Some(data) = world.get::<Camera2DData>(source).cloned() {
+            let mut cam_data = data;
+            cam_data.is_default_camera = false;
+            world.entity_mut(new_id).insert(cam_data);
+        }
+
+        // Light components
+        if let Some(data) = world.get::<PointLightData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<DirectionalLightData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<SpotLightData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Physics components
+        if let Some(data) = world.get::<PhysicsBodyData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<CollisionShapeData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // UI components
+        if let Some(data) = world.get::<UIPanelData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<UILabelData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<UIButtonData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<UIImageData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Environment
+        if let Some(data) = world.get::<WorldEnvironmentMarker>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Gameplay
+        if let Some(data) = world.get::<HealthData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Scripting - reset runtime state
+        if let Some(data) = world.get::<ScriptComponent>(source).cloned() {
+            let mut script = data;
+            script.runtime_state = Default::default();
+            world.entity_mut(new_id).insert(script);
+        }
+
+        // Recursively duplicate children
+        let children: Vec<Entity> = world
+            .get::<Children>(source)
+            .map(|c| c.iter().collect())
+            .unwrap_or_default();
+
+        for child in children {
+            // Only duplicate editor entities (not internal Bevy components)
+            if world.get::<EditorEntity>(child).is_some() {
+                Self::duplicate_recursive(world, child, Some(new_id));
+            }
+        }
+
+        Some(new_id)
+    }
+}
+
+impl Command for DuplicateEntityCommand {
+    fn description(&self) -> String {
+        "Duplicate".to_string()
+    }
+
+    fn execute(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        // Check if source entity exists
+        if ctx.world.get_entity(self.entity).is_err() {
+            return CommandResult::Failed("Entity does not exist".to_string());
+        }
+
+        // Store previous selection
+        let selection = ctx.world.resource::<SelectionState>();
+        self.previous_selection = selection.selected_entity;
+
+        // Get the parent of the source entity (duplicate will be a sibling)
+        let parent = ctx.world.get::<ChildOf>(self.entity).map(|c| c.0);
+
+        // Duplicate the entity tree
+        let Some(new_entity) = Self::duplicate_recursive(ctx.world, self.entity, parent) else {
+            return CommandResult::Failed("Failed to duplicate entity".to_string());
+        };
+
+        self.duplicated_entity = Some(new_entity);
+
+        // Offset the duplicate slightly so it's visible
+        if let Some(mut transform) = ctx.world.get_mut::<Transform>(new_entity) {
+            transform.translation += Vec3::new(0.5, 0.0, 0.5);
+        }
+
+        // Select the duplicated entity
+        let mut selection = ctx.world.resource_mut::<SelectionState>();
+        selection.select(new_entity);
+
+        CommandResult::Success
+    }
+
+    fn undo(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        let Some(entity) = self.duplicated_entity else {
+            return CommandResult::Failed("No duplicated entity to delete".to_string());
+        };
+
+        // Check if entity still exists
+        if ctx.world.get_entity(entity).is_err() {
+            return CommandResult::Failed("Duplicated entity no longer exists".to_string());
+        }
+
+        // Restore previous selection
+        {
+            let mut selection = ctx.world.resource_mut::<SelectionState>();
+            if selection.selected_entity == Some(entity) {
+                if let Some(prev) = self.previous_selection {
+                    selection.select(prev);
+                } else {
+                    selection.clear();
+                }
+            }
+        }
+
+        // Delete the duplicated entity and its children
+        despawn_with_children_recursive(ctx.world, entity);
+        self.duplicated_entity = None;
+
+        CommandResult::Success
+    }
+
+    fn redo(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        self.execute(ctx)
+    }
+}
 
 /// Command to track a spawned mesh instance (for undo support)
 /// This is created AFTER the entity is spawned, so execute() is a no-op.

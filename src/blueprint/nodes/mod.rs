@@ -247,6 +247,8 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&shader::CONTRAST);
     registry.register(&shader::DESATURATE);
     registry.register(&shader::INVERT_COLOR);
+    registry.register(&shader::LERP_COLOR);
+    registry.register(&shader::LERP_VEC3);
 
     // Shader UV Manipulation
     registry.register(&shader::UV_TILING);

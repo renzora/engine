@@ -8,10 +8,14 @@ pub enum PlayState {
     /// Normal editor mode
     #[default]
     Editing,
-    /// Game is playing
+    /// Game is playing (fullscreen with game camera)
     Playing,
     /// Game is paused
     Paused,
+    /// Scripts running in editor (no camera switch)
+    ScriptsOnly,
+    /// Scripts paused
+    ScriptsPaused,
 }
 
 /// Resource tracking play mode state
@@ -23,6 +27,8 @@ pub struct PlayModeState {
     pub active_game_camera: Option<Entity>,
     /// Whether to request entering play mode this frame
     pub request_play: bool,
+    /// Whether to request entering scripts-only mode this frame
+    pub request_scripts_only: bool,
     /// Whether to request stopping this frame
     pub request_stop: bool,
 }
@@ -42,6 +48,14 @@ impl PlayModeState {
 
     pub fn is_in_play_mode(&self) -> bool {
         !self.is_editing()
+    }
+
+    pub fn is_scripts_only(&self) -> bool {
+        matches!(self.state, PlayState::ScriptsOnly | PlayState::ScriptsPaused)
+    }
+
+    pub fn is_scripts_running(&self) -> bool {
+        matches!(self.state, PlayState::Playing | PlayState::ScriptsOnly)
     }
 }
 

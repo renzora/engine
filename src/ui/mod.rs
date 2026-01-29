@@ -6,6 +6,7 @@ pub mod inspectors;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
+use egui_phosphor::regular::{PLAY, PAUSE, STOP};
 
 use crate::commands::CommandHistory;
 use crate::core::{
@@ -284,19 +285,19 @@ pub fn editor_ui(
     );
     all_ui_events.extend(toolbar_events);
 
-    // Check if we're in play mode
-    let in_play_mode = editor.play_mode.is_in_play_mode();
+    // Check if we're in fullscreen play mode (not scripts-only)
+    let in_fullscreen_play = matches!(editor.play_mode.state, PlayState::Playing | PlayState::Paused);
 
     let screen_rect = ctx.content_rect();
-    let status_bar_height = if in_play_mode { 0.0 } else { 24.0 };
+    let status_bar_height = if in_fullscreen_play { 0.0 } else { 24.0 };
 
     // Suppress unused import warning
     let _ = get_legacy_layout_values;
 
-    // In play mode, skip docking and render full viewport
+    // In fullscreen play mode, skip docking and render full viewport
     let content_start_y = TITLE_BAR_HEIGHT + toolbar_height;
 
-    if in_play_mode {
+    if in_fullscreen_play {
         // Full-screen viewport in play mode
         let central_height = (screen_rect.height() - content_start_y - status_bar_height).max(100.0);
         render_viewport(
@@ -710,7 +711,7 @@ pub fn editor_ui(
     }
 
     // Only show settings/export dialogs in edit mode
-    if !in_play_mode {
+    if !editor.play_mode.is_in_play_mode() {
         // Ctrl+, to toggle settings panel
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
             let settings_panel = PanelId::Settings;
@@ -844,9 +845,11 @@ fn render_play_mode_overlay(ctx: &bevy_egui::egui::Context, play_mode: &mut Play
                     ui.horizontal(|ui| {
                         // Status icon and text
                         let (icon, color, text) = match play_mode.state {
-                            PlayState::Playing => ("\u{f04b}", Color32::from_rgb(64, 200, 100), "Playing"),
-                            PlayState::Paused => ("\u{f04c}", Color32::from_rgb(255, 200, 80), "Paused"),
-                            PlayState::Editing => ("\u{f04d}", Color32::WHITE, "Editing"),
+                            PlayState::Playing => (PLAY, Color32::from_rgb(64, 200, 100), "Playing"),
+                            PlayState::Paused => (PAUSE, Color32::from_rgb(255, 200, 80), "Paused"),
+                            PlayState::ScriptsOnly => (PLAY, Color32::from_rgb(66, 150, 250), "Scripts Running"),
+                            PlayState::ScriptsPaused => (PAUSE, Color32::from_rgb(255, 200, 80), "Scripts Paused"),
+                            PlayState::Editing => (STOP, Color32::WHITE, "Editing"),
                         };
 
                         ui.label(RichText::new(icon).color(color).size(14.0));
