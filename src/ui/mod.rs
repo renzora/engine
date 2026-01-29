@@ -69,7 +69,7 @@ use docking::{
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
-    render_document_tabs, render_script_editor, render_script_editor_content,
+    render_document_tabs, render_script_editor_content,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
@@ -530,41 +530,41 @@ pub fn editor_ui(
                 }
 
                 PanelId::Viewport => {
-                    // Viewport needs special handling - render into the content rect
+                    // Viewport uses render_panel_frame for consistent background
                     let content_rect = panel_ctx.content_rect;
                     editor.viewport.position = [content_rect.min.x, content_rect.min.y];
                     editor.viewport.size = [content_rect.width(), content_rect.height()];
 
-                    // Check if script editor should be shown instead
-                    let script_editor_shown = render_script_editor(
+                    // Draw background to prevent any visual leaking
+                    let bg_area = bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("viewport_bg"))
+                        .fixed_pos(content_rect.min)
+                        .order(bevy_egui::egui::Order::Background)
+                        .show(ctx, |ui| {
+                            ui.painter().rect_filled(
+                                content_rect,
+                                0.0,
+                                editor.theme_manager.active_theme.surfaces.panel.to_color32(),
+                            );
+                        });
+                    let _ = bg_area;
+
+                    render_viewport(
                         ctx,
-                        &mut editor.scene_state,
-                        current_project.as_deref(),
+                        &mut editor.viewport,
+                        &mut editor.assets,
+                        &mut editor.orbit,
+                        &editor.camera2d_state,
+                        &mut editor.gizmo,
+                        &editor.modal_transform,
+                        &mut editor.settings,
                         content_rect.min.x,
                         screen_rect.width() - content_rect.max.x,
                         content_rect.min.y,
+                        [content_rect.width(), content_rect.height()],
                         content_rect.height(),
+                        viewport_texture_id,
+                        &editor.theme_manager.active_theme,
                     );
-
-                    if !script_editor_shown {
-                        render_viewport(
-                            ctx,
-                            &mut editor.viewport,
-                            &mut editor.assets,
-                            &mut editor.orbit,
-                            &editor.camera2d_state,
-                            &mut editor.gizmo,
-                            &editor.modal_transform,
-                            &mut editor.settings,
-                            content_rect.min.x,
-                            screen_rect.width() - content_rect.max.x,
-                            content_rect.min.y,
-                            [content_rect.width(), content_rect.height()],
-                            content_rect.height(),
-                            viewport_texture_id,
-                            &editor.theme_manager.active_theme,
-                        );
-                    }
                 }
 
                 PanelId::Animation => {

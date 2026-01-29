@@ -31,7 +31,6 @@ pub use inspector::{InspectorQueries, property_row, inline_property, LABEL_WIDTH
 pub use inspector::render_inspector_content;
 pub use inspector::render_history_content;
 pub use plugin_ui::{render_plugin_panels, render_status_bar};
-pub(crate) use script_editor::render_script_editor;
 pub use script_editor::render_script_editor_content;
 pub use script_editor::open_script;
 pub use settings::render_settings_content;

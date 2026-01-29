@@ -184,7 +184,10 @@ fn check_script_errors(content: &str) -> Option<ScriptError> {
 }
 
 /// Render the script editor panel (when a script tab is active)
-pub fn render_script_editor(
+/// NOTE: This function is kept for reference but is no longer used.
+/// The script editor now uses render_script_editor_content via the docking system.
+#[allow(dead_code)]
+fn render_script_editor(
     ctx: &egui::Context,
     scene_state: &mut SceneManagerState,
     current_project: Option<&CurrentProject>,
