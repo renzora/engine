@@ -1228,3 +1228,417 @@ pub static POSTERIZE: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// BLEND MODE NODES
+// =============================================================================
+
+/// Multiply blend mode
+pub static BLEND_MULTIPLY: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/blend_multiply",
+    display_name: "Blend Multiply",
+    category: "Shader Blend",
+    description: "Multiply blend mode - darkens the result",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [180, 120, 200], // Purple for blend modes
+    is_event: false,
+    is_comment: false,
+};
+
+/// Screen blend mode
+pub static BLEND_SCREEN: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/blend_screen",
+    display_name: "Blend Screen",
+    category: "Shader Blend",
+    description: "Screen blend mode - lightens the result",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [180, 120, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Overlay blend mode
+pub static BLEND_OVERLAY: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/blend_overlay",
+    display_name: "Blend Overlay",
+    category: "Shader Blend",
+    description: "Overlay blend mode - combines multiply and screen",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [180, 120, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Add blend mode
+pub static BLEND_ADD: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/blend_add",
+    display_name: "Blend Add",
+    category: "Shader Blend",
+    description: "Additive blend mode - adds colors together",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [180, 120, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Soft light blend mode
+pub static BLEND_SOFTLIGHT: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/blend_softlight",
+    display_name: "Blend Soft Light",
+    category: "Shader Blend",
+    description: "Soft light blend mode - subtle lighting effect",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [180, 120, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// PATTERN NODES
+// =============================================================================
+
+/// Brick pattern
+pub static BRICK: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/brick",
+    display_name: "Brick Pattern",
+    category: "Shader Pattern",
+    description: "Procedural brick/tile pattern",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("brick_width", "Brick Width", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("brick_height", "Brick Height", PinType::Float).with_default(PinValue::Float(0.25)),
+        Pin::input("mortar_size", "Mortar Size", PinType::Float).with_default(PinValue::Float(0.05)),
+        Pin::output("brick", "Brick", PinType::Float),
+        Pin::output("mortar", "Mortar", PinType::Float),
+    ],
+    color: [200, 140, 100], // Orange for patterns
+    is_event: false,
+    is_comment: false,
+};
+
+/// Sine wave pattern
+pub static WAVE_SINE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/wave_sine",
+    display_name: "Sine Wave",
+    category: "Shader Pattern",
+    description: "Sine wave pattern",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(10.0)),
+        Pin::input("amplitude", "Amplitude", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("phase", "Phase", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [200, 140, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Square wave pattern
+pub static WAVE_SQUARE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/wave_square",
+    display_name: "Square Wave",
+    category: "Shader Pattern",
+    description: "Square wave pattern (alternating 0/1)",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(10.0)),
+        Pin::input("duty_cycle", "Duty Cycle", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [200, 140, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Sawtooth wave pattern
+pub static WAVE_SAWTOOTH: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/wave_sawtooth",
+    display_name: "Sawtooth Wave",
+    category: "Shader Pattern",
+    description: "Sawtooth wave pattern (linear ramp)",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(10.0)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [200, 140, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Radial gradient pattern
+pub static RADIAL_GRADIENT: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/radial_gradient",
+    display_name: "Radial Gradient",
+    category: "Shader Pattern",
+    description: "Circular gradient from center",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("center_x", "Center X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("center_y", "Center Y", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("radius", "Radius", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [200, 140, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Spiral pattern
+pub static SPIRAL: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/spiral",
+    display_name: "Spiral",
+    category: "Shader Pattern",
+    description: "Spiral pattern from center",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("center_x", "Center X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("center_y", "Center Y", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("arms", "Arms", PinType::Float).with_default(PinValue::Float(6.0)),
+        Pin::input("twist", "Twist", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [200, 140, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// SDF (SIGNED DISTANCE FIELD) NODES
+// =============================================================================
+
+/// SDF Circle
+pub static SDF_CIRCLE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/sdf_circle",
+    display_name: "SDF Circle",
+    category: "Shader SDF",
+    description: "Signed distance field for a circle",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("center_x", "Center X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("center_y", "Center Y", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("radius", "Radius", PinType::Float).with_default(PinValue::Float(0.25)),
+        Pin::output("distance", "Distance", PinType::Float),
+    ],
+    color: [100, 180, 200], // Cyan for SDF
+    is_event: false,
+    is_comment: false,
+};
+
+/// SDF Box
+pub static SDF_BOX: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/sdf_box",
+    display_name: "SDF Box",
+    category: "Shader SDF",
+    description: "Signed distance field for a box/rectangle",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("center_x", "Center X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("center_y", "Center Y", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("half_width", "Half Width", PinType::Float).with_default(PinValue::Float(0.25)),
+        Pin::input("half_height", "Half Height", PinType::Float).with_default(PinValue::Float(0.25)),
+        Pin::output("distance", "Distance", PinType::Float),
+    ],
+    color: [100, 180, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// SDF Union (min of two SDFs)
+pub static SDF_UNION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/sdf_union",
+    display_name: "SDF Union",
+    category: "Shader SDF",
+    description: "Combine two SDFs with union (min)",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("distance", "Distance", PinType::Float),
+    ],
+    color: [100, 180, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// SDF Intersection (max of two SDFs)
+pub static SDF_INTERSECTION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/sdf_intersection",
+    display_name: "SDF Intersection",
+    category: "Shader SDF",
+    description: "Combine two SDFs with intersection (max)",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("distance", "Distance", PinType::Float),
+    ],
+    color: [100, 180, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+/// SDF Smooth Union
+pub static SDF_SMOOTH_UNION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/sdf_smooth_union",
+    display_name: "SDF Smooth Union",
+    category: "Shader SDF",
+    description: "Smooth blend between two SDFs",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("k", "Smoothness", PinType::Float).with_default(PinValue::Float(0.1)),
+        Pin::output("distance", "Distance", PinType::Float),
+    ],
+    color: [100, 180, 200],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// ADDITIONAL COLOR NODES
+// =============================================================================
+
+/// Gamma to Linear conversion
+pub static GAMMA_TO_LINEAR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/gamma_to_linear",
+    display_name: "Gamma to Linear",
+    category: "Shader Color",
+    description: "Convert sRGB gamma space to linear space",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Linear to Gamma conversion
+pub static LINEAR_TO_GAMMA: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/linear_to_gamma",
+    display_name: "Linear to Gamma",
+    category: "Shader Color",
+    description: "Convert linear space to sRGB gamma space",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Levels adjustment
+pub static LEVELS: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/levels",
+    display_name: "Levels",
+    category: "Shader Color",
+    description: "Adjust input/output levels like Photoshop",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("in_black", "In Black", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("in_white", "In White", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("gamma", "Gamma", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("out_black", "Out Black", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("out_white", "Out White", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Gradient map (remap grayscale to color gradient)
+pub static GRADIENT_MAP: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/gradient_map",
+    display_name: "Gradient Map",
+    category: "Shader Color",
+    description: "Map grayscale value to a two-color gradient",
+    create_pins: || vec![
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("color_a", "Color A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        Pin::input("color_b", "Color B", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [220, 120, 180],
+    is_event: false,
+    is_comment: false,
+};
+
+// =============================================================================
+// ADDITIONAL EFFECT NODES
+// =============================================================================
+
+/// Dither effect
+pub static DITHER: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/dither",
+    display_name: "Dither",
+    category: "Shader Effect",
+    description: "Apply dithering pattern for retro/low-color look",
+    create_pins: || vec![
+        Pin::input("color", "Color", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("levels", "Levels", PinType::Float).with_default(PinValue::Float(4.0)),
+        Pin::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Vec3),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Pixelate effect
+pub static PIXELATE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/pixelate",
+    display_name: "Pixelate",
+    category: "Shader Effect",
+    description: "Pixelate UV coordinates for blocky look",
+    create_pins: || vec![
+        Pin::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        Pin::input("pixels_x", "Pixels X", PinType::Float).with_default(PinValue::Float(64.0)),
+        Pin::input("pixels_y", "Pixels Y", PinType::Float).with_default(PinValue::Float(64.0)),
+        Pin::output("uv", "UV", PinType::Vec2),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Edge detection (Sobel filter)
+pub static EDGE_DETECT: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "shader/edge_detect",
+    display_name: "Edge Detect",
+    category: "Shader Effect",
+    description: "Detect edges using Sobel filter (requires texture sampling)",
+    create_pins: || vec![
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("value_left", "Left", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("value_right", "Right", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("value_up", "Up", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("value_down", "Down", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("edge", "Edge", PinType::Float),
+    ],
+    color: [200, 180, 100],
+    is_event: false,
+    is_comment: false,
+};

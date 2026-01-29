@@ -9,6 +9,8 @@ use bevy::render::render_resource::{
 };
 use bevy::camera::RenderTarget;
 use crate::core::resources::console::{console_log, LogLevel};
+use crate::blueprint::{BlueprintGraph, BlueprintNode, PinValue};
+use super::preview_eval::get_pin_value;
 
 /// Resource holding the preview render texture handle
 #[derive(Resource)]
@@ -286,6 +288,7 @@ pub fn update_preview_material(
     mut preview_state: ResMut<MaterialPreviewState>,
     blueprint_editor: Res<crate::blueprint::BlueprintEditorState>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     mesh_query: Query<&MeshMaterial3d<StandardMaterial>, With<MaterialPreviewMesh>>,
     asset_server: Res<AssetServer>,
     current_project: Option<Res<crate::project::CurrentProject>>,
@@ -351,13 +354,13 @@ pub fn update_preview_material(
         // Process color input
         if let Some(value) = get_pin_value(graph, output_node, "color") {
             match value {
-                crate::blueprint::PinValue::Vec4(c) | crate::blueprint::PinValue::Color(c) => {
+                PinValue::Vec4(c) | PinValue::Color(c) => {
                     material.base_color = Color::srgba(c[0], c[1], c[2], c[3]);
                 }
-                crate::blueprint::PinValue::Vec3(c) => {
+                PinValue::Vec3(c) => {
                     material.base_color = Color::srgb(c[0], c[1], c[2]);
                 }
-                crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+                PinValue::Texture2D(ref path) if !path.is_empty() => {
                     let full_path = resolve_texture_path(path, current_project.as_deref());
                     console_log(LogLevel::Success, "Preview", format!("Loading unlit color texture: {:?}", full_path));
                     material.base_color_texture = Some(asset_server.load(full_path));
@@ -370,13 +373,13 @@ pub fn update_preview_material(
         // Process alpha input
         if let Some(value) = get_pin_value(graph, output_node, "alpha") {
             match value {
-                crate::blueprint::PinValue::Float(a) => {
+                PinValue::Float(a) => {
                     if a < 1.0 {
                         material.base_color = material.base_color.with_alpha(a);
                         material.alpha_mode = bevy::prelude::AlphaMode::Blend;
                     }
                 }
-                crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+                PinValue::Texture2D(ref path) if !path.is_empty() => {
                     // Alpha from texture - use the base color texture's alpha or load separate
                     console_log(LogLevel::Info, "Preview", format!("Alpha texture: {:?} (using base color alpha)", path));
                     material.alpha_mode = bevy::prelude::AlphaMode::Blend;
@@ -389,16 +392,27 @@ pub fn update_preview_material(
 
     // PBR Output handling
 
-    // Process base_color input
-    if let Some(value) = get_pin_value(graph, output_node, "base_color") {
+    // Process base_color input - check for procedural patterns first
+    let has_procedural = chain_has_procedural_pattern(graph, output_node, "base_color");
+
+    if has_procedural {
+        // Generate procedural texture
+        console_log(LogLevel::Info, "Preview", "Generating procedural texture for base color...");
+        if let Some(proc_image) = generate_procedural_texture(graph, output_node, "base_color", 256) {
+            let texture_handle = images.add(proc_image);
+            material.base_color_texture = Some(texture_handle);
+            material.base_color = Color::WHITE;
+            console_log(LogLevel::Success, "Preview", "Procedural texture generated successfully");
+        }
+    } else if let Some(value) = get_pin_value(graph, output_node, "base_color") {
         match value {
-            crate::blueprint::PinValue::Vec4(c) | crate::blueprint::PinValue::Color(c) => {
+            PinValue::Vec4(c) | PinValue::Color(c) => {
                 material.base_color = Color::srgba(c[0], c[1], c[2], c[3]);
             }
-            crate::blueprint::PinValue::Vec3(c) => {
+            PinValue::Vec3(c) => {
                 material.base_color = Color::srgb(c[0], c[1], c[2]);
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 let full_path = resolve_texture_path(path, current_project.as_deref());
                 console_log(LogLevel::Success, "Preview", format!("Loading base color texture: {:?}", full_path));
                 material.base_color_texture = Some(asset_server.load(full_path));
@@ -411,10 +425,10 @@ pub fn update_preview_material(
     // Process metallic input (float or texture)
     if let Some(value) = get_pin_value(graph, output_node, "metallic") {
         match value {
-            crate::blueprint::PinValue::Float(m) => {
+            PinValue::Float(m) => {
                 material.metallic = m.clamp(0.0, 1.0);
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 // Metallic texture - Bevy expects combined metallic_roughness
                 // For separate metallic textures, we load it but it won't work correctly
                 // The blue channel should contain metallic in glTF format
@@ -433,10 +447,10 @@ pub fn update_preview_material(
     // Process roughness input (float or texture)
     if let Some(value) = get_pin_value(graph, output_node, "roughness") {
         match value {
-            crate::blueprint::PinValue::Float(r) => {
+            PinValue::Float(r) => {
                 material.perceptual_roughness = r.clamp(0.0, 1.0);
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 let full_path = resolve_texture_path(path, current_project.as_deref());
                 console_log(LogLevel::Success, "Preview", format!("Loading roughness texture: {:?}", full_path));
                 material.metallic_roughness_texture = Some(asset_server.load(full_path));
@@ -449,12 +463,12 @@ pub fn update_preview_material(
     // Process normal input (texture only)
     if let Some(value) = get_pin_value(graph, output_node, "normal") {
         match value {
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 let full_path = resolve_texture_path(path, current_project.as_deref());
                 console_log(LogLevel::Success, "Preview", format!("Loading normal map: {:?}", full_path));
                 material.normal_map_texture = Some(asset_server.load(full_path));
             }
-            crate::blueprint::PinValue::Vec3(_) => {
+            PinValue::Vec3(_) => {
                 // Direct normal vector - can't apply to StandardMaterial without texture
             }
             _ => {}
@@ -464,14 +478,14 @@ pub fn update_preview_material(
     // Process emissive input (color or texture)
     if let Some(value) = get_pin_value(graph, output_node, "emissive") {
         match value {
-            crate::blueprint::PinValue::Vec4(e) | crate::blueprint::PinValue::Color(e) => {
+            PinValue::Vec4(e) | PinValue::Color(e) => {
                 // Use RGB, ignore alpha for emissive
                 material.emissive = LinearRgba::rgb(e[0], e[1], e[2]);
             }
-            crate::blueprint::PinValue::Vec3(e) => {
+            PinValue::Vec3(e) => {
                 material.emissive = LinearRgba::rgb(e[0], e[1], e[2]);
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 let full_path = resolve_texture_path(path, current_project.as_deref());
                 console_log(LogLevel::Success, "Preview", format!("Loading emissive texture: {:?}", full_path));
                 material.emissive_texture = Some(asset_server.load(full_path));
@@ -484,11 +498,11 @@ pub fn update_preview_material(
     // Process AO input (float or texture)
     if let Some(value) = get_pin_value(graph, output_node, "ao") {
         match value {
-            crate::blueprint::PinValue::Float(_ao) => {
+            PinValue::Float(_ao) => {
                 // Bevy doesn't have a scalar AO value, only texture
                 // We could potentially modify base_color, but that's not accurate
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 let full_path = resolve_texture_path(path, current_project.as_deref());
                 console_log(LogLevel::Success, "Preview", format!("Loading AO texture: {:?}", full_path));
                 material.occlusion_texture = Some(asset_server.load(full_path));
@@ -500,14 +514,14 @@ pub fn update_preview_material(
     // Process alpha input (float or texture via opacity node)
     if let Some(value) = get_pin_value(graph, output_node, "alpha") {
         match value {
-            crate::blueprint::PinValue::Float(a) => {
+            PinValue::Float(a) => {
                 if a < 1.0 {
                     material.base_color = material.base_color.with_alpha(a);
                     material.alpha_mode = bevy::prelude::AlphaMode::Blend;
                     console_log(LogLevel::Info, "Preview", format!("Alpha set to {}", a));
                 }
             }
-            crate::blueprint::PinValue::Texture2D(ref path) if !path.is_empty() => {
+            PinValue::Texture2D(ref path) if !path.is_empty() => {
                 // For alpha textures, Bevy uses the alpha channel of base_color_texture
                 // We can't easily use a separate alpha texture without a custom shader
                 console_log(LogLevel::Info, "Preview", format!("Alpha texture: {:?} (requires base color with alpha)", path));
@@ -518,50 +532,6 @@ pub fn update_preview_material(
     }
 }
 
-/// Get the value for a pin, following connections if needed
-fn get_pin_value(
-    graph: &crate::blueprint::BlueprintGraph,
-    node: &crate::blueprint::BlueprintNode,
-    pin_name: &str,
-) -> Option<crate::blueprint::PinValue> {
-    // FIRST check for connection to this pin - connections take priority over direct values
-    let connection = graph.connections.iter().find(|c| {
-        c.to.node_id == node.id && c.to.pin_name == pin_name
-    });
-
-    if let Some(conn) = connection {
-        let Some(source_node) = graph.nodes.iter().find(|n| n.id == conn.from.node_id) else {
-            console_log(LogLevel::Error, "Preview", format!("Source node {:?} not found!", conn.from.node_id));
-            return None;
-        };
-
-        // For texture nodes, return the path stored in input_values
-        if crate::blueprint::canvas::is_texture_node(&source_node.node_type) {
-            if let Some(path_val) = source_node.get_input_value("path") {
-                return Some(path_val);
-            } else {
-                console_log(LogLevel::Warning, "Preview", format!("Texture node has no path set"));
-            }
-        }
-
-        // For color constant nodes
-        if source_node.node_type == "shader/color" || source_node.node_type == "shader/color_constant" {
-            return source_node.get_input_value("color");
-        }
-
-        // For constant float nodes
-        if source_node.node_type == "shader/float" || source_node.node_type == "shader/float_constant" {
-            return source_node.get_input_value("value");
-        }
-
-        console_log(LogLevel::Warning, "Preview", format!("Unhandled source node type: {}", source_node.node_type));
-        return None;
-    }
-
-    // No connection - check for direct value on the node
-    node.get_input_value(pin_name)
-}
-
 /// Resolve a texture path relative to the project
 fn resolve_texture_path(path: &str, current_project: Option<&crate::project::CurrentProject>) -> std::path::PathBuf {
     if let Some(project) = current_project {
@@ -569,6 +539,121 @@ fn resolve_texture_path(path: &str, current_project: Option<&crate::project::Cur
     } else {
         std::path::PathBuf::from(path)
     }
+}
+
+/// Check if a node chain contains procedural patterns that need texture generation
+fn chain_has_procedural_pattern(graph: &BlueprintGraph, node: &BlueprintNode, _pin: &str) -> bool {
+    // Check if this node is a procedural pattern generator
+    let procedural_types = [
+        "shader/checkerboard",
+        "shader/noise_simple",
+        "shader/noise_gradient",
+        "shader/noise_voronoi",
+        "shader/noise_fbm",
+        "shader/noise_turbulence",
+        "shader/noise_ridged",
+        "shader/gradient",
+        "shader/domain_warp",
+        "shader/brick",
+        "shader/wave_sine",
+        "shader/wave_square",
+        "shader/wave_sawtooth",
+        "shader/radial_gradient",
+        "shader/spiral",
+        "shader/sdf_circle",
+        "shader/sdf_box",
+    ];
+
+    if procedural_types.contains(&node.node_type.as_str()) {
+        return true;
+    }
+
+    // Check if any input to this node comes from a procedural pattern
+    for conn in &graph.connections {
+        if conn.to.node_id == node.id {
+            if let Some(source_node) = graph.nodes.iter().find(|n| n.id == conn.from.node_id) {
+                if chain_has_procedural_pattern(graph, source_node, &conn.from.pin_name) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Generate a procedural texture by evaluating the node graph at each pixel
+fn generate_procedural_texture(
+    graph: &BlueprintGraph,
+    output_node: &BlueprintNode,
+    pin_name: &str,
+    size: u32,
+) -> Option<Image> {
+    let mut pixels = vec![0u8; (size * size * 4) as usize];
+
+    for y in 0..size {
+        for x in 0..size {
+            // Calculate UV coordinates (0.0 to 1.0)
+            let u = x as f32 / size as f32;
+            let v = y as f32 / size as f32;
+
+            // Evaluate the graph at this UV coordinate
+            let color = evaluate_at_uv(graph, output_node, pin_name, [u, v]);
+
+            // Write pixel (RGBA)
+            let idx = ((y * size + x) * 4) as usize;
+            pixels[idx] = (color[0] * 255.0).clamp(0.0, 255.0) as u8;
+            pixels[idx + 1] = (color[1] * 255.0).clamp(0.0, 255.0) as u8;
+            pixels[idx + 2] = (color[2] * 255.0).clamp(0.0, 255.0) as u8;
+            pixels[idx + 3] = (color[3] * 255.0).clamp(0.0, 255.0) as u8;
+        }
+    }
+
+    let extent = Extent3d {
+        width: size,
+        height: size,
+        depth_or_array_layers: 1,
+    };
+
+    Some(Image::new(
+        extent,
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        default(),
+    ))
+}
+
+/// Evaluate the node graph at a specific UV coordinate
+fn evaluate_at_uv(
+    graph: &BlueprintGraph,
+    output_node: &BlueprintNode,
+    pin_name: &str,
+    uv: [f32; 2],
+) -> [f32; 4] {
+    // Create a modified graph context where UV nodes return our specified UV
+    // For simplicity, we'll use a thread-local to pass the UV coordinate
+    UV_OVERRIDE.with(|cell| {
+        *cell.borrow_mut() = Some(uv);
+    });
+
+    let result = get_pin_value(graph, output_node, pin_name);
+
+    UV_OVERRIDE.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+
+    match result {
+        Some(PinValue::Color(c)) | Some(PinValue::Vec4(c)) => c,
+        Some(PinValue::Vec3(c)) => [c[0], c[1], c[2], 1.0],
+        Some(PinValue::Float(f)) => [f, f, f, 1.0],
+        _ => [0.5, 0.5, 0.5, 1.0],
+    }
+}
+
+// Thread-local storage for UV override during procedural texture generation
+thread_local! {
+    pub static UV_OVERRIDE: std::cell::RefCell<Option<[f32; 2]>> = std::cell::RefCell::new(None);
 }
 
 /// Calculate a simple hash of the graph for change detection

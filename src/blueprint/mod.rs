@@ -16,6 +16,7 @@ pub mod interactions;
 pub mod material;
 pub mod nodes;
 pub mod preview;
+mod preview_eval;
 pub mod serialization;
 
 pub use canvas::*;

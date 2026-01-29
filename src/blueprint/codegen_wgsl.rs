@@ -887,6 +887,364 @@ impl<'a> WgslCodegenContext<'a> {
                 self.output_vars.insert(PinId::output(node.id, "result"), result_var);
             }
 
+            // ==================== BLEND MODE NODES ====================
+            "shader/blend_multiply" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("blend_mul");
+                self.fragment_lines.push(format!("    let {} = {} * {};", result_var, a, b));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/blend_screen" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("blend_screen");
+                self.fragment_lines.push(format!(
+                    "    let {} = vec3<f32>(1.0) - (vec3<f32>(1.0) - {}) * (vec3<f32>(1.0) - {});",
+                    result_var, a, b
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/blend_overlay" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("blend_overlay");
+                self.fragment_lines.push(format!(
+                    "    let {} = select({} * {} * 2.0, vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - {}) * (vec3<f32>(1.0) - {}), {} < vec3<f32>(0.5));",
+                    result_var, a, b, a, b, a
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/blend_add" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("blend_add");
+                self.fragment_lines.push(format!("    let {} = {} + {};", result_var, a, b));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/blend_softlight" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("blend_soft");
+                // Soft light formula: (1-2b)*a^2 + 2*b*a
+                self.fragment_lines.push(format!(
+                    "    let {} = (vec3<f32>(1.0) - 2.0 * {}) * {} * {} + 2.0 * {} * {};",
+                    result_var, b, a, a, b, a
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            // ==================== PATTERN NODES ====================
+            "shader/brick" => {
+                let uv = self.get_input_value(node, "uv");
+                let brick_w = self.get_input_value(node, "brick_width");
+                let brick_h = self.get_input_value(node, "brick_height");
+                let mortar = self.get_input_value(node, "mortar_size");
+                let brick_var = self.next_var("brick");
+                let mortar_var = self.next_var("mortar");
+                // Calculate brick pattern with offset rows
+                self.fragment_lines.push(format!(
+                    "    let brick_uv_{} = {}.xy;",
+                    self.var_counter, uv
+                ));
+                self.fragment_lines.push(format!(
+                    "    let row_{} = floor(brick_uv_{}.y / {});",
+                    self.var_counter, self.var_counter, brick_h
+                ));
+                self.fragment_lines.push(format!(
+                    "    let offset_{} = select(0.0, 0.5, fract(row_{} * 0.5) > 0.25);",
+                    self.var_counter, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let brick_x_{} = fract(brick_uv_{}.x / {} + offset_{});",
+                    self.var_counter, self.var_counter, brick_w, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let brick_y_{} = fract(brick_uv_{}.y / {});",
+                    self.var_counter, self.var_counter, brick_h
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = step({}, brick_x_{}) * step(brick_x_{}, 1.0 - {}) * step({}, brick_y_{}) * step(brick_y_{}, 1.0 - {});",
+                    brick_var, mortar, self.var_counter, self.var_counter, mortar, mortar, self.var_counter, self.var_counter, mortar
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = 1.0 - {};",
+                    mortar_var, brick_var
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "brick"), brick_var);
+                self.output_vars.insert(PinId::output(node.id, "mortar"), mortar_var);
+            }
+
+            "shader/wave_sine" => {
+                let uv = self.get_input_value(node, "uv");
+                let freq = self.get_input_value(node, "frequency");
+                let amp = self.get_input_value(node, "amplitude");
+                let phase = self.get_input_value(node, "phase");
+                let result_var = self.next_var("wave_sin");
+                self.fragment_lines.push(format!(
+                    "    let {} = sin({}.x * {} + {}) * {} * 0.5 + 0.5;",
+                    result_var, uv, freq, phase, amp
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/wave_square" => {
+                let uv = self.get_input_value(node, "uv");
+                let freq = self.get_input_value(node, "frequency");
+                let duty = self.get_input_value(node, "duty_cycle");
+                let result_var = self.next_var("wave_sq");
+                self.fragment_lines.push(format!(
+                    "    let {} = step({}, fract({}.x * {}));",
+                    result_var, duty, uv, freq
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/wave_sawtooth" => {
+                let uv = self.get_input_value(node, "uv");
+                let freq = self.get_input_value(node, "frequency");
+                let result_var = self.next_var("wave_saw");
+                self.fragment_lines.push(format!(
+                    "    let {} = fract({}.x * {});",
+                    result_var, uv, freq
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/radial_gradient" => {
+                let uv = self.get_input_value(node, "uv");
+                let cx = self.get_input_value(node, "center_x");
+                let cy = self.get_input_value(node, "center_y");
+                let radius = self.get_input_value(node, "radius");
+                let result_var = self.next_var("radial");
+                self.fragment_lines.push(format!(
+                    "    let {} = saturate(length({} - vec2<f32>({}, {})) / {});",
+                    result_var, uv, cx, cy, radius
+                ));
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            "shader/spiral" => {
+                let uv = self.get_input_value(node, "uv");
+                let cx = self.get_input_value(node, "center_x");
+                let cy = self.get_input_value(node, "center_y");
+                let arms = self.get_input_value(node, "arms");
+                let twist = self.get_input_value(node, "twist");
+                let result_var = self.next_var("spiral");
+                self.fragment_lines.push(format!(
+                    "    let spiral_uv_{} = {} - vec2<f32>({}, {});",
+                    self.var_counter, uv, cx, cy
+                ));
+                self.fragment_lines.push(format!(
+                    "    let spiral_angle_{} = atan2(spiral_uv_{}.y, spiral_uv_{}.x);",
+                    self.var_counter, self.var_counter, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let spiral_dist_{} = length(spiral_uv_{});",
+                    self.var_counter, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = fract((spiral_angle_{} / 6.283185 + spiral_dist_{} * {}) * {});",
+                    result_var, self.var_counter, self.var_counter, twist, arms
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "value"), result_var);
+            }
+
+            // ==================== SDF NODES ====================
+            "shader/sdf_circle" => {
+                let uv = self.get_input_value(node, "uv");
+                let cx = self.get_input_value(node, "center_x");
+                let cy = self.get_input_value(node, "center_y");
+                let radius = self.get_input_value(node, "radius");
+                let result_var = self.next_var("sdf_circle");
+                self.fragment_lines.push(format!(
+                    "    let {} = length({} - vec2<f32>({}, {})) - {};",
+                    result_var, uv, cx, cy, radius
+                ));
+                self.output_vars.insert(PinId::output(node.id, "distance"), result_var);
+            }
+
+            "shader/sdf_box" => {
+                let uv = self.get_input_value(node, "uv");
+                let cx = self.get_input_value(node, "center_x");
+                let cy = self.get_input_value(node, "center_y");
+                let hw = self.get_input_value(node, "half_width");
+                let hh = self.get_input_value(node, "half_height");
+                let result_var = self.next_var("sdf_box");
+                self.fragment_lines.push(format!(
+                    "    let sdf_d_{} = abs({} - vec2<f32>({}, {})) - vec2<f32>({}, {});",
+                    self.var_counter, uv, cx, cy, hw, hh
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = length(max(sdf_d_{}, vec2<f32>(0.0))) + min(max(sdf_d_{}.x, sdf_d_{}.y), 0.0);",
+                    result_var, self.var_counter, self.var_counter, self.var_counter
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "distance"), result_var);
+            }
+
+            "shader/sdf_union" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("sdf_union");
+                self.fragment_lines.push(format!("    let {} = min({}, {});", result_var, a, b));
+                self.output_vars.insert(PinId::output(node.id, "distance"), result_var);
+            }
+
+            "shader/sdf_intersection" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("sdf_isect");
+                self.fragment_lines.push(format!("    let {} = max({}, {});", result_var, a, b));
+                self.output_vars.insert(PinId::output(node.id, "distance"), result_var);
+            }
+
+            "shader/sdf_smooth_union" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let k = self.get_input_value(node, "k");
+                let result_var = self.next_var("sdf_smooth");
+                self.fragment_lines.push(format!(
+                    "    let h_{} = saturate(0.5 + 0.5 * ({} - {}) / {});",
+                    self.var_counter, b, a, k
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = mix({}, {}, h_{}) - {} * h_{} * (1.0 - h_{});",
+                    result_var, b, a, self.var_counter, k, self.var_counter, self.var_counter
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "distance"), result_var);
+            }
+
+            // ==================== ADDITIONAL COLOR NODES ====================
+            "shader/gamma_to_linear" => {
+                let color = self.get_input_value(node, "color");
+                let result_var = self.next_var("linear");
+                self.fragment_lines.push(format!(
+                    "    let {} = pow({}, vec3<f32>(2.2));",
+                    result_var, color
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/linear_to_gamma" => {
+                let color = self.get_input_value(node, "color");
+                let result_var = self.next_var("gamma");
+                self.fragment_lines.push(format!(
+                    "    let {} = pow({}, vec3<f32>(1.0 / 2.2));",
+                    result_var, color
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/levels" => {
+                let color = self.get_input_value(node, "color");
+                let in_black = self.get_input_value(node, "in_black");
+                let in_white = self.get_input_value(node, "in_white");
+                let gamma = self.get_input_value(node, "gamma");
+                let out_black = self.get_input_value(node, "out_black");
+                let out_white = self.get_input_value(node, "out_white");
+                let result_var = self.next_var("levels");
+                // Apply levels: remap input range, apply gamma, remap to output range
+                self.fragment_lines.push(format!(
+                    "    let levels_in_{} = saturate(({} - vec3<f32>({})) / ({} - {}));",
+                    self.var_counter, color, in_black, in_white, in_black
+                ));
+                self.fragment_lines.push(format!(
+                    "    let levels_gamma_{} = pow(levels_in_{}, vec3<f32>(1.0 / {}));",
+                    self.var_counter, self.var_counter, gamma
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = levels_gamma_{} * ({} - {}) + vec3<f32>({});",
+                    result_var, self.var_counter, out_white, out_black, out_black
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/gradient_map" => {
+                let value = self.get_input_value(node, "value");
+                let color_a = self.get_input_value(node, "color_a");
+                let color_b = self.get_input_value(node, "color_b");
+                let result_var = self.next_var("grad_map");
+                self.fragment_lines.push(format!(
+                    "    let {} = mix({}, {}, {});",
+                    result_var, color_a, color_b, value
+                ));
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            // ==================== ADDITIONAL EFFECT NODES ====================
+            "shader/dither" => {
+                let color = self.get_input_value(node, "color");
+                let uv = self.get_input_value(node, "uv");
+                let levels = self.get_input_value(node, "levels");
+                let scale = self.get_input_value(node, "scale");
+                let result_var = self.next_var("dithered");
+                // 4x4 Bayer dither matrix
+                self.fragment_lines.push(format!(
+                    "    let dither_uv_{} = floor({} * {} * 4.0);",
+                    self.var_counter, uv, scale
+                ));
+                self.fragment_lines.push(format!(
+                    "    let dither_idx_{} = i32(fract(dither_uv_{}.x * 0.25) * 4.0) + i32(fract(dither_uv_{}.y * 0.25) * 4.0) * 4;",
+                    self.var_counter, self.var_counter, self.var_counter
+                ));
+                // Simplified dither threshold
+                self.fragment_lines.push(format!(
+                    "    let dither_thresh_{} = (f32(dither_idx_{} % 16) + 0.5) / 16.0;",
+                    self.var_counter, self.var_counter
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = floor({} * {} + dither_thresh_{} - 0.5) / {};",
+                    result_var, color, levels, self.var_counter, levels
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "result"), result_var);
+            }
+
+            "shader/pixelate" => {
+                let uv = self.get_input_value(node, "uv");
+                let pixels_x = self.get_input_value(node, "pixels_x");
+                let pixels_y = self.get_input_value(node, "pixels_y");
+                let result_var = self.next_var("pixelated");
+                self.fragment_lines.push(format!(
+                    "    let {} = floor({} * vec2<f32>({}, {})) / vec2<f32>({}, {});",
+                    result_var, uv, pixels_x, pixels_y, pixels_x, pixels_y
+                ));
+                self.output_vars.insert(PinId::output(node.id, "uv"), result_var);
+            }
+
+            "shader/edge_detect" => {
+                let center = self.get_input_value(node, "value");
+                let left = self.get_input_value(node, "value_left");
+                let right = self.get_input_value(node, "value_right");
+                let up = self.get_input_value(node, "value_up");
+                let down = self.get_input_value(node, "value_down");
+                let result_var = self.next_var("edge");
+                // Simple Sobel-like edge detection
+                self.fragment_lines.push(format!(
+                    "    let edge_h_{} = abs({} - {});",
+                    self.var_counter, right, left
+                ));
+                self.fragment_lines.push(format!(
+                    "    let edge_v_{} = abs({} - {});",
+                    self.var_counter, up, down
+                ));
+                self.fragment_lines.push(format!(
+                    "    let {} = sqrt(edge_h_{} * edge_h_{} + edge_v_{} * edge_v_{});",
+                    result_var, self.var_counter, self.var_counter, self.var_counter, self.var_counter
+                ));
+                self.var_counter += 1;
+                self.output_vars.insert(PinId::output(node.id, "edge"), result_var);
+            }
+
             _ => {}
         }
     }

@@ -2,10 +2,13 @@
 //!
 //! Each node type defines its pins, default values, and code generation behavior.
 
+mod ai;
 mod animation;
+mod arrays;
 mod audio;
 mod camera;
 mod debug;
+mod easing;
 mod ecs;
 mod events;
 mod flow;
@@ -19,6 +22,7 @@ mod rendering;
 mod scene;
 pub mod shader;
 mod state;
+mod strings;
 mod time;
 mod transform;
 mod ui;
@@ -269,6 +273,37 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&shader::NORMAL_BLEND);
     registry.register(&shader::DETAIL_BLEND);
     registry.register(&shader::POSTERIZE);
+    registry.register(&shader::DITHER);
+    registry.register(&shader::PIXELATE);
+    registry.register(&shader::EDGE_DETECT);
+
+    // Shader Blend Modes
+    registry.register(&shader::BLEND_MULTIPLY);
+    registry.register(&shader::BLEND_SCREEN);
+    registry.register(&shader::BLEND_OVERLAY);
+    registry.register(&shader::BLEND_ADD);
+    registry.register(&shader::BLEND_SOFTLIGHT);
+
+    // Shader Patterns
+    registry.register(&shader::BRICK);
+    registry.register(&shader::WAVE_SINE);
+    registry.register(&shader::WAVE_SQUARE);
+    registry.register(&shader::WAVE_SAWTOOTH);
+    registry.register(&shader::RADIAL_GRADIENT);
+    registry.register(&shader::SPIRAL);
+
+    // Shader SDF (Signed Distance Fields)
+    registry.register(&shader::SDF_CIRCLE);
+    registry.register(&shader::SDF_BOX);
+    registry.register(&shader::SDF_UNION);
+    registry.register(&shader::SDF_INTERSECTION);
+    registry.register(&shader::SDF_SMOOTH_UNION);
+
+    // Shader Color (Additional)
+    registry.register(&shader::GAMMA_TO_LINEAR);
+    registry.register(&shader::LINEAR_TO_GAMMA);
+    registry.register(&shader::LEVELS);
+    registry.register(&shader::GRADIENT_MAP);
 
     // =========================================================================
     // BEHAVIOR NODES (for gameplay scripting)
@@ -820,4 +855,180 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     // Window - VSync
     registry.register(&window::SET_VSYNC);
     registry.register(&window::IS_VSYNC_ENABLED);
+
+    // =========================================================================
+    // NEW MATH NODES
+    // =========================================================================
+    registry.register(&math::TAN);
+    registry.register(&math::ASIN);
+    registry.register(&math::ACOS);
+    registry.register(&math::ATAN);
+    registry.register(&math::ATAN2);
+    registry.register(&math::FLOOR);
+    registry.register(&math::CEIL);
+    registry.register(&math::ROUND);
+    registry.register(&math::SQRT);
+    registry.register(&math::POW);
+    registry.register(&math::LOG);
+    registry.register(&math::EXP);
+    registry.register(&math::SIGN);
+    registry.register(&math::MOD);
+    registry.register(&math::FRACT);
+    registry.register(&math::NEGATE);
+    registry.register(&math::ONE_MINUS);
+    registry.register(&math::RECIPROCAL);
+    registry.register(&math::SMOOTHSTEP);
+    registry.register(&math::STEP);
+    registry.register(&math::RANDOM);
+    registry.register(&math::RANDOM_RANGE);
+    registry.register(&math::RANDOM_INT);
+    registry.register(&math::MAP_RANGE);
+    registry.register(&math::DEG_TO_RAD);
+    registry.register(&math::RAD_TO_DEG);
+
+    // Math Vector
+    registry.register(&math::DOT);
+    registry.register(&math::CROSS);
+    registry.register(&math::NORMALIZE);
+    registry.register(&math::LENGTH);
+    registry.register(&math::DISTANCE);
+    registry.register(&math::DIRECTION_TO);
+    registry.register(&math::ANGLE_BETWEEN);
+    registry.register(&math::REFLECT);
+    registry.register(&math::LERP_VEC3);
+    registry.register(&math::MAKE_VEC3);
+    registry.register(&math::BREAK_VEC3);
+    registry.register(&math::RANDOM_VEC3);
+    registry.register(&math::RANDOM_DIRECTION);
+
+    // =========================================================================
+    // STRING NODES
+    // =========================================================================
+    registry.register(&strings::CONCAT);
+    registry.register(&strings::CONCAT_MULTI);
+    registry.register(&strings::JOIN);
+    registry.register(&strings::STRING_LENGTH);
+    registry.register(&strings::IS_EMPTY);
+    registry.register(&strings::CONTAINS);
+    registry.register(&strings::STARTS_WITH);
+    registry.register(&strings::ENDS_WITH);
+    registry.register(&strings::INDEX_OF);
+    registry.register(&strings::STRING_EQUALS);
+    registry.register(&strings::STRING_EQUALS_IGNORE_CASE);
+    registry.register(&strings::SUBSTRING);
+    registry.register(&strings::CHAR_AT);
+    registry.register(&strings::REPLACE);
+    registry.register(&strings::SPLIT);
+    registry.register(&strings::TO_UPPER);
+    registry.register(&strings::TO_LOWER);
+    registry.register(&strings::CAPITALIZE);
+    registry.register(&strings::TRIM);
+    registry.register(&strings::TRIM_START);
+    registry.register(&strings::TRIM_END);
+    registry.register(&strings::PAD_LEFT);
+    registry.register(&strings::PAD_RIGHT);
+    registry.register(&strings::FORMAT);
+    registry.register(&strings::INT_TO_STRING);
+    registry.register(&strings::FLOAT_TO_STRING);
+    registry.register(&strings::BOOL_TO_STRING);
+    registry.register(&strings::STRING_TO_INT);
+    registry.register(&strings::STRING_TO_FLOAT);
+    registry.register(&strings::REPEAT);
+    registry.register(&strings::REVERSE);
+
+    // =========================================================================
+    // ARRAY NODES
+    // =========================================================================
+    registry.register(&arrays::CREATE_ARRAY);
+    registry.register(&arrays::CREATE_ARRAY_WITH);
+    registry.register(&arrays::CREATE_INT_ARRAY);
+    registry.register(&arrays::CREATE_FLOAT_ARRAY);
+    registry.register(&arrays::ARRAY_PUSH);
+    registry.register(&arrays::ARRAY_POP);
+    registry.register(&arrays::ARRAY_INSERT);
+    registry.register(&arrays::ARRAY_REMOVE_AT);
+    registry.register(&arrays::ARRAY_REMOVE);
+    registry.register(&arrays::ARRAY_SET);
+    registry.register(&arrays::ARRAY_CLEAR);
+    registry.register(&arrays::ARRAY_GET);
+    registry.register(&arrays::ARRAY_FIRST);
+    registry.register(&arrays::ARRAY_LAST);
+    registry.register(&arrays::ARRAY_RANDOM);
+    registry.register(&arrays::ARRAY_LENGTH);
+    registry.register(&arrays::ARRAY_IS_EMPTY);
+    registry.register(&arrays::ARRAY_CONTAINS);
+    registry.register(&arrays::ARRAY_FIND);
+    registry.register(&arrays::ARRAY_IS_VALID_INDEX);
+    registry.register(&arrays::ARRAY_SHUFFLE);
+    registry.register(&arrays::ARRAY_REVERSE);
+    registry.register(&arrays::ARRAY_SORT);
+    registry.register(&arrays::ARRAY_COPY);
+    registry.register(&arrays::ARRAY_SLICE);
+    registry.register(&arrays::ARRAY_CONCAT);
+    registry.register(&arrays::ARRAY_SUM);
+    registry.register(&arrays::ARRAY_AVERAGE);
+    registry.register(&arrays::ARRAY_MIN);
+    registry.register(&arrays::ARRAY_MAX);
+
+    // =========================================================================
+    // EASING NODES
+    // =========================================================================
+    registry.register(&easing::EASE_IN_QUAD);
+    registry.register(&easing::EASE_OUT_QUAD);
+    registry.register(&easing::EASE_INOUT_QUAD);
+    registry.register(&easing::EASE_IN_CUBIC);
+    registry.register(&easing::EASE_OUT_CUBIC);
+    registry.register(&easing::EASE_INOUT_CUBIC);
+    registry.register(&easing::EASE_IN_QUART);
+    registry.register(&easing::EASE_OUT_QUART);
+    registry.register(&easing::EASE_INOUT_QUART);
+    registry.register(&easing::EASE_IN_QUINT);
+    registry.register(&easing::EASE_OUT_QUINT);
+    registry.register(&easing::EASE_INOUT_QUINT);
+    registry.register(&easing::EASE_IN_SINE);
+    registry.register(&easing::EASE_OUT_SINE);
+    registry.register(&easing::EASE_INOUT_SINE);
+    registry.register(&easing::EASE_IN_EXPO);
+    registry.register(&easing::EASE_OUT_EXPO);
+    registry.register(&easing::EASE_INOUT_EXPO);
+    registry.register(&easing::EASE_IN_CIRC);
+    registry.register(&easing::EASE_OUT_CIRC);
+    registry.register(&easing::EASE_INOUT_CIRC);
+    registry.register(&easing::EASE_IN_BACK);
+    registry.register(&easing::EASE_OUT_BACK);
+    registry.register(&easing::EASE_INOUT_BACK);
+    registry.register(&easing::EASE_IN_ELASTIC);
+    registry.register(&easing::EASE_OUT_ELASTIC);
+    registry.register(&easing::EASE_INOUT_ELASTIC);
+    registry.register(&easing::EASE_IN_BOUNCE);
+    registry.register(&easing::EASE_OUT_BOUNCE);
+    registry.register(&easing::EASE_INOUT_BOUNCE);
+    registry.register(&easing::EASE_LINEAR);
+    registry.register(&easing::APPLY_EASING);
+    registry.register(&easing::INVERSE_LERP);
+
+    // =========================================================================
+    // AI / PATHFINDING NODES
+    // =========================================================================
+    registry.register(&ai::FIND_PATH);
+    registry.register(&ai::GET_NEXT_WAYPOINT);
+    registry.register(&ai::IS_REACHABLE);
+    registry.register(&ai::MOVE_TO);
+    registry.register(&ai::MOVE_ALONG_PATH);
+    registry.register(&ai::STOP_MOVEMENT);
+    registry.register(&ai::LOOK_AT_POSITION);
+    registry.register(&ai::LOOK_AT_TARGET);
+    registry.register(&ai::IS_FACING);
+    registry.register(&ai::DISTANCE_TO_TARGET);
+    registry.register(&ai::DISTANCE_TO_POSITION);
+    registry.register(&ai::IS_IN_RANGE);
+    registry.register(&ai::HAS_LINE_OF_SIGHT);
+    registry.register(&ai::FIND_NEAREST);
+    registry.register(&ai::FIND_IN_RANGE);
+    registry.register(&ai::FLEE_FROM);
+    registry.register(&ai::WANDER);
+    registry.register(&ai::PATROL);
+    registry.register(&ai::SET_AI_STATE);
+    registry.register(&ai::GET_AI_STATE);
+    registry.register(&ai::IS_AI_STATE);
 }
