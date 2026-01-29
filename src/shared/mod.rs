@@ -7,6 +7,7 @@
 //! serialization to scene files (.ron).
 
 pub mod components;
+pub mod core_components;
 pub mod light_spawner;
 pub mod physics_plugin;
 pub mod physics_spawner;
@@ -40,4 +41,10 @@ pub use physics_plugin::RenzoraPhysicsPlugin;
 pub use physics_spawner::{
     despawn_physics_components, spawn_collision_shape, spawn_entity_physics, spawn_physics_body,
     RuntimePhysics,
+};
+
+// Core component exports (for runtime scripting support)
+pub use core_components::{
+    EditorEntity, HealthData, SceneNode, SceneTabId, ScriptComponent, ScriptRuntimeState,
+    ScriptVariableValue, WorldEnvironmentMarker, register_core_types,
 };

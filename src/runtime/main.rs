@@ -24,6 +24,9 @@ mod pack;
 #[path = "pack_asset_reader.rs"]
 mod pack_asset_reader;
 
+// Runtime scripting module
+mod scripting;
+
 use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
@@ -151,6 +154,9 @@ pub struct RuntimePlugin;
 
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
+        // Register core component types (EditorEntity, SceneNode, HealthData, ScriptComponent, etc.)
+        shared::register_core_types(app);
+
         // Register shared component types for scene deserialization
         app
             // Light components
@@ -191,6 +197,8 @@ impl Plugin for RuntimePlugin {
                 camera::RuntimeCameraPlugin,
                 // Physics plugin (runs immediately in runtime, not paused)
                 shared::RenzoraPhysicsPlugin::new(false),
+                // Scripting plugin
+                scripting::RuntimeScriptingPlugin::new("scripts"),
             ));
     }
 }
