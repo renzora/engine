@@ -18,6 +18,8 @@ use crate::core::{
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
+use crate::brushes::{BrushSettings, BrushState, BlockEditState};
+use crate::terrain::TerrainSettings;
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]
@@ -61,6 +63,11 @@ pub struct EditorResources<'w> {
     pub physics_debug: ResMut<'w, PhysicsDebugState>,
     pub camera_debug: ResMut<'w, CameraDebugState>,
     pub system_timing: Res<'w, SystemTimingState>,
+    pub brush_settings: ResMut<'w, BrushSettings>,
+    #[allow(dead_code)]
+    pub brush_state: ResMut<'w, BrushState>,
+    pub block_edit: Res<'w, BlockEditState>,
+    pub terrain_settings: ResMut<'w, TerrainSettings>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -85,6 +92,7 @@ use panels::{
     render_console_content, render_history_content, render_gamepad_content, render_performance_content,
     render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
     render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
+    render_level_tools_content,
 };
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
@@ -266,6 +274,11 @@ pub fn editor_ui(
 
     let toolbar_height = 36.0;
 
+    // Check if selected entity is a terrain
+    let terrain_selected = editor.selection.selected_entity
+        .map(|e| hierarchy_queries.components.terrains.get(e).is_ok())
+        .unwrap_or(false);
+
     let toolbar_events = render_toolbar(
         ctx,
         &mut editor.gizmo,
@@ -281,6 +294,9 @@ pub fn editor_ui(
         &mut editor.hierarchy,
         &mut editor.play_mode,
         &mut editor.docking,
+        &mut editor.brush_settings,
+        &mut editor.terrain_settings,
+        terrain_selected,
         &editor.theme_manager.active_theme,
     );
     all_ui_events.extend(toolbar_events);
@@ -508,6 +524,7 @@ pub fn editor_ui(
                             &mut editor.gizmo,
                             current_project.as_ref().map(|p| &p.path),
                             &mut editor.assets,
+                            &mut editor.thumbnail_cache,
                         );
                         all_ui_events.extend(events);
                         if changed {
@@ -700,6 +717,19 @@ pub fn editor_ui(
                 PanelId::SystemProfiler => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_system_profiler_content(ui, &editor.diagnostics, &editor.system_timing, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::LevelTools => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_level_tools_content(
+                            ui,
+                            &mut editor.gizmo,
+                            &mut editor.brush_settings,
+                            &editor.block_edit,
+                            &mut editor.terrain_settings,
+                            &editor.theme_manager.active_theme,
+                        );
                     });
                 }
 
@@ -954,12 +984,41 @@ pub fn thumbnail_loading_system(
     for (path, handle) in handles_to_check {
         match asset_server.get_load_state(&handle) {
             Some(LoadState::Loaded) => {
-                // Image is loaded, verify it exists in the assets collection
-                if images.contains(&handle) {
-                    // Register with egui
-                    let texture_id = contexts.add_image(EguiTextureHandle::Weak(handle.id()));
-                    thumbnail_cache.texture_ids.insert(path.clone(), texture_id);
-                    thumbnail_cache.loading.remove(&path);
+                // Image is loaded, verify it exists and has a compatible format
+                if let Some(image) = images.get(&handle) {
+                    // Check if the texture format is compatible with egui
+                    // egui requires filterable textures - reject Uint/Sint formats
+                    use bevy::render::render_resource::TextureFormat;
+                    let format = image.texture_descriptor.format;
+
+                    // Blacklist formats known to be incompatible with egui
+                    // (Uint and Sint formats are not filterable)
+                    let is_incompatible = matches!(
+                        format,
+                        TextureFormat::R8Uint | TextureFormat::R8Sint
+                            | TextureFormat::R16Uint | TextureFormat::R16Sint
+                            | TextureFormat::R32Uint | TextureFormat::R32Sint
+                            | TextureFormat::Rg8Uint | TextureFormat::Rg8Sint
+                            | TextureFormat::Rg16Uint | TextureFormat::Rg16Sint
+                            | TextureFormat::Rg32Uint | TextureFormat::Rg32Sint
+                            | TextureFormat::Rgba8Uint | TextureFormat::Rgba8Sint
+                            | TextureFormat::Rgba16Uint | TextureFormat::Rgba16Sint
+                            | TextureFormat::Rgba32Uint | TextureFormat::Rgba32Sint
+                            | TextureFormat::Rgb10a2Uint
+                    );
+
+                    if !is_incompatible {
+                        // Register with egui
+                        let texture_id = contexts.add_image(EguiTextureHandle::Weak(handle.id()));
+                        thumbnail_cache.texture_ids.insert(path.clone(), texture_id);
+                        thumbnail_cache.loading.remove(&path);
+                    } else {
+                        // Format not compatible with egui - mark as failed
+                        warn!("Thumbnail format {:?} not compatible with egui: {}", format, path.display());
+                        thumbnail_cache.loading.remove(&path);
+                        thumbnail_cache.image_handles.remove(&path);
+                        thumbnail_cache.failed.insert(path);
+                    }
                 }
             }
             Some(LoadState::Failed(_)) => {

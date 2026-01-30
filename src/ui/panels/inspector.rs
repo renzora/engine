@@ -571,11 +571,12 @@ pub fn render_inspector(
                 // Render normal inspector (legacy path - no assets drag-drop support)
                 // This function is not actively used - docking uses render_inspector_content directly
                 let mut dummy_assets = crate::core::AssetBrowserState::default();
+                let mut dummy_thumbnails = crate::core::ThumbnailCache::default();
                 let (events, changed) = render_inspector_content(
                     ui, selection, entities, queries, script_registry, rhai_engine,
                     camera_preview_texture_id, plugin_host, ui_renderer,
                     component_registry, add_component_popup, commands, meshes, materials,
-                    gizmo_state, None, &mut dummy_assets,
+                    gizmo_state, None, &mut dummy_assets, &mut dummy_thumbnails,
                 );
                 ui_events.extend(events);
                 scene_changed = changed;
@@ -635,6 +636,7 @@ pub fn render_inspector_content(
     gizmo_state: &mut GizmoState,
     project_path: Option<&std::path::PathBuf>,
     assets: &mut crate::core::AssetBrowserState,
+    thumbnail_cache: &mut crate::core::ThumbnailCache,
 ) -> (Vec<UiEvent>, bool) {
     let mut scene_changed = false;
     let mut component_to_remove: Option<&'static str> = None;
@@ -1118,6 +1120,12 @@ pub fn render_inspector_content(
                 }
 
             }
+        } else if let Some(asset_path) = &assets.selected_asset.clone() {
+            // Close popup when no entity is selected
+            add_component_popup.is_open = false;
+
+            // Show asset information
+            render_asset_inspector(ui, asset_path, thumbnail_cache);
         } else {
             // Close popup when nothing is selected
             add_component_popup.is_open = false;
@@ -1609,4 +1617,229 @@ fn import_texture_and_create_material(
     info!("Created material blueprint: {:?}", blueprint_path);
 
     Some(blueprint_path.to_string_lossy().to_string())
+}
+
+/// Render asset information in the inspector when an asset is selected
+fn render_asset_inspector(
+    ui: &mut egui::Ui,
+    asset_path: &std::path::PathBuf,
+    thumbnail_cache: &mut crate::core::ThumbnailCache,
+) {
+    use egui_phosphor::regular::{FILE, INFO};
+
+    let filename = asset_path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown");
+
+    let extension = asset_path.extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    // Header with asset name
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 20.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(166, 217, 140));
+
+        ui.label(RichText::new(IMAGE).size(14.0).color(Color32::from_rgb(166, 217, 140)));
+        ui.label(RichText::new(filename).size(14.0).strong());
+    });
+
+    ui.add_space(8.0);
+
+    // Check if it's an image file
+    let is_image = matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "exr");
+
+    if is_image {
+        // Show thumbnail preview
+        let preview_size = (ui.available_width() - 16.0).min(200.0);
+
+        ui.add_space(4.0);
+
+        // Center the preview
+        ui.horizontal(|ui| {
+            let padding = (ui.available_width() - preview_size) / 2.0;
+            ui.add_space(padding.max(0.0));
+
+            // Preview frame
+            let (rect, _) = ui.allocate_exact_size(
+                Vec2::splat(preview_size),
+                egui::Sense::hover(),
+            );
+
+            // Draw checkerboard background for transparency
+            draw_checkerboard_pattern(ui.painter(), rect);
+
+            // Draw border
+            ui.painter().rect_stroke(
+                rect,
+                4.0,
+                egui::Stroke::new(1.0, Color32::from_rgb(60, 62, 68)),
+                egui::StrokeKind::Inside,
+            );
+
+            // Try to show the thumbnail
+            if let Some(texture_id) = thumbnail_cache.get_texture_id(asset_path) {
+                ui.painter().image(
+                    texture_id,
+                    rect.shrink(2.0),
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            } else if thumbnail_cache.has_failed(asset_path) {
+                // Show error message
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Preview unavailable",
+                    egui::FontId::proportional(11.0),
+                    Color32::from_rgb(150, 100, 100),
+                );
+            } else {
+                // Request load if not already loading
+                if !thumbnail_cache.is_loading(asset_path) {
+                    thumbnail_cache.request_load(asset_path.clone());
+                }
+                // Show loading indicator
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Loading...",
+                    egui::FontId::proportional(11.0),
+                    Color32::from_rgb(140, 142, 148),
+                );
+            }
+        });
+
+        ui.add_space(8.0);
+    }
+
+    ui.separator();
+    ui.add_space(4.0);
+
+    // Information section
+    render_category(
+        ui,
+        INFO,
+        "Information",
+        CategoryStyle::environment(),
+        "asset_info",
+        true,
+        |ui| {
+            let mut row = 0;
+
+            // File type
+            inline_property(ui, row, "Type", |ui| {
+                let type_name = match extension.as_str() {
+                    "png" => "PNG Image",
+                    "jpg" | "jpeg" => "JPEG Image",
+                    "bmp" => "Bitmap Image",
+                    "tga" => "TGA Image",
+                    "webp" => "WebP Image",
+                    "hdr" => "HDR Image",
+                    "exr" => "OpenEXR Image",
+                    "glb" => "glTF Binary",
+                    "gltf" => "glTF Model",
+                    "obj" => "OBJ Model",
+                    "fbx" => "FBX Model",
+                    "wav" => "WAV Audio",
+                    "ogg" => "OGG Audio",
+                    "mp3" => "MP3 Audio",
+                    "rhai" => "Rhai Script",
+                    "ron" => "Scene File",
+                    "material_bp" => "Material Blueprint",
+                    _ => "Unknown",
+                };
+                ui.label(type_name);
+            });
+            row += 1;
+
+            // File size
+            if let Ok(metadata) = std::fs::metadata(asset_path) {
+                let size_bytes = metadata.len();
+                let size_str = if size_bytes < 1024 {
+                    format!("{} B", size_bytes)
+                } else if size_bytes < 1024 * 1024 {
+                    format!("{:.1} KB", size_bytes as f64 / 1024.0)
+                } else {
+                    format!("{:.2} MB", size_bytes as f64 / (1024.0 * 1024.0))
+                };
+
+                inline_property(ui, row, "Size", |ui| {
+                    ui.label(size_str);
+                });
+                row += 1;
+            }
+
+            // For images, try to get dimensions
+            if is_image {
+                if let Some(dims) = get_image_dimensions(asset_path) {
+                    inline_property(ui, row, "Dimensions", |ui| {
+                        ui.label(format!("{} x {}", dims.0, dims.1));
+                    });
+                    row += 1;
+
+                    // Aspect ratio
+                    let aspect = dims.0 as f32 / dims.1 as f32;
+                    inline_property(ui, row, "Aspect Ratio", |ui| {
+                        ui.label(format!("{:.3}", aspect));
+                    });
+                    row += 1;
+
+                    // Total pixels
+                    let total_pixels = dims.0 as u64 * dims.1 as u64;
+                    let megapixels = total_pixels as f64 / 1_000_000.0;
+                    inline_property(ui, row, "Pixels", |ui| {
+                        if megapixels >= 1.0 {
+                            ui.label(format!("{:.2} MP", megapixels));
+                        } else {
+                            ui.label(format!("{}", total_pixels));
+                        }
+                    });
+                    row += 1;
+                }
+            }
+
+            // File path
+            inline_property(ui, row, "Path", |ui| {
+                let display_path = asset_path.to_string_lossy();
+                let truncated = if display_path.len() > 40 {
+                    format!("...{}", &display_path[display_path.len() - 37..])
+                } else {
+                    display_path.to_string()
+                };
+                ui.label(RichText::new(truncated).size(10.0));
+            });
+        },
+    );
+}
+
+/// Draw a checkerboard pattern for transparent image backgrounds
+fn draw_checkerboard_pattern(painter: &egui::Painter, rect: egui::Rect) {
+    let check_size = 10.0;
+    let light = Color32::from_rgb(55, 55, 60);
+    let dark = Color32::from_rgb(40, 40, 45);
+
+    let cols = (rect.width() / check_size).ceil() as i32;
+    let rows = (rect.height() / check_size).ceil() as i32;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            let color = if (row + col) % 2 == 0 { light } else { dark };
+            let check_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x + col as f32 * check_size, rect.min.y + row as f32 * check_size),
+                Vec2::splat(check_size),
+            ).intersect(rect);
+            painter.rect_filled(check_rect, 0.0, color);
+        }
+    }
+}
+
+/// Try to get image dimensions without fully loading the image
+fn get_image_dimensions(path: &std::path::PathBuf) -> Option<(u32, u32)> {
+    // Use image crate to quickly read dimensions
+    match image::image_dimensions(path) {
+        Ok(dims) => Some(dims),
+        Err(_) => None,
+    }
 }

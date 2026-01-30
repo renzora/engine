@@ -72,9 +72,9 @@ fn spawn_terrain_with_size(
     let material = create_terrain_material(materials);
     let initial_height = 0.2; // Start at 20% height (slight elevation)
 
-    // Spawn terrain root entity
+    // Spawn terrain root entity (Y=-2.0 so terrain surface sits on grid)
     let mut terrain_cmd = commands.spawn((
-        Transform::default(),
+        Transform::from_xyz(0.0, -2.0, 0.0),
         Visibility::default(),
         EditorEntity {
             name: format!("Terrain_{}x{}", chunks_x, chunks_z),

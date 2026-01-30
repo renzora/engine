@@ -87,9 +87,10 @@ impl ThumbnailCache {
 }
 
 /// Identifies which asset types support image thumbnails (loaded directly as images)
+/// Note: HDR and EXR are excluded as they often use texture formats incompatible with egui
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "hdr" | "exr" | "webp")
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp")
 }
 
 /// Identifies model files that support 3D preview thumbnails
