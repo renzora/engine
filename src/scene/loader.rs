@@ -7,6 +7,10 @@ use bevy::scene::{DynamicSceneRoot, SceneInstanceReady};
 use std::path::Path;
 
 use crate::core::{EditorEntity, SceneTabId, HierarchyState, OrbitCameraState};
+use crate::shared::{
+    MeshNodeData, MeshPrimitiveType,
+    PointLightData, DirectionalLightData, SpotLightData,
+};
 use crate::{console_info, console_warn};
 
 use super::saver::EditorSceneMetadata;
@@ -189,5 +193,99 @@ fn mark_expanded_entities_recursive(
                 hierarchy_state,
             );
         }
+    }
+}
+
+/// System to rehydrate mesh components after scene loading.
+/// When scenes are saved, only MeshNodeData is stored (data component).
+/// This system creates the actual Mesh3d and MeshMaterial3d components
+/// needed for rendering based on the MeshNodeData.
+pub fn rehydrate_mesh_components(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    query: Query<(Entity, &MeshNodeData), Without<Mesh3d>>,
+) {
+    for (entity, mesh_data) in query.iter() {
+        // Create mesh based on type
+        let mesh = match mesh_data.mesh_type {
+            MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+            MeshPrimitiveType::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+            MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 1.0)),
+            MeshPrimitiveType::Plane => meshes.add(Plane3d::default().mesh().size(2.0, 2.0)),
+        };
+
+        // Create standard material
+        let material = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.7, 0.7, 0.7),
+            perceptual_roughness: 0.9,
+            ..default()
+        });
+
+        // Add rendering components
+        commands.entity(entity).insert((
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+            Visibility::default(),
+        ));
+
+        console_info!("Scene", "Rehydrated mesh for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate point light components after scene loading.
+pub fn rehydrate_point_lights(
+    mut commands: Commands,
+    query: Query<(Entity, &PointLightData), Without<PointLight>>,
+) {
+    for (entity, light_data) in query.iter() {
+        commands.entity(entity).insert(PointLight {
+            color: Color::srgb(light_data.color.x, light_data.color.y, light_data.color.z),
+            intensity: light_data.intensity,
+            range: light_data.range,
+            radius: light_data.radius,
+            shadows_enabled: light_data.shadows_enabled,
+            ..default()
+        });
+
+        console_info!("Scene", "Rehydrated point light for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate directional light components after scene loading.
+pub fn rehydrate_directional_lights(
+    mut commands: Commands,
+    query: Query<(Entity, &DirectionalLightData), Without<DirectionalLight>>,
+) {
+    for (entity, light_data) in query.iter() {
+        commands.entity(entity).insert(DirectionalLight {
+            color: Color::srgb(light_data.color.x, light_data.color.y, light_data.color.z),
+            illuminance: light_data.illuminance,
+            shadows_enabled: light_data.shadows_enabled,
+            ..default()
+        });
+
+        console_info!("Scene", "Rehydrated directional light for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate spot light components after scene loading.
+pub fn rehydrate_spot_lights(
+    mut commands: Commands,
+    query: Query<(Entity, &SpotLightData), Without<SpotLight>>,
+) {
+    for (entity, light_data) in query.iter() {
+        commands.entity(entity).insert(SpotLight {
+            color: Color::srgb(light_data.color.x, light_data.color.y, light_data.color.z),
+            intensity: light_data.intensity,
+            range: light_data.range,
+            radius: light_data.radius,
+            inner_angle: light_data.inner_angle,
+            outer_angle: light_data.outer_angle,
+            shadows_enabled: light_data.shadows_enabled,
+            ..default()
+        });
+
+        console_info!("Scene", "Rehydrated spot light for entity {:?}", entity);
     }
 }

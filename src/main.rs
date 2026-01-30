@@ -295,6 +295,17 @@ fn main() {
                 .chain()
                 .run_if(in_state(AppState::Editor)),
         )
+        // Scene component rehydration systems (recreate rendering components from data components after scene load)
+        .add_systems(
+            Update,
+            (
+                scene::rehydrate_mesh_components,
+                scene::rehydrate_point_lights,
+                scene::rehydrate_directional_lights,
+                scene::rehydrate_spot_lights,
+            )
+                .run_if(in_state(AppState::Editor)),
+        )
         // Scene management exclusive system (needs &mut World for saving)
         // Must run before camera_controller to avoid 1-frame camera delay on tab switch
         // Must run before assign_scene_tab_ids so newly loaded entities get tab IDs assigned

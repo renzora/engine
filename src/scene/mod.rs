@@ -15,7 +15,10 @@ pub use primitives::{spawn_primitive, PrimitiveType};
 pub use setup::{setup_editor_camera, EditorOnly, UiCamera};
 
 // Scene management exports
-pub use loader::{load_scene_bevy, on_bevy_scene_ready};
+pub use loader::{
+    load_scene_bevy, on_bevy_scene_ready, rehydrate_mesh_components,
+    rehydrate_point_lights, rehydrate_directional_lights, rehydrate_spot_lights,
+};
 pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera};
 pub use saver::EditorSceneMetadata;
 
