@@ -255,24 +255,6 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
 }
 
 fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, _theme: &Theme) {
-    // Interface Section
-    render_settings_category(
-        ui,
-        TEXT_AA,
-        "Interface",
-        SettingsCategoryStyle::interface(),
-        "settings_interface",
-        true,
-        |ui| {
-            settings_row(ui, 0, "Font Size", |ui| {
-                ui.add(egui::Slider::new(&mut settings.font_size, 10.0..=20.0)
-                    .step_by(1.0)
-                    .suffix("pt")
-                    .show_value(true))
-            });
-        },
-    );
-
     // Camera Section
     render_settings_category(
         ui,
