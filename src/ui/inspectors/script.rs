@@ -5,6 +5,7 @@ use bevy_egui::egui::{self, Color32, RichText, Sense};
 
 use crate::scripting::{ScriptComponent, ScriptRegistry, ScriptValue, RhaiScriptEngine};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
 
 /// Render a collapsible section header
 fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) -> bool {
@@ -249,9 +250,14 @@ pub fn render_script_inspector(
 fn render_script_value(ui: &mut egui::Ui, row: usize, label: &str, value: Option<&mut ScriptValue>) -> bool {
     let mut changed = false;
 
+    // Large range for general script values
+    const FLOAT_MIN: f32 = -1_000_000.0;
+    const FLOAT_MAX: f32 = 1_000_000.0;
+
     if let Some(value) = value {
         match value {
             ScriptValue::Float(ref mut v) => {
+                sanitize_f32(v, FLOAT_MIN, FLOAT_MAX, 0.0);
                 changed |= inline_property(ui, row, label, |ui| {
                     ui.add(egui::DragValue::new(v).speed(0.1)).changed()
                 });
@@ -272,6 +278,8 @@ fn render_script_value(ui: &mut egui::Ui, row: usize, label: &str, value: Option
                 });
             }
             ScriptValue::Vec2(ref mut v) => {
+                sanitize_f32(&mut v.x, FLOAT_MIN, FLOAT_MAX, 0.0);
+                sanitize_f32(&mut v.y, FLOAT_MIN, FLOAT_MAX, 0.0);
                 changed |= inline_property(ui, row, label, |ui| {
                     let mut c = false;
                     if ui.add(egui::DragValue::new(&mut v.x).speed(0.1).prefix("X ")).changed() {
@@ -284,6 +292,9 @@ fn render_script_value(ui: &mut egui::Ui, row: usize, label: &str, value: Option
                 });
             }
             ScriptValue::Vec3(ref mut v) => {
+                sanitize_f32(&mut v.x, FLOAT_MIN, FLOAT_MAX, 0.0);
+                sanitize_f32(&mut v.y, FLOAT_MIN, FLOAT_MAX, 0.0);
+                sanitize_f32(&mut v.z, FLOAT_MIN, FLOAT_MAX, 0.0);
                 changed |= inline_property(ui, row, label, |ui| {
                     let mut c = false;
                     if ui.add(egui::DragValue::new(&mut v.x).speed(0.1).prefix("X ")).changed() {
@@ -299,6 +310,11 @@ fn render_script_value(ui: &mut egui::Ui, row: usize, label: &str, value: Option
                 });
             }
             ScriptValue::Color(ref mut v) => {
+                // Sanitize color components to valid 0-1 range
+                sanitize_f32(&mut v.x, 0.0, 1.0, 1.0);
+                sanitize_f32(&mut v.y, 0.0, 1.0, 1.0);
+                sanitize_f32(&mut v.z, 0.0, 1.0, 1.0);
+                sanitize_f32(&mut v.w, 0.0, 1.0, 1.0);
                 changed |= inline_property(ui, row, label, |ui| {
                     let mut color = egui::Color32::from_rgba_unmultiplied(
                         (v.x * 255.0) as u8,

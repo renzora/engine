@@ -4,11 +4,20 @@ use bevy_egui::egui;
 
 use crate::shared::{Camera2DData, Sprite2DData};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
 
 /// Render the Sprite2D inspector
 pub fn render_sprite2d_inspector(ui: &mut egui::Ui, sprite_data: &mut Sprite2DData) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    sanitize_f32(&mut sprite_data.color.x, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut sprite_data.color.y, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut sprite_data.color.z, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut sprite_data.color.w, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut sprite_data.anchor.x, 0.0, 1.0, 0.5);
+    sanitize_f32(&mut sprite_data.anchor.y, 0.0, 1.0, 0.5);
 
     // Texture path
     changed |= inline_property(ui, row, "Texture", |ui| {
@@ -62,6 +71,9 @@ pub fn render_sprite2d_inspector(ui: &mut egui::Ui, sprite_data: &mut Sprite2DDa
 /// Render the Camera2D inspector
 pub fn render_camera2d_inspector(ui: &mut egui::Ui, camera_data: &mut Camera2DData) -> bool {
     let mut changed = false;
+
+    // Sanitize values
+    sanitize_f32(&mut camera_data.zoom, 0.1, 10.0, 1.0);
 
     // Zoom
     changed |= inline_property(ui, 0, "Zoom", |ui| {

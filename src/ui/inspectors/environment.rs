@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::core::{AssetBrowserState, WorldEnvironmentMarker};
 use crate::shared::{SkyMode, TonemappingMode};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
 
 // Phosphor icons
 use egui_phosphor::regular::{FILE, FOLDER_OPEN, IMAGE, X_CIRCLE};
@@ -100,6 +101,9 @@ pub fn render_world_environment_inspector(
 
     // Ambient Light section
     if section_header(ui, "env_ambient", "Ambient Light", true) {
+        // Sanitize values
+        sanitize_f32(&mut data.ambient_brightness, 0.0, 1000.0, 300.0);
+
         row = 0;
         changed |= inline_property(ui, row, "Color", |ui| {
             let mut color = rgb_to_color32(data.ambient_color.0, data.ambient_color.1, data.ambient_color.2);
@@ -157,6 +161,14 @@ pub fn render_world_environment_inspector(
             }
             SkyMode::Procedural => {
                 let sky = &mut data.procedural_sky;
+
+                // Sanitize all float values to prevent egui panics
+                sanitize_f32(&mut sky.sky_curve, 0.01, 1.0, 0.15);
+                sanitize_f32(&mut sky.ground_curve, 0.01, 1.0, 0.02);
+                sanitize_f32(&mut sky.sun_energy, 0.0, 10.0, 1.0);
+                sanitize_f32(&mut sky.sun_disk_scale, 0.0, 5.0, 1.0);
+                sanitize_f32(&mut sky.sun_angle_azimuth, -180.0, 180.0, 0.0);
+                sanitize_f32(&mut sky.sun_angle_elevation, -90.0, 90.0, 45.0);
 
                 changed |= inline_property(ui, row, "Top Color", |ui| {
                     let mut color = rgb_to_color32(sky.sky_top_color.0, sky.sky_top_color.1, sky.sky_top_color.2);
@@ -239,6 +251,10 @@ pub fn render_world_environment_inspector(
             }
             SkyMode::Panorama => {
                 let pano = &mut data.panorama_sky;
+
+                // Sanitize float values
+                sanitize_f32(&mut pano.rotation, 0.0, 360.0, 0.0);
+                sanitize_f32(&mut pano.energy, 0.0, 10.0, 1.0);
 
                 // Sky texture label
                 ui.horizontal(|ui| {
@@ -410,6 +426,10 @@ pub fn render_world_environment_inspector(
 
     // Fog section
     if section_header(ui, "env_fog", "Fog", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.fog_start, 0.0, 10000.0, 10.0);
+        sanitize_f32(&mut data.fog_end, 0.0, 10000.0, 100.0);
+
         row = 0;
         changed |= inline_property(ui, row, "Enabled", |ui| {
             ui.checkbox(&mut data.fog_enabled, "").changed()
@@ -468,6 +488,10 @@ pub fn render_world_environment_inspector(
 
     // SSAO section
     if section_header(ui, "env_ssao", "Ambient Occlusion", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.ssao_intensity, 0.0, 3.0, 1.0);
+        sanitize_f32(&mut data.ssao_radius, 0.01, 2.0, 0.5);
+
         row = 0;
         changed |= inline_property(ui, row, "Enabled", |ui| {
             ui.checkbox(&mut data.ssao_enabled, "").changed()
@@ -488,6 +512,9 @@ pub fn render_world_environment_inspector(
 
     // SSR section
     if section_header(ui, "env_ssr", "Reflections", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.ssr_intensity, 0.0, 1.0, 0.5);
+
         row = 0;
         changed |= inline_property(ui, row, "SSR Enabled", |ui| {
             ui.checkbox(&mut data.ssr_enabled, "").changed()
@@ -513,6 +540,10 @@ pub fn render_world_environment_inspector(
 
     // Bloom section
     if section_header(ui, "env_bloom", "Bloom", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.bloom_intensity, 0.0, 1.0, 0.15);
+        sanitize_f32(&mut data.bloom_threshold, 0.0, 5.0, 1.0);
+
         row = 0;
         changed |= inline_property(ui, row, "Enabled", |ui| {
             ui.checkbox(&mut data.bloom_enabled, "").changed()
@@ -533,6 +564,9 @@ pub fn render_world_environment_inspector(
 
     // Tonemapping section
     if section_header(ui, "env_tonemap", "Tonemapping", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.ev100, 0.0, 16.0, 9.7);
+
         row = 0;
         inline_property(ui, row, "Mode", |ui| {
             let tonemap_options = ["None", "Reinhard", "ACES", "AgX", "Filmic"];
@@ -570,6 +604,10 @@ pub fn render_world_environment_inspector(
 
     // DOF section
     if section_header(ui, "env_dof", "Depth of Field", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.dof_focal_distance, 0.1, 100.0, 10.0);
+        sanitize_f32(&mut data.dof_aperture, 0.001, 0.5, 0.05);
+
         row = 0;
         changed |= inline_property(ui, row, "Enabled", |ui| {
             ui.checkbox(&mut data.dof_enabled, "").changed()
@@ -590,6 +628,9 @@ pub fn render_world_environment_inspector(
 
     // Motion Blur section
     if section_header(ui, "env_motionblur", "Motion Blur", false) {
+        // Sanitize values
+        sanitize_f32(&mut data.motion_blur_intensity, 0.0, 1.0, 0.5);
+
         row = 0;
         changed |= inline_property(ui, row, "Enabled", |ui| {
             ui.checkbox(&mut data.motion_blur_enabled, "").changed()

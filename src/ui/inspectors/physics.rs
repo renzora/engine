@@ -6,11 +6,18 @@ use bevy_egui::egui::{self, RichText};
 use crate::gizmo::GizmoState;
 use crate::shared::{CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
 
 /// Render the physics body inspector
 pub fn render_physics_body_inspector(ui: &mut egui::Ui, body: &mut PhysicsBodyData) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    sanitize_f32(&mut body.mass, 0.001, 10000.0, 1.0);
+    sanitize_f32(&mut body.gravity_scale, -10.0, 10.0, 1.0);
+    sanitize_f32(&mut body.linear_damping, 0.0, 100.0, 0.0);
+    sanitize_f32(&mut body.angular_damping, 0.0, 100.0, 0.0);
 
     // Body Type
     inline_property(ui, row, "Body Type", |ui| {
@@ -85,6 +92,19 @@ pub fn render_collision_shape_inspector(
 ) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    const POS_RANGE: f32 = 10000.0;
+    sanitize_f32(&mut shape.offset.x, -POS_RANGE, POS_RANGE, 0.0);
+    sanitize_f32(&mut shape.offset.y, -POS_RANGE, POS_RANGE, 0.0);
+    sanitize_f32(&mut shape.offset.z, -POS_RANGE, POS_RANGE, 0.0);
+    sanitize_f32(&mut shape.half_extents.x, 0.001, 1000.0, 0.5);
+    sanitize_f32(&mut shape.half_extents.y, 0.001, 1000.0, 0.5);
+    sanitize_f32(&mut shape.half_extents.z, 0.001, 1000.0, 0.5);
+    sanitize_f32(&mut shape.radius, 0.001, 1000.0, 0.5);
+    sanitize_f32(&mut shape.half_height, 0.001, 1000.0, 0.5);
+    sanitize_f32(&mut shape.friction, 0.0, 2.0, 0.5);
+    sanitize_f32(&mut shape.restitution, 0.0, 1.0, 0.0);
 
     // Edit Collider button
     let is_editing = gizmo_state.collider_edit.entity == Some(entity);

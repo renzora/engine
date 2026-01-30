@@ -4,6 +4,7 @@ use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
 
 use crate::shared::{CameraNodeData, CameraRigData};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
 
 /// Render the camera rig inspector
 pub fn render_camera_rig_inspector(
@@ -42,6 +43,14 @@ pub fn render_camera_rig_inspector(
     }
 
     ui.add_space(4.0);
+
+    // Sanitize values
+    sanitize_f32(&mut rig_data.distance, 0.5, 50.0, 5.0);
+    sanitize_f32(&mut rig_data.height, -10.0, 20.0, 2.0);
+    sanitize_f32(&mut rig_data.horizontal_offset, -10.0, 10.0, 0.0);
+    sanitize_f32(&mut rig_data.fov, 10.0, 120.0, 60.0);
+    sanitize_f32(&mut rig_data.follow_smoothing, 0.1, 50.0, 5.0);
+    sanitize_f32(&mut rig_data.look_smoothing, 0.1, 50.0, 5.0);
 
     // Rig Settings
     let mut row = 0;
@@ -120,6 +129,9 @@ pub fn render_camera_inspector(
     }
 
     ui.add_space(4.0);
+
+    // Sanitize values
+    sanitize_f32(&mut camera_data.fov, 10.0, 120.0, 60.0);
 
     // Field of View
     changed |= inline_property(ui, 0, "Field of View", |ui| {

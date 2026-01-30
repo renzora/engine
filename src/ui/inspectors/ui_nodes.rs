@@ -4,11 +4,27 @@ use bevy_egui::egui;
 
 use crate::shared::{UIButtonData, UIImageData, UILabelData, UIPanelData};
 use crate::ui::inline_property;
+use super::utils::sanitize_f32;
+
+/// Helper to sanitize a Vec4 color value
+fn sanitize_color(v: &mut bevy::prelude::Vec4) {
+    sanitize_f32(&mut v.x, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut v.y, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut v.z, 0.0, 1.0, 1.0);
+    sanitize_f32(&mut v.w, 0.0, 1.0, 1.0);
+}
 
 /// Render the UIPanel inspector
 pub fn render_ui_panel_inspector(ui: &mut egui::Ui, panel_data: &mut UIPanelData) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    sanitize_f32(&mut panel_data.width, 10.0, 2000.0, 200.0);
+    sanitize_f32(&mut panel_data.height, 10.0, 2000.0, 200.0);
+    sanitize_f32(&mut panel_data.border_radius, 0.0, 50.0, 0.0);
+    sanitize_f32(&mut panel_data.padding, 0.0, 100.0, 0.0);
+    sanitize_color(&mut panel_data.background_color);
 
     // Size
     inline_property(ui, row, "Size", |ui| {
@@ -59,6 +75,10 @@ pub fn render_ui_label_inspector(ui: &mut egui::Ui, label_data: &mut UILabelData
     let mut changed = false;
     let mut row = 0;
 
+    // Sanitize values
+    sanitize_f32(&mut label_data.font_size, 8.0, 72.0, 14.0);
+    sanitize_color(&mut label_data.color);
+
     // Text content
     changed |= inline_property(ui, row, "Text", |ui| {
         ui.add(egui::TextEdit::singleline(&mut label_data.text).desired_width(120.0)).changed()
@@ -96,6 +116,15 @@ pub fn render_ui_label_inspector(ui: &mut egui::Ui, label_data: &mut UILabelData
 pub fn render_ui_button_inspector(ui: &mut egui::Ui, button_data: &mut UIButtonData) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    sanitize_f32(&mut button_data.width, 40.0, 500.0, 100.0);
+    sanitize_f32(&mut button_data.height, 20.0, 200.0, 40.0);
+    sanitize_f32(&mut button_data.font_size, 8.0, 48.0, 14.0);
+    sanitize_color(&mut button_data.normal_color);
+    sanitize_color(&mut button_data.hover_color);
+    sanitize_color(&mut button_data.pressed_color);
+    sanitize_color(&mut button_data.text_color);
 
     // Text content
     changed |= inline_property(ui, row, "Text", |ui| {
@@ -202,6 +231,11 @@ pub fn render_ui_button_inspector(ui: &mut egui::Ui, button_data: &mut UIButtonD
 pub fn render_ui_image_inspector(ui: &mut egui::Ui, image_data: &mut UIImageData) -> bool {
     let mut changed = false;
     let mut row = 0;
+
+    // Sanitize values
+    sanitize_f32(&mut image_data.width, 1.0, 2000.0, 100.0);
+    sanitize_f32(&mut image_data.height, 1.0, 2000.0, 100.0);
+    sanitize_color(&mut image_data.tint);
 
     // Texture path
     changed |= inline_property(ui, row, "Texture", |ui| {
