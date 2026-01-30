@@ -6,11 +6,14 @@ use bevy::prelude::*;
 use bevy::scene::{DynamicSceneRoot, SceneInstanceReady};
 use std::path::Path;
 
-use crate::core::{EditorEntity, SceneTabId, HierarchyState, OrbitCameraState};
+use crate::core::{EditorEntity, SceneNode, SceneTabId, HierarchyState, OrbitCameraState};
 use crate::shared::{
     MeshNodeData, MeshPrimitiveType,
     PointLightData, DirectionalLightData, SpotLightData,
 };
+use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
+use crate::component_system::components::terrain::{NeedsTerrainMaterial, DEFAULT_TERRAIN_MATERIAL};
+use crate::shared::MaterialData;
 use crate::{console_info, console_warn};
 
 use super::saver::EditorSceneMetadata;
@@ -287,5 +290,291 @@ pub fn rehydrate_spot_lights(
         });
 
         console_info!("Scene", "Rehydrated spot light for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate terrain chunk meshes after scene loading.
+/// Handles two cases:
+/// 1. Chunks were saved with their TerrainChunkData - just create the mesh
+/// 2. Only TerrainData was saved (no chunks) - create new flat chunks
+pub fn rehydrate_terrain_chunks(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    terrain_query: Query<(Entity, &TerrainData)>,
+    // Chunks that have data but no mesh yet (loaded from scene)
+    // Note: TerrainChunkOf isn't serialized, so we use ChildOf to find the parent
+    chunks_needing_mesh: Query<(Entity, &TerrainChunkData, &ChildOf), (Without<Mesh3d>, Without<TerrainChunkOf>)>,
+    // Chunks that have data but NO ChildOf (orphaned chunks - shouldn't happen but let's check)
+    orphan_chunks: Query<(Entity, &TerrainChunkData), (Without<Mesh3d>, Without<TerrainChunkOf>, Without<ChildOf>)>,
+    // All existing chunks (to check if terrain has any)
+    existing_chunks: Query<&TerrainChunkOf>,
+) {
+    // Debug: check for orphan chunks (have TerrainChunkData but no ChildOf)
+    let orphan_count = orphan_chunks.iter().count();
+    if orphan_count > 0 {
+        console_warn!("Scene", "Found {} orphan chunks with TerrainChunkData but no ChildOf!", orphan_count);
+        for (entity, chunk_data) in orphan_chunks.iter() {
+            console_warn!("Scene", "  Orphan chunk ({}, {}) entity {:?}",
+                chunk_data.chunk_x, chunk_data.chunk_z, entity);
+        }
+    }
+
+    // Track which terrains have had chunks rehydrated (commands are deferred, so we can't
+    // rely on existing_chunks query seeing the newly added TerrainChunkOf components)
+    let mut terrains_with_rehydrated_chunks = std::collections::HashSet::new();
+
+    // Debug: count chunks needing mesh
+    let chunks_count = chunks_needing_mesh.iter().count();
+    if chunks_count > 0 {
+        console_info!("Scene", "Found {} chunks needing mesh rehydration", chunks_count);
+    }
+
+    // First, handle chunks that were loaded from the scene file (have data but no mesh)
+    for (chunk_entity, chunk_data, child_of) in chunks_needing_mesh.iter() {
+        // Use ChildOf to find the parent terrain
+        let parent_entity = child_of.0;
+
+        // Get the parent terrain's data
+        let Ok((_, terrain_data)) = terrain_query.get(parent_entity) else {
+            console_warn!("Scene", "Chunk ({}, {}) has ChildOf {:?} but parent has no TerrainData!",
+                chunk_data.chunk_x, chunk_data.chunk_z, parent_entity);
+            continue;
+        };
+
+        // Track that this terrain has chunks being rehydrated
+        terrains_with_rehydrated_chunks.insert(parent_entity);
+
+        // Calculate correct position from chunk grid coordinates
+        let origin = terrain_data.chunk_world_origin(chunk_data.chunk_x, chunk_data.chunk_z);
+
+        console_info!("Scene", "Rehydrating chunk ({}, {}) at position ({:.1}, {:.1}, {:.1})",
+            chunk_data.chunk_x, chunk_data.chunk_z, origin.x, origin.y, origin.z);
+
+        // Create mesh from the saved heightmap data
+        let mesh = generate_chunk_mesh(terrain_data, chunk_data);
+        let mesh_handle = meshes.add(mesh);
+
+        // Create placeholder material (will be replaced by apply_terrain_material_system)
+        let material = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.45, 0.73),
+            perceptual_roughness: 0.5,
+            ..default()
+        });
+
+        // Add transform, mesh, material, visibility, and the runtime TerrainChunkOf link
+        // Note: This should overwrite any existing Transform from scene load
+        commands.entity(chunk_entity).insert((
+            Transform::from_translation(origin),
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(material),
+            Visibility::default(),
+            TerrainChunkOf(parent_entity),
+            NeedsTerrainMaterial,
+        ));
+    }
+
+    // Debug: log rehydrated terrains
+    if !terrains_with_rehydrated_chunks.is_empty() {
+        console_info!("Scene", "Rehydrated chunks for {} terrain(s)", terrains_with_rehydrated_chunks.len());
+    }
+
+    // Second, handle terrains that have NO chunks at all (fallback: create flat terrain)
+    for (terrain_entity, terrain_data) in terrain_query.iter() {
+        // Skip if we just rehydrated chunks for this terrain (commands are deferred)
+        if terrains_with_rehydrated_chunks.contains(&terrain_entity) {
+            console_info!("Scene", "Skipping terrain {:?} - already rehydrated chunks", terrain_entity);
+            continue;
+        }
+
+        // Check if this terrain already has chunks (from previous frames)
+        let has_chunks = existing_chunks.iter().any(|chunk_of| chunk_of.0 == terrain_entity);
+        if has_chunks {
+            continue;
+        }
+
+        console_warn!("Scene", "Creating NEW flat terrain chunks for entity {:?} ({}x{} chunks) - no saved chunks found!",
+            terrain_entity, terrain_data.chunks_x, terrain_data.chunks_z);
+
+        // Create placeholder material
+        let material = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.45, 0.73),
+            perceptual_roughness: 0.5,
+            ..default()
+        });
+
+        let initial_height = 0.2;
+
+        // Spawn chunk entities as children
+        for cz in 0..terrain_data.chunks_z {
+            for cx in 0..terrain_data.chunks_x {
+                let mut chunk_data = TerrainChunkData::new(
+                    cx,
+                    cz,
+                    terrain_data.chunk_resolution,
+                    initial_height,
+                );
+                chunk_data.dirty = false;
+
+                let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
+                let mesh_handle = meshes.add(mesh);
+
+                let origin = terrain_data.chunk_world_origin(cx, cz);
+
+                commands.spawn((
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(material.clone()),
+                    Transform::from_translation(origin),
+                    Visibility::default(),
+                    EditorEntity {
+                        name: format!("Chunk_{}_{}", cx, cz),
+                        tag: String::new(),
+                        visible: true,
+                        locked: false,
+                    },
+                    SceneNode,
+                    chunk_data,
+                    TerrainChunkOf(terrain_entity),
+                    ChildOf(terrain_entity),
+                    MaterialData {
+                        material_path: Some(DEFAULT_TERRAIN_MATERIAL.to_string()),
+                    },
+                    NeedsTerrainMaterial,
+                ));
+            }
+        }
+
+        console_info!("Scene", "Created {} terrain chunks",
+            terrain_data.chunks_x * terrain_data.chunks_z);
+    }
+}
+
+/// System to apply the default checkerboard material to terrain chunks.
+/// Processes entities with NeedsTerrainMaterial marker and removes the marker after applying.
+pub fn apply_terrain_materials(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    chunks_needing_material: Query<(Entity, &Transform, &TerrainChunkData), With<NeedsTerrainMaterial>>,
+) {
+    if chunks_needing_material.is_empty() {
+        return;
+    }
+
+    // Create a procedural checkerboard texture
+    let checkerboard = create_checkerboard_texture(&mut images);
+
+    // Create the terrain material with checkerboard
+    let terrain_material = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(checkerboard),
+        perceptual_roughness: 0.9,
+        metallic: 0.0,
+        ..default()
+    });
+
+    let mut count = 0;
+    for (entity, transform, chunk_data) in chunks_needing_material.iter() {
+        // Debug: verify transform was set correctly
+        console_info!("Scene", "Chunk ({}, {}) actual transform: ({:.1}, {:.1}, {:.1})",
+            chunk_data.chunk_x, chunk_data.chunk_z,
+            transform.translation.x, transform.translation.y, transform.translation.z);
+
+        commands.entity(entity)
+            .insert(MeshMaterial3d(terrain_material.clone()))
+            .remove::<NeedsTerrainMaterial>();
+        count += 1;
+    }
+
+    console_info!("Scene", "Applied terrain material to {} chunks", count);
+}
+
+/// Create a procedural checkerboard texture for terrain
+fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+    let size = 256u32;
+    let checker_size = 32u32;
+
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    // Colors: grass green and slightly darker green
+    let color1 = [34u8, 139, 34, 255];   // Forest green
+    let color2 = [50u8, 160, 50, 255];   // Lighter green
+
+    for y in 0..size {
+        for x in 0..size {
+            let checker_x = (x / checker_size) % 2;
+            let checker_y = (y / checker_size) % 2;
+            let is_light = (checker_x + checker_y) % 2 == 0;
+
+            let color = if is_light { color1 } else { color2 };
+            data.extend_from_slice(&color);
+        }
+    }
+
+    let image = Image::new(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    );
+
+    images.add(image)
+}
+
+/// System to rebuild Bevy's Children component from ChildOf relationships.
+/// This is needed after scene loading because Children isn't saved, only ChildOf is.
+/// The hierarchy panel relies on Children to display parent-child relationships.
+pub fn rebuild_children_from_child_of(
+    mut commands: Commands,
+    // Entities with ChildOf that might need their parent's Children updated
+    child_of_query: Query<(Entity, &ChildOf), With<EditorEntity>>,
+    // Parents that might need Children component
+    parent_query: Query<Entity, (With<EditorEntity>, Without<Children>)>,
+    // Parents that already have Children (to check if they're missing entries)
+    parents_with_children: Query<(Entity, &Children), With<EditorEntity>>,
+) {
+    use std::collections::HashMap;
+
+    // Build a map of parent -> children from ChildOf relationships
+    let mut parent_children_map: HashMap<Entity, Vec<Entity>> = HashMap::new();
+    for (child_entity, child_of) in child_of_query.iter() {
+        parent_children_map
+            .entry(child_of.0)
+            .or_default()
+            .push(child_entity);
+    }
+
+    if parent_children_map.is_empty() {
+        return;
+    }
+
+    // For parents without Children component, we need to add it
+    // But Bevy's Children is managed internally, so we use add_children
+    for (parent_entity, children) in parent_children_map.iter() {
+        // Check if parent exists and doesn't have Children
+        if parent_query.get(*parent_entity).is_ok() {
+            // Parent exists but has no Children - add children using Bevy's hierarchy
+            for child in children.iter() {
+                commands.entity(*parent_entity).add_children(&[*child]);
+            }
+            console_info!("Scene", "Rebuilt Children for parent {:?} with {} children", parent_entity, children.len());
+        } else if let Ok((_, existing_children)) = parents_with_children.get(*parent_entity) {
+            // Parent has Children but might be missing some entries
+            let existing_set: std::collections::HashSet<_> = existing_children.iter().collect();
+            let missing: Vec<_> = children.iter().filter(|c| !existing_set.contains(c)).copied().collect();
+            if !missing.is_empty() {
+                for child in missing.iter() {
+                    commands.entity(*parent_entity).add_children(&[*child]);
+                }
+                console_info!("Scene", "Added {} missing children to parent {:?}", missing.len(), parent_entity);
+            }
+        }
     }
 }

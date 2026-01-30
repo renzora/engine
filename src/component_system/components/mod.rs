@@ -12,6 +12,7 @@ mod lighting;
 mod physics;
 mod rendering;
 mod scripting;
+pub mod terrain;
 mod ui;
 
 // Re-export commonly used gameplay components
@@ -34,4 +35,5 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     interaction::register(registry);
     ai::register(registry);
     combat::register(registry);
+    terrain::register(registry);
 }

@@ -1,0 +1,160 @@
+//! Terrain component definitions
+
+use bevy::prelude::*;
+use bevy_egui::egui;
+use serde_json::json;
+
+use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentRegistry};
+use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
+use crate::core::{EditorEntity, SceneNode};
+
+use egui_phosphor::regular::MOUNTAINS;
+
+/// Default terrain material path
+pub const DEFAULT_TERRAIN_MATERIAL: &str = "materials/terrain_default.mat";
+
+/// Marker component for entities that need their terrain material loaded
+#[derive(Component, Default)]
+pub struct NeedsTerrainMaterial;
+
+// ============================================================================
+// Terrain Component
+// ============================================================================
+
+pub static TERRAIN: ComponentDefinition = ComponentDefinition {
+    type_id: "terrain",
+    display_name: "Terrain",
+    category: ComponentCategory::Rendering,
+    icon: MOUNTAINS,
+    priority: 110,
+    add_fn: add_terrain,
+    remove_fn: remove_terrain,
+    has_fn: has_terrain,
+    serialize_fn: serialize_terrain,
+    deserialize_fn: deserialize_terrain,
+    inspector_fn: inspect_terrain,
+    conflicts_with: &[],
+    requires: &[],
+};
+
+/// Register all terrain components
+pub fn register(registry: &mut ComponentRegistry) {
+    registry.register(&TERRAIN);
+}
+
+fn add_terrain(
+    commands: &mut Commands,
+    entity: Entity,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    // Default terrain configuration - 4x4 chunks
+    let terrain_data = TerrainData {
+        chunks_x: 4,
+        chunks_z: 4,
+        chunk_size: 64.0,
+        chunk_resolution: 33,
+        max_height: 50.0,
+        min_height: -10.0,
+    };
+
+    // Create terrain material
+    let material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.35, 0.45, 0.25),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+
+    let initial_height = 0.2;
+
+    // Add terrain data to the root entity
+    commands.entity(entity).insert(terrain_data.clone());
+
+    // Spawn chunk entities as children
+    for cz in 0..terrain_data.chunks_z {
+        for cx in 0..terrain_data.chunks_x {
+            let mut chunk_data = TerrainChunkData::new(
+                cx,
+                cz,
+                terrain_data.chunk_resolution,
+                initial_height,
+            );
+            chunk_data.dirty = false;
+
+            let mesh = generate_chunk_mesh(&terrain_data, &chunk_data);
+            let mesh_handle = meshes.add(mesh);
+
+            let origin = terrain_data.chunk_world_origin(cx, cz);
+
+            commands.spawn((
+                Mesh3d(mesh_handle),
+                MeshMaterial3d(material.clone()),
+                Transform::from_translation(origin),
+                Visibility::default(),
+                EditorEntity {
+                    name: format!("Chunk_{}_{}", cx, cz),
+                    tag: String::new(),
+                    visible: true,
+                    locked: false,
+                },
+                SceneNode,
+                chunk_data,
+                TerrainChunkOf(entity),
+                ChildOf(entity),
+                NeedsTerrainMaterial,
+            ));
+        }
+    }
+}
+
+fn remove_terrain(commands: &mut Commands, entity: Entity) {
+    commands.entity(entity).remove::<TerrainData>();
+    // Note: Child chunks will be removed automatically when parent is despawned
+}
+
+fn has_terrain(world: &World, entity: Entity) -> bool {
+    world.get::<TerrainData>(entity).is_some()
+}
+
+fn serialize_terrain(world: &World, entity: Entity) -> Option<serde_json::Value> {
+    let terrain = world.get::<TerrainData>(entity)?;
+    Some(json!({
+        "chunks_x": terrain.chunks_x,
+        "chunks_z": terrain.chunks_z,
+        "chunk_size": terrain.chunk_size,
+        "chunk_resolution": terrain.chunk_resolution,
+        "max_height": terrain.max_height,
+        "min_height": terrain.min_height,
+    }))
+}
+
+fn deserialize_terrain(
+    entity_commands: &mut EntityCommands,
+    data: &serde_json::Value,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+) {
+    let terrain_data = TerrainData {
+        chunks_x: data.get("chunks_x").and_then(|v| v.as_u64()).unwrap_or(4) as u32,
+        chunks_z: data.get("chunks_z").and_then(|v| v.as_u64()).unwrap_or(4) as u32,
+        chunk_size: data.get("chunk_size").and_then(|v| v.as_f64()).unwrap_or(64.0) as f32,
+        chunk_resolution: data.get("chunk_resolution").and_then(|v| v.as_u64()).unwrap_or(33) as u32,
+        max_height: data.get("max_height").and_then(|v| v.as_f64()).unwrap_or(50.0) as f32,
+        min_height: data.get("min_height").and_then(|v| v.as_f64()).unwrap_or(-10.0) as f32,
+    };
+
+    entity_commands.insert(terrain_data);
+    // Note: Chunks will be regenerated by a rehydration system
+}
+
+fn inspect_terrain(
+    ui: &mut egui::Ui,
+    _world: &mut World,
+    _entity: Entity,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+) -> bool {
+    ui.label("Terrain settings.");
+    ui.label("Use the Terrain tool (T) to sculpt.");
+    false
+}

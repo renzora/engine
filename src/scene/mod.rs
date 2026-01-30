@@ -8,6 +8,7 @@ mod setup;
 pub mod loader;
 pub mod manager;
 pub mod saver;
+pub mod saveable;
 
 // Editor setup exports
 pub use primitives::{spawn_primitive, PrimitiveType};
@@ -18,9 +19,11 @@ pub use setup::{setup_editor_camera, EditorOnly, UiCamera};
 pub use loader::{
     load_scene_bevy, on_bevy_scene_ready, rehydrate_mesh_components,
     rehydrate_point_lights, rehydrate_directional_lights, rehydrate_spot_lights,
+    rehydrate_terrain_chunks, apply_terrain_materials, rebuild_children_from_child_of,
 };
-pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera};
+pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera, auto_save_scene};
 pub use saver::EditorSceneMetadata;
+pub use saveable::{SceneSaveableRegistry, create_default_registry};
 
 use bevy::prelude::*;
 

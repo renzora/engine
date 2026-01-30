@@ -13,6 +13,7 @@ pub mod nodes2d;
 pub mod ui;
 pub mod environment;
 pub mod scenes;
+pub mod terrain;
 
 use bevy::prelude::*;
 
@@ -37,6 +38,8 @@ pub enum Category {
     UI,
     /// Environment settings
     Environment,
+    /// Terrain entities
+    Terrain,
 }
 
 impl Category {
@@ -51,6 +54,7 @@ impl Category {
             Category::TwoD => "2D",
             Category::UI => "UI",
             Category::Environment => "Environment",
+            Category::Terrain => "Terrain",
         }
     }
 
@@ -65,6 +69,7 @@ impl Category {
             Category::TwoD,
             Category::UI,
             Category::Environment,
+            Category::Terrain,
         ]
     }
 }
@@ -97,6 +102,7 @@ pub fn all_templates() -> Vec<&'static EntityTemplate> {
     templates.extend(nodes2d::TEMPLATES.iter());
     templates.extend(ui::TEMPLATES.iter());
     templates.extend(environment::TEMPLATES.iter());
+    templates.extend(terrain::TEMPLATES.iter());
     templates
 }
 

@@ -2,9 +2,11 @@
 #![windows_subsystem = "windows"]
 
 mod blueprint;
+mod brushes;
 mod commands;
 mod component_system;
 mod core;
+mod crash;
 mod export;
 mod gizmo;
 mod input;
@@ -15,6 +17,7 @@ mod scene;
 mod scripting;
 mod shared;
 mod spawn;
+mod terrain;
 mod theming;
 mod thumbnail_cli;
 mod ui;
@@ -74,6 +77,9 @@ fn parse_ico_largest(data: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 }
 
 fn main() {
+    // Install custom panic hook for crash reporting
+    crash::install_panic_hook();
+
     // Check for headless thumbnail rendering mode
     let args: Vec<String> = std::env::args().collect();
     if args.len() >= 4 && args[1] == "--render-thumbnail" {
@@ -119,6 +125,12 @@ fn main() {
         // Shared components
         .register_type::<shared::MeshNodeData>()
         .register_type::<shared::MeshPrimitiveType>()
+        // Brush components
+        .register_type::<brushes::BrushData>()
+        .register_type::<brushes::BrushType>()
+        // Terrain components
+        .register_type::<terrain::TerrainData>()
+        .register_type::<terrain::TerrainChunkData>()
         .register_type::<shared::CameraNodeData>()
         .register_type::<shared::CameraRigData>()
         .register_type::<shared::MeshInstanceData>()
@@ -175,8 +187,12 @@ fn main() {
             scripting::ScriptingPlugin,
             plugin_core::PluginCorePlugin,
             play_mode::PlayModePlugin,
+        ))
+        .add_plugins((
             blueprint::BlueprintPlugin,
             blueprint::MaterialPreviewPlugin,
+            brushes::BrushPlugin,
+            terrain::TerrainPlugin,
             // Physics plugin (starts paused in editor, activated during play mode)
             shared::RenzoraPhysicsPlugin::new(true),
         ))
@@ -184,6 +200,17 @@ fn main() {
         .add_observer(scene::on_bevy_scene_ready)
         // Initialize app state
         .init_state::<AppState>()
+        // Scene saveable registry (required for scene saving)
+        .insert_resource(scene::create_default_registry())
+        // Crash report window state
+        .init_resource::<crash::CrashReportWindowState>()
+        // Check for previous crash on startup
+        .add_systems(Startup, crash::check_for_previous_crash)
+        // Crash report window UI
+        .add_systems(
+            EguiPrimaryContextPass,
+            crash::render_crash_report_window.run_if(in_state(AppState::Editor)),
+        )
         // Setup splash camera and window icon on startup
         .add_systems(Startup, (set_window_icon, setup_splash_camera))
         // Splash screen systems (run when in Splash state)
@@ -303,6 +330,9 @@ fn main() {
                 scene::rehydrate_point_lights,
                 scene::rehydrate_directional_lights,
                 scene::rehydrate_spot_lights,
+                scene::rehydrate_terrain_chunks,
+                scene::apply_terrain_materials,
+                scene::rebuild_children_from_child_of,
             )
                 .run_if(in_state(AppState::Editor)),
         )
@@ -314,6 +344,13 @@ fn main() {
             scene::handle_scene_requests
                 .before(viewport::camera_controller)
                 .before(scene::assign_scene_tab_ids)
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Auto-save system (checks periodically if scene needs saving)
+        .add_systems(
+            Update,
+            scene::auto_save_scene
+                .before(scene::handle_scene_requests)
                 .run_if(in_state(AppState::Editor)),
         )
         // Scene instance loading exclusive system (needs &mut World for spawning)
