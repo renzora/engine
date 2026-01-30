@@ -65,13 +65,19 @@ pub fn render_panel_frame(
     // Use panel_id for stable ID - each panel should only appear once in tree
     let id = Id::new(("docked_panel", format!("{:?}", panel_ctx.panel_id)));
 
+    // Ensure content rect has valid non-negative dimensions
+    let safe_size = egui::Vec2::new(
+        panel_ctx.content_rect.width().max(1.0),
+        panel_ctx.content_rect.height().max(1.0),
+    );
+
     egui::Area::new(id)
         .fixed_pos(panel_ctx.content_rect.min)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(panel_ctx.content_rect);
-            ui.set_min_size(panel_ctx.content_rect.size());
-            ui.set_max_size(panel_ctx.content_rect.size());
+            ui.set_min_size(safe_size);
+            ui.set_max_size(safe_size);
 
             // Draw background using theme
             ui.painter().rect_filled(

@@ -352,9 +352,12 @@ pub fn editor_ui(
 
         // Calculate dock area (below scene tabs, above status bar)
         let dock_start_y = content_start_y + document_tabs_height;
+        // Ensure dock rect has non-negative dimensions (can happen with very small windows)
+        let dock_bottom = (screen_rect.height() - status_bar_height).max(dock_start_y + 1.0);
+        let dock_right = screen_rect.width().max(1.0);
         let dock_rect = Rect::from_min_max(
             Pos2::new(0.0, dock_start_y),
-            Pos2::new(screen_rect.width(), screen_rect.height() - status_bar_height),
+            Pos2::new(dock_right, dock_bottom),
         );
 
         // Clone drag state for rendering (avoid borrow issues)
