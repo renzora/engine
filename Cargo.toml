@@ -6,7 +6,7 @@ default-run = "renzora_editor"
 
 [features]
 default = ["editor", "dynamic", "physics", "memory-profiling"]
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "dep:arboard"]
+editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "dep:arboard", "dep:ureq", "dep:open"]
 runtime = ["physics"]
 physics = ["dep:avian3d"]
 dynamic = ["bevy/dynamic_linking"]
@@ -21,6 +21,10 @@ required-features = ["editor"]
 name = "renzora_runtime"
 path = "src/runtime/main.rs"
 required-features = ["runtime"]
+
+[[bin]]
+name = "renzora_updater"
+path = "updater/src/main.rs"
 
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
@@ -43,6 +47,8 @@ egui-phosphor = { version = "0.11", features = ["regular", "fill"], optional = t
 rfd = { version = "0.15", optional = true }
 rhai = { version = "1.21", features = ["sync"], optional = true }
 arboard = { version = "3.4", optional = true }
+ureq = { version = "2.9", features = ["json"], optional = true }
+open = { version = "5.0", optional = true }
 
 # Plugin system dependencies (editor-only)
 libloading = { version = "0.8", optional = true }
@@ -50,7 +56,7 @@ notify = { version = "6.0", optional = true }
 editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading"] }
 winit = "0.30"
 
 [workspace]

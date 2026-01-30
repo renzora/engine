@@ -22,6 +22,7 @@ mod theming;
 mod thumbnail_cli;
 mod ui;
 mod ui_api;
+mod update;
 mod viewport;
 
 use bevy::asset::UnapprovedPathMode;
@@ -195,6 +196,8 @@ fn main() {
             terrain::TerrainPlugin,
             // Physics plugin (starts paused in editor, activated during play mode)
             shared::RenzoraPhysicsPlugin::new(true),
+            // Auto-update system
+            update::UpdatePlugin,
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)

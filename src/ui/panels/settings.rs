@@ -2,12 +2,15 @@ use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Stroke, Vec2};
 
 use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, bindable_keys};
+use crate::project::AppConfig;
 use crate::theming::{Theme, ThemeManager};
+use crate::update::{UpdateState, UpdateDialogState};
 
 // Phosphor icons
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
-    TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE,
+    TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE, ARROW_CLOCKWISE,
+    DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING,
 };
 
 /// Background colors for alternating rows (matching inspector)
@@ -24,6 +27,9 @@ pub fn render_settings_content(
     settings: &mut EditorSettings,
     keybindings: &mut KeyBindings,
     theme_manager: &mut ThemeManager,
+    app_config: &mut AppConfig,
+    update_state: &mut UpdateState,
+    update_dialog: &mut UpdateDialogState,
 ) {
     // Clone the theme to avoid borrow conflicts with theme editor tab
     let theme_clone = theme_manager.active_theme.clone();
@@ -48,6 +54,7 @@ pub fn render_settings_content(
             SettingsTab::Viewport => render_viewport_tab(ui, settings, theme),
             SettingsTab::Shortcuts => render_shortcuts_tab(ui, keybindings, theme),
             SettingsTab::Theme => render_theme_tab(ui, theme_manager),
+            SettingsTab::Updates => render_updates_tab(ui, app_config, update_state, update_dialog, theme),
         }
     });
 }
@@ -105,6 +112,13 @@ impl SettingsCategoryStyle {
         Self {
             accent_color: Color32::from_rgb(191, 166, 242),  // Light purple
             header_bg: Color32::from_rgb(42, 40, 52),
+        }
+    }
+
+    fn updates() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(100, 200, 160),  // Teal
+            header_bg: Color32::from_rgb(35, 50, 48),
         }
     }
 }
@@ -224,6 +238,7 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
         (SettingsTab::Viewport, CUBE, "Viewport"),
         (SettingsTab::Shortcuts, KEYBOARD, "Shortcuts"),
         (SettingsTab::Theme, PALETTE, "Theme"),
+        (SettingsTab::Updates, ARROW_CLOCKWISE, "Updates"),
     ];
 
     ui.horizontal(|ui| {
@@ -809,4 +824,128 @@ fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut
         });
 
     changed
+}
+
+fn render_updates_tab(
+    ui: &mut egui::Ui,
+    app_config: &mut AppConfig,
+    update_state: &mut UpdateState,
+    update_dialog: &mut UpdateDialogState,
+    theme: &Theme,
+) {
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+    let success = theme.semantic.success.to_color32();
+    let item_bg = theme.panels.item_bg.to_color32();
+    let border = theme.widgets.border.to_color32();
+
+    // Update Settings
+    render_settings_category(
+        ui,
+        ARROW_CLOCKWISE,
+        "Update Settings",
+        SettingsCategoryStyle::updates(),
+        "settings_updates",
+        true,
+        |ui| {
+            settings_row(ui, 0, "Auto-check", |ui| {
+                if ui.checkbox(&mut app_config.update_config.auto_check, "Check on startup").changed() {
+                    let _ = app_config.save();
+                }
+            });
+
+            settings_row(ui, 1, "Current Version", |ui| {
+                ui.label(RichText::new(crate::update::current_version()).size(12.0).color(text_primary))
+            });
+        },
+    );
+
+    // Check for Updates section
+    render_settings_category(
+        ui,
+        DOWNLOAD_SIMPLE,
+        "Check for Updates",
+        SettingsCategoryStyle::updates(),
+        "settings_check_updates",
+        true,
+        |ui| {
+            // Status display
+            if update_state.checking {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new().size(14.0).color(accent));
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Checking for updates...").size(12.0).color(text_muted));
+                });
+            } else if let Some(ref result) = update_state.check_result {
+                if result.update_available {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(CHECK_CIRCLE).size(14.0).color(success));
+                        ui.add_space(4.0);
+                        if let Some(ref version) = result.latest_version {
+                            ui.label(RichText::new(format!("Version {} available!", version)).size(12.0).color(success));
+                        } else {
+                            ui.label(RichText::new("Update available!").size(12.0).color(success));
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(CHECK).size(14.0).color(success));
+                        ui.add_space(4.0);
+                        ui.label(RichText::new("You're up to date").size(12.0).color(text_muted));
+                    });
+                }
+            } else if let Some(ref err) = update_state.error {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(WARNING).size(14.0).color(theme.semantic.error.to_color32()));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(err).size(12.0).color(theme.semantic.error.to_color32()));
+                });
+            }
+
+            ui.add_space(8.0);
+
+            // Buttons
+            ui.horizontal(|ui| {
+                // Check for Updates button
+                let check_enabled = !update_state.checking;
+                if ui.add_enabled(check_enabled,
+                    egui::Button::new(RichText::new("Check for Updates").size(12.0).color(text_primary))
+                        .fill(item_bg)
+                        .stroke(Stroke::new(1.0, border))
+                        .corner_radius(CornerRadius::same(4))
+                        .min_size(Vec2::new(130.0, 26.0))
+                ).clicked() {
+                    update_state.start_check();
+                }
+
+                // View Details button (if update available)
+                if let Some(ref result) = update_state.check_result {
+                    if result.update_available {
+                        if ui.add(
+                            egui::Button::new(RichText::new("View Details").size(12.0).color(Color32::WHITE))
+                                .fill(accent)
+                                .corner_radius(CornerRadius::same(4))
+                                .min_size(Vec2::new(100.0, 26.0))
+                        ).clicked() {
+                            update_dialog.open = true;
+                        }
+                    }
+                }
+            });
+
+            // Skipped version info
+            let skipped_version = app_config.update_config.skipped_version.clone();
+            if let Some(skipped) = skipped_version {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("Skipped version: {}", skipped)).size(11.0).color(text_muted));
+                    if ui.small_button("Reset").clicked() {
+                        app_config.update_config.skipped_version = None;
+                        let _ = app_config.save();
+                    }
+                });
+            }
+        },
+    );
 }

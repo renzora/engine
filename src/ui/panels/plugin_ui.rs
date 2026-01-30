@@ -7,12 +7,14 @@
 
 #![allow(dead_code)]
 
-use bevy_egui::egui::{self, Color32, RichText};
+use bevy_egui::egui::{self, Color32, RichText, CornerRadius};
+use egui_phosphor::regular::{DOWNLOAD_SIMPLE, WARNING};
 
 use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
 use crate::theming::Theme;
+use crate::update::{UpdateState, UpdateDialogState};
 
 /// Convert from editor_plugin_api UiId to internal UiId
 fn convert_ui_id(id: editor_plugin_api::ui::UiId) -> UiId {
@@ -232,7 +234,14 @@ pub fn render_plugin_toolbar(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec
 }
 
 /// Render the status bar at the bottom of the screen
-pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_progress: &AssetLoadingProgress, theme: &Theme) {
+pub fn render_status_bar(
+    ctx: &egui::Context,
+    plugin_host: &PluginHost,
+    loading_progress: &AssetLoadingProgress,
+    theme: &Theme,
+    update_state: &UpdateState,
+    update_dialog: &mut UpdateDialogState,
+) {
     use crate::plugin_core::StatusBarAlign;
 
     let api = plugin_host.api();
@@ -333,6 +342,40 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
                 // Spacer to push right items to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 16.0;
+
+                    // Update available indicator (rightmost)
+                    if let Some(ref result) = update_state.check_result {
+                        if result.update_available {
+                            let success_color = theme.semantic.success.to_color32();
+
+                            let btn = egui::Button::new(
+                                RichText::new(format!("{} Update Available", DOWNLOAD_SIMPLE))
+                                    .size(11.0)
+                                    .color(Color32::WHITE)
+                            )
+                            .fill(success_color)
+                            .corner_radius(CornerRadius::same(3))
+                            .min_size(egui::vec2(0.0, 18.0));
+
+                            if ui.add(btn).on_hover_text("Click to view update details").clicked() {
+                                update_dialog.open = true;
+                            }
+
+                            ui.separator();
+                        }
+                    } else if update_state.checking {
+                        // Show checking indicator
+                        ui.add(egui::Spinner::new().size(12.0).color(accent_color));
+                        ui.label(RichText::new("Checking...").size(11.0).color(text_color));
+                        ui.separator();
+                        ctx.request_repaint();
+                    } else if let Some(ref err) = update_state.error {
+                        // Show error indicator
+                        let error_color = theme.semantic.error.to_color32();
+                        ui.label(RichText::new(WARNING).size(11.0).color(error_color))
+                            .on_hover_text(format!("Update check failed: {}", err));
+                        ui.separator();
+                    }
 
                     // Right-aligned items (reversed order for right-to-left layout)
                     for item in right_items.iter().rev() {

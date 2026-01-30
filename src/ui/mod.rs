@@ -20,6 +20,7 @@ use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
 use crate::brushes::{BrushSettings, BrushState, BlockEditState};
 use crate::terrain::TerrainSettings;
+use crate::update::{UpdateState, UpdateDialogState};
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]
@@ -68,6 +69,9 @@ pub struct EditorResources<'w> {
     pub brush_state: ResMut<'w, BrushState>,
     pub block_edit: Res<'w, BlockEditState>,
     pub terrain_settings: ResMut<'w, TerrainSettings>,
+    pub update_state: ResMut<'w, UpdateState>,
+    pub update_dialog: ResMut<'w, UpdateDialogState>,
+    pub app_config: ResMut<'w, AppConfig>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -246,7 +250,14 @@ pub fn editor_ui(
 
     // Render status bar at bottom (must be rendered early to reserve space) - skip in play mode
     if !in_play_mode_early {
-        render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress, &editor.theme_manager.active_theme);
+        render_status_bar(
+            ctx,
+            &editor.plugin_host,
+            &editor.loading_progress,
+            &editor.theme_manager.active_theme,
+            &editor.update_state,
+            &mut editor.update_dialog,
+        );
     }
 
     // Collect all UI events to forward to plugins
@@ -671,6 +682,9 @@ pub fn editor_ui(
                             &mut editor.settings,
                             &mut editor.keybindings,
                             &mut editor.theme_manager,
+                            &mut editor.app_config,
+                            &mut editor.update_state,
+                            &mut editor.update_dialog,
                         );
                     });
                 }

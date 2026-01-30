@@ -2,11 +2,16 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::update::UpdateConfig;
+
 /// Application-wide configuration stored in user's config directory
 #[derive(Resource, Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     /// List of recently opened project paths
     pub recent_projects: Vec<PathBuf>,
+    /// Update configuration
+    #[serde(default)]
+    pub update_config: UpdateConfig,
 }
 
 impl AppConfig {
