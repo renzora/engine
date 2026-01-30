@@ -323,6 +323,8 @@ pub fn draw_node(
     // Draw header
     let header_color = if let Some(def) = node_def {
         Color32::from_rgb(def.color[0], def.color[1], def.color[2])
+    } else if let Some(color) = node.color {
+        Color32::from_rgb(color[0], color[1], color[2])
     } else {
         Color32::from_rgb(100, 100, 100)
     };
@@ -340,7 +342,9 @@ pub fn draw_node(
     );
 
     // Draw title
-    let title = node_def.map(|d| d.display_name).unwrap_or(&node.node_type);
+    let title = node_def.map(|d| d.display_name)
+        .or_else(|| node.display_name.as_deref())
+        .unwrap_or(&node.node_type);
     let font_size = 12.0 * canvas.zoom;
     painter.text(
         header_rect.center(),
@@ -412,7 +416,7 @@ pub fn draw_node(
             // Get current value
             let current_value = node.get_input_value(&pin.name)
                 .or_else(|| pin.default_value.clone())
-                .unwrap_or_else(|| PinValue::default_for_type(pin.pin_type));
+                .unwrap_or_else(|| PinValue::default_for_type(pin.pin_type.clone()));
 
             // Draw the value editor
             if let Some(new_value) = draw_value_editor(ui, editor_rect, &pin.name, node.id, &current_value, canvas.zoom) {

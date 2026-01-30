@@ -57,7 +57,7 @@ pub struct NodeTypeDefinition {
 impl NodeTypeDefinition {
     /// Create a new node instance with this type
     pub fn create_node(&self, id: NodeId) -> BlueprintNode {
-        let mut node = BlueprintNode::new(id, self.type_id, (self.create_pins)());
+        let mut node = BlueprintNode::with_pins(id, self.type_id, (self.create_pins)());
 
         // Set default values for all input pins that have them
         for pin in &node.pins {

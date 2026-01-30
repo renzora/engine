@@ -621,7 +621,7 @@ pub fn create_material_from_texture(name: &str, texture_path: &str) -> Blueprint
 
     // Create texture_color node (ID 1)
     let texture_node_id = NodeId::new(1);
-    let mut texture_node = BlueprintNode::new(
+    let mut texture_node = BlueprintNode::with_pins(
         texture_node_id,
         "shader/texture_color",
         vec![
@@ -648,6 +648,8 @@ pub fn create_material_from_texture(name: &str, texture_path: &str) -> Blueprint
         ],
         input_values: HashMap::new(),
         comment: None,
+        display_name: None,
+        color: None,
     };
     graph.add_node(uv_node);
 
@@ -668,6 +670,8 @@ pub fn create_material_from_texture(name: &str, texture_path: &str) -> Blueprint
         ],
         input_values: HashMap::new(),
         comment: None,
+        display_name: None,
+        color: None,
     };
     graph.add_node(pbr_node);
 

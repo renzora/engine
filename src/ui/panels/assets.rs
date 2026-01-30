@@ -21,7 +21,7 @@ use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
-    PLUS, X, CHECK, CARET_UP, CARET_DOWN,
+    PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN,
 };
 
 const MIN_TILE_SIZE: f32 = 64.0;
@@ -1251,6 +1251,8 @@ fn handle_item_interaction(
                                     (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
                                 } else if is_image_file(&item.name) {
                                     (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
+                                } else if is_hdr_file(&item.name) {
+                                    (SUN, Color32::from_rgb(255, 200, 100), "Drop on World Environment (Sky Texture)")
                                 } else {
                                     (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
                                 };
@@ -1945,12 +1947,17 @@ fn is_blueprint_material_file(filename: &str) -> bool {
 }
 
 fn is_draggable_asset(filename: &str) -> bool {
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename)
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename)
 }
 
 fn is_image_file(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp")
+}
+
+fn is_hdr_file(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "hdr" | "exr")
 }
 
 fn is_script_file(path: &PathBuf) -> bool {

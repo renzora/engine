@@ -51,7 +51,7 @@ impl PinId {
 }
 
 /// Type of data a pin carries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PinType {
     /// Execution flow (white triangle)
     Flow,
@@ -97,6 +97,8 @@ pub enum PinType {
     PrefabHandle,
     /// GLTF handle (brown)
     GltfHandle,
+    /// Custom type for render pipeline nodes (gray-blue)
+    Custom(String),
 }
 
 impl PinType {
@@ -124,6 +126,7 @@ impl PinType {
             PinType::SceneHandle => [220, 140, 100], // Orange-red
             PinType::PrefabHandle => [180, 200, 100], // Yellow-green
             PinType::GltfHandle => [180, 140, 100], // Brown
+            PinType::Custom(_) => [120, 140, 180], // Gray-blue for render types
         }
     }
 
@@ -141,6 +144,10 @@ impl PinType {
         if (*self == PinType::Color && *other == PinType::Vec4)
             || (*self == PinType::Vec4 && *other == PinType::Color) {
             return true;
+        }
+        // Custom types match if they have the same string identifier
+        if let (PinType::Custom(a), PinType::Custom(b)) = (self, other) {
+            return a == b;
         }
         *self == *other
     }
@@ -171,6 +178,7 @@ impl PinType {
             PinType::SceneHandle => "SceneHandle",
             PinType::PrefabHandle => "PrefabHandle",
             PinType::GltfHandle => "GltfHandle",
+            PinType::Custom(_) => "Custom",
         }
     }
 
@@ -333,6 +341,7 @@ impl PinValue {
             PinType::SceneHandle => PinValue::SceneHandle(0),
             PinType::PrefabHandle => PinValue::PrefabHandle(0),
             PinType::GltfHandle => PinValue::GltfHandle(0),
+            PinType::Custom(_) => PinValue::String(String::new()), // Custom types use strings as placeholders
         }
     }
 
@@ -416,11 +425,29 @@ pub struct BlueprintNode {
     pub input_values: HashMap<String, PinValue>,
     /// Comment text (for comment nodes)
     pub comment: Option<String>,
+    /// Optional display name override (for render graph nodes)
+    pub display_name: Option<String>,
+    /// Optional header color override [r, g, b] (for render graph nodes)
+    pub color: Option<[u8; 3]>,
 }
 
 impl BlueprintNode {
-    /// Create a new node with the given type and ID
-    pub fn new(id: NodeId, node_type: impl Into<String>, pins: Vec<Pin>) -> Self {
+    /// Create a new node with the given type and ID (no pins initially)
+    pub fn new(id: NodeId, node_type: impl Into<String>) -> Self {
+        Self {
+            id,
+            node_type: node_type.into(),
+            position: [0.0, 0.0],
+            pins: Vec::new(),
+            input_values: HashMap::new(),
+            comment: None,
+            display_name: None,
+            color: None,
+        }
+    }
+
+    /// Create a new node with the given type, ID, and pins
+    pub fn with_pins(id: NodeId, node_type: impl Into<String>, pins: Vec<Pin>) -> Self {
         Self {
             id,
             node_type: node_type.into(),
@@ -428,12 +455,21 @@ impl BlueprintNode {
             pins,
             input_values: HashMap::new(),
             comment: None,
+            display_name: None,
+            color: None,
         }
     }
 
-    /// Set the position of this node
+    /// Set the position of this node (takes x, y)
     #[allow(dead_code)]
-    pub fn with_position(mut self, x: f32, y: f32) -> Self {
+    pub fn with_position(mut self, pos: [f32; 2]) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Set the position of this node (takes x, y separately)
+    #[allow(dead_code)]
+    pub fn with_position_xy(mut self, x: f32, y: f32) -> Self {
         self.position = [x, y];
         self
     }
@@ -508,7 +544,7 @@ impl BlueprintType {
         match self {
             BlueprintType::Behavior => {
                 // Behavior blueprints use non-shader categories
-                !category.starts_with("Shader")
+                !category.starts_with("Shader") && !category.starts_with("Render")
             }
             BlueprintType::Material => {
                 // Material blueprints use shader categories + shared Math nodes
@@ -539,11 +575,12 @@ impl BlueprintVariable {
     #[allow(dead_code)]
     pub fn new(name: impl Into<String>, var_type: PinType) -> Self {
         let name = name.into();
+        let default_value = PinValue::default_for_type(var_type.clone());
         Self {
             display_name: name.clone(),
             name,
             var_type,
-            default_value: PinValue::default_for_type(var_type),
+            default_value,
             description: String::new(),
             exposed: true,
         }

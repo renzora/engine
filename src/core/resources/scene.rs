@@ -62,6 +62,12 @@ pub struct SceneManagerState {
     pub build_state: BuildState,
     /// Unified tab order - stores the order of all tabs (scenes and scripts together)
     pub tab_order: Vec<TabKind>,
+    /// Timer for auto-save (seconds since last auto-save check)
+    pub auto_save_timer: f32,
+    /// Whether auto-save is enabled
+    pub auto_save_enabled: bool,
+    /// Auto-save interval in seconds
+    pub auto_save_interval: f32,
 }
 
 impl Default for SceneManagerState {
@@ -84,6 +90,9 @@ impl Default for SceneManagerState {
             recently_saved_scenes: Vec::new(),
             build_state: BuildState::default(),
             tab_order: vec![TabKind::Scene(0)],
+            auto_save_timer: 0.0,
+            auto_save_enabled: true,
+            auto_save_interval: 30.0, // Auto-save every 30 seconds when modified
         }
     }
 }

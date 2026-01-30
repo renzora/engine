@@ -34,15 +34,31 @@ use bevy::prelude::*;
 use bevy::anti_alias::fxaa::Fxaa;
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::Tonemapping as BevyTonemapping;
+use bevy::core_pipeline::Skybox;
 use bevy::pbr::{DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections};
 use bevy::post_process::bloom::Bloom;
 use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::post_process::motion_blur::MotionBlur;
+use bevy::render::render_resource::{TextureViewDescriptor, TextureViewDimension};
 use crate::shared::{SkyMode, TonemappingMode};
+use crate::project::CurrentProject;
 
 /// Marker for the procedural sky sun light
 #[derive(Component)]
 pub struct ProceduralSkySun;
+
+/// Resource to track the currently loaded skybox
+#[derive(Resource, Default)]
+pub struct SkyboxState {
+    /// The path of the currently loaded skybox (to avoid reloading)
+    pub current_path: Option<String>,
+    /// Handle to the original equirectangular image
+    pub equirect_handle: Option<Handle<Image>>,
+    /// Handle to the converted cubemap image
+    pub cubemap_handle: Option<Handle<Image>>,
+    /// Whether the cubemap conversion is pending
+    pub conversion_pending: bool,
+}
 
 pub struct CorePlugin;
 
@@ -67,6 +83,7 @@ impl Plugin for CorePlugin {
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
             .init_resource::<GamepadDebugState>()
+            .init_resource::<SkyboxState>()
             .init_resource::<crate::theming::ThemeManager>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
@@ -148,6 +165,10 @@ fn apply_world_environment(
     cameras: Query<Entity, With<ViewportCamera>>,
     mut camera_query: Query<&mut Camera, With<ViewportCamera>>,
     mut sun_query: Query<(Entity, &mut DirectionalLight, &mut Transform), With<ProceduralSkySun>>,
+    asset_server: Res<AssetServer>,
+    mut skybox_state: ResMut<SkyboxState>,
+    current_project: Option<Res<CurrentProject>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     // Find the first visible WorldEnvironment in the scene and apply its settings
     if let Some((world_env, _)) = world_envs.iter().find(|(_, editor)| editor.visible) {
@@ -257,10 +278,22 @@ fn apply_world_environment(
             }
         }
 
+        // Helper to clear skybox state and remove from cameras
+        fn clear_skybox(commands: &mut Commands, skybox_state: &mut SkyboxState, cameras: &Query<Entity, With<ViewportCamera>>) {
+            for camera_entity in cameras.iter() {
+                commands.entity(camera_entity).remove::<Skybox>();
+            }
+            skybox_state.current_path = None;
+            skybox_state.equirect_handle = None;
+            skybox_state.cubemap_handle = None;
+            skybox_state.conversion_pending = false;
+        }
+
         // Apply sky/background settings based on mode
         match data.sky_mode {
             SkyMode::Color => {
-                // Simple solid color background
+                // Simple solid color background - remove skybox if present
+                clear_skybox(&mut commands, &mut skybox_state, &cameras);
                 for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(
                         data.clear_color.0,
@@ -272,7 +305,7 @@ fn apply_world_environment(
             SkyMode::Procedural => {
                 let sky = &data.procedural_sky;
                 // Use sky horizon color as clear color (approximation of procedural sky)
-                // A proper implementation would use a skybox shader
+                clear_skybox(&mut commands, &mut skybox_state, &cameras);
                 for mut camera in camera_query.iter_mut() {
                     camera.clear_color = ClearColorConfig::Custom(Color::srgb(
                         sky.sky_horizon_color.0,
@@ -282,10 +315,78 @@ fn apply_world_environment(
                 }
             }
             SkyMode::Panorama => {
-                // HDR panorama - would need to load and apply the HDR texture as skybox
-                // For now, use a neutral gray as placeholder
-                for mut camera in camera_query.iter_mut() {
-                    camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
+                let pano = &data.panorama_sky;
+
+                if !pano.panorama_path.is_empty() {
+                    let needs_load = skybox_state.current_path.as_ref() != Some(&pano.panorama_path);
+
+                    if needs_load {
+                        // Resolve the path - if relative, make it absolute using project path
+                        let resolved_path = if std::path::Path::new(&pano.panorama_path).is_absolute() {
+                            std::path::PathBuf::from(&pano.panorama_path)
+                        } else if let Some(ref project) = current_project {
+                            project.path.join(&pano.panorama_path)
+                        } else {
+                            std::path::PathBuf::from(&pano.panorama_path)
+                        };
+
+                        // Load the HDR image
+                        let equirect_handle: Handle<Image> = asset_server.load(resolved_path);
+                        skybox_state.equirect_handle = Some(equirect_handle);
+                        skybox_state.current_path = Some(pano.panorama_path.clone());
+                        skybox_state.conversion_pending = true;
+                        skybox_state.cubemap_handle = None;
+
+                        info!("Loading HDR panorama for skybox: {}", pano.panorama_path);
+                    }
+
+                    // Check if the equirectangular image is loaded and needs conversion
+                    if skybox_state.conversion_pending {
+                        if let Some(ref equirect_handle) = skybox_state.equirect_handle {
+                            if let Some(equirect_image) = images.get(equirect_handle) {
+                                // Convert equirectangular to cubemap
+                                match equirectangular_to_cubemap(equirect_image) {
+                                    Ok(cubemap) => {
+                                        let cubemap_handle = images.add(cubemap);
+                                        skybox_state.cubemap_handle = Some(cubemap_handle);
+                                        skybox_state.conversion_pending = false;
+                                        info!("Converted HDR to cubemap successfully");
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to convert HDR to cubemap: {}", e);
+                                        skybox_state.conversion_pending = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Apply cubemap skybox to cameras if available
+                    if let Some(ref cubemap_handle) = skybox_state.cubemap_handle {
+                        for camera_entity in cameras.iter() {
+                            commands.entity(camera_entity).insert(Skybox {
+                                image: cubemap_handle.clone(),
+                                brightness: pano.energy * 1000.0,
+                                rotation: Quat::from_rotation_y(pano.rotation.to_radians()),
+                            });
+                        }
+
+                        // Set camera clear color to none (skybox will fill background)
+                        for mut camera in camera_query.iter_mut() {
+                            camera.clear_color = ClearColorConfig::None;
+                        }
+                    } else {
+                        // Still loading/converting - use dark background
+                        for mut camera in camera_query.iter_mut() {
+                            camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.15));
+                        }
+                    }
+                } else {
+                    // No panorama path set - clear skybox and use neutral gray
+                    clear_skybox(&mut commands, &mut skybox_state, &cameras);
+                    for mut camera in camera_query.iter_mut() {
+                        camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
+                    }
                 }
             }
         }
@@ -327,10 +428,18 @@ fn apply_world_environment(
         ambient_light.color = Color::WHITE;
         ambient_light.brightness = 200.0;
 
+        // Clear skybox state
+        skybox_state.current_path = None;
+        skybox_state.equirect_handle = None;
+        skybox_state.cubemap_handle = None;
+        skybox_state.conversion_pending = false;
+
         // Reset camera settings to defaults
         for camera_entity in cameras.iter() {
             // Reset MSAA to default
             commands.entity(camera_entity).insert(Msaa::Sample4);
+            // Remove skybox
+            commands.entity(camera_entity).remove::<Skybox>();
             // Remove all post-processing components
             commands.entity(camera_entity).remove::<DistanceFog>();
             commands.entity(camera_entity).remove::<Fxaa>();
@@ -355,4 +464,99 @@ fn apply_world_environment(
             commands.entity(entity).despawn();
         }
     }
+}
+
+/// Convert an equirectangular panorama image to a cubemap
+///
+/// This function takes an equirectangular (lat-long) HDR image and converts it
+/// to a cubemap with 6 faces that can be used with Bevy's Skybox component.
+fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
+    use bevy::render::render_resource::{Extent3d, TextureDimension};
+    use std::f32::consts::PI;
+
+    // Get the source image dimensions
+    let src_width = equirect.width() as usize;
+    let src_height = equirect.height() as usize;
+
+    if src_width == 0 || src_height == 0 {
+        return Err("Invalid image dimensions".to_string());
+    }
+
+    // Determine cubemap face size (typically height/2 for equirectangular)
+    let face_size = (src_height / 2).max(256).min(2048);
+
+    // Get bytes per pixel from format
+    let bytes_per_pixel = equirect.texture_descriptor.format.block_copy_size(None).unwrap_or(4) as usize;
+    let face_data_size = face_size * face_size * bytes_per_pixel;
+    let mut cubemap_data = vec![0u8; face_data_size * 6];
+
+    // Get source data - handle Option<Vec<u8>>
+    let src_data = equirect.data.as_ref()
+        .ok_or_else(|| "Image has no data".to_string())?;
+
+    // Face directions: +X, -X, +Y, -Y, +Z, -Z
+    let face_directions: [(Vec3, Vec3, Vec3); 6] = [
+        (Vec3::X, Vec3::Y, Vec3::NEG_Z),   // +X (right)
+        (Vec3::NEG_X, Vec3::Y, Vec3::Z),   // -X (left)
+        (Vec3::Y, Vec3::NEG_Z, Vec3::X),   // +Y (top)
+        (Vec3::NEG_Y, Vec3::Z, Vec3::X),   // -Y (bottom)
+        (Vec3::Z, Vec3::Y, Vec3::X),       // +Z (front)
+        (Vec3::NEG_Z, Vec3::Y, Vec3::NEG_X), // -Z (back)
+    ];
+
+    for (face_idx, (forward, up, right)) in face_directions.iter().enumerate() {
+        let face_offset = face_idx * face_data_size;
+
+        for y in 0..face_size {
+            for x in 0..face_size {
+                // Convert pixel coordinates to [-1, 1] range
+                let u = (x as f32 + 0.5) / face_size as f32 * 2.0 - 1.0;
+                let v = (y as f32 + 0.5) / face_size as f32 * 2.0 - 1.0;
+
+                // Calculate direction vector for this pixel
+                let dir = (*forward + *right * u - *up * v).normalize();
+
+                // Convert direction to equirectangular UV coordinates
+                let theta = dir.z.atan2(dir.x); // Longitude: -PI to PI
+                let phi = dir.y.asin();          // Latitude: -PI/2 to PI/2
+
+                let eq_u = (theta + PI) / (2.0 * PI);
+                let eq_v = (phi + PI / 2.0) / PI;
+
+                // Sample the equirectangular image
+                let src_x = ((eq_u * src_width as f32) as usize).min(src_width - 1);
+                let src_y = (((1.0 - eq_v) * src_height as f32) as usize).min(src_height - 1);
+
+                let src_idx = (src_y * src_width + src_x) * bytes_per_pixel;
+                let dst_idx = face_offset + (y * face_size + x) * bytes_per_pixel;
+
+                // Copy pixel data
+                if src_idx + bytes_per_pixel <= src_data.len() && dst_idx + bytes_per_pixel <= cubemap_data.len() {
+                    cubemap_data[dst_idx..dst_idx + bytes_per_pixel]
+                        .copy_from_slice(&src_data[src_idx..src_idx + bytes_per_pixel]);
+                }
+            }
+        }
+    }
+
+    // Create the cubemap image using Image::new
+    let mut cubemap = Image::new(
+        Extent3d {
+            width: face_size as u32,
+            height: face_size as u32,
+            depth_or_array_layers: 6,
+        },
+        TextureDimension::D2,
+        cubemap_data,
+        equirect.texture_descriptor.format,
+        equirect.asset_usage,
+    );
+
+    // Set the texture view descriptor to treat it as a cube
+    cubemap.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+
+    Ok(cubemap)
 }

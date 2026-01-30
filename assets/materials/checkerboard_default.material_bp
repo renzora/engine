@@ -1,0 +1,465 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "material_3",
+    "graph_type": "Material",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "shader/uv",
+        "position": [
+          -592.90625,
+          -168.84375
+        ],
+        "pins": [
+          {
+            "name": "uv",
+            "label": "UV",
+            "pin_type": "Vec2",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          },
+          {
+            "name": "u",
+            "label": "U",
+            "pin_type": "Float",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          },
+          {
+            "name": "v",
+            "label": "V",
+            "pin_type": "Float",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          }
+        ],
+        "input_values": {},
+        "comment": null
+      },
+      {
+        "id": 2,
+        "node_type": "shader/checkerboard",
+        "position": [
+          -216.90625,
+          -120.84375
+        ],
+        "pins": [
+          {
+            "name": "uv",
+            "label": "UV",
+            "pin_type": "Vec2",
+            "direction": "Input",
+            "default_value": {
+              "Vec2": [
+                0.0,
+                0.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "scale",
+            "label": "Scale",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 2.0
+            },
+            "required": false
+          },
+          {
+            "name": "value",
+            "label": "Value",
+            "pin_type": "Float",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          }
+        ],
+        "input_values": {
+          "uv": {
+            "Vec2": [
+              0.0,
+              0.0
+            ]
+          },
+          "scale": {
+            "Float": 3.0
+          }
+        },
+        "comment": null
+      },
+      {
+        "id": 3,
+        "node_type": "shader/lerp_color",
+        "position": [
+          49.09375,
+          15.15625
+        ],
+        "pins": [
+          {
+            "name": "a",
+            "label": "A",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "b",
+            "label": "B",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "t",
+            "label": "T",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 0.5
+            },
+            "required": false
+          },
+          {
+            "name": "result",
+            "label": "Result",
+            "pin_type": "Color",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          }
+        ],
+        "input_values": {
+          "b": {
+            "Color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "a": {
+            "Color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "t": {
+            "Float": 0.5
+          }
+        },
+        "comment": null
+      },
+      {
+        "id": 4,
+        "node_type": "shader/color",
+        "position": [
+          -400.90625,
+          21.15625
+        ],
+        "pins": [
+          {
+            "name": "color",
+            "label": "Color",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "color",
+            "label": "Color",
+            "pin_type": "Color",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          },
+          {
+            "name": "rgb",
+            "label": "RGB",
+            "pin_type": "Vec3",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          }
+        ],
+        "input_values": {
+          "color": {
+            "Color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "comment": null
+      },
+      {
+        "id": 5,
+        "node_type": "shader/color",
+        "position": [
+          -407.90625,
+          144.15625
+        ],
+        "pins": [
+          {
+            "name": "color",
+            "label": "Color",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "color",
+            "label": "Color",
+            "pin_type": "Color",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          },
+          {
+            "name": "rgb",
+            "label": "RGB",
+            "pin_type": "Vec3",
+            "direction": "Output",
+            "default_value": null,
+            "required": false
+          }
+        ],
+        "input_values": {
+          "color": {
+            "Color": [
+              0.34901962,
+              0.45882353,
+              0.7254902,
+              1.0
+            ]
+          }
+        },
+        "comment": null
+      },
+      {
+        "id": 6,
+        "node_type": "shader/pbr_output",
+        "position": [
+          359.09375,
+          -33.84375
+        ],
+        "pins": [
+          {
+            "name": "base_color",
+            "label": "Base Color",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "metallic",
+            "label": "Metallic",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 0.0
+            },
+            "required": false
+          },
+          {
+            "name": "roughness",
+            "label": "Roughness",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 0.5
+            },
+            "required": false
+          },
+          {
+            "name": "normal",
+            "label": "Normal",
+            "pin_type": "Vec3",
+            "direction": "Input",
+            "default_value": null,
+            "required": false
+          },
+          {
+            "name": "emissive",
+            "label": "Emissive",
+            "pin_type": "Color",
+            "direction": "Input",
+            "default_value": {
+              "Color": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "ao",
+            "label": "Ambient Occlusion",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 1.0
+            },
+            "required": false
+          },
+          {
+            "name": "alpha",
+            "label": "Alpha",
+            "pin_type": "Float",
+            "direction": "Input",
+            "default_value": {
+              "Float": 1.0
+            },
+            "required": false
+          }
+        ],
+        "input_values": {
+          "roughness": {
+            "Float": 0.5
+          },
+          "alpha": {
+            "Float": 1.0
+          },
+          "ao": {
+            "Float": 1.0
+          },
+          "base_color": {
+            "Color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "metallic": {
+            "Float": 0.0
+          },
+          "emissive": {
+            "Color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "comment": null
+      }
+    ],
+    "connections": [
+      {
+        "from": {
+          "node_id": 1,
+          "pin_name": "uv",
+          "direction": "Output"
+        },
+        "to": {
+          "node_id": 2,
+          "pin_name": "uv",
+          "direction": "Input"
+        }
+      },
+      {
+        "from": {
+          "node_id": 2,
+          "pin_name": "value",
+          "direction": "Output"
+        },
+        "to": {
+          "node_id": 3,
+          "pin_name": "t",
+          "direction": "Input"
+        }
+      },
+      {
+        "from": {
+          "node_id": 4,
+          "pin_name": "color",
+          "direction": "Output"
+        },
+        "to": {
+          "node_id": 3,
+          "pin_name": "a",
+          "direction": "Input"
+        }
+      },
+      {
+        "from": {
+          "node_id": 5,
+          "pin_name": "color",
+          "direction": "Output"
+        },
+        "to": {
+          "node_id": 3,
+          "pin_name": "b",
+          "direction": "Input"
+        }
+      },
+      {
+        "from": {
+          "node_id": 3,
+          "pin_name": "result",
+          "direction": "Output"
+        },
+        "to": {
+          "node_id": 6,
+          "pin_name": "base_color",
+          "direction": "Input"
+        }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 7
+  }
+}

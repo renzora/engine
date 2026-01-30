@@ -95,6 +95,7 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::PhysicsDebug => PanelConstraints::default().with_min_width(280.0).with_min_height(350.0),
         PanelId::CameraDebug => PanelConstraints::default().with_min_width(280.0).with_min_height(320.0),
         PanelId::SystemProfiler => PanelConstraints::default().with_min_width(300.0).with_min_height(280.0),
+        PanelId::LevelTools => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -123,6 +124,7 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::PhysicsDebug,
         PanelId::CameraDebug,
         PanelId::SystemProfiler,
+        PanelId::LevelTools,
     ]
 }
 

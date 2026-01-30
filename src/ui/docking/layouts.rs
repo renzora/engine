@@ -226,13 +226,14 @@ pub fn blueprints_layout() -> DockTree {
     )
 }
 
-/// Level Design layout: Maximized viewport with quick access to hierarchy and assets
+/// Level Design layout: Maximized viewport with Level Tools panel and quick access to hierarchy
 ///
 /// ```text
 /// ┌─────────────────────────────────┬──────────┐
-/// │                                 │          │
-/// │            Viewport             │ Hierarchy│
-/// │                                 │          │
+/// │                                 │  Level   │
+/// │            Viewport             │  Tools   │
+/// │                                 ├──────────┤
+/// │                                 │ Hierarchy│
 /// │                                 ├──────────┤
 /// │                                 │  Assets  │
 /// ├─────────────────────────────────┼──────────┤
@@ -244,9 +245,13 @@ pub fn level_design_layout() -> DockTree {
         DockTree::horizontal(
             DockTree::leaf(PanelId::Viewport),
             DockTree::vertical(
-                DockTree::leaf(PanelId::Hierarchy),
-                DockTree::leaf(PanelId::Assets),
-                0.5,
+                DockTree::leaf(PanelId::LevelTools),
+                DockTree::vertical(
+                    DockTree::leaf(PanelId::Hierarchy),
+                    DockTree::leaf(PanelId::Assets),
+                    0.5,
+                ),
+                0.4,
             ),
             0.8,
         ),
@@ -292,12 +297,14 @@ pub fn materials_layout() -> DockTree {
     )
 }
 
-/// Terrain layout: Large viewport with assets and inspector for terrain editing
+/// Terrain layout: Large viewport with Level Tools and inspector for terrain editing
 ///
 /// ```text
 /// ┌──────────────────────────────────┬──────────┐
+/// │                                  │  Level   │
+/// │            Viewport              │  Tools   │
+/// │                                  ├──────────┤
 /// │                                  │ Inspector│
-/// │            Viewport              │          │
 /// │                                  ├──────────┤
 /// │                                  │ Hierarchy│
 /// ├──────────────────────────────────┴──────────┤
@@ -309,9 +316,13 @@ pub fn terrain_layout() -> DockTree {
         DockTree::horizontal(
             DockTree::leaf(PanelId::Viewport),
             DockTree::vertical(
-                DockTree::leaf(PanelId::Inspector),
-                DockTree::leaf(PanelId::Hierarchy),
-                0.6,
+                DockTree::leaf(PanelId::LevelTools),
+                DockTree::vertical(
+                    DockTree::leaf(PanelId::Inspector),
+                    DockTree::leaf(PanelId::Hierarchy),
+                    0.6,
+                ),
+                0.35,
             ),
             0.8,
         ),

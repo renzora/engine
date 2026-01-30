@@ -802,7 +802,7 @@ pub fn render_inspector_content(
                         "inspector_world_env",
                         true,
                         |ui| {
-                            render_world_environment_inspector(ui, &mut world_env);
+                            render_world_environment_inspector(ui, &mut world_env, assets, project_path);
                         },
                     );
                 }

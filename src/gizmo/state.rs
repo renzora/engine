@@ -10,6 +10,12 @@ pub enum EditorTool {
     Select,
     /// Transform mode - shows gizmo for active transform operation
     Transform,
+    /// Brush mode - click-drag to create level geometry
+    Brush,
+    /// Block edit mode - resize brush geometry with face handles
+    BlockEdit,
+    /// Terrain sculpt mode - paint on terrain to modify height
+    TerrainSculpt,
 }
 
 /// Current gizmo transformation mode

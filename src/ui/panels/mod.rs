@@ -6,6 +6,7 @@ mod export;
 mod gamepad;
 mod hierarchy;
 mod inspector;
+mod level_tools;
 mod material_preview;
 mod node_library;
 mod performance;
@@ -26,6 +27,7 @@ mod system_profiler;
 
 pub use assets::{render_assets_content, render_assets_dialogs};
 pub use blueprint::render_blueprint_panel;
+pub use level_tools::render_level_tools_content;
 pub use material_preview::render_material_preview_content;
 pub use node_library::render_node_library_panel;
 pub use console::render_console_content;

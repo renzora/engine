@@ -13,7 +13,7 @@ use super::ComponentRegistry;
 use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
     VIDEO_CAMERA, ATOM, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
-    GLOBE, SPEAKER_HIGH, CIRCLE,
+    GLOBE, SPEAKER_HIGH, CIRCLE, MOUNTAINS,
 };
 
 /// Categories for the Create menu
@@ -260,13 +260,22 @@ pub static PRESETS: &[EntityPreset] = &[
         priority: 0,
     },
     EntityPreset {
+        id: "terrain",
+        display_name: "Terrain",
+        category: PresetCategory::Environment,
+        icon: MOUNTAINS,
+        default_name: "Terrain",
+        components: &["terrain"],
+        priority: 1,
+    },
+    EntityPreset {
         id: "audio_listener",
         display_name: "Audio Listener",
         category: PresetCategory::Environment,
         icon: SPEAKER_HIGH,
         default_name: "Audio Listener",
         components: &["audio_listener"],
-        priority: 1,
+        priority: 2,
     },
 ];
 

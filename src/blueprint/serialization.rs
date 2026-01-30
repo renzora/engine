@@ -85,15 +85,17 @@ impl std::fmt::Display for BlueprintError {
 
 impl std::error::Error for BlueprintError {}
 
-/// List all blueprint files in a directory
+/// List all blueprint files in a directory (behavior, material, and render blueprints)
 pub fn list_blueprints(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut blueprints = Vec::new();
 
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map(|e| e == "blueprint").unwrap_or(false) {
-                blueprints.push(path);
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if ext == "blueprint" || ext == "material_bp" || ext == "render_bp" {
+                    blueprints.push(path);
+                }
             }
         }
     }

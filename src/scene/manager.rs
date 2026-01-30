@@ -80,16 +80,32 @@ fn do_save_scene(world: &mut World, path: &PathBuf) {
         .unwrap_or("Untitled")
         .to_string();
 
-    // Use Bevy DynamicScene format
-    let save_success = match save_scene_bevy(path, world) {
-        Ok(()) => {
+    // Use Bevy DynamicScene format with panic protection
+    let save_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        save_scene_bevy(path, world)
+    }));
+
+    let save_success = match save_result {
+        Ok(Ok(())) => {
             info!("Scene saved to: {}", path.display());
             console_success!("Scene", "Saved: {}", scene_name);
             true
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             error!("Failed to save scene: {}", e);
             console_error!("Scene", "Failed to save: {}", e);
+            false
+        }
+        Err(panic_info) => {
+            let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Unknown panic during save".to_string()
+            };
+            error!("PANIC during scene save: {}", panic_msg);
+            console_error!("Scene", "Save crashed: {}", panic_msg);
             false
         }
     };
@@ -574,6 +590,40 @@ pub fn handle_make_default_camera(
                 default_camera.entity = Some(entity);
                 return;
             }
+        }
+    }
+}
+
+/// System to automatically save the scene when it's modified.
+/// Saves periodically (based on auto_save_interval) if the scene has a path and is modified.
+pub fn auto_save_scene(
+    time: Res<Time>,
+    mut scene_state: ResMut<SceneManagerState>,
+) {
+    if !scene_state.auto_save_enabled {
+        return;
+    }
+
+    // Update timer
+    scene_state.auto_save_timer += time.delta_secs();
+
+    // Check if it's time to auto-save
+    if scene_state.auto_save_timer >= scene_state.auto_save_interval {
+        scene_state.auto_save_timer = 0.0;
+
+        // Check if current scene is modified and has a path
+        let should_save = {
+            if let Some(tab) = scene_state.active_tab() {
+                tab.is_modified && tab.path.is_some()
+            } else {
+                false
+            }
+        };
+
+        if should_save {
+            // Request a save
+            scene_state.save_scene_requested = true;
+            info!("Auto-saving scene...");
         }
     }
 }

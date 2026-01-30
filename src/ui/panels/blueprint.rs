@@ -118,46 +118,48 @@ fn render_blueprint_toolbar(
         }
 
         // Compile button
-        let compile_text = if editor_state.active_graph().map(|g| g.is_material()).unwrap_or(false) {
-            "\u{25B6} Generate Shader"
-        } else {
-            "\u{25B6} Compile"
+        let compile_text = match editor_state.active_graph().map(|g| g.graph_type) {
+            Some(BlueprintType::Material) => "\u{25B6} Generate Shader",
+            _ => "\u{25B6} Compile",
         };
         if ui.add_enabled(editor_state.active_blueprint.is_some(), egui::Button::new(compile_text)).clicked() {
             if let Some(graph) = editor_state.active_graph() {
-                if graph.is_material() {
-                    // Generate WGSL shader code
-                    let result = compile_material_blueprint(graph);
-                    if result.is_ok() {
-                        console_log(LogLevel::Success, "Blueprint", format!("Material '{}' compiled successfully!", result.name));
-                        console_log(LogLevel::Info, "Blueprint", format!("Generated WGSL shader:\n{}", result.shader_code));
+                match graph.graph_type {
+                    BlueprintType::Material => {
+                        // Generate WGSL shader code
+                        let result = compile_material_blueprint(graph);
+                        if result.is_ok() {
+                            console_log(LogLevel::Success, "Blueprint", format!("Material '{}' compiled successfully!", result.name));
+                            console_log(LogLevel::Info, "Blueprint", format!("Generated WGSL shader:\n{}", result.shader_code));
 
-                        // Save shader to project if we have one
-                        if let Some(project) = current_project {
-                            let shaders_dir = project.path.join("shaders");
-                            if let Err(e) = crate::blueprint::save_compiled_material(&result, &shaders_dir) {
-                                console_log(LogLevel::Error, "Blueprint", format!("Failed to save shader: {}", e));
+                            // Save shader to project if we have one
+                            if let Some(project) = current_project {
+                                let shaders_dir = project.path.join("shaders");
+                                if let Err(e) = crate::blueprint::save_compiled_material(&result, &shaders_dir) {
+                                    console_log(LogLevel::Error, "Blueprint", format!("Failed to save shader: {}", e));
+                                }
+                            }
+                        } else {
+                            for err in &result.errors {
+                                console_log(LogLevel::Error, "Blueprint", format!("Material compilation error: {}", err));
                             }
                         }
-                    } else {
-                        for err in &result.errors {
-                            console_log(LogLevel::Error, "Blueprint", format!("Material compilation error: {}", err));
+                        for warning in &result.warnings {
+                            console_log(LogLevel::Warning, "Blueprint", format!("Material compilation warning: {}", warning));
                         }
                     }
-                    for warning in &result.warnings {
-                        console_log(LogLevel::Warning, "Blueprint", format!("Material compilation warning: {}", warning));
-                    }
-                } else {
-                    let result = generate_rhai_code(graph);
-                    if result.errors.is_empty() {
-                        console_log(LogLevel::Success, "Blueprint", format!("Blueprint compiled successfully:\n{}", result.code));
-                    } else {
-                        for err in &result.errors {
-                            console_log(LogLevel::Error, "Blueprint", format!("Blueprint error: {}", err));
+                    BlueprintType::Behavior => {
+                        let result = generate_rhai_code(graph);
+                        if result.errors.is_empty() {
+                            console_log(LogLevel::Success, "Blueprint", format!("Blueprint compiled successfully:\n{}", result.code));
+                        } else {
+                            for err in &result.errors {
+                                console_log(LogLevel::Error, "Blueprint", format!("Blueprint error: {}", err));
+                            }
                         }
-                    }
-                    for warning in &result.warnings {
-                        console_log(LogLevel::Warning, "Blueprint", format!("Blueprint warning: {}", warning));
+                        for warning in &result.warnings {
+                            console_log(LogLevel::Warning, "Blueprint", format!("Blueprint warning: {}", warning));
+                        }
                     }
                 }
             }
@@ -194,20 +196,20 @@ fn render_blueprint_tabs(ui: &mut egui::Ui, editor_state: &mut BlueprintEditorSt
 
         for path in paths {
             let graph = editor_state.open_blueprints.get(&path);
-            let is_material = graph.map(|g| g.is_material()).unwrap_or(false);
+            let graph_type = graph.map(|g| g.graph_type).unwrap_or(BlueprintType::Behavior);
 
             let name = path
                 .rsplit('/')
                 .next()
                 .unwrap_or(&path)
                 .trim_end_matches(".blueprint")
-                .trim_end_matches(".material_bp");
+                .trim_end_matches(".material_bp")
+                .trim_end_matches(".render_bp");
 
             // Add type icon to tab name
-            let tab_name = if is_material {
-                format!("\u{1F3A8} {}", name)
-            } else {
-                format!("\u{1F4DC} {}", name)
+            let tab_name = match graph_type {
+                BlueprintType::Behavior => format!("\u{1F4DC} {}", name),
+                BlueprintType::Material => format!("\u{1F3A8} {}", name),
             };
 
             let is_active = editor_state.active_blueprint.as_ref() == Some(&path);

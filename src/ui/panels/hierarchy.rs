@@ -46,6 +46,7 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub ui_labels: Query<'w, 's, Entity, With<UILabelData>>,
     pub ui_buttons: Query<'w, 's, Entity, With<UIButtonData>>,
     pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
+    pub terrains: Query<'w, 's, Entity, With<crate::terrain::TerrainData>>,
 }
 
 /// Combined hierarchy queries including entities and component checks

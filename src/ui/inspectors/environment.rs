@@ -1,10 +1,14 @@
 //! Inspector widget for world environment
 
-use bevy_egui::egui::{self, Color32, Sense};
+use bevy_egui::egui::{self, Color32, RichText, Sense, Vec2};
+use std::path::PathBuf;
 
-use crate::core::WorldEnvironmentMarker;
+use crate::core::{AssetBrowserState, WorldEnvironmentMarker};
 use crate::shared::{SkyMode, TonemappingMode};
 use crate::ui::inline_property;
+
+// Phosphor icons
+use egui_phosphor::regular::{FILE, FOLDER_OPEN, IMAGE, X_CIRCLE};
 
 /// Helper to convert float RGB (0-1) to Color32 and back
 fn rgb_to_color32(r: f32, g: f32, b: f32) -> Color32 {
@@ -53,8 +57,43 @@ fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) 
     state.is_open()
 }
 
+/// Copy a sky HDR/EXR file to the project's assets/environments folder and return the relative path
+fn copy_sky_to_project_assets(source_path: &PathBuf, project_path: Option<&PathBuf>) -> Option<String> {
+    let project = project_path?;
+
+    // Get the file name
+    let file_name = source_path.file_name()?;
+
+    // Create the assets/environments directory if it doesn't exist
+    let environments_dir = project.join("assets").join("environments");
+    if let Err(e) = std::fs::create_dir_all(&environments_dir) {
+        bevy::log::error!("Failed to create environments directory: {}", e);
+        return None;
+    }
+
+    // Destination path
+    let dest_path = environments_dir.join(file_name);
+
+    // Copy the file if it's not already in the project
+    if !dest_path.exists() || source_path.canonicalize().ok() != dest_path.canonicalize().ok() {
+        if let Err(e) = std::fs::copy(source_path, &dest_path) {
+            bevy::log::error!("Failed to copy sky texture to project: {}", e);
+            return None;
+        }
+        bevy::log::info!("Copied sky texture to project: {:?}", dest_path);
+    }
+
+    // Return relative path from project root (using forward slashes for cross-platform)
+    Some(format!("assets/environments/{}", file_name.to_string_lossy()))
+}
+
 /// Render the world environment inspector
-pub fn render_world_environment_inspector(ui: &mut egui::Ui, world_env: &mut WorldEnvironmentMarker) -> bool {
+pub fn render_world_environment_inspector(
+    ui: &mut egui::Ui,
+    world_env: &mut WorldEnvironmentMarker,
+    assets: &AssetBrowserState,
+    project_path: Option<&PathBuf>,
+) -> bool {
     let mut changed = false;
     let data = &mut world_env.data;
     let mut row;
@@ -201,10 +240,160 @@ pub fn render_world_environment_inspector(ui: &mut egui::Ui, world_env: &mut Wor
             SkyMode::Panorama => {
                 let pano = &mut data.panorama_sky;
 
-                inline_property(ui, row, "HDR File", |ui| {
-                    ui.button("Browse").clicked()
-                    // TODO: file dialog
+                // Sky texture label
+                ui.horizontal(|ui| {
+                    ui.label("Sky Texture");
                 });
+                ui.add_space(4.0);
+
+                // Create a drop zone for HDR/EXR files
+                let drop_zone_height = 60.0;
+                let available_width = ui.available_width();
+
+                ui.horizontal(|ui| {
+                    // Drop zone takes most of the width
+                    let drop_width = available_width - 34.0;
+                    let (rect, response) = ui.allocate_exact_size(
+                        Vec2::new(drop_width, drop_zone_height),
+                        Sense::click_and_drag(),
+                    );
+
+                    // Check if we're currently dragging an asset
+                    let is_drag_target = assets.dragging_asset.is_some();
+                    let is_hovered = response.hovered();
+
+                    // Check if dragging asset is a valid HDR/EXR file
+                    let is_valid_drop = if let Some(dragging_path) = &assets.dragging_asset {
+                        let ext = dragging_path.extension()
+                            .and_then(|e| e.to_str())
+                            .map(|s| s.to_lowercase())
+                            .unwrap_or_default();
+                        matches!(ext.as_str(), "hdr" | "exr")
+                    } else {
+                        false
+                    };
+
+                    // Background color based on state
+                    let bg_color = if is_drag_target && is_hovered && is_valid_drop {
+                        Color32::from_rgb(66, 120, 180)
+                    } else if is_drag_target && is_valid_drop {
+                        Color32::from_rgb(50, 80, 120)
+                    } else {
+                        Color32::from_rgb(40, 40, 48)
+                    };
+
+                    ui.painter().rect_filled(rect, 4.0, bg_color);
+                    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+
+                    // Content inside drop zone
+                    if !pano.panorama_path.is_empty() {
+                        // Show current texture
+                        let file_name = pano.panorama_path.rsplit('/').next()
+                            .or_else(|| pano.panorama_path.rsplit('\\').next())
+                            .unwrap_or(&pano.panorama_path);
+
+                        let center = rect.center();
+
+                        // Icon
+                        ui.painter().text(
+                            egui::pos2(center.x, center.y - 10.0),
+                            egui::Align2::CENTER_CENTER,
+                            IMAGE,
+                            egui::FontId::proportional(24.0),
+                            Color32::from_rgb(180, 140, 100),
+                        );
+
+                        // File name
+                        ui.painter().text(
+                            egui::pos2(center.x, center.y + 14.0),
+                            egui::Align2::CENTER_CENTER,
+                            file_name,
+                            egui::FontId::proportional(12.0),
+                            Color32::from_rgb(200, 200, 210),
+                        );
+                    } else {
+                        // Show empty state with hint
+                        let center = rect.center();
+
+                        if is_drag_target && is_valid_drop {
+                            ui.painter().text(
+                                center,
+                                egui::Align2::CENTER_CENTER,
+                                "Drop HDR/EXR here",
+                                egui::FontId::proportional(12.0),
+                                Color32::from_rgb(140, 180, 220),
+                            );
+                        } else {
+                            ui.painter().text(
+                                egui::pos2(center.x, center.y - 8.0),
+                                egui::Align2::CENTER_CENTER,
+                                FILE,
+                                egui::FontId::proportional(20.0),
+                                Color32::from_rgb(100, 100, 110),
+                            );
+                            ui.painter().text(
+                                egui::pos2(center.x, center.y + 12.0),
+                                egui::Align2::CENTER_CENTER,
+                                "Drag HDR/EXR here",
+                                egui::FontId::proportional(11.0),
+                                Color32::from_rgb(120, 120, 130),
+                            );
+                        }
+                    }
+
+                    // Handle drop
+                    if is_hovered && !response.dragged() {
+                        if let Some(dragging_path) = &assets.dragging_asset {
+                            let ext = dragging_path.extension()
+                                .and_then(|e| e.to_str())
+                                .map(|s| s.to_lowercase())
+                                .unwrap_or_default();
+
+                            if matches!(ext.as_str(), "hdr" | "exr") {
+                                // Copy to project assets folder and get relative path
+                                if let Some(rel_path) = copy_sky_to_project_assets(dragging_path, project_path) {
+                                    pano.panorama_path = rel_path;
+                                    changed = true;
+                                } else {
+                                    // Fallback to absolute path if copy failed
+                                    pano.panorama_path = dragging_path.to_string_lossy().to_string();
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // Browse button
+                    if ui.add_sized([26.0, drop_zone_height], egui::Button::new(FOLDER_OPEN.to_string())).clicked() {
+                        if let Some(texture_path) = rfd::FileDialog::new()
+                            .add_filter("HDR Images", &["hdr", "exr"])
+                            .set_title("Select Sky Texture")
+                            .pick_file()
+                        {
+                            // Copy to project assets folder and get relative path
+                            if let Some(rel_path) = copy_sky_to_project_assets(&texture_path, project_path) {
+                                pano.panorama_path = rel_path;
+                                changed = true;
+                            } else {
+                                // Fallback to absolute path if copy failed
+                                pano.panorama_path = texture_path.to_string_lossy().to_string();
+                                changed = true;
+                            }
+                        }
+                    }
+                });
+
+                ui.add_space(4.0);
+
+                // Clear button if a texture is assigned
+                if !pano.panorama_path.is_empty() {
+                    if ui.button(RichText::new(format!("{} Clear", X_CIRCLE)).color(Color32::from_rgb(200, 100, 100))).clicked() {
+                        pano.panorama_path.clear();
+                        changed = true;
+                    }
+                    ui.add_space(4.0);
+                }
+
                 row += 1;
 
                 changed |= inline_property(ui, row, "Rotation", |ui| {

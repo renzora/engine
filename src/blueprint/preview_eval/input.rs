@@ -33,14 +33,22 @@ pub fn evaluate(
             }
         }
 
-        // World position
+        // World position - use UV as proxy for XZ during texture generation
+        // This allows procedural patterns using World Position to generate correctly
         "shader/world_position" => {
+            let uv = UV_OVERRIDE.with(|cell| {
+                cell.borrow().unwrap_or([0.5, 0.5])
+            });
+            // Map UV (0-1) to world position range for preview
+            // Using a reasonable range that shows the pattern well
+            let world_x = uv[0] * 10.0; // 10 world units across texture
+            let world_z = uv[1] * 10.0;
             match output_pin {
-                "position" => Some(PinValue::Vec3([0.0, 0.0, 0.0])),
-                "x" => Some(PinValue::Float(0.0)),
+                "position" => Some(PinValue::Vec3([world_x, 0.0, world_z])),
+                "x" => Some(PinValue::Float(world_x)),
                 "y" => Some(PinValue::Float(0.0)),
-                "z" => Some(PinValue::Float(0.0)),
-                _ => Some(PinValue::Vec3([0.0, 0.0, 0.0])),
+                "z" => Some(PinValue::Float(world_z)),
+                _ => Some(PinValue::Vec3([world_x, 0.0, world_z])),
             }
         }
 

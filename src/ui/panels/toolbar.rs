@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
 use crate::core::{EditorSettings, SelectionState, HierarchyState, PlayModeState, PlayState, DockingState};
-use crate::gizmo::GizmoState;
+use crate::gizmo::{GizmoState, EditorTool};
+use crate::brushes::{BrushSettings, BrushType};
+use crate::terrain::{TerrainData, TerrainSettings, TerrainBrushType};
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
@@ -12,11 +14,13 @@ use crate::theming::Theme;
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
     PLAY, PAUSE, STOP, GEAR, CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, LAYOUT,
+    SQUARE, FRAME_CORNERS, STACK, ARROW_FAT_LINE_UP,
+    ARROW_UP, ARROW_DOWN, WAVES, MINUS, CROSSHAIR,
 };
 
 pub fn render_toolbar(
     ctx: &egui::Context,
-    _gizmo: &mut GizmoState,
+    gizmo: &mut GizmoState,
     _settings: &mut EditorSettings,
     _menu_bar_height: f32,
     toolbar_height: f32,
@@ -29,6 +33,9 @@ pub fn render_toolbar(
     hierarchy: &mut HierarchyState,
     play_mode: &mut PlayModeState,
     docking_state: &mut DockingState,
+    brush_settings: &mut BrushSettings,
+    terrain_settings: &mut TerrainSettings,
+    terrain_selected: bool,
     theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
@@ -119,12 +126,149 @@ pub fn render_toolbar(
                     ui.label(RichText::new("Environment").small().color(section_label_color));
                     for template in spawn::templates_by_category(Category::Environment) {
                         if menu_item(ui, template.name) {
-                            let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            let _entity = (template.spawn)(commands, meshes, materials, None);
+                            ui.close();
+                        }
+                    }
+
+                    ui.separator();
+
+                    // Terrain
+                    ui.label(RichText::new("Terrain").small().color(section_label_color));
+                    for template in spawn::templates_by_category(Category::Terrain) {
+                        if menu_item(ui, template.name) {
+                            let _entity = (template.spawn)(commands, meshes, materials, None);
                             ui.close();
                         }
                     }
                 });
+
+                separator(ui, theme);
+
+                // === Brush Tools ===
+                let brush_color = Color32::from_rgb(100, 180, 220); // Light blue for brushes
+                let in_brush_mode = gizmo.tool == EditorTool::Brush;
+
+                // Block brush
+                let block_active = in_brush_mode && brush_settings.selected_brush == BrushType::Block;
+                let block_resp = tool_button(ui, CUBE, button_size, block_active, brush_color, inactive_color);
+                if block_resp.clicked() {
+                    gizmo.tool = EditorTool::Brush;
+                    brush_settings.selected_brush = BrushType::Block;
+                }
+                block_resp.on_hover_text("Block Brush (B)");
+
+                // Floor brush
+                let floor_active = in_brush_mode && brush_settings.selected_brush == BrushType::Floor;
+                let floor_resp = tool_button(ui, SQUARE, button_size, floor_active, brush_color, inactive_color);
+                if floor_resp.clicked() {
+                    gizmo.tool = EditorTool::Brush;
+                    brush_settings.selected_brush = BrushType::Floor;
+                }
+                floor_resp.on_hover_text("Floor Brush");
+
+                // Wall brush
+                let wall_active = in_brush_mode && brush_settings.selected_brush == BrushType::Wall;
+                let wall_resp = tool_button(ui, FRAME_CORNERS, button_size, wall_active, brush_color, inactive_color);
+                if wall_resp.clicked() {
+                    gizmo.tool = EditorTool::Brush;
+                    brush_settings.selected_brush = BrushType::Wall;
+                }
+                wall_resp.on_hover_text("Wall Brush");
+
+                // Stairs brush
+                let stairs_active = in_brush_mode && brush_settings.selected_brush == BrushType::Stairs;
+                let stairs_resp = tool_button(ui, STACK, button_size, stairs_active, brush_color, inactive_color);
+                if stairs_resp.clicked() {
+                    gizmo.tool = EditorTool::Brush;
+                    brush_settings.selected_brush = BrushType::Stairs;
+                }
+                stairs_resp.on_hover_text("Stairs Brush");
+
+                // Ramp brush
+                let ramp_active = in_brush_mode && brush_settings.selected_brush == BrushType::Ramp;
+                let ramp_resp = tool_button(ui, ARROW_FAT_LINE_UP, button_size, ramp_active, brush_color, inactive_color);
+                if ramp_resp.clicked() {
+                    gizmo.tool = EditorTool::Brush;
+                    brush_settings.selected_brush = BrushType::Ramp;
+                }
+                ramp_resp.on_hover_text("Ramp Brush");
+
+                // === Terrain Tools (shown when terrain is selected) ===
+                if terrain_selected {
+                    separator(ui, theme);
+
+                    let terrain_color = Color32::from_rgb(120, 180, 100); // Green for terrain
+                    let in_terrain_mode = gizmo.tool == EditorTool::TerrainSculpt;
+
+                    // Raise brush
+                    let raise_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::Raise;
+                    let raise_resp = tool_button(ui, ARROW_UP, button_size, raise_active, terrain_color, inactive_color);
+                    if raise_resp.clicked() {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                        terrain_settings.brush_type = TerrainBrushType::Raise;
+                    }
+                    raise_resp.on_hover_text("Raise Terrain (T)");
+
+                    // Lower brush
+                    let lower_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::Lower;
+                    let lower_resp = tool_button(ui, ARROW_DOWN, button_size, lower_active, terrain_color, inactive_color);
+                    if lower_resp.clicked() {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                        terrain_settings.brush_type = TerrainBrushType::Lower;
+                    }
+                    lower_resp.on_hover_text("Lower Terrain");
+
+                    // Smooth brush
+                    let smooth_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::Smooth;
+                    let smooth_resp = tool_button(ui, WAVES, button_size, smooth_active, terrain_color, inactive_color);
+                    if smooth_resp.clicked() {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                        terrain_settings.brush_type = TerrainBrushType::Smooth;
+                    }
+                    smooth_resp.on_hover_text("Smooth Terrain");
+
+                    // Flatten brush
+                    let flatten_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::Flatten;
+                    let flatten_resp = tool_button(ui, MINUS, button_size, flatten_active, terrain_color, inactive_color);
+                    if flatten_resp.clicked() {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                        terrain_settings.brush_type = TerrainBrushType::Flatten;
+                    }
+                    flatten_resp.on_hover_text("Flatten Terrain");
+
+                    // Set Height brush
+                    let set_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::SetHeight;
+                    let set_resp = tool_button(ui, CROSSHAIR, button_size, set_active, terrain_color, inactive_color);
+                    if set_resp.clicked() {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                        terrain_settings.brush_type = TerrainBrushType::SetHeight;
+                    }
+                    set_resp.on_hover_text("Set Height");
+
+                    // Brush settings sliders
+                    ui.add_space(8.0);
+
+                    // Size slider
+                    ui.add(
+                        egui::Slider::new(&mut terrain_settings.brush_radius, 1.0..=50.0)
+                            .text("Size")
+                            .fixed_decimals(1)
+                    );
+
+                    // Strength slider
+                    ui.add(
+                        egui::Slider::new(&mut terrain_settings.brush_strength, 0.01..=1.0)
+                            .text("Strength")
+                            .fixed_decimals(2)
+                    );
+
+                    // Hardness toggle (falloff)
+                    let hardness_label = if terrain_settings.falloff > 0.5 { "Soft" } else { "Hard" };
+                    if ui.small_button(hardness_label).clicked() {
+                        terrain_settings.falloff = if terrain_settings.falloff > 0.5 { 0.0 } else { 1.0 };
+                    }
+                }
 
                 separator(ui, theme);
 

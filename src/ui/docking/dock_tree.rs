@@ -41,6 +41,7 @@ pub enum PanelId {
     PhysicsDebug,
     CameraDebug,
     SystemProfiler,
+    LevelTools,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -69,6 +70,7 @@ impl PanelId {
             PanelId::PhysicsDebug => "Physics Debug",
             PanelId::CameraDebug => "Camera Debug",
             PanelId::SystemProfiler => "System Profiler",
+            PanelId::LevelTools => "Level Tools",
             PanelId::Plugin(name) => name,
         }
     }
@@ -96,6 +98,7 @@ impl PanelId {
             PanelId::PhysicsDebug => ATOM,
             PanelId::CameraDebug => VIDEO_CAMERA,
             PanelId::SystemProfiler => TIMER,
+            PanelId::LevelTools => CUBE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

@@ -260,9 +260,10 @@ fn render_two_column_layout(
 
     let screen_rect = ui.max_rect();
     let column_gap = 60.0;
-    let content_width = (screen_rect.width() - 120.0 - column_gap).min(900.0);
-    let left_width = content_width * 0.5;
-    let right_width = content_width * 0.5;
+    // Ensure minimum sizes to prevent negative dimensions
+    let content_width = (screen_rect.width() - 120.0 - column_gap).clamp(200.0, 900.0);
+    let left_width = (content_width * 0.5).max(100.0);
+    let right_width = (content_width * 0.5).max(100.0);
     let content_height = 350.0;
 
     let start_x = (screen_rect.width() - content_width - column_gap) / 2.0 + screen_rect.min.x;
@@ -296,7 +297,7 @@ fn render_two_column_layout(
             ui.label(RichText::new("NEW PROJECT").size(11.0).color(text_muted).strong());
             ui.add_space(12.0);
 
-            let input_width = left_width - 10.0;
+            let input_width = (left_width - 10.0).max(50.0);
             ui.add_sized(
                 Vec2::new(input_width, 36.0),
                 egui::TextEdit::singleline(&mut settings.new_project_name)
@@ -308,7 +309,7 @@ fn render_two_column_layout(
 
             // Buttons row
             ui.horizontal(|ui| {
-                let btn_width = (input_width - 8.0) / 2.0;
+                let btn_width = ((input_width - 8.0) / 2.0).max(40.0);
 
                 let create_btn = egui::Button::new(
                     RichText::new("Create Project").color(Color32::WHITE)
@@ -388,7 +389,7 @@ fn render_two_column_layout(
                 egui::ScrollArea::vertical()
                     .max_height(310.0)
                     .show(ui, |ui| {
-                        let item_width = right_width - 10.0;
+                        let item_width = (right_width - 10.0).max(50.0);
 
                         for (idx, project_path) in app_config.recent_projects.iter().enumerate() {
                             let display_name = project_path

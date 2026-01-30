@@ -4,13 +4,9 @@ use bevy::prelude::*;
 use bevy::scene::DynamicSceneBuilder;
 use std::path::Path;
 
-use crate::core::{EditorEntity, SceneNode, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState, WorldEnvironmentMarker};
-use crate::shared::{
-    MeshNodeData, CameraNodeData, CameraRigData, MeshInstanceData, SceneInstanceData,
-    PhysicsBodyData, CollisionShapeData, Sprite2DData, Camera2DData,
-    UIPanelData, UILabelData, UIButtonData, UIImageData,
-};
-use crate::scripting::ScriptComponent;
+use crate::core::{EditorEntity, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState};
+
+use super::saveable::SceneSaveableRegistry;
 
 /// Editor-only metadata stored as a resource in the scene file.
 /// This is stripped during export so it doesn't appear in the runtime.
@@ -43,7 +39,7 @@ pub fn save_scene_bevy(
 
     // Collect entities for this scene tab
     let entities: Vec<Entity> = {
-        let mut query = world.query_filtered::<(Entity, &SceneTabId), With<SceneNode>>();
+        let mut query = world.query_filtered::<(Entity, &SceneTabId), With<crate::core::SceneNode>>();
         query
             .iter(world)
             .filter(|(_, tab_id)| tab_id.0 == current_tab)
@@ -55,43 +51,19 @@ pub fn save_scene_bevy(
     let meta = collect_editor_meta(world, current_tab);
     world.insert_resource(meta);
 
+    // Get the saveable registry to know which components to save
+    let saveable_registry = world.resource::<SceneSaveableRegistry>();
+
     // Build the dynamic scene with allowed components and resources
-    let scene = DynamicSceneBuilder::from_world(world)
+    let builder = DynamicSceneBuilder::from_world(world)
         .deny_all()
         // Editor metadata resource
-        .allow_resource::<EditorSceneMetadata>()
-        // Core Bevy components
-        .allow_component::<Transform>()
-        .allow_component::<Name>()
-        // Note: We only save ChildOf, not Children. Children references may point to
-        // entities that aren't saved (e.g., spawned GLB meshes). Bevy reconstructs
-        // Children automatically from ChildOf relationships when the scene loads.
-        .allow_component::<ChildOf>()
-        // Editor components
-        .allow_component::<EditorEntity>()
-        .allow_component::<SceneNode>()
-        // Shared game components
-        .allow_component::<MeshNodeData>()
-        .allow_component::<CameraNodeData>()
-        .allow_component::<CameraRigData>()
-        .allow_component::<MeshInstanceData>()
-        .allow_component::<SceneInstanceData>()
-        .allow_component::<PhysicsBodyData>()
-        .allow_component::<CollisionShapeData>()
-        .allow_component::<Sprite2DData>()
-        .allow_component::<Camera2DData>()
-        .allow_component::<UIPanelData>()
-        .allow_component::<UILabelData>()
-        .allow_component::<UIButtonData>()
-        .allow_component::<UIImageData>()
-        // Scripting
-        .allow_component::<ScriptComponent>()
-        // Environment
-        .allow_component::<WorldEnvironmentMarker>()
-        // Lights (Bevy built-in)
-        .allow_component::<PointLight>()
-        .allow_component::<DirectionalLight>()
-        .allow_component::<SpotLight>()
+        .allow_resource::<EditorSceneMetadata>();
+
+    // Apply all registered saveable components (takes and returns ownership)
+    let builder = saveable_registry.allow_all(builder);
+
+    let scene = builder
         .extract_entities(entities.into_iter())
         .extract_resources()
         .build();
