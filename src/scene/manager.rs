@@ -612,18 +612,22 @@ pub fn auto_save_scene(
         scene_state.auto_save_timer = 0.0;
 
         // Check if current scene is modified and has a path
-        let should_save = {
-            if let Some(tab) = scene_state.active_tab() {
-                tab.is_modified && tab.path.is_some()
-            } else {
-                false
-            }
+        let (is_modified, has_path, scene_name) = if let Some(tab) = scene_state.active_tab() {
+            (tab.is_modified, tab.path.is_some(), tab.name.clone())
+        } else {
+            (false, false, "None".to_string())
         };
 
-        if should_save {
+        info!("Auto-save check: scene={}, is_modified={}, has_path={}", scene_name, is_modified, has_path);
+
+        if is_modified && has_path {
             // Request a save
             scene_state.save_scene_requested = true;
             info!("Auto-saving scene...");
+            console_info!("Scene", "Auto-saving...");
+        } else if !has_path && is_modified {
+            // Scene is modified but not yet saved - inform user
+            info!("Auto-save skipped: scene has unsaved changes but no file path (save manually first)");
         }
     }
 }

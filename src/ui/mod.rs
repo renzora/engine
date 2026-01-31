@@ -685,6 +685,7 @@ pub fn editor_ui(
                             &mut editor.app_config,
                             &mut editor.update_state,
                             &mut editor.update_dialog,
+                            &mut editor.scene_state,
                         );
                     });
                 }

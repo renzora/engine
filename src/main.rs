@@ -474,6 +474,7 @@ fn load_editor_state(
     mut docking: ResMut<core::DockingState>,
     mut loaded_state: ResMut<project::LoadedEditorState>,
     mut theme_manager: ResMut<theming::ThemeManager>,
+    mut scene_state: ResMut<core::SceneManagerState>,
 ) {
     let Some(project) = current_project else { return };
 
@@ -504,6 +505,10 @@ fn load_editor_state(
     settings.render_toggles.wireframe = state.settings.render.wireframe;
     settings.render_toggles.lighting = state.settings.render.lighting;
     settings.render_toggles.shadows = state.settings.render.shadows;
+
+    // Apply auto-save settings
+    scene_state.auto_save_enabled = state.settings.auto_save_enabled;
+    scene_state.auto_save_interval = state.settings.auto_save_interval.clamp(10.0, 600.0);
 
     // Apply asset browser settings
     assets.zoom = state.asset_browser.zoom;
@@ -545,6 +550,7 @@ fn save_editor_state_periodic(
     assets: Res<core::AssetBrowserState>,
     docking: Res<core::DockingState>,
     theme_manager: Res<theming::ThemeManager>,
+    scene_state: Res<core::SceneManagerState>,
     mut dirty: ResMut<project::EditorStateDirty>,
 ) {
     timer.0.tick(time.delta());
@@ -580,6 +586,8 @@ fn save_editor_state_periodic(
                 lighting: settings.render_toggles.lighting,
                 shadows: settings.render_toggles.shadows,
             },
+            auto_save_enabled: scene_state.auto_save_enabled,
+            auto_save_interval: scene_state.auto_save_interval,
         },
         asset_browser: project::editor_state::AssetBrowserConfig {
             zoom: assets.zoom,

@@ -1,7 +1,7 @@
 use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Stroke, Vec2};
 
-use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, bindable_keys};
+use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, SceneManagerState, bindable_keys};
 use crate::project::AppConfig;
 use crate::theming::{Theme, ThemeManager};
 use crate::update::{UpdateState, UpdateDialogState};
@@ -10,7 +10,7 @@ use crate::update::{UpdateState, UpdateDialogState};
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
     TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE, ARROW_CLOCKWISE,
-    DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING,
+    DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK,
 };
 
 /// Background colors for alternating rows (matching inspector)
@@ -30,6 +30,7 @@ pub fn render_settings_content(
     app_config: &mut AppConfig,
     update_state: &mut UpdateState,
     update_dialog: &mut UpdateDialogState,
+    scene_state: &mut SceneManagerState,
 ) {
     // Clone the theme to avoid borrow conflicts with theme editor tab
     let theme_clone = theme_manager.active_theme.clone();
@@ -50,7 +51,7 @@ pub fn render_settings_content(
 
         // Tab content
         match settings.settings_tab {
-            SettingsTab::General => render_general_tab(ui, settings, theme),
+            SettingsTab::General => render_general_tab(ui, settings, scene_state, theme),
             SettingsTab::Viewport => render_viewport_tab(ui, settings, theme),
             SettingsTab::Shortcuts => render_shortcuts_tab(ui, keybindings, theme),
             SettingsTab::Theme => render_theme_tab(ui, theme_manager),
@@ -119,6 +120,13 @@ impl SettingsCategoryStyle {
         Self {
             accent_color: Color32::from_rgb(100, 200, 160),  // Teal
             header_bg: Color32::from_rgb(35, 50, 48),
+        }
+    }
+
+    fn auto_save() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(120, 180, 230),  // Light blue
+            header_bg: Color32::from_rgb(35, 42, 52),
         }
     }
 }
@@ -269,7 +277,42 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     });
 }
 
-fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, _theme: &Theme) {
+fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_state: &mut SceneManagerState, _theme: &Theme) {
+    // Auto Save Section
+    render_settings_category(
+        ui,
+        FLOPPY_DISK,
+        "Auto Save",
+        SettingsCategoryStyle::auto_save(),
+        "settings_auto_save",
+        true,
+        |ui| {
+            settings_row(ui, 0, "Enabled", |ui| {
+                ui.checkbox(&mut scene_state.auto_save_enabled, "Auto-save when modified")
+            });
+
+            settings_row(ui, 1, "Interval", |ui| {
+                ui.horizontal(|ui| {
+                    let response = ui.add(egui::DragValue::new(&mut scene_state.auto_save_interval)
+                        .range(10.0..=600.0)
+                        .speed(1.0)
+                        .suffix(" sec"));
+
+                    // Show human-readable time
+                    let mins = (scene_state.auto_save_interval / 60.0).floor() as i32;
+                    let secs = (scene_state.auto_save_interval % 60.0) as i32;
+                    let time_str = if mins > 0 {
+                        format!("({}m {}s)", mins, secs)
+                    } else {
+                        format!("({}s)", secs)
+                    };
+                    ui.label(egui::RichText::new(time_str).size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    response
+                }).inner
+            });
+        },
+    );
+
     // Camera Section
     render_settings_category(
         ui,

@@ -92,6 +92,20 @@ pub struct SettingsConfig {
     /// Render toggles
     #[serde(default)]
     pub render: RenderConfig,
+    /// Auto-save enabled
+    #[serde(default = "default_auto_save_enabled")]
+    pub auto_save_enabled: bool,
+    /// Auto-save interval in seconds
+    #[serde(default = "default_auto_save_interval")]
+    pub auto_save_interval: f32,
+}
+
+fn default_auto_save_enabled() -> bool {
+    true
+}
+
+fn default_auto_save_interval() -> f32 {
+    30.0
 }
 
 impl Default for SettingsConfig {
@@ -104,6 +118,8 @@ impl Default for SettingsConfig {
             grid_divisions: 10,
             grid_color: [0.3, 0.3, 0.3],
             render: RenderConfig::default(),
+            auto_save_enabled: default_auto_save_enabled(),
+            auto_save_interval: default_auto_save_interval(),
         }
     }
 }
