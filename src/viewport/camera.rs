@@ -87,32 +87,49 @@ pub fn camera_controller(
 
     // Handle cursor visibility and grab mode for camera dragging
     // Only start camera drag when click ORIGINATES inside the viewport
+    let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     if let Ok(mut cursor) = cursor_query.single_mut() {
         // Start camera drag only when mouse button is first pressed while inside viewport
         let start_drag = viewport.hovered && !alt_held &&
-            (left_just_pressed || right_just_pressed);
+            (left_just_pressed || middle_just_pressed || right_just_pressed);
 
         if start_drag {
             cursor.visible = false;
             cursor.grab_mode = CursorGrabMode::Locked;
             viewport.camera_dragging = true;
-        } else if left_just_released || right_just_released {
+        } else if left_just_released || middle_just_released || right_just_released {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
             viewport.camera_dragging = false;
         }
     }
 
-    // Clear accumulated events on first frame of button press to prevent jump
-    if left_just_pressed || middle_just_pressed || right_just_pressed {
+    // Scroll wheel - zoom (works when hovering, doesn't require drag)
+    let mut scroll_changed = false;
+    for ev in scroll_events.read() {
+        orbit.distance -= ev.y * zoom_speed;
+        orbit.distance = orbit.distance.clamp(0.5, 100.0);
+        scroll_changed = true;
+    }
+
+    // If scroll changed but no drag, just update camera position and return
+    if scroll_changed && !viewport.camera_dragging {
+        let cam_pos = orbit.focus
+            + Vec3::new(
+                orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.distance * orbit.pitch.sin(),
+                orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+        transform.translation = cam_pos;
+        transform.look_at(orbit.focus, Vec3::Y);
         mouse_motion.clear();
         return;
     }
 
-    // Scroll wheel - zoom (works when hovering, doesn't require drag)
-    for ev in scroll_events.read() {
-        orbit.distance -= ev.y * zoom_speed;
-        orbit.distance = orbit.distance.clamp(0.5, 100.0);
+    // Clear accumulated events on first frame of button press to prevent jump
+    if left_just_pressed || middle_just_pressed || right_just_pressed {
+        mouse_motion.clear();
+        return;
     }
 
     // Only process mouse drag camera controls if the drag started inside the viewport

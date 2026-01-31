@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
-use crate::core::{KeyBindings, EditorAction, InputFocusState, SelectionState, OrbitCameraState, EditorSettings, PlayModeState};
+use crate::core::{KeyBindings, EditorAction, InputFocusState, SelectionState, OrbitCameraState, EditorSettings, PlayModeState, ViewportState};
 use crate::gizmo::{EditorTool, GizmoMode, GizmoState, ModalTransformState};
 
 pub fn handle_selection(
@@ -12,6 +12,7 @@ pub fn handle_selection(
     mut command_history: ResMut<CommandHistory>,
     mut modal: ResMut<ModalTransformState>,
     input_focus: Res<InputFocusState>,
+    viewport: Res<ViewportState>,
 ) {
     // Don't process keybindings while rebinding
     if keybindings.rebinding.is_some() {
@@ -25,6 +26,11 @@ pub fn handle_selection(
 
     // Don't process shortcuts when a text input is focused
     if input_focus.egui_wants_keyboard {
+        return;
+    }
+
+    // Don't process tool shortcuts while camera is being controlled (right-click held)
+    if viewport.camera_dragging {
         return;
     }
 
@@ -87,6 +93,7 @@ pub fn handle_view_angles(
     mut orbit: ResMut<OrbitCameraState>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
+    viewport: Res<ViewportState>,
 ) {
     // Don't process keybindings while rebinding
     if keybindings.rebinding.is_some() {
@@ -100,6 +107,11 @@ pub fn handle_view_angles(
 
     // Don't process shortcuts when a text input is focused
     if input_focus.egui_wants_keyboard {
+        return;
+    }
+
+    // Don't process view shortcuts while camera is being controlled
+    if viewport.camera_dragging {
         return;
     }
 
@@ -142,6 +154,7 @@ pub fn handle_view_toggles(
     mut settings: ResMut<EditorSettings>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
+    viewport: Res<ViewportState>,
 ) {
     // Don't process keybindings while rebinding
     if keybindings.rebinding.is_some() {
@@ -155,6 +168,11 @@ pub fn handle_view_toggles(
 
     // Don't process shortcuts when a text input is focused
     if input_focus.egui_wants_keyboard {
+        return;
+    }
+
+    // Don't process view toggles while camera is being controlled
+    if viewport.camera_dragging {
         return;
     }
 

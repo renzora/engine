@@ -343,13 +343,19 @@ impl KeyBindings {
         }
     }
 
-    /// Check if an action key was just pressed this frame (with modifier check)
+    /// Check if an action key was just pressed this frame (with exact modifier check)
     pub fn just_pressed(&self, action: EditorAction, keyboard: &ButtonInput<KeyCode>) -> bool {
         if let Some(binding) = self.bindings.get(&action) {
             let key_just_pressed = keyboard.just_pressed(binding.key);
-            let ctrl_ok = !binding.ctrl || keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
-            let shift_ok = !binding.shift || keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
-            let alt_ok = !binding.alt || keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
+            let ctrl_pressed = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+            let shift_pressed = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+            let alt_pressed = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
+
+            // Exact modifier matching: modifiers must match exactly
+            // (e.g., Ctrl+Z won't trigger a binding for just Z)
+            let ctrl_ok = binding.ctrl == ctrl_pressed;
+            let shift_ok = binding.shift == shift_pressed;
+            let alt_ok = binding.alt == alt_pressed;
 
             key_just_pressed && ctrl_ok && shift_ok && alt_ok
         } else {
