@@ -44,6 +44,8 @@ pub struct ViewportState {
     pub bottom_panel_minimized: bool,
     /// Previous height before minimizing (for restore)
     pub bottom_panel_prev_height: f32,
+    /// Whether the camera is being dragged (to prevent selection on release)
+    pub camera_dragging: bool,
 }
 
 impl Default for ViewportState {
@@ -60,6 +62,7 @@ impl Default for ViewportState {
             viewport_mode: ViewportMode::default(),
             bottom_panel_minimized: false,
             bottom_panel_prev_height: 200.0,
+            camera_dragging: false,
         }
     }
 }

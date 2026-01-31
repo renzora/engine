@@ -20,7 +20,7 @@ pub use physics::{
     draw_physics_gizmos, draw_collider_edit_handles, collider_edit_selection_sync,
     collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,
 };
-pub use state::{ColliderEditHandle, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings};
+pub use state::{ColliderEditHandle, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget};
 pub use modal_transform::{
     ModalTransformState, AxisConstraint,
     modal_transform_input_system, modal_transform_keyboard_system,

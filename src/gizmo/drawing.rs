@@ -6,7 +6,7 @@ use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 
 use super::modal_transform::ModalTransformState;
-use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, SnapTarget, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
@@ -176,6 +176,76 @@ pub fn draw_selection_gizmo(
             gizmos.line(pos, pos + Vec3::Z * gizmo_size, z_color);
             gizmos.cube(Transform::from_translation(pos + Vec3::Z * gizmo_size).with_scale(Vec3::splat(0.15)), z_color);
         }
+    }
+
+    // Draw snap indicator when snapping is active
+    if gizmo_state.is_dragging {
+        draw_snap_indicator(&mut gizmos, &gizmo_state, pos);
+    }
+}
+
+/// Draw visual indicator when snapping to an object or the floor
+fn draw_snap_indicator(
+    gizmos: &mut Gizmos<SelectionGizmoGroup>,
+    gizmo_state: &GizmoState,
+    current_pos: Vec3,
+) {
+    let snap_color = Color::srgb(0.0, 1.0, 0.5); // Bright green for snap indicator
+    let floor_color = Color::srgb(0.5, 0.8, 1.0); // Light blue for floor snap
+
+    match gizmo_state.snap_target {
+        SnapTarget::Entity(_) => {
+            if let Some(target_pos) = gizmo_state.snap_target_position {
+                // Draw a line connecting the two objects
+                gizmos.line(current_pos, target_pos, snap_color);
+
+                // Draw a diamond/cross at the snap target
+                let indicator_size = 0.2;
+                gizmos.line(
+                    target_pos + Vec3::new(-indicator_size, 0.0, 0.0),
+                    target_pos + Vec3::new(indicator_size, 0.0, 0.0),
+                    snap_color,
+                );
+                gizmos.line(
+                    target_pos + Vec3::new(0.0, -indicator_size, 0.0),
+                    target_pos + Vec3::new(0.0, indicator_size, 0.0),
+                    snap_color,
+                );
+                gizmos.line(
+                    target_pos + Vec3::new(0.0, 0.0, -indicator_size),
+                    target_pos + Vec3::new(0.0, 0.0, indicator_size),
+                    snap_color,
+                );
+
+                // Draw a small ring around the snapped position
+                let iso = bevy::math::Isometry3d::new(target_pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+                gizmos.circle(iso, 0.15, snap_color);
+            }
+        }
+        SnapTarget::Floor => {
+            if let Some(floor_pos) = gizmo_state.snap_target_position {
+                // Draw vertical line from object to floor
+                gizmos.line(current_pos, floor_pos, floor_color);
+
+                // Draw a cross on the floor plane
+                let indicator_size = 0.3;
+                gizmos.line(
+                    floor_pos + Vec3::new(-indicator_size, 0.0, 0.0),
+                    floor_pos + Vec3::new(indicator_size, 0.0, 0.0),
+                    floor_color,
+                );
+                gizmos.line(
+                    floor_pos + Vec3::new(0.0, 0.0, -indicator_size),
+                    floor_pos + Vec3::new(0.0, 0.0, indicator_size),
+                    floor_color,
+                );
+
+                // Draw a small circle on the floor
+                let iso = bevy::math::Isometry3d::new(floor_pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+                gizmos.circle(iso, 0.2, floor_color);
+            }
+        }
+        SnapTarget::None => {}
     }
 }
 

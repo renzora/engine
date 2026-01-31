@@ -7,7 +7,7 @@ use crate::gizmo::ModalTransformState;
 
 pub fn camera_controller(
     selection: Res<SelectionState>,
-    viewport: Res<ViewportState>,
+    mut viewport: ResMut<ViewportState>,
     mut orbit: ResMut<OrbitCameraState>,
     settings: Res<EditorSettings>,
     time: Res<Time>,
@@ -54,13 +54,13 @@ pub fn camera_controller(
         return;
     }
 
-    // Get camera settings
+    // Get camera settings (slow_mult applied later after Ctrl check)
     let cam_settings = &settings.camera_settings;
-    let look_speed = cam_settings.look_sensitivity * 0.01;
-    let orbit_speed = cam_settings.orbit_sensitivity * 0.01;
-    let pan_speed = cam_settings.pan_sensitivity * 0.01;
-    let zoom_speed = cam_settings.zoom_sensitivity;
-    let move_speed = cam_settings.move_speed;
+    let base_look_speed = cam_settings.look_sensitivity * 0.01;
+    let base_orbit_speed = cam_settings.orbit_sensitivity * 0.01;
+    let base_pan_speed = cam_settings.pan_sensitivity * 0.01;
+    let base_zoom_speed = cam_settings.zoom_sensitivity;
+    let base_move_speed = cam_settings.move_speed;
     let invert_y = if cam_settings.invert_y { -1.0 } else { 1.0 };
     let delta = time.delta_secs();
 
@@ -73,17 +73,33 @@ pub fn camera_controller(
     let left_just_released = mouse_button.just_released(MouseButton::Left);
     let right_just_released = mouse_button.just_released(MouseButton::Right);
     let alt_held = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
+    let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+
+    // Slow modifier when Ctrl is held (0.25x speed)
+    let slow_mult = if ctrl_held { 0.25 } else { 1.0 };
+
+    // Apply slow modifier to speeds
+    let look_speed = base_look_speed * slow_mult;
+    let orbit_speed = base_orbit_speed * slow_mult;
+    let pan_speed = base_pan_speed * slow_mult;
+    let zoom_speed = base_zoom_speed * slow_mult;
+    let move_speed = base_move_speed * slow_mult;
 
     // Handle cursor visibility and grab mode for camera dragging
+    // Only start camera drag when click ORIGINATES inside the viewport
     if let Ok(mut cursor) = cursor_query.single_mut() {
-        let should_grab = viewport.hovered && (left_pressed || right_pressed) && !alt_held;
+        // Start camera drag only when mouse button is first pressed while inside viewport
+        let start_drag = viewport.hovered && !alt_held &&
+            (left_just_pressed || right_just_pressed);
 
-        if should_grab {
+        if start_drag {
             cursor.visible = false;
             cursor.grab_mode = CursorGrabMode::Locked;
+            viewport.camera_dragging = true;
         } else if left_just_released || right_just_released {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
+            viewport.camera_dragging = false;
         }
     }
 
@@ -93,10 +109,16 @@ pub fn camera_controller(
         return;
     }
 
-    // Scroll wheel - zoom
+    // Scroll wheel - zoom (works when hovering, doesn't require drag)
     for ev in scroll_events.read() {
         orbit.distance -= ev.y * zoom_speed;
         orbit.distance = orbit.distance.clamp(0.5, 100.0);
+    }
+
+    // Only process mouse drag camera controls if the drag started inside the viewport
+    if !viewport.camera_dragging {
+        mouse_motion.clear();
+        return;
     }
 
     // === UNREAL ENGINE STYLE CAMERA CONTROLS ===

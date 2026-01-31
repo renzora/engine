@@ -54,6 +54,14 @@ pub struct SnapSettings {
     pub scale_enabled: bool,
     /// Scale snap increment
     pub scale_snap: f32,
+    /// Enable snap to nearby objects
+    pub object_snap_enabled: bool,
+    /// Distance threshold for snapping to objects (in units)
+    pub object_snap_distance: f32,
+    /// Enable snap to floor when no objects nearby
+    pub floor_snap_enabled: bool,
+    /// Y position of the floor
+    pub floor_y: f32,
 }
 
 impl Default for SnapSettings {
@@ -65,6 +73,10 @@ impl Default for SnapSettings {
             rotate_snap: 15.0,
             scale_enabled: false,
             scale_snap: 0.25,
+            object_snap_enabled: true,
+            object_snap_distance: 0.5,
+            floor_snap_enabled: true,
+            floor_y: 0.0,
         }
     }
 }
@@ -144,6 +156,23 @@ impl BoxSelectionState {
         let dx = (self.current_pos[0] - self.start_pos[0]).abs();
         let dy = (self.current_pos[1] - self.start_pos[1]).abs();
         dx > 5.0 || dy > 5.0
+    }
+}
+
+/// What the object is currently snapping to
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum SnapTarget {
+    /// Snapping to another entity's position
+    Entity(Entity),
+    /// Snapping to the floor
+    Floor,
+    /// No snapping active
+    None,
+}
+
+impl Default for SnapTarget {
+    fn default() -> Self {
+        Self::None
     }
 }
 
@@ -231,6 +260,10 @@ pub struct GizmoState {
     pub box_selection: BoxSelectionState,
     /// Collider edit mode state
     pub collider_edit: ColliderEditState,
+    /// Current snap target (for visual feedback)
+    pub snap_target: SnapTarget,
+    /// Position of the snap target (for drawing snap indicator)
+    pub snap_target_position: Option<Vec3>,
 }
 
 impl Default for GizmoState {
@@ -251,6 +284,8 @@ impl Default for GizmoState {
             drag_entity: None,
             box_selection: BoxSelectionState::default(),
             collider_edit: ColliderEditState::default(),
+            snap_target: SnapTarget::default(),
+            snap_target_position: None,
         }
     }
 }

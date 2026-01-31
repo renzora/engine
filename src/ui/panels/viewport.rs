@@ -231,7 +231,7 @@ fn render_viewport_tabs(
             x_pos += button_size.x + 4.0;
 
             // Snap Dropdown
-            let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled;
+            let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled || gizmo.snap.object_snap_enabled || gizmo.snap.floor_snap_enabled;
             let snap_color = if any_snap_enabled {
                 active_color
             } else {
@@ -468,6 +468,52 @@ fn viewport_snap_dropdown(
                         .range(0.01..=10.0)
                         .speed(0.05)
                         .max_decimals(2)
+                );
+            });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Object Snapping").small().color(label_color));
+            ui.add_space(4.0);
+
+            // Object snap (snap to nearby entities)
+            ui.horizontal(|ui| {
+                let obj_snap_active = snap.object_snap_enabled;
+                if ui.add(
+                    egui::Button::new(RichText::new("Objects").size(12.0))
+                        .fill(if obj_snap_active { active_btn_color } else { inactive_btn_color })
+                        .min_size(Vec2::new(70.0, 20.0))
+                ).clicked() {
+                    snap.object_snap_enabled = !snap.object_snap_enabled;
+                }
+
+                ui.add(
+                    egui::DragValue::new(&mut snap.object_snap_distance)
+                        .range(0.1..=10.0)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" dist")
+                );
+            });
+
+            // Floor snap
+            ui.horizontal(|ui| {
+                let floor_snap_active = snap.floor_snap_enabled;
+                if ui.add(
+                    egui::Button::new(RichText::new("Floor").size(12.0))
+                        .fill(if floor_snap_active { active_btn_color } else { inactive_btn_color })
+                        .min_size(Vec2::new(70.0, 20.0))
+                ).clicked() {
+                    snap.floor_snap_enabled = !snap.floor_snap_enabled;
+                }
+
+                ui.add(
+                    egui::DragValue::new(&mut snap.floor_y)
+                        .range(-1000.0..=1000.0)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" Y")
                 );
             });
         },

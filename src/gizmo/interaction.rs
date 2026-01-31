@@ -10,7 +10,7 @@ use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
 };
-use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn gizmo_hover_system(
     mut gizmo: ResMut<GizmoState>,
@@ -202,6 +202,9 @@ pub fn gizmo_interaction_system(
             gizmo.drag_axis = None;
             gizmo.drag_start_transform = None;
             gizmo.drag_entity = None;
+            // Clear snap target state
+            gizmo.snap_target = super::SnapTarget::None;
+            gizmo.snap_target_position = None;
         }
 
         // Handle box selection end
@@ -288,6 +291,11 @@ pub fn gizmo_interaction_system(
 
     // Only process clicks
     if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    // Skip if camera is being dragged (prevents selection during camera movement)
+    if viewport.camera_dragging {
         return;
     }
 
@@ -488,7 +496,7 @@ fn is_descendant_of(entity: Entity, ancestor: Entity, parents: &Query<&ChildOf, 
 }
 
 pub fn object_drag_system(
-    gizmo: Res<GizmoState>,
+    mut gizmo: ResMut<GizmoState>,
     selection: Res<SelectionState>,
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
@@ -497,6 +505,7 @@ pub fn object_drag_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
+    editor_entities: Query<(Entity, &GlobalTransform), With<EditorEntity>>,
     mut scene_state: ResMut<SceneManagerState>,
 ) {
     // Disable gizmo drag during modal transform
@@ -539,6 +548,11 @@ pub fn object_drag_system(
             rotate_snap: gizmo.snap.rotate_snap.max(15.0), // Use configured snap or default to 15 degrees
             scale_enabled: true,
             scale_snap: gizmo.snap.scale_snap.max(0.25), // Use configured snap or default to 0.25
+            // Preserve object snap settings from gizmo state
+            object_snap_enabled: gizmo.snap.object_snap_enabled,
+            object_snap_distance: gizmo.snap.object_snap_distance,
+            floor_snap_enabled: gizmo.snap.floor_snap_enabled,
+            floor_y: gizmo.snap.floor_y,
         }
     } else {
         gizmo.snap
@@ -594,8 +608,136 @@ pub fn object_drag_system(
                 None => current_pos,
             };
 
-            // Apply position snapping (uses Ctrl-aware snap settings)
-            obj_transform.translation = snap.snap_translate_vec3(new_pos);
+            // Apply grid snapping first (uses Ctrl-aware snap settings)
+            let mut final_pos = snap.snap_translate_vec3(new_pos);
+
+            // Clear previous snap target
+            gizmo.snap_target = SnapTarget::None;
+            gizmo.snap_target_position = None;
+
+            // Apply object snapping if enabled
+            if gizmo.snap.object_snap_enabled {
+                let snap_distance = gizmo.snap.object_snap_distance;
+                let mut closest_entity: Option<Entity> = None;
+                let mut closest_distance = f32::MAX;
+                let mut closest_pos = Vec3::ZERO;
+
+                // Find the nearest object to snap to
+                for (other_entity, other_global) in editor_entities.iter() {
+                    // Skip self
+                    if Some(other_entity) == gizmo.drag_entity {
+                        continue;
+                    }
+
+                    let other_pos = other_global.translation();
+                    let distance = (final_pos - other_pos).length();
+
+                    if distance < snap_distance && distance < closest_distance {
+                        closest_distance = distance;
+                        closest_entity = Some(other_entity);
+                        closest_pos = other_pos;
+                    }
+                }
+
+                // Snap to nearest object if found
+                if let Some(entity) = closest_entity {
+                    // Snap to the object's position based on the current drag axis
+                    match gizmo.drag_axis {
+                        Some(DragAxis::X) => {
+                            if (final_pos.x - closest_pos.x).abs() < snap_distance {
+                                final_pos.x = closest_pos.x;
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::Y) => {
+                            if (final_pos.y - closest_pos.y).abs() < snap_distance {
+                                final_pos.y = closest_pos.y;
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::Z) => {
+                            if (final_pos.z - closest_pos.z).abs() < snap_distance {
+                                final_pos.z = closest_pos.z;
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::XY) => {
+                            let mut snapped = false;
+                            if (final_pos.x - closest_pos.x).abs() < snap_distance {
+                                final_pos.x = closest_pos.x;
+                                snapped = true;
+                            }
+                            if (final_pos.y - closest_pos.y).abs() < snap_distance {
+                                final_pos.y = closest_pos.y;
+                                snapped = true;
+                            }
+                            if snapped {
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::XZ) => {
+                            let mut snapped = false;
+                            if (final_pos.x - closest_pos.x).abs() < snap_distance {
+                                final_pos.x = closest_pos.x;
+                                snapped = true;
+                            }
+                            if (final_pos.z - closest_pos.z).abs() < snap_distance {
+                                final_pos.z = closest_pos.z;
+                                snapped = true;
+                            }
+                            if snapped {
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::YZ) => {
+                            let mut snapped = false;
+                            if (final_pos.y - closest_pos.y).abs() < snap_distance {
+                                final_pos.y = closest_pos.y;
+                                snapped = true;
+                            }
+                            if (final_pos.z - closest_pos.z).abs() < snap_distance {
+                                final_pos.z = closest_pos.z;
+                                snapped = true;
+                            }
+                            if snapped {
+                                gizmo.snap_target = SnapTarget::Entity(entity);
+                                gizmo.snap_target_position = Some(closest_pos);
+                            }
+                        }
+                        Some(DragAxis::Free) | None => {
+                            // Full 3D snap
+                            final_pos = closest_pos;
+                            gizmo.snap_target = SnapTarget::Entity(entity);
+                            gizmo.snap_target_position = Some(closest_pos);
+                        }
+                    }
+                }
+            }
+
+            // Apply floor snapping if enabled and no object snap occurred
+            if gizmo.snap.floor_snap_enabled && gizmo.snap_target == SnapTarget::None {
+                let floor_y = gizmo.snap.floor_y;
+                let snap_distance = gizmo.snap.object_snap_distance;
+
+                // Only snap Y to floor if we're moving on an axis that affects Y
+                let affects_y = matches!(
+                    gizmo.drag_axis,
+                    Some(DragAxis::Y) | Some(DragAxis::XY) | Some(DragAxis::YZ) | Some(DragAxis::Free) | None
+                );
+
+                if affects_y && (final_pos.y - floor_y).abs() < snap_distance {
+                    final_pos.y = floor_y;
+                    gizmo.snap_target = SnapTarget::Floor;
+                    gizmo.snap_target_position = Some(Vec3::new(final_pos.x, floor_y, final_pos.z));
+                }
+            }
+
+            obj_transform.translation = final_pos;
         }
         GizmoMode::Rotate => {
             let pos = obj_transform.translation;
