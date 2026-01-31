@@ -246,6 +246,11 @@ pub fn modal_transform_input_system(
         return;
     }
 
+    // Don't start modal transform while camera is being controlled
+    if viewport.camera_dragging {
+        return;
+    }
+
     // Check for pending grab (from duplicate and move)
     let pending = modal.pending_grab;
     if pending {
