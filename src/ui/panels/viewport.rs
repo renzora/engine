@@ -1,14 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::viewport::Camera2DState;
 use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
-    IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE,
+    IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA,
 };
 
 /// Height of the viewport mode tabs bar
@@ -123,8 +123,8 @@ fn render_viewport_tabs(
     // Center section: Select + Transform tools (4 buttons) + Snap dropdown
     let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown
 
-    // Right section: 4 render toggles + viz dropdown + view angles dropdown
-    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown + view dropdown
+    // Right section: 4 render toggles + viz dropdown + view angles dropdown + camera settings dropdown
+    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown + view dropdown + camera dropdown
 
     // Calculate positions
     let left_start = tabs_rect.min.x + 4.0;
@@ -292,6 +292,12 @@ fn render_viewport_tabs(
             let view_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
             let view_color = theme.text.secondary.to_color32();
             viewport_view_dropdown(ui, ctx, view_rect, CUBE, view_color, inactive_color, hovered_color, text_muted, orbit);
+            x_pos += 36.0 + 4.0;
+
+            // Camera Settings Dropdown
+            let camera_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
+            let camera_color = theme.text.secondary.to_color32();
+            viewport_camera_dropdown(ui, ctx, camera_rect, VIDEO_CAMERA, camera_color, inactive_color, hovered_color, text_muted, settings, theme);
 
             // Handle 3D/2D tab clicks
             if ctx.input(|i| i.pointer.any_click()) {
@@ -719,6 +725,176 @@ fn viewport_view_dropdown(
     );
 
     response.on_hover_text("View Angle");
+}
+
+/// Camera settings dropdown for viewport header
+fn viewport_camera_dropdown(
+    ui: &mut egui::Ui,
+    _ctx: &egui::Context,
+    rect: Rect,
+    icon: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
+    settings: &mut EditorSettings,
+    theme: &Theme,
+) {
+    let button_id = ui.make_persistent_id("viewport_camera_dropdown");
+    let response = ui.allocate_rect(rect, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            hovered_color
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(3), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(11.0),
+            icon_color,
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(8.0),
+            caret_color,
+        );
+    }
+
+    if response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    let label_color = theme.text.muted.to_color32();
+
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(200.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
+
+            ui.label(RichText::new("Camera Settings").small().color(label_color));
+            ui.add_space(4.0);
+
+            // Move Speed
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Move Speed").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut settings.camera_settings.move_speed)
+                            .range(0.1..=100.0)
+                            .speed(0.5)
+                            .max_decimals(1)
+                    );
+                });
+            });
+
+            // Look Sensitivity
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Look Sensitivity").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut settings.camera_settings.look_sensitivity)
+                            .range(0.05..=2.0)
+                            .speed(0.05)
+                            .max_decimals(2)
+                    );
+                });
+            });
+
+            // Orbit Sensitivity
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Orbit Sensitivity").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut settings.camera_settings.orbit_sensitivity)
+                            .range(0.05..=2.0)
+                            .speed(0.05)
+                            .max_decimals(2)
+                    );
+                });
+            });
+
+            // Pan Sensitivity
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Pan Sensitivity").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut settings.camera_settings.pan_sensitivity)
+                            .range(0.1..=5.0)
+                            .speed(0.1)
+                            .max_decimals(1)
+                    );
+                });
+            });
+
+            // Zoom Sensitivity
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Zoom Sensitivity").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut settings.camera_settings.zoom_sensitivity)
+                            .range(0.1..=5.0)
+                            .speed(0.1)
+                            .max_decimals(1)
+                    );
+                });
+            });
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // Invert Y Axis
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Invert Y Axis").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.camera_settings.invert_y, "");
+                });
+            });
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // Reset to Defaults button
+            if ui.add(
+                egui::Button::new(RichText::new("Reset to Defaults").size(12.0))
+                    .min_size(Vec2::new(ui.available_width(), 24.0))
+            ).clicked() {
+                settings.camera_settings = CameraSettings::default();
+            }
+
+            ui.add_space(4.0);
+
+            // Help text
+            ui.label(RichText::new("Controls:").small().color(label_color));
+            ui.label(RichText::new("• RMB Drag: Look around").small().color(label_color));
+            ui.label(RichText::new("• RMB + WASD: Fly mode").small().color(label_color));
+            ui.label(RichText::new("• LMB Drag: Move camera").small().color(label_color));
+            ui.label(RichText::new("• MMB Drag: Orbit").small().color(label_color));
+            ui.label(RichText::new("• Alt + LMB: Orbit").small().color(label_color));
+            ui.label(RichText::new("• Scroll: Zoom").small().color(label_color));
+        },
+    );
+
+    response.on_hover_text("Camera Settings");
 }
 
 /// Render rulers for 2D mode

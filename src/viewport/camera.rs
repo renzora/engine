@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::window::{CursorGrabMode, CursorOptions};
 
 use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
 use crate::gizmo::ModalTransformState;
@@ -19,6 +20,7 @@ pub fn camera_controller(
     entity_query: Query<&Transform, (With<EditorEntity>, Without<ViewportCamera>)>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
+    mut cursor_query: Query<&mut CursorOptions>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
@@ -52,89 +54,174 @@ pub fn camera_controller(
         return;
     }
 
-    let orbit_speed = 0.005;
-    let pan_speed = 0.01;
-    let zoom_speed = 1.0;
-    let move_speed = settings.camera_move_speed;
+    // Get camera settings
+    let cam_settings = &settings.camera_settings;
+    let look_speed = cam_settings.look_sensitivity * 0.01;
+    let orbit_speed = cam_settings.orbit_sensitivity * 0.01;
+    let pan_speed = cam_settings.pan_sensitivity * 0.01;
+    let zoom_speed = cam_settings.zoom_sensitivity;
+    let move_speed = cam_settings.move_speed;
+    let invert_y = if cam_settings.invert_y { -1.0 } else { 1.0 };
     let delta = time.delta_secs();
 
+    let left_pressed = mouse_button.pressed(MouseButton::Left);
     let middle_pressed = mouse_button.pressed(MouseButton::Middle);
     let right_pressed = mouse_button.pressed(MouseButton::Right);
+    let left_just_pressed = mouse_button.just_pressed(MouseButton::Left);
     let middle_just_pressed = mouse_button.just_pressed(MouseButton::Middle);
     let right_just_pressed = mouse_button.just_pressed(MouseButton::Right);
-    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let left_just_released = mouse_button.just_released(MouseButton::Left);
+    let right_just_released = mouse_button.just_released(MouseButton::Right);
+    let alt_held = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
 
-    // Clear accumulated events on first frame of button press to prevent jump
-    if middle_just_pressed || right_just_pressed {
-        mouse_motion.clear();
-        return;
+    // Handle cursor visibility and grab mode for camera dragging
+    if let Ok(mut cursor) = cursor_query.single_mut() {
+        let should_grab = viewport.hovered && (left_pressed || right_pressed) && !alt_held;
+
+        if should_grab {
+            cursor.visible = false;
+            cursor.grab_mode = CursorGrabMode::Locked;
+        } else if left_just_released || right_just_released {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
     }
 
-    // WASD navigation - move the orbit focus point
-    // Only active when right-click is held (fly mode) to avoid conflicts with tool shortcuts
-    if keyboard_enabled && right_pressed {
-        let mut move_delta = Vec3::ZERO;
-
-        // Get camera forward/right on XZ plane
-        let forward = Vec3::new(
-            orbit.yaw.sin(),
-            0.0,
-            orbit.yaw.cos(),
-        ).normalize();
-        let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
-
-        // Forward/backward
-        if keybindings.pressed(EditorAction::CameraMoveForward, &keyboard) {
-            move_delta -= forward;
-        }
-        if keybindings.pressed(EditorAction::CameraMoveBackward, &keyboard) {
-            move_delta += forward;
-        }
-
-        // Left/right
-        if keybindings.pressed(EditorAction::CameraMoveLeft, &keyboard) {
-            move_delta -= right_dir;
-        }
-        if keybindings.pressed(EditorAction::CameraMoveRight, &keyboard) {
-            move_delta += right_dir;
-        }
-
-        // Down/up
-        if keybindings.pressed(EditorAction::CameraMoveDown, &keyboard) {
-            move_delta -= Vec3::Y;
-        }
-        if keybindings.pressed(EditorAction::CameraMoveUp, &keyboard) {
-            move_delta += Vec3::Y;
-        }
-
-        // Apply movement (faster with modifier)
-        if move_delta.length_squared() > 0.0 {
-            let speed_mult = if keybindings.pressed(EditorAction::CameraMoveFaster, &keyboard) { 2.0 } else { 1.0 };
-            orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
-        }
+    // Clear accumulated events on first frame of button press to prevent jump
+    if left_just_pressed || middle_just_pressed || right_just_pressed {
+        mouse_motion.clear();
+        return;
     }
 
     // Scroll wheel - zoom
     for ev in scroll_events.read() {
         orbit.distance -= ev.y * zoom_speed;
-        orbit.distance = orbit.distance.clamp(1.0, 100.0);
+        orbit.distance = orbit.distance.clamp(0.5, 100.0);
     }
 
-    // Middle mouse + Shift OR Right mouse - pan
-    if (middle_pressed && shift_held) || right_pressed {
+    // === UNREAL ENGINE STYLE CAMERA CONTROLS ===
+
+    // Right mouse - Look around + WASD fly mode
+    // Camera position stays fixed during look, WASD moves the camera
+    if right_pressed {
+        // First handle WASD movement
+        if keyboard_enabled {
+            let mut move_delta = Vec3::ZERO;
+
+            // Get camera forward/right on XZ plane
+            let forward = Vec3::new(
+                orbit.yaw.sin(),
+                0.0,
+                orbit.yaw.cos(),
+            ).normalize();
+            let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
+
+            // Forward/backward (W/S)
+            if keybindings.pressed(EditorAction::CameraMoveForward, &keyboard) {
+                move_delta -= forward;
+            }
+            if keybindings.pressed(EditorAction::CameraMoveBackward, &keyboard) {
+                move_delta += forward;
+            }
+
+            // Left/right (A/D)
+            if keybindings.pressed(EditorAction::CameraMoveLeft, &keyboard) {
+                move_delta -= right_dir;
+            }
+            if keybindings.pressed(EditorAction::CameraMoveRight, &keyboard) {
+                move_delta += right_dir;
+            }
+
+            // Down/up (Q/E)
+            if keybindings.pressed(EditorAction::CameraMoveDown, &keyboard) {
+                move_delta -= Vec3::Y;
+            }
+            if keybindings.pressed(EditorAction::CameraMoveUp, &keyboard) {
+                move_delta += Vec3::Y;
+            }
+
+            // Apply WASD movement to focus point
+            if move_delta.length_squared() > 0.0 {
+                let speed_mult = if keybindings.pressed(EditorAction::CameraMoveFaster, &keyboard) { 2.0 } else { 1.0 };
+                orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
+            }
+        }
+
+        // Then handle mouse look (rotate view while staying in place)
+        // Get updated camera position after WASD movement
+        let cam_pos = orbit.focus
+            + Vec3::new(
+                orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.distance * orbit.pitch.sin(),
+                orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+
         for ev in mouse_motion.read() {
-            let right = transform.right();
-            let up = transform.up();
-            let pan_delta = -*right * ev.delta.x * pan_speed * orbit.distance * 0.1
-                + *up * ev.delta.y * pan_speed * orbit.distance * 0.1;
-            orbit.focus += pan_delta;
+            orbit.yaw -= ev.delta.x * look_speed;
+            orbit.pitch += ev.delta.y * look_speed * invert_y;
+            // Clamp pitch to avoid flipping
+            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+        }
+
+        // Recalculate focus point to keep camera in same position
+        let new_dir = Vec3::new(
+            orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.pitch.sin(),
+            orbit.pitch.cos() * orbit.yaw.cos(),
+        );
+        orbit.focus = cam_pos - new_dir * orbit.distance;
+    }
+    // Alt + Left mouse - Orbit around focus point
+    else if left_pressed && alt_held {
+        for ev in mouse_motion.read() {
+            orbit.yaw -= ev.delta.x * orbit_speed;
+            orbit.pitch += ev.delta.y * orbit_speed * invert_y;
+            // Clamp pitch to avoid flipping
+            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
         }
     }
-    // Middle mouse - orbit
+    // Left mouse drag - Forward/backward movement + horizontal look (Unreal style)
+    // Vertical mouse = dolly forward/backward, Horizontal mouse = yaw rotation
+    else if left_pressed && !alt_held {
+        // Movement speed multiplier for left-click drag
+        let drag_move_speed = pan_speed * 3.0;
+
+        for ev in mouse_motion.read() {
+            // 1. Apply forward/backward movement based on vertical mouse
+            let forward = Vec3::new(
+                orbit.yaw.sin(),
+                0.0,
+                orbit.yaw.cos(),
+            ).normalize();
+
+            let move_delta = forward * ev.delta.y * drag_move_speed;
+            orbit.focus += move_delta;
+
+            // 2. Get camera position after movement (before rotation)
+            let cam_pos = orbit.focus
+                + Vec3::new(
+                    orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+                    orbit.distance * orbit.pitch.sin(),
+                    orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
+                );
+
+            // 3. Apply yaw rotation from horizontal mouse only (no pitch change)
+            orbit.yaw -= ev.delta.x * look_speed;
+
+            // 4. Recalculate focus point to keep camera in same position after rotation
+            let new_dir = Vec3::new(
+                orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.pitch.sin(),
+                orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+            orbit.focus = cam_pos - new_dir * orbit.distance;
+        }
+    }
+    // Middle mouse - Orbit around focus point
     else if middle_pressed {
         for ev in mouse_motion.read() {
             orbit.yaw -= ev.delta.x * orbit_speed;
-            orbit.pitch += ev.delta.y * orbit_speed;
+            orbit.pitch += ev.delta.y * orbit_speed * invert_y;
             // Clamp pitch to avoid flipping
             orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
         }

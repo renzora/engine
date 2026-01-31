@@ -79,13 +79,45 @@ pub enum SettingsTab {
     Updates,
 }
 
+/// Camera sensitivity settings
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CameraSettings {
+    /// Movement speed (fly mode)
+    pub move_speed: f32,
+    /// Look/rotation sensitivity
+    pub look_sensitivity: f32,
+    /// Orbit sensitivity
+    pub orbit_sensitivity: f32,
+    /// Pan sensitivity
+    pub pan_sensitivity: f32,
+    /// Zoom sensitivity (scroll wheel)
+    pub zoom_sensitivity: f32,
+    /// Invert Y axis for look/orbit
+    pub invert_y: bool,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            move_speed: 10.0,
+            look_sensitivity: 0.3,
+            orbit_sensitivity: 0.5,
+            pan_sensitivity: 1.0,
+            zoom_sensitivity: 1.0,
+            invert_y: false,
+        }
+    }
+}
+
 /// Editor settings and preferences
 #[derive(Resource)]
 pub struct EditorSettings {
     /// Currently selected settings tab
     pub settings_tab: SettingsTab,
-    /// Camera movement speed
+    /// Camera movement speed (deprecated, use camera_settings.move_speed)
     pub camera_move_speed: f32,
+    /// Camera settings
+    pub camera_settings: CameraSettings,
     /// Whether to show the grid
     pub show_grid: bool,
     /// Size of the grid
@@ -116,6 +148,7 @@ impl Default for EditorSettings {
         Self {
             settings_tab: SettingsTab::default(),
             camera_move_speed: 10.0,
+            camera_settings: CameraSettings::default(),
             show_grid: true,
             grid_size: 10.0,
             grid_divisions: 10,

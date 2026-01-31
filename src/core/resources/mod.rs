@@ -32,7 +32,7 @@ pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
 pub use scene::{BuildError, BuildState, OpenScript, SceneManagerState, SceneTab, ScriptError, TabKind};
 pub use selection::SelectionState;
-pub use settings::{CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
+pub use settings::{CameraSettings, CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
 pub use thumbnails::{ThumbnailCache, supports_thumbnail, supports_model_preview};
 pub use viewport::{BottomPanelTab, RightPanelTab, ViewportState};
 pub use crate::viewport::ViewportMode;
