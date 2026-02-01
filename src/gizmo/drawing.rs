@@ -5,6 +5,7 @@ use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 use crate::core::{EditorEntity, SelectionState};
 use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
+use crate::terrain::TerrainChunkData;
 
 use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, SnapTarget, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
@@ -23,6 +24,7 @@ pub fn update_selection_outlines(
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
     cameras: Query<(), With<CameraNodeData>>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
     // Primary and secondary outline colors
     let primary_color = Color::srgb(1.0, 0.5, 0.0); // Orange
@@ -49,6 +51,11 @@ pub fn update_selection_outlines(
     for &entity in &all_selected {
         // Skip cameras - they have their own gizmo
         if cameras.get(entity).is_ok() {
+            continue;
+        }
+
+        // Skip terrain chunks - they use border highlight instead
+        if terrain_chunks.get(entity).is_ok() {
             continue;
         }
 

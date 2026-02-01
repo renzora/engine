@@ -13,6 +13,7 @@ use bevy::window::CursorOptions;
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{InputFocusState, SelectionState, ViewportState, OrbitCameraState, KeyBindings, EditorAction};
+use crate::terrain::TerrainChunkData;
 
 /// Modal transform mode
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -219,6 +220,7 @@ pub fn modal_transform_input_system(
     windows: Query<&Window>,
     mut cursor_options: Query<&mut CursorOptions>,
     input_focus: Res<InputFocusState>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
     // Don't start new modal if one is active
     if modal.active {
@@ -281,9 +283,10 @@ pub fn modal_transform_input_system(
             cursor.visible = false;
         }
 
-        // Collect starting transforms for all selected entities
+        // Collect starting transforms for all selected entities (excluding terrain chunks)
         let start_transforms: Vec<EntityStartState> = selected
             .iter()
+            .filter(|&&entity| terrain_chunks.get(entity).is_err())
             .filter_map(|&entity| {
                 transforms.get(entity).ok().map(|t| EntityStartState {
                     entity,

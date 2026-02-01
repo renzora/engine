@@ -84,7 +84,7 @@ use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use docking::{
     get_legacy_layout_values, render_dock_tree, render_panel_frame,
-    calculate_panel_rects, DockedPanelContext, PanelId, DropZone, SplitDirection,
+    calculate_panel_rects_with_adjustments, DockedPanelContext, PanelId, DropZone, SplitDirection,
 };
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
@@ -393,15 +393,37 @@ pub fn editor_ui(
                 )
             }).inner;
 
-        // Calculate panel rects BEFORE processing events that modify the tree
-        // This ensures panel content renders at the same positions as the dock tree structure
-        let panel_rects = calculate_panel_rects(&editor.docking.dock_tree, dock_rect);
+        // Update drag animation progress - reset if target changed
+        if let Some(ref mut drag) = editor.docking.drag_state {
+            // Check if target changed and reset animation if so
+            let current_target = dock_result.drop_completed.as_ref().map(|t| (t.target_panel.clone(), t.zone));
+            if let Some((panel, zone)) = current_target {
+                drag.update_target(Some(panel), Some(zone));
+            } else {
+                drag.update_target(None, None);
+            }
+            // Animate to 1.0 over ~10 frames for smooth transition
+            drag.animation_progress = (drag.animation_progress + 0.12).min(1.0);
+        }
+
+        // Use panel rects from dock tree render result - these include animation adjustments
+        // for drag/drop previews. The leaf_rects from dock_result have animated positions.
+        let panel_rects = calculate_panel_rects_with_adjustments(
+            &editor.docking.dock_tree,
+            dock_rect,
+            &dock_result.leaf_rects,
+        );
 
         // Process dock tree events
         // Handle drag start
-        if let Some(panel) = dock_result.drag_started {
+        if let Some(panel) = dock_result.drag_started.clone() {
             if let Some(pos) = ctx.pointer_hover_pos() {
-                editor.docking.start_drag(panel, pos);
+                // Find the rect of the panel being dragged
+                let panel_rect = panel_rects.iter()
+                    .find(|(id, _, _)| id == &panel)
+                    .map(|(_, rect, _)| *rect)
+                    .unwrap_or(bevy_egui::egui::Rect::from_min_size(pos, bevy_egui::egui::Vec2::new(300.0, 200.0)));
+                editor.docking.start_drag(panel, pos, panel_rect);
             }
         }
 
@@ -457,32 +479,98 @@ pub fn editor_ui(
             editor.docking.end_drag();
         }
 
-        // Draw drag preview if dragging
-        if let Some(drag) = &editor.docking.drag_state {
-            if let Some(pos) = ctx.pointer_hover_pos() {
-                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("drag_preview_area"))
-                    .fixed_pos(pos + bevy_egui::egui::Vec2::new(10.0, 10.0))
-                    .order(bevy_egui::egui::Order::Tooltip)
-                    .interactable(false)
-                    .show(ctx, |ui| {
-                        bevy_egui::egui::Frame::popup(ui.style())
-                            .fill(bevy_egui::egui::Color32::from_rgba_unmultiplied(50, 55, 65, 230))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(bevy_egui::egui::RichText::new(drag.panel.icon()).size(14.0));
-                                    ui.label(bevy_egui::egui::RichText::new(drag.panel.title()).size(13.0));
-                                });
-                            });
-                    });
-            }
-        }
+        // Get drag info for panel rendering
+        let drag_info = editor.docking.drag_state.as_ref().and_then(|drag| {
+            ctx.pointer_hover_pos().map(|cursor_pos| {
+                (drag.panel.clone(), cursor_pos, drag.original_rect, drag.drag_offset)
+            })
+        });
 
         for (panel_id, panel_rect, is_active) in panel_rects {
             if !is_active {
                 continue; // Only render active tabs
             }
 
-            let panel_ctx = DockedPanelContext::new(panel_rect, panel_id.clone(), is_active);
+            // Check if this panel is being dragged
+            let is_being_dragged = drag_info.as_ref().map(|(p, _, _, _)| p == &panel_id).unwrap_or(false);
+
+            // If this panel is being dragged, show muted empty space at original location
+            if is_being_dragged {
+                // Draw muted background where the panel was
+                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new(("dragged_panel_placeholder", panel_id.clone())))
+                    .fixed_pos(panel_rect.min)
+                    .order(bevy_egui::egui::Order::Background)
+                    .interactable(false)
+                    .show(ctx, |ui| {
+                        let muted_bg = bevy_egui::egui::Color32::from_rgba_unmultiplied(30, 32, 36, 180);
+                        ui.painter().rect_filled(
+                            bevy_egui::egui::Rect::from_min_size(
+                                bevy_egui::egui::Pos2::ZERO,
+                                panel_rect.size(),
+                            ),
+                            4.0,
+                            muted_bg,
+                        );
+                    });
+            }
+
+            // Calculate the actual rect for rendering - either at cursor (if dragging) or original position
+            let (render_rect, is_floating) = if is_being_dragged {
+                if let Some((_, cursor_pos, original_rect, drag_offset)) = &drag_info {
+                    // Position panel at cursor with offset so it feels like you're grabbing it
+                    let floating_rect = bevy_egui::egui::Rect::from_min_size(
+                        *cursor_pos + *drag_offset,
+                        original_rect.size(),
+                    );
+                    (floating_rect, true)
+                } else {
+                    (panel_rect, false)
+                }
+            } else {
+                (panel_rect, false)
+            };
+
+            // Draw floating tab bar for dragged panel
+            if is_floating {
+                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new(("floating_tab_bar", panel_id.clone())))
+                    .fixed_pos(render_rect.min)
+                    .order(bevy_egui::egui::Order::Foreground)
+                    .interactable(false)
+                    .show(ctx, |ui| {
+                        let tab_bar_rect = bevy_egui::egui::Rect::from_min_size(
+                            bevy_egui::egui::Pos2::ZERO,
+                            bevy_egui::egui::Vec2::new(render_rect.width(), 28.0),
+                        );
+                        // Tab bar background
+                        ui.painter().rect_filled(tab_bar_rect, 0.0, editor.theme_manager.active_theme.panels.tab_active.to_color32());
+                        // Tab with icon and title
+                        let icon_x = 8.0;
+                        let text_x = icon_x + 18.0;
+                        ui.painter().text(
+                            bevy_egui::egui::Pos2::new(icon_x, 14.0),
+                            bevy_egui::egui::Align2::LEFT_CENTER,
+                            panel_id.icon(),
+                            bevy_egui::egui::FontId::proportional(12.0),
+                            bevy_egui::egui::Color32::WHITE,
+                        );
+                        ui.painter().text(
+                            bevy_egui::egui::Pos2::new(text_x, 14.0),
+                            bevy_egui::egui::Align2::LEFT_CENTER,
+                            panel_id.title(),
+                            bevy_egui::egui::FontId::proportional(11.0),
+                            bevy_egui::egui::Color32::WHITE,
+                        );
+                        // Border
+                        let accent = editor.theme_manager.active_theme.semantic.accent.to_color32();
+                        ui.painter().rect_stroke(tab_bar_rect, 0.0, bevy_egui::egui::Stroke::new(2.0, accent), bevy_egui::egui::StrokeKind::Inside);
+                    });
+            }
+
+            let panel_ctx = if is_floating {
+                DockedPanelContext::new_floating(render_rect, panel_id.clone(), is_active)
+            } else {
+                DockedPanelContext::new(render_rect, panel_id.clone(), is_active)
+            };
 
             match panel_id {
                 PanelId::Hierarchy => {

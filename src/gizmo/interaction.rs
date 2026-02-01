@@ -904,6 +904,105 @@ fn find_terrain_chunk_ancestor(
     None
 }
 
+/// System to draw orange border around selected terrain chunks
+pub fn terrain_chunk_selection_system(
+    selection: Res<SelectionState>,
+    modal: Res<super::modal_transform::ModalTransformState>,
+    gizmo_state: Res<super::GizmoState>,
+    terrain_chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+    terrain_query: Query<&crate::terrain::TerrainData>,
+    mut gizmos: Gizmos<super::SelectionGizmoGroup>,
+) {
+    // Don't show during modal transform or collider edit mode
+    if modal.active || gizmo_state.collider_edit.is_active() {
+        return;
+    }
+
+    let all_selected = selection.get_all_selected();
+
+    for (entity, chunk_data, chunk_of, global_transform) in terrain_chunks.iter() {
+        if !all_selected.contains(&entity) {
+            continue;
+        }
+
+        let Ok(terrain_data) = terrain_query.get(chunk_of.0) else {
+            continue;
+        };
+
+        let is_primary = selection.selected_entity == Some(entity);
+        let color = if is_primary {
+            Color::srgb(1.0, 0.5, 0.0) // Orange for primary
+        } else {
+            Color::srgba(1.0, 0.5, 0.0, 0.8) // Lighter orange for secondary
+        };
+
+        draw_terrain_chunk_border(
+            &mut gizmos,
+            chunk_data,
+            terrain_data,
+            global_transform,
+            color,
+        );
+    }
+}
+
+/// Helper to draw a border around a terrain chunk
+fn draw_terrain_chunk_border(
+    gizmos: &mut Gizmos<super::SelectionGizmoGroup>,
+    chunk_data: &TerrainChunkData,
+    terrain_data: &crate::terrain::TerrainData,
+    global_transform: &GlobalTransform,
+    color: Color,
+) {
+    let resolution = terrain_data.chunk_resolution;
+    let spacing = terrain_data.vertex_spacing();
+    let height_range = terrain_data.max_height - terrain_data.min_height;
+    let min_height = terrain_data.min_height;
+    let pos = global_transform.translation();
+
+    // Small offset above terrain to prevent z-fighting
+    let y_offset = 0.15;
+
+    // Helper to get world position for a vertex
+    let get_vertex_pos = |vx: u32, vz: u32| -> Vec3 {
+        let height_normalized = chunk_data.get_height(vx, vz, resolution);
+        let height = min_height + height_normalized * height_range;
+        Vec3::new(
+            pos.x + vx as f32 * spacing,
+            pos.y + height + y_offset,
+            pos.z + vz as f32 * spacing,
+        )
+    };
+
+    // Draw front edge (z = 0)
+    for vx in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(vx, 0);
+        let p2 = get_vertex_pos(vx + 1, 0);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw back edge (z = max)
+    for vx in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(vx, resolution - 1);
+        let p2 = get_vertex_pos(vx + 1, resolution - 1);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw left edge (x = 0)
+    for vz in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(0, vz);
+        let p2 = get_vertex_pos(0, vz + 1);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw right edge (x = max)
+    for vz in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(resolution - 1, vz);
+        let p2 = get_vertex_pos(resolution - 1, vz + 1);
+        gizmos.line(p1, p2, color);
+    }
+}
+
 /// System to draw yellow border around hovered terrain chunk
 pub fn terrain_chunk_highlight_system(
     hovered: Res<HoveredTerrainChunk>,

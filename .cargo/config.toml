@@ -3,11 +3,11 @@
 release-editor = "build --release --no-default-features --features editor --target-dir app"
 release-runtime = "build --release --no-default-features --features runtime --bin renzora_runtime --target-dir app"
 
-# Faster linking for Windows (uses rust-lld)
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld.exe"
+# Note: rust-lld doesn't work with Bevy dynamic linking on Windows nightly
+# [target.x86_64-pc-windows-msvc]
+# linker = "rust-lld.exe"
 
 # Faster linking for Linux (uses lld via clang)
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+rustflags = ["-C", "link-arg=-fuse-ld=lld","-Zshare-generics=y"]

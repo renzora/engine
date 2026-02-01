@@ -21,6 +21,8 @@ pub struct DockedPanelContext {
     pub panel_id: PanelId,
     /// Whether this panel is the active tab
     pub is_active: bool,
+    /// Whether this panel is being dragged (floating)
+    pub is_floating: bool,
 }
 
 impl DockedPanelContext {
@@ -34,6 +36,21 @@ impl DockedPanelContext {
             content_rect,
             panel_id,
             is_active,
+            is_floating: false,
+        }
+    }
+
+    pub fn new_floating(leaf_rect: Rect, panel_id: PanelId, is_active: bool) -> Self {
+        let content_rect = Rect::from_min_max(
+            Pos2::new(leaf_rect.min.x, leaf_rect.min.y + TAB_BAR_HEIGHT),
+            leaf_rect.max,
+        );
+        Self {
+            leaf_rect,
+            content_rect,
+            panel_id,
+            is_active,
+            is_floating: true,
         }
     }
 }
@@ -63,7 +80,8 @@ pub fn render_panel_frame(
     }
 
     // Use panel_id for stable ID - each panel should only appear once in tree
-    let id = Id::new(("docked_panel", format!("{:?}", panel_ctx.panel_id)));
+    let id_suffix = if panel_ctx.is_floating { "_floating" } else { "" };
+    let id = Id::new(("docked_panel", format!("{:?}{}", panel_ctx.panel_id, id_suffix)));
 
     // Ensure content rect has valid non-negative dimensions
     let safe_size = egui::Vec2::new(
@@ -71,9 +89,34 @@ pub fn render_panel_frame(
         panel_ctx.content_rect.height().max(1.0),
     );
 
+    // Use higher order for floating panels so they appear on top
+    let order = if panel_ctx.is_floating {
+        egui::Order::Foreground
+    } else {
+        egui::Order::Middle
+    };
+
+    // For floating panels, draw a shadow first
+    if panel_ctx.is_floating {
+        let shadow_offset = Vec2::new(8.0, 8.0);
+        let shadow_rect = panel_ctx.leaf_rect.translate(shadow_offset);
+        egui::Area::new(Id::new(("panel_shadow", format!("{:?}", panel_ctx.panel_id))))
+            .fixed_pos(shadow_rect.min)
+            .order(egui::Order::Middle)
+            .interactable(false)
+            .show(ctx, |ui| {
+                ui.painter().rect_filled(
+                    Rect::from_min_size(Pos2::ZERO, shadow_rect.size()),
+                    6.0,
+                    Color32::from_rgba_unmultiplied(0, 0, 0, 80),
+                );
+            });
+    }
+
     egui::Area::new(id)
         .fixed_pos(panel_ctx.content_rect.min)
-        .order(egui::Order::Middle)
+        .order(order)
+        .interactable(!panel_ctx.is_floating) // Floating panels shouldn't capture input
         .show(ctx, |ui| {
             ui.set_clip_rect(panel_ctx.content_rect);
             ui.set_min_size(safe_size);
@@ -85,6 +128,17 @@ pub fn render_panel_frame(
                 0.0,
                 theme.surfaces.panel.to_color32(),
             );
+
+            // Draw border for floating panels
+            if panel_ctx.is_floating {
+                let accent = theme.semantic.accent.to_color32();
+                ui.painter().rect_stroke(
+                    panel_ctx.content_rect,
+                    0.0,
+                    egui::Stroke::new(2.0, accent),
+                    egui::StrokeKind::Inside,
+                );
+            }
 
             // Create a child UI for the content
             let mut child_rect = panel_ctx.content_rect;

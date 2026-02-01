@@ -46,8 +46,10 @@ pub use panel_registry::PanelAvailability;
 #[allow(unused_imports)]
 pub use panel_registry::{all_builtin_panels, get_panel_constraints, PanelConstraints};
 pub use renderer::{
-    calculate_panel_rects, get_legacy_layout_values,
-    render_dock_tree,
+    calculate_panel_rects_with_adjustments,
+    get_legacy_layout_values, render_dock_tree,
 };
+#[allow(unused_imports)]
+pub use renderer::calculate_panel_rects;
 #[allow(unused_imports)]
 pub use renderer::{DockRenderResult, get_panel_content_rect, PanelRenderContext, TAB_BAR_HEIGHT, RESIZE_HANDLE_SIZE};

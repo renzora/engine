@@ -284,9 +284,10 @@ fn main() {
                 gizmo::object_drag_system,
                 gizmo::draw_selection_gizmo,
                 gizmo::update_selection_outlines,
-                // Terrain chunk hover highlight
+                // Terrain chunk hover highlight and selection
                 gizmo::terrain_chunk_hover_system,
                 gizmo::terrain_chunk_highlight_system,
+                gizmo::terrain_chunk_selection_system,
                 // 2D gizmo systems
                 gizmo::gizmo_2d_hover_system,
                 gizmo::gizmo_2d_interaction_system,

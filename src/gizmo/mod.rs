@@ -15,7 +15,7 @@ pub mod picking_2d;
 
 pub use drawing::{draw_selection_gizmo, update_selection_outlines};
 pub use grid::draw_grid;
-pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system, terrain_chunk_hover_system, terrain_chunk_highlight_system, HoveredTerrainChunk};
+pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system, terrain_chunk_hover_system, terrain_chunk_highlight_system, terrain_chunk_selection_system, HoveredTerrainChunk};
 pub use physics::{
     draw_physics_gizmos, draw_collider_edit_handles, collider_edit_selection_sync,
     collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,

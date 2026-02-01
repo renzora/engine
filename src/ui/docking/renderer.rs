@@ -2,10 +2,24 @@
 //!
 //! Renders the dock tree layout recursively, handling splits, tabs, and resize handles.
 
-use super::dock_tree::{DockTree, PanelId, SplitDirection};
-use super::drag_drop::{detect_drop_zone, draw_drop_zone_overlay, DragState, DropTarget};
-use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use super::dock_tree::{DockTree, DropZone, PanelId, SplitDirection};
+use super::drag_drop::{
+    detect_drop_zone, draw_tab_insert_indicator,
+    detect_tab_insert_position, DragState, DropTarget,
+};
+use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 use crate::theming::Theme;
+
+/// Information about an active drop preview for animating panel positions
+#[derive(Clone)]
+struct DropPreview {
+    /// The panel being hovered over
+    target_panel: PanelId,
+    /// The zone where the drop will occur
+    zone: DropZone,
+    /// Animation progress (0.0 to 1.0)
+    animation_progress: f32,
+}
 
 /// Height of the tab bar in dock leaves
 pub const TAB_BAR_HEIGHT: f32 = 28.0;
@@ -31,6 +45,10 @@ pub struct DockRenderResult {
     pub drop_completed: Option<DropTarget>,
     /// Rectangles of each leaf (for drop zone detection)
     pub leaf_rects: Vec<(PanelId, Rect)>,
+    /// Tab bar rectangles for each leaf (for tab insertion detection)
+    pub tab_bar_rects: Vec<(PanelId, Rect)>,
+    /// Tab positions within each leaf (for precise insertion indicator)
+    pub tab_positions: Vec<(PanelId, Vec<(Rect, PanelId)>)>,
 }
 
 /// Context passed to panel render functions
@@ -57,79 +75,88 @@ pub fn render_dock_tree(
 ) -> DockRenderResult {
     let mut result = DockRenderResult::default();
 
-    render_node(ui, tree, available_rect, drag_state, base_id, &[], &mut result, theme);
+    // First pass: collect leaf rects without drop preview to detect drop targets
+    collect_leaf_rects(tree, available_rect, &mut result);
 
-    // Draw drop zones if dragging
-    if let Some(drag) = drag_state {
-        // Find which leaf we're hovering over
-        if let Some(cursor_pos) = ui.ctx().pointer_hover_pos() {
-            for (panel, rect) in &result.leaf_rects {
-                // Don't show drop zone on the panel being dragged
-                if panel == &drag.panel {
-                    continue;
-                }
+    // Detect drop target if dragging
+    let drop_preview = if let Some(drag) = drag_state {
+        if let Some(preview) = detect_current_drop_target(ui, drag, &result) {
+            // Check if target changed - if so, reset animation
+            let target_changed = drag.last_target.as_ref()
+                .map(|(p, z)| p != &preview.target_panel || *z != preview.zone)
+                .unwrap_or(true);
 
-                if let Some(zone) = detect_drop_zone(cursor_pos, *rect) {
-                    draw_drop_zone_overlay(ui, zone, *rect, theme);
+            let animation = if target_changed { 0.0 } else { drag.animation_progress };
 
-                    // Update result with current drop target
-                    result.drop_completed = Some(DropTarget {
-                        target_panel: panel.clone(),
-                        zone,
-                        rect: *rect,
-                    });
-                    break;
+            Some(DropPreview {
+                target_panel: preview.target_panel,
+                zone: preview.zone,
+                animation_progress: animation,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Update result with drop target
+    if let Some(ref preview) = drop_preview {
+        result.drop_completed = Some(DropTarget {
+            target_panel: preview.target_panel.clone(),
+            zone: preview.zone,
+            rect: Rect::NOTHING, // Will be updated during render
+        });
+    }
+
+    // Clear leaf rects - they'll be recollected during render with adjusted positions
+    result.leaf_rects.clear();
+    result.tab_bar_rects.clear();
+    result.tab_positions.clear();
+
+    // Second pass: render with animated positions
+    render_node(ui, tree, available_rect, drag_state, base_id, &[], &mut result, theme, drop_preview.as_ref());
+
+    // Draw tab insertion indicator for tab drops (panels moving handles split zones)
+    if let Some(ref preview) = drop_preview {
+        if preview.zone == DropZone::Tab {
+            if let Some((_, rect)) = result.leaf_rects.iter().find(|(p, _)| p == &preview.target_panel) {
+                let tab_bar_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TAB_BAR_HEIGHT));
+                if let Some(cursor_pos) = ui.ctx().pointer_hover_pos() {
+                    if let Some((_, tab_positions)) = result.tab_positions.iter().find(|(p, _)| p == &preview.target_panel) {
+                        if let Some(insert_info) = detect_tab_insert_position(cursor_pos, tab_bar_rect, tab_positions) {
+                            draw_tab_insert_indicator(ui, &insert_info, tab_bar_rect, theme);
+                        }
+                    }
                 }
             }
         }
+        // Split zones are handled by panel movement in render_leaf - no overlay needed
     }
 
     result
 }
 
-fn render_node(
-    ui: &mut Ui,
-    node: &DockTree,
-    rect: Rect,
-    drag_state: Option<&DragState>,
-    base_id: Id,
-    path: &[bool],
-    result: &mut DockRenderResult,
-    theme: &Theme,
-) {
+/// Collect leaf rects without rendering (for drop detection)
+fn collect_leaf_rects(node: &DockTree, rect: Rect, result: &mut DockRenderResult) {
     match node {
-        DockTree::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => {
-            render_split(ui, *direction, *ratio, first, second, rect, drag_state, base_id, path, result, theme);
+        DockTree::Split { direction, ratio, first, second, .. } => {
+            let (first_rect, _, second_rect) = calculate_split_rects(*direction, *ratio, rect);
+            collect_leaf_rects(first, first_rect, result);
+            collect_leaf_rects(second, second_rect, result);
         }
-        DockTree::Leaf { tabs, active_tab } => {
-            render_leaf(ui, tabs, *active_tab, rect, drag_state, base_id, path, result, theme);
+        DockTree::Leaf { tabs, .. } => {
+            if let Some(first_tab) = tabs.first() {
+                result.leaf_rects.push((first_tab.clone(), rect));
+            }
         }
-        DockTree::Empty => {
-            // Draw placeholder for empty node
-            ui.painter().rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
-        }
+        DockTree::Empty => {}
     }
 }
 
-fn render_split(
-    ui: &mut Ui,
-    direction: SplitDirection,
-    ratio: f32,
-    first: &DockTree,
-    second: &DockTree,
-    rect: Rect,
-    drag_state: Option<&DragState>,
-    base_id: Id,
-    path: &[bool],
-    result: &mut DockRenderResult,
-    theme: &Theme,
-) {
-    let (first_rect, handle_rect, second_rect) = match direction {
+/// Calculate split rectangles for a given direction and ratio
+fn calculate_split_rects(direction: SplitDirection, ratio: f32, rect: Rect) -> (Rect, Rect, Rect) {
+    match direction {
         SplitDirection::Horizontal => {
             let available_width = rect.width() - RESIZE_HANDLE_SIZE;
             let first_width = (available_width * ratio).max(MIN_PANEL_SIZE);
@@ -164,16 +191,110 @@ fn render_split(
 
             (first_rect, handle_rect, second_rect)
         }
-    };
+    }
+}
+
+/// Detected drop target info (without animation)
+struct DetectedTarget {
+    target_panel: PanelId,
+    zone: DropZone,
+}
+
+/// Detect the current drop target based on cursor position
+fn detect_current_drop_target(
+    ui: &Ui,
+    drag: &DragState,
+    result: &DockRenderResult,
+) -> Option<DetectedTarget> {
+    let cursor_pos = ui.ctx().pointer_hover_pos()?;
+
+    for (panel, rect) in &result.leaf_rects {
+        // Don't show drop zone on the panel being dragged
+        if panel == &drag.panel {
+            continue;
+        }
+
+        // Check if cursor is in this panel's rect
+        if !rect.contains(cursor_pos) {
+            continue;
+        }
+
+        // First check if we're in the tab bar area for precise tab insertion
+        let tab_bar_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TAB_BAR_HEIGHT));
+
+        if tab_bar_rect.contains(cursor_pos) {
+            return Some(DetectedTarget {
+                target_panel: panel.clone(),
+                zone: DropZone::Tab,
+            });
+        }
+
+        // Check regular drop zones (content area)
+        if let Some(zone) = detect_drop_zone(cursor_pos, *rect) {
+            return Some(DetectedTarget {
+                target_panel: panel.clone(),
+                zone,
+            });
+        }
+    }
+
+    None
+}
+
+fn render_node(
+    ui: &mut Ui,
+    node: &DockTree,
+    rect: Rect,
+    drag_state: Option<&DragState>,
+    base_id: Id,
+    path: &[bool],
+    result: &mut DockRenderResult,
+    theme: &Theme,
+    drop_preview: Option<&DropPreview>,
+) {
+    match node {
+        DockTree::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } => {
+            render_split(ui, *direction, *ratio, first, second, rect, drag_state, base_id, path, result, theme, drop_preview);
+        }
+        DockTree::Leaf { tabs, active_tab } => {
+            render_leaf(ui, tabs, *active_tab, rect, drag_state, base_id, path, result, theme, drop_preview);
+        }
+        DockTree::Empty => {
+            // Draw placeholder for empty node
+            ui.painter().rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
+        }
+    }
+}
+
+fn render_split(
+    ui: &mut Ui,
+    direction: SplitDirection,
+    ratio: f32,
+    first: &DockTree,
+    second: &DockTree,
+    rect: Rect,
+    drag_state: Option<&DragState>,
+    base_id: Id,
+    path: &[bool],
+    result: &mut DockRenderResult,
+    theme: &Theme,
+    drop_preview: Option<&DropPreview>,
+) {
+    let (first_rect, handle_rect, second_rect) = calculate_split_rects(direction, ratio, rect);
 
     // Render children
     let mut first_path = path.to_vec();
     first_path.push(false);
-    render_node(ui, first, first_rect, drag_state, base_id, &first_path, result, theme);
+    render_node(ui, first, first_rect, drag_state, base_id, &first_path, result, theme, drop_preview);
 
     let mut second_path = path.to_vec();
     second_path.push(true);
-    render_node(ui, second, second_rect, drag_state, base_id, &second_path, result, theme);
+    render_node(ui, second, second_rect, drag_state, base_id, &second_path, result, theme, drop_preview);
 
     // Create larger interactive area for easier grabbing
     let interact_rect = match direction {
@@ -235,15 +356,50 @@ fn render_leaf(
     path: &[bool],
     result: &mut DockRenderResult,
     theme: &Theme,
+    drop_preview: Option<&DropPreview>,
 ) {
     if tabs.is_empty() {
         return;
     }
 
-    // Store leaf rect for drop detection
-    if let Some(first_tab) = tabs.first() {
-        result.leaf_rects.push((first_tab.clone(), rect));
+    // Check if this leaf is the drop target and calculate adjusted rect
+    let first_tab = tabs.first().cloned();
+    let is_drop_target = drop_preview
+        .as_ref()
+        .map(|p| first_tab.as_ref() == Some(&p.target_panel))
+        .unwrap_or(false);
+
+    // Calculate the adjusted rect if this is the drop target
+    let (panel_rect, preview_rect) = if is_drop_target {
+        let preview = drop_preview.unwrap();
+        calculate_animated_rects(rect, preview.zone, preview.animation_progress)
+    } else {
+        (rect, None)
+    };
+
+    // Draw the preview area (empty space for the new panel) if applicable
+    if let Some(preview_r) = preview_rect {
+        let accent = theme.semantic.accent.to_color32();
+        let preview = drop_preview.unwrap();
+        let t = ease_out_cubic(preview.animation_progress);
+
+        // Draw the empty space with a solid blue fill (no border)
+        let fill_alpha = (140.0 * t) as u8;
+        let fill_color = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), fill_alpha);
+
+        ui.painter().rect_filled(preview_r, 4.0, fill_color);
     }
+
+    // Use the adjusted rect for rendering
+    let rect = panel_rect;
+
+    // Store leaf rect for drop detection
+    let leaf_id = if let Some(first_tab) = tabs.first() {
+        result.leaf_rects.push((first_tab.clone(), rect));
+        first_tab.clone()
+    } else {
+        return;
+    };
 
     // Calculate tab bar and content areas
     let tab_bar_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TAB_BAR_HEIGHT));
@@ -252,8 +408,14 @@ fn render_leaf(
         rect.max,
     );
 
+    // Store tab bar rect for tab insertion detection
+    result.tab_bar_rects.push((leaf_id.clone(), tab_bar_rect));
+
     // Draw tab bar background
     ui.painter().rect_filled(tab_bar_rect, 0.0, theme.panels.tab_inactive.to_color32());
+
+    // Track tab positions for insertion indicator
+    let mut tab_positions: Vec<(Rect, PanelId)> = Vec::new();
 
     // Draw tabs
     let mut tab_x = rect.min.x + 2.0;
@@ -279,6 +441,9 @@ fn render_leaf(
             Pos2::new(tab_x, rect.min.y + 2.0),
             Vec2::new(tab_width, tab_height),
         );
+
+        // Store tab position for insertion indicator (even for dragged tabs)
+        tab_positions.push((tab_rect, panel.clone()));
 
         // Skip rendering if this tab is being dragged (show ghost)
         if is_being_dragged {
@@ -384,6 +549,9 @@ fn render_leaf(
         tab_x += tab_width + 1.0;
     }
 
+    // Store tab positions for insertion indicator
+    result.tab_positions.push((leaf_id, tab_positions));
+
     // Draw subtle separator line under tab bar
     ui.painter().line_segment(
         [
@@ -463,6 +631,58 @@ pub fn calculate_panel_rects(tree: &DockTree, available_rect: Rect) -> Vec<(Pane
     let mut result = Vec::new();
     collect_panel_rects(tree, available_rect, &mut result);
     result
+}
+
+/// Calculate all panel rectangles, using adjusted rects from render result where available
+/// This ensures panel content renders at the same animated positions as the dock tree structure
+pub fn calculate_panel_rects_with_adjustments(
+    tree: &DockTree,
+    available_rect: Rect,
+    adjusted_leaf_rects: &[(PanelId, Rect)],
+) -> Vec<(PanelId, Rect, bool)> {
+    // Build a map of first-tab panel ID to adjusted rect
+    let adjustments: std::collections::HashMap<&PanelId, &Rect> = adjusted_leaf_rects
+        .iter()
+        .map(|(id, rect)| (id, rect))
+        .collect();
+
+    let mut result = Vec::new();
+    collect_panel_rects_with_adjustments(tree, available_rect, &adjustments, &mut result);
+    result
+}
+
+fn collect_panel_rects_with_adjustments(
+    node: &DockTree,
+    rect: Rect,
+    adjustments: &std::collections::HashMap<&PanelId, &Rect>,
+    result: &mut Vec<(PanelId, Rect, bool)>,
+) {
+    match node {
+        DockTree::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } => {
+            let (first_rect, _, second_rect) = calculate_split_rects(*direction, *ratio, rect);
+            collect_panel_rects_with_adjustments(first, first_rect, adjustments, result);
+            collect_panel_rects_with_adjustments(second, second_rect, adjustments, result);
+        }
+        DockTree::Leaf { tabs, active_tab } => {
+            // Check if the first tab has an adjusted rect - all tabs in this leaf use it
+            let adjusted_rect = tabs
+                .first()
+                .and_then(|first_tab| adjustments.get(first_tab).copied())
+                .cloned()
+                .unwrap_or(rect);
+
+            for (idx, panel) in tabs.iter().enumerate() {
+                let is_active = idx == *active_tab;
+                result.push((panel.clone(), adjusted_rect, is_active));
+            }
+        }
+        DockTree::Empty => {}
+    }
 }
 
 fn collect_panel_rects(node: &DockTree, rect: Rect, result: &mut Vec<(PanelId, Rect, bool)>) {
@@ -606,4 +826,86 @@ fn get_panel_rect_recursive(node: &DockTree, panel: &PanelId, rect: Rect) -> Opt
         }
         DockTree::Empty => None,
     }
+}
+
+/// Calculate animated rects for a panel when it's a drop target
+/// Returns (adjusted_panel_rect, optional_preview_rect)
+fn calculate_animated_rects(rect: Rect, zone: DropZone, animation_progress: f32) -> (Rect, Option<Rect>) {
+    let t = ease_out_cubic(animation_progress);
+
+    match zone {
+        DropZone::Tab => {
+            // For tab drops, don't change the panel size
+            (rect, None)
+        }
+        DropZone::Left => {
+            // Panel moves right and shrinks to make room on the left
+            let preview_width = rect.width() * 0.5 * t;
+            let panel_width = rect.width() - preview_width;
+
+            let preview_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(preview_width, rect.height()),
+            );
+            let panel_rect = Rect::from_min_size(
+                Pos2::new(rect.min.x + preview_width, rect.min.y),
+                Vec2::new(panel_width, rect.height()),
+            );
+
+            (panel_rect, Some(preview_rect))
+        }
+        DropZone::Right => {
+            // Panel shrinks to make room on the right
+            let preview_width = rect.width() * 0.5 * t;
+            let panel_width = rect.width() - preview_width;
+
+            let panel_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(panel_width, rect.height()),
+            );
+            let preview_rect = Rect::from_min_size(
+                Pos2::new(rect.min.x + panel_width, rect.min.y),
+                Vec2::new(preview_width, rect.height()),
+            );
+
+            (panel_rect, Some(preview_rect))
+        }
+        DropZone::Top => {
+            // Panel moves down and shrinks to make room on top
+            let preview_height = rect.height() * 0.5 * t;
+            let panel_height = rect.height() - preview_height;
+
+            let preview_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(rect.width(), preview_height),
+            );
+            let panel_rect = Rect::from_min_size(
+                Pos2::new(rect.min.x, rect.min.y + preview_height),
+                Vec2::new(rect.width(), panel_height),
+            );
+
+            (panel_rect, Some(preview_rect))
+        }
+        DropZone::Bottom => {
+            // Panel shrinks to make room on the bottom
+            let preview_height = rect.height() * 0.5 * t;
+            let panel_height = rect.height() - preview_height;
+
+            let panel_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(rect.width(), panel_height),
+            );
+            let preview_rect = Rect::from_min_size(
+                Pos2::new(rect.min.x, rect.min.y + panel_height),
+                Vec2::new(rect.width(), preview_height),
+            );
+
+            (panel_rect, Some(preview_rect))
+        }
+    }
+}
+
+/// Cubic ease-out for smooth animation
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
 }

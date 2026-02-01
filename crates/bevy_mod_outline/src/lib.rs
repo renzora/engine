@@ -90,18 +90,6 @@ mod view_uniforms;
 pub use computed::*;
 pub use generate::*;
 
-#[cfg(feature = "flood")]
-mod flood;
-
-#[cfg(feature = "scene")]
-mod scene;
-#[cfg(feature = "scene")]
-pub use scene::*;
-
-/// Legacy bundles.
-#[deprecated(since = "0.9.0", note = "Use required components instead")]
-pub mod bundles;
-
 // See https://alexanderameye.github.io/notes/rendering-outlines/
 
 /// The direction to extrude the vertex when rendering the outline.
@@ -114,8 +102,6 @@ pub const ATTRIBUTE_OUTLINE_NORMAL: MeshVertexAttribute =
 pub enum NodeOutline {
     /// This node writes back unsampled post-processing effects to the sampled attachment.
     MsaaExtraWritebackPass,
-    /// This node runs the jump flood algorithm for outlines
-    FloodPass,
     /// This node runs after the main 3D passes and before the UI pass.
     OutlinePass,
     /// This node marks the end of the outline passes.
@@ -232,12 +218,6 @@ pub enum OutlineMode {
     ExtrudeFlatDoubleSided,
     /// Vertex extrusion in real model-space.
     ExtrudeReal,
-    // Jump-flood into a billboard.
-    #[cfg(feature = "flood")]
-    FloodFlat,
-    // Jump-flood into a double-sided billboard.
-    #[cfg(feature = "flood")]
-    FloodFlatDoubleSided,
 }
 
 /// A component which controls the depth sorting of flat outlines and stencils.
@@ -508,12 +488,6 @@ impl Plugin for OutlinePlugin {
             .register_type::<OutlineMode>()
             .register_type::<OutlineAlphaMask>()
             .register_type::<InheritOutline>();
-
-        #[cfg(feature = "scene")]
-        app.init_resource::<AsyncSceneInheritOutlineSystems>();
-
-        #[cfg(feature = "flood")]
-        app.add_plugins(flood::FloodPlugin);
     }
 
     fn finish(&self, app: &mut App) {

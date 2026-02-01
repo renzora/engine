@@ -189,8 +189,8 @@ impl DockingState {
     }
 
     /// Start dragging a panel
-    pub fn start_drag(&mut self, panel: PanelId, pos: bevy_egui::egui::Pos2) {
-        self.drag_state = Some(DragState::new(panel, pos));
+    pub fn start_drag(&mut self, panel: PanelId, pos: bevy_egui::egui::Pos2, panel_rect: bevy_egui::egui::Rect) {
+        self.drag_state = Some(DragState::new(panel, pos, panel_rect));
     }
 
     /// End the current drag operation

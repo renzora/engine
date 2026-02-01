@@ -147,13 +147,19 @@ pub fn camera_controller(
         if keyboard_enabled {
             let mut move_delta = Vec3::ZERO;
 
-            // Get camera forward/right on XZ plane
+            // Get camera forward direction (includes pitch for true 3D movement)
             let forward = Vec3::new(
-                orbit.yaw.sin(),
-                0.0,
-                orbit.yaw.cos(),
+                orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.pitch.sin(),
+                orbit.pitch.cos() * orbit.yaw.cos(),
             ).normalize();
-            let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
+
+            // Get right direction (stays horizontal for intuitive strafing)
+            let right_dir = Vec3::new(
+                orbit.yaw.cos(),
+                0.0,
+                -orbit.yaw.sin(),
+            ).normalize();
 
             // Forward/backward (W/S)
             if keybindings.pressed(EditorAction::CameraMoveForward, &keyboard) {

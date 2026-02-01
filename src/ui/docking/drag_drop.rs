@@ -14,8 +14,16 @@ pub struct DragState {
     pub panel: PanelId,
     /// The starting position of the drag
     pub start_pos: Pos2,
+    /// The original rect of the panel being dragged
+    pub original_rect: Rect,
+    /// Offset from cursor to panel top-left (for smooth dragging)
+    pub drag_offset: egui::Vec2,
     /// Current drop target (if any)
     pub drop_target: Option<DropTarget>,
+    /// Animation progress for smooth transitions (0.0 to 1.0)
+    pub animation_progress: f32,
+    /// Last target panel and zone for detecting changes (to reset animation)
+    pub last_target: Option<(PanelId, DropZone)>,
 }
 
 /// Describes where a panel will be dropped
@@ -31,22 +39,103 @@ pub struct DropTarget {
 }
 
 impl DragState {
-    pub fn new(panel: PanelId, start_pos: Pos2) -> Self {
+    pub fn new(panel: PanelId, start_pos: Pos2, panel_rect: Rect) -> Self {
+        // Calculate offset from cursor to panel top-left
+        let drag_offset = panel_rect.min - start_pos;
         Self {
             panel,
             start_pos,
+            original_rect: panel_rect,
+            drag_offset,
             drop_target: None,
+            animation_progress: 0.0,
+            last_target: None,
+        }
+    }
+
+    /// Update the current target and reset animation if target changed
+    pub fn update_target(&mut self, target_panel: Option<PanelId>, zone: Option<DropZone>) {
+        let new_target = match (target_panel, zone) {
+            (Some(panel), Some(z)) => Some((panel, z)),
+            _ => None,
+        };
+
+        if new_target != self.last_target {
+            self.animation_progress = 0.0;
+            self.last_target = new_target;
         }
     }
 }
 
-/// Size of the drop zone areas at panel edges
-const DROP_ZONE_SIZE: f32 = 60.0;
+/// Information about a tab position for insertion indicator
+#[derive(Debug, Clone)]
+pub struct TabInsertInfo {
+    /// X position where the insertion indicator should be drawn
+    pub insert_x: f32,
+    /// Index in the tab list where the panel will be inserted
+    #[allow(dead_code)]
+    pub insert_index: usize,
+}
+
+/// Detect where in the tab bar the cursor is for precise tab insertion
+pub fn detect_tab_insert_position(
+    cursor_pos: Pos2,
+    tab_bar_rect: Rect,
+    tab_positions: &[(Rect, PanelId)],
+) -> Option<TabInsertInfo> {
+    if !tab_bar_rect.contains(cursor_pos) {
+        return None;
+    }
+
+    // Find which tab gap the cursor is closest to
+    if tab_positions.is_empty() {
+        return Some(TabInsertInfo {
+            insert_x: tab_bar_rect.min.x + 4.0,
+            insert_index: 0,
+        });
+    }
+
+    // Check if before first tab
+    if let Some((first_tab, _)) = tab_positions.first() {
+        if cursor_pos.x < first_tab.center().x {
+            return Some(TabInsertInfo {
+                insert_x: first_tab.min.x,
+                insert_index: 0,
+            });
+        }
+    }
+
+    // Check between tabs and after last tab
+    for (i, (tab_rect, _)) in tab_positions.iter().enumerate() {
+        let next_index = i + 1;
+        if next_index < tab_positions.len() {
+            let next_rect = &tab_positions[next_index].0;
+            let mid_x = (tab_rect.max.x + next_rect.min.x) / 2.0;
+            if cursor_pos.x < mid_x {
+                return Some(TabInsertInfo {
+                    insert_x: tab_rect.max.x + 1.0,
+                    insert_index: next_index,
+                });
+            }
+        } else {
+            // After last tab
+            return Some(TabInsertInfo {
+                insert_x: tab_rect.max.x + 1.0,
+                insert_index: next_index,
+            });
+        }
+    }
+
+    None
+}
+
 /// Minimum drag distance before considering it a drag (not a click)
 #[allow(dead_code)]
 const MIN_DRAG_DISTANCE: f32 = 5.0;
 
 /// Determine which drop zone (if any) the cursor is in
+/// The zones match the highlighted areas - once you enter a zone, the entire
+/// highlighted region keeps that zone active.
 pub fn detect_drop_zone(cursor_pos: Pos2, panel_rect: Rect) -> Option<DropZone> {
     if !panel_rect.contains(cursor_pos) {
         return None;
@@ -58,94 +147,91 @@ pub fn detect_drop_zone(cursor_pos: Pos2, panel_rect: Rect) -> Option<DropZone> 
     let width = panel_rect.width();
     let height = panel_rect.height();
 
-    // Check if in center zone (for tab drop)
+    // Check if in center zone (for tab drop) - a smaller central area
     let center_rect = Rect::from_center_size(center, egui::vec2(width * 0.3, height * 0.3));
     if center_rect.contains(cursor_pos) {
         return Some(DropZone::Tab);
     }
 
-    // Check edge zones
-    let edge_size = DROP_ZONE_SIZE.min(width * 0.25).min(height * 0.25);
+    // Use half-panel zones that match the highlighted areas
+    // Determine which half of the panel the cursor is in
+    let in_left_half = rel_x < width * 0.5;
+    let in_top_half = rel_y < height * 0.5;
 
-    if rel_x < edge_size {
+    // Calculate distance from each edge as a ratio
+    let left_ratio = rel_x / width;
+    let right_ratio = 1.0 - left_ratio;
+    let top_ratio = rel_y / height;
+    let bottom_ratio = 1.0 - top_ratio;
+
+    // Find the closest edge
+    let min_ratio = left_ratio.min(right_ratio).min(top_ratio).min(bottom_ratio);
+
+    if min_ratio == left_ratio && in_left_half {
         Some(DropZone::Left)
-    } else if rel_x > width - edge_size {
+    } else if min_ratio == right_ratio && !in_left_half {
         Some(DropZone::Right)
-    } else if rel_y < edge_size {
+    } else if min_ratio == top_ratio && in_top_half {
         Some(DropZone::Top)
-    } else if rel_y > height - edge_size {
+    } else if min_ratio == bottom_ratio && !in_top_half {
         Some(DropZone::Bottom)
+    } else if in_left_half && in_top_half {
+        // Tiebreaker: prefer horizontal splits for corners
+        if left_ratio < top_ratio { Some(DropZone::Left) } else { Some(DropZone::Top) }
+    } else if !in_left_half && in_top_half {
+        if right_ratio < top_ratio { Some(DropZone::Right) } else { Some(DropZone::Top) }
+    } else if in_left_half && !in_top_half {
+        if left_ratio < bottom_ratio { Some(DropZone::Left) } else { Some(DropZone::Bottom) }
     } else {
-        // In the panel but not in any specific zone - default to tab
-        Some(DropZone::Tab)
+        if right_ratio < bottom_ratio { Some(DropZone::Right) } else { Some(DropZone::Bottom) }
     }
 }
 
-/// Get the rectangle that will be highlighted for a drop zone
-pub fn get_drop_zone_rect(zone: DropZone, panel_rect: Rect) -> Rect {
-    let width = panel_rect.width();
-    let height = panel_rect.height();
-
-    match zone {
-        DropZone::Tab => {
-            // Highlight the whole panel slightly
-            panel_rect.shrink(4.0)
-        }
-        DropZone::Left => {
-            Rect::from_min_size(panel_rect.min, egui::vec2(width * 0.5, height))
-        }
-        DropZone::Right => {
-            let half_width = width * 0.5;
-            Rect::from_min_size(
-                Pos2::new(panel_rect.min.x + half_width, panel_rect.min.y),
-                egui::vec2(half_width, height),
-            )
-        }
-        DropZone::Top => {
-            Rect::from_min_size(panel_rect.min, egui::vec2(width, height * 0.5))
-        }
-        DropZone::Bottom => {
-            let half_height = height * 0.5;
-            Rect::from_min_size(
-                Pos2::new(panel_rect.min.x, panel_rect.min.y + half_height),
-                egui::vec2(width, half_height),
-            )
-        }
-    }
-}
-
-/// Draw drop zone overlay for visual feedback during drag
-pub fn draw_drop_zone_overlay(ui: &egui::Ui, zone: DropZone, panel_rect: Rect, theme: &Theme) {
-    let drop_rect = get_drop_zone_rect(zone, panel_rect);
-
-    // Use theme accent color for drop zone
+/// Draw tab insertion indicator - a vertical line showing where the tab will be inserted
+pub fn draw_tab_insert_indicator(ui: &egui::Ui, insert_info: &TabInsertInfo, tab_bar_rect: Rect, theme: &Theme) {
     let accent = theme.semantic.accent.to_color32();
-    let [r, g, b, _] = accent.to_array();
-    let fill_color = Color32::from_rgba_unmultiplied(r, g, b, 80);
-    let stroke_color = Color32::from_rgba_unmultiplied(r, g, b, 200);
 
-    ui.painter().rect(
-        drop_rect,
-        4.0,
-        fill_color,
-        Stroke::new(2.0, stroke_color),
-        StrokeKind::Outside,
+    // Draw a prominent vertical line where the tab will be inserted
+    let line_height = tab_bar_rect.height() - 4.0;
+    let top = Pos2::new(insert_info.insert_x, tab_bar_rect.min.y + 2.0);
+    let bottom = Pos2::new(insert_info.insert_x, tab_bar_rect.min.y + 2.0 + line_height);
+
+    // Draw glow effect
+    ui.painter().line_segment(
+        [top, bottom],
+        Stroke::new(6.0, Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 60)),
     );
 
-    // Draw an icon in the center indicating what will happen
-    let icon = match zone {
-        DropZone::Tab => "\u{f24d}", // clone (layers icon)
-        DropZone::Left | DropZone::Right => "\u{f0c9}", // bars (horizontal)
-        DropZone::Top | DropZone::Bottom => "\u{f0c9}", // bars
-    };
-
-    ui.painter().text(
-        drop_rect.center(),
-        egui::Align2::CENTER_CENTER,
-        icon,
-        egui::FontId::proportional(24.0),
-        stroke_color,
+    // Draw main line
+    ui.painter().line_segment(
+        [top, bottom],
+        Stroke::new(3.0, accent),
     );
+
+    // Draw small triangles at top and bottom
+    let tri_size = 5.0;
+
+    // Top triangle
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(insert_info.insert_x - tri_size, top.y),
+            Pos2::new(insert_info.insert_x + tri_size, top.y),
+            Pos2::new(insert_info.insert_x, top.y + tri_size),
+        ],
+        accent,
+        Stroke::NONE,
+    ));
+
+    // Bottom triangle
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(insert_info.insert_x - tri_size, bottom.y),
+            Pos2::new(insert_info.insert_x + tri_size, bottom.y),
+            Pos2::new(insert_info.insert_x, bottom.y - tri_size),
+        ],
+        accent,
+        Stroke::NONE,
+    ));
 }
 
 /// Draw the dragged tab preview following the cursor
@@ -161,13 +247,8 @@ pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2, theme
     let [r, g, b, _] = popup_bg.to_array();
     let bg_color = Color32::from_rgba_unmultiplied(r, g, b, 230);
 
-    ui.painter().rect(
-        rect,
-        4.0,
-        bg_color,
-        Stroke::new(1.0, theme.semantic.accent.to_color32()),
-        StrokeKind::Outside,
-    );
+    ui.painter().rect_filled(rect, 4.0, bg_color);
+    ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0, theme.semantic.accent.to_color32()), StrokeKind::Outside);
 
     ui.painter().text(
         rect.center(),
