@@ -1,5 +1,6 @@
 use bevy::{
     math::Affine3,
+    mesh::skinning::SkinnedMesh,
     pbr::SkinUniforms,
     platform::collections::HashMap,
     prelude::*,
@@ -122,14 +123,19 @@ pub(crate) fn extract_outlines(
             &GlobalTransform,
             &Mesh3d,
             Has<NoAutomaticBatching>,
+            Has<SkinnedMesh>,
         )>,
     >,
 ) {
     render_outlines.entity_map.clear();
 
-    for (entity, render_entity, computed, key, transform, mesh, no_automatic_batching) in
+    for (entity, render_entity, computed, key, transform, mesh, no_automatic_batching, is_skinned) in
         outlines.iter()
     {
+        // Skip skinned meshes - outline pipeline doesn't support skinned mesh bind group layout
+        if is_skinned {
+            continue;
+        }
         let ComputedOutline(Some(computed)) = computed else {
             continue;
         };
