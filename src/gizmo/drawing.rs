@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::math::Isometry3d;
+use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 
 use crate::core::{EditorEntity, SelectionState};
 use crate::shared::CameraNodeData;
@@ -7,6 +8,109 @@ use crate::shared::CameraRigData;
 
 use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, SnapTarget, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+
+/// Marker component for entities that currently have selection outline
+#[derive(Component)]
+pub struct SelectionOutline;
+
+/// System to add/remove outline components based on selection state
+pub fn update_selection_outlines(
+    mut commands: Commands,
+    selection: Res<SelectionState>,
+    modal: Res<ModalTransformState>,
+    gizmo_state: Res<GizmoState>,
+    mesh_entities: Query<Entity, With<Mesh3d>>,
+    children_query: Query<&Children>,
+    outlined_entities: Query<Entity, With<SelectionOutline>>,
+    cameras: Query<(), With<CameraNodeData>>,
+) {
+    // Primary and secondary outline colors
+    let primary_color = Color::srgb(1.0, 0.5, 0.0); // Orange
+    let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8); // Lighter orange
+    let outline_width = 3.0;
+
+    // Don't show outlines during modal transform or collider edit mode
+    let should_show_outlines = !modal.active && !gizmo_state.collider_edit.is_active();
+
+    // Remove all existing outlines first
+    for entity in outlined_entities.iter() {
+        if let Ok(mut entity_commands) = commands.get_entity(entity) {
+            entity_commands.remove::<(OutlineVolume, OutlineStencil, SelectionOutline)>();
+        }
+    }
+
+    if !should_show_outlines {
+        return;
+    }
+
+    // Get selected entities
+    let all_selected = selection.get_all_selected();
+
+    for &entity in &all_selected {
+        // Skip cameras - they have their own gizmo
+        if cameras.get(entity).is_ok() {
+            continue;
+        }
+
+        let is_primary = selection.selected_entity == Some(entity);
+        let color = if is_primary { primary_color } else { secondary_color };
+
+        // Add outline to the entity itself if it has a mesh
+        if mesh_entities.get(entity).is_ok() {
+            if let Ok(mut entity_commands) = commands.get_entity(entity) {
+                entity_commands.insert((
+                    OutlineVolume {
+                        visible: true,
+                        width: outline_width,
+                        colour: color,
+                    },
+                    OutlineStencil::default(),
+                    SelectionOutline,
+                ));
+            }
+        }
+
+        // Also add outlines to child meshes
+        add_outline_to_children(
+            &mut commands,
+            entity,
+            color,
+            outline_width,
+            &mesh_entities,
+            &children_query,
+        );
+    }
+}
+
+fn add_outline_to_children(
+    commands: &mut Commands,
+    entity: Entity,
+    color: Color,
+    width: f32,
+    mesh_entities: &Query<Entity, With<Mesh3d>>,
+    children_query: &Query<&Children>,
+) {
+    if let Ok(children) = children_query.get(entity) {
+        for child in children.iter() {
+            // If child has a mesh, add outline
+            if mesh_entities.get(child).is_ok() {
+                if let Ok(mut entity_commands) = commands.get_entity(child) {
+                    entity_commands.insert((
+                        OutlineVolume {
+                            visible: true,
+                            width,
+                            colour: color,
+                        },
+                        OutlineStencil::default(),
+                        SelectionOutline,
+                    ));
+                }
+            }
+            // Recurse into children
+            add_outline_to_children(commands, child, color, width, mesh_entities, children_query);
+        }
+    }
+}
 
 pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
@@ -28,25 +132,16 @@ pub fn draw_selection_gizmo(
         return;
     }
 
-    // Draw selection boxes for all selected entities
+    // Draw camera gizmos for selected cameras/rigs
     let all_selected = selection.get_all_selected();
-    if all_selected.is_empty() {
-        return;
-    }
-
-    // Primary selection color (orange) and secondary selection color (lighter orange)
-    let primary_box_color = Color::srgb(1.0, 0.6, 0.0);
-    let secondary_box_color = Color::srgba(1.0, 0.6, 0.0, 0.6);
-
     for entity in &all_selected {
         let Ok(transform) = transforms.get(*entity) else {
             continue;
         };
 
         let is_primary = selection.selected_entity == Some(*entity);
-        let box_color = if is_primary { primary_box_color } else { secondary_box_color };
 
-        // Check if this is a camera node - draw camera gizmo in addition to selection box
+        // Only draw camera gizmos for primary selection
         if is_primary {
             if let Ok(camera_data) = cameras.get(*entity) {
                 draw_camera_gizmo(&mut gizmos, transform, camera_data);
@@ -60,19 +155,6 @@ pub fn draw_selection_gizmo(
                     .unwrap_or(Vec3::ZERO);
                 draw_camera_rig_gizmo(&mut gizmos, transform, rig_data, parent_pos);
             }
-        }
-
-        let pos = transform.translation;
-
-        // Draw a small cross indicator at the object's position instead of a box
-        // This is less distracting than a bounding box that doesn't match the mesh
-        let is_camera = cameras.get(*entity).is_ok();
-        if !is_camera {
-            let indicator_size = 0.15;
-            // Small corner brackets to indicate selection without being too prominent
-            gizmos.line(pos + Vec3::new(-indicator_size, 0.0, 0.0), pos + Vec3::new(indicator_size, 0.0, 0.0), box_color);
-            gizmos.line(pos + Vec3::new(0.0, -indicator_size, 0.0), pos + Vec3::new(0.0, indicator_size, 0.0), box_color);
-            gizmos.line(pos + Vec3::new(0.0, 0.0, -indicator_size), pos + Vec3::new(0.0, 0.0, indicator_size), box_color);
         }
     }
 

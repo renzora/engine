@@ -1,3 +1,5 @@
+# cargo-features = ["codegen-backend"]
+
 [package]
 name = "bevy_imgui_editor"
 version = "0.1.0"
@@ -27,7 +29,7 @@ name = "renzora_updater"
 path = "updater/src/main.rs"
 
 [dependencies]
-bevy = { version = "0.18", features = ["jpeg"] }
+bevy = { version = "0.18", features = ["dynamic_linking", "jpeg"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ron = "0.8"
@@ -37,9 +39,13 @@ zstd = "0.13"
 gltf = "1.4"
 image = { version = "0.25", optional = true }
 memory-stats = { version = "1.2", optional = true }
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 # Physics engine (Avian - ECS-native physics for Bevy)
 avian3d = { version = "0.5", optional = true }
+
+# Mesh outline rendering
+bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false, features = ["reflect"] }
 
 # Editor-only dependencies
 bevy_egui = { version = "0.39", optional = true }
@@ -60,16 +66,22 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api"]
+members = ["crates/editor_plugin_api", "crates/bevy_mod_outline"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/
 
+# [unstable]
+# codegen-backend = true
+
 [profile.dev]
 opt-level = 1
+# Note: Cranelift is incompatible with Bevy's dynamic linking on Windows nightly
+# codegen-backend = "cranelift"
 
 [profile.dev.package."*"]
 opt-level = 3
+# codegen-backend = "llvm"
 
 [profile.release]
 lto = "thin"

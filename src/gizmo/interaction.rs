@@ -3,7 +3,17 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
+use crate::terrain::{TerrainChunkData, TerrainChunkOf};
 use crate::console_info;
+
+/// Resource to track the currently hovered terrain chunk for highlighting
+#[derive(Resource, Default)]
+pub struct HoveredTerrainChunk {
+    /// The currently hovered terrain chunk entity
+    pub entity: Option<Entity>,
+    /// The previous frame's hovered entity (for detecting changes)
+    pub previous_entity: Option<Entity>,
+}
 
 use super::modal_transform::ModalTransformState;
 use super::picking::{
@@ -20,6 +30,7 @@ pub fn gizmo_hover_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
     // Disable gizmo during modal transform
     if modal.active {
@@ -46,6 +57,11 @@ pub fn gizmo_hover_system(
     let Some(selected) = selection.selected_entity else {
         return;
     };
+
+    // Don't show gizmo for terrain chunks - they cannot be transformed
+    if terrain_chunks.get(selected).is_ok() {
+        return;
+    }
 
     let Ok(obj_transform) = transforms.get(selected) else {
         return;
@@ -175,6 +191,7 @@ pub fn gizmo_interaction_system(
     parent_query: Query<&ChildOf>,
     mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
     // Disable gizmo interaction during modal transform
     if modal.active {
@@ -309,6 +326,10 @@ pub fn gizmo_interaction_system(
         if let Some(axis) = gizmo.hovered_axis {
             // Calculate initial drag state based on gizmo mode
             if let Some(selected) = selection.selected_entity {
+                // Don't allow gizmo drag on terrain chunks
+                if terrain_chunks.get(selected).is_ok() {
+                    return;
+                }
                 if let Ok(obj_transform) = transforms.get(selected) {
                     if let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) {
                         let pos = obj_transform.translation;
@@ -507,6 +528,7 @@ pub fn object_drag_system(
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
     editor_entities: Query<(Entity, &GlobalTransform), With<EditorEntity>>,
     mut scene_state: ResMut<SceneManagerState>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
     // Disable gizmo drag during modal transform
     if modal.active {
@@ -523,6 +545,11 @@ pub fn object_drag_system(
     let Some(selected) = selection.selected_entity else {
         return;
     };
+
+    // Don't allow dragging terrain chunks
+    if terrain_chunks.get(selected).is_ok() {
+        return;
+    }
 
     let Ok(mut obj_transform) = transforms.get_mut(selected) else {
         return;
@@ -805,5 +832,153 @@ pub fn object_drag_system(
                 _ => {}
             }
         }
+    }
+}
+
+/// System to detect terrain chunk hover for highlighting
+pub fn terrain_chunk_hover_system(
+    viewport: Res<ViewportState>,
+    mut hovered: ResMut<HoveredTerrainChunk>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
+    terrain_chunks: Query<Entity, With<TerrainChunkData>>,
+    parent_query: Query<&ChildOf>,
+    mut mesh_ray_cast: MeshRayCast,
+) {
+    // Store previous for change detection
+    hovered.previous_entity = hovered.entity;
+
+    // Clear hover if not in viewport
+    if !viewport.hovered {
+        hovered.entity = None;
+        return;
+    }
+
+    // Get cursor ray
+    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
+        hovered.entity = None;
+        return;
+    };
+
+    // Cast ray against all meshes
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+
+    // Find the closest terrain chunk hit
+    let mut closest_chunk: Option<Entity> = None;
+    let mut closest_distance = f32::MAX;
+
+    for (hit_entity, hit) in hits.iter() {
+        // Check if this entity or any ancestor is a terrain chunk
+        if let Some(chunk_entity) = find_terrain_chunk_ancestor(*hit_entity, &terrain_chunks, &parent_query) {
+            if hit.distance < closest_distance {
+                closest_distance = hit.distance;
+                closest_chunk = Some(chunk_entity);
+            }
+        }
+    }
+
+    hovered.entity = closest_chunk;
+}
+
+/// Find the terrain chunk ancestor of a mesh entity
+fn find_terrain_chunk_ancestor(
+    entity: Entity,
+    terrain_chunks: &Query<Entity, With<TerrainChunkData>>,
+    parent_query: &Query<&ChildOf>,
+) -> Option<Entity> {
+    // Check if this entity itself is a terrain chunk
+    if terrain_chunks.get(entity).is_ok() {
+        return Some(entity);
+    }
+
+    // Walk up the parent chain to find a terrain chunk
+    let mut current = entity;
+    while let Ok(child_of) = parent_query.get(current) {
+        let parent = child_of.0;
+        if terrain_chunks.get(parent).is_ok() {
+            return Some(parent);
+        }
+        current = parent;
+    }
+
+    None
+}
+
+/// System to draw yellow border around hovered terrain chunk
+pub fn terrain_chunk_highlight_system(
+    hovered: Res<HoveredTerrainChunk>,
+    selection: Res<SelectionState>,
+    terrain_chunks: Query<(&TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+    terrain_query: Query<&crate::terrain::TerrainData>,
+    mut gizmos: Gizmos<super::SelectionGizmoGroup>,
+) {
+    let Some(entity) = hovered.entity else {
+        return;
+    };
+
+    // Don't highlight if the chunk is already selected (it has an outline)
+    if selection.is_selected(entity) {
+        return;
+    }
+
+    let Ok((chunk_data, chunk_of, global_transform)) = terrain_chunks.get(entity) else {
+        return;
+    };
+
+    // Get terrain data for chunk size
+    let Ok(terrain_data) = terrain_query.get(chunk_of.0) else {
+        return;
+    };
+
+    let chunk_size = terrain_data.chunk_size;
+    let resolution = terrain_data.chunk_resolution;
+    let spacing = terrain_data.vertex_spacing();
+    let height_range = terrain_data.max_height - terrain_data.min_height;
+    let min_height = terrain_data.min_height;
+    let pos = global_transform.translation();
+
+    // Yellow border color
+    let color = Color::srgb(1.0, 1.0, 0.0);
+
+    // Small offset above terrain to prevent z-fighting
+    let y_offset = 0.15;
+
+    // Helper to get world position for a vertex
+    let get_vertex_pos = |vx: u32, vz: u32| -> Vec3 {
+        let height_normalized = chunk_data.get_height(vx, vz, resolution);
+        let height = min_height + height_normalized * height_range;
+        Vec3::new(
+            pos.x + vx as f32 * spacing,
+            pos.y + height + y_offset,
+            pos.z + vz as f32 * spacing,
+        )
+    };
+
+    // Draw front edge (z = 0)
+    for vx in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(vx, 0);
+        let p2 = get_vertex_pos(vx + 1, 0);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw back edge (z = max)
+    for vx in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(vx, resolution - 1);
+        let p2 = get_vertex_pos(vx + 1, resolution - 1);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw left edge (x = 0)
+    for vz in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(0, vz);
+        let p2 = get_vertex_pos(0, vz + 1);
+        gizmos.line(p1, p2, color);
+    }
+
+    // Draw right edge (x = max)
+    for vz in 0..(resolution - 1) {
+        let p1 = get_vertex_pos(resolution - 1, vz);
+        let p2 = get_vertex_pos(resolution - 1, vz + 1);
+        gizmos.line(p1, p2, color);
     }
 }

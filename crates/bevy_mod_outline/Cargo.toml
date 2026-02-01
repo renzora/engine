@@ -1,0 +1,35 @@
+[package]
+name = "bevy_mod_outline"
+version = "0.10.3"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A mesh outlining plugin for Bevy."
+readme = "README.md"
+homepage = "https://www.robinkay.uk/"
+repository = "https://github.com/komadori/bevy_mod_outline/"
+keywords = ["gamedev", "bevy", "outline"]
+categories = ["game-engines", "rendering"]
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+    "std",
+    "async_executor",
+    "bevy_log",
+    "bevy_color",
+    "bevy_image",
+    "bevy_pbr",
+] }
+bitfield = "0.15"
+interpolation = { version = "0.3", optional = true }
+thiserror = "2.0"
+nonmax = "0.5"
+wgpu-types = "27"
+itertools = { version = "0.14", optional = true }
+
+[features]
+default = ["interpolation", "reflect", "scene"]
+flood = ["dep:itertools"]
+reflect = []
+scene = ["bevy/bevy_scene"]
+
+# Examples removed for Bevy 0.18 compatibility

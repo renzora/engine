@@ -122,6 +122,7 @@ fn main() {
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
         .add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
+        .add_plugins(bevy_mod_outline::OutlinePlugin)
         // Register types for Bevy's scene system
         // Shared components
         .register_type::<shared::MeshNodeData>()
@@ -282,6 +283,10 @@ fn main() {
                 gizmo::gizmo_interaction_system,
                 gizmo::object_drag_system,
                 gizmo::draw_selection_gizmo,
+                gizmo::update_selection_outlines,
+                // Terrain chunk hover highlight
+                gizmo::terrain_chunk_hover_system,
+                gizmo::terrain_chunk_highlight_system,
                 // 2D gizmo systems
                 gizmo::gizmo_2d_hover_system,
                 gizmo::gizmo_2d_interaction_system,

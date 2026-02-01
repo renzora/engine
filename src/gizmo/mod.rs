@@ -13,9 +13,9 @@ pub mod gizmo_2d;
 pub mod interaction_2d;
 pub mod picking_2d;
 
-pub use drawing::draw_selection_gizmo;
+pub use drawing::{draw_selection_gizmo, update_selection_outlines};
 pub use grid::draw_grid;
-pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
+pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system, terrain_chunk_hover_system, terrain_chunk_highlight_system, HoveredTerrainChunk};
 pub use physics::{
     draw_physics_gizmos, draw_collider_edit_handles, collider_edit_selection_sync,
     collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,
@@ -73,6 +73,8 @@ impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         // Initialize gizmo state
         app.init_resource::<GizmoState>();
+        // Initialize terrain chunk hover tracking
+        app.init_resource::<HoveredTerrainChunk>();
         // Register custom gizmo config groups
         app.init_gizmo_group::<GridGizmoGroup>();
         app.init_gizmo_group::<SelectionGizmoGroup>();
