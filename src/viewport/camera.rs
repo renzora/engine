@@ -3,7 +3,7 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions};
 
 use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
-use crate::gizmo::ModalTransformState;
+use crate::gizmo::{ModalTransformState, GizmoState};
 
 pub fn camera_controller(
     selection: Res<SelectionState>,
@@ -21,6 +21,7 @@ pub fn camera_controller(
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
     mut cursor_query: Query<&mut CursorOptions>,
+    gizmo: Res<GizmoState>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
@@ -87,11 +88,18 @@ pub fn camera_controller(
 
     // Handle cursor visibility and grab mode for camera dragging
     // Only start camera drag when click ORIGINATES inside the viewport
+    // Don't start camera drag if gizmo is being dragged or hovered (for left click)
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
+    let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some();
     if let Ok(mut cursor) = cursor_query.single_mut() {
         // Start camera drag only when mouse button is first pressed while inside viewport
-        let start_drag = viewport.hovered && !alt_held &&
-            (left_just_pressed || middle_just_pressed || right_just_pressed);
+        // For left click, don't start if gizmo is hovered or being dragged
+        // Middle/right click always work for camera control
+        let start_drag = viewport.hovered && !alt_held && (
+            (left_just_pressed && !gizmo_hovered_or_dragging) ||
+            middle_just_pressed ||
+            right_just_pressed
+        );
 
         if start_drag {
             cursor.visible = false;
