@@ -48,7 +48,7 @@ impl NewDocumentType {
             NewDocumentType::Scene => "Default",
             NewDocumentType::Blueprint => "Blueprints",
             NewDocumentType::Script => "Scripting",
-            NewDocumentType::Material => "Materials",
+            NewDocumentType::Material => "Default",
             NewDocumentType::Shader => "Scripting",
         }
     }
@@ -349,7 +349,7 @@ pub fn render_document_tabs(
                                         layout_to_switch = Some("Scripting");
                                     }
                                     NewDocumentType::Material => {
-                                        layout_to_switch = Some("Materials");
+                                        layout_to_switch = Some("Default");
                                     }
                                     NewDocumentType::Shader => {
                                         layout_to_switch = Some("Scripting");

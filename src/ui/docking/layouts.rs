@@ -44,7 +44,6 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Debug", debug_layout()),
         WorkspaceLayout::builtin("Blueprints", blueprints_layout()),
         WorkspaceLayout::builtin("Level Design", level_design_layout()),
-        WorkspaceLayout::builtin("Materials", materials_layout()),
         WorkspaceLayout::builtin("Terrain", terrain_layout()),
     ]
 }
@@ -261,39 +260,6 @@ pub fn level_design_layout() -> DockTree {
             0.75,
         ),
         0.75,
-    )
-}
-
-/// Materials layout: Inspector-focused for editing material properties
-///
-/// ```text
-/// ┌─────────┬──────────────────────┬───────────┐
-/// │         │                      │           │
-/// │ Assets  │      Viewport        │ Inspector │
-/// │         │                      │           │
-/// │         │                      │           │
-/// │         │                      │           │
-/// ├─────────┼──────────────────────┤           │
-/// │Hierarchy│      Console         │           │
-/// └─────────┴──────────────────────┴───────────┘
-/// ```
-pub fn materials_layout() -> DockTree {
-    DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf(PanelId::Assets),
-            DockTree::leaf(PanelId::Hierarchy),
-            0.65,
-        ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf(PanelId::Viewport),
-                DockTree::leaf(PanelId::Console),
-                0.75,
-            ),
-            DockTree::leaf(PanelId::Inspector),
-            0.65,
-        ),
-        0.18,
     )
 }
 
