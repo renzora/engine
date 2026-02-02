@@ -7,8 +7,8 @@ use crate::core::{InputFocusState, ViewportCamera, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
 
 use super::{
-    TerrainBrushType, TerrainChunkData, TerrainChunkOf, TerrainData,
-    TerrainSculptState, TerrainSettings,
+    BrushFalloffType, BrushShape, FlattenMode, TerrainBrushType, TerrainChunkData, TerrainChunkOf,
+    TerrainData, TerrainSculptState, TerrainSettings,
 };
 
 /// System to handle T key shortcut for terrain sculpt tool
@@ -161,12 +161,15 @@ fn get_terrain_height_at(
     terrain_entity: Entity,
 ) -> Option<f32> {
     // Determine which chunk this position falls in
-    let chunk_x = (local_x / terrain.chunk_size).floor() as u32;
-    let chunk_z = (local_z / terrain.chunk_size).floor() as u32;
+    let chunk_x = (local_x / terrain.chunk_size).floor() as i32;
+    let chunk_z = (local_z / terrain.chunk_size).floor() as i32;
 
-    if chunk_x >= terrain.chunks_x || chunk_z >= terrain.chunks_z {
+    if chunk_x < 0 || chunk_z < 0 || chunk_x >= terrain.chunks_x as i32 || chunk_z >= terrain.chunks_z as i32 {
         return None;
     }
+
+    let chunk_x = chunk_x as u32;
+    let chunk_z = chunk_z as u32;
 
     // Find the chunk
     for (chunk_data, chunk_of, _) in chunk_query.iter() {
@@ -181,18 +184,105 @@ fn get_terrain_height_at(
         let in_chunk_x = local_x - chunk_x as f32 * terrain.chunk_size;
         let in_chunk_z = local_z - chunk_z as f32 * terrain.chunk_size;
 
-        // Get vertex coordinates
+        // Get vertex coordinates for bilinear interpolation
         let spacing = terrain.vertex_spacing();
-        let vx = (in_chunk_x / spacing).floor() as u32;
-        let vz = (in_chunk_z / spacing).floor() as u32;
+        let fx = in_chunk_x / spacing;
+        let fz = in_chunk_z / spacing;
 
-        let vx = vx.min(terrain.chunk_resolution - 1);
-        let vz = vz.min(terrain.chunk_resolution - 1);
+        let vx0 = (fx.floor() as u32).min(terrain.chunk_resolution - 1);
+        let vz0 = (fz.floor() as u32).min(terrain.chunk_resolution - 1);
+        let vx1 = (vx0 + 1).min(terrain.chunk_resolution - 1);
+        let vz1 = (vz0 + 1).min(terrain.chunk_resolution - 1);
 
-        // Get height (could interpolate for smoother results)
-        let height_normalized = chunk_data.get_height(vx, vz, terrain.chunk_resolution);
+        // Fractional parts for interpolation
+        let tx = fx - fx.floor();
+        let tz = fz - fz.floor();
+
+        // Sample four corners
+        let h00 = chunk_data.get_height(vx0, vz0, terrain.chunk_resolution);
+        let h10 = chunk_data.get_height(vx1, vz0, terrain.chunk_resolution);
+        let h01 = chunk_data.get_height(vx0, vz1, terrain.chunk_resolution);
+        let h11 = chunk_data.get_height(vx1, vz1, terrain.chunk_resolution);
+
+        // Bilinear interpolation for smooth height sampling
+        let h0 = h00 * (1.0 - tx) + h10 * tx;
+        let h1 = h01 * (1.0 - tx) + h11 * tx;
+        let height_normalized = h0 * (1.0 - tz) + h1 * tz;
+
         let height_range = terrain.max_height - terrain.min_height;
         return Some(terrain.min_height + height_normalized * height_range);
+    }
+
+    None
+}
+
+/// Sample terrain height at a world position for brush preview
+fn sample_brush_height(
+    world_x: f32,
+    world_z: f32,
+    terrain: &TerrainData,
+    terrain_pos: Vec3,
+    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+    terrain_entity: Entity,
+) -> Option<f32> {
+    let half_width = terrain.total_width() / 2.0;
+    let half_depth = terrain.total_depth() / 2.0;
+
+    // Convert to terrain-local coordinates
+    let local_x = world_x - terrain_pos.x + half_width;
+    let local_z = world_z - terrain_pos.z + half_depth;
+
+    // Determine which chunk this position falls in
+    let chunk_x = (local_x / terrain.chunk_size).floor() as i32;
+    let chunk_z = (local_z / terrain.chunk_size).floor() as i32;
+
+    if chunk_x < 0 || chunk_z < 0 || chunk_x >= terrain.chunks_x as i32 || chunk_z >= terrain.chunks_z as i32 {
+        return None;
+    }
+
+    let chunk_x = chunk_x as u32;
+    let chunk_z = chunk_z as u32;
+
+    // Find the chunk
+    for (chunk_data, chunk_of, _) in chunk_query.iter() {
+        if chunk_of.0 != terrain_entity {
+            continue;
+        }
+        if chunk_data.chunk_x != chunk_x || chunk_data.chunk_z != chunk_z {
+            continue;
+        }
+
+        // Get position within chunk
+        let in_chunk_x = local_x - chunk_x as f32 * terrain.chunk_size;
+        let in_chunk_z = local_z - chunk_z as f32 * terrain.chunk_size;
+
+        // Get vertex coordinates for bilinear interpolation
+        let spacing = terrain.vertex_spacing();
+        let fx = in_chunk_x / spacing;
+        let fz = in_chunk_z / spacing;
+
+        let vx0 = (fx.floor() as u32).min(terrain.chunk_resolution - 1);
+        let vz0 = (fz.floor() as u32).min(terrain.chunk_resolution - 1);
+        let vx1 = (vx0 + 1).min(terrain.chunk_resolution - 1);
+        let vz1 = (vz0 + 1).min(terrain.chunk_resolution - 1);
+
+        // Fractional parts for interpolation
+        let tx = fx - fx.floor();
+        let tz = fz - fz.floor();
+
+        // Sample four corners
+        let h00 = chunk_data.get_height(vx0, vz0, terrain.chunk_resolution);
+        let h10 = chunk_data.get_height(vx1, vz0, terrain.chunk_resolution);
+        let h01 = chunk_data.get_height(vx0, vz1, terrain.chunk_resolution);
+        let h11 = chunk_data.get_height(vx1, vz1, terrain.chunk_resolution);
+
+        // Bilinear interpolation for smooth height sampling
+        let h0 = h00 * (1.0 - tx) + h10 * tx;
+        let h1 = h01 * (1.0 - tx) + h11 * tx;
+        let height_normalized = h0 * (1.0 - tz) + h1 * tz;
+
+        let height_range = terrain.max_height - terrain.min_height;
+        return Some(terrain.min_height + height_normalized * height_range + terrain_pos.y);
     }
 
     None
@@ -204,6 +294,7 @@ pub fn terrain_sculpt_system(
     sculpt_state: Res<TerrainSculptState>,
     settings: Res<TerrainSettings>,
     time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut gizmos: Gizmos,
@@ -216,19 +307,155 @@ pub fn terrain_sculpt_system(
     // Draw brush preview
     if let Some(hover_pos) = sculpt_state.hover_position {
         let color = match settings.brush_type {
-            TerrainBrushType::Raise => Color::srgba(0.2, 0.8, 0.2, 0.5),
-            TerrainBrushType::Lower => Color::srgba(0.8, 0.2, 0.2, 0.5),
-            TerrainBrushType::Smooth => Color::srgba(0.2, 0.5, 0.8, 0.5),
-            TerrainBrushType::Flatten => Color::srgba(0.8, 0.8, 0.2, 0.5),
-            TerrainBrushType::SetHeight => Color::srgba(0.8, 0.4, 0.8, 0.5),
+            TerrainBrushType::Sculpt => Color::srgba(0.2, 0.8, 0.2, 0.8),
+            TerrainBrushType::Erase => Color::srgba(0.8, 0.2, 0.2, 0.8),
+            TerrainBrushType::Smooth => Color::srgba(0.2, 0.5, 0.8, 0.8),
+            TerrainBrushType::Flatten => Color::srgba(0.8, 0.8, 0.2, 0.8),
+            TerrainBrushType::Ramp => Color::srgba(0.8, 0.6, 0.2, 0.8),
+            TerrainBrushType::Erosion => Color::srgba(0.6, 0.4, 0.2, 0.8),
+            TerrainBrushType::Hydro => Color::srgba(0.2, 0.4, 0.8, 0.8),
+            TerrainBrushType::Noise => Color::srgba(0.6, 0.6, 0.6, 0.8),
+            TerrainBrushType::Retop => Color::srgba(0.4, 0.8, 0.4, 0.8),
+            TerrainBrushType::Visibility => Color::srgba(0.8, 0.8, 0.8, 0.8),
+            TerrainBrushType::Blueprint => Color::srgba(0.2, 0.2, 0.8, 0.8),
+            TerrainBrushType::Mirror => Color::srgba(0.8, 0.2, 0.8, 0.8),
+            TerrainBrushType::Select => Color::srgba(1.0, 0.8, 0.0, 0.8),
+            TerrainBrushType::Copy => Color::srgba(0.0, 0.8, 0.8, 0.8),
         };
 
-        // Draw brush circle
-        gizmos.circle(
-            Isometry3d::new(hover_pos + Vec3::Y * 0.1, Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-            settings.brush_radius,
-            color,
-        );
+        // Draw contoured brush circle that follows terrain
+        if let Some(terrain_entity) = sculpt_state.active_terrain {
+            if let Ok((terrain_data, terrain_transform)) = terrain_query.get(terrain_entity) {
+                let terrain_pos = terrain_transform.translation();
+
+                // Number of segments for the brush outline (more = smoother)
+                let segments = 48;
+                let brush_radius = settings.brush_radius;
+
+                // Sample points around the circumference based on brush shape
+                let mut points: Vec<Vec3> = Vec::with_capacity(segments);
+
+                for i in 0..segments {
+                    let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+                    let (sin_a, cos_a) = angle.sin_cos();
+
+                    // Calculate offset based on brush shape
+                    let (dx, dz) = match settings.brush_shape {
+                        BrushShape::Circle => {
+                            (cos_a * brush_radius, sin_a * brush_radius)
+                        }
+                        BrushShape::Square => {
+                            // Parametric square
+                            let t = angle / std::f32::consts::FRAC_PI_2;
+                            let side = (t.floor() as i32) % 4;
+                            let frac = t.fract();
+                            match side {
+                                0 => (brush_radius, (frac * 2.0 - 1.0) * brush_radius),
+                                1 => ((1.0 - frac * 2.0) * brush_radius, brush_radius),
+                                2 => (-brush_radius, (1.0 - frac * 2.0) * brush_radius),
+                                _ => ((frac * 2.0 - 1.0) * brush_radius, -brush_radius),
+                            }
+                        }
+                        BrushShape::Diamond => {
+                            // Parametric diamond
+                            let t = angle / std::f32::consts::FRAC_PI_2;
+                            let side = (t.floor() as i32) % 4;
+                            let frac = t.fract();
+                            match side {
+                                0 => ((1.0 - frac) * brush_radius, frac * brush_radius),
+                                1 => (-frac * brush_radius, (1.0 - frac) * brush_radius),
+                                2 => (-(1.0 - frac) * brush_radius, -frac * brush_radius),
+                                _ => (frac * brush_radius, -(1.0 - frac) * brush_radius),
+                            }
+                        }
+                    };
+
+                    let world_x = hover_pos.x + dx;
+                    let world_z = hover_pos.z + dz;
+
+                    // Sample terrain height at this point
+                    let height = sample_brush_height(
+                        world_x,
+                        world_z,
+                        terrain_data,
+                        terrain_pos,
+                        &chunk_query,
+                        terrain_entity,
+                    )
+                    .unwrap_or(hover_pos.y);
+
+                    // Add small offset above terrain surface
+                    points.push(Vec3::new(world_x, height + 0.15, world_z));
+                }
+
+                // Draw line segments connecting the points
+                for i in 0..segments {
+                    let next = (i + 1) % segments;
+                    gizmos.line(points[i], points[next], color);
+                }
+
+                // Also draw inner falloff circle if falloff is less than 1.0
+                if settings.falloff < 0.99 {
+                    let inner_radius = brush_radius * (1.0 - settings.falloff);
+                    let inner_color = color.with_alpha(0.4);
+
+                    let mut inner_points: Vec<Vec3> = Vec::with_capacity(segments);
+
+                    for i in 0..segments {
+                        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+                        let (sin_a, cos_a) = angle.sin_cos();
+
+                        let (dx, dz) = match settings.brush_shape {
+                            BrushShape::Circle => {
+                                (cos_a * inner_radius, sin_a * inner_radius)
+                            }
+                            BrushShape::Square => {
+                                let t = angle / std::f32::consts::FRAC_PI_2;
+                                let side = (t.floor() as i32) % 4;
+                                let frac = t.fract();
+                                match side {
+                                    0 => (inner_radius, (frac * 2.0 - 1.0) * inner_radius),
+                                    1 => ((1.0 - frac * 2.0) * inner_radius, inner_radius),
+                                    2 => (-inner_radius, (1.0 - frac * 2.0) * inner_radius),
+                                    _ => ((frac * 2.0 - 1.0) * inner_radius, -inner_radius),
+                                }
+                            }
+                            BrushShape::Diamond => {
+                                let t = angle / std::f32::consts::FRAC_PI_2;
+                                let side = (t.floor() as i32) % 4;
+                                let frac = t.fract();
+                                match side {
+                                    0 => ((1.0 - frac) * inner_radius, frac * inner_radius),
+                                    1 => (-frac * inner_radius, (1.0 - frac) * inner_radius),
+                                    2 => (-(1.0 - frac) * inner_radius, -frac * inner_radius),
+                                    _ => (frac * inner_radius, -(1.0 - frac) * inner_radius),
+                                }
+                            }
+                        };
+
+                        let world_x = hover_pos.x + dx;
+                        let world_z = hover_pos.z + dz;
+
+                        let height = sample_brush_height(
+                            world_x,
+                            world_z,
+                            terrain_data,
+                            terrain_pos,
+                            &chunk_query,
+                            terrain_entity,
+                        )
+                        .unwrap_or(hover_pos.y);
+
+                        inner_points.push(Vec3::new(world_x, height + 0.15, world_z));
+                    }
+
+                    for i in 0..segments {
+                        let next = (i + 1) % segments;
+                        gizmos.line(inner_points[i], inner_points[next], inner_color);
+                    }
+                }
+            }
+        }
     }
 
     // Apply sculpting if active
@@ -291,32 +518,71 @@ pub fn terrain_sculpt_system(
 
                 let dx = vertex_world_x - local_x;
                 let dz = vertex_world_z - local_z;
-                let dist = (dx * dx + dz * dz).sqrt();
+
+                // Calculate distance based on brush shape
+                let dist = match settings.brush_shape {
+                    BrushShape::Circle => (dx * dx + dz * dz).sqrt(),
+                    BrushShape::Square => dx.abs().max(dz.abs()),
+                    BrushShape::Diamond => dx.abs() + dz.abs(),
+                };
 
                 if dist > brush_radius {
                     continue;
                 }
 
-                // Calculate falloff
-                let falloff = if settings.falloff > 0.5 {
-                    // Smooth falloff (cosine)
-                    let t = dist / brush_radius;
-                    (1.0 - t * t).max(0.0)
+                // Calculate normalized distance (0 at center, 1 at edge)
+                let t = dist / brush_radius;
+
+                // Inner radius where full strength applies (based on falloff setting)
+                let inner_t = 1.0 - settings.falloff;
+
+                // Calculate falloff based on falloff type
+                let falloff = if t <= inner_t {
+                    1.0
                 } else {
-                    // Linear falloff
-                    1.0 - dist / brush_radius
+                    let outer_t = (t - inner_t) / (1.0 - inner_t).max(0.001);
+                    match settings.falloff_type {
+                        BrushFalloffType::Smooth => {
+                            // Smooth cosine falloff
+                            (1.0 + (outer_t * std::f32::consts::PI).cos()) * 0.5
+                        }
+                        BrushFalloffType::Linear => {
+                            // Linear falloff
+                            1.0 - outer_t
+                        }
+                        BrushFalloffType::Spherical => {
+                            // Spherical (hemisphere) falloff
+                            (1.0 - outer_t * outer_t).sqrt().max(0.0)
+                        }
+                        BrushFalloffType::Tip => {
+                            // Tip falloff - strong at center, quick dropoff
+                            (1.0 - outer_t).powi(3)
+                        }
+                        BrushFalloffType::Flat => {
+                            // Flat - uniform strength across entire brush
+                            1.0
+                        }
+                    }
                 };
 
                 let effect = strength * falloff;
 
+                // Check if Shift is held for inverse operations
+                let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
                 match settings.brush_type {
-                    TerrainBrushType::Raise => {
+                    TerrainBrushType::Sculpt => {
+                        // Raise terrain (hold Shift to lower)
                         let delta = effect / height_range;
+                        let delta = if shift_held { -delta } else { delta };
                         chunk_data.modify_height(vx, vz, resolution, delta);
                     }
-                    TerrainBrushType::Lower => {
-                        let delta = -effect / height_range;
-                        chunk_data.modify_height(vx, vz, resolution, delta);
+                    TerrainBrushType::Erase => {
+                        // Reset to default height (0.5)
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let target = 0.5;
+                        let new_height = current + (target - current) * effect * 2.0;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Smooth => {
                         // Average with neighbors
@@ -341,15 +607,152 @@ pub fn terrain_sculpt_system(
                     TerrainBrushType::Flatten => {
                         if let Some(target) = sculpt_state.flatten_start_height {
                             let current = chunk_data.get_height(vx, vz, resolution);
-                            let new_height = current + (target - current) * effect * 2.0;
-                            chunk_data.set_height(vx, vz, resolution, new_height);
+                            // Apply flatten mode constraints
+                            let should_apply = match settings.flatten_mode {
+                                FlattenMode::Both => true,
+                                FlattenMode::Raise => current < target,
+                                FlattenMode::Lower => current > target,
+                            };
+                            if should_apply {
+                                let new_height = current + (target - current) * effect * 2.0;
+                                chunk_data.set_height(vx, vz, resolution, new_height);
+                            }
                         }
                     }
-                    TerrainBrushType::SetHeight => {
+                    TerrainBrushType::Noise => {
+                        // Add procedural noise (hold Shift to smooth instead)
+                        if shift_held {
+                            // Smooth when shift held
+                            let current = chunk_data.get_height(vx, vz, resolution);
+                            let mut sum = current;
+                            let mut count = 1.0;
+                            for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
+                                for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
+                                    if nx != vx || nz != vz {
+                                        sum += chunk_data.get_height(nx, nz, resolution);
+                                        count += 1.0;
+                                    }
+                                }
+                            }
+                            let avg = sum / count;
+                            let new_height = current + (avg - current) * effect * 2.0;
+                            chunk_data.set_height(vx, vz, resolution, new_height);
+                        } else {
+                            // Multi-octave noise for more natural results
+                            let noise1 = ((vertex_world_x * 0.1).sin() * (vertex_world_z * 0.1).cos()) * 0.5;
+                            let noise2 = ((vertex_world_x * 0.23).sin() * (vertex_world_z * 0.19).cos()) * 0.25;
+                            let noise3 = ((vertex_world_x * 0.47).sin() * (vertex_world_z * 0.41).cos()) * 0.125;
+                            let noise_val = noise1 + noise2 + noise3;
+                            let delta = effect * noise_val / height_range;
+                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        }
+                    }
+                    TerrainBrushType::Erosion => {
+                        // Simple thermal erosion - move height towards neighbors
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let target = settings.target_height;
+                        let mut lowest = current;
+                        for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
+                            for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
+                                let h = chunk_data.get_height(nx, nz, resolution);
+                                if h < lowest {
+                                    lowest = h;
+                                }
+                            }
+                        }
+                        if current > lowest {
+                            let delta = (lowest - current) * effect * 0.5;
+                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        }
+                    }
+                    TerrainBrushType::Hydro => {
+                        // Simple hydraulic erosion simulation
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let mut sum = 0.0;
+                        let mut count = 0.0;
+                        for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
+                            for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
+                                let h = chunk_data.get_height(nx, nz, resolution);
+                                if h < current {
+                                    sum += h;
+                                    count += 1.0;
+                                }
+                            }
+                        }
+                        if count > 0.0 {
+                            let avg_lower = sum / count;
+                            let delta = (avg_lower - current) * effect * 0.3;
+                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        }
+                    }
+                    TerrainBrushType::Ramp => {
+                        // Create a slope from brush edge towards center
+                        // Height increases as you get closer to center (Shift to invert)
+                        let t = if shift_held {
+                            dist / brush_radius // Higher at edges
+                        } else {
+                            1.0 - (dist / brush_radius) // Higher at center
+                        };
+                        let target = sculpt_state.flatten_start_height.unwrap_or(0.5);
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        // Blend towards target height weighted by distance
+                        let ramp_height = current + (target - current) * t;
+                        let new_height = current + (ramp_height - current) * effect * 2.0;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Retop => {
+                        // Aggressive smoothing that normalizes the terrain more strongly
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let mut sum = 0.0;
+                        let mut count = 0.0;
+                        // Sample a wider neighborhood for stronger effect
+                        for nz in vz.saturating_sub(2)..=(vz + 2).min(resolution - 1) {
+                            for nx in vx.saturating_sub(2)..=(vx + 2).min(resolution - 1) {
+                                sum += chunk_data.get_height(nx, nz, resolution);
+                                count += 1.0;
+                            }
+                        }
+                        let avg = sum / count;
+                        // Stronger blend than regular smooth
+                        let new_height = current + (avg - current) * effect * 3.0;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Visibility => {
+                        // Lower terrain below visible range (simulates hiding)
+                        // Hold Shift to raise back up
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let delta = if shift_held { effect * 0.5 } else { -effect * 0.5 };
+                        let new_height = current + delta;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Blueprint => {
+                        // Blueprint brush - set to flat reference height
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let target = 0.5; // Reference plane
                         let new_height = current + (target - current) * effect * 2.0;
                         chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Mirror => {
+                        // Mirror effect - invert height around midpoint
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let midpoint = 0.5;
+                        let mirrored = midpoint + (midpoint - current);
+                        let new_height = current + (mirrored - current) * effect;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Select => {
+                        // Select mode - highlight by slight raise (visual feedback)
+                        // In a full implementation this would mark vertices for batch operations
+                        let delta = effect * 0.01 / height_range;
+                        chunk_data.modify_height(vx, vz, resolution, delta);
+                    }
+                    TerrainBrushType::Copy => {
+                        // Copy mode - sample and store height (first click), paste on subsequent
+                        // Simplified: blend towards the flatten start height like stamp
+                        if let Some(target) = sculpt_state.flatten_start_height {
+                            let current = chunk_data.get_height(vx, vz, resolution);
+                            let new_height = current + (target - current) * effect;
+                            chunk_data.set_height(vx, vz, resolution, new_height);
+                        }
                     }
                 }
             }
