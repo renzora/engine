@@ -8,7 +8,7 @@ pub mod model_preview;
 pub mod render_2d;
 mod texture;
 
-pub use camera::{camera_controller, update_camera_projection};
+pub use camera::{apply_orbit_to_camera, camera_controller, update_camera_projection};
 pub use camera_preview::{
     setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
 };
@@ -27,7 +27,7 @@ use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use std::collections::HashMap;
 
-use crate::core::{AppState, EditorSettings, RenderToggles, SelectionState, ViewportState, VisualizationMode};
+use crate::core::{AppState, DockingState, EditorSettings, RenderToggles, SelectionState, ViewportState, VisualizationMode};
 use crate::spawn::{EditorSceneRoot, SceneType};
 use crate::shared::{
     Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
@@ -117,7 +117,7 @@ impl Plugin for ViewportPlugin {
             )
             .add_systems(
                 Update,
-                auto_switch_viewport_mode.run_if(in_state(AppState::Editor)),
+                (auto_switch_viewport_mode, sync_layout_camera_settings).run_if(in_state(AppState::Editor)),
             )
             // Model preview systems for asset browser thumbnails
             .add_systems(
@@ -206,6 +206,20 @@ fn auto_switch_viewport_mode(
     } else if is_3d && viewport.viewport_mode != ViewportMode::Mode3D {
         viewport.viewport_mode = ViewportMode::Mode3D;
     }
+}
+
+/// Syncs viewport settings based on the active layout.
+/// Disables left-click camera drag in terrain layout to allow brush tools to work.
+pub fn sync_layout_camera_settings(
+    docking: Res<DockingState>,
+    mut viewport: ResMut<ViewportState>,
+) {
+    if !docking.is_changed() {
+        return;
+    }
+
+    // Disable left-click camera drag in terrain layout for brush tools
+    viewport.disable_left_click_drag = docking.active_layout == "Terrain";
 }
 
 /// System to update rendering based on render toggles and visualization mode

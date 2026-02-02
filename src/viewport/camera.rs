@@ -91,12 +91,14 @@ pub fn camera_controller(
     // Don't start camera drag if gizmo is being dragged or hovered (for left click)
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some();
+    let left_click_drag_disabled = viewport.disable_left_click_drag;
     if let Ok(mut cursor) = cursor_query.single_mut() {
         // Start camera drag only when mouse button is first pressed while inside viewport
         // For left click, don't start if gizmo is hovered or being dragged
         // Middle/right click always work for camera control
+        // Left-click drag can be disabled (e.g., in terrain layout for brush tools)
         let start_drag = viewport.hovered && !alt_held && (
-            (left_just_pressed && !gizmo_hovered_or_dragging) ||
+            (left_just_pressed && !gizmo_hovered_or_dragging && !left_click_drag_disabled) ||
             middle_just_pressed ||
             right_just_pressed
         );
@@ -235,7 +237,8 @@ pub fn camera_controller(
     }
     // Left mouse drag - Forward/backward movement + horizontal look (Unreal style)
     // Vertical mouse = dolly forward/backward, Horizontal mouse = yaw rotation
-    else if left_pressed && !alt_held {
+    // Can be disabled (e.g., in terrain layout for brush tools)
+    else if left_pressed && !alt_held && !left_click_drag_disabled {
         // Movement speed multiplier for left-click drag
         let drag_move_speed = pan_speed * 3.0;
 
@@ -283,6 +286,34 @@ pub fn camera_controller(
     }
 
     // Calculate camera position from orbit parameters
+    let cam_pos = orbit.focus
+        + Vec3::new(
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.distance * orbit.pitch.sin(),
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
+        );
+
+    transform.translation = cam_pos;
+    transform.look_at(orbit.focus, Vec3::Y);
+}
+
+/// System to apply orbit state to camera transform after UI changes.
+/// This runs in EguiPrimaryContextPass after editor_ui to ensure UI-triggered
+/// orbit changes (view angle buttons, axis gizmo clicks, etc.) are immediately
+/// reflected in the camera transform for the current frame's render.
+pub fn apply_orbit_to_camera(
+    orbit: Res<OrbitCameraState>,
+    mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
+) {
+    // Only run when orbit state has changed
+    if !orbit.is_changed() {
+        return;
+    }
+
+    let Ok(mut transform) = camera_query.single_mut() else {
+        return;
+    };
+
     let cam_pos = orbit.focus
         + Vec3::new(
             orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),

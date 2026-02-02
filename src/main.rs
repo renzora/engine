@@ -244,6 +244,13 @@ fn main() {
         )
         // Window actions system - runs in same schedule as egui to handle drag immediately
         .add_systems(EguiPrimaryContextPass, ui::handle_window_actions.after(ui::editor_ui))
+        // Apply orbit camera changes from UI immediately (view angle buttons, axis gizmo clicks, etc.)
+        .add_systems(
+            EguiPrimaryContextPass,
+            viewport::apply_orbit_to_camera
+                .after(ui::editor_ui)
+                .run_if(in_state(AppState::Editor)),
+        )
         // Editor non-UI systems (run when in Editor state) - split into multiple groups
         .add_systems(
             Update,
@@ -284,9 +291,7 @@ fn main() {
                 gizmo::object_drag_system,
                 gizmo::draw_selection_gizmo,
                 gizmo::update_selection_outlines,
-                // Terrain chunk hover highlight and selection
-                gizmo::terrain_chunk_hover_system,
-                gizmo::terrain_chunk_highlight_system,
+                // Terrain chunk selection highlight (yellow border on click)
                 gizmo::terrain_chunk_selection_system,
                 // 2D gizmo systems
                 gizmo::gizmo_2d_hover_system,
