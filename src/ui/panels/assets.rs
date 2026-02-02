@@ -415,29 +415,81 @@ pub fn render_assets_content(
     let bottom_bar_height = 24.0;
     let available_height = ui.available_height() - bottom_bar_height - 4.0;
 
+    // Threshold for showing grid alongside tree
+    let show_grid = available_width >= 450.0;
+    let tree_width = if show_grid {
+        assets.tree_panel_width.clamp(120.0, available_width * 0.5)
+    } else {
+        available_width
+    };
+
     // Main content area with fixed height to leave room for bottom bar
-    egui::ScrollArea::vertical()
-        .max_height(available_height.max(50.0))
-        .show(ui, |ui| {
+    ui.allocate_ui_with_layout(
+        Vec2::new(available_width, available_height.max(50.0)),
+        egui::Layout::left_to_right(egui::Align::TOP),
+        |ui| {
             if let Some(project) = current_project {
                 let items = collect_items(assets, project);
                 let filtered_items = filter_items(&items, &assets.search);
 
-                match assets.view_mode {
-                    AssetViewMode::Grid => {
-                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, theme);
-                    }
-                    AssetViewMode::List => {
-                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, project, theme);
-                    }
-                }
+                // Tree view panel (always shown)
+                ui.allocate_ui_with_layout(
+                    Vec2::new(tree_width, available_height.max(50.0)),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("assets_tree_scroll")
+                            .max_height(available_height.max(50.0))
+                            .show(ui, |ui| {
+                                ui.set_min_width(tree_width - 8.0);
+                                render_tree_navigation(ui, &ctx, assets, scene_state, project, thumbnail_cache, theme);
+                            });
+                    },
+                );
 
-                // Context menu (only when inside a folder)
-                if assets.current_folder.is_some() {
-                    ui.allocate_response(ui.available_size(), Sense::click())
-                        .context_menu(|ui| {
-                            render_context_menu(ui, assets);
-                        });
+                // Resize handle between tree and grid
+                if show_grid {
+                    let separator_response = ui.separator();
+                    let sep_rect = separator_response.rect;
+                    let resize_rect = egui::Rect::from_center_size(
+                        sep_rect.center(),
+                        Vec2::new(8.0, sep_rect.height()),
+                    );
+                    let resize_response = ui.interact(resize_rect, ui.id().with("tree_resize"), Sense::drag());
+
+                    if resize_response.hovered() || resize_response.dragged() {
+                        ctx.set_cursor_icon(CursorIcon::ResizeHorizontal);
+                    }
+
+                    if resize_response.dragged() {
+                        if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                            let new_width = pointer_pos.x - ui.min_rect().min.x;
+                            assets.tree_panel_width = new_width.clamp(120.0, available_width * 0.5);
+                        }
+                    }
+
+                    // Grid view panel
+                    let grid_width = available_width - tree_width - 8.0;
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(grid_width, available_height.max(50.0)),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("assets_grid_scroll")
+                                .max_height(available_height.max(50.0))
+                                .show(ui, |ui| {
+                                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, theme);
+
+                                    // Context menu (only when inside a folder)
+                                    if assets.current_folder.is_some() {
+                                        ui.allocate_response(ui.available_size(), Sense::click())
+                                            .context_menu(|ui| {
+                                                render_context_menu(ui, assets);
+                                            });
+                                    }
+                                });
+                        },
+                    );
                 }
             } else {
                 ui.add_space(20.0);
@@ -447,45 +499,27 @@ pub fn render_assets_content(
                     ui.label(RichText::new("No project loaded").size(11.0).color(text_muted));
                 });
             }
-        });
+        },
+    );
 
     // Bottom bar with view controls
     ui.add_space(2.0);
     ui.horizontal(|ui| {
+        // Left side: current folder info
+        if let Some(folder) = &assets.current_folder {
+            if let Some(name) = folder.file_name().and_then(|n| n.to_str()) {
+                ui.label(RichText::new(format!("{} {}", FOLDER_OPEN, name)).size(10.0).color(text_muted));
+            }
+        }
+
         // Right-aligned controls
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
 
-            // Zoom slider (only in grid mode and if wide enough)
-            if assets.view_mode == AssetViewMode::Grid && !is_compact {
-                ui.spacing_mut().slider_width = if available_width < 350.0 { 40.0 } else { 60.0 };
+            // Zoom slider (only when grid is visible - wide mode)
+            if show_grid {
+                ui.spacing_mut().slider_width = 60.0;
                 ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false));
-                ui.separator();
-            }
-
-            // View mode toggle
-            let grid_color = if assets.view_mode == AssetViewMode::Grid {
-                text_primary
-            } else {
-                text_disabled
-            };
-            let list_color = if assets.view_mode == AssetViewMode::List {
-                text_primary
-            } else {
-                text_disabled
-            };
-
-            if ui.small_button(RichText::new(LIST).size(14.0).color(list_color))
-                .on_hover_text("Tree view")
-                .clicked()
-            {
-                assets.view_mode = AssetViewMode::List;
-            }
-            if ui.small_button(RichText::new(SQUARES_FOUR).size(14.0).color(grid_color))
-                .on_hover_text("Grid view")
-                .clicked()
-            {
-                assets.view_mode = AssetViewMode::Grid;
             }
         });
     });
@@ -505,37 +539,31 @@ fn render_toolbar(
     let is_medium = available_width < 450.0;
     let is_narrow = available_width < 200.0;
 
-    // In list/tree view, navigation buttons aren't needed
-    let is_grid_view = assets.view_mode == AssetViewMode::Grid;
-
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if is_compact { 2.0 } else { 4.0 };
 
-        // Back and Home buttons only in grid view
-        if is_grid_view {
-            // Back button
-            let can_go_back = assets.current_folder.is_some();
-            ui.add_enabled_ui(can_go_back, |ui| {
-                if ui.small_button(RichText::new(ARROW_LEFT).size(14.0)).clicked() {
-                    if let Some(ref current) = assets.current_folder {
-                        if let Some(project) = current_project {
-                            if current == &project.path {
-                                // Already at project root, can't go back
-                            } else if let Some(parent) = current.parent() {
-                                if parent >= project.path.as_path() {
-                                    assets.current_folder = Some(parent.to_path_buf());
-                                }
+        // Back button
+        let can_go_back = assets.current_folder.is_some();
+        ui.add_enabled_ui(can_go_back, |ui| {
+            if ui.small_button(RichText::new(ARROW_LEFT).size(14.0)).clicked() {
+                if let Some(ref current) = assets.current_folder {
+                    if let Some(project) = current_project {
+                        if current == &project.path {
+                            // Already at project root, can't go back
+                        } else if let Some(parent) = current.parent() {
+                            if parent >= project.path.as_path() {
+                                assets.current_folder = Some(parent.to_path_buf());
                             }
                         }
                     }
                 }
-            });
+            }
+        });
 
-            // Home button
-            if ui.small_button(RichText::new(HOUSE).size(14.0)).on_hover_text("Go to project root").clicked() {
-                if let Some(project) = current_project {
-                    assets.current_folder = Some(project.path.clone());
-                }
+        // Home button
+        if ui.small_button(RichText::new(HOUSE).size(14.0)).on_hover_text("Go to project root").clicked() {
+            if let Some(project) = current_project {
+                assets.current_folder = Some(project.path.clone());
             }
         }
 
@@ -918,6 +946,270 @@ fn draw_checkerboard(painter: &egui::Painter, rect: egui::Rect) {
                 Vec2::splat(check_size),
             ).intersect(rect);
             painter.rect_filled(check_rect, 0.0, color);
+        }
+    }
+}
+
+/// Render tree navigation panel (folders only, for navigating the project)
+fn render_tree_navigation(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
+    project: &CurrentProject,
+    thumbnail_cache: &mut ThumbnailCache,
+    theme: &Theme,
+) {
+    ui.style_mut().spacing.item_spacing.y = 0.0;
+
+    // Auto-expand project root if not yet expanded and no folders are expanded
+    if assets.expanded_folders.is_empty() {
+        assets.expanded_folders.insert(project.path.clone());
+    }
+
+    // Theme colors
+    let selection_bg = theme.semantic.selection.to_color32();
+    let item_hover = theme.panels.item_hover.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
+
+    // Render project root as the top item
+    let project_name = project.path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Project");
+
+    let is_root_expanded = assets.expanded_folders.contains(&project.path);
+    let is_root_current = assets.current_folder.as_ref() == Some(&project.path) || assets.current_folder.is_none();
+
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
+        Sense::click(),
+    );
+
+    let is_hovered = response.hovered();
+
+    // Background
+    let bg_color = if is_root_current {
+        selection_bg
+    } else if is_hovered {
+        item_hover
+    } else {
+        Color32::TRANSPARENT
+    };
+
+    if bg_color != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, 2.0, bg_color);
+    }
+
+    // Expand/collapse arrow
+    let arrow_x = rect.min.x + 8.0;
+    let arrow_icon = if is_root_expanded { CARET_DOWN } else { CARET_RIGHT };
+
+    let arrow_rect = egui::Rect::from_center_size(
+        egui::pos2(arrow_x, rect.center().y),
+        Vec2::splat(14.0),
+    );
+    let arrow_response = ui.interact(arrow_rect, ui.id().with("project_root_arrow"), Sense::click());
+
+    ui.painter().text(
+        egui::pos2(arrow_x, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        arrow_icon,
+        egui::FontId::proportional(9.0),
+        if arrow_response.hovered() { text_secondary } else { text_muted },
+    );
+
+    // Project icon (house/folder)
+    let icon_x = arrow_x + 12.0;
+    ui.painter().text(
+        egui::pos2(icon_x, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        if is_root_expanded { FOLDER_OPEN } else { HOUSE },
+        egui::FontId::proportional(12.0),
+        accent_color,
+    );
+
+    // Project name
+    ui.painter().text(
+        egui::pos2(icon_x + 16.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        project_name,
+        egui::FontId::proportional(11.0),
+        text_secondary,
+    );
+
+    // Handle interactions
+    if arrow_response.clicked() {
+        if is_root_expanded {
+            assets.expanded_folders.remove(&project.path);
+        } else {
+            assets.expanded_folders.insert(project.path.clone());
+        }
+    } else if response.double_clicked() {
+        if is_root_expanded {
+            assets.expanded_folders.remove(&project.path);
+        } else {
+            assets.expanded_folders.insert(project.path.clone());
+        }
+        assets.current_folder = Some(project.path.clone());
+    } else if response.clicked() {
+        assets.current_folder = Some(project.path.clone());
+    }
+
+    // Render children if expanded
+    if is_root_expanded {
+        render_nav_tree_node(ui, ctx, assets, scene_state, &project.path, 1, thumbnail_cache, theme);
+    }
+}
+
+/// Render a navigation tree node (folders only)
+fn render_nav_tree_node(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    assets: &mut AssetBrowserState,
+    _scene_state: &mut SceneManagerState,
+    folder_path: &PathBuf,
+    depth: usize,
+    _thumbnail_cache: &mut ThumbnailCache,
+    theme: &Theme,
+) {
+    let indent = depth as f32 * 14.0;
+
+    // Theme colors for tree items
+    let selection_bg = theme.semantic.selection.to_color32();
+    let item_hover = theme.panels.item_hover.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+
+    // Read directory contents
+    let Ok(entries) = std::fs::read_dir(folder_path) else {
+        return;
+    };
+
+    let mut folders: Vec<PathBuf> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        // Skip hidden folders
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with('.') || name == "target" {
+                continue;
+            }
+        }
+
+        // Apply search filter
+        if !assets.search.is_empty() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if !name.to_lowercase().contains(&assets.search.to_lowercase()) {
+                    // Check if any children match
+                    if !folder_contains_match(&path, &assets.search) {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        folders.push(path);
+    }
+
+    folders.sort();
+
+    // Render folders
+    for child_path in folders {
+        let Some(name) = child_path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        let is_expanded = assets.expanded_folders.contains(&child_path);
+        let is_current = assets.current_folder.as_ref() == Some(&child_path);
+
+        let (icon, color) = get_folder_icon_and_color(name);
+
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
+            Sense::click(),
+        );
+
+        let is_hovered = response.hovered();
+
+        // Background
+        let bg_color = if is_current {
+            selection_bg
+        } else if is_hovered {
+            item_hover
+        } else {
+            Color32::TRANSPARENT
+        };
+
+        if bg_color != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, 2.0, bg_color);
+        }
+
+        // Expand/collapse arrow
+        let arrow_x = rect.min.x + indent + 8.0;
+        let arrow_icon = if is_expanded { CARET_DOWN } else { CARET_RIGHT };
+
+        let arrow_rect = egui::Rect::from_center_size(
+            egui::pos2(arrow_x, rect.center().y),
+            Vec2::splat(14.0),
+        );
+        let arrow_response = ui.interact(arrow_rect, ui.id().with(("nav_arrow", &child_path)), Sense::click());
+
+        ui.painter().text(
+            egui::pos2(arrow_x, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            arrow_icon,
+            egui::FontId::proportional(9.0),
+            if arrow_response.hovered() { text_secondary } else { text_muted },
+        );
+
+        // Folder icon
+        let icon_x = arrow_x + 12.0;
+        ui.painter().text(
+            egui::pos2(icon_x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            if is_expanded { FOLDER_OPEN } else { icon },
+            egui::FontId::proportional(12.0),
+            color,
+        );
+
+        // Folder name
+        ui.painter().text(
+            egui::pos2(icon_x + 16.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            name,
+            egui::FontId::proportional(11.0),
+            text_secondary,
+        );
+
+        // Handle interactions
+        if arrow_response.clicked() {
+            // Toggle expand/collapse
+            if is_expanded {
+                assets.expanded_folders.remove(&child_path);
+            } else {
+                assets.expanded_folders.insert(child_path.clone());
+            }
+        } else if response.double_clicked() {
+            // Double-click toggles expand and navigates
+            if is_expanded {
+                assets.expanded_folders.remove(&child_path);
+            } else {
+                assets.expanded_folders.insert(child_path.clone());
+            }
+            assets.current_folder = Some(child_path.clone());
+        } else if response.clicked() {
+            // Single-click navigates to folder (for grid view)
+            assets.current_folder = Some(child_path.clone());
+        }
+
+        // Render children if expanded
+        if is_expanded {
+            render_nav_tree_node(ui, ctx, assets, _scene_state, &child_path, depth + 1, _thumbnail_cache, theme);
         }
     }
 }

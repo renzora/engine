@@ -51,6 +51,8 @@ pub struct AssetBrowserState {
     pub pending_import_files: Vec<PathBuf>,
     /// Expanded folders in tree view
     pub expanded_folders: HashSet<PathBuf>,
+    /// Width of the tree panel in split view
+    pub tree_panel_width: f32,
 }
 
 /// Pending image drop information
@@ -290,6 +292,7 @@ impl AssetBrowserState {
     pub fn new() -> Self {
         Self {
             zoom: 1.0,
+            tree_panel_width: 180.0,
             ..Default::default()
         }
     }
