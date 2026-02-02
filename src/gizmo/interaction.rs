@@ -6,15 +6,6 @@ use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, Viewp
 use crate::terrain::{TerrainChunkData, TerrainChunkOf};
 use crate::console_info;
 
-/// Resource to track the currently hovered terrain chunk for highlighting
-#[derive(Resource, Default)]
-pub struct HoveredTerrainChunk {
-    /// The currently hovered terrain chunk entity
-    pub entity: Option<Entity>,
-    /// The previous frame's hovered entity (for detecting changes)
-    pub previous_entity: Option<Entity>,
-}
-
 use super::modal_transform::ModalTransformState;
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
@@ -835,83 +826,14 @@ pub fn object_drag_system(
     }
 }
 
-/// System to detect terrain chunk hover for highlighting
-pub fn terrain_chunk_hover_system(
-    viewport: Res<ViewportState>,
-    mut hovered: ResMut<HoveredTerrainChunk>,
-    windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
-    terrain_chunks: Query<Entity, With<TerrainChunkData>>,
-    parent_query: Query<&ChildOf>,
-    mut mesh_ray_cast: MeshRayCast,
-) {
-    // Store previous for change detection
-    hovered.previous_entity = hovered.entity;
-
-    // Clear hover if not in viewport
-    if !viewport.hovered {
-        hovered.entity = None;
-        return;
-    }
-
-    // Get cursor ray
-    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
-        hovered.entity = None;
-        return;
-    };
-
-    // Cast ray against all meshes
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
-
-    // Find the closest terrain chunk hit
-    let mut closest_chunk: Option<Entity> = None;
-    let mut closest_distance = f32::MAX;
-
-    for (hit_entity, hit) in hits.iter() {
-        // Check if this entity or any ancestor is a terrain chunk
-        if let Some(chunk_entity) = find_terrain_chunk_ancestor(*hit_entity, &terrain_chunks, &parent_query) {
-            if hit.distance < closest_distance {
-                closest_distance = hit.distance;
-                closest_chunk = Some(chunk_entity);
-            }
-        }
-    }
-
-    hovered.entity = closest_chunk;
-}
-
-/// Find the terrain chunk ancestor of a mesh entity
-fn find_terrain_chunk_ancestor(
-    entity: Entity,
-    terrain_chunks: &Query<Entity, With<TerrainChunkData>>,
-    parent_query: &Query<&ChildOf>,
-) -> Option<Entity> {
-    // Check if this entity itself is a terrain chunk
-    if terrain_chunks.get(entity).is_ok() {
-        return Some(entity);
-    }
-
-    // Walk up the parent chain to find a terrain chunk
-    let mut current = entity;
-    while let Ok(child_of) = parent_query.get(current) {
-        let parent = child_of.0;
-        if terrain_chunks.get(parent).is_ok() {
-            return Some(parent);
-        }
-        current = parent;
-    }
-
-    None
-}
-
-/// System to draw orange border around selected terrain chunks
+/// System to draw yellow border around selected terrain chunks
 pub fn terrain_chunk_selection_system(
     selection: Res<SelectionState>,
     modal: Res<super::modal_transform::ModalTransformState>,
     gizmo_state: Res<super::GizmoState>,
     terrain_chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     terrain_query: Query<&crate::terrain::TerrainData>,
-    mut gizmos: Gizmos<super::SelectionGizmoGroup>,
+    mut gizmos: Gizmos<super::TerrainSelectionGizmoGroup>,
 ) {
     // Don't show during modal transform or collider edit mode
     if modal.active || gizmo_state.collider_edit.is_active() {
@@ -931,9 +853,9 @@ pub fn terrain_chunk_selection_system(
 
         let is_primary = selection.selected_entity == Some(entity);
         let color = if is_primary {
-            Color::srgb(1.0, 0.5, 0.0) // Orange for primary
+            Color::srgb(1.0, 1.0, 0.0) // Yellow for primary
         } else {
-            Color::srgba(1.0, 0.5, 0.0, 0.8) // Lighter orange for secondary
+            Color::srgba(1.0, 1.0, 0.0, 0.8) // Lighter yellow for secondary
         };
 
         draw_terrain_chunk_border(
@@ -948,7 +870,7 @@ pub fn terrain_chunk_selection_system(
 
 /// Helper to draw a border around a terrain chunk
 fn draw_terrain_chunk_border(
-    gizmos: &mut Gizmos<super::SelectionGizmoGroup>,
+    gizmos: &mut Gizmos<super::TerrainSelectionGizmoGroup>,
     chunk_data: &TerrainChunkData,
     terrain_data: &crate::terrain::TerrainData,
     global_transform: &GlobalTransform,
@@ -959,85 +881,6 @@ fn draw_terrain_chunk_border(
     let height_range = terrain_data.max_height - terrain_data.min_height;
     let min_height = terrain_data.min_height;
     let pos = global_transform.translation();
-
-    // Small offset above terrain to prevent z-fighting
-    let y_offset = 0.15;
-
-    // Helper to get world position for a vertex
-    let get_vertex_pos = |vx: u32, vz: u32| -> Vec3 {
-        let height_normalized = chunk_data.get_height(vx, vz, resolution);
-        let height = min_height + height_normalized * height_range;
-        Vec3::new(
-            pos.x + vx as f32 * spacing,
-            pos.y + height + y_offset,
-            pos.z + vz as f32 * spacing,
-        )
-    };
-
-    // Draw front edge (z = 0)
-    for vx in 0..(resolution - 1) {
-        let p1 = get_vertex_pos(vx, 0);
-        let p2 = get_vertex_pos(vx + 1, 0);
-        gizmos.line(p1, p2, color);
-    }
-
-    // Draw back edge (z = max)
-    for vx in 0..(resolution - 1) {
-        let p1 = get_vertex_pos(vx, resolution - 1);
-        let p2 = get_vertex_pos(vx + 1, resolution - 1);
-        gizmos.line(p1, p2, color);
-    }
-
-    // Draw left edge (x = 0)
-    for vz in 0..(resolution - 1) {
-        let p1 = get_vertex_pos(0, vz);
-        let p2 = get_vertex_pos(0, vz + 1);
-        gizmos.line(p1, p2, color);
-    }
-
-    // Draw right edge (x = max)
-    for vz in 0..(resolution - 1) {
-        let p1 = get_vertex_pos(resolution - 1, vz);
-        let p2 = get_vertex_pos(resolution - 1, vz + 1);
-        gizmos.line(p1, p2, color);
-    }
-}
-
-/// System to draw yellow border around hovered terrain chunk
-pub fn terrain_chunk_highlight_system(
-    hovered: Res<HoveredTerrainChunk>,
-    selection: Res<SelectionState>,
-    terrain_chunks: Query<(&TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_query: Query<&crate::terrain::TerrainData>,
-    mut gizmos: Gizmos<super::SelectionGizmoGroup>,
-) {
-    let Some(entity) = hovered.entity else {
-        return;
-    };
-
-    // Don't highlight if the chunk is already selected (it has an outline)
-    if selection.is_selected(entity) {
-        return;
-    }
-
-    let Ok((chunk_data, chunk_of, global_transform)) = terrain_chunks.get(entity) else {
-        return;
-    };
-
-    // Get terrain data for chunk size
-    let Ok(terrain_data) = terrain_query.get(chunk_of.0) else {
-        return;
-    };
-
-    let chunk_size = terrain_data.chunk_size;
-    let resolution = terrain_data.chunk_resolution;
-    let spacing = terrain_data.vertex_spacing();
-    let height_range = terrain_data.max_height - terrain_data.min_height;
-    let min_height = terrain_data.min_height;
-    let pos = global_transform.translation();
-
-    // Yellow border color
-    let color = Color::srgb(1.0, 1.0, 0.0);
 
     // Small offset above terrain to prevent z-fighting
     let y_offset = 0.15;

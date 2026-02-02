@@ -15,7 +15,7 @@ pub mod picking_2d;
 
 pub use drawing::{draw_selection_gizmo, update_selection_outlines};
 pub use grid::draw_grid;
-pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system, terrain_chunk_hover_system, terrain_chunk_highlight_system, terrain_chunk_selection_system, HoveredTerrainChunk};
+pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system, terrain_chunk_selection_system};
 pub use physics::{
     draw_physics_gizmos, draw_collider_edit_handles, collider_edit_selection_sync,
     collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,
@@ -67,17 +67,20 @@ pub struct GridGizmoGroup;
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct SelectionGizmoGroup;
 
+/// Custom gizmo config group for terrain selection (uses depth testing)
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct TerrainSelectionGizmoGroup;
+
 pub struct GizmoPlugin;
 
 impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         // Initialize gizmo state
         app.init_resource::<GizmoState>();
-        // Initialize terrain chunk hover tracking
-        app.init_resource::<HoveredTerrainChunk>();
         // Register custom gizmo config groups
         app.init_gizmo_group::<GridGizmoGroup>();
         app.init_gizmo_group::<SelectionGizmoGroup>();
+        app.init_gizmo_group::<TerrainSelectionGizmoGroup>();
         // Configure gizmos to render on the gizmo layer
         app.add_systems(Startup, (configure_gizmo_render_layers, meshes::setup_gizmo_meshes));
         // Update mesh-based gizmos
@@ -103,4 +106,10 @@ fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
     selection_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
     selection_config.depth_bias = -1.0;
     selection_config.line.width = 3.0;
+
+    // Terrain selection gizmos - normal depth testing (occluded by other meshes)
+    let (terrain_config, _) = config_store.config_mut::<TerrainSelectionGizmoGroup>();
+    terrain_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    terrain_config.line.width = 3.0;
+    // No depth bias - uses normal depth testing
 }
