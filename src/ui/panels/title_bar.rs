@@ -3,9 +3,8 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{AssetBrowserState, DockingState, EditorEntity, ExportState, SceneNode, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
+use crate::core::{AssetBrowserState, DockingState, ExportState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
-use crate::scene::{spawn_primitive, PrimitiveType};
 use crate::theming::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
@@ -23,9 +22,6 @@ pub fn render_title_bar(
     settings: &mut EditorSettings,
     export_state: &mut ExportState,
     assets: &mut AssetBrowserState,
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
     docking_state: &mut DockingState,
@@ -102,7 +98,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history, docking_state, viewport_state, theme);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, plugin_host, command_history, docking_state, viewport_state, theme);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -293,9 +289,6 @@ fn render_menu_items(
     settings: &mut EditorSettings,
     export_state: &mut ExportState,
     assets: &mut AssetBrowserState,
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
     docking_state: &mut DockingState,
@@ -452,52 +445,6 @@ fn render_menu_items(
             if let Some(entity) = selection.selected_entity {
                 queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
             }
-            ui.close();
-        }
-    });
-
-    submenu(ui, "GameObject", |ui| {
-        submenu(ui, "3D Object", |ui| {
-            if menu_item(ui, "Cube") {
-                spawn_primitive(commands, meshes, materials, PrimitiveType::Cube, "Cube", None);
-                ui.close();
-            }
-            if menu_item(ui, "Sphere") {
-                spawn_primitive(commands, meshes, materials, PrimitiveType::Sphere, "Sphere", None);
-                ui.close();
-            }
-            if menu_item(ui, "Cylinder") {
-                spawn_primitive(commands, meshes, materials, PrimitiveType::Cylinder, "Cylinder", None);
-                ui.close();
-            }
-            if menu_item(ui, "Plane") {
-                spawn_primitive(commands, meshes, materials, PrimitiveType::Plane, "Plane", None);
-                ui.close();
-            }
-        });
-        submenu(ui, "Light", |ui| {
-            if menu_item(ui, "Point Light") {
-                ui.close();
-            }
-            if menu_item(ui, "Spot Light") {
-                ui.close();
-            }
-            if menu_item(ui, "Directional Light") {
-                ui.close();
-            }
-        });
-        if menu_item(ui, "Empty") {
-            commands.spawn((
-                Transform::default(),
-                Visibility::default(),
-                EditorEntity {
-                    name: "Empty".to_string(),
-                    tag: String::new(),
-                    visible: true,
-                    locked: false,
-                },
-                SceneNode,
-            ));
             ui.close();
         }
     });
