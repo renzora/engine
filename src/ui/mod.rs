@@ -641,6 +641,10 @@ pub fn editor_ui(
                 }
 
                 PanelId::Assets => {
+                    // Store panel bounds for global file drop detection
+                    let content_rect = panel_ctx.content_rect;
+                    editor.assets.panel_bounds = [content_rect.min.x, content_rect.min.y, content_rect.width(), content_rect.height()];
+
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_assets_content(
                             ui,
@@ -987,8 +991,9 @@ pub fn editor_ui(
         render_window_resize_edges(ctx, &mut editor.window_state);
     }
 
-    // Handle file drops globally - route to assets panel (import) or viewport (spawn)
-    handle_global_file_drops(ctx, &mut editor.assets, &editor.viewport);
+    // Handle file drops globally - import to assets panel
+    let project_assets_folder = current_project.as_ref().map(|p| p.path.join("assets"));
+    handle_global_file_drops(ctx, &mut editor.assets, &editor.viewport, project_assets_folder);
 
     // Forward all UI events to plugins (convert from internal to API type)
     for event in all_ui_events {
@@ -1179,11 +1184,12 @@ pub fn thumbnail_loading_system(
     }
 }
 
-/// Handle file drops globally - route to assets panel (import) or viewport (spawn)
+/// Handle file drops globally - route to assets panel for import
 fn handle_global_file_drops(
     ctx: &bevy_egui::egui::Context,
     assets: &mut AssetBrowserState,
     viewport: &ViewportState,
+    project_assets_folder: Option<std::path::PathBuf>,
 ) {
     use bevy_egui::egui::{Pos2, Rect};
 
@@ -1214,15 +1220,23 @@ fn handle_global_file_drops(
         bevy_egui::egui::Vec2::new(viewport.size[0], viewport.size[1]),
     );
 
+    // Determine target folder: use current folder, or fall back to project assets folder
+    let target_folder = assets.current_folder.clone().or(project_assets_folder);
+
+    // Only import if we have a valid target folder
+    let Some(folder) = target_folder else {
+        return;
+    };
+
     for path in dropped_files {
-        if assets_rect.contains(pos) && assets.current_folder.is_some() {
-            // Dropped in assets panel - queue for import (copy to folder)
-            info!("File dropped in assets panel, importing: {:?}", path);
+        if assets_rect.contains(pos) || viewport_rect.contains(pos) {
+            // Dropped in assets panel or viewport - queue for import (copy to folder)
+            info!("File dropped, importing to assets: {:?}", path);
             assets.pending_file_imports.push(path);
-        } else if viewport_rect.contains(pos) {
-            // Dropped in viewport - queue for spawning
-            info!("File dropped in viewport, spawning: {:?}", path);
-            assets.files_to_spawn.push(path);
+            // Store the target folder for import if current_folder is not set
+            if assets.current_folder.is_none() {
+                assets.current_folder = Some(folder.clone());
+            }
         }
         // If dropped elsewhere, ignore
     }
