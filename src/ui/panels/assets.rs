@@ -1039,21 +1039,13 @@ fn render_tree_navigation(
         text_secondary,
     );
 
-    // Handle interactions
-    if arrow_response.clicked() {
+    // Handle interactions - single click toggles and navigates
+    if arrow_response.clicked() || response.clicked() {
         if is_root_expanded {
             assets.expanded_folders.remove(&project.path);
         } else {
             assets.expanded_folders.insert(project.path.clone());
         }
-    } else if response.double_clicked() {
-        if is_root_expanded {
-            assets.expanded_folders.remove(&project.path);
-        } else {
-            assets.expanded_folders.insert(project.path.clone());
-        }
-        assets.current_folder = Some(project.path.clone());
-    } else if response.clicked() {
         assets.current_folder = Some(project.path.clone());
     }
 
@@ -1186,24 +1178,13 @@ fn render_nav_tree_node(
             text_secondary,
         );
 
-        // Handle interactions
-        if arrow_response.clicked() {
-            // Toggle expand/collapse
+        // Handle interactions - single click toggles and navigates
+        if arrow_response.clicked() || response.clicked() {
             if is_expanded {
                 assets.expanded_folders.remove(&child_path);
             } else {
                 assets.expanded_folders.insert(child_path.clone());
             }
-        } else if response.double_clicked() {
-            // Double-click toggles expand and navigates
-            if is_expanded {
-                assets.expanded_folders.remove(&child_path);
-            } else {
-                assets.expanded_folders.insert(child_path.clone());
-            }
-            assets.current_folder = Some(child_path.clone());
-        } else if response.clicked() {
-            // Single-click navigates to folder (for grid view)
             assets.current_folder = Some(child_path.clone());
         }
 
@@ -1362,16 +1343,13 @@ fn render_tree_node(
             text_secondary,
         );
 
-        // Handle interactions
-        if arrow_response.clicked() || response.double_clicked() {
+        // Handle interactions - single click toggles and selects
+        if arrow_response.clicked() || response.clicked() {
             if is_expanded {
                 assets.expanded_folders.remove(&folder_path);
             } else {
                 assets.expanded_folders.insert(folder_path.clone());
             }
-        }
-
-        if response.clicked() {
             assets.selected_asset = Some(folder_path.clone());
         }
 
