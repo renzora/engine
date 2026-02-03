@@ -19,7 +19,7 @@ use crate::core::{
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
 use crate::brushes::{BrushSettings, BrushState, BlockEditState};
-use crate::terrain::TerrainSettings;
+use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::update::{UpdateState, UpdateDialogState};
 
 /// Bundled editor state resources for system parameter limits
@@ -69,6 +69,7 @@ pub struct EditorResources<'w> {
     pub brush_state: ResMut<'w, BrushState>,
     pub block_edit: Res<'w, BlockEditState>,
     pub terrain_settings: ResMut<'w, TerrainSettings>,
+    pub terrain_sculpt_state: Res<'w, TerrainSculptState>,
     pub update_state: ResMut<'w, UpdateState>,
     pub update_dialog: ResMut<'w, UpdateDialogState>,
     pub app_config: ResMut<'w, AppConfig>,
@@ -336,6 +337,7 @@ pub fn editor_ui(
             &mut editor.gizmo,
             &editor.modal_transform,
             &mut editor.settings,
+            &editor.terrain_sculpt_state,
             0.0,
             0.0,
             content_start_y,
@@ -698,6 +700,7 @@ pub fn editor_ui(
                         &mut editor.gizmo,
                         &editor.modal_transform,
                         &mut editor.settings,
+                        &editor.terrain_sculpt_state,
                         content_rect.min.x,
                         screen_rect.width() - content_rect.max.x,
                         content_rect.min.y,

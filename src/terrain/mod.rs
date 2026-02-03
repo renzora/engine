@@ -30,6 +30,7 @@ impl Plugin for TerrainPlugin {
                     terrain_tool_shortcut_system,
                     terrain_sculpt_hover_system,
                     terrain_sculpt_system,
+                    terrain_brush_cursor_system,
                     terrain_chunk_mesh_update_system,
                 )
                     .chain()

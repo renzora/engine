@@ -319,4 +319,8 @@ pub struct TerrainSculptState {
     pub active_terrain: Option<Entity>,
     /// Height at the point where flatten started (for flatten tool)
     pub flatten_start_height: Option<f32>,
+    /// Whether the brush preview is currently being drawn (set by terrain_sculpt_system)
+    pub brush_visible: bool,
+    /// Whether we (terrain system) hid the cursor (to avoid fighting with other systems)
+    pub cursor_hidden_by_us: bool,
 }

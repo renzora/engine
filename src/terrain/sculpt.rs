@@ -1,7 +1,7 @@
 //! Terrain sculpting tools
 
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
+use bevy::window::{PrimaryWindow, CursorOptions};
 
 use crate::core::{InputFocusState, ViewportCamera, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
@@ -42,6 +42,8 @@ pub fn terrain_sculpt_hover_system(
     if gizmo_state.tool != EditorTool::TerrainSculpt {
         sculpt_state.hover_position = None;
         sculpt_state.active_terrain = None;
+        sculpt_state.brush_visible = false;
+        sculpt_state.cursor_hidden_by_us = false;
         return;
     }
 
@@ -62,6 +64,7 @@ pub fn terrain_sculpt_hover_system(
 
     // Find the editor camera (marked with ViewportCamera)
     let Some((camera, camera_transform)) = camera_query.iter().next() else {
+        sculpt_state.hover_position = None;
         return;
     };
 
@@ -73,6 +76,7 @@ pub fn terrain_sculpt_hover_system(
 
     // Get ray from camera
     let Ok(ray) = camera.viewport_to_world(camera_transform, viewport_pos) else {
+        sculpt_state.hover_position = None;
         return;
     };
 
@@ -291,21 +295,31 @@ fn sample_brush_height(
 /// System to apply sculpting operations
 pub fn terrain_sculpt_system(
     gizmo_state: Res<GizmoState>,
-    sculpt_state: Res<TerrainSculptState>,
+    mut sculpt_state: ResMut<TerrainSculptState>,
     settings: Res<TerrainSettings>,
+    viewport: Res<ViewportState>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut gizmos: Gizmos,
 ) {
+    // Reset brush visibility flag at start
+    sculpt_state.brush_visible = false;
+
     // Only process in terrain sculpt mode
     if gizmo_state.tool != EditorTool::TerrainSculpt {
         return;
     }
 
-    // Draw brush preview
-    if let Some(hover_pos) = sculpt_state.hover_position {
+    // Only draw brush preview when viewport is hovered
+    let should_draw_brush = viewport.hovered;
+
+    // Draw brush preview only when viewport is hovered and we have a position
+    if should_draw_brush && sculpt_state.hover_position.is_some() {
+        // Mark brush as visible for UI cursor handling
+        sculpt_state.brush_visible = true;
+        let hover_pos = sculpt_state.hover_position.unwrap();
         let color = match settings.brush_type {
             TerrainBrushType::Raise => Color::srgba(0.2, 0.8, 0.2, 0.8),
             TerrainBrushType::Lower => Color::srgba(0.8, 0.4, 0.2, 0.8),
@@ -777,5 +791,33 @@ pub fn terrain_sculpt_system(
                 }
             }
         }
+    }
+}
+
+/// System to hide/show cursor based on terrain brush visibility
+pub fn terrain_brush_cursor_system(
+    mut sculpt_state: ResMut<TerrainSculptState>,
+    viewport: Res<ViewportState>,
+    mut cursor_query: Query<&mut CursorOptions>,
+) {
+    let Ok(mut cursor) = cursor_query.single_mut() else {
+        return;
+    };
+
+    // Don't manage cursor if camera is dragging (that has its own cursor management)
+    if viewport.camera_dragging {
+        // If camera started dragging, we're no longer responsible for cursor state
+        sculpt_state.cursor_hidden_by_us = false;
+        return;
+    }
+
+    // Hide cursor when brush is visible and viewport is hovered
+    if sculpt_state.brush_visible && viewport.hovered {
+        cursor.visible = false;
+        sculpt_state.cursor_hidden_by_us = true;
+    } else if sculpt_state.cursor_hidden_by_us {
+        // Only restore cursor if WE were the ones who hid it
+        cursor.visible = true;
+        sculpt_state.cursor_hidden_by_us = false;
     }
 }

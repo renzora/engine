@@ -194,12 +194,12 @@ pub fn render_toolbar(
                 }
                 ramp_resp.on_hover_text("Ramp Brush");
 
-                // === Terrain Tools (shown when terrain is selected) ===
-                if terrain_selected {
+                // === Terrain Tools (shown only in terrain sculpt mode) ===
+                let in_terrain_mode = gizmo.tool == EditorTool::TerrainSculpt;
+                if in_terrain_mode {
                     separator(ui, theme);
 
                     let terrain_color = Color32::from_rgb(120, 180, 100); // Green for terrain
-                    let in_terrain_mode = gizmo.tool == EditorTool::TerrainSculpt;
 
                     // Raise brush
                     let raise_active = in_terrain_mode && terrain_settings.brush_type == TerrainBrushType::Raise;
@@ -347,7 +347,7 @@ pub fn render_toolbar(
                 // === Layout Dropdown ===
                 let layout_color = theme.text.secondary.to_color32();
                 let current_layout = docking_state.active_layout.clone();
-                layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state);
+                layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state, gizmo);
             });
         });
 
@@ -495,6 +495,7 @@ fn layout_dropdown(
     icon_color: Color32,
     bg_color: Color32,
     docking_state: &mut DockingState,
+    gizmo: &mut GizmoState,
 ) {
     let button_id = ui.make_persistent_id("layout_dropdown");
     let size = Vec2::new(90.0, 24.0);
@@ -583,6 +584,15 @@ fn layout_dropdown(
                         .min_size(Vec2::new(ui.available_width(), 0.0))
                 ).clicked() {
                     docking_state.switch_layout(&layout.name);
+                    // Switch tool based on layout
+                    if layout.name == "Terrain" {
+                        gizmo.tool = EditorTool::TerrainSculpt;
+                    } else {
+                        // Reset to Select tool when leaving terrain layout
+                        if gizmo.tool == EditorTool::TerrainSculpt {
+                            gizmo.tool = EditorTool::Select;
+                        }
+                    }
                     ui.close();
                 }
             }

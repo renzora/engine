@@ -3,6 +3,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rec
 
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
+use crate::terrain::TerrainSculptState;
 use crate::viewport::Camera2DState;
 use crate::theming::Theme;
 
@@ -29,6 +30,7 @@ pub fn render_viewport(
     gizmo: &mut GizmoState,
     modal_transform: &ModalTransformState,
     settings: &mut EditorSettings,
+    terrain_sculpt_state: &TerrainSculptState,
     left_panel_width: f32,
     right_panel_width: f32,
     content_start_y: f32,
@@ -75,7 +77,7 @@ pub fn render_viewport(
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
-            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, content_rect);
+            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect);
         });
 
     // Render box selection rectangle (if active)
@@ -1147,6 +1149,8 @@ pub fn render_viewport_content(
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
     orbit: &mut OrbitCameraState,
+    _gizmo: &GizmoState,
+    terrain_sculpt_state: &TerrainSculptState,
     viewport_texture_id: Option<TextureId>,
     content_rect: Rect,
 ) {
@@ -1157,6 +1161,13 @@ pub fn render_viewport_content(
     viewport.size = [content_rect.width(), content_rect.height()];
     // Only consider viewport hovered if pointer is inside AND no resize handle is being interacted with
     viewport.hovered = ui.rect_contains_pointer(content_rect) && !viewport.resize_handle_active;
+
+    // Set cursor for viewport - game engine friendly crosshair
+    // Note: Cursor hiding for terrain brush is handled by terrain_brush_cursor_system
+    // using Bevy's window cursor visibility
+    if viewport.hovered && !terrain_sculpt_state.brush_visible {
+        ctx.set_cursor_icon(CursorIcon::Crosshair);
+    }
 
     // Display the viewport texture if available
     if let Some(texture_id) = viewport_texture_id {
