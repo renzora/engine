@@ -304,6 +304,7 @@ pub fn spawn_preset(
     parent: Option<Entity>,
 ) -> Entity {
     use crate::core::{EditorEntity, SceneNode};
+    use crate::shared::{MeshNodeData, MeshPrimitiveType};
 
     // Spawn base entity
     let mut entity_commands = commands.spawn((
@@ -327,7 +328,34 @@ pub fn spawn_preset(
 
     // Add components from preset
     for component_id in preset.components {
-        if let Some(def) = registry.get(component_id) {
+        // Handle mesh_renderer specially based on preset ID to create correct mesh type
+        if *component_id == "mesh_renderer" {
+            let mesh_type = match preset.id {
+                "cube" => MeshPrimitiveType::Cube,
+                "sphere" => MeshPrimitiveType::Sphere,
+                "cylinder" => MeshPrimitiveType::Cylinder,
+                "plane" => MeshPrimitiveType::Plane,
+                _ => MeshPrimitiveType::Cube,
+            };
+
+            let mesh = match mesh_type {
+                MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                MeshPrimitiveType::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+                MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 2.0)),
+                MeshPrimitiveType::Plane => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
+            };
+
+            let material = materials.add(StandardMaterial {
+                base_color: Color::srgb(0.8, 0.7, 0.6),
+                ..default()
+            });
+
+            commands.entity(entity).insert((
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                MeshNodeData { mesh_type },
+            ));
+        } else if let Some(def) = registry.get(component_id) {
             (def.add_fn)(commands, entity, meshes, materials);
         }
     }
