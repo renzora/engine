@@ -705,6 +705,16 @@ fn render_menu_items(
         if ui.button("Documentation").clicked() {
             ui.close();
         }
+        ui.separator();
+        if ui.button("Discord").clicked() {
+            let _ = open::that("https://discord.gg/9UHUGUyDJv");
+            ui.close();
+        }
+        if ui.button("YouTube").clicked() {
+            let _ = open::that("https://youtube.com/@renzoragame");
+            ui.close();
+        }
+        ui.separator();
         if ui.button("About").clicked() {
             ui.close();
         }
