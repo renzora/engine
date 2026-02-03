@@ -8,6 +8,7 @@ use rhai::Engine;
 
 use crate::core::{SceneManagerState, OpenScript, ScriptError, BuildState, BuildError};
 use crate::project::CurrentProject;
+use crate::ui::get_inspector_theme;
 use super::syntax_highlight::{highlight_rhai, highlight_rust};
 
 use egui_phosphor::regular::{FLOPPY_DISK, WARNING, HAMMER, SPINNER, CHECK_CIRCLE};
@@ -653,6 +654,8 @@ pub fn render_script_editor_content(
     scene_state: &mut SceneManagerState,
     current_project: Option<&crate::project::CurrentProject>,
 ) {
+    let theme_colors = get_inspector_theme(ui.ctx());
+
     // Check if a script tab is active
     let Some(active_idx) = scene_state.active_script_tab else {
         // No script open - show placeholder
@@ -661,19 +664,19 @@ pub fn render_script_editor_content(
             ui.label(
                 egui::RichText::new(egui_phosphor::regular::CODE)
                     .size(48.0)
-                    .color(Color32::from_gray(60)),
+                    .color(theme_colors.text_disabled),
             );
             ui.add_space(12.0);
             ui.label(
                 egui::RichText::new("No Script Open")
                     .size(16.0)
-                    .color(Color32::from_gray(100)),
+                    .color(theme_colors.text_muted),
             );
             ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("Double-click a script file in Assets to open it")
                     .size(12.0)
-                    .color(Color32::from_gray(70)),
+                    .color(theme_colors.text_disabled),
             );
         });
         return;
@@ -708,13 +711,13 @@ pub fn render_script_editor_content(
         available_rect.min,
         Vec2::new(panel_width, toolbar_height),
     );
-    ui.painter().rect_filled(toolbar_rect, 0.0, Color32::from_rgb(35, 35, 42));
+    ui.painter().rect_filled(toolbar_rect, 0.0, theme_colors.surface_panel);
     ui.painter().line_segment(
         [
             egui::pos2(toolbar_rect.min.x, toolbar_rect.max.y),
             egui::pos2(toolbar_rect.max.x, toolbar_rect.max.y),
         ],
-        egui::Stroke::new(1.0, Color32::from_rgb(50, 50, 60)),
+        egui::Stroke::new(1.0, theme_colors.widget_border),
     );
 
     // Toolbar buttons
@@ -727,9 +730,9 @@ pub fn render_script_editor_content(
     let save_hovered = save_response.hovered();
 
     let save_bg = if save_hovered {
-        Color32::from_rgb(50, 50, 60)
+        theme_colors.widget_hovered_bg
     } else {
-        Color32::from_rgb(40, 40, 50)
+        theme_colors.widget_inactive_bg
     };
 
     ui.painter().rect_filled(save_btn_rect, 4.0, save_bg);
@@ -738,14 +741,14 @@ pub fn render_script_editor_content(
         egui::Align2::LEFT_CENTER,
         FLOPPY_DISK,
         FontId::proportional(14.0),
-        Color32::from_rgb(180, 180, 190),
+        theme_colors.text_secondary,
     );
     ui.painter().text(
         egui::pos2(save_btn_rect.min.x + 26.0, save_btn_rect.center().y),
         egui::Align2::LEFT_CENTER,
         "Save",
         FontId::proportional(12.0),
-        Color32::from_rgb(180, 180, 190),
+        theme_colors.text_secondary,
     );
 
     // Build button (only for Rust files)
@@ -764,20 +767,20 @@ pub fn render_script_editor_content(
         let build_hovered = build_response.hovered();
 
         let build_bg = if is_building {
-            Color32::from_rgb(50, 70, 90)
+            theme_colors.semantic_accent
         } else if build_hovered {
-            Color32::from_rgb(50, 50, 60)
+            theme_colors.widget_hovered_bg
         } else {
-            Color32::from_rgb(40, 40, 50)
+            theme_colors.widget_inactive_bg
         };
 
         ui.painter().rect_filled(build_btn_rect, 4.0, build_bg);
 
         let (build_icon, build_text, icon_color) = match &scene_state.build_state {
-            BuildState::Building => (SPINNER, "Building...", Color32::from_rgb(100, 180, 255)),
-            BuildState::Success(_) => (CHECK_CIRCLE, "Build", Color32::from_rgb(100, 200, 100)),
-            BuildState::Failed(_) => (HAMMER, "Build", Color32::from_rgb(255, 120, 120)),
-            BuildState::Idle => (HAMMER, "Build", Color32::from_rgb(180, 180, 190)),
+            BuildState::Building => (SPINNER, "Building...", theme_colors.semantic_accent),
+            BuildState::Success(_) => (CHECK_CIRCLE, "Build", theme_colors.semantic_success),
+            BuildState::Failed(_) => (HAMMER, "Build", theme_colors.semantic_error),
+            BuildState::Idle => (HAMMER, "Build", theme_colors.text_secondary),
         };
 
         ui.painter().text(
@@ -793,7 +796,7 @@ pub fn render_script_editor_content(
             egui::Align2::LEFT_CENTER,
             build_text,
             FontId::proportional(12.0),
-            Color32::from_rgb(180, 180, 190),
+            theme_colors.text_secondary,
         );
 
         should_build = !is_building && (build_response.clicked() ||
@@ -809,7 +812,7 @@ pub fn render_script_editor_content(
         egui::Align2::LEFT_CENTER,
         &script_path,
         FontId::proportional(11.0),
-        Color32::from_rgb(100, 100, 110),
+        theme_colors.text_disabled,
     );
 
     // Check for save (button or Ctrl+S)
@@ -899,9 +902,9 @@ pub fn render_script_editor_content(
         .max_height(content_height)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.style_mut().visuals.extreme_bg_color = Color32::from_rgb(25, 25, 30);
-            ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::from_rgb(25, 25, 30);
-            ui.style_mut().visuals.widgets.hovered.bg_fill = Color32::from_rgb(30, 30, 38);
+            ui.style_mut().visuals.extreme_bg_color = theme_colors.surface_faint;
+            ui.style_mut().visuals.widgets.inactive.bg_fill = theme_colors.surface_faint;
+            ui.style_mut().visuals.widgets.hovered.bg_fill = theme_colors.widget_inactive_bg;
 
             ui.horizontal_top(|ui| {
                 // Line numbers gutter
@@ -916,7 +919,7 @@ pub fn render_script_editor_content(
                             Vec2::new(gutter_width, line_count as f32 * line_height + 20.0)
                         ),
                         0.0,
-                        Color32::from_rgb(30, 30, 35)
+                        theme_colors.surface_panel
                     );
 
                     for line_num in 1..=line_count {
@@ -926,7 +929,7 @@ pub fn render_script_editor_content(
                             egui::Align2::RIGHT_TOP,
                             format!("{}", line_num),
                             FontId::new(font_size, FontFamily::Monospace),
-                            Color32::from_rgb(100, 100, 120),
+                            theme_colors.text_muted,
                         );
                     }
 
@@ -938,7 +941,7 @@ pub fn render_script_editor_content(
                 ui.painter().vline(
                     sep_rect.min.x,
                     egui::Rangef::new(sep_rect.min.y, sep_rect.min.y + line_count as f32 * line_height + 20.0),
-                    egui::Stroke::new(1.0, Color32::from_rgb(50, 50, 60))
+                    egui::Stroke::new(1.0, theme_colors.widget_border)
                 );
 
                 // Code editor
@@ -978,13 +981,15 @@ pub fn render_script_editor_content(
             available_rect.max,
         );
 
-        ui.painter().rect_filled(error_rect, 0.0, Color32::from_rgb(60, 30, 30));
+        // Error background - a darker tinted version
+        let error_bg = Color32::from_rgb(60, 30, 30);
+        ui.painter().rect_filled(error_rect, 0.0, error_bg);
         ui.painter().line_segment(
             [
                 egui::pos2(error_rect.min.x, error_rect.min.y),
                 egui::pos2(error_rect.max.x, error_rect.min.y),
             ],
-            egui::Stroke::new(2.0, Color32::from_rgb(200, 80, 80)),
+            egui::Stroke::new(2.0, theme_colors.semantic_error),
         );
 
         ui.painter().text(
@@ -992,7 +997,7 @@ pub fn render_script_editor_content(
             egui::Align2::LEFT_CENTER,
             WARNING,
             FontId::proportional(18.0),
-            Color32::from_rgb(255, 120, 120),
+            theme_colors.semantic_error,
         );
 
         let (location, message) = if is_rust {
@@ -1038,7 +1043,7 @@ pub fn render_script_editor_content(
             egui::Align2::LEFT_CENTER,
             &location,
             FontId::proportional(11.0),
-            Color32::from_rgb(255, 150, 150),
+            theme_colors.semantic_error,
         );
 
         let max_chars = ((panel_width - 50.0) / 7.0) as usize;
@@ -1053,7 +1058,7 @@ pub fn render_script_editor_content(
             egui::Align2::LEFT_CENTER,
             &message,
             FontId::new(12.0, FontFamily::Monospace),
-            Color32::from_rgb(220, 180, 180),
+            theme_colors.text_secondary,
         );
     }
 }

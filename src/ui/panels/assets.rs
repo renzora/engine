@@ -835,7 +835,7 @@ fn render_grid_view(
                     );
 
                     // Draw checkerboard background for images with transparency
-                    draw_checkerboard(ui.painter(), thumb_rect);
+                    draw_checkerboard(ui.painter(), thumb_rect, theme);
 
                     ui.painter().image(
                         texture_id,
@@ -929,11 +929,11 @@ fn render_grid_view(
 }
 
 /// Draw a checkerboard pattern for transparent image backgrounds
-fn draw_checkerboard(painter: &egui::Painter, rect: egui::Rect) {
+fn draw_checkerboard(painter: &egui::Painter, rect: egui::Rect, theme: &Theme) {
     let check_size = 8.0;
-    // Use subtle variations for checkerboard
-    let light = Color32::from_rgb(55, 55, 60);
-    let dark = Color32::from_rgb(40, 40, 45);
+    // Use subtle variations for checkerboard based on theme
+    let light = theme.surfaces.faint.to_color32();
+    let dark = theme.surfaces.panel.to_color32();
 
     let cols = (rect.width() / check_size).ceil() as i32;
     let rows = (rect.height() / check_size).ceil() as i32;

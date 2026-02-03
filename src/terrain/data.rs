@@ -3,6 +3,43 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Terrain panel tab selection
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TerrainTab {
+    #[default]
+    Sculpt,
+    Paint,
+}
+
+/// Brush shape for terrain tools
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BrushShape {
+    #[default]
+    Circle,
+    Square,
+    Diamond,
+}
+
+/// Brush falloff curve type
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BrushFalloffType {
+    #[default]
+    Smooth,
+    Linear,
+    Spherical,
+    Tip,
+    Flat,
+}
+
+/// Flatten mode for the flatten tool
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FlattenMode {
+    #[default]
+    Both,
+    Raise,
+    Lower,
+}
+
 /// Terrain sculpting brush types
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
 pub enum TerrainBrushType {
@@ -17,6 +54,30 @@ pub enum TerrainBrushType {
     Flatten,
     /// Set terrain to exact height
     SetHeight,
+    /// Sculpt mode (raise/lower with shift)
+    Sculpt,
+    /// Erase (reset to default height)
+    Erase,
+    /// Create ramps
+    Ramp,
+    /// Thermal erosion
+    Erosion,
+    /// Hydraulic erosion
+    Hydro,
+    /// Add procedural noise
+    Noise,
+    /// Retopologize/aggressive smooth
+    Retop,
+    /// Toggle terrain visibility
+    Visibility,
+    /// Blueprint reference plane
+    Blueprint,
+    /// Mirror terrain
+    Mirror,
+    /// Select vertices
+    Select,
+    /// Copy/stamp terrain
+    Copy,
 }
 
 impl TerrainBrushType {
@@ -27,6 +88,18 @@ impl TerrainBrushType {
             TerrainBrushType::Smooth => "Smooth",
             TerrainBrushType::Flatten => "Flatten",
             TerrainBrushType::SetHeight => "Set Height",
+            TerrainBrushType::Sculpt => "Sculpt",
+            TerrainBrushType::Erase => "Erase",
+            TerrainBrushType::Ramp => "Ramp",
+            TerrainBrushType::Erosion => "Erosion",
+            TerrainBrushType::Hydro => "Hydro",
+            TerrainBrushType::Noise => "Noise",
+            TerrainBrushType::Retop => "Retop",
+            TerrainBrushType::Visibility => "Visibility",
+            TerrainBrushType::Blueprint => "Blueprint",
+            TerrainBrushType::Mirror => "Mirror",
+            TerrainBrushType::Select => "Select",
+            TerrainBrushType::Copy => "Copy",
         }
     }
 
@@ -37,6 +110,18 @@ impl TerrainBrushType {
             TerrainBrushType::Smooth,
             TerrainBrushType::Flatten,
             TerrainBrushType::SetHeight,
+            TerrainBrushType::Sculpt,
+            TerrainBrushType::Erase,
+            TerrainBrushType::Ramp,
+            TerrainBrushType::Erosion,
+            TerrainBrushType::Hydro,
+            TerrainBrushType::Noise,
+            TerrainBrushType::Retop,
+            TerrainBrushType::Visibility,
+            TerrainBrushType::Blueprint,
+            TerrainBrushType::Mirror,
+            TerrainBrushType::Select,
+            TerrainBrushType::Copy,
         ]
     }
 }
@@ -172,8 +257,12 @@ pub struct TerrainChunkOf(pub Entity);
 /// Resource for terrain tool settings
 #[derive(Resource)]
 pub struct TerrainSettings {
+    /// Currently selected tab (Sculpt/Paint)
+    pub tab: TerrainTab,
     /// Currently selected brush type
     pub brush_type: TerrainBrushType,
+    /// Brush shape (Circle/Square/Diamond)
+    pub brush_shape: BrushShape,
     /// Brush radius in world units
     pub brush_radius: f32,
     /// Brush strength (0.0-1.0)
@@ -182,16 +271,39 @@ pub struct TerrainSettings {
     pub target_height: f32,
     /// Brush falloff type (0 = linear, 1 = smooth)
     pub falloff: f32,
+    /// Brush falloff curve type
+    pub falloff_type: BrushFalloffType,
+    /// Flatten mode (Both/Raise/Lower)
+    pub flatten_mode: FlattenMode,
+    /// Whether to use slope-based flattening
+    pub use_slope_flatten: bool,
+    /// UI section visibility: Tool Settings
+    pub section_tool_settings: bool,
+    /// UI section visibility: Brush Settings
+    pub section_brush_settings: bool,
+    /// UI section visibility: Layers
+    pub section_layers: bool,
+    /// Whether to hide non-terrain meshes while sculpting
+    pub hide_non_terrain_meshes: bool,
 }
 
 impl Default for TerrainSettings {
     fn default() -> Self {
         Self {
+            tab: TerrainTab::default(),
             brush_type: TerrainBrushType::Raise,
+            brush_shape: BrushShape::default(),
             brush_radius: 5.0,
             brush_strength: 0.5,
             target_height: 0.5,
             falloff: 1.0, // Smooth falloff
+            falloff_type: BrushFalloffType::default(),
+            flatten_mode: FlattenMode::default(),
+            use_slope_flatten: false,
+            section_tool_settings: true,
+            section_brush_settings: true,
+            section_layers: false,
+            hide_non_terrain_meshes: false,
         }
     }
 }

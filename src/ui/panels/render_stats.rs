@@ -20,9 +20,9 @@ pub fn render_render_stats_content(
                 if !render_stats.enabled {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
-                        ui.label(RichText::new("Render diagnostics disabled").size(14.0).color(Color32::from_gray(120)));
+                        ui.label(RichText::new("Render diagnostics disabled").size(14.0).color(theme.text.muted.to_color32()));
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Enable RenderDiagnosticsPlugin").size(12.0).color(Color32::from_gray(80)));
+                        ui.label(RichText::new("Enable RenderDiagnosticsPlugin").size(12.0).color(theme.text.disabled.to_color32()));
                     });
                     return;
                 }
@@ -72,6 +72,7 @@ fn render_gpu_section(ui: &mut egui::Ui, stats: &RenderStats, theme: &Theme) {
         20.0,
         16.67,
         Color32::from_rgb(150, 100, 200),
+        theme,
     );
 }
 
@@ -119,7 +120,7 @@ fn render_passes_section(ui: &mut egui::Ui, stats: &RenderStats, theme: &Theme) 
             let (rect, _) = ui.allocate_exact_size(Vec2::new(100.0, 12.0), egui::Sense::hover());
 
             // Background
-            ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(40, 42, 48));
+            ui.painter().rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
 
             // Fill
             let fill_rect = egui::Rect::from_min_size(
@@ -169,6 +170,7 @@ fn render_time_graph(
     max_val: f32,
     target_line: f32,
     line_color: Color32,
+    theme: &Theme,
 ) {
     let height = 40.0;
     let available_width = ui.available_width();
@@ -182,8 +184,8 @@ fn render_time_graph(
     let painter = ui.painter();
 
     // Background
-    painter.rect_filled(rect, 2.0, Color32::from_rgb(30, 32, 36));
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, Color32::from_rgb(50, 52, 58)), egui::StrokeKind::Inside);
+    painter.rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
 
     if data.is_empty() {
         return;

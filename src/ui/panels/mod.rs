@@ -44,6 +44,7 @@ pub use export::render_export_dialog;
 pub use hierarchy::HierarchyQueries;
 pub use hierarchy::render_hierarchy_content;
 pub use inspector::{InspectorQueries, property_row, inline_property, LABEL_WIDTH};
+pub use inspector::{get_inspector_theme, InspectorThemeColors};
 pub use inspector::render_inspector_content;
 pub use inspector::render_history_content;
 pub use plugin_ui::{render_plugin_panels, render_status_bar};

@@ -12,6 +12,7 @@ use crate::component_system::{
 use crate::commands::CommandHistory;
 use crate::core::{EditorEntity, RightPanelTab, SelectionState, WorldEnvironmentMarker};
 use crate::gizmo::GizmoState;
+use crate::theming::Theme;
 use crate::ui::inspectors::{
     render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
     render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
@@ -45,13 +46,117 @@ use egui_phosphor::regular::{
     TAG, PENCIL_SIMPLE, PALETTE,
 };
 
-/// Background colors for alternating rows
+/// Default background colors for alternating rows (used by legacy functions without theme access)
 const ROW_BG_EVEN: Color32 = Color32::from_rgb(32, 34, 38);
 const ROW_BG_ODD: Color32 = Color32::from_rgb(38, 40, 44);
 
-/// Helper to render a property row with alternating background
+/// Cached theme colors for inspector components (stored in egui context data)
+#[derive(Clone)]
+pub struct InspectorThemeColors {
+    pub row_even: Color32,
+    pub row_odd: Color32,
+    pub surface_faint: Color32,
+    pub surface_panel: Color32,
+    pub text_primary: Color32,
+    pub text_secondary: Color32,
+    pub text_muted: Color32,
+    pub text_disabled: Color32,
+    pub widget_inactive_bg: Color32,
+    pub widget_hovered_bg: Color32,
+    pub widget_border: Color32,
+    pub semantic_accent: Color32,
+    pub semantic_success: Color32,
+    pub semantic_warning: Color32,
+    pub semantic_error: Color32,
+}
+
+impl Default for InspectorThemeColors {
+    fn default() -> Self {
+        Self {
+            row_even: ROW_BG_EVEN,
+            row_odd: ROW_BG_ODD,
+            surface_faint: Color32::from_rgb(20, 20, 24),
+            surface_panel: Color32::from_rgb(30, 32, 36),
+            text_primary: Color32::from_rgb(220, 222, 228),
+            text_secondary: Color32::from_rgb(180, 180, 190),
+            text_muted: Color32::from_rgb(140, 142, 148),
+            text_disabled: Color32::from_rgb(100, 100, 110),
+            widget_inactive_bg: Color32::from_rgb(45, 48, 55),
+            widget_hovered_bg: Color32::from_rgb(50, 53, 60),
+            widget_border: Color32::from_rgb(55, 58, 65),
+            semantic_accent: Color32::from_rgb(66, 150, 250),
+            semantic_success: Color32::from_rgb(89, 191, 115),
+            semantic_warning: Color32::from_rgb(242, 166, 64),
+            semantic_error: Color32::from_rgb(230, 89, 89),
+        }
+    }
+}
+
+impl InspectorThemeColors {
+    /// Create from a Theme
+    pub fn from_theme(theme: &Theme) -> Self {
+        Self {
+            row_even: theme.panels.inspector_row_even.to_color32(),
+            row_odd: theme.panels.inspector_row_odd.to_color32(),
+            surface_faint: theme.surfaces.faint.to_color32(),
+            surface_panel: theme.panels.category_frame_bg.to_color32(),
+            text_primary: theme.text.primary.to_color32(),
+            text_secondary: theme.text.secondary.to_color32(),
+            text_muted: theme.text.muted.to_color32(),
+            text_disabled: theme.text.disabled.to_color32(),
+            widget_inactive_bg: theme.widgets.inactive_bg.to_color32(),
+            widget_hovered_bg: theme.widgets.hovered_bg.to_color32(),
+            widget_border: theme.widgets.border.to_color32(),
+            semantic_accent: theme.semantic.accent.to_color32(),
+            semantic_success: theme.semantic.success.to_color32(),
+            semantic_warning: theme.semantic.warning.to_color32(),
+            semantic_error: theme.semantic.error.to_color32(),
+        }
+    }
+}
+
+/// Store inspector theme colors in egui context (call at start of render_inspector_content)
+pub fn set_inspector_theme(ctx: &egui::Context, theme: &Theme) {
+    let colors = InspectorThemeColors::from_theme(theme);
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("inspector_theme"), colors));
+}
+
+/// Get inspector theme colors from egui context (call from inspector components)
+pub fn get_inspector_theme(ctx: &egui::Context) -> InspectorThemeColors {
+    ctx.data(|d| d.get_temp::<InspectorThemeColors>(egui::Id::new("inspector_theme")))
+        .unwrap_or_default()
+}
+
+/// Background colors for alternating rows - uses theme colors
+fn get_row_colors(theme: &Theme) -> (Color32, Color32) {
+    (
+        theme.panels.inspector_row_even.to_color32(),
+        theme.panels.inspector_row_odd.to_color32(),
+    )
+}
+
+/// Helper to render a property row with alternating background (themed version)
+pub fn property_row_themed(ui: &mut egui::Ui, row_index: usize, theme: &Theme, add_contents: impl FnOnce(&mut egui::Ui)) {
+    let (row_even, row_odd) = get_row_colors(theme);
+    let bg_color = if row_index % 2 == 0 { row_even } else { row_odd };
+    let available_width = ui.available_width();
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(6, 3))
+        .show(ui, |ui| {
+            ui.set_min_width(available_width - 12.0);
+            add_contents(ui);
+        });
+}
+
+/// Helper to render a property row with alternating background (legacy - uses default colors)
 pub fn property_row(ui: &mut egui::Ui, row_index: usize, add_contents: impl FnOnce(&mut egui::Ui)) {
-    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let bg_color = if row_index % 2 == 0 {
+        Color32::from_rgb(32, 34, 38)
+    } else {
+        Color32::from_rgb(38, 40, 44)
+    };
     let available_width = ui.available_width();
 
     egui::Frame::new()
@@ -69,15 +174,17 @@ pub const LABEL_WIDTH: f32 = 80.0;
 /// Minimum width for the inspector content area
 pub const MIN_INSPECTOR_WIDTH: f32 = 220.0;
 
-/// Helper to render an inline property with label on left, widget immediately after
+/// Helper to render an inline property with label on left, widget immediately after (themed version)
 /// Returns whether the value changed
-pub fn inline_property<R>(
+pub fn inline_property_themed<R>(
     ui: &mut egui::Ui,
     row_index: usize,
     label: &str,
+    theme: &Theme,
     add_widget: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let (row_even, row_odd) = get_row_colors(theme);
+    let bg_color = if row_index % 2 == 0 { row_even } else { row_odd };
     let available_width = ui.available_width().max(MIN_INSPECTOR_WIDTH);
 
     egui::Frame::new()
@@ -100,82 +207,57 @@ pub fn inline_property<R>(
         .inner
 }
 
-/// Category accent colors for different component types
-struct CategoryStyle {
-    accent_color: Color32,
-    header_bg: Color32,
+/// Helper to render an inline property with label on left, widget immediately after (legacy)
+/// Returns whether the value changed
+pub fn inline_property<R>(
+    ui: &mut egui::Ui,
+    row_index: usize,
+    label: &str,
+    add_widget: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let bg_color = if row_index % 2 == 0 {
+        Color32::from_rgb(32, 34, 38)
+    } else {
+        Color32::from_rgb(38, 40, 44)
+    };
+    let available_width = ui.available_width().max(MIN_INSPECTOR_WIDTH);
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(4, 2))
+        .show(ui, |ui| {
+            ui.set_min_width(available_width - 8.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                // Fixed-width label with smaller text
+                ui.add_sized(
+                    [LABEL_WIDTH, 16.0],
+                    egui::Label::new(egui::RichText::new(label).size(11.0)).truncate()
+                );
+                // Widget fills remaining space, left-aligned
+                add_widget(ui)
+            })
+            .inner
+        })
+        .inner
 }
 
-impl CategoryStyle {
-    fn transform() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(99, 178, 238),   // Blue
-            header_bg: Color32::from_rgb(35, 45, 55),
-        }
-    }
-
-    fn environment() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(134, 188, 126),  // Green
-            header_bg: Color32::from_rgb(35, 48, 42),
-        }
-    }
-
-    fn light() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(247, 207, 100),  // Yellow/Gold
-            header_bg: Color32::from_rgb(50, 45, 35),
-        }
-    }
-
-    fn camera() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(178, 132, 209),  // Purple
-            header_bg: Color32::from_rgb(42, 38, 52),
-        }
-    }
-
-    fn script() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(236, 154, 120),  // Orange
-            header_bg: Color32::from_rgb(50, 40, 38),
-        }
-    }
-
-    fn physics() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(120, 200, 200),  // Cyan
-            header_bg: Color32::from_rgb(35, 48, 50),
-        }
-    }
-
-    fn plugin() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(180, 140, 180),  // Magenta
-            header_bg: Color32::from_rgb(45, 38, 45),
-        }
-    }
-
-    fn nodes2d() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(242, 140, 191),  // Pink
-            header_bg: Color32::from_rgb(50, 38, 45),
-        }
-    }
-
-    fn ui() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(191, 166, 242),  // Light purple
-            header_bg: Color32::from_rgb(42, 40, 52),
-        }
-    }
-
-    fn rendering() -> Self {
-        Self {
-            accent_color: Color32::from_rgb(99, 178, 238),   // Blue (same as transform)
-            header_bg: Color32::from_rgb(35, 45, 55),
-        }
-    }
+/// Get category style colors from theme
+fn get_category_colors(theme: &Theme, category: &str) -> (Color32, Color32) {
+    let style = match category {
+        "transform" => &theme.categories.transform,
+        "environment" => &theme.categories.environment,
+        "light" | "lighting" => &theme.categories.lighting,
+        "camera" => &theme.categories.camera,
+        "script" | "scripting" => &theme.categories.scripting,
+        "physics" => &theme.categories.physics,
+        "plugin" => &theme.categories.plugin,
+        "nodes2d" | "nodes_2d" => &theme.categories.nodes_2d,
+        "ui" => &theme.categories.ui,
+        "rendering" => &theme.categories.rendering,
+        _ => &theme.categories.transform, // fallback
+    };
+    (style.accent.to_color32(), style.header_bg.to_color32())
 }
 
 /// Renders a styled inspector category with header and content
@@ -183,25 +265,30 @@ fn render_category(
     ui: &mut egui::Ui,
     icon: &str,
     label: &str,
-    style: CategoryStyle,
+    category: &str,
+    theme: &Theme,
     id_source: &str,
     default_open: bool,
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
     let id = ui.make_persistent_id(id_source);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let (accent_color, header_bg) = get_category_colors(theme, category);
+    let frame_bg = theme.panels.category_frame_bg.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_primary = theme.text.primary.to_color32();
 
     ui.scope(|ui| {
         // Outer frame for the entire category
         egui::Frame::new()
-            .fill(Color32::from_rgb(30, 32, 36))
+            .fill(frame_bg)
             .corner_radius(CornerRadius::same(6))
             .show(ui, |ui| {
 
                 // Header bar
                 let header_rect = ui.scope(|ui| {
                     egui::Frame::new()
-                        .fill(style.header_bg)
+                        .fill(header_bg)
                         .corner_radius(CornerRadius {
                             nw: 6,
                             ne: 6,
@@ -213,15 +300,15 @@ fn render_category(
                             ui.horizontal(|ui| {
                                 // Collapse indicator
                                 let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                                ui.label(RichText::new(caret).size(12.0).color(Color32::from_rgb(140, 142, 148)));
+                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
 
                                 // Icon
-                                ui.label(RichText::new(icon).size(15.0).color(style.accent_color));
+                                ui.label(RichText::new(icon).size(15.0).color(accent_color));
 
                                 ui.add_space(4.0);
 
                                 // Label
-                                ui.label(RichText::new(label).size(13.0).strong().color(Color32::from_rgb(220, 222, 228)));
+                                ui.label(RichText::new(label).size(13.0).strong().color(text_primary));
 
                                 // Fill remaining width
                                 ui.allocate_space(ui.available_size());
@@ -258,7 +345,8 @@ fn render_category_removable(
     ui: &mut egui::Ui,
     icon: &str,
     label: &str,
-    style: CategoryStyle,
+    category: &str,
+    theme: &Theme,
     id_source: &str,
     default_open: bool,
     can_remove: bool,
@@ -267,18 +355,23 @@ fn render_category_removable(
     let id = ui.make_persistent_id(id_source);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
     let mut remove_clicked = false;
+    let (accent_color, header_bg) = get_category_colors(theme, category);
+    let frame_bg = theme.panels.category_frame_bg.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_primary = theme.text.primary.to_color32();
+    let error_color = theme.semantic.error.to_color32();
 
     ui.scope(|ui| {
         // Outer frame for the entire category
         egui::Frame::new()
-            .fill(Color32::from_rgb(30, 32, 36))
+            .fill(frame_bg)
             .corner_radius(CornerRadius::same(6))
             .show(ui, |ui| {
 
                 // Header bar
                 let header_rect = ui.scope(|ui| {
                     egui::Frame::new()
-                        .fill(style.header_bg)
+                        .fill(header_bg)
                         .corner_radius(CornerRadius {
                             nw: 6,
                             ne: 6,
@@ -290,21 +383,21 @@ fn render_category_removable(
                             ui.horizontal(|ui| {
                                 // Collapse indicator
                                 let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                                ui.label(RichText::new(caret).size(12.0).color(Color32::from_rgb(140, 142, 148)));
+                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
 
                                 // Icon
-                                ui.label(RichText::new(icon).size(15.0).color(style.accent_color));
+                                ui.label(RichText::new(icon).size(15.0).color(accent_color));
 
                                 ui.add_space(4.0);
 
                                 // Label
-                                ui.label(RichText::new(label).size(13.0).strong().color(Color32::from_rgb(220, 222, 228)));
+                                ui.label(RichText::new(label).size(13.0).strong().color(text_primary));
 
                                 // Remove button on the right
                                 if can_remove {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if ui.add(
-                                            egui::Button::new(RichText::new(X).size(11.0).color(Color32::from_rgb(180, 100, 100)))
+                                            egui::Button::new(RichText::new(X).size(11.0).color(error_color))
                                                 .frame(false)
                                         ).on_hover_text("Remove component").clicked() {
                                             remove_clicked = true;
@@ -388,6 +481,7 @@ pub fn render_inspector(
     gizmo_state: &mut GizmoState,
     command_history: &mut CommandHistory,
     right_panel_tab: &mut RightPanelTab,
+    theme: &Theme,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -404,10 +498,19 @@ pub fn render_inspector(
     let display_width = stored_width.clamp(100.0, max_width);
     let mut actual_width = display_width;
 
+    // Theme colors for panel
+    let panel_bg = theme.surfaces.panel.to_color32();
+    let bar_bg = theme.widgets.noninteractive_bg.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let tab_selected = theme.panels.tab_active.to_color32();
+    let tab_hover = theme.panels.tab_hover.to_color32();
+    let text_active = theme.text.primary.to_color32();
+    let text_inactive = theme.text.muted.to_color32();
+
     egui::SidePanel::right("inspector")
         .exact_width(display_width)
         .resizable(false)
-        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
+        .frame(egui::Frame::new().fill(panel_bg).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
 
             // Tab bar styled like bottom panel
@@ -422,7 +525,7 @@ pub fn render_inspector(
             ui.painter().rect_filled(
                 bar_rect,
                 CornerRadius::ZERO,
-                Color32::from_rgb(38, 40, 46),
+                bar_bg,
             );
 
             // Draw bottom border
@@ -431,7 +534,7 @@ pub fn render_inspector(
                     egui::pos2(bar_rect.min.x, bar_rect.max.y),
                     egui::pos2(bar_rect.max.x, bar_rect.max.y),
                 ],
-                egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+                egui::Stroke::new(1.0, border_color),
             );
 
             // Draw tabs inside the bar
@@ -455,9 +558,9 @@ pub fn render_inspector(
             }
 
             let inspector_bg = if inspector_selected {
-                Color32::from_rgb(50, 52, 60)
+                tab_selected
             } else if inspector_response.hovered() {
-                Color32::from_rgb(45, 47, 55)
+                tab_hover
             } else {
                 Color32::TRANSPARENT
             };
@@ -469,7 +572,7 @@ pub fn render_inspector(
                 egui::Align2::CENTER_CENTER,
                 &inspector_text,
                 egui::FontId::proportional(12.0),
-                if inspector_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                if inspector_selected { text_active } else { text_inactive },
             );
 
             tab_x += inspector_width + 4.0;
@@ -495,9 +598,9 @@ pub fn render_inspector(
             }
 
             let history_bg = if history_selected {
-                Color32::from_rgb(50, 52, 60)
+                tab_selected
             } else if history_response.hovered() {
-                Color32::from_rgb(45, 47, 55)
+                tab_hover
             } else {
                 Color32::TRANSPARENT
             };
@@ -509,7 +612,7 @@ pub fn render_inspector(
                 egui::Align2::CENTER_CENTER,
                 &history_text,
                 egui::FontId::proportional(12.0),
-                if history_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                if history_selected { text_active } else { text_inactive },
             );
 
             tab_x += history_width + 4.0;
@@ -531,9 +634,9 @@ pub fn render_inspector(
                 }
 
                 let plugin_bg = if is_selected {
-                    Color32::from_rgb(50, 52, 60)
+                    tab_selected
                 } else if plugin_response.hovered() {
-                    Color32::from_rgb(45, 47, 55)
+                    tab_hover
                 } else {
                     Color32::TRANSPARENT
                 };
@@ -545,7 +648,7 @@ pub fn render_inspector(
                     egui::Align2::CENTER_CENTER,
                     &tab_text,
                     egui::FontId::proportional(12.0),
-                    if is_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                    if is_selected { text_active } else { text_inactive },
                 );
 
                 tab_x += plugin_tab_width + 4.0;
@@ -577,6 +680,7 @@ pub fn render_inspector(
                     camera_preview_texture_id, plugin_host, ui_renderer,
                     component_registry, add_component_popup, commands, meshes, materials,
                     gizmo_state, None, &mut dummy_assets, &mut dummy_thumbnails,
+                    theme,
                 );
                 ui_events.extend(events);
                 scene_changed = changed;
@@ -637,7 +741,11 @@ pub fn render_inspector_content(
     project_path: Option<&std::path::PathBuf>,
     assets: &mut crate::core::AssetBrowserState,
     thumbnail_cache: &mut crate::core::ThumbnailCache,
+    theme: &Theme,
 ) -> (Vec<UiEvent>, bool) {
+    // Store theme colors in egui context for inspector components to access
+    set_inspector_theme(ui.ctx(), theme);
+
     let mut scene_changed = false;
     let mut component_to_remove: Option<&'static str> = None;
 
@@ -681,9 +789,9 @@ pub fn render_inspector_content(
                 ui.horizontal(|ui| {
                     // Accent bar
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 20.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(66, 150, 250));
+                    ui.painter().rect_filled(rect, 0.0, theme.semantic.accent.to_color32());
 
-                    ui.label(RichText::new(PENCIL_SIMPLE).size(14.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new(PENCIL_SIMPLE).size(14.0).color(theme.text.muted.to_color32()));
 
                     // Editable entity name
                     let name_response = ui.add(
@@ -697,7 +805,7 @@ pub fn render_inspector_content(
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Active indicator
-                        ui.label(RichText::new(CHECK_CIRCLE).color(Color32::from_rgb(89, 191, 115)));
+                        ui.label(RichText::new(CHECK_CIRCLE).color(theme.semantic.success.to_color32()));
                     });
                 });
 
@@ -706,8 +814,8 @@ pub fn render_inspector_content(
                 // Tag input
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
-                    ui.label(RichText::new(TAG).size(14.0).color(Color32::from_rgb(140, 142, 148)));
-                    ui.label(RichText::new("Tag").size(12.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new(TAG).size(14.0).color(theme.text.muted.to_color32()));
+                    ui.label(RichText::new("Tag").size(12.0).color(theme.text.muted.to_color32()));
 
                     let tag_response = ui.add(
                         egui::TextEdit::singleline(&mut current_tag)
@@ -734,12 +842,12 @@ pub fn render_inspector_content(
 
                 // Add Component dropdown button (full width)
                 egui::Frame::default()
-                    .fill(Color32::from_rgb(40, 45, 55))
+                    .fill(theme.widgets.inactive_bg.to_color32())
                     .corner_radius(CornerRadius::same(4))
                     .show(ui, |ui| {
                         ui.set_min_width(ui.available_width() - 12.0);
                         ui.menu_button(
-                            RichText::new(format!("{} Add Component", PLUS)).color(Color32::from_rgb(100, 180, 255)),
+                            RichText::new(format!("{} Add Component", PLUS)).color(theme.text.hyperlink.to_color32()),
                             |ui| {
                                 ui.set_min_width(220.0);
 
@@ -781,7 +889,8 @@ pub fn render_inspector_content(
                         ui,
                         ARROWS_OUT_CARDINAL,
                         "Transform",
-                        CategoryStyle::transform(),
+                        "transform",
+                        theme,
                         "inspector_transform",
                         true,
                         |ui| {
@@ -798,7 +907,8 @@ pub fn render_inspector_content(
                         ui,
                         GLOBE,
                         "World Environment",
-                        CategoryStyle::environment(),
+                        "environment",
+                        theme,
                         "inspector_world_env",
                         true,
                         |ui| {
@@ -813,7 +923,8 @@ pub fn render_inspector_content(
                         ui,
                         LIGHTBULB,
                         "Point Light",
-                        CategoryStyle::light(),
+                        "lighting",
+                        theme,
                         "inspector_point_light",
                         true,
                         true, // can_remove
@@ -830,7 +941,8 @@ pub fn render_inspector_content(
                         ui,
                         SUN,
                         "Directional Light",
-                        CategoryStyle::light(),
+                        "lighting",
+                        theme,
                         "inspector_dir_light",
                         true,
                         true, // can_remove
@@ -847,7 +959,8 @@ pub fn render_inspector_content(
                         ui,
                         FLASHLIGHT,
                         "Spot Light",
-                        CategoryStyle::light(),
+                        "lighting",
+                        theme,
                         "inspector_spot_light",
                         true,
                         true, // can_remove
@@ -865,7 +978,8 @@ pub fn render_inspector_content(
                         ui,
                         VIDEO_CAMERA,
                         "Camera3D",
-                        CategoryStyle::camera(),
+                        "camera",
+                        theme,
                         "inspector_camera",
                         true,
                         true, // can_remove
@@ -883,7 +997,8 @@ pub fn render_inspector_content(
                         ui,
                         VIDEO_CAMERA,
                         "Camera Rig",
-                        CategoryStyle::camera(),
+                        "camera",
+                        theme,
                         "inspector_camera_rig",
                         true,
                         true, // can_remove
@@ -903,7 +1018,8 @@ pub fn render_inspector_content(
                         ui,
                         CODE,
                         "Script",
-                        CategoryStyle::script(),
+                        "scripting",
+                        theme,
                         "inspector_script",
                         true,
                         true, // can_remove
@@ -921,7 +1037,8 @@ pub fn render_inspector_content(
                         ui,
                         ATOM,
                         "Rigid Body",
-                        CategoryStyle::physics(),
+                        "physics",
+                        theme,
                         "inspector_physics_body",
                         true,
                         true, // can_remove
@@ -946,7 +1063,8 @@ pub fn render_inspector_content(
                         ui,
                         CUBE,
                         "Collider",
-                        CategoryStyle::physics(),
+                        "physics",
+                        theme,
                         "inspector_collision_shape",
                         true,
                         true, // can_remove
@@ -964,7 +1082,8 @@ pub fn render_inspector_content(
                         ui,
                         IMAGE,
                         "Sprite2D",
-                        CategoryStyle::nodes2d(),
+                        "nodes_2d",
+                        theme,
                         "inspector_sprite2d",
                         true,
                         true, // can_remove
@@ -984,7 +1103,8 @@ pub fn render_inspector_content(
                         ui,
                         VIDEO_CAMERA,
                         "Camera2D",
-                        CategoryStyle::nodes2d(),
+                        "nodes_2d",
+                        theme,
                         "inspector_camera2d",
                         true,
                         true, // can_remove
@@ -1004,7 +1124,8 @@ pub fn render_inspector_content(
                         ui,
                         STACK,
                         "UI Panel",
-                        CategoryStyle::ui(),
+                        "ui",
+                        theme,
                         "inspector_ui_panel",
                         true,
                         true, // can_remove
@@ -1024,7 +1145,8 @@ pub fn render_inspector_content(
                         ui,
                         TEXTBOX,
                         "UI Label",
-                        CategoryStyle::ui(),
+                        "ui",
+                        theme,
                         "inspector_ui_label",
                         true,
                         true, // can_remove
@@ -1044,7 +1166,8 @@ pub fn render_inspector_content(
                         ui,
                         CURSOR_CLICK,
                         "UI Button",
-                        CategoryStyle::ui(),
+                        "ui",
+                        theme,
                         "inspector_ui_button",
                         true,
                         true, // can_remove
@@ -1064,7 +1187,8 @@ pub fn render_inspector_content(
                         ui,
                         IMAGE,
                         "UI Image",
-                        CategoryStyle::ui(),
+                        "ui",
+                        theme,
                         "inspector_ui_image",
                         true,
                         true, // can_remove
@@ -1085,13 +1209,14 @@ pub fn render_inspector_content(
                         ui,
                         PALETTE,
                         "Material",
-                        CategoryStyle::rendering(),
+                        "rendering",
+                        theme,
                         "inspector_material",
                         true,
                         true, // can_remove
                         |ui| {
                             render_material_inspector(
-                                ui, &mut material_data, is_applied, project_path, assets
+                                ui, &mut material_data, is_applied, project_path, assets, theme
                             );
                         },
                     ) {
@@ -1107,7 +1232,8 @@ pub fn render_inspector_content(
                             ui,
                             PUZZLE_PIECE,
                             &inspector_def.label,
-                            CategoryStyle::plugin(),
+                            "plugin",
+                            theme,
                             &format!("inspector_plugin_{:?}", type_id),
                             true,
                             |ui| {
@@ -1125,7 +1251,7 @@ pub fn render_inspector_content(
             add_component_popup.is_open = false;
 
             // Show asset information
-            render_asset_inspector(ui, asset_path, thumbnail_cache);
+            render_asset_inspector(ui, asset_path, thumbnail_cache, theme);
         } else {
             // Close popup when nothing is selected
             add_component_popup.is_open = false;
@@ -1133,7 +1259,7 @@ pub fn render_inspector_content(
             // No selection state
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new(MAGNIFYING_GLASS).size(32.0).color(Color32::from_rgb(80, 80, 90)));
+                ui.label(RichText::new(MAGNIFYING_GLASS).size(32.0).color(theme.text.disabled.to_color32()));
                 ui.add_space(8.0);
                 ui.label(RichText::new("No Selection").weak());
                 ui.add_space(8.0);
@@ -1163,6 +1289,8 @@ pub fn render_history_content(
 ) {
     use egui_phosphor::regular::{ARROW_U_UP_LEFT, ARROW_U_UP_RIGHT, CIRCLE};
 
+    let theme_colors = get_inspector_theme(ui.ctx());
+
     // Content area with padding
     egui::Frame::new()
         .inner_margin(egui::Margin::symmetric(6, 4))
@@ -1176,7 +1304,7 @@ pub fn render_history_content(
                 if undo_descriptions.is_empty() && redo_descriptions.is_empty() {
                     ui.add_space(20.0);
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new(CLOCK_COUNTER_CLOCKWISE).size(32.0).color(Color32::from_rgb(80, 80, 90)));
+                        ui.label(RichText::new(CLOCK_COUNTER_CLOCKWISE).size(32.0).color(theme_colors.text_disabled));
                         ui.add_space(8.0);
                         ui.label(RichText::new("No History").weak());
                         ui.add_space(8.0);
@@ -1188,7 +1316,7 @@ pub fn render_history_content(
                 // Show redo stack (future actions) - displayed at top, grayed out
                 // Clicking on a redo item will redo all actions up to and including that item
                 if !redo_descriptions.is_empty() {
-                    ui.label(RichText::new("Redo Stack").size(11.0).color(Color32::from_rgb(100, 100, 110)));
+                    ui.label(RichText::new("Redo Stack").size(11.0).color(theme_colors.text_disabled));
                     ui.add_space(4.0);
 
                     // Show redo items in reverse order (most recent undone at top)
@@ -1206,11 +1334,11 @@ pub fn render_history_content(
 
                         let is_hovered = row_response.hovered();
                         let bg_color = if is_hovered {
-                            Color32::from_rgb(50, 55, 65)
+                            theme_colors.widget_hovered_bg
                         } else if display_i % 2 == 0 {
-                            ROW_BG_EVEN
+                            theme_colors.row_even
                         } else {
-                            ROW_BG_ODD
+                            theme_colors.row_odd
                         };
 
                         ui.painter().rect_filled(row_rect, 3.0, bg_color);
@@ -1224,14 +1352,14 @@ pub fn render_history_content(
                             egui::Align2::LEFT_CENTER,
                             ARROW_U_UP_RIGHT,
                             egui::FontId::proportional(12.0),
-                            if is_hovered { Color32::from_rgb(120, 120, 130) } else { Color32::from_rgb(80, 80, 90) },
+                            if is_hovered { theme_colors.text_muted } else { theme_colors.text_disabled },
                         );
                         ui.painter().text(
                             text_pos,
                             egui::Align2::LEFT_CENTER,
                             desc,
                             egui::FontId::proportional(12.0),
-                            if is_hovered { Color32::from_rgb(140, 140, 150) } else { Color32::from_rgb(100, 100, 110) },
+                            if is_hovered { theme_colors.text_secondary } else { theme_colors.text_disabled },
                         );
 
                         if row_response.clicked() {
@@ -1250,15 +1378,15 @@ pub fn render_history_content(
 
                 // Current state indicator
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(CIRCLE).size(10.0).color(Color32::from_rgb(89, 191, 115)));
-                    ui.label(RichText::new("Current State").size(11.0).color(Color32::from_rgb(89, 191, 115)));
+                    ui.label(RichText::new(CIRCLE).size(10.0).color(theme_colors.semantic_success));
+                    ui.label(RichText::new("Current State").size(11.0).color(theme_colors.semantic_success));
                 });
                 ui.add_space(8.0);
 
                 // Show undo stack (past actions) - displayed below current state
                 // Clicking on an undo item will undo all actions back to that point
                 if !undo_descriptions.is_empty() {
-                    ui.label(RichText::new("Undo Stack").size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new("Undo Stack").size(11.0).color(theme_colors.text_muted));
                     ui.add_space(4.0);
 
                     // Show undo items in reverse order (most recent at top)
@@ -1277,11 +1405,11 @@ pub fn render_history_content(
 
                         let is_hovered = row_response.hovered();
                         let bg_color = if is_hovered {
-                            Color32::from_rgb(50, 55, 65)
+                            theme_colors.widget_hovered_bg
                         } else if display_i % 2 == 0 {
-                            ROW_BG_EVEN
+                            theme_colors.row_even
                         } else {
-                            ROW_BG_ODD
+                            theme_colors.row_odd
                         };
 
                         ui.painter().rect_filled(row_rect, 3.0, bg_color);
@@ -1291,18 +1419,18 @@ pub fn render_history_content(
                         let text_pos = egui::pos2(row_rect.min.x + 26.0, row_rect.center().y);
 
                         let icon_color = if is_hovered {
-                            Color32::from_rgb(130, 200, 255)
+                            theme_colors.semantic_accent
                         } else if is_next {
-                            Color32::from_rgb(99, 178, 238)
+                            theme_colors.semantic_accent
                         } else {
-                            Color32::from_rgb(140, 142, 148)
+                            theme_colors.text_muted
                         };
                         let text_color = if is_hovered {
-                            Color32::WHITE
+                            theme_colors.text_primary
                         } else if is_next {
-                            Color32::from_rgb(220, 222, 228)
+                            theme_colors.text_primary
                         } else {
-                            Color32::from_rgb(160, 162, 168)
+                            theme_colors.text_secondary
                         };
 
                         ui.painter().text(
@@ -1339,9 +1467,9 @@ pub fn render_history_content(
                 ui.separator();
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("Undo: {}", undo_count)).size(11.0).color(Color32::from_rgb(140, 142, 148)));
-                    ui.label(RichText::new("|").size(11.0).color(Color32::from_rgb(60, 62, 68)));
-                    ui.label(RichText::new(format!("Redo: {}", redo_count)).size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new(format!("Undo: {}", undo_count)).size(11.0).color(theme_colors.text_muted));
+                    ui.label(RichText::new("|").size(11.0).color(theme_colors.widget_border));
+                    ui.label(RichText::new(format!("Redo: {}", redo_count)).size(11.0).color(theme_colors.text_muted));
                 });
             });
         });
@@ -1380,6 +1508,7 @@ fn render_material_inspector(
     is_applied: bool,
     project_path: Option<&std::path::PathBuf>,
     assets: &mut crate::core::AssetBrowserState,
+    theme: &Theme,
 ) {
 
     let display_path = material_data
@@ -1394,7 +1523,7 @@ fn render_material_inspector(
         })
         .unwrap_or("None");
 
-    property_row(ui, 0, |ui| {
+    property_row_themed(ui, 0, theme, |ui| {
         ui.horizontal(|ui| {
             ui.label("Blueprint");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1404,18 +1533,18 @@ fn render_material_inspector(
     });
 
     // Show applied status
-    property_row(ui, 1, |ui| {
+    property_row_themed(ui, 1, theme, |ui| {
         ui.horizontal(|ui| {
             ui.label("Status");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if material_data.material_path.is_some() {
                     if is_applied {
-                        ui.colored_label(Color32::from_rgb(100, 200, 100), "Applied");
+                        ui.colored_label(theme.semantic.success.to_color32(), "Applied");
                     } else {
-                        ui.colored_label(Color32::from_rgb(200, 200, 100), "Pending...");
+                        ui.colored_label(theme.semantic.warning.to_color32(), "Pending...");
                     }
                 } else {
-                    ui.colored_label(Color32::from_rgb(150, 150, 150), "No material");
+                    ui.colored_label(theme.text.muted.to_color32(), "No material");
                 }
             });
         });
@@ -1423,7 +1552,7 @@ fn render_material_inspector(
 
     // Clear button (only shown if material is set)
     if material_data.material_path.is_some() {
-        property_row(ui, 2, |ui| {
+        property_row_themed(ui, 2, theme, |ui| {
             if ui.button("Clear Material").clicked() {
                 material_data.material_path = None;
             }
@@ -1455,19 +1584,19 @@ fn render_material_inspector(
             i.pointer.hover_pos().map_or(false, |pos| rect.contains(pos))
         });
 
-        // Input box style background
+        // Input box style background - use theme colors
         let bg_color = if is_dragging_valid && is_hovered {
-            Color32::from_rgb(45, 55, 75)
+            theme.widgets.hovered_bg.to_color32()
         } else {
-            Color32::from_rgb(30, 32, 38)
+            theme.panels.inspector_row_even.to_color32()
         };
 
         let stroke_color = if is_dragging_valid && is_hovered {
-            Color32::from_rgb(100, 150, 200)
+            theme.semantic.accent.to_color32()
         } else if is_dragging_valid {
-            Color32::from_rgb(70, 90, 120)
+            theme.widgets.border.to_color32()
         } else {
-            Color32::from_rgb(55, 58, 65)
+            theme.widgets.border_light.to_color32()
         };
 
         ui.painter().rect_filled(rect, 2.0, bg_color);
@@ -1486,9 +1615,9 @@ fn render_material_inspector(
             .unwrap_or_else(|| if is_dragging_valid { "Drop here...".to_string() } else { "Drop texture here...".to_string() });
 
         let text_color = if material_data.material_path.is_some() {
-            Color32::from_rgb(200, 200, 210)
+            theme.text.secondary.to_color32()
         } else {
-            Color32::from_rgb(100, 100, 110)
+            theme.text.disabled.to_color32()
         };
 
         let text_rect = rect.shrink2(egui::vec2(6.0, 0.0));
@@ -1624,6 +1753,7 @@ fn render_asset_inspector(
     ui: &mut egui::Ui,
     asset_path: &std::path::PathBuf,
     thumbnail_cache: &mut crate::core::ThumbnailCache,
+    theme: &Theme,
 ) {
     use egui_phosphor::regular::{FILE, INFO};
 
@@ -1637,11 +1767,12 @@ fn render_asset_inspector(
         .unwrap_or_default();
 
     // Header with asset name
+    let (accent_color, _) = get_category_colors(theme, "environment");
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 20.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(166, 217, 140));
+        ui.painter().rect_filled(rect, 0.0, accent_color);
 
-        ui.label(RichText::new(IMAGE).size(14.0).color(Color32::from_rgb(166, 217, 140)));
+        ui.label(RichText::new(IMAGE).size(14.0).color(accent_color));
         ui.label(RichText::new(filename).size(14.0).strong());
     });
 
@@ -1722,7 +1853,8 @@ fn render_asset_inspector(
         ui,
         INFO,
         "Information",
-        CategoryStyle::environment(),
+        "environment",
+        theme,
         "asset_info",
         true,
         |ui| {

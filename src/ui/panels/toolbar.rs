@@ -44,7 +44,7 @@ pub fn render_toolbar(
     egui::TopBottomPanel::top("toolbar")
         .exact_height(toolbar_height)
         .frame(egui::Frame::NONE
-            .fill(theme.surfaces.panel.to_color32())
+            .fill(theme.surfaces.extreme.to_color32())
             .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
         .show(ctx, |ui| {
             let _available_width = ui.available_width();

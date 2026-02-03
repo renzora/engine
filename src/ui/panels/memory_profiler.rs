@@ -61,7 +61,7 @@ fn render_unavailable(ui: &mut egui::Ui, theme: &Theme) {
         ui.label(
             RichText::new("cargo build --features memory-profiling")
                 .size(10.0)
-                .color(Color32::from_gray(100))
+                .color(theme.text.disabled.to_color32())
                 .monospace(),
         );
     });
@@ -99,7 +99,7 @@ fn render_process_memory_section(ui: &mut egui::Ui, state: &MemoryProfilerState,
     ui.add_space(8.0);
 
     // Memory graph
-    render_memory_graph(ui, state);
+    render_memory_graph(ui, state, theme);
 }
 
 fn render_memory_trend_section(ui: &mut egui::Ui, state: &MemoryProfilerState, theme: &Theme) {
@@ -173,7 +173,7 @@ fn render_asset_bar(
         let (rect, _) = ui.allocate_exact_size(Vec2::new(bar_width, 12.0), egui::Sense::hover());
 
         // Background
-        ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(40, 42, 48));
+        ui.painter().rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
 
         // Fill
         let fill_rect = egui::Rect::from_min_size(
@@ -229,7 +229,7 @@ fn render_allocation_rate_section(ui: &mut egui::Ui, state: &MemoryProfilerState
     }
 }
 
-fn render_memory_graph(ui: &mut egui::Ui, state: &MemoryProfilerState) {
+fn render_memory_graph(ui: &mut egui::Ui, state: &MemoryProfilerState, theme: &Theme) {
     let height = 50.0;
     let available_width = ui.available_width();
     let size = Vec2::new(available_width, height);
@@ -242,8 +242,8 @@ fn render_memory_graph(ui: &mut egui::Ui, state: &MemoryProfilerState) {
     let painter = ui.painter();
 
     // Background
-    painter.rect_filled(rect, 2.0, Color32::from_rgb(30, 32, 36));
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, Color32::from_rgb(50, 52, 58)), egui::StrokeKind::Inside);
+    painter.rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
 
     let data: Vec<f32> = state.memory_history.iter().copied().collect();
     if data.is_empty() {

@@ -99,7 +99,7 @@ use panels::{
     render_level_tools_content,
 };
 #[allow(unused_imports)]
-pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH};
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
 
@@ -630,6 +630,7 @@ pub fn editor_ui(
                             current_project.as_ref().map(|p| &p.path),
                             &mut editor.assets,
                             &mut editor.thumbnail_cache,
+                            &editor.theme_manager.active_theme,
                         );
                         all_ui_events.extend(events);
                         if changed {

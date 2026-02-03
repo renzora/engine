@@ -71,7 +71,7 @@ fn render_unavailable(ui: &mut egui::Ui, theme: &Theme) {
         ui.label(
             RichText::new("cargo build --features physics")
                 .size(10.0)
-                .color(Color32::from_gray(100))
+                .color(theme.text.disabled.to_color32())
                 .monospace(),
         );
     });
@@ -83,9 +83,9 @@ fn render_status_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &T
         ui.add_space(8.0);
 
         let (icon, color, text) = if state.simulation_running {
-            ("\u{f04b}", Color32::from_rgb(100, 200, 100), "Running")
+            ("\u{f04b}", theme.semantic.success.to_color32(), "Running")
         } else {
-            ("\u{f04c}", Color32::from_rgb(200, 180, 80), "Paused")
+            ("\u{f04c}", theme.semantic.warning.to_color32(), "Paused")
         };
 
         ui.label(RichText::new(icon).size(11.0).color(color));
@@ -152,7 +152,7 @@ fn render_body_counts_section(ui: &mut egui::Ui, state: &PhysicsDebugState, them
     let (rect, _) = ui.allocate_exact_size(Vec2::new(bar_width, bar_height), egui::Sense::hover());
 
     let painter = ui.painter();
-    painter.rect_filled(rect, 3.0, Color32::from_rgb(40, 42, 48));
+    painter.rect_filled(rect, 3.0, theme.surfaces.extreme.to_color32());
 
     if total > 0 {
         let dynamic_ratio = state.dynamic_body_count as f32 / total as f32;
@@ -259,10 +259,10 @@ fn render_step_time_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme:
     ui.add_space(6.0);
 
     // Step time graph
-    render_step_time_graph(ui, state);
+    render_step_time_graph(ui, state, theme);
 }
 
-fn render_step_time_graph(ui: &mut egui::Ui, state: &PhysicsDebugState) {
+fn render_step_time_graph(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &Theme) {
     let height = 40.0;
     let available_width = ui.available_width();
     let size = Vec2::new(available_width, height);
@@ -275,8 +275,8 @@ fn render_step_time_graph(ui: &mut egui::Ui, state: &PhysicsDebugState) {
     let painter = ui.painter();
 
     // Background
-    painter.rect_filled(rect, 2.0, Color32::from_rgb(30, 32, 36));
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, Color32::from_rgb(50, 52, 58)), egui::StrokeKind::Inside);
+    painter.rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
 
     let data: Vec<f32> = state.step_time_history.iter().copied().collect();
     if data.is_empty() {
@@ -292,7 +292,7 @@ fn render_step_time_graph(ui: &mut egui::Ui, state: &PhysicsDebugState) {
 
     // Data line
     let step = rect.width() / data.len().max(1) as f32;
-    let line_color = Color32::from_rgb(100, 200, 150);
+    let line_color = theme.semantic.success.to_color32();
 
     let points: Vec<egui::Pos2> = data
         .iter()
@@ -306,7 +306,8 @@ fn render_step_time_graph(ui: &mut egui::Ui, state: &PhysicsDebugState) {
         .collect();
 
     if points.len() >= 2 {
-        let fill_color = Color32::from_rgba_unmultiplied(100, 200, 150, 30);
+        let success = theme.semantic.success.to_color32();
+        let fill_color = Color32::from_rgba_unmultiplied(success.r(), success.g(), success.b(), 30);
         let mut fill_points = points.clone();
         fill_points.push(egui::pos2(rect.max.x, rect.max.y));
         fill_points.push(egui::pos2(rect.min.x, rect.max.y));
@@ -333,7 +334,7 @@ fn render_collision_pairs_section(ui: &mut egui::Ui, state: &mut PhysicsDebugSta
     if state.show_collision_pairs {
         ui.add_space(4.0);
         egui::Frame::NONE
-            .fill(Color32::from_rgb(35, 37, 42))
+            .fill(theme.surfaces.panel.to_color32())
             .corner_radius(4.0)
             .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
@@ -384,7 +385,7 @@ fn render_debug_toggles_section(ui: &mut egui::Ui, state: &mut PhysicsDebugState
     ui.add_space(4.0);
 
     egui::Frame::NONE
-        .fill(Color32::from_rgb(35, 37, 42))
+        .fill(theme.surfaces.panel.to_color32())
         .corner_radius(4.0)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {

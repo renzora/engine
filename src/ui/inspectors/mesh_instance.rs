@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
-use bevy_egui::egui::{self, Color32, RichText, Sense, Vec2};
+use bevy_egui::egui::{self, RichText, Sense, Vec2};
 use std::path::PathBuf;
 
 use crate::core::AssetBrowserState;
 use crate::shared::MeshInstanceData;
+use crate::ui::get_inspector_theme;
 
 // Phosphor icons
 use egui_phosphor::regular::{CUBE, FILE, FOLDER_OPEN, X_CIRCLE};
@@ -18,6 +19,7 @@ pub fn render_mesh_instance_inspector(
 ) -> (bool, Option<PathBuf>) {
     let mut changed = false;
     let mut new_model_to_load: Option<PathBuf> = None;
+    let theme_colors = get_inspector_theme(ui.ctx());
 
     ui.add_space(4.0);
 
@@ -41,15 +43,15 @@ pub fn render_mesh_instance_inspector(
 
     // Background color based on state
     let bg_color = if is_drag_target && is_hovered {
-        Color32::from_rgb(66, 120, 180)
+        theme_colors.semantic_accent
     } else if is_drag_target {
-        Color32::from_rgb(50, 80, 120)
+        theme_colors.surface_faint
     } else {
-        Color32::from_rgb(40, 40, 48)
+        theme_colors.widget_inactive_bg
     };
 
     ui.painter().rect_filled(rect, 4.0, bg_color);
-    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, theme_colors.widget_border), egui::StrokeKind::Outside);
 
     // Content inside drop zone
     if let Some(ref model_path) = instance.model_path {
@@ -66,7 +68,7 @@ pub fn render_mesh_instance_inspector(
             egui::Align2::CENTER_CENTER,
             CUBE,
             egui::FontId::proportional(24.0),
-            Color32::from_rgb(242, 166, 115),
+            theme_colors.semantic_warning,
         );
 
         // File name
@@ -75,7 +77,7 @@ pub fn render_mesh_instance_inspector(
             egui::Align2::CENTER_CENTER,
             file_name,
             egui::FontId::proportional(12.0),
-            Color32::from_rgb(200, 200, 210),
+            theme_colors.text_primary,
         );
     } else {
         // Show empty state with hint
@@ -87,7 +89,7 @@ pub fn render_mesh_instance_inspector(
                 egui::Align2::CENTER_CENTER,
                 "Drop model here",
                 egui::FontId::proportional(12.0),
-                Color32::from_rgb(140, 180, 220),
+                theme_colors.semantic_accent,
             );
         } else {
             ui.painter().text(
@@ -95,14 +97,14 @@ pub fn render_mesh_instance_inspector(
                 egui::Align2::CENTER_CENTER,
                 FILE,
                 egui::FontId::proportional(20.0),
-                Color32::from_rgb(100, 100, 110),
+                theme_colors.text_disabled,
             );
             ui.painter().text(
                 egui::pos2(center.x, center.y + 12.0),
                 egui::Align2::CENTER_CENTER,
                 "Drag a model here",
                 egui::FontId::proportional(11.0),
-                Color32::from_rgb(120, 120, 130),
+                theme_colors.text_muted,
             );
         }
     }
@@ -131,7 +133,7 @@ pub fn render_mesh_instance_inspector(
     // Clear button if a model is assigned
     if instance.model_path.is_some() {
         ui.horizontal(|ui| {
-            if ui.button(RichText::new(format!("{} Clear", X_CIRCLE)).color(Color32::from_rgb(200, 100, 100))).clicked() {
+            if ui.button(RichText::new(format!("{} Clear", X_CIRCLE)).color(theme_colors.semantic_error)).clicked() {
                 instance.model_path = None;
                 changed = true;
             }

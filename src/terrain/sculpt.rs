@@ -307,10 +307,13 @@ pub fn terrain_sculpt_system(
     // Draw brush preview
     if let Some(hover_pos) = sculpt_state.hover_position {
         let color = match settings.brush_type {
+            TerrainBrushType::Raise => Color::srgba(0.2, 0.8, 0.2, 0.8),
+            TerrainBrushType::Lower => Color::srgba(0.8, 0.4, 0.2, 0.8),
             TerrainBrushType::Sculpt => Color::srgba(0.2, 0.8, 0.2, 0.8),
             TerrainBrushType::Erase => Color::srgba(0.8, 0.2, 0.2, 0.8),
             TerrainBrushType::Smooth => Color::srgba(0.2, 0.5, 0.8, 0.8),
             TerrainBrushType::Flatten => Color::srgba(0.8, 0.8, 0.2, 0.8),
+            TerrainBrushType::SetHeight => Color::srgba(0.8, 0.8, 0.2, 0.8),
             TerrainBrushType::Ramp => Color::srgba(0.8, 0.6, 0.2, 0.8),
             TerrainBrushType::Erosion => Color::srgba(0.6, 0.4, 0.2, 0.8),
             TerrainBrushType::Hydro => Color::srgba(0.2, 0.4, 0.8, 0.8),
@@ -571,11 +574,28 @@ pub fn terrain_sculpt_system(
                 let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
                 match settings.brush_type {
+                    TerrainBrushType::Raise => {
+                        // Raise terrain
+                        let delta = effect / height_range;
+                        chunk_data.modify_height(vx, vz, resolution, delta);
+                    }
+                    TerrainBrushType::Lower => {
+                        // Lower terrain
+                        let delta = -effect / height_range;
+                        chunk_data.modify_height(vx, vz, resolution, delta);
+                    }
                     TerrainBrushType::Sculpt => {
                         // Raise terrain (hold Shift to lower)
                         let delta = effect / height_range;
                         let delta = if shift_held { -delta } else { delta };
                         chunk_data.modify_height(vx, vz, resolution, delta);
+                    }
+                    TerrainBrushType::SetHeight => {
+                        // Set terrain to exact target height
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let target = settings.target_height;
+                        let new_height = current + (target - current) * effect * 2.0;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Erase => {
                         // Reset to default height (0.5)

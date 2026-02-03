@@ -60,8 +60,8 @@ pub struct HierarchyQueries<'w, 's> {
 const INDENT_SIZE: f32 = 18.0;
 const ROW_HEIGHT: f32 = 20.0;
 
-fn row_odd_bg() -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+fn row_odd_bg(theme: &Theme) -> Color32 {
+    theme.panels.inspector_row_odd.to_color32()
 }
 
 /// Returns (ui_events, actual_width, scene_changed)
@@ -107,7 +107,7 @@ pub fn render_hierarchy(
     egui::SidePanel::left("hierarchy")
         .exact_width(display_width)
         .resizable(false)
-        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
+        .frame(egui::Frame::new().fill(theme.surfaces.panel.to_color32()).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
 
             // Render tab bar if there are plugin tabs
@@ -146,7 +146,7 @@ pub fn render_hierarchy(
                         }
                     });
                 } else {
-                    ui.label(RichText::new("No content").color(Color32::GRAY));
+                    ui.label(RichText::new("No content").color(theme.text.muted.to_color32()));
                 }
             } else {
                 // Render normal hierarchy
@@ -342,9 +342,9 @@ pub fn render_hierarchy_content(
             // Empty scene - show add entity prompt
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new("Empty Scene").size(14.0).color(Color32::from_rgb(150, 150, 160)));
+                ui.label(RichText::new("Empty Scene").size(14.0).color(theme.text.muted.to_color32()));
                 ui.add_space(8.0);
-                ui.label(RichText::new("Use the + button above to add entities").size(12.0).weak());
+                ui.label(RichText::new("Use the + button above to add entities").size(12.0).color(theme.text.disabled.to_color32()));
             });
         } else {
             // Clear drop target at start of frame
@@ -510,7 +510,7 @@ fn render_tree_node(
 
     // Draw odd/even row background
     if *row_index % 2 == 1 {
-        painter.rect_filled(rect, 0.0, row_odd_bg());
+        painter.rect_filled(rect, 0.0, row_odd_bg(theme));
     }
     *row_index += 1;
 
@@ -522,7 +522,8 @@ fn render_tree_node(
     if is_selected {
         painter.rect_filled(rect, 0.0, selection_bg);
     } else if response.hovered() && hierarchy.drag_entities.is_empty() {
-        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(255, 255, 255, 15));
+        let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
     }
 
     let base_x = rect.min.x + 4.0;
@@ -985,7 +986,7 @@ fn render_tree_node(
         ui.separator();
 
         // Delete
-        if ui.button(RichText::new(format!("{} Delete", TRASH)).color(Color32::from_rgb(230, 100, 100))).clicked() {
+        if ui.button(RichText::new(format!("{} Delete", TRASH)).color(theme.semantic.error.to_color32())).clicked() {
             // Queue delete command for undo support
             queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
             // Remove from expanded set

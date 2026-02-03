@@ -1,16 +1,17 @@
 //! Inspector widget for script components
 
 use std::path::PathBuf;
-use bevy_egui::egui::{self, Color32, RichText, Sense};
+use bevy_egui::egui::{self, RichText, Sense};
 
 use crate::scripting::{ScriptComponent, ScriptRegistry, ScriptValue, RhaiScriptEngine};
-use crate::ui::inline_property;
+use crate::ui::{inline_property, get_inspector_theme};
 use super::utils::sanitize_f32;
 
 /// Render a collapsible section header
 fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) -> bool {
     let id = ui.make_persistent_id(id);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let theme_colors = get_inspector_theme(ui.ctx());
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 20.0), Sense::click());
     if response.clicked() {
@@ -18,9 +19,9 @@ fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) 
     }
 
     let bg_color = if response.hovered() {
-        Color32::from_rgb(50, 53, 60)
+        theme_colors.widget_hovered_bg
     } else {
-        Color32::from_rgb(45, 48, 55)
+        theme_colors.widget_inactive_bg
     };
 
     ui.painter().rect_filled(rect, 0.0, bg_color);
@@ -29,7 +30,7 @@ fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) 
         egui::Align2::LEFT_CENTER,
         title,
         egui::FontId::proportional(12.0),
-        Color32::from_rgb(180, 180, 190),
+        theme_colors.text_secondary,
     );
 
     state.store(ui.ctx());
@@ -92,8 +93,9 @@ pub fn render_script_inspector(
                 .width(100.0)
                 .selected_text(current_name)
                 .show_ui(ui, |ui| {
+                    let theme_colors = get_inspector_theme(ui.ctx());
                     if available_files.is_empty() {
-                        ui.label(RichText::new("No scripts found").color(Color32::from_rgb(150, 150, 160)).italics().size(11.0));
+                        ui.label(RichText::new("No scripts found").color(theme_colors.text_muted).italics().size(11.0));
                     } else {
                         for (name, path) in &available_files {
                             let selected = script.script_path.as_ref() == Some(path);
@@ -113,8 +115,9 @@ pub fn render_script_inspector(
         // Show file path as info
         if let Some(path) = &script.script_path {
             if !path.as_os_str().is_empty() {
+                let theme_colors = get_inspector_theme(ui.ctx());
                 inline_property(ui, row, "Path", |ui| {
-                    ui.label(RichText::new(format!("{}", path.display())).color(Color32::from_rgb(100, 100, 110)).size(10.0));
+                    ui.label(RichText::new(format!("{}", path.display())).color(theme_colors.text_disabled).size(10.0));
                 });
                 row += 1;
             }
@@ -138,8 +141,9 @@ pub fn render_script_inspector(
 
                             // Show hint if available
                             if let Some(hint) = &prop.hint {
+                                let theme_colors = get_inspector_theme(ui.ctx());
                                 inline_property(ui, row, "", |ui| {
-                                    ui.label(RichText::new(hint).color(Color32::from_rgb(100, 100, 110)).size(10.0));
+                                    ui.label(RichText::new(hint).color(theme_colors.text_disabled).size(10.0));
                                 });
                                 row += 1;
                             }
@@ -174,9 +178,10 @@ pub fn render_script_inspector(
                     // Group by category
                     let mut categories: Vec<_> = registry.categories().collect();
                     categories.sort();
+                    let theme_colors = get_inspector_theme(ui.ctx());
 
                     for category in categories {
-                        ui.label(RichText::new(category.as_str()).color(Color32::from_rgb(130, 130, 145)).size(10.0));
+                        ui.label(RichText::new(category.as_str()).color(theme_colors.text_muted).size(10.0));
 
                         if let Some(script_ids) = registry.by_category(category) {
                             for id in script_ids {
@@ -204,8 +209,9 @@ pub fn render_script_inspector(
         // Show script description
         if let Some(s) = registry.get(&script.script_id) {
             if !s.description().is_empty() {
+                let theme_colors = get_inspector_theme(ui.ctx());
                 inline_property(ui, row, "", |ui| {
-                    ui.label(RichText::new(s.description()).color(Color32::from_rgb(120, 120, 130)).italics().size(10.0));
+                    ui.label(RichText::new(s.description()).color(theme_colors.text_muted).italics().size(10.0));
                 });
                 row += 1;
             }
@@ -226,8 +232,9 @@ pub fn render_script_inspector(
 
                         // Show hint if available
                         if let Some(hint) = &var_def.hint {
+                            let theme_colors = get_inspector_theme(ui.ctx());
                             inline_property(ui, row, "", |ui| {
-                                ui.label(RichText::new(hint).color(Color32::from_rgb(100, 100, 110)).size(10.0));
+                                ui.label(RichText::new(hint).color(theme_colors.text_disabled).size(10.0));
                             });
                             row += 1;
                         }

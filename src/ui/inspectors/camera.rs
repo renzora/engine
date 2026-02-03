@@ -1,9 +1,9 @@
 //! Inspector widget for camera nodes
 
-use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
+use bevy_egui::egui::{self, RichText, TextureId, Vec2};
 
 use crate::shared::{CameraNodeData, CameraRigData};
-use crate::ui::inline_property;
+use crate::ui::{inline_property, get_inspector_theme};
 use super::utils::sanitize_f32;
 
 /// Render the camera rig inspector
@@ -28,15 +28,16 @@ pub fn render_camera_rig_inspector(
         // No preview available placeholder
         let available_width = ui.available_width();
         let preview_height = available_width * (9.0 / 16.0);
+        let theme_colors = get_inspector_theme(ui.ctx());
 
         egui::Frame::new()
-            .fill(Color32::from_rgb(30, 30, 38))
+            .fill(theme_colors.surface_faint)
             .show(ui, |ui| {
                 ui.set_min_size(Vec2::new(available_width, preview_height));
                 ui.centered_and_justified(|ui| {
                     ui.label(
                         RichText::new("Preview loading...")
-                            .color(Color32::from_rgb(100, 100, 110)),
+                            .color(theme_colors.text_disabled),
                     );
                 });
             });
@@ -114,15 +115,16 @@ pub fn render_camera_inspector(
         // No preview available placeholder
         let available_width = ui.available_width();
         let preview_height = available_width * (9.0 / 16.0);
+        let theme_colors = get_inspector_theme(ui.ctx());
 
         egui::Frame::new()
-            .fill(Color32::from_rgb(30, 30, 38))
+            .fill(theme_colors.surface_faint)
             .show(ui, |ui| {
                 ui.set_min_size(Vec2::new(available_width, preview_height));
                 ui.centered_and_justified(|ui| {
                     ui.label(
                         RichText::new("Preview loading...")
-                            .color(Color32::from_rgb(100, 100, 110)),
+                            .color(theme_colors.text_disabled),
                     );
                 });
             });

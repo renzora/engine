@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::core::{AssetBrowserState, WorldEnvironmentMarker};
 use crate::shared::{SkyMode, TonemappingMode};
-use crate::ui::inline_property;
+use crate::ui::{inline_property, get_inspector_theme};
 use super::utils::sanitize_f32;
 
 // Phosphor icons
@@ -32,6 +32,7 @@ fn color32_to_rgb(color: Color32) -> (f32, f32, f32) {
 fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) -> bool {
     let id = ui.make_persistent_id(id);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let theme_colors = get_inspector_theme(ui.ctx());
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 20.0), Sense::click());
 
@@ -40,9 +41,9 @@ fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) 
     }
 
     let bg_color = if response.hovered() {
-        Color32::from_rgb(50, 53, 60)
+        theme_colors.widget_hovered_bg
     } else {
-        Color32::from_rgb(45, 48, 55)
+        theme_colors.widget_inactive_bg
     };
 
     ui.painter().rect_filled(rect, 0.0, bg_color);
@@ -51,7 +52,7 @@ fn section_header(ui: &mut egui::Ui, id: &str, title: &str, default_open: bool) 
         egui::Align2::LEFT_CENTER,
         title,
         egui::FontId::proportional(12.0),
-        Color32::from_rgb(180, 180, 190),
+        theme_colors.text_secondary,
     );
 
     state.store(ui.ctx());
@@ -251,6 +252,7 @@ pub fn render_world_environment_inspector(
             }
             SkyMode::Panorama => {
                 let pano = &mut data.panorama_sky;
+                let theme_colors = get_inspector_theme(ui.ctx());
 
                 // Sanitize float values
                 sanitize_f32(&mut pano.rotation, 0.0, 360.0, 0.0);
@@ -291,15 +293,15 @@ pub fn render_world_environment_inspector(
 
                     // Background color based on state
                     let bg_color = if is_drag_target && is_hovered && is_valid_drop {
-                        Color32::from_rgb(66, 120, 180)
+                        theme_colors.semantic_accent
                     } else if is_drag_target && is_valid_drop {
-                        Color32::from_rgb(50, 80, 120)
+                        theme_colors.surface_faint
                     } else {
-                        Color32::from_rgb(40, 40, 48)
+                        theme_colors.widget_inactive_bg
                     };
 
                     ui.painter().rect_filled(rect, 4.0, bg_color);
-                    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+                    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, theme_colors.widget_border), egui::StrokeKind::Outside);
 
                     // Content inside drop zone
                     if !pano.panorama_path.is_empty() {
@@ -316,7 +318,7 @@ pub fn render_world_environment_inspector(
                             egui::Align2::CENTER_CENTER,
                             IMAGE,
                             egui::FontId::proportional(24.0),
-                            Color32::from_rgb(180, 140, 100),
+                            theme_colors.semantic_warning,
                         );
 
                         // File name
@@ -325,7 +327,7 @@ pub fn render_world_environment_inspector(
                             egui::Align2::CENTER_CENTER,
                             file_name,
                             egui::FontId::proportional(12.0),
-                            Color32::from_rgb(200, 200, 210),
+                            theme_colors.text_primary,
                         );
                     } else {
                         // Show empty state with hint
@@ -337,7 +339,7 @@ pub fn render_world_environment_inspector(
                                 egui::Align2::CENTER_CENTER,
                                 "Drop HDR/EXR here",
                                 egui::FontId::proportional(12.0),
-                                Color32::from_rgb(140, 180, 220),
+                                theme_colors.semantic_accent,
                             );
                         } else {
                             ui.painter().text(
@@ -345,14 +347,14 @@ pub fn render_world_environment_inspector(
                                 egui::Align2::CENTER_CENTER,
                                 FILE,
                                 egui::FontId::proportional(20.0),
-                                Color32::from_rgb(100, 100, 110),
+                                theme_colors.text_disabled,
                             );
                             ui.painter().text(
                                 egui::pos2(center.x, center.y + 12.0),
                                 egui::Align2::CENTER_CENTER,
                                 "Drag HDR/EXR here",
                                 egui::FontId::proportional(11.0),
-                                Color32::from_rgb(120, 120, 130),
+                                theme_colors.text_muted,
                             );
                         }
                     }
@@ -403,7 +405,7 @@ pub fn render_world_environment_inspector(
 
                 // Clear button if a texture is assigned
                 if !pano.panorama_path.is_empty() {
-                    if ui.button(RichText::new(format!("{} Clear", X_CIRCLE)).color(Color32::from_rgb(200, 100, 100))).clicked() {
+                    if ui.button(RichText::new(format!("{} Clear", X_CIRCLE)).color(theme_colors.semantic_error)).clicked() {
                         pano.panorama_path.clear();
                         changed = true;
                     }

@@ -13,10 +13,6 @@ use egui_phosphor::regular::{
     DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK,
 };
 
-/// Background colors for alternating rows (matching inspector)
-const ROW_BG_EVEN: Color32 = Color32::from_rgb(32, 34, 38);
-const ROW_BG_ODD: Color32 = Color32::from_rgb(38, 40, 44);
-
 /// Width reserved for property labels
 const LABEL_WIDTH: f32 = 100.0;
 
@@ -139,15 +135,20 @@ fn render_settings_category(
     style: SettingsCategoryStyle,
     id_source: &str,
     default_open: bool,
+    theme: &Theme,
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
     let id = ui.make_persistent_id(id_source);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
 
+    let frame_bg = theme.surfaces.extreme.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_heading = theme.text.heading.to_color32();
+
     ui.scope(|ui| {
         // Outer frame for the entire category
         egui::Frame::new()
-            .fill(Color32::from_rgb(30, 32, 36))
+            .fill(frame_bg)
             .corner_radius(CornerRadius::same(6))
             .show(ui, |ui| {
 
@@ -166,7 +167,7 @@ fn render_settings_category(
                             ui.horizontal(|ui| {
                                 // Collapse indicator
                                 let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                                ui.label(RichText::new(caret).size(12.0).color(Color32::from_rgb(140, 142, 148)));
+                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
 
                                 // Icon
                                 ui.label(RichText::new(icon).size(15.0).color(style.accent_color));
@@ -174,7 +175,7 @@ fn render_settings_category(
                                 ui.add_space(4.0);
 
                                 // Label
-                                ui.label(RichText::new(label).size(13.0).strong().color(Color32::from_rgb(220, 222, 228)));
+                                ui.label(RichText::new(label).size(13.0).strong().color(text_heading));
 
                                 // Fill remaining width
                                 ui.allocate_space(ui.available_size());
@@ -210,9 +211,14 @@ fn settings_row<R>(
     ui: &mut egui::Ui,
     row_index: usize,
     label: &str,
+    theme: &Theme,
     add_widget: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let bg_color = if row_index % 2 == 0 {
+        theme.panels.inspector_row_even.to_color32()
+    } else {
+        theme.panels.inspector_row_odd.to_color32()
+    };
     let available_width = ui.available_width();
 
     egui::Frame::new()
@@ -249,15 +255,14 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
         (SettingsTab::Updates, ARROW_CLOCKWISE, "Updates"),
     ];
 
+    let tab_active_bg = theme.panels.tab_active.to_color32();
+    let tab_inactive_bg = theme.panels.tab_inactive.to_color32();
+
     ui.horizontal(|ui| {
         for (tab, icon, label) in tabs.iter() {
             let is_active = settings.settings_tab == *tab;
             let text_color = if is_active { text_primary } else { text_muted };
-            let bg_color = if is_active {
-                Color32::from_rgb(45, 47, 52)
-            } else {
-                Color32::from_rgb(35, 37, 42)
-            };
+            let bg_color = if is_active { tab_active_bg } else { tab_inactive_bg };
 
             let button = egui::Button::new(
                 RichText::new(format!("{} {}", icon, label)).color(text_color).size(12.0)
@@ -277,7 +282,9 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     });
 }
 
-fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_state: &mut SceneManagerState, _theme: &Theme) {
+fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_state: &mut SceneManagerState, theme: &Theme) {
+    let text_muted = theme.text.muted.to_color32();
+
     // Auto Save Section
     render_settings_category(
         ui,
@@ -286,12 +293,13 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
         SettingsCategoryStyle::auto_save(),
         "settings_auto_save",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Enabled", |ui| {
+            settings_row(ui, 0, "Enabled", theme, |ui| {
                 ui.checkbox(&mut scene_state.auto_save_enabled, "Auto-save when modified")
             });
 
-            settings_row(ui, 1, "Interval", |ui| {
+            settings_row(ui, 1, "Interval", theme, |ui| {
                 ui.horizontal(|ui| {
                     let response = ui.add(egui::DragValue::new(&mut scene_state.auto_save_interval)
                         .range(10.0..=600.0)
@@ -306,7 +314,7 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
                     } else {
                         format!("({}s)", secs)
                     };
-                    ui.label(egui::RichText::new(time_str).size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(egui::RichText::new(time_str).size(11.0).color(text_muted));
                     response
                 }).inner
             });
@@ -321,8 +329,9 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
         SettingsCategoryStyle::camera(),
         "settings_camera",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Move Speed", |ui| {
+            settings_row(ui, 0, "Move Speed", theme, |ui| {
                 ui.add(egui::DragValue::new(&mut settings.camera_move_speed)
                     .range(1.0..=50.0)
                     .speed(0.1))
@@ -338,15 +347,16 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
         SettingsCategoryStyle::developer(),
         "settings_developer",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Dev Mode", |ui| {
+            settings_row(ui, 0, "Dev Mode", theme, |ui| {
                 ui.checkbox(&mut settings.dev_mode, "Enable plugin tools")
             });
         },
     );
 }
 
-fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, _theme: &Theme) {
+fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
     // Grid Section
     render_settings_category(
         ui,
@@ -355,23 +365,24 @@ fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, _theme:
         SettingsCategoryStyle::grid(),
         "settings_grid",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Show Grid", |ui| {
+            settings_row(ui, 0, "Show Grid", theme, |ui| {
                 ui.checkbox(&mut settings.show_grid, "")
             });
 
-            settings_row(ui, 1, "Grid Size", |ui| {
+            settings_row(ui, 1, "Grid Size", theme, |ui| {
                 ui.add(egui::DragValue::new(&mut settings.grid_size)
                     .range(1.0..=100.0)
                     .speed(0.5))
             });
 
-            settings_row(ui, 2, "Divisions", |ui| {
+            settings_row(ui, 2, "Divisions", theme, |ui| {
                 ui.add(egui::DragValue::new(&mut settings.grid_divisions)
                     .range(1..=50))
             });
 
-            settings_row(ui, 3, "Color", |ui| {
+            settings_row(ui, 3, "Color", theme, |ui| {
                 let mut color = [
                     (settings.grid_color[0] * 255.0) as u8,
                     (settings.grid_color[1] * 255.0) as u8,
@@ -398,8 +409,9 @@ fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, _theme:
         SettingsCategoryStyle::gizmos(),
         "settings_gizmos",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Colliders", |ui| {
+            settings_row(ui, 0, "Colliders", theme, |ui| {
                 egui::ComboBox::from_id_salt("collision_gizmo_visibility")
                     .selected_text(match settings.collision_gizmo_visibility {
                         CollisionGizmoVisibility::SelectedOnly => "Selected Only",
@@ -450,6 +462,7 @@ fn render_shortcuts_tab(ui: &mut egui::Ui, keybindings: &mut KeyBindings, theme:
             SettingsCategoryStyle::shortcuts(),
             &format!("shortcuts_{}", category),
             true,
+            theme,
             |ui| {
                 for (i, action) in actions.iter().enumerate() {
                     render_keybinding_row(ui, i, keybindings, *action, theme);
@@ -485,7 +498,11 @@ fn render_keybinding_row(
     let border_color = theme.widgets.border.to_color32();
     let warning_color = theme.semantic.warning.to_color32();
 
-    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let bg_color = if row_index % 2 == 0 {
+        theme.panels.inspector_row_even.to_color32()
+    } else {
+        theme.panels.inspector_row_odd.to_color32()
+    };
 
     egui::Frame::new()
         .fill(bg_color)
@@ -509,7 +526,8 @@ fn render_keybinding_row(
                         RichText::new("Unbound").color(text_muted).size(11.0)
                     };
 
-                    let rebind_bg = Color32::from_rgb(60, 50, 30);
+                    // Use a warmer background when rebinding
+                    let rebind_bg = theme.semantic.warning.to_color32().gamma_multiply(0.3);
 
                     let button = egui::Button::new(button_text)
                         .fill(if is_rebinding { rebind_bg } else { item_bg })
@@ -641,6 +659,12 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
     let border_color = theme_manager.active_theme.widgets.border.to_color32();
     let accent_color = theme_manager.active_theme.semantic.accent.to_color32();
     let error_color = theme_manager.active_theme.semantic.error.to_color32();
+    let row_even = theme_manager.active_theme.panels.inspector_row_even.to_color32();
+    let row_odd = theme_manager.active_theme.panels.inspector_row_odd.to_color32();
+
+    // Clone theme for passing to render_settings_category
+    let theme_clone = theme_manager.active_theme.clone();
+    let theme = &theme_clone;
 
     // Theme selector section
     render_settings_category(
@@ -650,8 +674,9 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::theme(),
         "settings_active_theme",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Theme", |ui| {
+            settings_row(ui, 0, "Theme", theme, |ui| {
                 egui::ComboBox::from_id_salt("theme_selector")
                     .selected_text(&theme_manager.active_theme_name)
                     .show_ui(ui, |ui| {
@@ -749,14 +774,15 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::theme(),
         "theme_semantic",
         false,
+        theme,
         |ui| {
-            let theme = &mut theme_manager.active_theme;
-            any_modified |= theme_color_row(ui, 0, "Accent", &mut theme.semantic.accent);
-            any_modified |= theme_color_row(ui, 1, "Success", &mut theme.semantic.success);
-            any_modified |= theme_color_row(ui, 2, "Warning", &mut theme.semantic.warning);
-            any_modified |= theme_color_row(ui, 3, "Error", &mut theme.semantic.error);
-            any_modified |= theme_color_row(ui, 4, "Selection", &mut theme.semantic.selection);
-            any_modified |= theme_color_row(ui, 5, "Selection Stroke", &mut theme.semantic.selection_stroke);
+            let t = &mut theme_manager.active_theme;
+            any_modified |= theme_color_row(ui, 0, "Accent", &mut t.semantic.accent, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 1, "Success", &mut t.semantic.success, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 2, "Warning", &mut t.semantic.warning, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 3, "Error", &mut t.semantic.error, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 4, "Selection", &mut t.semantic.selection, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 5, "Selection Stroke", &mut t.semantic.selection_stroke, row_even, row_odd);
         },
     );
 
@@ -768,14 +794,15 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::theme(),
         "theme_surfaces",
         false,
+        theme,
         |ui| {
-            let theme = &mut theme_manager.active_theme;
-            any_modified |= theme_color_row(ui, 0, "Window", &mut theme.surfaces.window);
-            any_modified |= theme_color_row(ui, 1, "Window Stroke", &mut theme.surfaces.window_stroke);
-            any_modified |= theme_color_row(ui, 2, "Panel", &mut theme.surfaces.panel);
-            any_modified |= theme_color_row(ui, 3, "Popup", &mut theme.surfaces.popup);
-            any_modified |= theme_color_row(ui, 4, "Faint", &mut theme.surfaces.faint);
-            any_modified |= theme_color_row(ui, 5, "Extreme", &mut theme.surfaces.extreme);
+            let t = &mut theme_manager.active_theme;
+            any_modified |= theme_color_row(ui, 0, "Window", &mut t.surfaces.window, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 1, "Window Stroke", &mut t.surfaces.window_stroke, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 2, "Panel", &mut t.surfaces.panel, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 3, "Popup", &mut t.surfaces.popup, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 4, "Faint", &mut t.surfaces.faint, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 5, "Extreme", &mut t.surfaces.extreme, row_even, row_odd);
         },
     );
 
@@ -787,14 +814,15 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::interface(),
         "theme_text",
         false,
+        theme,
         |ui| {
-            let theme = &mut theme_manager.active_theme;
-            any_modified |= theme_color_row(ui, 0, "Primary", &mut theme.text.primary);
-            any_modified |= theme_color_row(ui, 1, "Secondary", &mut theme.text.secondary);
-            any_modified |= theme_color_row(ui, 2, "Muted", &mut theme.text.muted);
-            any_modified |= theme_color_row(ui, 3, "Heading", &mut theme.text.heading);
-            any_modified |= theme_color_row(ui, 4, "Disabled", &mut theme.text.disabled);
-            any_modified |= theme_color_row(ui, 5, "Hyperlink", &mut theme.text.hyperlink);
+            let t = &mut theme_manager.active_theme;
+            any_modified |= theme_color_row(ui, 0, "Primary", &mut t.text.primary, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 1, "Secondary", &mut t.text.secondary, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 2, "Muted", &mut t.text.muted, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 3, "Heading", &mut t.text.heading, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 4, "Disabled", &mut t.text.disabled, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 5, "Hyperlink", &mut t.text.hyperlink, row_even, row_odd);
         },
     );
 
@@ -806,15 +834,16 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::gizmos(),
         "theme_widgets",
         false,
+        theme,
         |ui| {
-            let theme = &mut theme_manager.active_theme;
-            any_modified |= theme_color_row(ui, 0, "Inactive BG", &mut theme.widgets.inactive_bg);
-            any_modified |= theme_color_row(ui, 1, "Inactive FG", &mut theme.widgets.inactive_fg);
-            any_modified |= theme_color_row(ui, 2, "Hovered BG", &mut theme.widgets.hovered_bg);
-            any_modified |= theme_color_row(ui, 3, "Hovered FG", &mut theme.widgets.hovered_fg);
-            any_modified |= theme_color_row(ui, 4, "Active BG", &mut theme.widgets.active_bg);
-            any_modified |= theme_color_row(ui, 5, "Active FG", &mut theme.widgets.active_fg);
-            any_modified |= theme_color_row(ui, 6, "Border", &mut theme.widgets.border);
+            let t = &mut theme_manager.active_theme;
+            any_modified |= theme_color_row(ui, 0, "Inactive BG", &mut t.widgets.inactive_bg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 1, "Inactive FG", &mut t.widgets.inactive_fg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 2, "Hovered BG", &mut t.widgets.hovered_bg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 3, "Hovered FG", &mut t.widgets.hovered_fg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 4, "Active BG", &mut t.widgets.active_bg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 5, "Active FG", &mut t.widgets.active_fg, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 6, "Border", &mut t.widgets.border, row_even, row_odd);
         },
     );
 
@@ -826,12 +855,13 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
         SettingsCategoryStyle::interface(),
         "theme_panels",
         false,
+        theme,
         |ui| {
-            let theme = &mut theme_manager.active_theme;
-            any_modified |= theme_color_row(ui, 0, "Tree Line", &mut theme.panels.tree_line);
-            any_modified |= theme_color_row(ui, 1, "Drop Line", &mut theme.panels.drop_line);
-            any_modified |= theme_color_row(ui, 2, "Tab Active", &mut theme.panels.tab_active);
-            any_modified |= theme_color_row(ui, 3, "Tab Inactive", &mut theme.panels.tab_inactive);
+            let t = &mut theme_manager.active_theme;
+            any_modified |= theme_color_row(ui, 0, "Tree Line", &mut t.panels.tree_line, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 1, "Drop Line", &mut t.panels.drop_line, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 2, "Tab Active", &mut t.panels.tab_active, row_even, row_odd);
+            any_modified |= theme_color_row(ui, 3, "Tab Inactive", &mut t.panels.tab_inactive, row_even, row_odd);
         },
     );
 
@@ -841,9 +871,9 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
 }
 
 /// Render a theme color row with alternating background
-fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut crate::theming::ThemeColor) -> bool {
+fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut crate::theming::ThemeColor, row_even: Color32, row_odd: Color32) -> bool {
     let mut changed = false;
-    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let bg_color = if row_index % 2 == 0 { row_even } else { row_odd };
 
     egui::Frame::new()
         .fill(bg_color)
@@ -891,14 +921,15 @@ fn render_updates_tab(
         SettingsCategoryStyle::updates(),
         "settings_updates",
         true,
+        theme,
         |ui| {
-            settings_row(ui, 0, "Auto-check", |ui| {
+            settings_row(ui, 0, "Auto-check", theme, |ui| {
                 if ui.checkbox(&mut app_config.update_config.auto_check, "Check on startup").changed() {
                     let _ = app_config.save();
                 }
             });
 
-            settings_row(ui, 1, "Current Version", |ui| {
+            settings_row(ui, 1, "Current Version", theme, |ui| {
                 ui.label(RichText::new(crate::update::current_version()).size(12.0).color(text_primary))
             });
         },
@@ -912,6 +943,7 @@ fn render_updates_tab(
         SettingsCategoryStyle::updates(),
         "settings_check_updates",
         true,
+        theme,
         |ui| {
             // Status display
             if update_state.checking {

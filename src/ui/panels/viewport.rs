@@ -65,7 +65,7 @@ pub fn render_viewport(
 
     // Render rulers in 2D mode
     if viewport.viewport_mode == ViewportMode::Mode2D {
-        render_rulers(ctx, viewport, camera2d_state, full_viewport_rect, tabs_offset);
+        render_rulers(ctx, viewport, camera2d_state, full_viewport_rect, tabs_offset, theme);
     }
 
     // Use an Area to render the viewport content
@@ -720,7 +720,7 @@ fn viewport_view_dropdown(
             ui.style_mut().spacing.item_spacing.y = 2.0;
 
             // Projection toggle section
-            ui.label(RichText::new("Projection").small().color(Color32::from_gray(140)));
+            ui.label(RichText::new("Projection").small().color(egui::Color32::from_gray(140)));
             ui.add_space(2.0);
 
             let persp_selected = orbit.projection_mode == ProjectionMode::Perspective;
@@ -750,7 +750,7 @@ fn viewport_view_dropdown(
             ui.add_space(4.0);
 
             // View angles section
-            ui.label(RichText::new("View Angles").small().color(Color32::from_gray(140)));
+            ui.label(RichText::new("View Angles").small().color(egui::Color32::from_gray(140)));
             ui.add_space(2.0);
 
             for view in ViewAngle::ALL {
@@ -958,11 +958,12 @@ fn render_rulers(
     camera2d_state: &Camera2DState,
     full_rect: Rect,
     tabs_offset: f32,
+    theme: &Theme,
 ) {
-    let ruler_bg = Color32::from_rgb(40, 40, 45);
-    let ruler_tick = Color32::from_rgb(100, 100, 110);
-    let ruler_text = Color32::from_rgb(140, 140, 150);
-    let ruler_major_tick = Color32::from_rgb(150, 150, 160);
+    let ruler_bg = theme.surfaces.extreme.to_color32();
+    let ruler_tick = theme.text.disabled.to_color32();
+    let ruler_text = theme.text.muted.to_color32();
+    let ruler_major_tick = theme.text.secondary.to_color32();
 
     // Horizontal ruler (top)
     let h_ruler_rect = Rect::from_min_size(
