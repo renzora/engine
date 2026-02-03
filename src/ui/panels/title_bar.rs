@@ -407,6 +407,11 @@ fn render_menu_items(
         });
 
         ui.separator();
+        if menu_item(ui, "Settings                Ctrl+,") {
+            docking_state.open_panel(PanelId::Settings);
+            ui.close();
+        }
+        ui.separator();
         if menu_item(ui, "Exit") {
             std::process::exit(0);
         }
@@ -726,7 +731,8 @@ fn menu_item_enabled(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
     btn.clicked()
 }
 
-/// Helper for submenus - shows pointer cursor on hover
+
+/// Helper for nested submenus - shows pointer cursor on hover
 fn submenu(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
     let response = ui.menu_button(label, add_contents);
     if response.response.hovered() {
