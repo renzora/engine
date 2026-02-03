@@ -79,12 +79,19 @@ pub fn camera_controller(
     // Slow modifier when Ctrl is held (0.25x speed)
     let slow_mult = if ctrl_held { 0.25 } else { 1.0 };
 
-    // Apply slow modifier to speeds
+    // Distance-relative speed scaling (normalized around distance of 10 units)
+    let distance_mult = if cam_settings.distance_relative_speed {
+        (orbit.distance / 10.0).max(0.1)
+    } else {
+        1.0
+    };
+
+    // Apply slow modifier and distance scaling to speeds
     let look_speed = base_look_speed * slow_mult;
     let orbit_speed = base_orbit_speed * slow_mult;
-    let pan_speed = base_pan_speed * slow_mult;
-    let zoom_speed = base_zoom_speed * slow_mult;
-    let move_speed = base_move_speed * slow_mult;
+    let pan_speed = base_pan_speed * slow_mult * distance_mult;
+    let zoom_speed = base_zoom_speed * slow_mult * distance_mult;
+    let move_speed = base_move_speed * slow_mult * distance_mult;
 
     // Handle cursor visibility and grab mode for camera dragging
     // Only start camera drag when click ORIGINATES inside the viewport

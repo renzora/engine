@@ -94,6 +94,8 @@ pub struct CameraSettings {
     pub zoom_sensitivity: f32,
     /// Invert Y axis for look/orbit
     pub invert_y: bool,
+    /// Scale movement speed based on camera distance from focus
+    pub distance_relative_speed: bool,
 }
 
 impl Default for CameraSettings {
@@ -105,6 +107,7 @@ impl Default for CameraSettings {
             pan_sensitivity: 1.0,
             zoom_sensitivity: 1.0,
             invert_y: false,
+            distance_relative_speed: true,
         }
     }
 }

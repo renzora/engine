@@ -915,6 +915,14 @@ fn viewport_camera_dropdown(
                 });
             });
 
+            // Distance Relative Speed
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Distance Relative Speed").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.camera_settings.distance_relative_speed, "");
+                });
+            });
+
             ui.add_space(4.0);
             ui.separator();
             ui.add_space(4.0);
