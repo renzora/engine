@@ -834,7 +834,7 @@ pub fn render_inspector_content(
 
                     let tag_response = ui.add(
                         egui::TextEdit::singleline(&mut current_tag)
-                            .desired_width(ui.available_width() - 10.0)
+                            .desired_width(100.0)
                             .hint_text("Untagged")
                     );
                     if tag_response.changed() {

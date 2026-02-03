@@ -28,19 +28,21 @@ pub fn render_add_component_button(
     let panel_width = ui.available_width();
     let mut component_to_add: Option<&'static str> = None;
 
-    // Add Component button
-    if ui
-        .add_sized(
-            Vec2::new(panel_width - 20.0, 28.0),
-            egui::Button::new(RichText::new(format!("{} Add Component", PLUS)).color(Color32::WHITE))
-                .fill(Color32::from_rgb(50, 70, 100)),
-        )
-        .clicked()
-    {
-        popup_state.is_open = !popup_state.is_open;
-        popup_state.search_text.clear();
-        popup_state.selected_category = None;
-    }
+    // Add Component button (centered)
+    ui.horizontal(|ui| {
+        ui.add_space((panel_width - 120.0) / 2.0);
+        if ui
+            .add(
+                egui::Button::new(RichText::new(format!("{} Add Component", PLUS)).color(Color32::WHITE))
+                    .fill(Color32::from_rgb(50, 70, 100)),
+            )
+            .clicked()
+        {
+            popup_state.is_open = !popup_state.is_open;
+            popup_state.search_text.clear();
+            popup_state.selected_category = None;
+        }
+    });
 
     // Popup
     if popup_state.is_open {

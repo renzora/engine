@@ -562,8 +562,11 @@ fn render_tree_node(
             let visible_order = hierarchy.visible_entity_order.clone();
             selection.select_range(entity, &visible_order);
         } else {
-            // Regular click: select single entity
+            // Regular click: select single entity and toggle expand if has children
             selection.select(entity);
+            if has_children && !is_expanded {
+                hierarchy.expanded_entities.insert(entity);
+            }
         }
     }
 
@@ -773,7 +776,7 @@ fn render_tree_node(
         // Lock icon (left side)
         let lock_icon = if editor_entity.locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
         let lock_color = if editor_entity.locked {
-            Color32::from_rgb(230, 180, 100)
+            Color32::from_rgb(220, 80, 80)
         } else {
             Color32::from_rgb(90, 90, 100)
         };
@@ -859,36 +862,78 @@ fn render_tree_node(
         } else {
             // Allocate space for the name and handle interactions manually
             let font_size = 12.0;
+            let max_name_width = ui.available_width() - 8.0;
+
+            // Calculate text width to check if truncation is needed
             let galley = ui.fonts_mut(|f| f.layout_no_wrap(
                 editor_entity.name.clone(),
                 egui::FontId::proportional(font_size),
                 Color32::WHITE,
             ));
 
-            let desired_size = Vec2::new(galley.size().x + 4.0, ROW_HEIGHT);
+            // Truncate name with ellipsis if too long
+            let (display_name, needs_ellipsis) = if galley.size().x > max_name_width {
+                let ellipsis = "...";
+                let ellipsis_width = ui.fonts_mut(|f| f.layout_no_wrap(
+                    ellipsis.to_string(),
+                    egui::FontId::proportional(font_size),
+                    Color32::WHITE,
+                )).size().x;
+
+                let available_for_text = max_name_width - ellipsis_width;
+                let mut truncated = String::new();
+                for c in editor_entity.name.chars() {
+                    let test_str = format!("{}{}", truncated, c);
+                    let test_width = ui.fonts_mut(|f| f.layout_no_wrap(
+                        test_str.clone(),
+                        egui::FontId::proportional(font_size),
+                        Color32::WHITE,
+                    )).size().x;
+                    if test_width > available_for_text {
+                        break;
+                    }
+                    truncated.push(c);
+                }
+                (format!("{}{}", truncated, ellipsis), true)
+            } else {
+                (editor_entity.name.clone(), false)
+            };
+
+            let display_galley = ui.fonts_mut(|f| f.layout_no_wrap(
+                display_name.clone(),
+                egui::FontId::proportional(font_size),
+                Color32::WHITE,
+            ));
+
+            let desired_size = Vec2::new(display_galley.size().x + 4.0, ROW_HEIGHT);
             let (rect, name_response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+            // Capture interaction states before consuming response
+            let is_hovered = name_response.hovered();
+            let was_clicked = name_response.clicked();
+            let was_double_clicked = name_response.double_clicked();
 
             // Determine text color based on state (row background handles selection highlight)
             let text_color = if is_selected {
                 Color32::WHITE
-            } else if name_response.hovered() {
+            } else if is_hovered {
                 Color32::from_rgb(240, 240, 245)
             } else {
                 Color32::from_rgb(218, 218, 225)
             };
 
             // Draw text centered vertically
-            let text_pos = Pos2::new(rect.min.x + 2.0, rect.center().y - galley.size().y / 2.0);
+            let text_pos = Pos2::new(rect.min.x + 2.0, rect.center().y - display_galley.size().y / 2.0);
             ui.painter().text(
                 text_pos,
                 egui::Align2::LEFT_TOP,
-                &editor_entity.name,
+                &display_name,
                 egui::FontId::proportional(font_size),
                 text_color,
             );
 
             // Single click to select (unless locked)
-            if name_response.clicked() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
+            if was_clicked && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
                 if ctrl_held {
                     // Ctrl+click: toggle selection
                     selection.toggle_selection(entity);
@@ -897,17 +942,27 @@ fn render_tree_node(
                     let visible_order = hierarchy.visible_entity_order.clone();
                     selection.select_range(entity, &visible_order);
                 } else {
-                    // Regular click: select single entity
+                    // Regular click: select single entity and toggle expand if has children
                     selection.select(entity);
+                    if has_children && !is_expanded {
+                        hierarchy.expanded_entities.insert(entity);
+                    }
                 }
             }
 
             // Double click to rename (unless locked)
-            if name_response.double_clicked() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
+            if was_double_clicked && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
                 hierarchy.renaming_entity = Some(entity);
                 hierarchy.rename_buffer = editor_entity.name.clone();
                 hierarchy.rename_focus_set = false;
             }
+
+            // Show full name on hover if truncated
+            let name_response = if needs_ellipsis {
+                name_response.on_hover_text(&editor_entity.name)
+            } else {
+                name_response
+            };
 
             // Right-click context menu on name
             name_response.context_menu(|ui| {
