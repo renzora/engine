@@ -393,6 +393,9 @@ pub fn editor_ui(
                 )
             }).inner;
 
+        // Update viewport state with resize handle interaction
+        editor.viewport.resize_handle_active = dock_result.resize_handle_active;
+
         // Update drag animation progress - reset if target changed
         if let Some(ref mut drag) = editor.docking.drag_state {
             // Check if target changed and reset animation if so

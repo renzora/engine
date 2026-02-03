@@ -7,7 +7,7 @@ use super::drag_drop::{
     detect_drop_zone, draw_tab_insert_indicator,
     detect_tab_insert_position, DragState, DropTarget,
 };
-use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use crate::theming::Theme;
 
 /// Information about an active drop preview for animating panel positions
@@ -49,6 +49,8 @@ pub struct DockRenderResult {
     pub tab_bar_rects: Vec<(PanelId, Rect)>,
     /// Tab positions within each leaf (for precise insertion indicator)
     pub tab_positions: Vec<(PanelId, Vec<(Rect, PanelId)>)>,
+    /// Whether a resize handle is being hovered or dragged
+    pub resize_handle_active: bool,
 }
 
 /// Context passed to panel render functions
@@ -312,13 +314,14 @@ fn render_split(
     let handle_id = base_id.with(("resize_handle", path));
     let handle_response = ui.interact(interact_rect, handle_id, Sense::drag());
 
-    // Set cursor
+    // Set cursor and track resize handle interaction
     if handle_response.hovered() || handle_response.dragged() {
         let cursor = match direction {
             SplitDirection::Horizontal => CursorIcon::ResizeHorizontal,
             SplitDirection::Vertical => CursorIcon::ResizeVertical,
         };
         ui.ctx().set_cursor_icon(cursor);
+        result.resize_handle_active = true;
     }
 
     // Handle drag to resize

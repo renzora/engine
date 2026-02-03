@@ -1126,7 +1126,8 @@ pub fn render_viewport_content(
     // Update viewport state with the actual content area
     viewport.position = [content_rect.min.x, content_rect.min.y];
     viewport.size = [content_rect.width(), content_rect.height()];
-    viewport.hovered = ui.rect_contains_pointer(content_rect);
+    // Only consider viewport hovered if pointer is inside AND no resize handle is being interacted with
+    viewport.hovered = ui.rect_contains_pointer(content_rect) && !viewport.resize_handle_active;
 
     // Display the viewport texture if available
     if let Some(texture_id) = viewport_texture_id {

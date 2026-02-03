@@ -46,6 +46,10 @@ pub struct ViewportState {
     pub bottom_panel_prev_height: f32,
     /// Whether the camera is being dragged (to prevent selection on release)
     pub camera_dragging: bool,
+    /// Whether left-click drag for camera is disabled (for terrain brush tools)
+    pub disable_left_click_drag: bool,
+    /// Whether a panel resize handle is being interacted with (to prevent viewport interaction)
+    pub resize_handle_active: bool,
 }
 
 impl Default for ViewportState {
@@ -63,6 +67,8 @@ impl Default for ViewportState {
             bottom_panel_minimized: false,
             bottom_panel_prev_height: 200.0,
             camera_dragging: false,
+            disable_left_click_drag: false,
+            resize_handle_active: false,
         }
     }
 }
