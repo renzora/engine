@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowPosition};
-use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{AssetBrowserState, DockingState, EditorEntity, ExportState, SceneNode, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
@@ -320,21 +320,21 @@ fn render_menu_items(
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = theme.widgets.hovered_bg.to_color32();
     ui.style_mut().visuals.widgets.active.weak_bg_fill = theme.widgets.active_bg.to_color32();
 
-    ui.menu_button("File", |ui| {
-        if ui.button("New Scene").clicked() {
+    submenu(ui, "File", |ui| {
+        if menu_item(ui, "New Scene") {
             scene_state.new_scene_requested = true;
             ui.close();
         }
-        if ui.button("Open Scene...").clicked() {
+        if menu_item(ui, "Open Scene...") {
             scene_state.open_scene_requested = true;
             ui.close();
         }
         ui.separator();
-        if ui.button("Save Scene        Ctrl+S").clicked() {
+        if menu_item(ui, "Save Scene        Ctrl+S") {
             scene_state.save_scene_requested = true;
             ui.close();
         }
-        if ui.button("Save Scene As...  Ctrl+Shift+S").clicked() {
+        if menu_item(ui, "Save Scene As...  Ctrl+Shift+S") {
             scene_state.save_scene_as_requested = true;
             ui.close();
         }
@@ -352,13 +352,13 @@ fn render_menu_items(
         ui.separator();
 
         // Import submenu
-        ui.menu_button("Import", |ui| {
-            if ui.button("Import Assets...").clicked() {
+        submenu(ui, "Import", |ui| {
+            if menu_item(ui, "Import Assets...") {
                 assets.import_asset_requested = true;
                 ui.close();
             }
             ui.separator();
-            if ui.button("Import 3D Model...").clicked() {
+            if menu_item(ui, "Import 3D Model...") {
                 // Open file dialog specifically for 3D models
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("3D Models", &["glb", "gltf", "obj", "fbx"])
@@ -371,7 +371,7 @@ fn render_menu_items(
                 }
                 ui.close();
             }
-            if ui.button("Import Image...").clicked() {
+            if menu_item(ui, "Import Image...") {
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga", "hdr", "exr"])
                     .pick_files()
@@ -387,7 +387,7 @@ fn render_menu_items(
                 }
                 ui.close();
             }
-            if ui.button("Import Audio...").clicked() {
+            if menu_item(ui, "Import Audio...") {
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("Audio", &["wav", "ogg", "mp3", "flac"])
                     .pick_files()
@@ -406,59 +406,49 @@ fn render_menu_items(
         });
 
         // Export submenu
-        ui.menu_button("Export", |ui| {
-            if ui.button("Export Game...").clicked() {
+        submenu(ui, "Export", |ui| {
+            if menu_item(ui, "Export Game...") {
                 export_state.show_dialog = true;
                 ui.close();
             }
         });
 
         ui.separator();
-        if ui.button("Exit").clicked() {
+        if menu_item(ui, "Exit") {
             std::process::exit(0);
         }
     });
 
-    ui.menu_button("Edit", |ui| {
+    submenu(ui, "Edit", |ui| {
         // Undo with shortcut hint and disabled state
         let can_undo = command_history.can_undo();
-        let undo_text = if can_undo {
-            format!("Undo                    Ctrl+Z")
-        } else {
-            format!("Undo                    Ctrl+Z")
-        };
-        ui.add_enabled_ui(can_undo, |ui| {
-            if ui.button(undo_text).clicked() {
-                command_history.pending_undo = 1;
-                ui.close();
-            }
-        });
+        if menu_item_enabled(ui, "Undo                    Ctrl+Z", can_undo) {
+            command_history.pending_undo = 1;
+            ui.close();
+        }
 
         // Redo with shortcut hint and disabled state
         let can_redo = command_history.can_redo();
-        let redo_text = format!("Redo                    Ctrl+Y");
-        ui.add_enabled_ui(can_redo, |ui| {
-            if ui.button(redo_text).clicked() {
-                command_history.pending_redo = 1;
-                ui.close();
-            }
-        });
+        if menu_item_enabled(ui, "Redo                    Ctrl+Y", can_redo) {
+            command_history.pending_redo = 1;
+            ui.close();
+        }
 
         ui.separator();
-        if ui.button("Cut").clicked() {
+        if menu_item(ui, "Cut") {
             ui.close();
         }
-        if ui.button("Copy").clicked() {
+        if menu_item(ui, "Copy") {
             ui.close();
         }
-        if ui.button("Paste").clicked() {
+        if menu_item(ui, "Paste") {
             ui.close();
         }
         ui.separator();
-        if ui.button("Duplicate").clicked() {
+        if menu_item(ui, "Duplicate") {
             ui.close();
         }
-        if ui.button("Delete").clicked() {
+        if menu_item(ui, "Delete") {
             if let Some(entity) = selection.selected_entity {
                 queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
             }
@@ -466,37 +456,37 @@ fn render_menu_items(
         }
     });
 
-    ui.menu_button("GameObject", |ui| {
-        ui.menu_button("3D Object", |ui| {
-            if ui.button("Cube").clicked() {
+    submenu(ui, "GameObject", |ui| {
+        submenu(ui, "3D Object", |ui| {
+            if menu_item(ui, "Cube") {
                 spawn_primitive(commands, meshes, materials, PrimitiveType::Cube, "Cube", None);
                 ui.close();
             }
-            if ui.button("Sphere").clicked() {
+            if menu_item(ui, "Sphere") {
                 spawn_primitive(commands, meshes, materials, PrimitiveType::Sphere, "Sphere", None);
                 ui.close();
             }
-            if ui.button("Cylinder").clicked() {
+            if menu_item(ui, "Cylinder") {
                 spawn_primitive(commands, meshes, materials, PrimitiveType::Cylinder, "Cylinder", None);
                 ui.close();
             }
-            if ui.button("Plane").clicked() {
+            if menu_item(ui, "Plane") {
                 spawn_primitive(commands, meshes, materials, PrimitiveType::Plane, "Plane", None);
                 ui.close();
             }
         });
-        ui.menu_button("Light", |ui| {
-            if ui.button("Point Light").clicked() {
+        submenu(ui, "Light", |ui| {
+            if menu_item(ui, "Point Light") {
                 ui.close();
             }
-            if ui.button("Spot Light").clicked() {
+            if menu_item(ui, "Spot Light") {
                 ui.close();
             }
-            if ui.button("Directional Light").clicked() {
+            if menu_item(ui, "Directional Light") {
                 ui.close();
             }
         });
-        if ui.button("Empty").clicked() {
+        if menu_item(ui, "Empty") {
             commands.spawn((
                 Transform::default(),
                 Visibility::default(),
@@ -514,7 +504,7 @@ fn render_menu_items(
 
     // Tools menu (for plugins)
     if !tools_items.is_empty() {
-        ui.menu_button("Tools", |ui| {
+        submenu(ui, "Tools", |ui| {
             for item in &tools_items {
                 if let Some(event) = render_plugin_menu_item(ui, item) {
                     events.push(event);
@@ -554,9 +544,9 @@ fn render_menu_items(
     };
 
     // Window menu for layout management
-    ui.menu_button("Window", |ui| {
+    submenu(ui, "Window", |ui| {
         // Layouts submenu
-        ui.menu_button("Layouts", |ui| {
+        submenu(ui, "Layouts", |ui| {
             // Built-in layouts
             for layout in builtin_layouts() {
                 let is_active = docking_state.active_layout == layout.name;
@@ -566,7 +556,7 @@ fn render_menu_items(
                     format!("   {}", layout.name)
                 };
 
-                if ui.button(label).clicked() {
+                if menu_item(ui, &label) {
                     apply_layout(&layout.name, docking_state, viewport_state);
                     ui.close();
                 }
@@ -588,7 +578,7 @@ fn render_menu_items(
                         format!("   {}", name)
                     };
 
-                    if ui.button(label).clicked() {
+                    if menu_item(ui, &label) {
                         apply_layout(&name, docking_state, viewport_state);
                         ui.close();
                     }
@@ -600,19 +590,19 @@ fn render_menu_items(
 
         // Quick layout shortcuts
         ui.label(egui::RichText::new("Quick Switch").color(Color32::GRAY).small());
-        if ui.button("Default             Ctrl+1").clicked() {
+        if menu_item(ui, "Default             Ctrl+1") {
             apply_layout("Default", docking_state, viewport_state);
             ui.close();
         }
-        if ui.button("Scripting           Ctrl+2").clicked() {
+        if menu_item(ui, "Scripting           Ctrl+2") {
             apply_layout("Scripting", docking_state, viewport_state);
             ui.close();
         }
-        if ui.button("Animation           Ctrl+3").clicked() {
+        if menu_item(ui, "Animation           Ctrl+3") {
             apply_layout("Animation", docking_state, viewport_state);
             ui.close();
         }
-        if ui.button("Debug               Ctrl+4").clicked() {
+        if menu_item(ui, "Debug               Ctrl+4") {
             apply_layout("Debug", docking_state, viewport_state);
             ui.close();
         }
@@ -620,12 +610,12 @@ fn render_menu_items(
         ui.separator();
 
         // Save layout
-        if ui.button("Save Layout As...").clicked() {
+        if menu_item(ui, "Save Layout As...") {
             // TODO: Show save layout dialog
             ui.close();
         }
 
-        if ui.button("Reset Layout").clicked() {
+        if menu_item(ui, "Reset Layout") {
             apply_layout("Default", docking_state, viewport_state);
             ui.close();
         }
@@ -633,7 +623,7 @@ fn render_menu_items(
         ui.separator();
 
         // Panel visibility toggles
-        ui.menu_button("Panels", |ui| {
+        submenu(ui, "Panels", |ui| {
             let all_panels = vec![
                 PanelId::Hierarchy,
                 PanelId::Inspector,
@@ -652,7 +642,11 @@ fn render_menu_items(
                 let label = format!("{} {}", panel.icon(), panel.title());
 
                 let mut visible = is_visible;
-                if ui.checkbox(&mut visible, label).changed() {
+                let checkbox = ui.checkbox(&mut visible, label);
+                if checkbox.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if checkbox.changed() {
                     if visible {
                         docking_state.open_panel(panel);
                     } else {
@@ -665,13 +659,13 @@ fn render_menu_items(
 
     // Dev menu (only visible when dev_mode is enabled)
     if settings.dev_mode {
-        ui.menu_button("Dev", |ui| {
-            if ui.button("New Plugin...").clicked() {
+        submenu(ui, "Dev", |ui| {
+            if menu_item(ui, "New Plugin...") {
                 // TODO: Show new plugin dialog
                 ui.close();
             }
             ui.separator();
-            if ui.button("Open Plugin Source...").clicked() {
+            if menu_item(ui, "Open Plugin Source...") {
                 // Open file dialog to select a .rs file
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Rust Source", &["rs"])
@@ -683,7 +677,7 @@ fn render_menu_items(
                 }
                 ui.close();
             }
-            if ui.button("Open Cargo.toml...").clicked() {
+            if menu_item(ui, "Open Cargo.toml...") {
                 // Open file dialog to select Cargo.toml
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Cargo.toml", &["toml"])
@@ -701,21 +695,21 @@ fn render_menu_items(
         });
     }
 
-    ui.menu_button("Help", |ui| {
-        if ui.button("Documentation").clicked() {
+    submenu(ui, "Help", |ui| {
+        if menu_item(ui, "Documentation") {
             ui.close();
         }
         ui.separator();
-        if ui.button("Discord").clicked() {
+        if menu_item(ui, "Discord") {
             let _ = open::that("https://discord.gg/9UHUGUyDJv");
             ui.close();
         }
-        if ui.button("YouTube").clicked() {
+        if menu_item(ui, "YouTube") {
             let _ = open::that("https://youtube.com/@renzoragame");
             ui.close();
         }
         ui.separator();
-        if ui.button("About").clicked() {
+        if menu_item(ui, "About") {
             ui.close();
         }
     });
@@ -741,6 +735,10 @@ fn render_plugin_menu_item(ui: &mut egui::Ui, item: &MenuItem) -> Option<UiEvent
         let button = egui::Button::new(&text);
         let response = ui.add_enabled(item.enabled, button);
 
+        if response.hovered() && item.enabled {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+
         if response.clicked() {
             ui.close();
             return Some(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
@@ -753,7 +751,7 @@ fn render_plugin_menu_item(ui: &mut egui::Ui, item: &MenuItem) -> Option<UiEvent
             item.label.clone()
         };
 
-        ui.menu_button(label, |ui| {
+        submenu(ui, &label, |ui| {
             for child in &item.children {
                 render_plugin_menu_item(ui, child);
             }
@@ -763,9 +761,39 @@ fn render_plugin_menu_item(ui: &mut egui::Ui, item: &MenuItem) -> Option<UiEvent
     None
 }
 
+/// Helper for menu items - shows pointer cursor on hover and returns if clicked
+fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
+    let btn = ui.button(label);
+    if btn.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    btn.clicked()
+}
+
+/// Helper for menu items with enabled state
+fn menu_item_enabled(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
+    let btn = ui.add_enabled(enabled, egui::Button::new(label));
+    if btn.hovered() && enabled {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    btn.clicked()
+}
+
+/// Helper for submenus - shows pointer cursor on hover
+fn submenu(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    let response = ui.menu_button(label, add_contents);
+    if response.response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+}
+
 fn window_button(ui: &mut egui::Ui, icon: &str, hover_color: Color32, width: f32) -> egui::Response {
     let size = Vec2::new(width, TITLE_BAR_HEIGHT);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let bg_color = if response.hovered() {

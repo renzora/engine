@@ -526,6 +526,11 @@ fn render_tree_node(
         painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
     }
 
+    // Show pointer cursor when hovering over clickable row (not dragging, not locked)
+    if response.hovered() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
+        ctx.set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     let base_x = rect.min.x + 4.0;
     let center_y = rect.center().y;
 
@@ -719,6 +724,9 @@ fn render_tree_node(
                     .min_size(Vec2::new(16.0, ROW_HEIGHT))
             );
 
+            if expand_btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
             if expand_btn.clicked() {
                 if is_expanded {
                     hierarchy.expanded_entities.remove(&entity);
@@ -743,6 +751,9 @@ fn render_tree_node(
                 .frame(false)
                 .min_size(Vec2::new(14.0, ROW_HEIGHT))
         );
+        if vis_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
         if vis_btn.clicked() {
             let new_visible = !editor_entity.visible;
             commands.entity(entity).insert(EditorEntity {
@@ -771,6 +782,9 @@ fn render_tree_node(
                 .frame(false)
                 .min_size(Vec2::new(14.0, ROW_HEIGHT))
         );
+        if lock_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
         if lock_btn.clicked() {
             commands.entity(entity).insert(EditorEntity {
                 name: editor_entity.name.clone(),

@@ -56,7 +56,7 @@ pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};
 pub use toolbar::render_toolbar;
 pub use viewport::render_viewport;
 
-use bevy_egui::egui::{self, Color32, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 
 /// Panel bar height constant
 #[allow(dead_code)]
@@ -118,6 +118,11 @@ pub fn render_panel_bar_with_action(
 
     let button_response = ui.interact(button_rect, ui.id().with("panel_action"), egui::Sense::click());
     let button_hovered = button_response.hovered();
+
+    // Show pointer cursor on hover
+    if button_hovered {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     // Draw button background on hover
     if button_hovered {

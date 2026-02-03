@@ -2,7 +2,7 @@
 //!
 //! Displays a real-time 3D preview of the current material blueprint.
 
-use bevy_egui::egui::{self, Color32, RichText, Sense, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Sense, TextureId, Vec2};
 
 use crate::blueprint::{BlueprintEditorState, MaterialPreviewState, PreviewMeshShape};
 
@@ -61,19 +61,31 @@ fn render_preview_toolbar(ui: &mut egui::Ui, preview_state: &mut MaterialPreview
         ui.separator();
 
         // Auto-rotate toggle
-        if ui.selectable_label(preview_state.auto_rotate, "\u{f021}").on_hover_text("Auto Rotate").clicked() {
+        let auto_rotate_btn = ui.selectable_label(preview_state.auto_rotate, "\u{f021}");
+        if auto_rotate_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if auto_rotate_btn.on_hover_text("Auto Rotate").clicked() {
             preview_state.auto_rotate = !preview_state.auto_rotate;
         }
 
         // Reset view button
-        if ui.button("\u{f015}").on_hover_text("Reset View").clicked() {
+        let reset_btn = ui.button("\u{f015}");
+        if reset_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if reset_btn.on_hover_text("Reset View").clicked() {
             preview_state.yaw = 0.5;
             preview_state.pitch = 0.3;
             preview_state.distance = 3.0;
         }
 
         // Force recompile button
-        if ui.button("\u{f021}").on_hover_text("Refresh Material").clicked() {
+        let refresh_btn = ui.button("\u{f021}");
+        if refresh_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if refresh_btn.on_hover_text("Refresh Material").clicked() {
             preview_state.needs_recompile = true;
         }
     });

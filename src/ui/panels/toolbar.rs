@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Sense, Vec2, RichText};
 
 use crate::core::{EditorSettings, SelectionState, HierarchyState, PlayModeState, PlayState, DockingState};
 use crate::gizmo::{GizmoState, EditorTool};
@@ -377,6 +377,10 @@ fn tool_button(
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let bg_color = if active {
             active_color
@@ -412,6 +416,10 @@ fn dropdown_button(
     let button_id = ui.make_persistent_id(label);
     let size = Vec2::new(38.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
@@ -474,6 +482,9 @@ fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
             .corner_radius(CornerRadius::same(2))
             .min_size(Vec2::new(ui.available_width(), 0.0))
     );
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
     response.clicked()
 }
 
@@ -488,6 +499,10 @@ fn layout_dropdown(
     let button_id = ui.make_persistent_id("layout_dropdown");
     let size = Vec2::new(90.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();

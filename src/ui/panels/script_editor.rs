@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, Sense, Vec2, TextEdit, FontId, FontFamily, TextBuffer};
+use bevy_egui::egui::{self, Color32, CursorIcon, Sense, Vec2, TextEdit, FontId, FontFamily, TextBuffer};
 use std::path::PathBuf;
 use std::process::Command;
 use rhai::Engine;
@@ -265,6 +265,9 @@ fn render_script_editor(
 
             let save_response = ui.allocate_rect(save_btn_rect, Sense::click());
             let save_hovered = save_response.hovered();
+            if save_hovered {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
 
             let save_bg = if save_hovered {
                 Color32::from_rgb(50, 50, 60)
@@ -304,6 +307,9 @@ fn render_script_editor(
                 let is_building = matches!(scene_state.build_state, BuildState::Building);
                 let build_response = ui.allocate_rect(build_btn_rect, if is_building { Sense::hover() } else { Sense::click() });
                 let build_hovered = build_response.hovered();
+                if build_hovered && !is_building {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
 
                 let build_bg = if is_building {
                     Color32::from_rgb(50, 70, 90)
@@ -728,6 +734,9 @@ pub fn render_script_editor_content(
 
     let save_response = ui.allocate_rect(save_btn_rect, Sense::click());
     let save_hovered = save_response.hovered();
+    if save_hovered {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     let save_bg = if save_hovered {
         theme_colors.widget_hovered_bg
@@ -765,6 +774,9 @@ pub fn render_script_editor_content(
         let is_building = matches!(scene_state.build_state, BuildState::Building);
         let build_response = ui.allocate_rect(build_btn_rect, if is_building { Sense::hover() } else { Sense::click() });
         let build_hovered = build_response.hovered();
+        if build_hovered && !is_building {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         let build_bg = if is_building {
             theme_colors.semantic_accent

@@ -1,6 +1,6 @@
 //! System profiler panel for schedule/system timing overview
 
-use bevy_egui::egui::{self, Color32, RichText, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Vec2};
 
 use crate::core::{DiagnosticsState, SystemTimingState};
 use crate::theming::Theme;
@@ -236,7 +236,11 @@ fn render_profiler_links(ui: &mut egui::Ui, theme: &Theme) {
             // Documentation link
             ui.horizontal(|ui| {
                 ui.label(RichText::new("\u{1f4d6}").size(12.0));
-                if ui.link(RichText::new("Bevy Profiling Guide").size(10.0)).clicked() {
+                let link = ui.link(RichText::new("Bevy Profiling Guide").size(10.0));
+                if link.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if link.clicked() {
                     // In a real app, we'd open the URL
                 }
             });

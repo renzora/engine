@@ -464,6 +464,11 @@ fn render_leaf(
         let tab_id = base_id.with(("tab", path, idx));
         let tab_response = ui.interact(tab_rect, tab_id, Sense::click_and_drag());
 
+        // Show pointer cursor on tab hover
+        if tab_response.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+
         // Tab background - no border
         let bg_color = if is_active {
             theme.panels.tab_active.to_color32()
@@ -511,6 +516,9 @@ fn render_leaf(
             );
             let close_id = base_id.with(("close", path, idx));
             let close_response = ui.interact(close_rect, close_id, Sense::click());
+            if close_response.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
 
             let close_color = if close_response.hovered() {
                 theme.panels.close_hover.to_color32()

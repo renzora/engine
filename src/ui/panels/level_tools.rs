@@ -2,7 +2,7 @@
 //!
 //! Provides Unreal Engine-style terrain tools with Sculpt and Paint tabs.
 
-use bevy_egui::egui::{self, Color32, RichText, Vec2, Rounding};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Vec2, Rounding};
 use egui_phosphor::regular::{
     SELECTION, ARROWS_OUT_CARDINAL, PAINT_BRUSH, PENCIL, MOUNTAINS,
     WAVES, EQUALS, ARROW_FAT_LINE_UP, TREE,
@@ -400,6 +400,10 @@ fn tab_button(
     let height = 28.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let bg = if selected {
             accent
@@ -436,6 +440,10 @@ fn collapsible_header(
         egui::vec2(ui.available_width(), height),
         egui::Sense::click()
     );
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if response.clicked() {
         *open = !*open;
@@ -485,6 +493,10 @@ fn grid_tool_button(
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size + 18.0), egui::Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let bg = if active {
             accent
@@ -526,6 +538,10 @@ fn shape_button(ui: &mut egui::Ui, icon: &str, active: bool, theme: &Theme) -> e
     let size = egui::vec2(28.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let bg = if active {
             theme.semantic.accent.to_color32()
@@ -554,6 +570,10 @@ fn shape_button(ui: &mut egui::Ui, icon: &str, active: bool, theme: &Theme) -> e
 fn falloff_button(ui: &mut egui::Ui, label: &str, active: bool, theme: &Theme) -> egui::Response {
     let size = egui::vec2(24.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let bg = if active {

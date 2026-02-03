@@ -1,5 +1,5 @@
 use bevy::prelude::KeyCode;
-use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Stroke, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
 
 use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, SceneManagerState, bindable_keys};
 use crate::project::AppConfig;
@@ -185,6 +185,9 @@ fn render_settings_category(
 
                 // Make header clickable
                 let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
+                if header_response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
                 if header_response.clicked() {
                     state.toggle(ui);
                 }

@@ -1,6 +1,6 @@
 //! Camera debug panel for camera inspection
 
-use bevy_egui::egui::{self, Color32, RichText};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
 
 use crate::core::{CameraDebugState, CameraProjectionType};
 use crate::theming::Theme;
@@ -138,7 +138,11 @@ fn render_camera_list(ui: &mut egui::Ui, state: &mut CameraDebugState, theme: &T
                             });
                         });
 
-                        if response.response.interact(egui::Sense::click()).clicked() {
+                        let camera_interact = response.response.interact(egui::Sense::click());
+                        if camera_interact.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if camera_interact.clicked() {
                             state.selected_camera = Some(camera.entity);
                         }
                     });

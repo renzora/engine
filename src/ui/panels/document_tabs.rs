@@ -1,4 +1,4 @@
-use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Stroke, StrokeKind, Vec2};
 
 use crate::blueprint::BlueprintEditorState;
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
@@ -194,6 +194,13 @@ pub fn render_document_tabs(
                 let is_hovered = tab_response.hovered();
                 let is_being_dragged = drag_state.dragging == Some(order_idx);
 
+                // Show pointer cursor on hover (grabbing when dragging)
+                if is_being_dragged {
+                    ctx.set_cursor_icon(CursorIcon::Grabbing);
+                } else if is_hovered {
+                    ctx.set_cursor_icon(CursorIcon::PointingHand);
+                }
+
                 // Start drag
                 if tab_response.drag_started() {
                     drag_state.dragging = Some(order_idx);
@@ -256,6 +263,11 @@ pub fn render_document_tabs(
 
                 let close_response = ui.allocate_rect(close_rect, egui::Sense::click());
                 let close_hovered = close_response.hovered();
+
+                // Show pointer cursor on close button hover
+                if close_hovered {
+                    ctx.set_cursor_icon(CursorIcon::PointingHand);
+                }
 
                 // Only show close button for scenes if there's more than one tab
                 let can_close = match tab_kind {

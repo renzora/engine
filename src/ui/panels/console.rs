@@ -1,6 +1,6 @@
 //! Console panel for displaying logs
 
-use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Rounding};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, ScrollArea, Rounding};
 
 use crate::core::{ConsoleState, LogEntry, LogLevel};
 use crate::theming::Theme;
@@ -30,15 +30,20 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
     // Toolbar
     ui.horizontal(|ui| {
         // Clear button
-        if ui.button(RichText::new(format!("{} Clear", TRASH)).size(12.0)).clicked() {
+        let clear_btn = ui.button(RichText::new(format!("{} Clear", TRASH)).size(12.0));
+        if clear_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if clear_btn.clicked() {
             console.clear();
         }
 
         // Copy to clipboard button
-        if ui.button(RichText::new(format!("{} Copy", CLIPBOARD)).size(12.0))
-            .on_hover_text("Copy filtered logs to clipboard")
-            .clicked()
-        {
+        let copy_btn = ui.button(RichText::new(format!("{} Copy", CLIPBOARD)).size(12.0));
+        if copy_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if copy_btn.on_hover_text("Copy filtered logs to clipboard").clicked() {
             let filtered: Vec<_> = console.filtered_entries().collect();
             let text = filtered
                 .iter()
@@ -68,9 +73,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         } else {
             disabled_color
         };
-        if ui.add(egui::Button::new(
+        let info_btn = ui.add(egui::Button::new(
             RichText::new(INFO).color(info_color).size(14.0)
-        ).fill(Color32::TRANSPARENT)).clicked() {
+        ).fill(Color32::TRANSPARENT));
+        if info_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if info_btn.clicked() {
             console.show_info = !console.show_info;
         }
 
@@ -79,9 +88,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         } else {
             disabled_color
         };
-        if ui.add(egui::Button::new(
+        let success_btn = ui.add(egui::Button::new(
             RichText::new(CHECK_CIRCLE).color(success_color).size(14.0)
-        ).fill(Color32::TRANSPARENT)).clicked() {
+        ).fill(Color32::TRANSPARENT));
+        if success_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if success_btn.clicked() {
             console.show_success = !console.show_success;
         }
 
@@ -90,9 +103,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         } else {
             disabled_color
         };
-        if ui.add(egui::Button::new(
+        let warning_btn = ui.add(egui::Button::new(
             RichText::new(WARNING).color(warning_color).size(14.0)
-        ).fill(Color32::TRANSPARENT)).clicked() {
+        ).fill(Color32::TRANSPARENT));
+        if warning_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if warning_btn.clicked() {
             console.show_warnings = !console.show_warnings;
         }
 
@@ -101,9 +118,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         } else {
             disabled_color
         };
-        if ui.add(egui::Button::new(
+        let error_btn = ui.add(egui::Button::new(
             RichText::new(X_CIRCLE).color(error_color).size(14.0)
-        ).fill(Color32::TRANSPARENT)).clicked() {
+        ).fill(Color32::TRANSPARENT));
+        if error_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if error_btn.clicked() {
             console.show_errors = !console.show_errors;
         }
 

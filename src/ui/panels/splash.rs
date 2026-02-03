@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, RichText, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, RichText, Stroke, StrokeKind, Vec2};
 
 use crate::core::{AppState, WindowState, EditorSettings};
 use crate::project::{create_project, open_project, AppConfig, CurrentProject};
@@ -409,6 +409,9 @@ fn render_two_column_layout(
 
                             let response = ui.allocate_rect(item_rect, egui::Sense::click());
                             let is_hovered = response.hovered();
+                            if is_hovered && exists {
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
 
                             let bg_color = if is_hovered && exists { item_hover } else { item_bg };
                             ui.painter().rect(
@@ -471,6 +474,9 @@ fn render_two_column_layout(
                                 );
 
                                 let remove_response = ui.allocate_rect(remove_rect, egui::Sense::click());
+                                if remove_response.hovered() {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
                                 let remove_color = if remove_response.hovered() {
                                     Color32::from_rgb(255, 100, 100)
                                 } else {

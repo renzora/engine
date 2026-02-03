@@ -1,6 +1,6 @@
 //! Node Library panel for browsing blueprint nodes
 
-use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Sense, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, ScrollArea, Sense, Vec2};
 
 use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, BlueprintType};
 use crate::blueprint::nodes::NodeRegistry;
@@ -87,13 +87,19 @@ pub fn render_node_library_panel(
 
                                 // Visual feedback
                                 let is_being_dragged = editor_state.dragging_new_node.as_ref() == Some(&node_type_id);
+                                let is_hovered = response.hovered();
                                 let bg_color = if is_being_dragged {
                                     Color32::from_rgb(80, 100, 140)
-                                } else if response.hovered() {
+                                } else if is_hovered {
                                     Color32::from_rgb(60, 62, 68)
                                 } else {
                                     Color32::from_rgb(50, 52, 58)
                                 };
+
+                                // Show pointer cursor on hover
+                                if is_hovered {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
 
                                 ui.painter().rect_filled(rect, 4.0, bg_color);
                                 ui.painter().text(

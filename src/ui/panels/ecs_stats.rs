@@ -1,6 +1,6 @@
 //! ECS Statistics panel for entity/component/archetype monitoring
 
-use bevy_egui::egui::{self, Color32, RichText, Stroke, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
 
 use crate::core::EcsStatsState;
 use crate::theming::Theme;
@@ -145,7 +145,11 @@ fn render_archetype_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme:
         );
     });
 
-    if header_response.response.interact(egui::Sense::click()).clicked() {
+    let header_interact = header_response.response.interact(egui::Sense::click());
+    if header_interact.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if header_interact.clicked() {
         state.show_archetypes = !state.show_archetypes;
     }
 
@@ -207,7 +211,11 @@ fn render_component_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme:
         );
     });
 
-    if header_response.response.interact(egui::Sense::click()).clicked() {
+    let header_interact = header_response.response.interact(egui::Sense::click());
+    if header_interact.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if header_interact.clicked() {
         state.show_components = !state.show_components;
     }
 
@@ -274,7 +282,11 @@ fn render_resources_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme:
         );
     });
 
-    if header_response.response.interact(egui::Sense::click()).clicked() {
+    let header_interact = header_response.response.interact(egui::Sense::click());
+    if header_interact.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if header_interact.clicked() {
         state.show_resources = !state.show_resources;
     }
 

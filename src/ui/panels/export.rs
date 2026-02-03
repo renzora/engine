@@ -1,7 +1,7 @@
 //! Export dialog UI
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, RichText, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Vec2};
 
 use crate::core::{ExportLogLevel, ExportState, SceneManagerState};
 use crate::export::{is_target_installed, run_export, ExportConfig, ExportTarget};
@@ -114,7 +114,11 @@ pub fn render_export_dialog(
                 ui.add_enabled_ui(false, |ui| {
                     ui.text_edit_singleline(&mut dir_str.clone());
                 });
-                if ui.button(RichText::new(FOLDER_OPEN)).clicked() {
+                let folder_btn = ui.button(RichText::new(FOLDER_OPEN));
+                if folder_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if folder_btn.clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .set_directory(&export_state.output_dir)
                         .pick_folder()
@@ -152,7 +156,11 @@ pub fn render_export_dialog(
                 ui.label(RichText::new(TERMINAL).size(14.0));
                 ui.label("Show Console");
 
-                if ui.small_button("Clear").clicked() {
+                let clear_btn = ui.small_button("Clear");
+                if clear_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if clear_btn.clicked() {
                     export_state.logger.clear();
                 }
             });
@@ -197,13 +205,14 @@ pub fn render_export_dialog(
                     && export_state.selected_targets().len() > 0
                     && scene_state.current_scene_path.is_some();
 
-                if ui
-                    .add_enabled(
-                        can_export,
-                        egui::Button::new(RichText::new(format!("{} Export", CHECK)).strong()),
-                    )
-                    .clicked()
-                {
+                let export_btn = ui.add_enabled(
+                    can_export,
+                    egui::Button::new(RichText::new(format!("{} Export", CHECK)).strong()),
+                );
+                if export_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if export_btn.clicked() {
                     // Start export
                     if let (Some(project), Some(scene_path)) =
                         (current_project, &scene_state.current_scene_path)
@@ -235,10 +244,11 @@ pub fn render_export_dialog(
                 }
 
                 // Cancel button
-                if ui
-                    .button(RichText::new(format!("{} Close", X)))
-                    .clicked()
-                {
+                let close_btn = ui.button(RichText::new(format!("{} Close", X)));
+                if close_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if close_btn.clicked() {
                     export_state.show_dialog = false;
                 }
             });

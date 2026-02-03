@@ -3,7 +3,7 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use crate::{console_info, console_error};
-use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Sense, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, TextureId, Vec2};
 
 use crate::component_system::{
     AddComponentPopupState, ComponentCategory, ComponentRegistry,
@@ -318,6 +318,9 @@ fn render_category(
 
                 // Make header clickable
                 let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
+                if header_response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
                 if header_response.clicked() {
                     state.toggle(ui);
                 }
@@ -413,6 +416,9 @@ fn render_category_removable(
 
                 // Make header clickable (but not the remove button area)
                 let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
+                if header_response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
                 if header_response.clicked() && !remove_clicked {
                     state.toggle(ui);
                 }
@@ -552,6 +558,9 @@ pub fn render_inspector(
             );
 
             let inspector_response = ui.interact(inspector_rect, ui.id().with("inspector_tab"), Sense::click());
+            if inspector_response.hovered() {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
             if inspector_response.clicked() {
                 *right_panel_tab = RightPanelTab::Inspector;
                 ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
@@ -592,6 +601,9 @@ pub fn render_inspector(
             );
 
             let history_response = ui.interact(history_rect, ui.id().with("history_tab"), Sense::click());
+            if history_response.hovered() {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
             if history_response.clicked() {
                 *right_panel_tab = RightPanelTab::History;
                 ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
@@ -629,6 +641,9 @@ pub fn render_inspector(
                 );
 
                 let plugin_response = ui.interact(plugin_rect, ui.id().with(&tab.id), Sense::click());
+                if plugin_response.hovered() {
+                    ctx.set_cursor_icon(CursorIcon::PointingHand);
+                }
                 if plugin_response.clicked() {
                     ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: tab.id.clone() });
                 }
@@ -1333,6 +1348,9 @@ pub fn render_history_content(
                         );
 
                         let is_hovered = row_response.hovered();
+                        if is_hovered {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
                         let bg_color = if is_hovered {
                             theme_colors.widget_hovered_bg
                         } else if display_i % 2 == 0 {
@@ -1404,6 +1422,9 @@ pub fn render_history_content(
                         );
 
                         let is_hovered = row_response.hovered();
+                        if is_hovered {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
                         let bg_color = if is_hovered {
                             theme_colors.widget_hovered_bg
                         } else if display_i % 2 == 0 {

@@ -1,6 +1,6 @@
 //! Blueprint visual scripting panel
 
-use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense};
+use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Rect, RichText, Sense};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -66,7 +66,11 @@ fn render_blueprint_toolbar(
 ) {
     ui.horizontal(|ui| {
         // Save button
-        if ui.button("\u{1F4BE} Save").clicked() {
+        let save_btn = ui.button("\u{1F4BE} Save");
+        if save_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if save_btn.clicked() {
             save_current_blueprint(editor_state, current_project);
         }
 
@@ -87,7 +91,11 @@ fn render_blueprint_toolbar(
             Some(BlueprintType::Material) => "\u{25B6} Generate Shader",
             _ => "\u{25B6} Compile",
         };
-        if ui.add_enabled(editor_state.active_blueprint.is_some(), egui::Button::new(compile_text)).clicked() {
+        let compile_btn = ui.add_enabled(editor_state.active_blueprint.is_some(), egui::Button::new(compile_text));
+        if compile_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if compile_btn.clicked() {
             if let Some(graph) = editor_state.active_graph() {
                 match graph.graph_type {
                     BlueprintType::Material => {
@@ -134,16 +142,28 @@ fn render_blueprint_toolbar(
 
         // Zoom controls
         ui.label("Zoom:");
-        if ui.button("-").clicked() {
+        let zoom_out_btn = ui.button("-");
+        if zoom_out_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if zoom_out_btn.clicked() {
             canvas_state.zoom = (canvas_state.zoom * 0.8).max(0.25);
         }
         ui.label(format!("{:.0}%", canvas_state.zoom * 100.0));
-        if ui.button("+").clicked() {
+        let zoom_in_btn = ui.button("+");
+        if zoom_in_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if zoom_in_btn.clicked() {
             canvas_state.zoom = (canvas_state.zoom * 1.25).min(4.0);
         }
 
         // Reset view button
-        if ui.button("\u{1F3E0}").on_hover_text("Reset view").clicked() {
+        let reset_btn = ui.button("\u{1F3E0}");
+        if reset_btn.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if reset_btn.on_hover_text("Reset view").clicked() {
             canvas_state.offset = [0.0, 0.0];
             canvas_state.zoom = 1.0;
         }
@@ -781,7 +801,11 @@ fn render_empty_state(
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 140.0);
 
-            if ui.button(RichText::new("\u{1F4DC} New Behavior Blueprint").size(13.0)).clicked() {
+            let behavior_btn = ui.button(RichText::new("\u{1F4DC} New Behavior Blueprint").size(13.0));
+            if behavior_btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if behavior_btn.clicked() {
                 let name = format!("blueprint_{}", editor_state.open_blueprints.len() + 1);
                 let graph = BlueprintGraph::new(&name);
                 let path = format!("blueprints/{}.blueprint", name);
@@ -791,7 +815,11 @@ fn render_empty_state(
 
             ui.add_space(8.0);
 
-            if ui.button(RichText::new("\u{1F3A8} New Material Blueprint").size(13.0)).clicked() {
+            let material_btn = ui.button(RichText::new("\u{1F3A8} New Material Blueprint").size(13.0));
+            if material_btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if material_btn.clicked() {
                 let name = format!("material_{}", editor_state.open_blueprints.len() + 1);
                 let graph = BlueprintGraph::new_material(&name);
                 let path = format!("blueprints/{}.material_bp", name);
@@ -829,7 +857,11 @@ fn render_empty_state(
                         .unwrap_or(false);
                     let icon = if is_material { "\u{1F3A8}" } else { "\u{1F4DC}" };
 
-                    if ui.button(format!("{} {}", icon, name)).clicked() {
+                    let blueprint_btn = ui.button(format!("{} {}", icon, name));
+                    if blueprint_btn.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if blueprint_btn.clicked() {
                         if let Ok(file) = BlueprintFile::load(path) {
                             let path_str = path.to_string_lossy().to_string();
                             editor_state.open_blueprints.insert(path_str.clone(), file.graph);

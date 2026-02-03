@@ -144,6 +144,9 @@ pub fn render_assets(
             );
 
             let assets_response = ui.interact(assets_rect, ui.id().with("assets_tab"), Sense::click());
+            if assets_response.hovered() {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
             if assets_response.clicked() {
                 viewport.bottom_panel_tab = BottomPanelTab::Assets;
                 ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
@@ -188,6 +191,9 @@ pub fn render_assets(
             );
 
             let console_response = ui.interact(console_rect, ui.id().with("console_tab"), Sense::click());
+            if console_response.hovered() {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
             if console_response.clicked() {
                 viewport.bottom_panel_tab = BottomPanelTab::Console;
                 ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
@@ -235,6 +241,9 @@ pub fn render_assets(
                 );
 
                 let plugin_response = ui.interact(plugin_rect, ui.id().with(&tab.id), Sense::click());
+                if plugin_response.hovered() {
+                    ctx.set_cursor_icon(CursorIcon::PointingHand);
+                }
                 if plugin_response.clicked() {
                     ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: tab.id.clone() });
                 }
@@ -270,6 +279,11 @@ pub fn render_assets(
 
             let toggle_response = ui.interact(toggle_rect, ui.id().with("bottom_toggle"), Sense::click());
             let toggle_hovered = toggle_response.hovered();
+
+            // Show pointer cursor on hover
+            if toggle_hovered {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
 
             // Draw toggle button background on hover
             if toggle_hovered {
@@ -840,6 +854,9 @@ fn render_grid_view(
             );
 
             let is_hovered = response.hovered();
+            if is_hovered {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
             let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
 
             // Card background with subtle gradient effect
@@ -1148,6 +1165,9 @@ fn render_tree_navigation(
     );
 
     let is_hovered = response.hovered();
+    if is_hovered {
+        ctx.set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     // Background
     let bg_color = if is_root_current {
@@ -1171,6 +1191,9 @@ fn render_tree_navigation(
         Vec2::splat(14.0),
     );
     let arrow_response = ui.interact(arrow_rect, ui.id().with("project_root_arrow"), Sense::click());
+    if arrow_response.hovered() {
+        ctx.set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     ui.painter().text(
         egui::pos2(arrow_x, rect.center().y),
@@ -1287,6 +1310,9 @@ fn render_nav_tree_node(
         );
 
         let is_hovered = response.hovered();
+        if is_hovered {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         // Background
         let bg_color = if is_current {
@@ -1310,6 +1336,9 @@ fn render_nav_tree_node(
             Vec2::splat(14.0),
         );
         let arrow_response = ui.interact(arrow_rect, ui.id().with(("nav_arrow", &child_path)), Sense::click());
+        if arrow_response.hovered() {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         ui.painter().text(
             egui::pos2(arrow_x, rect.center().y),
@@ -1452,6 +1481,9 @@ fn render_tree_node(
         );
 
         let is_hovered = response.hovered();
+        if is_hovered {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         // Background
         let bg_color = if is_selected {
@@ -1475,6 +1507,9 @@ fn render_tree_node(
             Vec2::splat(14.0),
         );
         let arrow_response = ui.interact(arrow_rect, ui.id().with(("arrow", &folder_path)), Sense::click());
+        if arrow_response.hovered() {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         ui.painter().text(
             egui::pos2(arrow_x, rect.center().y),
@@ -1536,6 +1571,9 @@ fn render_tree_node(
         );
 
         let is_hovered = response.hovered();
+        if is_hovered {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
 
         // Background
         let file_bg_color = if is_selected {

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
@@ -324,6 +324,10 @@ fn viewport_tool_button(
 ) -> egui::Response {
     let response = ui.allocate_rect(rect, Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let bg_color = if active {
             active_color
@@ -361,6 +365,10 @@ fn viewport_snap_dropdown(
 ) {
     let button_id = ui.make_persistent_id("viewport_snap_dropdown");
     let response = ui.allocate_rect(rect, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
@@ -537,6 +545,10 @@ fn viewport_viz_dropdown(
     let button_id = ui.make_persistent_id("viewport_viz_dropdown");
     let response = ui.allocate_rect(rect, Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
@@ -675,6 +687,10 @@ fn viewport_view_dropdown(
     let button_id = ui.make_persistent_id("viewport_view_dropdown");
     let response = ui.allocate_rect(rect, Sense::click());
 
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
@@ -788,6 +804,10 @@ fn viewport_camera_dropdown(
 ) {
     let button_id = ui.make_persistent_id("viewport_camera_dropdown");
     let response = ui.allocate_rect(rect, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
 
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
