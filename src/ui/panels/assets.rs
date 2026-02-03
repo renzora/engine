@@ -21,7 +21,8 @@ use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
-    PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE,
+    PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE, CODE, ATOM, PAINT_BRUSH,
+    STACK, NOTE, MUSIC_NOTES, VIDEO, BLUEPRINT,
 };
 
 const MIN_TILE_SIZE: f32 = 64.0;
@@ -413,9 +414,7 @@ pub fn render_assets_content(
     // Update thumbnail cache folder tracking
     thumbnail_cache.clear_for_folder_change(assets.current_folder.clone());
 
-    // Calculate space for bottom bar
-    let bottom_bar_height = 24.0;
-    let available_height = ui.available_height() - bottom_bar_height - 4.0;
+    let available_height = ui.available_height();
 
     // Threshold for showing grid alongside tree
     let show_grid = available_width >= 450.0;
@@ -425,7 +424,7 @@ pub fn render_assets_content(
         available_width
     };
 
-    // Main content area with fixed height to leave room for bottom bar
+    // Main content area
     let content_rect = ui.allocate_ui_with_layout(
         Vec2::new(available_width, available_height.max(50.0)),
         egui::Layout::left_to_right(egui::Align::TOP),
@@ -553,27 +552,6 @@ pub fn render_assets_content(
         }
     }
 
-    // Bottom bar with view controls
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        // Left side: current folder info
-        if let Some(folder) = &assets.current_folder {
-            if let Some(name) = folder.file_name().and_then(|n| n.to_str()) {
-                ui.label(RichText::new(format!("{} {}", FOLDER_OPEN, name)).size(10.0).color(text_muted));
-            }
-        }
-
-        // Right-aligned controls
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-
-            // Zoom slider (only when grid is visible - wide mode)
-            if show_grid {
-                ui.spacing_mut().slider_width = 60.0;
-                ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false));
-            }
-        });
-    });
 }
 
 fn render_toolbar(
@@ -701,8 +679,11 @@ fn render_toolbar(
             }
         }
 
-        // Right-aligned import button only
+        // Right-aligned controls: zoom slider + import button
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+
+            // Import button
             let import_enabled = assets.current_folder.is_some();
             ui.add_enabled_ui(import_enabled, |ui| {
                 if ui.small_button(RichText::new(PLUS).size(14.0))
@@ -712,6 +693,14 @@ fn render_toolbar(
                     open_import_file_dialog(assets);
                 }
             });
+
+            // Zoom slider (only when wide enough for grid)
+            if !is_compact {
+                ui.separator();
+                ui.spacing_mut().slider_width = 50.0;
+                ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false))
+                    .on_hover_text("Grid size");
+            }
         });
     });
 }
@@ -811,24 +800,31 @@ fn render_grid_view(
     let item_hover = theme.panels.item_hover.to_color32();
     let selection_bg = theme.semantic.selection.to_color32();
     let selection_stroke = theme.semantic.selection_stroke.to_color32();
+    let text_primary = theme.text.primary.to_color32();
     let text_secondary = theme.text.secondary.to_color32();
     let accent_color = theme.semantic.accent.to_color32();
+    let surface_faint = theme.surfaces.faint.to_color32();
 
-    // Responsive tile sizing
+    // Responsive tile sizing - larger base for new design
     let base_tile_size = if available_width < 150.0 {
-        50.0  // Very small - compact tiles
+        70.0  // Compact tiles
     } else if available_width < 250.0 {
-        60.0  // Small panel
+        80.0  // Small panel
     } else if available_width < 400.0 {
-        70.0  // Medium panel
+        90.0  // Medium panel
     } else {
-        DEFAULT_TILE_SIZE  // Normal size
+        100.0  // Normal size
     };
 
     let tile_size = base_tile_size * assets.zoom;
-    let icon_size = (tile_size * 0.45).max(20.0);
-    let thumbnail_size = tile_size - 12.0;
-    let spacing = if available_width < 200.0 { 3.0 } else { 6.0 };
+    let icon_size = (tile_size * 0.55).max(28.0);  // Bigger icons
+    let thumbnail_size = tile_size - 16.0;
+    let spacing = if available_width < 200.0 { 4.0 } else { 8.0 };
+
+    // Label area for 2 lines
+    let label_area_height = 36.0;
+    let separator_height = 3.0;
+    let total_height = tile_size + separator_height + label_area_height;
 
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(spacing, spacing);
@@ -839,14 +835,14 @@ fn render_grid_view(
             let has_model_preview = !item.is_folder && supports_model_preview(&item.name);
 
             let (rect, response) = ui.allocate_exact_size(
-                Vec2::new(tile_size, tile_size + 20.0),
+                Vec2::new(tile_size, total_height),
                 if is_draggable { Sense::click_and_drag() } else { Sense::click() },
             );
 
             let is_hovered = response.hovered();
             let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
 
-            // Background
+            // Card background with subtle gradient effect
             let bg_color = if is_selected {
                 selection_bg
             } else if is_hovered {
@@ -855,21 +851,61 @@ fn render_grid_view(
                 item_bg
             };
 
-            ui.painter().rect_filled(rect, 6.0, bg_color);
+            // Main card background with rounded corners
+            ui.painter().rect_filled(
+                rect,
+                CornerRadius::same(8),
+                bg_color,
+            );
+
+            // Icon area background (slightly darker)
+            let icon_area_rect = egui::Rect::from_min_size(
+                rect.min,
+                Vec2::new(tile_size, tile_size),
+            );
+
+            if !is_selected && !is_hovered {
+                ui.painter().rect_filled(
+                    icon_area_rect,
+                    CornerRadius {
+                        nw: 8,
+                        ne: 8,
+                        sw: 0,
+                        se: 0,
+                    },
+                    surface_faint,
+                );
+            }
 
             // Selection border
             if is_selected {
                 ui.painter().rect_stroke(
                     rect,
-                    6.0,
+                    8.0,
                     egui::Stroke::new(2.0, selection_stroke),
                     egui::StrokeKind::Inside,
                 );
             }
 
-            // Icon or Thumbnail
+            // Hover glow effect
+            if is_hovered && !is_selected {
+                ui.painter().rect_stroke(
+                    rect,
+                    8.0,
+                    egui::Stroke::new(1.0, Color32::from_rgba_unmultiplied(
+                        item.color.r(),
+                        item.color.g(),
+                        item.color.b(),
+                        60,
+                    )),
+                    egui::StrokeKind::Inside,
+                );
+            }
+
+            // Icon or Thumbnail - centered in icon area
+            let icon_center = egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0);
             let icon_rect = egui::Rect::from_center_size(
-                egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
+                icon_center,
                 Vec2::splat(icon_size),
             );
 
@@ -877,17 +913,16 @@ fn render_grid_view(
 
             // Try image thumbnails first
             if has_image_thumbnail {
-                // Try to get cached thumbnail texture ID
                 if let Some(texture_id) = thumbnail_cache.get_texture_id(&item.path) {
-                    // Draw the thumbnail image
                     let thumb_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
+                        icon_center,
                         Vec2::splat(thumbnail_size),
                     );
 
                     // Draw checkerboard background for images with transparency
                     draw_checkerboard(ui.painter(), thumb_rect, theme);
 
+                    // Rounded thumbnail
                     ui.painter().image(
                         texture_id,
                         thumb_rect,
@@ -896,16 +931,14 @@ fn render_grid_view(
                     );
                     thumbnail_shown = true;
                 } else if !thumbnail_cache.is_loading(&item.path) && !thumbnail_cache.has_failed(&item.path) {
-                    // Request thumbnail load
                     thumbnail_cache.request_load(item.path.clone());
                 }
             }
             // Try 3D model previews
             else if has_model_preview {
                 if let Some(texture_id) = model_preview_cache.get_texture_id(&item.path) {
-                    // Draw the model preview
                     let thumb_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
+                        icon_center,
                         Vec2::splat(thumbnail_size),
                     );
 
@@ -917,13 +950,22 @@ fn render_grid_view(
                     );
                     thumbnail_shown = true;
                 } else if !model_preview_cache.is_loading(&item.path) && !model_preview_cache.has_failed(&item.path) {
-                    // Request model preview generation
                     model_preview_cache.request_preview(item.path.clone());
                 }
             }
 
             // Fall back to icon if no thumbnail
             if !thumbnail_shown {
+                // Icon shadow for depth
+                ui.painter().text(
+                    egui::pos2(icon_rect.center().x + 1.0, icon_rect.center().y + 1.0),
+                    egui::Align2::CENTER_CENTER,
+                    item.icon,
+                    egui::FontId::proportional(icon_size),
+                    Color32::from_rgba_unmultiplied(0, 0, 0, 30),
+                );
+
+                // Main icon
                 ui.painter().text(
                     icon_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -932,51 +974,118 @@ fn render_grid_view(
                     item.color,
                 );
 
-                // Show loading indicator for thumbnails being loaded
+                // Show loading indicator
                 let is_loading = (has_image_thumbnail && thumbnail_cache.is_loading(&item.path))
                     || (has_model_preview && model_preview_cache.is_loading(&item.path));
                 if is_loading {
-                    let spinner_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.max.x - 12.0, rect.min.y + 12.0),
-                        Vec2::splat(8.0),
-                    );
+                    let spinner_pos = egui::pos2(rect.max.x - 14.0, rect.min.y + 14.0);
+                    ui.painter().circle_filled(spinner_pos, 6.0, Color32::from_rgba_unmultiplied(0, 0, 0, 100));
                     ui.painter().circle_stroke(
-                        spinner_rect.center(),
+                        spinner_pos,
                         4.0,
                         egui::Stroke::new(2.0, accent_color),
                     );
                 }
             }
 
-            // Label - responsive font size
-            let font_size = if tile_size < 55.0 { 9.0 } else if tile_size < 70.0 { 10.0 } else { 11.0 };
-            let label_height = if tile_size < 55.0 { 12.0 } else { 16.0 };
+            // Color-coded separator line
+            let separator_y = rect.min.y + tile_size;
+            let separator_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x + 6.0, separator_y),
+                Vec2::new(tile_size - 12.0, separator_height),
+            );
+            ui.painter().rect_filled(
+                separator_rect,
+                CornerRadius::same(1),
+                Color32::from_rgba_unmultiplied(
+                    item.color.r(),
+                    item.color.g(),
+                    item.color.b(),
+                    if is_selected || is_hovered { 200 } else { 120 },
+                ),
+            );
+
+            // Two-line label
+            let font_size = if tile_size < 75.0 { 10.0 } else { 11.0 };
+            let line_height = font_size + 2.0;
 
             let label_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + 2.0, rect.max.y - label_height - 2.0),
-                Vec2::new(tile_size - 4.0, label_height),
+                egui::pos2(rect.min.x + 4.0, separator_y + separator_height + 2.0),
+                Vec2::new(tile_size - 8.0, label_area_height - 4.0),
             );
 
-            let char_width = if tile_size < 55.0 { 5.0 } else { 6.0 };
-            let max_chars = ((tile_size - 4.0) / char_width) as usize;
-            let truncated_name = truncate_name(&item.name, max_chars.max(4));
+            // Split name into two lines
+            let (line1, line2) = split_name_two_lines(&item.name, tile_size, font_size);
+
+            // First line - filename (primary color, slightly bolder)
             ui.painter().text(
-                label_rect.center(),
+                egui::pos2(label_rect.center().x, label_rect.min.y + line_height / 2.0),
                 egui::Align2::CENTER_CENTER,
-                &truncated_name,
+                &line1,
                 egui::FontId::proportional(font_size),
-                text_secondary,
+                text_primary,
             );
+
+            // Second line - extension or continuation (secondary color)
+            if !line2.is_empty() {
+                ui.painter().text(
+                    egui::pos2(label_rect.center().x, label_rect.min.y + line_height + line_height / 2.0),
+                    egui::Align2::CENTER_CENTER,
+                    &line2,
+                    egui::FontId::proportional(font_size - 1.0),
+                    text_secondary,
+                );
+            }
 
             // Handle interactions
             handle_item_interaction(ctx, assets, scene_state, item, &response, is_draggable);
 
-            // Tooltip
+            // Tooltip with full name
             if is_hovered && assets.dragging_asset.is_none() {
                 response.on_hover_text(&item.name);
             }
         }
     });
+}
+
+/// Split filename into two lines for display
+fn split_name_two_lines(name: &str, tile_width: f32, font_size: f32) -> (String, String) {
+    let char_width = font_size * 0.55;
+    let max_chars = ((tile_width - 8.0) / char_width) as usize;
+    let max_chars = max_chars.max(6);
+
+    if name.len() <= max_chars {
+        return (name.to_string(), String::new());
+    }
+
+    // Try to split at extension
+    if let Some(dot_pos) = name.rfind('.') {
+        let base = &name[..dot_pos];
+        let ext = &name[dot_pos..];
+
+        if base.len() <= max_chars && ext.len() <= max_chars {
+            return (base.to_string(), ext.to_string());
+        }
+
+        // Truncate base name if needed
+        if base.len() > max_chars {
+            let truncated_base = format!("{}…", &base[..max_chars.saturating_sub(1)]);
+            return (truncated_base, ext.to_string());
+        }
+    }
+
+    // No extension or doesn't fit nicely - split in middle
+    let mid = max_chars.min(name.len());
+    let line1 = &name[..mid];
+    let remaining = &name[mid..];
+
+    let line2 = if remaining.len() > max_chars {
+        format!("{}…", &remaining[..max_chars.saturating_sub(1)])
+    } else {
+        remaining.to_string()
+    };
+
+    (line1.to_string(), line2)
 }
 
 /// Draw a checkerboard pattern for transparent image backgrounds
@@ -2538,49 +2647,77 @@ fn is_script_file(path: &PathBuf) -> bool {
 /// Get icon and color for folders based on name
 fn get_folder_icon_and_color(name: &str) -> (&'static str, Color32) {
     match name.to_lowercase().as_str() {
-        "assets" => (FOLDER, Color32::from_rgb(217, 191, 115)),
-        "scenes" => (FOLDER, Color32::from_rgb(115, 191, 217)),
-        "scripts" => (FOLDER, Color32::from_rgb(140, 217, 191)),
-        "materials" => (FOLDER, Color32::from_rgb(217, 140, 191)),
-        "textures" | "images" => (FOLDER, Color32::from_rgb(166, 217, 140)),
-        "models" | "meshes" => (FOLDER, Color32::from_rgb(242, 166, 115)),
-        "audio" | "sounds" | "music" => (FOLDER, Color32::from_rgb(217, 140, 217)),
-        "prefabs" => (FOLDER, Color32::from_rgb(140, 166, 217)),
-        "src" => (FOLDER, Color32::from_rgb(242, 140, 89)),
-        _ => (FOLDER, Color32::from_rgb(180, 180, 190)),
+        "assets" => (FOLDER, Color32::from_rgb(255, 210, 100)),     // Golden yellow
+        "scenes" => (FOLDER, Color32::from_rgb(100, 180, 255)),     // Sky blue
+        "scripts" => (FOLDER, Color32::from_rgb(130, 230, 180)),    // Mint green
+        "blueprints" => (FOLDER, Color32::from_rgb(100, 180, 255)), // Blue (same as scenes)
+        "materials" => (FOLDER, Color32::from_rgb(255, 130, 200)),  // Pink
+        "textures" | "images" => (FOLDER, Color32::from_rgb(150, 230, 130)),  // Green
+        "models" | "meshes" => (FOLDER, Color32::from_rgb(255, 170, 100)),    // Orange
+        "audio" | "sounds" | "music" => (FOLDER, Color32::from_rgb(200, 130, 230)),  // Purple
+        "prefabs" => (FOLDER, Color32::from_rgb(130, 180, 255)),    // Light blue
+        "src" => (FOLDER, Color32::from_rgb(255, 130, 80)),         // Rust orange
+        "shaders" => (FOLDER, Color32::from_rgb(180, 130, 255)),    // Violet
+        _ => (FOLDER, Color32::from_rgb(170, 175, 190)),            // Neutral gray
     }
 }
 
 /// Get icon and color for a file based on its extension
 fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
-    // Check for Bevy scene files first (.ron)
-    if filename.to_lowercase().ends_with(".ron") {
-        return (FILM_SCRIPT, Color32::from_rgb(115, 191, 242));
+    // Check for special file types first
+    let lower_name = filename.to_lowercase();
+
+    // Blueprint files
+    if lower_name.ends_with(".bp") || lower_name.ends_with(".blueprint") {
+        return (BLUEPRINT, Color32::from_rgb(100, 180, 255));  // Bright blue
+    }
+
+    // Material blueprint files
+    if lower_name.ends_with(".material_bp") {
+        return (ATOM, Color32::from_rgb(255, 120, 200));  // Pink/magenta
+    }
+
+    // Scene files (.ron)
+    if lower_name.ends_with(".ron") {
+        return (FILM_SCRIPT, Color32::from_rgb(115, 200, 255));  // Sky blue
     }
 
     let ext = filename.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        // JSON files
-        "json" => (GEAR, Color32::from_rgb(179, 179, 191)),
-        // Config files
-        "toml" => (GEAR, Color32::from_rgb(179, 179, 191)),
-        // Images
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "hdr" | "exr" => (IMAGE, Color32::from_rgb(166, 217, 140)),
-        // 3D Models
-        "gltf" | "glb" | "obj" | "fbx" => (CUBE, Color32::from_rgb(242, 166, 115)),
-        // Audio
-        "wav" | "ogg" | "mp3" | "flac" => (SPEAKER_HIGH, Color32::from_rgb(217, 140, 217)),
+        // Scripts - code icon
+        "rhai" => (CODE, Color32::from_rgb(130, 230, 180)),  // Mint green
+        "lua" => (CODE, Color32::from_rgb(80, 130, 230)),    // Lua blue
+        "js" | "ts" => (CODE, Color32::from_rgb(240, 220, 80)),  // JavaScript yellow
+
         // Rust source
-        "rs" => (FILE_RS, Color32::from_rgb(242, 140, 89)),
-        // Scripts
-        "rhai" => (SCROLL, Color32::from_rgb(140, 217, 191)),
+        "rs" => (FILE_RS, Color32::from_rgb(255, 130, 80)),  // Rust orange
+
+        // Materials
+        "mat" | "material" => (PAINT_BRUSH, Color32::from_rgb(255, 120, 180)),  // Pink
+
+        // Images
+        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" => (IMAGE, Color32::from_rgb(150, 230, 130)),  // Green
+        "hdr" | "exr" => (SUN, Color32::from_rgb(255, 220, 100)),  // Golden for HDR
+
+        // 3D Models
+        "gltf" | "glb" | "obj" | "fbx" => (CUBE, Color32::from_rgb(255, 170, 100)),  // Orange
+
+        // Audio
+        "wav" | "ogg" | "mp3" | "flac" => (MUSIC_NOTES, Color32::from_rgb(200, 130, 230)),  // Purple
+
+        // Video
+        "mp4" | "avi" | "mov" | "webm" => (VIDEO, Color32::from_rgb(230, 100, 100)),  // Red
+
+        // Config files
+        "json" => (STACK, Color32::from_rgb(180, 180, 200)),  // Gray-blue
+        "toml" => (GEAR, Color32::from_rgb(180, 180, 200)),
+        "yaml" | "yml" => (STACK, Color32::from_rgb(180, 180, 200)),
+
         // Text/docs
-        "txt" | "md" => (FILE_TEXT, Color32::from_rgb(191, 191, 204)),
-        // Data files
-        "ron" | "yaml" | "yml" => (FILE_CODE, Color32::from_rgb(179, 179, 191)),
-        // Materials (custom extension)
-        "mat" | "material" => (GEAR, Color32::from_rgb(217, 140, 191)),
+        "txt" => (FILE_TEXT, Color32::from_rgb(180, 180, 200)),
+        "md" => (NOTE, Color32::from_rgb(180, 200, 220)),
+
         // Default
-        _ => (FILE, Color32::from_rgb(140, 140, 150)),
+        _ => (FILE, Color32::from_rgb(150, 150, 165)),
     }
 }
