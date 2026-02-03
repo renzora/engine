@@ -79,7 +79,7 @@ use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
 use crate::plugin_core::PluginHost;
-use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry};
+use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry, serialization::BlueprintFile};
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use docking::{
@@ -350,10 +350,11 @@ pub fn editor_ui(
     } else {
         // DOCKING SYSTEM - Render dock tree with draggable panels
 
-        // Render document tabs bar (for scene/script tabs with + button)
+        // Render document tabs bar (for scene/script/blueprint tabs with + button)
         let document_tabs_height = render_document_tabs(
             ctx,
             &mut editor.scene_state,
+            &mut editor.blueprint_editor,
             &mut editor.docking,
             0.0,  // No left margin - spans full width
             0.0,  // No right margin
@@ -933,6 +934,40 @@ pub fn editor_ui(
 
         // Render assets dialogs (create script, create folder, import)
         render_assets_dialogs(ctx, &mut editor.assets, &editor.theme_manager.active_theme);
+
+        // Process layout switch requests from assets panel
+        if let Some(layout_name) = editor.assets.requested_layout.take() {
+            if editor.docking.switch_layout(&layout_name) {
+                // Sync viewport state with layout
+                match layout_name.as_str() {
+                    "Scripting" => {
+                        editor.viewport.hierarchy_width = 220.0;
+                        editor.viewport.inspector_width = 300.0;
+                        editor.viewport.assets_height = 180.0;
+                    }
+                    "Blueprints" => {
+                        editor.viewport.hierarchy_width = 260.0;
+                        editor.viewport.inspector_width = 320.0;
+                        editor.viewport.assets_height = 200.0;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Process pending blueprint open requests from assets panel
+        if let Some(path) = editor.assets.pending_blueprint_open.take() {
+            match BlueprintFile::load(&path) {
+                Ok(file) => {
+                    let path_str = path.to_string_lossy().to_string();
+                    editor.blueprint_editor.open_blueprints.insert(path_str.clone(), file.graph);
+                    editor.blueprint_editor.active_blueprint = Some(path_str);
+                }
+                Err(e) => {
+                    bevy::log::error!("Failed to load blueprint {:?}: {}", path, e);
+                }
+            }
+        }
 
         // Render export dialog (floating)
         render_export_dialog(

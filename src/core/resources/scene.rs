@@ -6,10 +6,11 @@ use std::path::PathBuf;
 use super::camera::TabCameraState;
 
 /// Kind of document tab
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TabKind {
     Scene(usize),
     Script(usize),
+    Blueprint(String),
 }
 
 /// Build state for Rust plugins

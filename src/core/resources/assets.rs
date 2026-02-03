@@ -43,6 +43,20 @@ pub struct AssetBrowserState {
     pub show_create_folder_dialog: bool,
     /// New folder name being entered
     pub new_folder_name: String,
+    /// Show create material dialog
+    pub show_create_material_dialog: bool,
+    /// New material name being entered
+    pub new_material_name: String,
+    /// Show create scene dialog
+    pub show_create_scene_dialog: bool,
+    /// New scene name being entered
+    pub new_scene_name: String,
+    /// Context menu open state and position
+    pub context_menu_pos: Option<bevy::math::Vec2>,
+    /// Requested layout switch (processed by main UI loop)
+    pub requested_layout: Option<String>,
+    /// Pending blueprint to open (processed by main UI loop)
+    pub pending_blueprint_open: Option<PathBuf>,
     /// Show model import settings dialog
     pub show_import_dialog: bool,
     /// Import settings state

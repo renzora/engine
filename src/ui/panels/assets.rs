@@ -21,7 +21,7 @@ use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
-    PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN,
+    PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE,
 };
 
 const MIN_TILE_SIZE: f32 = 64.0;
@@ -359,11 +359,13 @@ pub fn render_assets(
     ui_events
 }
 
-/// Render asset dialogs (create script, create folder, import)
+/// Render asset dialogs (create script, create folder, material, scene, import)
 /// Call this after render_assets_content to ensure dialogs work
 pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState, theme: &Theme) {
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
+    render_create_material_dialog(ctx, assets);
+    render_create_scene_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
     process_pending_file_imports(assets);
@@ -424,7 +426,7 @@ pub fn render_assets_content(
     };
 
     // Main content area with fixed height to leave room for bottom bar
-    ui.allocate_ui_with_layout(
+    let content_rect = ui.allocate_ui_with_layout(
         Vec2::new(available_width, available_height.max(50.0)),
         egui::Layout::left_to_right(egui::Align::TOP),
         |ui| {
@@ -480,12 +482,10 @@ pub fn render_assets_content(
                                 .show(ui, |ui| {
                                     render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, theme);
 
-                                    // Context menu (only when inside a folder)
-                                    if assets.current_folder.is_some() {
-                                        ui.allocate_response(ui.available_size(), Sense::click())
-                                            .context_menu(|ui| {
-                                                render_context_menu(ui, assets);
-                                            });
+                                    // Fill remaining space to ensure context menu works in empty areas
+                                    let remaining = ui.available_size();
+                                    if remaining.y > 0.0 {
+                                        ui.allocate_space(remaining);
                                     }
                                 });
                         },
@@ -500,7 +500,58 @@ pub fn render_assets_content(
                 });
             }
         },
-    );
+    ).response.rect;
+
+    // Handle context menu for entire content area
+    if current_project.is_some() {
+        // Detect right-click to open/move context menu
+        if ctx.input(|i| i.pointer.secondary_clicked()) {
+            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if content_rect.contains(pos) {
+                    assets.context_menu_pos = Some(bevy::math::Vec2::new(pos.x, pos.y));
+                }
+            }
+        }
+
+        // Close menu on Escape
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            assets.context_menu_pos = None;
+        }
+
+        // Show context menu popup
+        if let Some(pos) = assets.context_menu_pos {
+            // Approximate menu height for positioning
+            let menu_height = 170.0;
+            let screen_rect = ctx.screen_rect();
+
+            // If menu would go off bottom, show it above the cursor
+            let menu_y = if pos.y + menu_height > screen_rect.max.y {
+                pos.y - menu_height
+            } else {
+                pos.y
+            };
+
+            let area_response = egui::Area::new(egui::Id::new("assets_context_menu"))
+                .fixed_pos(egui::pos2(pos.x, menu_y))
+                .order(egui::Order::Foreground)
+                .constrain(true)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style())
+                        .show(ui, |ui| {
+                            render_context_menu(ui, assets, theme);
+                        });
+                });
+
+            // Close menu when clicking outside of it
+            if ctx.input(|i| i.pointer.primary_clicked()) {
+                if let Some(click_pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                    if !area_response.response.rect.contains(click_pos) {
+                        assets.context_menu_pos = None;
+                    }
+                }
+            }
+        }
+    }
 
     // Bottom bar with view controls
     ui.add_space(2.0);
@@ -1491,9 +1542,16 @@ fn handle_item_interaction(
         } else {
             assets.selected_asset = Some(item.path.clone());
 
-            // Open script files in the editor
+            // Open script files in the editor and switch to Scripting layout
             if is_script_file(&item.path) {
                 super::script_editor::open_script(scene_state, item.path.clone());
+                assets.requested_layout = Some("Scripting".to_string());
+            }
+
+            // Open material files in blueprint editor and switch to Blueprints layout
+            if is_blueprint_material_file(&item.name) {
+                assets.pending_blueprint_open = Some(item.path.clone());
+                assets.requested_layout = Some("Blueprints".to_string());
             }
         }
     }
@@ -1536,27 +1594,137 @@ fn handle_item_interaction(
     }
 }
 
-fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState) {
+fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState, theme: &Theme) {
     ui.set_min_width(150.0);
+    ui.set_max_width(150.0);
 
-    if ui.button(format!("{} New Folder", FOLDER_PLUS)).clicked() {
+    // Colors for different categories (Unreal-style)
+    let material_color = Color32::from_rgb(0, 200, 83);    // Green for materials
+    let scene_color = Color32::from_rgb(115, 191, 242);    // Blue for scenes
+    let folder_color = Color32::from_rgb(255, 196, 0);     // Yellow/gold for folders
+    let script_color = Color32::from_rgb(255, 128, 0);     // Orange for scripts
+    let text_primary = theme.text.primary.to_color32();
+
+    // Helper to render a large menu item with icon and color
+    let large_menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+        let desired_size = Vec2::new(150.0, 28.0);
+        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+        let is_hovered = response.hovered();
+        if is_hovered {
+            ui.painter().rect_filled(
+                rect,
+                4.0,
+                theme.panels.item_hover.to_color32(),
+            );
+        }
+
+        // Color indicator bar on left
+        let indicator_rect = egui::Rect::from_min_size(
+            rect.min,
+            Vec2::new(3.0, rect.height()),
+        );
+        ui.painter().rect_filled(indicator_rect, CornerRadius::ZERO, color);
+
+        // Icon with color
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(14.0),
+            color,
+        );
+
+        // Label
+        ui.painter().text(
+            egui::pos2(rect.min.x + 30.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(12.0),
+            text_primary,
+        );
+
+        response.clicked()
+    };
+
+    // Helper for normal menu items
+    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+        let desired_size = Vec2::new(150.0, 22.0);
+        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+        let is_hovered = response.hovered();
+        if is_hovered {
+            ui.painter().rect_filled(
+                rect,
+                4.0,
+                theme.panels.item_hover.to_color32(),
+            );
+        }
+
+        // Icon with color
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(12.0),
+            color,
+        );
+
+        // Label
+        ui.painter().text(
+            egui::pos2(rect.min.x + 30.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(11.0),
+            text_primary,
+        );
+
+        response.clicked()
+    };
+
+    // === Primary Create Actions (Large Items) ===
+    ui.add_space(2.0);
+
+    if large_menu_item(ui, PALETTE, "Create Material", material_color) {
+        assets.show_create_material_dialog = true;
+        assets.new_material_name = "NewMaterial".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if large_menu_item(ui, FILM_SCRIPT, "New Scene", scene_color) {
+        assets.show_create_scene_dialog = true;
+        assets.new_scene_name = "NewScene".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // === Standard Create Actions ===
+    if menu_item(ui, FOLDER_PLUS, "New Folder", folder_color) {
         assets.show_create_folder_dialog = true;
         assets.new_folder_name = "New Folder".to_string();
-        ui.close();
+        assets.context_menu_pos = None;
     }
 
-    if ui.button(format!("{} Create Script", SCROLL)).clicked() {
+    if menu_item(ui, SCROLL, "Create Script", script_color) {
         assets.show_create_script_dialog = true;
         assets.new_script_name = "new_script".to_string();
-        ui.close();
+        assets.context_menu_pos = None;
     }
 
+    ui.add_space(2.0);
     ui.separator();
+    ui.add_space(2.0);
 
-    if ui.button(format!("{} Import", DOWNLOAD)).clicked() {
+    // === Import ===
+    if menu_item(ui, DOWNLOAD, "Import", text_primary) {
         assets.import_asset_requested = true;
-        ui.close();
+        assets.context_menu_pos = None;
     }
+
+    ui.add_space(2.0);
 }
 
 fn render_create_script_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
@@ -1658,6 +1826,114 @@ fn render_create_folder_dialog(ctx: &egui::Context, assets: &mut AssetBrowserSta
 
     if !open {
         assets.show_create_folder_dialog = false;
+    }
+}
+
+fn render_create_material_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_material_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("Create Material")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_material_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let material_name = if assets.new_material_name.ends_with(".material_bp") {
+                            assets.new_material_name.clone()
+                        } else {
+                            format!("{}.material_bp", assets.new_material_name)
+                        };
+
+                        let material_path = current_folder.join(&material_name);
+                        let template = create_material_template(&assets.new_material_name);
+
+                        if let Err(e) = std::fs::write(&material_path, template) {
+                            error!("Failed to create material: {}", e);
+                        } else {
+                            info!("Created material: {}", material_path.display());
+                        }
+                    }
+
+                    assets.show_create_material_dialog = false;
+                    assets.new_material_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_material_dialog = false;
+                    assets.new_material_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_material_dialog = false;
+    }
+}
+
+fn render_create_scene_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_scene_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Scene")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_scene_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let scene_name = if assets.new_scene_name.ends_with(".scene") {
+                            assets.new_scene_name.clone()
+                        } else {
+                            format!("{}.scene", assets.new_scene_name)
+                        };
+
+                        let scene_path = current_folder.join(&scene_name);
+                        let template = create_scene_template(&assets.new_scene_name);
+
+                        if let Err(e) = std::fs::write(&scene_path, template) {
+                            error!("Failed to create scene: {}", e);
+                        } else {
+                            info!("Created scene: {}", scene_path.display());
+                        }
+                    }
+
+                    assets.show_create_scene_dialog = false;
+                    assets.new_scene_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_scene_dialog = false;
+                    assets.new_scene_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_scene_dialog = false;
     }
 }
 
@@ -2184,6 +2460,28 @@ fn on_update() {{
     //   min, max, pow, deg_to_rad, rad_to_deg
 }}
 "#, name)
+}
+
+fn create_material_template(name: &str) -> String {
+    let clean_name = name.trim_end_matches(".material_bp");
+    format!(r#"{{
+    "version": 1,
+    "graph": {{
+        "name": "{}",
+        "graph_type": "Material",
+        "nodes": [],
+        "connections": [],
+        "variables": [],
+        "next_node_id": 1
+    }}
+}}"#, clean_name)
+}
+
+fn create_scene_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "entities": []
+}}"#, name.trim_end_matches(".scene"))
 }
 
 struct AssetItem {

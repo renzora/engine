@@ -33,13 +33,11 @@ pub fn render_blueprint_panel(
     }
 
     ui.vertical(|ui| {
-        // Toolbar
-        render_blueprint_toolbar(ui, editor_state, canvas_state, node_registry, current_project);
-
-        ui.separator();
-
-        // Tab bar for open blueprints
-        render_blueprint_tabs(ui, editor_state);
+        // Toolbar (only show if a blueprint is open)
+        if editor_state.active_blueprint.is_some() {
+            render_blueprint_toolbar(ui, editor_state, canvas_state, node_registry, current_project);
+            ui.separator();
+        }
 
         // Main canvas area
         let available_rect = ui.available_rect_before_wrap();
@@ -47,7 +45,13 @@ pub fn render_blueprint_panel(
         if editor_state.active_blueprint.is_some() {
             render_blueprint_canvas(ui, ctx, editor_state, canvas_state, node_registry, available_rect, assets, current_project, thumbnail_cache);
         } else {
-            render_empty_state(ui, editor_state, current_project);
+            // Simple message when no blueprint is open
+            ui.vertical_centered(|ui| {
+                ui.add_space(60.0);
+                ui.label(egui::RichText::new("No Blueprint Open").size(14.0).color(egui::Color32::from_gray(120)));
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Right-click in Assets panel to create a material").size(11.0).color(egui::Color32::from_gray(100)));
+            });
         }
     });
 }
@@ -61,47 +65,8 @@ fn render_blueprint_toolbar(
     current_project: Option<&CurrentProject>,
 ) {
     ui.horizontal(|ui| {
-        // New blueprint dropdown
-        egui::ComboBox::from_id_salt("new_blueprint_type")
-            .selected_text("\u{2795} New")
-            .width(80.0)
-            .show_ui(ui, |ui| {
-                if ui.selectable_label(false, "\u{1F4DC} Behavior Blueprint").clicked() {
-                    let name = format!("blueprint_{}", editor_state.open_blueprints.len() + 1);
-                    let graph = BlueprintGraph::new(&name);
-                    let path = format!("blueprints/{}.blueprint", name);
-                    editor_state.open_blueprints.insert(path.clone(), graph);
-                    editor_state.active_blueprint = Some(path);
-                }
-                if ui.selectable_label(false, "\u{1F3A8} Material Blueprint").clicked() {
-                    let name = format!("material_{}", editor_state.open_blueprints.len() + 1);
-                    let graph = BlueprintGraph::new_material(&name);
-                    let path = format!("blueprints/{}.material_bp", name);
-                    editor_state.open_blueprints.insert(path.clone(), graph);
-                    editor_state.active_blueprint = Some(path);
-                }
-            });
-
-        // Open blueprint button
-        if ui.button("\u{1F4C2} Open").clicked() {
-            if let Some(project) = current_project {
-                let blueprints_dir = project.path.join("blueprints");
-                let blueprints = list_blueprints(&blueprints_dir);
-
-                // TODO: Show file picker popup
-                // For now, load first available if any
-                if let Some(path) = blueprints.first() {
-                    if let Ok(file) = BlueprintFile::load(path) {
-                        let path_str = path.to_string_lossy().to_string();
-                        editor_state.open_blueprints.insert(path_str.clone(), file.graph);
-                        editor_state.active_blueprint = Some(path_str);
-                    }
-                }
-            }
-        }
-
         // Save button
-        if ui.add_enabled(editor_state.active_blueprint.is_some(), egui::Button::new("\u{1F4BE} Save")).clicked() {
+        if ui.button("\u{1F4BE} Save").clicked() {
             save_current_blueprint(editor_state, current_project);
         }
 
@@ -185,7 +150,8 @@ fn render_blueprint_toolbar(
     });
 }
 
-/// Render tabs for open blueprints
+/// Render tabs for open blueprints (deprecated - tabs now in document tabs bar)
+#[allow(dead_code)]
 fn render_blueprint_tabs(ui: &mut egui::Ui, editor_state: &mut BlueprintEditorState) {
     if editor_state.open_blueprints.is_empty() {
         return;

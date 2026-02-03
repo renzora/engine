@@ -1,9 +1,10 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
+use crate::blueprint::BlueprintEditorState;
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
 use crate::theming::Theme;
 
-use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE};
+use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE};
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_PADDING: f32 = 12.0;
@@ -64,6 +65,7 @@ struct TabDragState {
 pub fn render_document_tabs(
     ctx: &egui::Context,
     scene_state: &mut SceneManagerState,
+    blueprint_editor: &mut BlueprintEditorState,
     docking_state: &mut DockingState,
     left_panel_width: f32,
     right_panel_width: f32,
@@ -91,7 +93,7 @@ pub fn render_document_tabs(
     let mut layout_to_switch: Option<&'static str> = None;
 
     // Ensure tab_order is in sync with actual tabs
-    sync_tab_order(scene_state);
+    sync_tab_order(scene_state, blueprint_editor);
 
     // Get drag state from egui memory
     let drag_id = egui::Id::new("document_tab_drag");
@@ -127,6 +129,8 @@ pub fn render_document_tabs(
 
             // Render all tabs in unified order
             for (order_idx, tab_kind) in scene_state.tab_order.iter().enumerate() {
+                let blueprint_accent_color = Color32::from_rgb(180, 130, 200);
+
                 let (tab_text, is_active, icon, accent_color, icon_inactive_color) = match tab_kind {
                     TabKind::Scene(idx) => {
                         let tab = &scene_state.scene_tabs[*idx];
@@ -135,7 +139,9 @@ pub fn render_document_tabs(
                         } else {
                             tab.name.clone()
                         };
-                        let active = scene_state.active_script_tab.is_none() && *idx == scene_state.active_scene_tab;
+                        let active = scene_state.active_script_tab.is_none()
+                            && blueprint_editor.active_blueprint.is_none()
+                            && *idx == scene_state.active_scene_tab;
                         // Muted version of scene accent
                         let [r, g, b, _] = scene_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 75);
@@ -153,6 +159,20 @@ pub fn render_document_tabs(
                         let [r, g, b, _] = script_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
                         (text, active, SCROLL, script_accent_color, inactive)
+                    }
+                    TabKind::Blueprint(path) => {
+                        let name = path
+                            .rsplit(['/', '\\'])
+                            .next()
+                            .unwrap_or(path)
+                            .trim_end_matches(".material_bp")
+                            .trim_end_matches(".blueprint")
+                            .to_string();
+                        let active = blueprint_editor.active_blueprint.as_ref() == Some(path);
+                        // Muted version of blueprint accent
+                        let [r, g, b, _] = blueprint_accent_color.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (name, active, PALETTE, blueprint_accent_color, inactive)
                     }
                 };
 
@@ -241,6 +261,7 @@ pub fn render_document_tabs(
                 let can_close = match tab_kind {
                     TabKind::Scene(_) => scene_state.scene_tabs.len() > 1,
                     TabKind::Script(_) => true,
+                    TabKind::Blueprint(_) => true,
                 };
 
                 if can_close {
@@ -273,9 +294,9 @@ pub fn render_document_tabs(
 
                 // Handle clicks
                 if close_response.clicked() && can_close {
-                    tab_to_close = Some(*tab_kind);
+                    tab_to_close = Some(tab_kind.clone());
                 } else if tab_response.clicked() && !tab_response.dragged() {
-                    tab_to_activate = Some(*tab_kind);
+                    tab_to_activate = Some(tab_kind.clone());
                 }
 
                 x_offset += tab_width + TAB_GAP;
@@ -418,11 +439,11 @@ pub fn render_document_tabs(
 
             // Process tab actions
             if let Some(tab_kind) = tab_to_close {
-                close_tab(scene_state, tab_kind);
+                close_tab(scene_state, blueprint_editor, tab_kind);
             }
 
             if let Some(tab_kind) = tab_to_activate {
-                activate_tab(scene_state, tab_kind, &mut layout_to_switch);
+                activate_tab(scene_state, blueprint_editor, tab_kind, &mut layout_to_switch);
             }
         });
 
@@ -440,11 +461,12 @@ pub fn render_document_tabs(
 }
 
 /// Ensure tab_order is in sync with actual tabs (handles external additions/removals)
-fn sync_tab_order(scene_state: &mut SceneManagerState) {
+fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &BlueprintEditorState) {
     // Remove invalid entries
     scene_state.tab_order.retain(|kind| match kind {
         TabKind::Scene(idx) => *idx < scene_state.scene_tabs.len(),
         TabKind::Script(idx) => *idx < scene_state.open_scripts.len(),
+        TabKind::Blueprint(path) => blueprint_editor.open_blueprints.contains_key(path),
     });
 
     // Add any missing scene tabs
@@ -460,9 +482,17 @@ fn sync_tab_order(scene_state: &mut SceneManagerState) {
             scene_state.tab_order.push(TabKind::Script(idx));
         }
     }
+
+    // Add any missing blueprint tabs
+    for path in blueprint_editor.open_blueprints.keys() {
+        let tab_kind = TabKind::Blueprint(path.clone());
+        if !scene_state.tab_order.contains(&tab_kind) {
+            scene_state.tab_order.push(tab_kind);
+        }
+    }
 }
 
-fn close_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind) {
+fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind) {
     // Find position in tab_order
     let order_pos = scene_state.tab_order.iter().position(|k| *k == tab_kind);
 
@@ -470,7 +500,9 @@ fn close_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind) {
         TabKind::Scene(idx) => {
             if scene_state.scene_tabs.len() > 1 {
                 // Determine which tab to switch to
-                let is_active = scene_state.active_script_tab.is_none() && idx == scene_state.active_scene_tab;
+                let is_active = scene_state.active_script_tab.is_none()
+                    && blueprint_editor.active_blueprint.is_none()
+                    && idx == scene_state.active_scene_tab;
 
                 // Remove from tab_order first
                 if let Some(pos) = order_pos {
@@ -529,21 +561,45 @@ fn close_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind) {
                 }
             }
         }
+        TabKind::Blueprint(path) => {
+            // Remove from tab_order first
+            if let Some(pos) = order_pos {
+                scene_state.tab_order.remove(pos);
+            }
+
+            // Remove the blueprint
+            blueprint_editor.open_blueprints.remove(&path);
+
+            // Update active blueprint
+            if blueprint_editor.active_blueprint.as_ref() == Some(&path) {
+                blueprint_editor.active_blueprint = blueprint_editor.open_blueprints.keys().next().cloned();
+            }
+        }
     }
 }
 
-fn activate_tab(scene_state: &mut SceneManagerState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
+fn activate_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
     match tab_kind {
         TabKind::Scene(idx) => {
-            if scene_state.active_script_tab.is_some() || idx != scene_state.active_scene_tab {
+            if scene_state.active_script_tab.is_some()
+                || blueprint_editor.active_blueprint.is_some()
+                || idx != scene_state.active_scene_tab
+            {
                 scene_state.active_script_tab = None;
+                blueprint_editor.active_blueprint = None;
                 scene_state.pending_tab_switch = Some(idx);
                 *layout_to_switch = Some("Default");
             }
         }
         TabKind::Script(idx) => {
             scene_state.active_script_tab = Some(idx);
+            blueprint_editor.active_blueprint = None;
             *layout_to_switch = Some("Scripting");
+        }
+        TabKind::Blueprint(path) => {
+            scene_state.active_script_tab = None;
+            blueprint_editor.active_blueprint = Some(path);
+            *layout_to_switch = Some("Blueprints");
         }
     }
 }
