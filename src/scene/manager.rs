@@ -281,6 +281,8 @@ fn do_tab_switch(world: &mut World, new_tab_idx: usize) {
         let mut scene_state = world.resource_mut::<SceneManagerState>();
         scene_state.active_scene_tab = new_tab_idx;
         scene_state.current_scene_path = new_path;
+        // Update the unified active document
+        scene_state.active_document = Some(crate::core::TabKind::Scene(new_tab_idx));
     }
 
     // Clear selection
@@ -355,6 +357,9 @@ fn do_close_tab(world: &mut World, tab_idx: usize) {
             .scene_tabs
             .get(new_active)
             .and_then(|t| t.path.clone());
+
+        // Update the unified active document
+        scene_state.active_document = Some(crate::core::TabKind::Scene(new_active));
     }
 
     // Show entities from the new active tab
@@ -449,9 +454,14 @@ fn do_open_scene(world: &mut World) {
                 ..Default::default()
             });
 
+            // Add to unified tab order
+            scene_state.tab_order.push(crate::core::TabKind::Scene(new_idx));
+
             // Switch to the new tab
             scene_state.active_scene_tab = new_idx;
             scene_state.current_scene_path = Some(path.clone());
+            // Update the unified active document
+            scene_state.active_document = Some(crate::core::TabKind::Scene(new_idx));
 
             new_idx
         };

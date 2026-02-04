@@ -22,7 +22,7 @@ use egui_phosphor::regular::{
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
     PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE, CODE, ATOM, PAINT_BRUSH,
-    STACK, NOTE, MUSIC_NOTES, VIDEO, BLUEPRINT,
+    STACK, NOTE, MUSIC_NOTES, VIDEO, BLUEPRINT, SPARKLE, MOUNTAINS, GAME_CONTROLLER,
 };
 
 const MIN_TILE_SIZE: f32 = 64.0;
@@ -381,6 +381,13 @@ pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState
     render_create_folder_dialog(ctx, assets);
     render_create_material_dialog(ctx, assets);
     render_create_scene_dialog(ctx, assets);
+    render_create_video_dialog(ctx, assets);
+    render_create_audio_dialog(ctx, assets);
+    render_create_animation_dialog(ctx, assets);
+    render_create_texture_dialog(ctx, assets);
+    render_create_particle_dialog(ctx, assets);
+    render_create_level_dialog(ctx, assets);
+    render_create_terrain_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
     process_pending_file_imports(assets);
@@ -1706,6 +1713,38 @@ fn handle_item_interaction(
             // Open material files in blueprint editor and switch to Blueprints layout
             assets.pending_blueprint_open = Some(item.path.clone());
             assets.requested_layout = Some("Blueprints".to_string());
+        } else if is_video_file(&item.name) {
+            // Open video project in video editor layout
+            open_video_project(scene_state, item.path.clone());
+            assets.requested_layout = Some("Video Editor".to_string());
+        } else if is_audio_project_file(&item.name) {
+            // Open audio project in DAW layout
+            open_audio_project(scene_state, item.path.clone());
+            assets.requested_layout = Some("DAW".to_string());
+        } else if is_animation_file(&item.name) {
+            // Open animation in Animation layout
+            open_animation_file(scene_state, item.path.clone());
+            assets.requested_layout = Some("Animation".to_string());
+        } else if is_texture_project_file(&item.name) {
+            // Open texture project
+            open_texture_project(scene_state, item.path.clone());
+            assets.requested_layout = Some("Scene".to_string()); // Use scene layout with inspector
+        } else if is_particle_file(&item.name) {
+            // Open particle FX in particle editor layout
+            open_particle_fx(scene_state, item.path.clone());
+            assets.requested_layout = Some("Particle FX".to_string());
+        } else if is_level_file(&item.name) {
+            // Open level in level design layout
+            open_level_file(scene_state, item.path.clone());
+            assets.requested_layout = Some("Level Design".to_string());
+        } else if is_terrain_file(&item.name) {
+            // Open terrain in terrain layout
+            open_terrain_file(scene_state, item.path.clone());
+            assets.requested_layout = Some("Terrain".to_string());
+        } else if is_scene_file(&item.name) {
+            // Open scene file and switch to Scene layout
+            open_scene_file(scene_state, item.path.clone());
+            assets.requested_layout = Some("Scene".to_string());
         }
     }
 
@@ -1860,6 +1899,66 @@ fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState, theme:
     if menu_item(ui, SCROLL, "Create Script", script_color) {
         assets.show_create_script_dialog = true;
         assets.new_script_name = "new_script".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // === Media Assets ===
+    let video_color = Color32::from_rgb(220, 80, 80);      // Red for video
+    let audio_color = Color32::from_rgb(180, 100, 220);    // Purple for audio
+    let animation_color = Color32::from_rgb(100, 180, 220); // Light blue for animation
+    let texture_color = Color32::from_rgb(120, 200, 120);  // Green for textures
+    let particle_color = Color32::from_rgb(255, 180, 50);  // Orange/gold for particles
+    let level_color = Color32::from_rgb(100, 200, 180);    // Teal for levels
+    let terrain_color = Color32::from_rgb(140, 180, 100);  // Olive for terrain
+
+    if menu_item(ui, VIDEO, "Video Project", video_color) {
+        assets.show_create_video_dialog = true;
+        assets.new_video_name = "NewVideo".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if menu_item(ui, MUSIC_NOTES, "Audio Project", audio_color) {
+        assets.show_create_audio_dialog = true;
+        assets.new_audio_name = "NewAudio".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if menu_item(ui, FILM_SCRIPT, "Animation", animation_color) {
+        assets.show_create_animation_dialog = true;
+        assets.new_animation_name = "NewAnimation".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if menu_item(ui, PAINT_BRUSH, "Texture", texture_color) {
+        assets.show_create_texture_dialog = true;
+        assets.new_texture_name = "NewTexture".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if menu_item(ui, SPARKLE, "Particle FX", particle_color) {
+        assets.show_create_particle_dialog = true;
+        assets.new_particle_name = "NewParticle".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // === Level/Terrain (scene variants) ===
+    if menu_item(ui, GAME_CONTROLLER, "Level", level_color) {
+        assets.show_create_level_dialog = true;
+        assets.new_level_name = "NewLevel".to_string();
+        assets.context_menu_pos = None;
+    }
+
+    if menu_item(ui, MOUNTAINS, "Terrain", terrain_color) {
+        assets.show_create_terrain_dialog = true;
+        assets.new_terrain_name = "NewTerrain".to_string();
         assets.context_menu_pos = None;
     }
 
@@ -2083,6 +2182,384 @@ fn render_create_scene_dialog(ctx: &egui::Context, assets: &mut AssetBrowserStat
 
     if !open {
         assets.show_create_scene_dialog = false;
+    }
+}
+
+fn render_create_video_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_video_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Video Project")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_video_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_video_name.ends_with(".video") {
+                            assets.new_video_name.clone()
+                        } else {
+                            format!("{}.video", assets.new_video_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_video_template(&assets.new_video_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create video project: {}", e);
+                        } else {
+                            info!("Created video project: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_video_dialog = false;
+                    assets.new_video_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_video_dialog = false;
+                    assets.new_video_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_video_dialog = false;
+    }
+}
+
+fn render_create_audio_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_audio_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Audio Project")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_audio_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_audio_name.ends_with(".audio") {
+                            assets.new_audio_name.clone()
+                        } else {
+                            format!("{}.audio", assets.new_audio_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_audio_template(&assets.new_audio_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create audio project: {}", e);
+                        } else {
+                            info!("Created audio project: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_audio_dialog = false;
+                    assets.new_audio_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_audio_dialog = false;
+                    assets.new_audio_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_audio_dialog = false;
+    }
+}
+
+fn render_create_animation_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_animation_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Animation")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_animation_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_animation_name.ends_with(".anim") {
+                            assets.new_animation_name.clone()
+                        } else {
+                            format!("{}.anim", assets.new_animation_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_animation_template(&assets.new_animation_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create animation: {}", e);
+                        } else {
+                            info!("Created animation: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_animation_dialog = false;
+                    assets.new_animation_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_animation_dialog = false;
+                    assets.new_animation_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_animation_dialog = false;
+    }
+}
+
+fn render_create_texture_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_texture_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Texture")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_texture_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_texture_name.ends_with(".texture") {
+                            assets.new_texture_name.clone()
+                        } else {
+                            format!("{}.texture", assets.new_texture_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_texture_template(&assets.new_texture_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create texture: {}", e);
+                        } else {
+                            info!("Created texture: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_texture_dialog = false;
+                    assets.new_texture_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_texture_dialog = false;
+                    assets.new_texture_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_texture_dialog = false;
+    }
+}
+
+fn render_create_particle_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_particle_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Particle FX")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_particle_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_particle_name.ends_with(".particle") {
+                            assets.new_particle_name.clone()
+                        } else {
+                            format!("{}.particle", assets.new_particle_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_particle_template(&assets.new_particle_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create particle FX: {}", e);
+                        } else {
+                            info!("Created particle FX: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_particle_dialog = false;
+                    assets.new_particle_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_particle_dialog = false;
+                    assets.new_particle_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_particle_dialog = false;
+    }
+}
+
+fn render_create_level_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_level_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Level")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_level_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_level_name.ends_with(".level") {
+                            assets.new_level_name.clone()
+                        } else {
+                            format!("{}.level", assets.new_level_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_level_template(&assets.new_level_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create level: {}", e);
+                        } else {
+                            info!("Created level: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_level_dialog = false;
+                    assets.new_level_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_level_dialog = false;
+                    assets.new_level_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_level_dialog = false;
+    }
+}
+
+fn render_create_terrain_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_terrain_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("New Terrain")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_terrain_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_terrain_name.ends_with(".terrain") {
+                            assets.new_terrain_name.clone()
+                        } else {
+                            format!("{}.terrain", assets.new_terrain_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_terrain_template(&assets.new_terrain_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create terrain: {}", e);
+                        } else {
+                            info!("Created terrain: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_terrain_dialog = false;
+                    assets.new_terrain_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_terrain_dialog = false;
+                    assets.new_terrain_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_terrain_dialog = false;
     }
 }
 
@@ -2633,6 +3110,101 @@ fn create_scene_template(name: &str) -> String {
 }}"#, name.trim_end_matches(".scene"))
 }
 
+fn create_video_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "video_project",
+    "resolution": [1920, 1080],
+    "framerate": 30,
+    "duration": 0.0,
+    "tracks": [],
+    "clips": []
+}}"#, name.trim_end_matches(".video"))
+}
+
+fn create_audio_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "audio_project",
+    "sample_rate": 44100,
+    "bit_depth": 16,
+    "channels": 2,
+    "bpm": 120,
+    "duration": 0.0,
+    "tracks": [],
+    "clips": []
+}}"#, name.trim_end_matches(".audio"))
+}
+
+fn create_animation_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "animation",
+    "duration": 1.0,
+    "framerate": 30,
+    "tracks": [],
+    "keyframes": []
+}}"#, name.trim_end_matches(".anim"))
+}
+
+fn create_texture_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "texture",
+    "width": 512,
+    "height": 512,
+    "format": "rgba8",
+    "layers": []
+}}"#, name.trim_end_matches(".texture"))
+}
+
+fn create_particle_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "particle_fx",
+    "emitters": [
+        {{
+            "name": "default",
+            "rate": 10.0,
+            "lifetime": 1.0,
+            "velocity": [0.0, 1.0, 0.0],
+            "color": [1.0, 1.0, 1.0, 1.0],
+            "size": 0.1
+        }}
+    ]
+}}"#, name.trim_end_matches(".particle"))
+}
+
+fn create_level_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "level",
+    "scene_type": "3d",
+    "entities": [],
+    "spawn_points": [],
+    "triggers": []
+}}"#, name.trim_end_matches(".level"))
+}
+
+fn create_terrain_template(name: &str) -> String {
+    format!(r#"{{
+    "name": "{}",
+    "version": "1.0",
+    "type": "terrain",
+    "size": [256, 256],
+    "resolution": 1.0,
+    "height_range": [0.0, 100.0],
+    "heightmap": null,
+    "layers": []
+}}"#, name.trim_end_matches(".terrain"))
+}
+
 struct AssetItem {
     name: String,
     path: PathBuf,
@@ -2664,7 +3236,261 @@ fn is_blueprint_material_file(filename: &str) -> bool {
 }
 
 fn is_draggable_asset(filename: &str) -> bool {
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename)
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename)
+}
+
+fn is_video_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".video")
+}
+
+/// Open a video project in the video editor
+fn open_video_project(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenVideo, TabKind};
+
+    // Check if already open
+    for (idx, video) in scene_state.open_videos.iter().enumerate() {
+        if video.path == path {
+            scene_state.set_active_document(TabKind::Video(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_videos.len();
+    scene_state.open_videos.push(OpenVideo {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Video(new_idx));
+    scene_state.set_active_document(TabKind::Video(new_idx));
+}
+
+/// Open an audio project in the DAW
+fn open_audio_project(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenAudio, TabKind};
+
+    // Check if already open
+    for (idx, audio) in scene_state.open_audios.iter().enumerate() {
+        if audio.path == path {
+            scene_state.set_active_document(TabKind::Audio(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_audios.len();
+    scene_state.open_audios.push(OpenAudio {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Audio(new_idx));
+    scene_state.set_active_document(TabKind::Audio(new_idx));
+}
+
+/// Open an animation file
+fn open_animation_file(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenAnimation, TabKind};
+
+    // Check if already open
+    for (idx, anim) in scene_state.open_animations.iter().enumerate() {
+        if anim.path == path {
+            scene_state.set_active_document(TabKind::Animation(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_animations.len();
+    scene_state.open_animations.push(OpenAnimation {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Animation(new_idx));
+    scene_state.set_active_document(TabKind::Animation(new_idx));
+}
+
+/// Open a texture project
+fn open_texture_project(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenTexture, TabKind};
+
+    // Check if already open
+    for (idx, tex) in scene_state.open_textures.iter().enumerate() {
+        if tex.path == path {
+            scene_state.set_active_document(TabKind::Texture(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_textures.len();
+    scene_state.open_textures.push(OpenTexture {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Texture(new_idx));
+    scene_state.set_active_document(TabKind::Texture(new_idx));
+}
+
+/// Open a particle FX file
+fn open_particle_fx(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenParticleFX, TabKind};
+
+    // Check if already open
+    for (idx, particle) in scene_state.open_particles.iter().enumerate() {
+        if particle.path == path {
+            scene_state.set_active_document(TabKind::ParticleFX(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_particles.len();
+    scene_state.open_particles.push(OpenParticleFX {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::ParticleFX(new_idx));
+    scene_state.set_active_document(TabKind::ParticleFX(new_idx));
+}
+
+/// Open a level file (scene variant)
+fn open_level_file(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenLevel, TabKind};
+
+    // Check if already open
+    for (idx, level) in scene_state.open_levels.iter().enumerate() {
+        if level.path == path {
+            scene_state.set_active_document(TabKind::Level(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_levels.len();
+    scene_state.open_levels.push(OpenLevel {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Level(new_idx));
+    scene_state.set_active_document(TabKind::Level(new_idx));
+}
+
+/// Open a terrain file (scene variant)
+fn open_terrain_file(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{OpenTerrain, TabKind};
+
+    // Check if already open
+    for (idx, terrain) in scene_state.open_terrains.iter().enumerate() {
+        if terrain.path == path {
+            scene_state.set_active_document(TabKind::Terrain(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_terrains.len();
+    scene_state.open_terrains.push(OpenTerrain {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::Terrain(new_idx));
+    scene_state.set_active_document(TabKind::Terrain(new_idx));
+}
+
+/// Open a scene file (.ron) in the scene view
+fn open_scene_file(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::{SceneTab, TabKind};
+
+    // Check if already open
+    for (idx, scene) in scene_state.scene_tabs.iter().enumerate() {
+        if scene.path.as_ref() == Some(&path) {
+            scene_state.set_active_document(TabKind::Scene(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .trim_end_matches(".ron")
+        .to_string();
+
+    let new_idx = scene_state.scene_tabs.len();
+    scene_state.scene_tabs.push(SceneTab {
+        name,
+        path: Some(path),
+        is_modified: false,
+        camera_state: None,
+    });
+
+    scene_state.tab_order.push(TabKind::Scene(new_idx));
+    scene_state.set_active_document(TabKind::Scene(new_idx));
+}
+
+fn is_audio_project_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".audio")
+}
+
+fn is_animation_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".anim")
+}
+
+fn is_texture_project_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".texture")
+}
+
+fn is_particle_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".particle")
+}
+
+fn is_level_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".level")
+}
+
+fn is_terrain_file(filename: &str) -> bool {
+    filename.to_lowercase().ends_with(".terrain")
 }
 
 fn is_image_file(filename: &str) -> bool {
@@ -2720,6 +3546,41 @@ fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
     // Scene files (.ron)
     if lower_name.ends_with(".ron") {
         return (FILM_SCRIPT, Color32::from_rgb(115, 200, 255));  // Sky blue
+    }
+
+    // Video project files
+    if lower_name.ends_with(".video") {
+        return (VIDEO, Color32::from_rgb(220, 80, 80));  // Red
+    }
+
+    // Audio project files
+    if lower_name.ends_with(".audio") {
+        return (MUSIC_NOTES, Color32::from_rgb(180, 100, 220));  // Purple
+    }
+
+    // Animation files
+    if lower_name.ends_with(".anim") {
+        return (FILM_SCRIPT, Color32::from_rgb(100, 180, 220));  // Light blue
+    }
+
+    // Texture project files
+    if lower_name.ends_with(".texture") {
+        return (PAINT_BRUSH, Color32::from_rgb(120, 200, 120));  // Green
+    }
+
+    // Particle FX files
+    if lower_name.ends_with(".particle") {
+        return (SPARKLE, Color32::from_rgb(255, 180, 50));  // Orange/gold
+    }
+
+    // Level files (scene variant)
+    if lower_name.ends_with(".level") {
+        return (GAME_CONTROLLER, Color32::from_rgb(100, 200, 180));  // Teal
+    }
+
+    // Terrain files (scene variant)
+    if lower_name.ends_with(".terrain") {
+        return (MOUNTAINS, Color32::from_rgb(140, 180, 100));  // Olive
     }
 
     let ext = filename.rsplit('.').next().unwrap_or("");

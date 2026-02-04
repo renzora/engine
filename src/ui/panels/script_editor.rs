@@ -1082,9 +1082,7 @@ pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
     // Check if already open
     for (idx, script) in scene_state.open_scripts.iter().enumerate() {
         if script.path == path {
-            // Deselect other tab types
-            scene_state.active_image_tab = None;
-            scene_state.active_script_tab = Some(idx);
+            scene_state.set_active_document(TabKind::Script(idx));
             return;
         }
     }
@@ -1116,7 +1114,5 @@ pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
 
     // Add to tab order and activate
     scene_state.tab_order.push(TabKind::Script(new_idx));
-    // Deselect other tab types
-    scene_state.active_image_tab = None;
-    scene_state.active_script_tab = Some(new_idx);
+    scene_state.set_active_document(TabKind::Script(new_idx));
 }

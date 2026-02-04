@@ -4,7 +4,10 @@ use crate::blueprint::BlueprintEditorState;
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
 use crate::theming::Theme;
 
-use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE, IMAGE};
+use egui_phosphor::regular::{
+    FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE, IMAGE,
+    VIDEO, MUSIC_NOTES, SPARKLE, PAINT_BRUSH, GAME_CONTROLLER, MOUNTAINS,
+};
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_PADDING: f32 = 8.0;
@@ -135,7 +138,10 @@ pub fn render_document_tabs(
             for (order_idx, tab_kind) in scene_state.tab_order.iter().enumerate() {
                 let blueprint_accent_color = Color32::from_rgb(180, 130, 200);
 
-                let (tab_text, is_active, icon, accent_color, icon_inactive_color) = match tab_kind {
+                // Use the unified active_document check for all tab types
+                let is_active = scene_state.is_active_document(tab_kind);
+
+                let (tab_text, icon, accent_color, icon_inactive_color) = match tab_kind {
                     TabKind::Scene(idx) => {
                         let tab = &scene_state.scene_tabs[*idx];
                         let text = if tab.is_modified {
@@ -143,14 +149,10 @@ pub fn render_document_tabs(
                         } else {
                             tab.name.clone()
                         };
-                        let active = scene_state.active_script_tab.is_none()
-                            && scene_state.active_image_tab.is_none()
-                            && blueprint_editor.active_blueprint.is_none()
-                            && *idx == scene_state.active_scene_tab;
                         // Muted version of scene accent
                         let [r, g, b, _] = scene_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 75);
-                        (text, active, FILM_SCRIPT, scene_accent_color, inactive)
+                        (text, FILM_SCRIPT, scene_accent_color, inactive)
                     }
                     TabKind::Script(idx) => {
                         let script = &scene_state.open_scripts[*idx];
@@ -159,11 +161,10 @@ pub fn render_document_tabs(
                         } else {
                             script.name.clone()
                         };
-                        let active = scene_state.active_script_tab == Some(*idx);
                         // Muted version of script accent
                         let [r, g, b, _] = script_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
-                        (text, active, SCROLL, script_accent_color, inactive)
+                        (text, SCROLL, script_accent_color, inactive)
                     }
                     TabKind::Blueprint(path) => {
                         let name = path
@@ -173,20 +174,74 @@ pub fn render_document_tabs(
                             .trim_end_matches(".material_bp")
                             .trim_end_matches(".blueprint")
                             .to_string();
-                        let active = blueprint_editor.active_blueprint.as_ref() == Some(path);
                         // Muted version of blueprint accent
                         let [r, g, b, _] = blueprint_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
-                        (name, active, PALETTE, blueprint_accent_color, inactive)
+                        (name, PALETTE, blueprint_accent_color, inactive)
                     }
                     TabKind::Image(idx) => {
                         let image = &scene_state.open_images[*idx];
                         let text = image.name.clone();
-                        let active = scene_state.active_image_tab == Some(*idx);
                         let image_accent_color = Color32::from_rgb(166, 217, 140); // Green for images
                         let [r, g, b, _] = image_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
-                        (text, active, IMAGE, image_accent_color, inactive)
+                        (text, IMAGE, image_accent_color, inactive)
+                    }
+                    TabKind::Video(idx) => {
+                        let video = &scene_state.open_videos[*idx];
+                        let text = if video.is_modified { format!("{}*", video.name) } else { video.name.clone() };
+                        let accent = Color32::from_rgb(220, 80, 80); // Red for video
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, VIDEO, accent, inactive)
+                    }
+                    TabKind::Audio(idx) => {
+                        let audio = &scene_state.open_audios[*idx];
+                        let text = if audio.is_modified { format!("{}*", audio.name) } else { audio.name.clone() };
+                        let accent = Color32::from_rgb(180, 100, 220); // Purple for audio
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, MUSIC_NOTES, accent, inactive)
+                    }
+                    TabKind::Animation(idx) => {
+                        let anim = &scene_state.open_animations[*idx];
+                        let text = if anim.is_modified { format!("{}*", anim.name) } else { anim.name.clone() };
+                        let accent = Color32::from_rgb(100, 180, 220); // Light blue for animation
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, FILM_SCRIPT, accent, inactive)
+                    }
+                    TabKind::Texture(idx) => {
+                        let tex = &scene_state.open_textures[*idx];
+                        let text = if tex.is_modified { format!("{}*", tex.name) } else { tex.name.clone() };
+                        let accent = Color32::from_rgb(120, 200, 120); // Green for textures
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, PAINT_BRUSH, accent, inactive)
+                    }
+                    TabKind::ParticleFX(idx) => {
+                        let particle = &scene_state.open_particles[*idx];
+                        let text = if particle.is_modified { format!("{}*", particle.name) } else { particle.name.clone() };
+                        let accent = Color32::from_rgb(255, 180, 50); // Orange/gold for particles
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, SPARKLE, accent, inactive)
+                    }
+                    TabKind::Level(idx) => {
+                        let level = &scene_state.open_levels[*idx];
+                        let text = if level.is_modified { format!("{}*", level.name) } else { level.name.clone() };
+                        let accent = Color32::from_rgb(100, 200, 180); // Teal for levels
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, GAME_CONTROLLER, accent, inactive)
+                    }
+                    TabKind::Terrain(idx) => {
+                        let terrain = &scene_state.open_terrains[*idx];
+                        let text = if terrain.is_modified { format!("{}*", terrain.name) } else { terrain.name.clone() };
+                        let accent = Color32::from_rgb(140, 180, 100); // Olive for terrain
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, MOUNTAINS, accent, inactive)
                     }
                 };
 
@@ -317,6 +372,13 @@ pub fn render_document_tabs(
                     TabKind::Script(_) => true,
                     TabKind::Blueprint(_) => true,
                     TabKind::Image(_) => true,
+                    TabKind::Video(_) => true,
+                    TabKind::Audio(_) => true,
+                    TabKind::Animation(_) => true,
+                    TabKind::Texture(_) => true,
+                    TabKind::ParticleFX(_) => true,
+                    TabKind::Level(_) => true,
+                    TabKind::Terrain(_) => true,
                 };
 
                 if can_close {
@@ -393,11 +455,8 @@ pub fn render_document_tabs(
                                             ..Default::default()
                                         });
                                         scene_state.tab_order.push(TabKind::Scene(new_idx));
-                                        scene_state.pending_tab_switch = Some(new_idx);
-                                        // Deselect all other tab types
-                                        scene_state.active_script_tab = None;
-                                        scene_state.active_image_tab = None;
                                         blueprint_editor.active_blueprint = None;
+                                        scene_state.set_active_document(TabKind::Scene(new_idx));
                                         layout_to_switch = Some("Scene");
                                     }
                                     NewDocumentType::Blueprint => {
@@ -408,11 +467,8 @@ pub fn render_document_tabs(
                                             ..Default::default()
                                         });
                                         scene_state.tab_order.push(TabKind::Scene(new_idx));
-                                        scene_state.pending_tab_switch = Some(new_idx);
-                                        // Deselect all other tab types
-                                        scene_state.active_script_tab = None;
-                                        scene_state.active_image_tab = None;
                                         blueprint_editor.active_blueprint = None;
+                                        scene_state.set_active_document(TabKind::Scene(new_idx));
                                         layout_to_switch = Some("Blueprints");
                                     }
                                     NewDocumentType::Script => {
@@ -427,10 +483,8 @@ pub fn render_document_tabs(
                                             last_checked_content: String::new(),
                                         });
                                         scene_state.tab_order.push(TabKind::Script(new_idx));
-                                        // Deselect all other tab types
-                                        scene_state.active_script_tab = Some(new_idx);
-                                        scene_state.active_image_tab = None;
                                         blueprint_editor.active_blueprint = None;
+                                        scene_state.set_active_document(TabKind::Script(new_idx));
                                         layout_to_switch = Some("Scripting");
                                     }
                                     NewDocumentType::Material => {
@@ -532,6 +586,13 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
         TabKind::Script(idx) => *idx < scene_state.open_scripts.len(),
         TabKind::Blueprint(path) => blueprint_editor.open_blueprints.contains_key(path),
         TabKind::Image(idx) => *idx < scene_state.open_images.len(),
+        TabKind::Video(idx) => *idx < scene_state.open_videos.len(),
+        TabKind::Audio(idx) => *idx < scene_state.open_audios.len(),
+        TabKind::Animation(idx) => *idx < scene_state.open_animations.len(),
+        TabKind::Texture(idx) => *idx < scene_state.open_textures.len(),
+        TabKind::ParticleFX(idx) => *idx < scene_state.open_particles.len(),
+        TabKind::Level(idx) => *idx < scene_state.open_levels.len(),
+        TabKind::Terrain(idx) => *idx < scene_state.open_terrains.len(),
     });
 
     // Add any missing scene tabs
@@ -562,6 +623,55 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
             scene_state.tab_order.push(TabKind::Image(idx));
         }
     }
+
+    // Add any missing video tabs
+    for idx in 0..scene_state.open_videos.len() {
+        if !scene_state.tab_order.contains(&TabKind::Video(idx)) {
+            scene_state.tab_order.push(TabKind::Video(idx));
+        }
+    }
+
+    // Add any missing audio tabs
+    for idx in 0..scene_state.open_audios.len() {
+        if !scene_state.tab_order.contains(&TabKind::Audio(idx)) {
+            scene_state.tab_order.push(TabKind::Audio(idx));
+        }
+    }
+
+    // Add any missing animation tabs
+    for idx in 0..scene_state.open_animations.len() {
+        if !scene_state.tab_order.contains(&TabKind::Animation(idx)) {
+            scene_state.tab_order.push(TabKind::Animation(idx));
+        }
+    }
+
+    // Add any missing texture tabs
+    for idx in 0..scene_state.open_textures.len() {
+        if !scene_state.tab_order.contains(&TabKind::Texture(idx)) {
+            scene_state.tab_order.push(TabKind::Texture(idx));
+        }
+    }
+
+    // Add any missing particle tabs
+    for idx in 0..scene_state.open_particles.len() {
+        if !scene_state.tab_order.contains(&TabKind::ParticleFX(idx)) {
+            scene_state.tab_order.push(TabKind::ParticleFX(idx));
+        }
+    }
+
+    // Add any missing level tabs
+    for idx in 0..scene_state.open_levels.len() {
+        if !scene_state.tab_order.contains(&TabKind::Level(idx)) {
+            scene_state.tab_order.push(TabKind::Level(idx));
+        }
+    }
+
+    // Add any missing terrain tabs
+    for idx in 0..scene_state.open_terrains.len() {
+        if !scene_state.tab_order.contains(&TabKind::Terrain(idx)) {
+            scene_state.tab_order.push(TabKind::Terrain(idx));
+        }
+    }
 }
 
 fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
@@ -570,17 +680,7 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
 
     // Check if the tab being closed is currently active and whether it's a scene tab
     let is_scene_tab = matches!(tab_kind, TabKind::Scene(_));
-    let is_active_tab = match &tab_kind {
-        TabKind::Scene(idx) => {
-            scene_state.active_script_tab.is_none()
-                && scene_state.active_image_tab.is_none()
-                && blueprint_editor.active_blueprint.is_none()
-                && *idx == scene_state.active_scene_tab
-        }
-        TabKind::Script(idx) => scene_state.active_script_tab == Some(*idx),
-        TabKind::Blueprint(path) => blueprint_editor.active_blueprint.as_ref() == Some(path),
-        TabKind::Image(idx) => scene_state.active_image_tab == Some(*idx),
-    };
+    let is_active_tab = scene_state.is_active_document(&tab_kind);
 
     match tab_kind {
         TabKind::Scene(idx) => {
@@ -672,6 +772,76 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
                 }
             }
         }
+        TabKind::Video(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Video(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_videos.remove(idx);
+            if let Some(active) = scene_state.active_video_tab {
+                if active > idx { scene_state.active_video_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Audio(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Audio(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_audios.remove(idx);
+            if let Some(active) = scene_state.active_audio_tab {
+                if active > idx { scene_state.active_audio_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Animation(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Animation(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_animations.remove(idx);
+            if let Some(active) = scene_state.active_animation_tab {
+                if active > idx { scene_state.active_animation_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Texture(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Texture(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_textures.remove(idx);
+            if let Some(active) = scene_state.active_texture_tab {
+                if active > idx { scene_state.active_texture_tab = Some(active - 1); }
+            }
+        }
+        TabKind::ParticleFX(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::ParticleFX(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_particles.remove(idx);
+            if let Some(active) = scene_state.active_particle_tab {
+                if active > idx { scene_state.active_particle_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Level(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Level(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_levels.remove(idx);
+            if let Some(active) = scene_state.active_level_tab {
+                if active > idx { scene_state.active_level_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Terrain(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Terrain(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_terrains.remove(idx);
+            if let Some(active) = scene_state.active_terrain_tab {
+                if active > idx { scene_state.active_terrain_tab = Some(active - 1); }
+            }
+        }
     }
 
     // If the closed tab was active, switch to the next tab in tab_order
@@ -700,37 +870,19 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
 }
 
 fn activate_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
-    match tab_kind {
-        TabKind::Scene(idx) => {
-            if scene_state.active_script_tab.is_some()
-                || blueprint_editor.active_blueprint.is_some()
-                || scene_state.active_image_tab.is_some()
-                || idx != scene_state.active_scene_tab
-            {
-                scene_state.active_script_tab = None;
-                scene_state.active_image_tab = None;
-                blueprint_editor.active_blueprint = None;
-                scene_state.pending_tab_switch = Some(idx);
-                *layout_to_switch = Some("Scene");
-            }
-        }
-        TabKind::Script(idx) => {
-            scene_state.active_script_tab = Some(idx);
-            scene_state.active_image_tab = None;
-            blueprint_editor.active_blueprint = None;
-            *layout_to_switch = Some("Scripting");
-        }
-        TabKind::Blueprint(path) => {
-            scene_state.active_script_tab = None;
-            scene_state.active_image_tab = None;
-            blueprint_editor.active_blueprint = Some(path);
-            *layout_to_switch = Some("Blueprints");
-        }
-        TabKind::Image(idx) => {
-            scene_state.active_script_tab = None;
-            scene_state.active_image_tab = Some(idx);
-            blueprint_editor.active_blueprint = None;
-            *layout_to_switch = Some("Image Preview");
-        }
+    // Get the layout name before we move tab_kind
+    let layout_name = tab_kind.layout_name();
+
+    // Handle blueprint active state separately since it's in a different struct
+    if let TabKind::Blueprint(ref path) = tab_kind {
+        blueprint_editor.active_blueprint = Some(path.clone());
+    } else {
+        blueprint_editor.active_blueprint = None;
     }
+
+    // Use the unified set_active_document method
+    scene_state.set_active_document(tab_kind);
+
+    // Set the layout to switch to
+    *layout_to_switch = Some(layout_name);
 }

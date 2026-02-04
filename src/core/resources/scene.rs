@@ -12,6 +12,32 @@ pub enum TabKind {
     Script(usize),
     Blueprint(String),
     Image(usize),
+    Video(usize),
+    Audio(usize),
+    Animation(usize),
+    Texture(usize),
+    ParticleFX(usize),
+    Level(usize),
+    Terrain(usize),
+}
+
+impl TabKind {
+    /// Get the layout name associated with this document type
+    pub fn layout_name(&self) -> &'static str {
+        match self {
+            TabKind::Scene(_) => "Scene",
+            TabKind::Script(_) => "Scripting",
+            TabKind::Blueprint(_) => "Blueprints",
+            TabKind::Image(_) => "Image Preview",
+            TabKind::Video(_) => "Video Editor",
+            TabKind::Audio(_) => "DAW",
+            TabKind::Animation(_) => "Animation",
+            TabKind::Texture(_) => "Scene",
+            TabKind::ParticleFX(_) => "Particle FX",
+            TabKind::Level(_) => "Level Design",
+            TabKind::Terrain(_) => "Terrain",
+        }
+    }
 }
 
 /// Build state for Rust plugins
@@ -62,6 +88,36 @@ pub struct SceneManagerState {
     pub open_images: Vec<OpenImage>,
     /// Active image tab index
     pub active_image_tab: Option<usize>,
+    /// Open video projects
+    pub open_videos: Vec<OpenVideo>,
+    /// Active video tab index
+    pub active_video_tab: Option<usize>,
+    /// Open audio projects
+    pub open_audios: Vec<OpenAudio>,
+    /// Active audio tab index
+    pub active_audio_tab: Option<usize>,
+    /// Open animation files
+    pub open_animations: Vec<OpenAnimation>,
+    /// Active animation tab index
+    pub active_animation_tab: Option<usize>,
+    /// Open texture files
+    pub open_textures: Vec<OpenTexture>,
+    /// Active texture tab index
+    pub active_texture_tab: Option<usize>,
+    /// Open particle FX files
+    pub open_particles: Vec<OpenParticleFX>,
+    /// Active particle tab index
+    pub active_particle_tab: Option<usize>,
+    /// Open level files
+    pub open_levels: Vec<OpenLevel>,
+    /// Active level tab index
+    pub active_level_tab: Option<usize>,
+    /// Open terrain files
+    pub open_terrains: Vec<OpenTerrain>,
+    /// Active terrain tab index
+    pub active_terrain_tab: Option<usize>,
+    /// The currently active document (used for tab highlighting and layout switching)
+    pub active_document: Option<TabKind>,
     /// Recently saved scene paths - scene instances referencing these need to reload
     pub recently_saved_scenes: Vec<PathBuf>,
     /// Build state for Rust plugin development
@@ -95,6 +151,21 @@ impl Default for SceneManagerState {
             active_script_tab: None,
             open_images: Vec::new(),
             active_image_tab: None,
+            open_videos: Vec::new(),
+            active_video_tab: None,
+            open_audios: Vec::new(),
+            active_audio_tab: None,
+            open_animations: Vec::new(),
+            active_animation_tab: None,
+            open_textures: Vec::new(),
+            active_texture_tab: None,
+            open_particles: Vec::new(),
+            active_particle_tab: None,
+            open_levels: Vec::new(),
+            active_level_tab: None,
+            open_terrains: Vec::new(),
+            active_terrain_tab: None,
+            active_document: Some(TabKind::Scene(0)),
             recently_saved_scenes: Vec::new(),
             build_state: BuildState::default(),
             tab_order: vec![TabKind::Scene(0)],
@@ -148,6 +219,65 @@ impl SceneManagerState {
             self.pending_tab_close = Some(index);
         }
     }
+
+    /// Set the active document and update all related state
+    pub fn set_active_document(&mut self, tab_kind: TabKind) {
+        // Clear all active tab states
+        self.active_script_tab = None;
+        self.active_image_tab = None;
+        self.active_video_tab = None;
+        self.active_audio_tab = None;
+        self.active_animation_tab = None;
+        self.active_texture_tab = None;
+        self.active_particle_tab = None;
+        self.active_level_tab = None;
+        self.active_terrain_tab = None;
+
+        // Set the specific active tab based on type
+        match &tab_kind {
+            TabKind::Scene(idx) => {
+                self.pending_tab_switch = Some(*idx);
+            }
+            TabKind::Script(idx) => {
+                self.active_script_tab = Some(*idx);
+            }
+            TabKind::Blueprint(_) => {
+                // Blueprint active state is handled by BlueprintEditorState
+            }
+            TabKind::Image(idx) => {
+                self.active_image_tab = Some(*idx);
+            }
+            TabKind::Video(idx) => {
+                self.active_video_tab = Some(*idx);
+            }
+            TabKind::Audio(idx) => {
+                self.active_audio_tab = Some(*idx);
+            }
+            TabKind::Animation(idx) => {
+                self.active_animation_tab = Some(*idx);
+            }
+            TabKind::Texture(idx) => {
+                self.active_texture_tab = Some(*idx);
+            }
+            TabKind::ParticleFX(idx) => {
+                self.active_particle_tab = Some(*idx);
+            }
+            TabKind::Level(idx) => {
+                self.active_level_tab = Some(*idx);
+            }
+            TabKind::Terrain(idx) => {
+                self.active_terrain_tab = Some(*idx);
+            }
+        }
+
+        // Set the unified active document
+        self.active_document = Some(tab_kind);
+    }
+
+    /// Check if a specific tab is the active document
+    pub fn is_active_document(&self, tab_kind: &TabKind) -> bool {
+        self.active_document.as_ref() == Some(tab_kind)
+    }
 }
 
 /// Represents an open scene tab
@@ -190,4 +320,60 @@ pub struct OpenImage {
     pub zoom: f32,
     /// Pan offset for viewing
     pub pan_offset: (f32, f32),
+}
+
+/// Represents an open video project
+#[derive(Clone, Debug)]
+pub struct OpenVideo {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open audio project (DAW)
+#[derive(Clone, Debug)]
+pub struct OpenAudio {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open animation file
+#[derive(Clone, Debug)]
+pub struct OpenAnimation {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open texture file
+#[derive(Clone, Debug)]
+pub struct OpenTexture {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open particle FX file
+#[derive(Clone, Debug)]
+pub struct OpenParticleFX {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open level file (special scene type)
+#[derive(Clone, Debug)]
+pub struct OpenLevel {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
+}
+
+/// Represents an open terrain file (special scene type)
+#[derive(Clone, Debug)]
+pub struct OpenTerrain {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_modified: bool,
 }

@@ -921,6 +921,46 @@ pub fn editor_ui(
                     });
                 }
 
+                PanelId::VideoEditor => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(bevy_egui::egui::RichText::new("Video Editor")
+                                .size(18.0)
+                                .color(editor.theme_manager.active_theme.text.muted.to_color32()));
+                        });
+                    });
+                }
+
+                PanelId::DAW => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(bevy_egui::egui::RichText::new("Digital Audio Workstation")
+                                .size(18.0)
+                                .color(editor.theme_manager.active_theme.text.muted.to_color32()));
+                        });
+                    });
+                }
+
+                PanelId::ParticleEditor => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(bevy_egui::egui::RichText::new("Particle FX Editor")
+                                .size(18.0)
+                                .color(editor.theme_manager.active_theme.text.muted.to_color32()));
+                        });
+                    });
+                }
+
+                PanelId::TextureEditor => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(bevy_egui::egui::RichText::new("Texture Editor")
+                                .size(18.0)
+                                .color(editor.theme_manager.active_theme.text.muted.to_color32()));
+                        });
+                    });
+                }
+
                 PanelId::Plugin(name) => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         ui.label(format!("Plugin: {}", name));
@@ -1038,9 +1078,8 @@ pub fn editor_ui(
 
             // Check if already open
             if editor.blueprint_editor.open_blueprints.contains_key(&path_str) {
-                // Just activate it and deselect other tabs
-                editor.scene_state.active_script_tab = None;
-                editor.scene_state.active_image_tab = None;
+                // Just activate it
+                editor.scene_state.set_active_document(TabKind::Blueprint(path_str.clone()));
                 editor.blueprint_editor.active_blueprint = Some(path_str);
             } else {
                 // Load and open the blueprint
@@ -1049,9 +1088,8 @@ pub fn editor_ui(
                         editor.blueprint_editor.open_blueprints.insert(path_str.clone(), file.graph);
                         // Add to tab order
                         editor.scene_state.tab_order.push(TabKind::Blueprint(path_str.clone()));
-                        // Deselect other tabs and activate blueprint
-                        editor.scene_state.active_script_tab = None;
-                        editor.scene_state.active_image_tab = None;
+                        // Activate blueprint
+                        editor.scene_state.set_active_document(TabKind::Blueprint(path_str.clone()));
                         editor.blueprint_editor.active_blueprint = Some(path_str);
                     }
                     Err(e) => {
