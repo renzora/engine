@@ -13,6 +13,7 @@ use crate::shared::{
     Sprite2DData, Camera2DData,
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
+use crate::shared::components::animation::{AnimationData, GltfAnimations};
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use crate::theming::Theme;
 
@@ -47,6 +48,14 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub ui_buttons: Query<'w, 's, Entity, With<UIButtonData>>,
     pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
     pub terrains: Query<'w, 's, Entity, With<crate::terrain::TerrainData>>,
+    pub animations: Query<'w, 's, &'static AnimationData>,
+    pub gltf_animations: Query<'w, 's, &'static mut GltfAnimations>,
+    // Node explorer queries (read-only to avoid conflicts)
+    pub names: Query<'w, 's, &'static Name>,
+    pub global_transforms: Query<'w, 's, &'static GlobalTransform>,
+    pub mesh3d_components: Query<'w, 's, &'static Mesh3d>,
+    pub skinned_meshes: Query<'w, 's, &'static bevy::mesh::skinning::SkinnedMesh>,
+    pub children: Query<'w, 's, &'static Children>,
 }
 
 /// Combined hierarchy queries including entities and component checks

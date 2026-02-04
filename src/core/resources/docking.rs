@@ -35,7 +35,7 @@ impl Default for DockingState {
             drag_state: None,
             panel_availability: PanelAvailability::default(),
             layouts,
-            active_layout: "Default".to_string(),
+            active_layout: "Scene".to_string(),
             is_modified: false,
             config: DockingLayoutConfig::default(),
         }

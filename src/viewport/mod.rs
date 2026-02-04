@@ -6,6 +6,7 @@ pub mod camera2d;
 pub mod grid2d;
 pub mod model_preview;
 pub mod render_2d;
+pub mod studio_preview;
 mod texture;
 
 pub use camera::{apply_orbit_to_camera, camera_controller, update_camera_projection};
@@ -21,6 +22,10 @@ pub use model_preview::{
     register_model_preview_textures, spawn_model_previews, ModelPreviewCache,
 };
 pub use render_2d::{cleanup_2d_visuals, update_2d_visuals};
+pub use studio_preview::{
+    StudioPreviewImage, StudioPreviewOrbit, StudioPreviewCamera, StudioPreviewLight,
+    StudioPreviewPlugin, STUDIO_RENDER_LAYER,
+};
 pub use texture::{resize_viewport_texture, setup_viewport_texture};
 
 use bevy::prelude::*;

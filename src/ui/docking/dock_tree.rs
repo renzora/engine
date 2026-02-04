@@ -8,7 +8,7 @@ use egui_phosphor::regular::{
     TREE_STRUCTURE, SLIDERS_HORIZONTAL, FOLDER_OPEN, TERMINAL,
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
-    STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER,
+    STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM,
 };
 
 /// Direction of a split in the dock tree
@@ -27,6 +27,7 @@ pub enum PanelId {
     Console,
     Viewport,
     Animation,
+    Timeline,
     ScriptEditor,
     History,
     Blueprint,
@@ -42,6 +43,10 @@ pub enum PanelId {
     CameraDebug,
     SystemProfiler,
     LevelTools,
+    /// Isolated 3D preview with studio lighting
+    StudioPreview,
+    /// Node explorer - shows entity hierarchy tree with components
+    NodeExplorer,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -56,6 +61,7 @@ impl PanelId {
             PanelId::Console => "Console",
             PanelId::Viewport => "Viewport",
             PanelId::Animation => "Animation",
+            PanelId::Timeline => "Timeline",
             PanelId::ScriptEditor => "Script Editor",
             PanelId::History => "History",
             PanelId::Blueprint => "Blueprint",
@@ -71,6 +77,8 @@ impl PanelId {
             PanelId::CameraDebug => "Camera Debug",
             PanelId::SystemProfiler => "System Profiler",
             PanelId::LevelTools => "Level Tools",
+            PanelId::StudioPreview => "Studio Preview",
+            PanelId::NodeExplorer => "Node Explorer",
             PanelId::Plugin(name) => name,
         }
     }
@@ -84,6 +92,7 @@ impl PanelId {
             PanelId::Console => TERMINAL,
             PanelId::Viewport => MONITOR,
             PanelId::Animation => FILM_STRIP,
+            PanelId::Timeline => WAVEFORM,
             PanelId::ScriptEditor => CODE,
             PanelId::History => CLOCK_COUNTER_CLOCKWISE,
             PanelId::Blueprint => GRAPH,
@@ -99,6 +108,8 @@ impl PanelId {
             PanelId::CameraDebug => VIDEO_CAMERA,
             PanelId::SystemProfiler => TIMER,
             PanelId::LevelTools => CUBE,
+            PanelId::StudioPreview => VIDEO_CAMERA,
+            PanelId::NodeExplorer => TREE_STRUCTURE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

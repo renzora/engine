@@ -151,7 +151,7 @@ fn inspect_animation(
     ui.add_space(4.0);
     if ui.button("Add Clip").clicked() {
         let clip_name = format!("Clip {}", anim_data.clips.len() + 1);
-        anim_data.add_clip(crate::shared::AnimationClip::new(clip_name));
+        anim_data.add_clip(crate::shared::EditorAnimationClip::new(clip_name));
         changed = true;
     }
 

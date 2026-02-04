@@ -306,7 +306,7 @@ impl AssetBrowserState {
     pub fn new() -> Self {
         Self {
             zoom: 1.0,
-            tree_panel_width: 180.0,
+            tree_panel_width: 220.0,
             ..Default::default()
         }
     }

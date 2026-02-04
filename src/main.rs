@@ -9,6 +9,7 @@ mod core;
 mod crash;
 mod export;
 mod gizmo;
+mod gltf_animation;
 mod input;
 mod play_mode;
 mod plugin_core;
@@ -147,6 +148,8 @@ fn main() {
         .register_type::<shared::UILabelData>()
         .register_type::<shared::UIButtonData>()
         .register_type::<shared::UIImageData>()
+        // Animation components
+        .register_type::<shared::GltfAnimations>()
         // Light components
         .register_type::<shared::PointLightData>()
         .register_type::<shared::DirectionalLightData>()
@@ -183,6 +186,7 @@ fn main() {
             project::ProjectPlugin,
             component_system::ComponentSystemPlugin,
             viewport::ViewportPlugin,
+            viewport::StudioPreviewPlugin,
             gizmo::GizmoPlugin,
             input::InputPlugin,
             ui::UiPlugin,
@@ -199,6 +203,8 @@ fn main() {
             shared::RenzoraPhysicsPlugin::new(true),
             // Auto-update system
             update::UpdatePlugin,
+            // GLTF animation playback
+            gltf_animation::GltfAnimationPlugin,
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)

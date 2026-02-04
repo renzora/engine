@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
+use bevy_egui::egui::TextureId;
 
 use crate::viewport::ViewportMode;
 
@@ -50,6 +51,10 @@ pub struct ViewportState {
     pub disable_left_click_drag: bool,
     /// Whether a panel resize handle is being interacted with (to prevent viewport interaction)
     pub resize_handle_active: bool,
+    /// Studio preview texture ID (from StudioPreviewPlugin)
+    pub studio_preview_texture_id: Option<TextureId>,
+    /// Studio preview texture size
+    pub studio_preview_size: (u32, u32),
 }
 
 impl Default for ViewportState {
@@ -69,6 +74,8 @@ impl Default for ViewportState {
             camera_dragging: false,
             disable_left_click_drag: false,
             resize_handle_active: false,
+            studio_preview_texture_id: None,
+            studio_preview_size: (512, 512),
         }
     }
 }

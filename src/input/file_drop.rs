@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress, ViewportCamera, ViewportState};
-use crate::shared::{MaterialData, MeshInstanceData, SceneInstanceData};
+use crate::shared::{MaterialData, MeshInstanceData, SceneInstanceData, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage};
 use crate::spawn::EditorSceneRoot;
 use crate::project::CurrentProject;
 use crate::shared::Sprite2DData;
@@ -377,6 +377,7 @@ pub fn spawn_loaded_gltfs(
     scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
     current_project: Option<Res<CurrentProject>>,
     mut command_history: ResMut<CommandHistory>,
+    mut animation_storage: ResMut<GltfAnimationStorage>,
 ) {
     let mut completed = Vec::new();
 
@@ -411,6 +412,20 @@ pub fn spawn_loaded_gltfs(
             };
 
             if let Some(scene) = scene_handle {
+                // Extract animations from the GLTF
+                let (gltf_animations, animation_handles) = if !gltf.named_animations.is_empty() {
+                    let mut clip_names = Vec::new();
+                    let mut clips = Vec::new();
+                    for (name, handle) in &gltf.named_animations {
+                        clip_names.push(name.to_string());
+                        clips.push(handle.clone());
+                    }
+                    info!("Found {} animations in GLTF: {:?}", clip_names.len(), clip_names);
+                    (Some(GltfAnimations::with_clip_names(clip_names)), Some(GltfAnimationHandles::with_clips(clips)))
+                } else {
+                    (None, None)
+                };
+
                 // Create the MeshInstance parent node
                 let mut mesh_instance = commands.spawn((
                     transform,
@@ -427,12 +442,22 @@ pub fn spawn_loaded_gltfs(
                     },
                 ));
 
+                // Add GltfAnimations component if animations were found
+                if let Some(anims) = gltf_animations {
+                    mesh_instance.insert(anims);
+                }
+
                 // Parent to scene root if one exists
                 if let Some(root) = scene_root_entity {
                     mesh_instance.insert(ChildOf(root));
                 }
 
                 let mesh_instance_entity = mesh_instance.id();
+
+                // Store animation handles in the resource (separate from component for Bevy compatibility)
+                if let Some(handles) = animation_handles {
+                    animation_storage.handles.insert(mesh_instance_entity, handles);
+                }
 
                 // Spawn the GLTF scene as a child of the MeshInstance
                 commands.spawn((
@@ -540,6 +565,10 @@ pub fn spawn_mesh_instance_models(
     mut pending_loads: ResMut<PendingMeshInstanceLoads>,
     gltf_assets: Res<Assets<Gltf>>,
     asset_server: Res<AssetServer>,
+    mut animation_storage: ResMut<GltfAnimationStorage>,
+    children_query: Query<&Children>,
+    scene_roots: Query<Entity, With<SceneRoot>>,
+    mut gltf_anims_query: Query<&mut GltfAnimations>,
     mut logged_pending: Local<bool>,
 ) {
     use bevy::asset::LoadState;
@@ -560,6 +589,19 @@ pub fn spawn_mesh_instance_models(
 
         // First try to get the asset directly - this is the most reliable check
         if let Some(gltf) = gltf_assets.get(&pending.handle) {
+            // Check if this entity already has a SceneRoot child (to prevent duplicates)
+            let already_has_scene = if let Ok(children) = children_query.get(pending.entity) {
+                children.iter().any(|child| scene_roots.get(child).is_ok())
+            } else {
+                false
+            };
+
+            if already_has_scene {
+                info!("MeshInstance {:?} already has a SceneRoot child, skipping spawn", pending.entity);
+                completed.push(index);
+                continue;
+            }
+
             // Get the scene handle to spawn
             let scene_handle = if let Some(default_scene) = &gltf.default_scene {
                 Some(default_scene.clone())
@@ -583,6 +625,35 @@ pub fn spawn_mesh_instance_models(
 
                 info!("Spawned model as child of MeshInstance {:?}", pending.entity);
                 console_success!("Asset", "Model loaded: {}", pending.name);
+            }
+
+            // Extract animations from the GLTF if present
+            if !gltf.named_animations.is_empty() {
+                let mut clip_names = Vec::new();
+                let mut clips = Vec::new();
+                for (name, handle) in &gltf.named_animations {
+                    clip_names.push(name.to_string());
+                    clips.push(handle.clone());
+                }
+                info!("Found {} animations in GLTF for MeshInstance {:?}: {:?}",
+                    clip_names.len(), pending.entity, clip_names);
+
+                // Store animation handles in the resource
+                animation_storage.handles.insert(pending.entity, GltfAnimationHandles::with_clips(clips));
+
+                // Check if entity already has GltfAnimations component
+                if let Ok(mut existing) = gltf_anims_query.get_mut(pending.entity) {
+                    // Entity already has GltfAnimations (e.g., loaded from scene)
+                    // Reset initialized to trigger graph setup, and ensure clip_names are set
+                    existing.initialized = false;
+                    if existing.clip_names.is_empty() {
+                        existing.clip_names = clip_names;
+                    }
+                    info!("Reset GltfAnimations for {:?} to trigger animation setup", pending.entity);
+                } else {
+                    // Add new GltfAnimations component
+                    commands.entity(pending.entity).insert(GltfAnimations::with_clip_names(clip_names));
+                }
             }
 
             completed.push(index);

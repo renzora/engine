@@ -28,6 +28,8 @@ pub use components::{
     MaterialData, MeshNodeData, MeshPrimitiveType, Sprite2DData,
     // UI
     UIButtonData, UIImageData, UILabelData, UIPanelData,
+    // Animation
+    animation::{EditorAnimationClip, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage, KeyframeValue},
 };
 
 // Light exports

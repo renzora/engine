@@ -15,6 +15,7 @@ use crate::core::{
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
+    AnimationTimelineState,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
@@ -73,6 +74,7 @@ pub struct EditorResources<'w> {
     pub update_state: ResMut<'w, UpdateState>,
     pub update_dialog: ResMut<'w, UpdateDialogState>,
     pub app_config: ResMut<'w, AppConfig>,
+    pub animation_timeline: ResMut<'w, AnimationTimelineState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -97,7 +99,7 @@ use panels::{
     render_console_content, render_history_content, render_gamepad_content, render_performance_content,
     render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
     render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
-    render_level_tools_content,
+    render_level_tools_content, render_animation_content, AnimationPanelState,
 };
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors};
@@ -196,7 +198,7 @@ pub fn editor_ui(
     mut contexts: EguiContexts,
     mut editor: EditorResources,
     mut commands: Commands,
-    hierarchy_queries: HierarchyQueries,
+    mut hierarchy_queries: HierarchyQueries,
     entities_for_inspector: Query<(Entity, &EditorEntity)>,
     mut inspector_queries: InspectorQueries,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -208,7 +210,7 @@ pub fn editor_ui(
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     material_preview_image: Option<Res<MaterialPreviewImage>>,
-    mut ui_renderer: Local<UiRenderer>,
+    mut local_state: Local<(UiRenderer, AnimationPanelState, panels::NodeExplorerState)>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -620,7 +622,7 @@ pub fn editor_ui(
                             &rhai_engine,
                             camera_preview_texture_id,
                             &editor.plugin_host,
-                            &mut ui_renderer,
+                            &mut local_state.0,
                             &editor.component_registry,
                             &mut editor.add_component_popup,
                             &mut commands,
@@ -710,13 +712,27 @@ pub fn editor_ui(
 
                 PanelId::Animation => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(20.0);
-                            ui.label(bevy_egui::egui::RichText::new("\u{f008}").size(32.0).color(bevy_egui::egui::Color32::from_gray(80)));
-                            ui.add_space(8.0);
-                            ui.label(bevy_egui::egui::RichText::new("Animation").size(14.0).color(bevy_egui::egui::Color32::from_gray(100)));
-                            ui.label(bevy_egui::egui::RichText::new("Coming soon").size(12.0).weak());
-                        });
+                        render_animation_content(
+                            ui,
+                            &editor.selection,
+                            &mut hierarchy_queries.components.gltf_animations,
+                            &hierarchy_queries.components.animations,
+                            &mut local_state.1,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::Timeline => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        panels::render_timeline_content(
+                            ui,
+                            &mut editor.animation_timeline,
+                            &editor.selection,
+                            &hierarchy_queries.components.gltf_animations,
+                            &hierarchy_queries.components.animations,
+                            &editor.theme_manager.active_theme,
+                        );
                     });
                 }
 
@@ -843,6 +859,49 @@ pub fn editor_ui(
                             &mut editor.brush_settings,
                             &editor.block_edit,
                             &mut editor.terrain_settings,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::StudioPreview => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        if let Some(texture_id) = editor.viewport.studio_preview_texture_id {
+                            panels::render_studio_preview_content(
+                                ui,
+                                texture_id,
+                                editor.viewport.studio_preview_size,
+                                &editor.theme_manager.active_theme,
+                            );
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label("Studio Preview\n\nInitializing...");
+                            });
+                        }
+                    });
+                }
+
+                PanelId::NodeExplorer => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        // Collect node info for the selected entity
+                        let node_infos = if let Some(selected) = editor.selection.selected_entity {
+                            panels::collect_node_infos(
+                                selected,
+                                &hierarchy_queries.components.names,
+                                &hierarchy_queries.components.global_transforms,
+                                &hierarchy_queries.components.mesh3d_components,
+                                &hierarchy_queries.components.skinned_meshes,
+                                &hierarchy_queries.components.children,
+                            )
+                        } else {
+                            std::collections::HashMap::new()
+                        };
+
+                        panels::render_node_explorer_content(
+                            ui,
+                            editor.selection.selected_entity,
+                            &mut local_state.2,
+                            &node_infos,
                             &editor.theme_manager.active_theme,
                         );
                     });
@@ -982,7 +1041,7 @@ pub fn editor_ui(
         );
 
         // Render plugin-registered panels (floating windows only for now)
-        let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
+        let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut local_state.0);
         all_ui_events.extend(plugin_events);
     }
 

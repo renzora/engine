@@ -19,7 +19,7 @@ mod window;
 pub mod physics_debug;
 pub mod camera_debug;
 
-pub use animation_timeline::AnimationTimelineState;
+pub use animation_timeline::{AnimationTimelineState, TimelinePlayState};
 pub use assets::{
     AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
     NormalImportMethod, PendingImageDrop, PendingMaterialDrop, TangentImportMethod,

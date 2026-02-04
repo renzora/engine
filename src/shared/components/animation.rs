@@ -215,9 +215,9 @@ impl AnimationTrack {
     }
 }
 
-/// An animation clip containing multiple tracks
+/// An animation clip containing multiple tracks (editor-created animations)
 #[derive(Debug, Clone, Default, Reflect, Serialize, Deserialize)]
-pub struct AnimationClip {
+pub struct EditorAnimationClip {
     /// Name of this clip
     pub name: String,
     /// Tracks for different properties
@@ -228,7 +228,7 @@ pub struct AnimationClip {
     pub speed: f32,
 }
 
-impl AnimationClip {
+impl EditorAnimationClip {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -281,12 +281,107 @@ impl AnimationClip {
     }
 }
 
+/// Component storing references to GLTF animation clips
+/// This is separate from AnimationData which stores editor-created animations
+///
+/// Note: We store animation data without Bevy's internal Handle types to ensure
+/// proper Component derive compatibility. The handles are stored in a separate
+/// resource and looked up by entity at runtime.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct GltfAnimations {
+    /// Names of animation clips from the GLTF file
+    pub clip_names: Vec<String>,
+    /// Entity that has the AnimationPlayer (usually a child with skeleton)
+    /// This is resolved at runtime and not serialized
+    #[serde(skip)]
+    #[reflect(ignore)]
+    pub player_entity: Option<Entity>,
+    /// Currently selected clip index
+    pub active_clip: Option<usize>,
+    /// Whether the animation is currently playing
+    #[serde(default)]
+    pub is_playing: bool,
+    /// Playback speed multiplier
+    #[serde(default = "default_speed")]
+    pub speed: f32,
+    /// Whether the graph has been set up (runtime state, not serialized)
+    #[serde(skip)]
+    #[reflect(ignore)]
+    pub initialized: bool,
+}
+
+fn default_speed() -> f32 {
+    1.0
+}
+
+/// Per-entity storage for GLTF animation handles
+#[derive(Default, Clone)]
+pub struct GltfAnimationHandles {
+    /// Handles to animation clips
+    pub clips: Vec<Handle<AnimationClip>>,
+    /// Handle to the animation graph
+    pub graph: Handle<AnimationGraph>,
+    /// Animation node indices in the graph (one per clip)
+    pub node_indices: Vec<AnimationNodeIndex>,
+}
+
+/// Resource that stores GLTF animation handles per entity
+/// This avoids Component derive issues with Bevy's internal animation types
+#[derive(Resource, Default)]
+pub struct GltfAnimationStorage {
+    pub handles: std::collections::HashMap<Entity, GltfAnimationHandles>,
+}
+
+impl GltfAnimations {
+    pub fn new() -> Self {
+        Self {
+            clip_names: Vec::new(),
+            player_entity: None,
+            active_clip: None,
+            is_playing: false,
+            speed: 1.0,
+            initialized: false,
+        }
+    }
+
+    pub fn with_clip_names(clip_names: Vec<String>) -> Self {
+        let has_clips = !clip_names.is_empty();
+        Self {
+            clip_names,
+            player_entity: None,
+            active_clip: if has_clips { Some(0) } else { None },
+            is_playing: false,
+            speed: 1.0,
+            initialized: false,
+        }
+    }
+}
+
+impl GltfAnimationHandles {
+    pub fn new() -> Self {
+        Self {
+            clips: Vec::new(),
+            graph: Handle::default(),
+            node_indices: Vec::new(),
+        }
+    }
+
+    pub fn with_clips(clips: Vec<Handle<AnimationClip>>) -> Self {
+        Self {
+            clips,
+            graph: Handle::default(),
+            node_indices: Vec::new(),
+        }
+    }
+}
+
 /// Component storing animation data for an entity
 #[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
 pub struct AnimationData {
     /// Animation clips available for this entity
-    pub clips: Vec<AnimationClip>,
+    pub clips: Vec<EditorAnimationClip>,
     /// Index of the currently active clip (for playback)
     pub active_clip: Option<usize>,
 }
@@ -300,19 +395,19 @@ impl AnimationData {
     }
 
     /// Add a new clip
-    pub fn add_clip(&mut self, clip: AnimationClip) -> usize {
+    pub fn add_clip(&mut self, clip: EditorAnimationClip) -> usize {
         let idx = self.clips.len();
         self.clips.push(clip);
         idx
     }
 
     /// Get the active clip
-    pub fn get_active_clip(&self) -> Option<&AnimationClip> {
+    pub fn get_active_clip(&self) -> Option<&EditorAnimationClip> {
         self.active_clip.and_then(|i| self.clips.get(i))
     }
 
     /// Get the active clip mutably
-    pub fn get_active_clip_mut(&mut self) -> Option<&mut AnimationClip> {
+    pub fn get_active_clip_mut(&mut self) -> Option<&mut EditorAnimationClip> {
         self.active_clip.and_then(|i| self.clips.get_mut(i))
     }
 

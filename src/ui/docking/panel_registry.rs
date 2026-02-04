@@ -81,6 +81,7 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::Console => PanelConstraints::default().with_min_height(80.0),
         PanelId::Viewport => PanelConstraints::default().with_min_width(200.0).with_min_height(200.0),
         PanelId::Animation => PanelConstraints::default().with_min_height(100.0),
+        PanelId::Timeline => PanelConstraints::default().with_min_width(400.0).with_min_height(150.0),
         PanelId::ScriptEditor => PanelConstraints::default().with_min_width(300.0).with_min_height(200.0),
         PanelId::History => PanelConstraints::default().with_min_width(200.0),
         PanelId::Blueprint => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
@@ -96,6 +97,8 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::CameraDebug => PanelConstraints::default().with_min_width(280.0).with_min_height(320.0),
         PanelId::SystemProfiler => PanelConstraints::default().with_min_width(300.0).with_min_height(280.0),
         PanelId::LevelTools => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
+        PanelId::StudioPreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
+        PanelId::NodeExplorer => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -110,6 +113,7 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::Console,
         PanelId::Viewport,
         PanelId::Animation,
+        PanelId::Timeline,
         PanelId::ScriptEditor,
         PanelId::History,
         PanelId::Blueprint,
@@ -125,6 +129,8 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::CameraDebug,
         PanelId::SystemProfiler,
         PanelId::LevelTools,
+        PanelId::StudioPreview,
+        PanelId::NodeExplorer,
     ]
 }
 
