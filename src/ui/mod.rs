@@ -15,7 +15,7 @@ use crate::core::{
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
-    AnimationTimelineState,
+    AnimationTimelineState, TabKind,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache};
@@ -759,6 +759,7 @@ pub fn editor_ui(
                             current_project.as_deref(),
                             &mut editor.assets,
                             &mut editor.thumbnail_cache,
+                            &mut editor.scene_state,
                         );
                     });
                 }
@@ -1033,14 +1034,29 @@ pub fn editor_ui(
 
         // Process pending blueprint open requests from assets panel
         if let Some(path) = editor.assets.pending_blueprint_open.take() {
-            match BlueprintFile::load(&path) {
-                Ok(file) => {
-                    let path_str = path.to_string_lossy().to_string();
-                    editor.blueprint_editor.open_blueprints.insert(path_str.clone(), file.graph);
-                    editor.blueprint_editor.active_blueprint = Some(path_str);
-                }
-                Err(e) => {
-                    bevy::log::error!("Failed to load blueprint {:?}: {}", path, e);
+            let path_str = path.to_string_lossy().to_string();
+
+            // Check if already open
+            if editor.blueprint_editor.open_blueprints.contains_key(&path_str) {
+                // Just activate it and deselect other tabs
+                editor.scene_state.active_script_tab = None;
+                editor.scene_state.active_image_tab = None;
+                editor.blueprint_editor.active_blueprint = Some(path_str);
+            } else {
+                // Load and open the blueprint
+                match BlueprintFile::load(&path) {
+                    Ok(file) => {
+                        editor.blueprint_editor.open_blueprints.insert(path_str.clone(), file.graph);
+                        // Add to tab order
+                        editor.scene_state.tab_order.push(TabKind::Blueprint(path_str.clone()));
+                        // Deselect other tabs and activate blueprint
+                        editor.scene_state.active_script_tab = None;
+                        editor.scene_state.active_image_tab = None;
+                        editor.blueprint_editor.active_blueprint = Some(path_str);
+                    }
+                    Err(e) => {
+                        bevy::log::error!("Failed to load blueprint {:?}: {}", path, e);
+                    }
                 }
             }
         }

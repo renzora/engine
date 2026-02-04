@@ -1688,28 +1688,24 @@ fn handle_item_interaction(
             assets.current_folder = Some(item.path.clone());
         } else {
             assets.selected_asset = Some(item.path.clone());
-
-            // Open script files in the editor and switch to Scripting layout
-            if is_script_file(&item.path) {
-                super::script_editor::open_script(scene_state, item.path.clone());
-                assets.requested_layout = Some("Scripting".to_string());
-            }
-
-            // Open material files in blueprint editor and switch to Blueprints layout
-            if is_blueprint_material_file(&item.name) {
-                assets.pending_blueprint_open = Some(item.path.clone());
-                assets.requested_layout = Some("Blueprints".to_string());
-            }
         }
     }
 
     if response.double_clicked() {
         if item.is_folder {
             assets.current_folder = Some(item.path.clone());
+        } else if is_script_file(&item.path) {
+            // Open script files in the editor and switch to Scripting layout
+            super::script_editor::open_script(scene_state, item.path.clone());
+            assets.requested_layout = Some("Scripting".to_string());
         } else if is_image_file(&item.name) {
             // Open image in preview tab and switch to Image Preview layout
             super::image_preview::open_image(scene_state, item.path.clone());
             assets.requested_layout = Some("Image Preview".to_string());
+        } else if is_blueprint_material_file(&item.name) {
+            // Open material files in blueprint editor and switch to Blueprints layout
+            assets.pending_blueprint_open = Some(item.path.clone());
+            assets.requested_layout = Some("Blueprints".to_string());
         }
     }
 

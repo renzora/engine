@@ -26,6 +26,7 @@ pub fn render_blueprint_panel(
     current_project: Option<&CurrentProject>,
     assets: &mut AssetBrowserState,
     thumbnail_cache: &mut ThumbnailCache,
+    scene_state: &mut crate::core::SceneManagerState,
 ) {
     // Initialize canvas state if needed
     if canvas_state.zoom == 0.0 {
@@ -43,7 +44,7 @@ pub fn render_blueprint_panel(
         let available_rect = ui.available_rect_before_wrap();
 
         if editor_state.active_blueprint.is_some() {
-            render_blueprint_canvas(ui, ctx, editor_state, canvas_state, node_registry, available_rect, assets, current_project, thumbnail_cache);
+            render_blueprint_canvas(ui, ctx, editor_state, canvas_state, node_registry, available_rect, assets, current_project, thumbnail_cache, scene_state);
         } else {
             // Simple message when no blueprint is open
             ui.vertical_centered(|ui| {
@@ -227,6 +228,7 @@ fn render_blueprint_canvas(
     assets: &mut AssetBrowserState,
     current_project: Option<&CurrentProject>,
     thumbnail_cache: &mut ThumbnailCache,
+    scene_state: &mut crate::core::SceneManagerState,
 ) {
     // Allocate the canvas area
     let (response, painter) = ui.allocate_painter(canvas_rect.size(), Sense::click_and_drag());
@@ -601,11 +603,23 @@ fn render_blueprint_canvas(
             if canvas_rect.contains(pos) && mouse_released {
                 // Check if it's a blueprint file
                 if is_blueprint_file(&asset_path) {
-                    // Load the blueprint
-                    if let Ok(file) = BlueprintFile::load(&asset_path) {
-                        let path_str = asset_path.to_string_lossy().to_string();
-                        editor_state.open_blueprints.insert(path_str.clone(), file.graph);
+                    let path_str = asset_path.to_string_lossy().to_string();
+                    // Check if already open
+                    if editor_state.open_blueprints.contains_key(&path_str) {
+                        // Just activate it and deselect other tabs
+                        scene_state.active_script_tab = None;
+                        scene_state.active_image_tab = None;
                         editor_state.active_blueprint = Some(path_str);
+                    } else {
+                        // Load the blueprint
+                        if let Ok(file) = BlueprintFile::load(&asset_path) {
+                            editor_state.open_blueprints.insert(path_str.clone(), file.graph);
+                            // Add to tab order and deselect other tabs
+                            scene_state.tab_order.push(crate::core::TabKind::Blueprint(path_str.clone()));
+                            scene_state.active_script_tab = None;
+                            scene_state.active_image_tab = None;
+                            editor_state.active_blueprint = Some(path_str);
+                        }
                     }
                 }
                 // Check if it's an image file
@@ -784,6 +798,7 @@ fn render_empty_state(
     ui: &mut egui::Ui,
     editor_state: &mut BlueprintEditorState,
     current_project: Option<&CurrentProject>,
+    scene_state: &mut crate::core::SceneManagerState,
 ) {
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
@@ -810,6 +825,10 @@ fn render_empty_state(
                 let graph = BlueprintGraph::new(&name);
                 let path = format!("blueprints/{}.blueprint", name);
                 editor_state.open_blueprints.insert(path.clone(), graph);
+                // Add to tab order and deselect other tabs
+                scene_state.tab_order.push(crate::core::TabKind::Blueprint(path.clone()));
+                scene_state.active_script_tab = None;
+                scene_state.active_image_tab = None;
                 editor_state.active_blueprint = Some(path);
             }
 
@@ -824,6 +843,10 @@ fn render_empty_state(
                 let graph = BlueprintGraph::new_material(&name);
                 let path = format!("blueprints/{}.material_bp", name);
                 editor_state.open_blueprints.insert(path.clone(), graph);
+                // Add to tab order and deselect other tabs
+                scene_state.tab_order.push(crate::core::TabKind::Blueprint(path.clone()));
+                scene_state.active_script_tab = None;
+                scene_state.active_image_tab = None;
                 editor_state.active_blueprint = Some(path);
             }
         });
@@ -862,9 +885,19 @@ fn render_empty_state(
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
                     if blueprint_btn.clicked() {
-                        if let Ok(file) = BlueprintFile::load(path) {
-                            let path_str = path.to_string_lossy().to_string();
+                        let path_str = path.to_string_lossy().to_string();
+                        // Check if already open
+                        if editor_state.open_blueprints.contains_key(&path_str) {
+                            // Just activate it and deselect other tabs
+                            scene_state.active_script_tab = None;
+                            scene_state.active_image_tab = None;
+                            editor_state.active_blueprint = Some(path_str);
+                        } else if let Ok(file) = BlueprintFile::load(path) {
                             editor_state.open_blueprints.insert(path_str.clone(), file.graph);
+                            // Add to tab order and deselect other tabs
+                            scene_state.tab_order.push(crate::core::TabKind::Blueprint(path_str.clone()));
+                            scene_state.active_script_tab = None;
+                            scene_state.active_image_tab = None;
                             editor_state.active_blueprint = Some(path_str);
                         }
                     }

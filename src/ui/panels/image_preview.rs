@@ -14,6 +14,8 @@ pub fn open_image(scene_state: &mut SceneManagerState, path: PathBuf) {
     // Check if already open
     for (idx, image) in scene_state.open_images.iter().enumerate() {
         if image.path == path {
+            // Deselect other tab types
+            scene_state.active_script_tab = None;
             scene_state.active_image_tab = Some(idx);
             return;
         }
@@ -33,6 +35,8 @@ pub fn open_image(scene_state: &mut SceneManagerState, path: PathBuf) {
     });
 
     scene_state.tab_order.push(TabKind::Image(new_idx));
+    // Deselect other tab types
+    scene_state.active_script_tab = None;
     scene_state.active_image_tab = Some(new_idx);
 }
 

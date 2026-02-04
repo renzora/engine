@@ -7,9 +7,13 @@ use crate::theming::Theme;
 use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE, IMAGE};
 
 const TAB_HEIGHT: f32 = 28.0;
-const TAB_PADDING: f32 = 12.0;
+const TAB_PADDING: f32 = 8.0;
 const TAB_GAP: f32 = 2.0;
 const TOP_MARGIN: f32 = 4.0;
+const MAX_TAB_WIDTH: f32 = 240.0;
+const MIN_TAB_WIDTH: f32 = 60.0;
+const ICON_WIDTH: f32 = 18.0;
+const CLOSE_BTN_WIDTH: f32 = 20.0;
 
 /// Types of documents that can be created
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,10 +50,10 @@ impl NewDocumentType {
     #[allow(dead_code)]
     pub fn layout(&self) -> &'static str {
         match self {
-            NewDocumentType::Scene => "Default",
+            NewDocumentType::Scene => "Scene",
             NewDocumentType::Blueprint => "Blueprints",
             NewDocumentType::Script => "Scripting",
-            NewDocumentType::Material => "Default",
+            NewDocumentType::Material => "Blueprints",
             NewDocumentType::Shader => "Scripting",
         }
     }
@@ -186,11 +190,39 @@ pub fn render_document_tabs(
                     }
                 };
 
-                // Calculate tab width based on text
-                let text_width = ui.fonts_mut(|f| {
-                    f.glyph_width(&egui::FontId::proportional(12.0), 'M') * tab_text.len() as f32
-                });
-                let tab_width = text_width + TAB_PADDING * 2.0 + 36.0;
+                // Calculate tab width based on text, with max width and ellipsis
+                let font_id = egui::FontId::proportional(12.0);
+                let base_width = TAB_PADDING * 2.0 + ICON_WIDTH + CLOSE_BTN_WIDTH; // padding + icon + close button
+                let max_text_width = MAX_TAB_WIDTH - base_width;
+
+                // Measure actual text width
+                let text_width = ui.fonts_mut(|f| f.layout_no_wrap(tab_text.clone(), font_id.clone(), Color32::WHITE).size().x);
+
+                // Truncate text if needed
+                let (display_text, display_text_width) = if text_width > max_text_width {
+                    // Need to truncate - binary search for best fit
+                    let ellipsis = "...";
+                    let ellipsis_width = ui.fonts_mut(|f| f.layout_no_wrap(ellipsis.to_string(), font_id.clone(), Color32::WHITE).size().x);
+                    let available_for_text = max_text_width - ellipsis_width;
+
+                    let mut truncated = String::new();
+                    for ch in tab_text.chars() {
+                        let test = format!("{}{}", truncated, ch);
+                        let test_width = ui.fonts_mut(|f| f.layout_no_wrap(test.clone(), font_id.clone(), Color32::WHITE).size().x);
+                        if test_width > available_for_text {
+                            break;
+                        }
+                        truncated.push(ch);
+                    }
+                    let final_text = format!("{}...", truncated);
+                    let final_width = ui.fonts_mut(|f| f.layout_no_wrap(final_text.clone(), font_id.clone(), Color32::WHITE).size().x);
+                    (final_text, final_width)
+                } else {
+                    (tab_text.clone(), text_width)
+                };
+
+                // Calculate final tab width based on actual displayed text
+                let tab_width = (display_text_width + base_width).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
 
                 let tab_rect = egui::Rect::from_min_size(
                     Pos2::new(x_offset, top_y + TOP_MARGIN + 2.0),
@@ -255,12 +287,12 @@ pub fn render_document_tabs(
                     if is_active { accent_color } else { icon_inactive_color },
                 );
 
-                // Tab text
+                // Tab text (with ellipsis if truncated)
                 let txt_color = if is_active { text_active_color } else { text_color };
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 24.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    &tab_text,
+                    &display_text,
                     egui::FontId::proportional(12.0),
                     txt_color,
                 );
@@ -362,8 +394,11 @@ pub fn render_document_tabs(
                                         });
                                         scene_state.tab_order.push(TabKind::Scene(new_idx));
                                         scene_state.pending_tab_switch = Some(new_idx);
+                                        // Deselect all other tab types
                                         scene_state.active_script_tab = None;
-                                        layout_to_switch = Some("Default");
+                                        scene_state.active_image_tab = None;
+                                        blueprint_editor.active_blueprint = None;
+                                        layout_to_switch = Some("Scene");
                                     }
                                     NewDocumentType::Blueprint => {
                                         let new_tab_num = scene_state.scene_tabs.len() + 1;
@@ -374,7 +409,10 @@ pub fn render_document_tabs(
                                         });
                                         scene_state.tab_order.push(TabKind::Scene(new_idx));
                                         scene_state.pending_tab_switch = Some(new_idx);
+                                        // Deselect all other tab types
                                         scene_state.active_script_tab = None;
+                                        scene_state.active_image_tab = None;
+                                        blueprint_editor.active_blueprint = None;
                                         layout_to_switch = Some("Blueprints");
                                     }
                                     NewDocumentType::Script => {
@@ -389,11 +427,14 @@ pub fn render_document_tabs(
                                             last_checked_content: String::new(),
                                         });
                                         scene_state.tab_order.push(TabKind::Script(new_idx));
+                                        // Deselect all other tab types
                                         scene_state.active_script_tab = Some(new_idx);
+                                        scene_state.active_image_tab = None;
+                                        blueprint_editor.active_blueprint = None;
                                         layout_to_switch = Some("Scripting");
                                     }
                                     NewDocumentType::Material => {
-                                        layout_to_switch = Some("Default");
+                                        layout_to_switch = Some("Blueprints");
                                     }
                                     NewDocumentType::Shader => {
                                         layout_to_switch = Some("Scripting");
@@ -462,7 +503,7 @@ pub fn render_document_tabs(
 
             // Process tab actions
             if let Some(tab_kind) = tab_to_close {
-                close_tab(scene_state, blueprint_editor, tab_kind);
+                close_tab(scene_state, blueprint_editor, tab_kind, &mut layout_to_switch);
             }
 
             if let Some(tab_kind) = tab_to_activate {
@@ -523,19 +564,27 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
     }
 }
 
-fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind) {
+fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind, layout_to_switch: &mut Option<&'static str>) {
     // Find position in tab_order
     let order_pos = scene_state.tab_order.iter().position(|k| *k == tab_kind);
+
+    // Check if the tab being closed is currently active and whether it's a scene tab
+    let is_scene_tab = matches!(tab_kind, TabKind::Scene(_));
+    let is_active_tab = match &tab_kind {
+        TabKind::Scene(idx) => {
+            scene_state.active_script_tab.is_none()
+                && scene_state.active_image_tab.is_none()
+                && blueprint_editor.active_blueprint.is_none()
+                && *idx == scene_state.active_scene_tab
+        }
+        TabKind::Script(idx) => scene_state.active_script_tab == Some(*idx),
+        TabKind::Blueprint(path) => blueprint_editor.active_blueprint.as_ref() == Some(path),
+        TabKind::Image(idx) => scene_state.active_image_tab == Some(*idx),
+    };
 
     match tab_kind {
         TabKind::Scene(idx) => {
             if scene_state.scene_tabs.len() > 1 {
-                // Determine which tab to switch to
-                let is_active = scene_state.active_script_tab.is_none()
-                    && scene_state.active_image_tab.is_none()
-                    && blueprint_editor.active_blueprint.is_none()
-                    && idx == scene_state.active_scene_tab;
-
                 // Remove from tab_order first
                 if let Some(pos) = order_pos {
                     scene_state.tab_order.remove(pos);
@@ -551,7 +600,7 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
                 }
 
                 // Set pending close and switch
-                if is_active {
+                if is_active_tab {
                     let new_active = if idx + 1 < scene_state.scene_tabs.len() {
                         idx
                     } else {
@@ -582,13 +631,9 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
             // Remove the script
             scene_state.open_scripts.remove(idx);
 
-            // Update active script tab
-            if scene_state.open_scripts.is_empty() {
-                scene_state.active_script_tab = None;
-            } else if let Some(active) = scene_state.active_script_tab {
-                if active >= scene_state.open_scripts.len() {
-                    scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
-                } else if active > idx {
+            // Update active script tab index if needed (but don't clear if active - activate_tab handles that)
+            if let Some(active) = scene_state.active_script_tab {
+                if active > idx {
                     scene_state.active_script_tab = Some(active - 1);
                 }
             }
@@ -601,11 +646,6 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
 
             // Remove the blueprint
             blueprint_editor.open_blueprints.remove(&path);
-
-            // Update active blueprint
-            if blueprint_editor.active_blueprint.as_ref() == Some(&path) {
-                blueprint_editor.active_blueprint = blueprint_editor.open_blueprints.keys().next().cloned();
-            }
         }
         TabKind::Image(idx) => {
             // Remove from tab_order first
@@ -625,15 +665,35 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
             // Remove the image
             scene_state.open_images.remove(idx);
 
-            // Update active image tab
-            if scene_state.open_images.is_empty() {
-                scene_state.active_image_tab = None;
-            } else if let Some(active) = scene_state.active_image_tab {
-                if active >= scene_state.open_images.len() {
-                    scene_state.active_image_tab = Some(scene_state.open_images.len() - 1);
-                } else if active > idx {
+            // Update active image tab index if needed (but don't clear if active - activate_tab handles that)
+            if let Some(active) = scene_state.active_image_tab {
+                if active > idx {
                     scene_state.active_image_tab = Some(active - 1);
                 }
+            }
+        }
+    }
+
+    // If the closed tab was active, switch to the next tab in tab_order
+    if is_active_tab && !is_scene_tab {
+        if let Some(order_pos) = order_pos {
+            // Find the next tab to activate (prefer same position, then previous)
+            let next_tab = if order_pos < scene_state.tab_order.len() {
+                Some(scene_state.tab_order[order_pos].clone())
+            } else if !scene_state.tab_order.is_empty() {
+                Some(scene_state.tab_order[order_pos.saturating_sub(1)].clone())
+            } else {
+                None
+            };
+
+            if let Some(next_tab) = next_tab {
+                activate_tab(scene_state, blueprint_editor, next_tab, layout_to_switch);
+            } else {
+                // No tabs left to switch to - clear all active states and go to default scene
+                scene_state.active_script_tab = None;
+                scene_state.active_image_tab = None;
+                blueprint_editor.active_blueprint = None;
+                *layout_to_switch = Some("Scene");
             }
         }
     }
@@ -651,7 +711,7 @@ fn activate_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Blue
                 scene_state.active_image_tab = None;
                 blueprint_editor.active_blueprint = None;
                 scene_state.pending_tab_switch = Some(idx);
-                *layout_to_switch = Some("Default");
+                *layout_to_switch = Some("Scene");
             }
         }
         TabKind::Script(idx) => {

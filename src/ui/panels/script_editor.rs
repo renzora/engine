@@ -1077,9 +1077,13 @@ pub fn render_script_editor_content(
 
 /// Open a script file in the editor
 pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
+    use crate::core::TabKind;
+
     // Check if already open
     for (idx, script) in scene_state.open_scripts.iter().enumerate() {
         if script.path == path {
+            // Deselect other tab types
+            scene_state.active_image_tab = None;
             scene_state.active_script_tab = Some(idx);
             return;
         }
@@ -1099,6 +1103,7 @@ pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
         .unwrap_or("unknown")
         .to_string();
 
+    let new_idx = scene_state.open_scripts.len();
     let content_clone = content.clone();
     scene_state.open_scripts.push(OpenScript {
         path,
@@ -1109,5 +1114,9 @@ pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
         last_checked_content: content_clone,
     });
 
-    scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
+    // Add to tab order and activate
+    scene_state.tab_order.push(TabKind::Script(new_idx));
+    // Deselect other tab types
+    scene_state.active_image_tab = None;
+    scene_state.active_script_tab = Some(new_idx);
 }
