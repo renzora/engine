@@ -455,6 +455,8 @@ pub fn render_assets_content(
                 let filtered_items = filter_items(&items, &assets.search);
 
                 // Tree view panel (always shown)
+                // When grid is hidden, show files in tree
+                let show_files_in_tree = !show_grid;
                 ui.allocate_ui_with_layout(
                     Vec2::new(tree_width, available_height.max(50.0)),
                     egui::Layout::top_down(egui::Align::LEFT),
@@ -464,7 +466,7 @@ pub fn render_assets_content(
                             .max_height(available_height.max(50.0))
                             .show(ui, |ui| {
                                 ui.set_min_width(tree_width - 8.0);
-                                render_tree_navigation(ui, &ctx, assets, scene_state, project, thumbnail_cache, theme);
+                                render_tree_navigation(ui, &ctx, assets, scene_state, project, thumbnail_cache, theme, show_files_in_tree);
                             });
                     },
                 );
@@ -573,6 +575,87 @@ pub fn render_assets_content(
         }
     }
 
+    // Process pending filesystem operations
+    process_pending_operations(assets);
+}
+
+/// Process pending filesystem operations (rename, move)
+fn process_pending_operations(assets: &mut AssetBrowserState) {
+    // Handle rename
+    if let Some((old_path, new_name)) = assets.pending_rename.take() {
+        if let Some(parent) = old_path.parent() {
+            let new_path = parent.join(&new_name);
+            match std::fs::rename(&old_path, &new_path) {
+                Ok(()) => {
+                    // Update selection to point to new path
+                    assets.selected_assets.remove(&old_path);
+                    assets.selected_assets.insert(new_path.clone());
+                    if assets.selected_asset.as_ref() == Some(&old_path) {
+                        assets.selected_asset = Some(new_path.clone());
+                    }
+                    if assets.selection_anchor.as_ref() == Some(&old_path) {
+                        assets.selection_anchor = Some(new_path);
+                    }
+                }
+                Err(e) => {
+                    assets.last_error = Some(format!("Rename failed: {}", e));
+                    assets.error_timeout = 5.0;
+                }
+            }
+        }
+    }
+
+    // Handle move
+    if let Some((sources, target)) = assets.pending_move.take() {
+        let mut had_error = false;
+        for src in sources {
+            if let Some(name) = src.file_name() {
+                let dest = target.join(name);
+                // Prevent moving a folder into itself
+                if target.starts_with(&src) {
+                    assets.last_error = Some("Cannot move folder into itself".to_string());
+                    assets.error_timeout = 5.0;
+                    had_error = true;
+                    continue;
+                }
+                // Don't move to same location
+                if src.parent() == Some(target.as_path()) {
+                    continue;
+                }
+                if let Err(e) = std::fs::rename(&src, &dest) {
+                    assets.last_error = Some(format!("Move failed: {}", e));
+                    assets.error_timeout = 5.0;
+                    had_error = true;
+                } else {
+                    // Update selection
+                    assets.selected_assets.remove(&src);
+                    if assets.selected_asset.as_ref() == Some(&src) {
+                        assets.selected_asset = None;
+                    }
+                    if assets.selection_anchor.as_ref() == Some(&src) {
+                        assets.selection_anchor = None;
+                    }
+                }
+            }
+        }
+        // Clear all selection state after move
+        assets.selected_assets.clear();
+        assets.selected_asset = None;
+        assets.selection_anchor = None;
+        // Ensure drag state is fully cleared
+        assets.dragging_assets.clear();
+        assets.dragging_asset = None;
+        assets.drop_target_folder = None;
+        assets.item_rects.clear();
+    }
+
+    // Decrease error timeout
+    if assets.error_timeout > 0.0 {
+        assets.error_timeout -= 0.016; // Assume ~60 FPS
+        if assets.error_timeout <= 0.0 {
+            assets.last_error = None;
+        }
+    }
 }
 
 fn render_toolbar(
@@ -825,6 +908,29 @@ fn render_grid_view(
     let text_secondary = theme.text.secondary.to_color32();
     let accent_color = theme.semantic.accent.to_color32();
     let surface_faint = theme.surfaces.faint.to_color32();
+    let drop_target_color = theme.semantic.accent.to_color32();
+
+    // Build visible_item_order for range selection
+    assets.visible_item_order.clear();
+    for item in items {
+        assets.visible_item_order.push(item.path.clone());
+    }
+
+    // Clear item rects for marquee hit testing
+    assets.item_rects.clear();
+
+    // F2 to start rename (exactly one item selected)
+    if ctx.input(|i| i.key_pressed(egui::Key::F2)) && assets.renaming_asset.is_none() {
+        if assets.selected_assets.len() == 1 {
+            if let Some(path) = assets.selected_assets.iter().next() {
+                assets.renaming_asset = Some(path.clone());
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    assets.rename_buffer = name.to_string();
+                }
+                assets.rename_focus_set = false;
+            }
+        }
+    }
 
     // Responsive tile sizing - larger base for new design
     let base_tile_size = if available_width < 150.0 {
@@ -855,19 +961,32 @@ fn render_grid_view(
             let has_image_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
             let has_model_preview = !item.is_folder && supports_model_preview(&item.name);
 
+            // All items can be dragged for folder moves (folders and files)
             let (rect, response) = ui.allocate_exact_size(
                 Vec2::new(tile_size, total_height),
-                if is_draggable { Sense::click_and_drag() } else { Sense::click() },
+                Sense::click_and_drag(),
             );
 
+            // Track item rect for marquee selection
+            assets.item_rects.push((item.path.clone(), rect));
+
             let is_hovered = response.hovered();
-            if is_hovered {
+            if is_hovered && assets.dragging_assets.is_empty() {
                 ctx.set_cursor_icon(CursorIcon::PointingHand);
             }
-            let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
+            let is_selected = assets.selected_assets.contains(&item.path);
+            let is_drop_target = assets.drop_target_folder.as_ref() == Some(&item.path);
 
             // Card background with subtle gradient effect
-            let bg_color = if is_selected {
+            let bg_color = if is_drop_target {
+                // Highlight folder as drop target
+                Color32::from_rgba_unmultiplied(
+                    drop_target_color.r(),
+                    drop_target_color.g(),
+                    drop_target_color.b(),
+                    60,
+                )
+            } else if is_selected {
                 selection_bg
             } else if is_hovered {
                 item_hover
@@ -888,7 +1007,7 @@ fn render_grid_view(
                 Vec2::new(tile_size, tile_size),
             );
 
-            if !is_selected && !is_hovered {
+            if !is_selected && !is_hovered && !is_drop_target {
                 ui.painter().rect_filled(
                     icon_area_rect,
                     CornerRadius {
@@ -901,8 +1020,17 @@ fn render_grid_view(
                 );
             }
 
+            // Drop target border
+            if is_drop_target {
+                ui.painter().rect_stroke(
+                    rect,
+                    8.0,
+                    egui::Stroke::new(2.0, drop_target_color),
+                    egui::StrokeKind::Inside,
+                );
+            }
             // Selection border
-            if is_selected {
+            else if is_selected {
                 ui.painter().rect_stroke(
                     rect,
                     8.0,
@@ -910,9 +1038,8 @@ fn render_grid_view(
                     egui::StrokeKind::Inside,
                 );
             }
-
             // Hover glow effect
-            if is_hovered && !is_selected {
+            else if is_hovered && assets.dragging_assets.is_empty() {
                 ui.painter().rect_stroke(
                     rect,
                     8.0,
@@ -1029,7 +1156,7 @@ fn render_grid_view(
                 ),
             );
 
-            // Two-line label
+            // Two-line label or rename text edit
             let font_size = if tile_size < 75.0 { 10.0 } else { 11.0 };
             let line_height = font_size + 2.0;
 
@@ -1038,38 +1165,208 @@ fn render_grid_view(
                 Vec2::new(tile_size - 8.0, label_area_height - 4.0),
             );
 
-            // Split name into two lines
-            let (line1, line2) = split_name_two_lines(&item.name, tile_size, font_size);
+            // Check if this item is being renamed
+            let is_renaming = assets.renaming_asset.as_ref() == Some(&item.path);
 
-            // First line - filename (primary color, slightly bolder)
-            ui.painter().text(
-                egui::pos2(label_rect.center().x, label_rect.min.y + line_height / 2.0),
-                egui::Align2::CENTER_CENTER,
-                &line1,
-                egui::FontId::proportional(font_size),
-                text_primary,
-            );
-
-            // Second line - extension or continuation (secondary color)
-            if !line2.is_empty() {
-                ui.painter().text(
-                    egui::pos2(label_rect.center().x, label_rect.min.y + line_height + line_height / 2.0),
-                    egui::Align2::CENTER_CENTER,
-                    &line2,
-                    egui::FontId::proportional(font_size - 1.0),
-                    text_secondary,
+            if is_renaming {
+                // Show TextEdit instead of label for renaming
+                let mut child_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(label_rect)
+                        .layout(egui::Layout::centered_and_justified(egui::Direction::TopDown))
                 );
+                let text_edit = egui::TextEdit::singleline(&mut assets.rename_buffer)
+                    .desired_width(tile_size - 12.0)
+                    .font(egui::FontId::proportional(font_size));
+                let te_response = child_ui.add(text_edit);
+
+                if !assets.rename_focus_set {
+                    te_response.request_focus();
+                    assets.rename_focus_set = true;
+                }
+
+                let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+
+                if enter || (te_response.lost_focus() && !escape) {
+                    // Queue filesystem rename
+                    let new_name = assets.rename_buffer.trim().to_string();
+                    if !new_name.is_empty() && new_name != item.name {
+                        assets.pending_rename = Some((item.path.clone(), new_name));
+                    }
+                    assets.renaming_asset = None;
+                    assets.rename_focus_set = false;
+                } else if escape {
+                    assets.renaming_asset = None;
+                    assets.rename_focus_set = false;
+                }
+            } else {
+                // Normal label rendering - Split name into two lines
+                let (line1, line2) = split_name_two_lines(&item.name, tile_size, font_size);
+
+                // First line - filename (primary color, slightly bolder)
+                ui.painter().text(
+                    egui::pos2(label_rect.center().x, label_rect.min.y + line_height / 2.0),
+                    egui::Align2::CENTER_CENTER,
+                    &line1,
+                    egui::FontId::proportional(font_size),
+                    text_primary,
+                );
+
+                // Second line - extension or continuation (secondary color)
+                if !line2.is_empty() {
+                    ui.painter().text(
+                        egui::pos2(label_rect.center().x, label_rect.min.y + line_height + line_height / 2.0),
+                        egui::Align2::CENTER_CENTER,
+                        &line2,
+                        egui::FontId::proportional(font_size - 1.0),
+                        text_secondary,
+                    );
+                }
+            }
+
+            // Detect drop target when dragging over folders
+            if !assets.dragging_assets.is_empty() && item.is_folder {
+                if response.hovered() && !assets.dragging_assets.contains(&item.path) {
+                    assets.drop_target_folder = Some(item.path.clone());
+                }
             }
 
             // Handle interactions
             handle_item_interaction(ctx, assets, scene_state, item, &response, is_draggable);
 
             // Tooltip with full name
-            if is_hovered && assets.dragging_asset.is_none() {
+            if is_hovered && assets.dragging_asset.is_none() && assets.dragging_assets.is_empty() {
                 response.on_hover_text(&item.name);
             }
         }
     });
+
+    // Get the full available rect for marquee selection (not just rendered content)
+    let grid_full_rect = ui.max_rect();
+
+    // Handle marquee selection - detect drag start in empty space via ctx.input()
+    let primary_down = ctx.input(|i| i.pointer.primary_down());
+    let primary_pressed = ctx.input(|i| i.pointer.primary_pressed());
+    let primary_clicked = ctx.input(|i| i.pointer.primary_clicked());
+
+    // Safety reset: if pointer is not down, clear drag state to prevent stuck state
+    if !primary_down {
+        if !assets.dragging_assets.is_empty() && assets.pending_move.is_none() {
+            assets.dragging_assets.clear();
+        }
+        if assets.dragging_asset.is_some() && assets.pending_asset_drop.is_none() {
+            assets.dragging_asset = None;
+        }
+    }
+
+    // Check if click/press is on empty space (not over an item)
+    let press_on_empty = if let Some(press_pos) = ctx.pointer_interact_pos() {
+        if grid_full_rect.contains(press_pos) {
+            let mut on_item = false;
+            for (_, item_rect) in &assets.item_rects {
+                if item_rect.contains(press_pos) {
+                    on_item = true;
+                    break;
+                }
+            }
+            !on_item
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Click on empty space to deselect (without drag)
+    if primary_clicked && press_on_empty && assets.marquee_start.is_none() {
+        let ctrl_held = ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        let shift_held = ctx.input(|i| i.modifiers.shift);
+        if !ctrl_held && !shift_held {
+            assets.selected_assets.clear();
+            assets.selected_asset = None;
+            assets.selection_anchor = None;
+        }
+    }
+
+    // Start marquee on primary press in empty space
+    if primary_pressed && assets.dragging_assets.is_empty() && assets.marquee_start.is_none() && press_on_empty {
+        assets.marquee_start = ctx.pointer_interact_pos();
+        let ctrl_held = ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        let shift_held = ctx.input(|i| i.modifiers.shift);
+        if !ctrl_held && !shift_held {
+            assets.selected_assets.clear();
+        }
+    }
+
+    // Update marquee during drag
+    if primary_down && assets.marquee_start.is_some() {
+        assets.marquee_current = ctx.pointer_interact_pos();
+    }
+
+    // Draw marquee rectangle
+    if let (Some(start), Some(current)) = (assets.marquee_start, assets.marquee_current) {
+        let marquee_rect = egui::Rect::from_two_pos(start, current);
+
+        // Semi-transparent fill
+        ui.painter().rect_filled(
+            marquee_rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(100, 150, 255, 40),
+        );
+        // Border
+        ui.painter().rect_stroke(
+            marquee_rect,
+            0.0,
+            egui::Stroke::new(1.0, accent_color),
+            egui::StrokeKind::Inside,
+        );
+
+        // Select items that intersect marquee
+        for (path, item_rect) in &assets.item_rects {
+            if marquee_rect.intersects(*item_rect) {
+                assets.selected_assets.insert(path.clone());
+            }
+        }
+    }
+
+    // End marquee and drag operations on pointer release
+    if ctx.input(|i| i.pointer.any_released()) {
+        // Handle drop on folder
+        if !assets.dragging_assets.is_empty() {
+            if let Some(target) = assets.drop_target_folder.take() {
+                assets.pending_move = Some((assets.dragging_assets.clone(), target));
+            }
+            assets.dragging_assets.clear();
+            assets.dragging_asset = None;
+        }
+
+        // End marquee
+        if assets.marquee_start.is_some() {
+            assets.marquee_start = None;
+            assets.marquee_current = None;
+        }
+    }
+
+    // Clear drop target when not over any folder
+    if assets.drop_target_folder.is_some() {
+        let mut over_folder = false;
+        if let Some(pos) = ctx.pointer_hover_pos() {
+            for (path, item_rect) in &assets.item_rects {
+                if item_rect.contains(pos) {
+                    // Check if this path is a folder and not being dragged
+                    let is_folder = path.is_dir();
+                    if is_folder && !assets.dragging_assets.contains(path) {
+                        over_folder = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if !over_folder {
+            assets.drop_target_folder = None;
+        }
+    }
 }
 
 /// Split filename into two lines for display
@@ -1143,6 +1440,7 @@ fn render_tree_navigation(
     project: &CurrentProject,
     thumbnail_cache: &mut ThumbnailCache,
     theme: &Theme,
+    show_files: bool,
 ) {
     ui.style_mut().spacing.item_spacing.y = 0.0;
 
@@ -1241,20 +1539,21 @@ fn render_tree_navigation(
 
     // Render children if expanded
     if is_root_expanded {
-        render_nav_tree_node(ui, ctx, assets, scene_state, &project.path, 1, thumbnail_cache, theme);
+        render_nav_tree_node(ui, ctx, assets, scene_state, &project.path, 1, thumbnail_cache, theme, show_files);
     }
 }
 
-/// Render a navigation tree node (folders only)
+/// Render a navigation tree node (folders only, or folders+files when show_files is true)
 fn render_nav_tree_node(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     assets: &mut AssetBrowserState,
-    _scene_state: &mut SceneManagerState,
+    scene_state: &mut SceneManagerState,
     folder_path: &PathBuf,
     depth: usize,
-    _thumbnail_cache: &mut ThumbnailCache,
+    thumbnail_cache: &mut ThumbnailCache,
     theme: &Theme,
+    show_files: bool,
 ) {
     let indent = depth as f32 * 14.0;
 
@@ -1270,44 +1569,45 @@ fn render_nav_tree_node(
     };
 
     let mut folders: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        // Skip hidden folders
+        // Skip hidden files/folders
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with('.') || name == "target" {
+            if name.starts_with('.') || name == "target" || name == "Cargo.lock" {
                 continue;
             }
         }
 
-        // Apply search filter
-        if !assets.search.is_empty() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !name.to_lowercase().contains(&assets.search.to_lowercase()) {
-                    // Check if any children match
-                    if !folder_contains_match(&path, &assets.search) {
-                        continue;
-                    }
-                }
-            }
+        if path.is_dir() {
+            folders.push(path);
+        } else if show_files {
+            files.push(path);
         }
-
-        folders.push(path);
     }
 
     folders.sort();
+    files.sort();
 
     // Render folders
-    for child_path in folders {
+    for child_path in &folders {
         let Some(name) = child_path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
 
-        let is_expanded = assets.expanded_folders.contains(&child_path);
-        let is_current = assets.current_folder.as_ref() == Some(&child_path);
+        // Apply search filter
+        if !assets.search.is_empty() {
+            if !name.to_lowercase().contains(&assets.search.to_lowercase()) {
+                // Check if any children match
+                if !folder_contains_match(child_path, &assets.search) {
+                    continue;
+                }
+            }
+        }
+
+        let is_expanded = assets.expanded_folders.contains(child_path);
+        let is_current = assets.current_folder.as_ref() == Some(child_path);
 
         let (icon, color) = get_folder_icon_and_color(name);
 
@@ -1342,7 +1642,7 @@ fn render_nav_tree_node(
             egui::pos2(arrow_x, rect.center().y),
             Vec2::splat(14.0),
         );
-        let arrow_response = ui.interact(arrow_rect, ui.id().with(("nav_arrow", &child_path)), Sense::click());
+        let arrow_response = ui.interact(arrow_rect, ui.id().with(("nav_arrow", child_path)), Sense::click());
         if arrow_response.hovered() {
             ctx.set_cursor_icon(CursorIcon::PointingHand);
         }
@@ -1377,7 +1677,7 @@ fn render_nav_tree_node(
         // Handle interactions - single click toggles and navigates
         if arrow_response.clicked() || response.clicked() {
             if is_expanded {
-                assets.expanded_folders.remove(&child_path);
+                assets.expanded_folders.remove(child_path);
             } else {
                 assets.expanded_folders.insert(child_path.clone());
             }
@@ -1386,7 +1686,79 @@ fn render_nav_tree_node(
 
         // Render children if expanded
         if is_expanded {
-            render_nav_tree_node(ui, ctx, assets, _scene_state, &child_path, depth + 1, _thumbnail_cache, theme);
+            render_nav_tree_node(ui, ctx, assets, scene_state, child_path, depth + 1, thumbnail_cache, theme, show_files);
+        }
+    }
+
+    // Render files (when show_files is true)
+    if show_files {
+        for file_path in &files {
+            let Some(name) = file_path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+
+            // Apply search filter
+            if !assets.search.is_empty() {
+                if !name.to_lowercase().contains(&assets.search.to_lowercase()) {
+                    continue;
+                }
+            }
+
+            let (icon, color) = get_file_icon_and_color(name);
+            let is_selected = assets.selected_assets.contains(file_path);
+            let is_draggable = is_draggable_asset(name);
+
+            let (rect, response) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
+                if is_draggable { Sense::click_and_drag() } else { Sense::click() },
+            );
+
+            let is_hovered = response.hovered();
+            if is_hovered {
+                ctx.set_cursor_icon(CursorIcon::PointingHand);
+            }
+
+            // Background
+            let bg_color = if is_selected {
+                selection_bg
+            } else if is_hovered {
+                item_hover
+            } else {
+                Color32::TRANSPARENT
+            };
+
+            if bg_color != Color32::TRANSPARENT {
+                ui.painter().rect_filled(rect, 2.0, bg_color);
+            }
+
+            // File icon (no arrow, aligned with folder names)
+            let icon_x = rect.min.x + indent + 20.0;
+            ui.painter().text(
+                egui::pos2(icon_x, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                icon,
+                egui::FontId::proportional(12.0),
+                color,
+            );
+
+            // File name
+            ui.painter().text(
+                egui::pos2(icon_x + 16.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                name,
+                egui::FontId::proportional(11.0),
+                text_secondary,
+            );
+
+            // Handle file interactions
+            let item = AssetItem {
+                name: name.to_string(),
+                path: file_path.clone(),
+                is_folder: false,
+                icon,
+                color,
+            };
+            handle_item_interaction(ctx, assets, scene_state, &item, &response, is_draggable);
         }
     }
 }
@@ -1690,17 +2062,60 @@ fn handle_item_interaction(
     response: &egui::Response,
     is_draggable: bool,
 ) {
+    let ctrl_held = ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
+    let shift_held = ctx.input(|i| i.modifiers.shift);
+
+    // Single click: SELECT (not navigate)
     if response.clicked() {
-        if item.is_folder {
-            assets.current_folder = Some(item.path.clone());
+        if ctrl_held {
+            // Toggle selection
+            if assets.selected_assets.contains(&item.path) {
+                assets.selected_assets.remove(&item.path);
+                // Update selected_asset for compatibility
+                assets.selected_asset = assets.selected_assets.iter().next().cloned();
+            } else {
+                assets.selected_assets.insert(item.path.clone());
+                assets.selected_asset = Some(item.path.clone());
+            }
+        } else if shift_held {
+            // Range selection using visible_item_order
+            if let Some(ref anchor) = assets.selection_anchor.clone() {
+                let anchor_idx = assets.visible_item_order.iter().position(|p| p == anchor);
+                let current_idx = assets.visible_item_order.iter().position(|p| p == &item.path);
+
+                if let (Some(start), Some(end)) = (anchor_idx, current_idx) {
+                    let (start, end) = if start <= end { (start, end) } else { (end, start) };
+                    // Clear existing selection and select range
+                    assets.selected_assets.clear();
+                    for idx in start..=end {
+                        if let Some(path) = assets.visible_item_order.get(idx) {
+                            assets.selected_assets.insert(path.clone());
+                        }
+                    }
+                    assets.selected_asset = Some(item.path.clone());
+                }
+            } else {
+                // No anchor, just select this item
+                assets.selected_assets.clear();
+                assets.selected_assets.insert(item.path.clone());
+                assets.selection_anchor = Some(item.path.clone());
+                assets.selected_asset = Some(item.path.clone());
+            }
         } else {
+            // Single select - clear others
+            assets.selected_assets.clear();
+            assets.selected_assets.insert(item.path.clone());
+            assets.selection_anchor = Some(item.path.clone());
             assets.selected_asset = Some(item.path.clone());
         }
     }
 
+    // Double click: NAVIGATE folders, OPEN files
     if response.double_clicked() {
         if item.is_folder {
             assets.current_folder = Some(item.path.clone());
+            assets.selected_assets.clear();
+            assets.selected_asset = None;
         } else if is_script_file(&item.path) {
             // Open script files in the editor and switch to Scripting layout
             super::script_editor::open_script(scene_state, item.path.clone());
@@ -1748,36 +2163,46 @@ fn handle_item_interaction(
         }
     }
 
-    // Drag support for models
-    if is_draggable {
-        if response.drag_started() {
+    // Drag support - for moving items or dragging to viewport
+    if response.drag_started() {
+        // For viewport drops (models, images, etc.)
+        if is_draggable {
             assets.dragging_asset = Some(item.path.clone());
         }
 
-        if assets.dragging_asset.as_ref() == Some(&item.path) {
-            if let Some(pos) = ctx.pointer_hover_pos() {
-                egui::Area::new(egui::Id::new("drag_tooltip"))
-                    .fixed_pos(pos + Vec2::new(10.0, 10.0))
-                    .interactable(false)
-                    .order(egui::Order::Tooltip)
-                    .show(ctx, |ui| {
-                        egui::Frame::popup(ui.style()).show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let (icon, color, hint) = if is_scene_file(&item.name) {
-                                    (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
-                                } else if is_image_file(&item.name) {
-                                    (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
-                                } else if is_hdr_file(&item.name) {
-                                    (SUN, Color32::from_rgb(255, 200, 100), "Drop on World Environment (Sky Texture)")
-                                } else {
-                                    (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
-                                };
-                                ui.label(RichText::new(icon).color(color));
-                                ui.label(format!("{}: {}", hint, item.name));
-                            });
+        // For folder moves - if item is selected and part of multi-selection, drag all selected
+        if assets.selected_assets.contains(&item.path) && assets.selected_assets.len() > 1 {
+            assets.dragging_assets = assets.selected_assets.iter().cloned().collect();
+        } else {
+            // Otherwise, just drag this item
+            assets.dragging_assets = vec![item.path.clone()];
+        }
+    }
+
+    // Show drag tooltip for viewport-draggable items
+    if is_draggable && assets.dragging_asset.as_ref() == Some(&item.path) {
+        if let Some(pos) = ctx.pointer_hover_pos() {
+            egui::Area::new(egui::Id::new("drag_tooltip"))
+                .fixed_pos(pos + Vec2::new(10.0, 10.0))
+                .interactable(false)
+                .order(egui::Order::Tooltip)
+                .show(ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (icon, color, hint) = if is_scene_file(&item.name) {
+                                (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
+                            } else if is_image_file(&item.name) {
+                                (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
+                            } else if is_hdr_file(&item.name) {
+                                (SUN, Color32::from_rgb(255, 200, 100), "Drop on World Environment (Sky Texture)")
+                            } else {
+                                (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
+                            };
+                            ui.label(RichText::new(icon).color(color));
+                            ui.label(format!("{}: {}", hint, item.name));
                         });
                     });
-            }
+                });
         }
     }
 }

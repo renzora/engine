@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
+use bevy_egui::egui;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -9,10 +10,50 @@ use std::path::PathBuf;
 pub struct AssetBrowserState {
     /// Current folder being viewed in assets panel
     pub current_folder: Option<PathBuf>,
-    /// Currently selected asset
+    /// Currently selected asset (kept for compatibility)
     pub selected_asset: Option<PathBuf>,
-    /// Asset being dragged
+    /// Asset being dragged (single, kept for compatibility with viewport drops)
     pub dragging_asset: Option<PathBuf>,
+
+    // === Multi-selection ===
+    /// All selected items (for multi-selection)
+    pub selected_assets: HashSet<PathBuf>,
+    /// Anchor for Shift+click range selection
+    pub selection_anchor: Option<PathBuf>,
+    /// Item order in current view for range selection
+    pub visible_item_order: Vec<PathBuf>,
+
+    // === Inline rename ===
+    /// Asset being renamed
+    pub renaming_asset: Option<PathBuf>,
+    /// Text input buffer for rename
+    pub rename_buffer: String,
+    /// Track focus request for rename TextEdit
+    pub rename_focus_set: bool,
+
+    // === Drag-drop move ===
+    /// Assets being dragged (multi-selection aware)
+    pub dragging_assets: Vec<PathBuf>,
+    /// Folder hover target for drop
+    pub drop_target_folder: Option<PathBuf>,
+
+    // === Marquee/drag selection ===
+    /// Start position of drag selection
+    pub marquee_start: Option<egui::Pos2>,
+    /// Current drag position
+    pub marquee_current: Option<egui::Pos2>,
+    /// Item positions for hit testing
+    pub item_rects: Vec<(PathBuf, egui::Rect)>,
+
+    // === Operations ===
+    /// Pending rename operation (old_path, new_name)
+    pub pending_rename: Option<(PathBuf, String)>,
+    /// Pending move operation (source_paths, target_folder)
+    pub pending_move: Option<(Vec<PathBuf>, PathBuf)>,
+    /// Last error message
+    pub last_error: Option<String>,
+    /// Error auto-clear timer
+    pub error_timeout: f32,
     /// Pending asset drop (path, 3D position) - for viewport drops
     pub pending_asset_drop: Option<(PathBuf, Vec3)>,
     /// Files to import to assets folder (dropped in assets panel, NOT to spawn in scene)
@@ -51,6 +92,34 @@ pub struct AssetBrowserState {
     pub show_create_scene_dialog: bool,
     /// New scene name being entered
     pub new_scene_name: String,
+    /// Show create video project dialog
+    pub show_create_video_dialog: bool,
+    /// New video project name being entered
+    pub new_video_name: String,
+    /// Show create audio project dialog
+    pub show_create_audio_dialog: bool,
+    /// New audio project name being entered
+    pub new_audio_name: String,
+    /// Show create animation dialog
+    pub show_create_animation_dialog: bool,
+    /// New animation name being entered
+    pub new_animation_name: String,
+    /// Show create texture dialog
+    pub show_create_texture_dialog: bool,
+    /// New texture name being entered
+    pub new_texture_name: String,
+    /// Show create particle FX dialog
+    pub show_create_particle_dialog: bool,
+    /// New particle FX name being entered
+    pub new_particle_name: String,
+    /// Show create level dialog
+    pub show_create_level_dialog: bool,
+    /// New level name being entered
+    pub new_level_name: String,
+    /// Show create terrain dialog
+    pub show_create_terrain_dialog: bool,
+    /// New terrain name being entered
+    pub new_terrain_name: String,
     /// Context menu open state and position
     pub context_menu_pos: Option<bevy::math::Vec2>,
     /// Requested layout switch (processed by main UI loop)
