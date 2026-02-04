@@ -45,6 +45,7 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Blueprints", blueprints_layout()),
         WorkspaceLayout::builtin("Level Design", level_design_layout()),
         WorkspaceLayout::builtin("Terrain", terrain_layout()),
+        WorkspaceLayout::builtin("Image Preview", image_preview_layout()),
     ]
 }
 
@@ -282,6 +283,36 @@ pub fn terrain_layout() -> DockTree {
         DockTree::leaf(PanelId::LevelTools),
         DockTree::leaf(PanelId::Viewport),
         0.2,
+    )
+}
+
+/// Image Preview layout: Image viewer with assets for browsing
+///
+/// ```text
+/// ┌───────────┬──────────────────────┬───────────┐
+/// │           │                      │           │
+/// │ Hierarchy │    Image Preview     │ Inspector │
+/// │           │                      │           │
+/// ├───────────┴──────────────────────┴───────────┤
+/// │              Assets | Console                │
+/// └──────────────────────────────────────────────┘
+/// ```
+pub fn image_preview_layout() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::horizontal(
+                DockTree::leaf(PanelId::ImagePreview),
+                DockTree::leaf(PanelId::Inspector),
+                0.78,
+            ),
+            0.18,
+        ),
+        DockTree::Leaf {
+            tabs: vec![PanelId::Assets, PanelId::Console],
+            active_tab: 0,
+        },
+        0.72,
     )
 }
 

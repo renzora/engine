@@ -8,7 +8,7 @@ use egui_phosphor::regular::{
     TREE_STRUCTURE, SLIDERS_HORIZONTAL, FOLDER_OPEN, TERMINAL,
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
-    STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM,
+    STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
 };
 
 /// Direction of a split in the dock tree
@@ -47,6 +47,8 @@ pub enum PanelId {
     StudioPreview,
     /// Node explorer - shows entity hierarchy tree with components
     NodeExplorer,
+    /// Image preview panel for viewing images
+    ImagePreview,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -79,6 +81,7 @@ impl PanelId {
             PanelId::LevelTools => "Level Tools",
             PanelId::StudioPreview => "Studio Preview",
             PanelId::NodeExplorer => "Node Explorer",
+            PanelId::ImagePreview => "Image Preview",
             PanelId::Plugin(name) => name,
         }
     }
@@ -110,6 +113,7 @@ impl PanelId {
             PanelId::LevelTools => CUBE,
             PanelId::StudioPreview => VIDEO_CAMERA,
             PanelId::NodeExplorer => TREE_STRUCTURE,
+            PanelId::ImagePreview => IMAGE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

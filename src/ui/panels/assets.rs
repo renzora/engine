@@ -1703,8 +1703,14 @@ fn handle_item_interaction(
         }
     }
 
-    if response.double_clicked() && item.is_folder {
-        assets.current_folder = Some(item.path.clone());
+    if response.double_clicked() {
+        if item.is_folder {
+            assets.current_folder = Some(item.path.clone());
+        } else if is_image_file(&item.name) {
+            // Open image in preview tab and switch to Image Preview layout
+            super::image_preview::open_image(scene_state, item.path.clone());
+            assets.requested_layout = Some("Image Preview".to_string());
+        }
     }
 
     // Drag support for models

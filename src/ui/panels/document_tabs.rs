@@ -4,7 +4,7 @@ use crate::blueprint::BlueprintEditorState;
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
 use crate::theming::Theme;
 
-use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE};
+use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE, IMAGE};
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_PADDING: f32 = 12.0;
@@ -140,6 +140,7 @@ pub fn render_document_tabs(
                             tab.name.clone()
                         };
                         let active = scene_state.active_script_tab.is_none()
+                            && scene_state.active_image_tab.is_none()
                             && blueprint_editor.active_blueprint.is_none()
                             && *idx == scene_state.active_scene_tab;
                         // Muted version of scene accent
@@ -173,6 +174,15 @@ pub fn render_document_tabs(
                         let [r, g, b, _] = blueprint_accent_color.to_array();
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
                         (name, active, PALETTE, blueprint_accent_color, inactive)
+                    }
+                    TabKind::Image(idx) => {
+                        let image = &scene_state.open_images[*idx];
+                        let text = image.name.clone();
+                        let active = scene_state.active_image_tab == Some(*idx);
+                        let image_accent_color = Color32::from_rgb(166, 217, 140); // Green for images
+                        let [r, g, b, _] = image_accent_color.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, active, IMAGE, image_accent_color, inactive)
                     }
                 };
 
@@ -274,6 +284,7 @@ pub fn render_document_tabs(
                     TabKind::Scene(_) => scene_state.scene_tabs.len() > 1,
                     TabKind::Script(_) => true,
                     TabKind::Blueprint(_) => true,
+                    TabKind::Image(_) => true,
                 };
 
                 if can_close {
@@ -479,6 +490,7 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
         TabKind::Scene(idx) => *idx < scene_state.scene_tabs.len(),
         TabKind::Script(idx) => *idx < scene_state.open_scripts.len(),
         TabKind::Blueprint(path) => blueprint_editor.open_blueprints.contains_key(path),
+        TabKind::Image(idx) => *idx < scene_state.open_images.len(),
     });
 
     // Add any missing scene tabs
@@ -502,6 +514,13 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
             scene_state.tab_order.push(tab_kind);
         }
     }
+
+    // Add any missing image tabs
+    for idx in 0..scene_state.open_images.len() {
+        if !scene_state.tab_order.contains(&TabKind::Image(idx)) {
+            scene_state.tab_order.push(TabKind::Image(idx));
+        }
+    }
 }
 
 fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut BlueprintEditorState, tab_kind: TabKind) {
@@ -513,6 +532,7 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
             if scene_state.scene_tabs.len() > 1 {
                 // Determine which tab to switch to
                 let is_active = scene_state.active_script_tab.is_none()
+                    && scene_state.active_image_tab.is_none()
                     && blueprint_editor.active_blueprint.is_none()
                     && idx == scene_state.active_scene_tab;
 
@@ -587,6 +607,35 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
                 blueprint_editor.active_blueprint = blueprint_editor.open_blueprints.keys().next().cloned();
             }
         }
+        TabKind::Image(idx) => {
+            // Remove from tab_order first
+            if let Some(pos) = order_pos {
+                scene_state.tab_order.remove(pos);
+            }
+
+            // Update tab_order indices for remaining image tabs
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Image(image_idx) = kind {
+                    if *image_idx > idx {
+                        *image_idx -= 1;
+                    }
+                }
+            }
+
+            // Remove the image
+            scene_state.open_images.remove(idx);
+
+            // Update active image tab
+            if scene_state.open_images.is_empty() {
+                scene_state.active_image_tab = None;
+            } else if let Some(active) = scene_state.active_image_tab {
+                if active >= scene_state.open_images.len() {
+                    scene_state.active_image_tab = Some(scene_state.open_images.len() - 1);
+                } else if active > idx {
+                    scene_state.active_image_tab = Some(active - 1);
+                }
+            }
+        }
     }
 }
 
@@ -595,9 +644,11 @@ fn activate_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Blue
         TabKind::Scene(idx) => {
             if scene_state.active_script_tab.is_some()
                 || blueprint_editor.active_blueprint.is_some()
+                || scene_state.active_image_tab.is_some()
                 || idx != scene_state.active_scene_tab
             {
                 scene_state.active_script_tab = None;
+                scene_state.active_image_tab = None;
                 blueprint_editor.active_blueprint = None;
                 scene_state.pending_tab_switch = Some(idx);
                 *layout_to_switch = Some("Default");
@@ -605,13 +656,21 @@ fn activate_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Blue
         }
         TabKind::Script(idx) => {
             scene_state.active_script_tab = Some(idx);
+            scene_state.active_image_tab = None;
             blueprint_editor.active_blueprint = None;
             *layout_to_switch = Some("Scripting");
         }
         TabKind::Blueprint(path) => {
             scene_state.active_script_tab = None;
+            scene_state.active_image_tab = None;
             blueprint_editor.active_blueprint = Some(path);
             *layout_to_switch = Some("Blueprints");
+        }
+        TabKind::Image(idx) => {
+            scene_state.active_script_tab = None;
+            scene_state.active_image_tab = Some(idx);
+            blueprint_editor.active_blueprint = None;
+            *layout_to_switch = Some("Image Preview");
         }
     }
 }

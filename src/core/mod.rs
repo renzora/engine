@@ -15,10 +15,10 @@ pub use resources::{
     DockingState, EditorSettings, RenderStats, CameraSettings,
     ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, LogEntry, LogLevel, MeshHandling,
-    NormalImportMethod, OpenScript, PendingImageDrop, PendingMaterialDrop,
+    NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
-    ThumbnailCache, supports_thumbnail, supports_model_preview,
+    ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
     // New debug/profiler resources
     EcsStatsState, MemoryProfilerState, MemoryTrend,
@@ -80,6 +80,7 @@ impl Plugin for CorePlugin {
             .init_resource::<PlayModeState>()
             .init_resource::<ConsoleState>()
             .init_resource::<ThumbnailCache>()
+            .init_resource::<ImagePreviewTextures>()
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
             .init_resource::<GamepadDebugState>()

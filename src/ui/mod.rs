@@ -11,7 +11,7 @@ use egui_phosphor::regular::{PLAY, PAUSE, STOP};
 use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DiagnosticsState, DockingState,
-    EditorEntity, ExportState, GamepadDebugState, InputFocusState, KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
+    EditorEntity, ExportState, GamepadDebugState, ImagePreviewTextures, InputFocusState, KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
@@ -47,6 +47,7 @@ pub struct EditorResources<'w> {
     pub command_history: ResMut<'w, CommandHistory>,
     pub thumbnail_cache: ResMut<'w, ThumbnailCache>,
     pub model_preview_cache: ResMut<'w, ModelPreviewCache>,
+    pub image_preview_textures: ResMut<'w, ImagePreviewTextures>,
     pub component_registry: Res<'w, ComponentRegistry>,
     pub add_component_popup: ResMut<'w, AddComponentPopupState>,
     pub keyboard: Res<'w, ButtonInput<KeyCode>>,
@@ -92,7 +93,7 @@ use docking::{
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
-    render_document_tabs, render_script_editor_content,
+    render_document_tabs, render_script_editor_content, render_image_preview_content,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
@@ -903,6 +904,18 @@ pub fn editor_ui(
                             &mut local_state.2,
                             &node_infos,
                             &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::ImagePreview => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        panels::render_image_preview_content(
+                            ui,
+                            ctx,
+                            &mut editor.scene_state,
+                            &editor.theme_manager.active_theme,
+                            &mut editor.image_preview_textures,
                         );
                     });
                 }

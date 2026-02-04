@@ -99,6 +99,7 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::LevelTools => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
         PanelId::StudioPreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
         PanelId::NodeExplorer => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::ImagePreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -131,6 +132,7 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::LevelTools,
         PanelId::StudioPreview,
         PanelId::NodeExplorer,
+        PanelId::ImagePreview,
     ]
 }
 

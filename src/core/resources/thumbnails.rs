@@ -1,12 +1,19 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use bevy_egui::egui::TextureId;
+use bevy_egui::egui::{TextureHandle, TextureId};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 /// Maximum dimension for thumbnail images (will be scaled down if larger)
 pub const THUMBNAIL_MAX_SIZE: u32 = 128;
+
+/// Resource that caches image preview textures for the image preview panel
+#[derive(Resource, Default)]
+pub struct ImagePreviewTextures {
+    /// Map of file paths to their egui texture handles
+    pub textures: HashMap<PathBuf, TextureHandle>,
+}
 
 /// Resource that caches asset thumbnails for the asset browser
 #[derive(Resource, Default)]

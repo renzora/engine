@@ -205,6 +205,7 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::LevelTools => Vec2::new(200.0, 300.0),
         PanelId::StudioPreview => Vec2::new(300.0, 300.0),
         PanelId::NodeExplorer => Vec2::new(250.0, 300.0),
+        PanelId::ImagePreview => Vec2::new(300.0, 300.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

@@ -11,6 +11,7 @@ pub enum TabKind {
     Scene(usize),
     Script(usize),
     Blueprint(String),
+    Image(usize),
 }
 
 /// Build state for Rust plugins
@@ -57,6 +58,10 @@ pub struct SceneManagerState {
     pub open_scripts: Vec<OpenScript>,
     /// Active script tab index
     pub active_script_tab: Option<usize>,
+    /// Open images in the image preview panel
+    pub open_images: Vec<OpenImage>,
+    /// Active image tab index
+    pub active_image_tab: Option<usize>,
     /// Recently saved scene paths - scene instances referencing these need to reload
     pub recently_saved_scenes: Vec<PathBuf>,
     /// Build state for Rust plugin development
@@ -88,6 +93,8 @@ impl Default for SceneManagerState {
             pending_tab_close: None,
             open_scripts: Vec::new(),
             active_script_tab: None,
+            open_images: Vec::new(),
+            active_image_tab: None,
             recently_saved_scenes: Vec::new(),
             build_state: BuildState::default(),
             tab_order: vec![TabKind::Scene(0)],
@@ -172,4 +179,15 @@ pub struct ScriptError {
     pub message: String,
     pub line: Option<usize>,
     pub column: Option<usize>,
+}
+
+/// Represents an open image in the preview panel
+#[derive(Clone, Debug)]
+pub struct OpenImage {
+    pub path: PathBuf,
+    pub name: String,
+    /// Zoom level (1.0 = 100%)
+    pub zoom: f32,
+    /// Pan offset for viewing
+    pub pan_offset: (f32, f32),
 }
