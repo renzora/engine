@@ -16,3 +16,6 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Editor cache
+.renzora/thumbnails/
