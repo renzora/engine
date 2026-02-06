@@ -6,6 +6,8 @@ A game engine built on [Bevy](https://bevyengine.org/) with a visual editor for 
 
 1. **Install Rust** from [rustup.rs](https://rustup.rs/) (this gives you `rustup`, `cargo`, and `rustc`)
 2. Windows 10/11, Linux, or macOS
+3. `Wayland` system level dev libraries, e.g. `sudo apt install libwayland-dev` for debian based systems like Ubuntu.
+    * Otherwise you might see an error while compiling: `"The system library 'wayland-client' required by crate 'wayland-sys' was not found."`
 
 ### Optional (Faster Linking)
 
