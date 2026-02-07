@@ -26,12 +26,26 @@ fn inspect_solari_lighting(
     };
     let mut changed = false;
     let mut row = 0;
+    let solari_available = cfg!(feature = "solari");
 
-    // Enabled toggle
+    // Enabled toggle (disabled if solari feature not compiled)
     changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut data.enabled, "").changed()
+        ui.add_enabled(solari_available, egui::Checkbox::new(&mut data.enabled, "")).changed()
     });
     row += 1;
+
+    if !solari_available {
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(
+                "Solari feature is not enabled. Rebuild with --features solari \
+                 (requires Vulkan SDK + DLSS SDK).",
+            )
+            .color(egui::Color32::from_rgb(200, 160, 60))
+            .small(),
+        );
+        return changed;
+    }
 
     if !data.enabled {
         return changed;

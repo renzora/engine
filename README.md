@@ -49,38 +49,19 @@ The build needs the `Include/` (Windows) or `include/` (Linux) directory contain
 
 Clone the exact version from NVIDIA's GitHub repo:
 
-```bash
-git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git C:\DLSS_SDK
-```
-
-Then set the `DLSS_SDK` environment variable:
-
-**Windows (permanent, run as admin):**
+**Windows:**
 ```cmd
+git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git C:\DLSS_SDK
 setx DLSS_SDK "C:\DLSS_SDK" /M
-```
-
-**Windows (current session only):**
-```powershell
-$env:DLSS_SDK = "C:\DLSS_SDK"
 ```
 
 **Linux:**
 ```bash
-export DLSS_SDK=/path/to/DLSS    # add to ~/.bashrc for persistence
+git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git ~/DLSS_SDK
+echo 'export DLSS_SDK="$HOME/DLSS_SDK"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-The build expects this directory structure (which the cloned repo provides):
-```
-DLSS_SDK/
-  include/              # Headers (nvsdk_ngx.h, etc.)
-  lib/
-    Windows_x86_64/
-      x64/              # nvsdk_ngx_s.lib, nvsdk_ngx_d.lib
-      rel/              # nvngx_dlss.dll, nvngx_dlssd.dll (ship with your game)
-    Linux_x86_64/
-      rel/              # libnvidia-ngx-dlss.so (ship with your game)
-```
 
 #### 3. Build with Solari
 

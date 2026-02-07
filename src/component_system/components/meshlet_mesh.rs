@@ -22,23 +22,37 @@ fn inspect_meshlet_mesh(
     _materials: &mut Assets<StandardMaterial>,
 ) -> bool {
     let mut changed = false;
+    let solari_available = cfg!(feature = "solari");
 
     // Get current meshlet data
     let Some(mut meshlet_data) = world.get_mut::<MeshletMeshData>(entity) else {
         return false;
     };
 
-    // Enabled toggle
+    // Enabled toggle (disabled if solari feature not compiled)
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
             ui.label("Enabled");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.checkbox(&mut meshlet_data.enabled, "").changed() {
+                if ui.add_enabled(solari_available, egui::Checkbox::new(&mut meshlet_data.enabled, "")).changed() {
                     changed = true;
                 }
             });
         });
     });
+
+    if !solari_available {
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(
+                "Meshlet feature is not enabled. Rebuild with --features solari \
+                 (requires Vulkan SDK + DLSS SDK).",
+            )
+            .color(egui::Color32::from_rgb(200, 160, 60))
+            .small(),
+        );
+        return changed;
+    }
 
     // Asset path
     property_row(ui, 1, |ui| {
