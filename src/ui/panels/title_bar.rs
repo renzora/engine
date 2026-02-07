@@ -173,112 +173,122 @@ pub fn handle_window_actions(
 
     // Manual window dragging fallback
     if window_state.is_being_dragged && window.mode == WindowMode::Windowed {
-        #[cfg(target_os = "windows")]
-        {
-            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
-            use windows_sys::Win32::Foundation::POINT;
+        if let Some(screen_cursor) = get_screen_cursor_pos(&window) {
+            if let Some((offset_x, offset_y)) = window_state.drag_offset {
+                let new_x = screen_cursor.0 as f32 - offset_x;
+                let new_y = screen_cursor.1 as f32 - offset_y;
 
-            let mut screen_cursor = POINT { x: 0, y: 0 };
-            unsafe {
-                if GetCursorPos(&mut screen_cursor) != 0 {
-                    if let Some((offset_x, offset_y)) = window_state.drag_offset {
-                        // Calculate new window position
-                        let new_x = screen_cursor.x as f32 - offset_x;
-                        let new_y = screen_cursor.y as f32 - offset_y;
-
-                        window.position = WindowPosition::At(IVec2::new(new_x as i32, new_y as i32));
-                    }
-                }
+                window.position = WindowPosition::At(IVec2::new(new_x as i32, new_y as i32));
             }
         }
     }
 
     // Handle window resizing
     if window_state.is_resizing && window.mode == WindowMode::Windowed {
-        #[cfg(target_os = "windows")]
-        {
-            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
-            use windows_sys::Win32::Foundation::POINT;
+        if let Some(screen_cursor) = get_screen_cursor_pos(&window) {
+            // Initialize resize start state if not set
+            if window_state.resize_start_rect.is_none() {
+                let pos = match window.position {
+                    WindowPosition::At(p) => p,
+                    _ => IVec2::ZERO,
+                };
+                window_state.resize_start_rect = Some((
+                    pos.x,
+                    pos.y,
+                    window.resolution.width() as u32,
+                    window.resolution.height() as u32,
+                ));
+                window_state.resize_start_cursor = Some(screen_cursor);
+            }
 
-            let mut screen_cursor = POINT { x: 0, y: 0 };
-            unsafe {
-                if GetCursorPos(&mut screen_cursor) != 0 {
-                    // Initialize resize start state if not set
-                    if window_state.resize_start_rect.is_none() {
-                        let pos = match window.position {
-                            WindowPosition::At(p) => p,
-                            _ => IVec2::ZERO,
-                        };
-                        window_state.resize_start_rect = Some((
-                            pos.x,
-                            pos.y,
-                            window.resolution.width() as u32,
-                            window.resolution.height() as u32,
-                        ));
-                        window_state.resize_start_cursor = Some((screen_cursor.x, screen_cursor.y));
+            if let (Some((start_x, start_y, start_w, start_h)), Some((cursor_start_x, cursor_start_y))) =
+                (window_state.resize_start_rect, window_state.resize_start_cursor)
+            {
+                let dx = screen_cursor.0 - cursor_start_x;
+                let dy = screen_cursor.1 - cursor_start_y;
+
+                let min_w = 800i32;
+                let min_h = 600i32;
+
+                let (new_x, new_y, new_w, new_h) = match window_state.resize_edge {
+                    ResizeEdge::Right => {
+                        let new_w = (start_w as i32 + dx).max(min_w) as u32;
+                        (start_x, start_y, new_w, start_h)
                     }
-
-                    if let (Some((start_x, start_y, start_w, start_h)), Some((cursor_start_x, cursor_start_y))) =
-                        (window_state.resize_start_rect, window_state.resize_start_cursor)
-                    {
-                        let dx = screen_cursor.x - cursor_start_x;
-                        let dy = screen_cursor.y - cursor_start_y;
-
-                        let min_w = 800i32;
-                        let min_h = 600i32;
-
-                        let (new_x, new_y, new_w, new_h) = match window_state.resize_edge {
-                            ResizeEdge::Right => {
-                                let new_w = (start_w as i32 + dx).max(min_w) as u32;
-                                (start_x, start_y, new_w, start_h)
-                            }
-                            ResizeEdge::Bottom => {
-                                let new_h = (start_h as i32 + dy).max(min_h) as u32;
-                                (start_x, start_y, start_w, new_h)
-                            }
-                            ResizeEdge::Left => {
-                                let new_w = (start_w as i32 - dx).max(min_w) as u32;
-                                let new_x = start_x + (start_w as i32 - new_w as i32);
-                                (new_x, start_y, new_w, start_h)
-                            }
-                            ResizeEdge::Top => {
-                                let new_h = (start_h as i32 - dy).max(min_h) as u32;
-                                let new_y = start_y + (start_h as i32 - new_h as i32);
-                                (start_x, new_y, start_w, new_h)
-                            }
-                            ResizeEdge::BottomRight => {
-                                let new_w = (start_w as i32 + dx).max(min_w) as u32;
-                                let new_h = (start_h as i32 + dy).max(min_h) as u32;
-                                (start_x, start_y, new_w, new_h)
-                            }
-                            ResizeEdge::BottomLeft => {
-                                let new_w = (start_w as i32 - dx).max(min_w) as u32;
-                                let new_h = (start_h as i32 + dy).max(min_h) as u32;
-                                let new_x = start_x + (start_w as i32 - new_w as i32);
-                                (new_x, start_y, new_w, new_h)
-                            }
-                            ResizeEdge::TopRight => {
-                                let new_w = (start_w as i32 + dx).max(min_w) as u32;
-                                let new_h = (start_h as i32 - dy).max(min_h) as u32;
-                                let new_y = start_y + (start_h as i32 - new_h as i32);
-                                (start_x, new_y, new_w, new_h)
-                            }
-                            ResizeEdge::TopLeft => {
-                                let new_w = (start_w as i32 - dx).max(min_w) as u32;
-                                let new_h = (start_h as i32 - dy).max(min_h) as u32;
-                                let new_x = start_x + (start_w as i32 - new_w as i32);
-                                let new_y = start_y + (start_h as i32 - new_h as i32);
-                                (new_x, new_y, new_w, new_h)
-                            }
-                            ResizeEdge::None => (start_x, start_y, start_w, start_h),
-                        };
-
-                        window.position = WindowPosition::At(IVec2::new(new_x, new_y));
-                        window.resolution.set(new_w as f32, new_h as f32);
+                    ResizeEdge::Bottom => {
+                        let new_h = (start_h as i32 + dy).max(min_h) as u32;
+                        (start_x, start_y, start_w, new_h)
                     }
-                }
+                    ResizeEdge::Left => {
+                        let new_w = (start_w as i32 - dx).max(min_w) as u32;
+                        let new_x = start_x + (start_w as i32 - new_w as i32);
+                        (new_x, start_y, new_w, start_h)
+                    }
+                    ResizeEdge::Top => {
+                        let new_h = (start_h as i32 - dy).max(min_h) as u32;
+                        let new_y = start_y + (start_h as i32 - new_h as i32);
+                        (start_x, new_y, start_w, new_h)
+                    }
+                    ResizeEdge::BottomRight => {
+                        let new_w = (start_w as i32 + dx).max(min_w) as u32;
+                        let new_h = (start_h as i32 + dy).max(min_h) as u32;
+                        (start_x, start_y, new_w, new_h)
+                    }
+                    ResizeEdge::BottomLeft => {
+                        let new_w = (start_w as i32 - dx).max(min_w) as u32;
+                        let new_h = (start_h as i32 + dy).max(min_h) as u32;
+                        let new_x = start_x + (start_w as i32 - new_w as i32);
+                        (new_x, start_y, new_w, new_h)
+                    }
+                    ResizeEdge::TopRight => {
+                        let new_w = (start_w as i32 + dx).max(min_w) as u32;
+                        let new_h = (start_h as i32 - dy).max(min_h) as u32;
+                        let new_y = start_y + (start_h as i32 - new_h as i32);
+                        (start_x, new_y, new_w, new_h)
+                    }
+                    ResizeEdge::TopLeft => {
+                        let new_w = (start_w as i32 - dx).max(min_w) as u32;
+                        let new_h = (start_h as i32 - dy).max(min_h) as u32;
+                        let new_x = start_x + (start_w as i32 - new_w as i32);
+                        let new_y = start_y + (start_h as i32 - new_h as i32);
+                        (new_x, new_y, new_w, new_h)
+                    }
+                    ResizeEdge::None => (start_x, start_y, start_w, start_h),
+                };
+
+                window.position = WindowPosition::At(IVec2::new(new_x, new_y));
+                window.resolution.set(new_w as f32, new_h as f32);
             }
         }
+    }
+}
+
+/// Get the screen-space cursor position as `(x, y)` in pixels.
+/// On Windows this calls `GetCursorPos` (absolute screen coords).
+/// On other platforms it approximates from Bevy's window-relative cursor + window position.
+fn get_screen_cursor_pos(window: &Window) -> Option<(i32, i32)> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        use windows_sys::Win32::Foundation::POINT;
+
+        let mut point = POINT { x: 0, y: 0 };
+        unsafe {
+            if GetCursorPos(&mut point) != 0 {
+                return Some((point.x, point.y));
+            }
+        }
+        None
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let cursor = window.cursor_position()?;
+        let win_pos = match window.position {
+            WindowPosition::At(p) => p,
+            _ => IVec2::ZERO,
+        };
+        Some((win_pos.x + cursor.x as i32, win_pos.y + cursor.y as i32))
     }
 }
 

@@ -23,19 +23,24 @@ use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 use std::process::{Child, Command, Stdio};
 
+use crate::project::CurrentProject;
 use crate::scene::EditorOnly;
 
-/// Cache directory for thumbnails (relative to project root)
+/// Cache directory name for thumbnails (relative to project root)
 const THUMBNAIL_CACHE_DIR: &str = ".renzora/thumbnails";
 
-/// Get the cache file path for a model
-fn get_cache_path(model_path: &PathBuf) -> PathBuf {
+/// Get the cache file path for a model, rooted in the project directory
+fn get_cache_path(model_path: &PathBuf, project: Option<&CurrentProject>) -> PathBuf {
     // Create a hash of the model path for the cache filename
     let mut hasher = DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
 
-    PathBuf::from(THUMBNAIL_CACHE_DIR).join(format!("{:016x}.png", hash))
+    let base = match project {
+        Some(p) => p.path.join(THUMBNAIL_CACHE_DIR),
+        None => PathBuf::from(THUMBNAIL_CACHE_DIR),
+    };
+    base.join(format!("{:016x}.png", hash))
 }
 
 /// Check if cached thumbnail is valid (exists and newer than source)
@@ -200,7 +205,9 @@ const MAX_SUBPROCESS_RENDERS: usize = 3;
 pub fn process_model_preview_queue(
     mut preview_cache: ResMut<ModelPreviewCache>,
     mut images: ResMut<Assets<Image>>,
+    current_project: Option<Res<CurrentProject>>,
 ) {
+    let project_ref = current_project.as_deref();
     // Poll completed subprocess renders and load their results
     #[cfg(feature = "editor")]
     {
@@ -223,7 +230,7 @@ pub fn process_model_preview_queue(
 
             if success {
                 // Load the cached PNG immediately
-                let cache_path = get_cache_path(&path);
+                let cache_path = get_cache_path(&path, project_ref);
                 if let Ok(data) = fs::read(&cache_path) {
                     if let Ok(img) = image::load_from_memory(&data) {
                         let rgba = img.to_rgba8();
@@ -265,7 +272,7 @@ pub fn process_model_preview_queue(
         };
 
         // Check disk cache
-        let cache_path = get_cache_path(&path);
+        let cache_path = get_cache_path(&path, project_ref);
         if is_cache_valid(&path, &cache_path) {
             preview_cache.queue.pop_front();
             if let Ok(data) = fs::read(&cache_path) {
@@ -311,7 +318,7 @@ pub fn process_model_preview_queue(
             };
 
             // Double-check cache
-            let cache_path = get_cache_path(&path);
+            let cache_path = get_cache_path(&path, project_ref);
             if is_cache_valid(&path, &cache_path) {
                 preview_cache.queue.push_front(path);
                 break;
@@ -481,7 +488,9 @@ pub fn capture_model_previews(
     scene_transform_query: Query<&GlobalTransform, With<ModelPreviewScene>>,
     mesh_query: Query<(&GlobalTransform, Option<&Aabb>), With<Mesh3d>>,
     children_query: Query<&Children>,
+    current_project: Option<Res<CurrentProject>>,
 ) {
+    let project_ref = current_project.as_deref();
     let mut completed = Vec::new();
 
     for (path, state) in preview_cache.processing.iter_mut() {
@@ -684,7 +693,7 @@ pub fn capture_model_previews(
     for path in completed {
         if let Some(state) = preview_cache.processing.remove(&path) {
             // Spawn readback entity with observer to save to disk cache
-            let cache_path = get_cache_path(&path);
+            let cache_path = get_cache_path(&path, project_ref);
             commands.spawn(Readback::texture(state.texture_handle.clone()))
                 .observe(move |trigger: On<bevy::render::gpu_readback::ReadbackComplete>, mut commands: Commands| {
                     let data = &trigger.event().data;

@@ -26,29 +26,30 @@ fn inspect_solari_lighting(
     };
     let mut changed = false;
     let mut row = 0;
-    let solari_available = cfg!(feature = "solari");
 
-    // Enabled toggle (disabled if solari feature not compiled)
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.add_enabled(solari_available, egui::Checkbox::new(&mut data.enabled, "")).changed()
-    });
-    row += 1;
-
-    if !solari_available {
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "Solari feature is not enabled. Rebuild with --features solari \
-                 (requires Vulkan SDK + DLSS SDK).",
-            )
-            .color(egui::Color32::from_rgb(200, 160, 60))
-            .small(),
-        );
-        return changed;
-    }
-
-    if !data.enabled {
-        return changed;
+    if !cfg!(feature = "solari") {
+        let warning_color = egui::Color32::from_rgb(200, 160, 60);
+        let bg_color = egui::Color32::from_rgb(50, 42, 15);
+        let frame = egui::Frame::new()
+            .inner_margin(8.0)
+            .corner_radius(4.0)
+            .fill(bg_color)
+            .stroke(egui::Stroke::new(1.0, warning_color));
+        frame.show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new("Solari feature is not enabled")
+                        .color(warning_color)
+                        .small(),
+                );
+                ui.label(
+                    egui::RichText::new("Rebuild with --features solari")
+                        .color(warning_color)
+                        .small(),
+                );
+            });
+        });
+        return false;
     }
 
     // DLSS toggle

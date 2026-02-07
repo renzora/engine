@@ -22,37 +22,36 @@ fn inspect_meshlet_mesh(
     _materials: &mut Assets<StandardMaterial>,
 ) -> bool {
     let mut changed = false;
-    let solari_available = cfg!(feature = "solari");
+
+    if !cfg!(feature = "solari") {
+        let warning_color = egui::Color32::from_rgb(200, 160, 60);
+        let bg_color = egui::Color32::from_rgb(50, 42, 15);
+        let frame = egui::Frame::new()
+            .inner_margin(8.0)
+            .corner_radius(4.0)
+            .fill(bg_color)
+            .stroke(egui::Stroke::new(1.0, warning_color));
+        frame.show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new("Meshlet feature is not enabled")
+                        .color(warning_color)
+                        .small(),
+                );
+                ui.label(
+                    egui::RichText::new("Rebuild with --features solari")
+                        .color(warning_color)
+                        .small(),
+                );
+            });
+        });
+        return false;
+    }
 
     // Get current meshlet data
     let Some(mut meshlet_data) = world.get_mut::<MeshletMeshData>(entity) else {
         return false;
     };
-
-    // Enabled toggle (disabled if solari feature not compiled)
-    property_row(ui, 0, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Enabled");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add_enabled(solari_available, egui::Checkbox::new(&mut meshlet_data.enabled, "")).changed() {
-                    changed = true;
-                }
-            });
-        });
-    });
-
-    if !solari_available {
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "Meshlet feature is not enabled. Rebuild with --features solari \
-                 (requires Vulkan SDK + DLSS SDK).",
-            )
-            .color(egui::Color32::from_rgb(200, 160, 60))
-            .small(),
-        );
-        return changed;
-    }
 
     // Asset path
     property_row(ui, 1, |ui| {

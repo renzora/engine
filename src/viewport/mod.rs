@@ -531,7 +531,7 @@ fn sync_rendering_settings(
     if !*logged_startup {
         console_info!("Solari", "=== RENDERING SETTINGS SYNC INITIALIZED ===");
         let solari_data_count = solari_all.iter().count();
-        let enabled_count = solari_all.iter().filter(|(s, dc)| s.enabled && !dc.map_or(false, |d| d.is_disabled("solari_lighting"))).count();
+        let enabled_count = solari_all.iter().filter(|(_, dc)| !dc.map_or(false, |d| d.is_disabled("solari_lighting"))).count();
         let mesh_count = meshes_without_rt.iter().count() + meshes_with_rt.iter().count();
         console_info!("Solari", "SolariLightingData entities: {} (enabled: {})", solari_data_count, enabled_count);
         console_info!("Solari", "Total meshes in scene: {}", mesh_count);
@@ -566,9 +566,9 @@ fn sync_rendering_settings(
     };
 
     // Find the first enabled SolariLightingData in the scene
-    // A component is considered disabled if it's in DisabledComponents or if .enabled is false
-    let active_settings = solari_all.iter().find(|(s, dc)| {
-        s.enabled && !dc.map_or(false, |d| d.is_disabled("solari_lighting"))
+    // A component is considered disabled if it's in DisabledComponents (the header switch)
+    let active_settings = solari_all.iter().find(|(_, dc)| {
+        !dc.map_or(false, |d| d.is_disabled("solari_lighting"))
     }).map(|(s, _)| s);
     let should_enable = active_settings.is_some();
 

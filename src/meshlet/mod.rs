@@ -50,10 +50,10 @@ pub struct MeshletMeshApplied;
 pub fn rehydrate_meshlet_meshes(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    query: Query<(Entity, &MeshletMeshData), (Without<LoadingMeshletMesh>, Without<MeshletMeshApplied>)>,
+    query: Query<(Entity, &MeshletMeshData, Option<&crate::core::DisabledComponents>), (Without<LoadingMeshletMesh>, Without<MeshletMeshApplied>)>,
 ) {
-    for (entity, meshlet_data) in query.iter() {
-        if !meshlet_data.enabled {
+    for (entity, meshlet_data, disabled) in query.iter() {
+        if disabled.map_or(false, |d| d.is_disabled("meshlet_mesh")) {
             continue;
         }
 

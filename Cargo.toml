@@ -93,5 +93,5 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 
-[build-dependencies]
+[target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
