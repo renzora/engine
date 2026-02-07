@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::math::Isometry3d;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 
-use crate::core::{EditorEntity, SelectionState};
+use crate::core::{EditorEntity, SelectionState, PlayModeState, PlayState};
 use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 use crate::terrain::TerrainChunkData;
@@ -20,6 +20,7 @@ pub fn update_selection_outlines(
     selection: Res<SelectionState>,
     modal: Res<ModalTransformState>,
     gizmo_state: Res<GizmoState>,
+    play_mode: Res<PlayModeState>,
     mesh_entities: Query<Entity, With<Mesh3d>>,
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
@@ -31,8 +32,9 @@ pub fn update_selection_outlines(
     let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8); // Lighter orange
     let outline_width = 3.0;
 
-    // Don't show outlines during modal transform or collider edit mode
-    let should_show_outlines = !modal.active && !gizmo_state.collider_edit.is_active();
+    // Don't show outlines during modal transform, collider edit mode, or fullscreen play mode
+    let should_show_outlines = !modal.active && !gizmo_state.collider_edit.is_active()
+        && !matches!(play_mode.state, PlayState::Playing | PlayState::Paused);
 
     // Remove all existing outlines first
     for entity in outlined_entities.iter() {
@@ -123,6 +125,7 @@ pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
     gizmo_state: Res<GizmoState>,
     modal: Res<ModalTransformState>,
+    play_mode: Res<PlayModeState>,
     mut gizmos: Gizmos<SelectionGizmoGroup>,
     transforms: Query<&Transform, With<EditorEntity>>,
     cameras: Query<&CameraNodeData>,
@@ -134,8 +137,8 @@ pub fn draw_selection_gizmo(
         return;
     }
 
-    // Don't draw selection visuals when in collider edit mode
-    if gizmo_state.collider_edit.is_active() {
+    // Don't draw selection visuals when in collider edit mode or fullscreen play mode
+    if gizmo_state.collider_edit.is_active() || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 

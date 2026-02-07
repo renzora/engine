@@ -43,6 +43,7 @@ pub fn render_viewport(
     selection: &SelectionState,
     hierarchy: &mut HierarchyState,
     command_history: &mut CommandHistory,
+    in_play_mode: bool,
 ) {
     let screen_rect = ctx.content_rect();
 
@@ -55,25 +56,30 @@ pub fn render_viewport(
         ),
     );
 
-    // Render viewport mode tabs at the top (with tools)
-    render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme);
+    // In play mode, skip tabs/rulers and use full area as content
+    let content_rect = if in_play_mode {
+        full_viewport_rect
+    } else {
+        // Render viewport mode tabs at the top (with tools)
+        render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme);
 
-    // Calculate content rect (below tabs, accounting for rulers in 2D mode)
-    let tabs_offset = VIEWPORT_TABS_HEIGHT;
-    let ruler_offset = if viewport.viewport_mode == ViewportMode::Mode2D { RULER_SIZE } else { 0.0 };
+        // Calculate content rect (below tabs, accounting for rulers in 2D mode)
+        let tabs_offset = VIEWPORT_TABS_HEIGHT;
+        let ruler_offset = if viewport.viewport_mode == ViewportMode::Mode2D { RULER_SIZE } else { 0.0 };
 
-    let content_rect = Rect::from_min_size(
-        Pos2::new(full_viewport_rect.min.x + ruler_offset, full_viewport_rect.min.y + tabs_offset + ruler_offset),
-        Vec2::new(
-            full_viewport_rect.width() - ruler_offset,
-            full_viewport_rect.height() - tabs_offset - ruler_offset,
-        ),
-    );
+        // Render rulers in 2D mode
+        if viewport.viewport_mode == ViewportMode::Mode2D {
+            render_rulers(ctx, viewport, camera2d_state, full_viewport_rect, tabs_offset, theme);
+        }
 
-    // Render rulers in 2D mode
-    if viewport.viewport_mode == ViewportMode::Mode2D {
-        render_rulers(ctx, viewport, camera2d_state, full_viewport_rect, tabs_offset, theme);
-    }
+        Rect::from_min_size(
+            Pos2::new(full_viewport_rect.min.x + ruler_offset, full_viewport_rect.min.y + tabs_offset + ruler_offset),
+            Vec2::new(
+                full_viewport_rect.width() - ruler_offset,
+                full_viewport_rect.height() - tabs_offset - ruler_offset,
+            ),
+        )
+    };
 
     // Use an Area to render the viewport content
     // Use Order::Middle so it can receive input (positioned below tab bar so doesn't overlap)
@@ -82,21 +88,24 @@ pub fn render_viewport(
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
-            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect);
+            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode);
         });
 
-    // Render box selection rectangle (if active)
-    if gizmo.box_selection.active && gizmo.box_selection.is_drag() {
-        render_box_selection(ctx, gizmo);
-    }
+    // Skip editor overlays in play mode
+    if !in_play_mode {
+        // Render box selection rectangle (if active)
+        if gizmo.box_selection.active && gizmo.box_selection.is_drag() {
+            render_box_selection(ctx, gizmo);
+        }
 
-    // Render modal transform HUD (if active)
-    if modal_transform.active {
-        render_modal_transform_hud(ctx, modal_transform, content_rect);
-    }
+        // Render modal transform HUD (if active)
+        if modal_transform.active {
+            render_modal_transform_hud(ctx, modal_transform, content_rect);
+        }
 
-    // Render viewport right-click context menu
-    render_viewport_context_menu(ctx, viewport, assets, selection, hierarchy, command_history, theme);
+        // Render viewport right-click context menu
+        render_viewport_context_menu(ctx, viewport, assets, selection, hierarchy, command_history, theme);
+    }
 }
 
 /// Render the 3D/2D mode tabs at the top of the viewport with tool controls
@@ -1161,6 +1170,7 @@ pub fn render_viewport_content(
     terrain_sculpt_state: &TerrainSculptState,
     viewport_texture_id: Option<TextureId>,
     content_rect: Rect,
+    in_play_mode: bool,
 ) {
     let ctx = ui.ctx().clone();
 
@@ -1168,12 +1178,11 @@ pub fn render_viewport_content(
     viewport.position = [content_rect.min.x, content_rect.min.y];
     viewport.size = [content_rect.width(), content_rect.height()];
     // Only consider viewport hovered if pointer is inside AND no resize handle is being interacted with
-    viewport.hovered = ui.rect_contains_pointer(content_rect) && !viewport.resize_handle_active;
+    // Disable viewport hover in play mode to prevent editor camera controls
+    viewport.hovered = !in_play_mode && ui.rect_contains_pointer(content_rect) && !viewport.resize_handle_active;
 
-    // Set cursor for viewport - game engine friendly crosshair
-    // Note: Cursor hiding for terrain brush is handled by terrain_brush_cursor_system
-    // using Bevy's window cursor visibility
-    if viewport.hovered && !terrain_sculpt_state.brush_visible {
+    // Set cursor for viewport - game engine friendly crosshair (skip in play mode)
+    if !in_play_mode && viewport.hovered && !terrain_sculpt_state.brush_visible {
         ctx.set_cursor_icon(CursorIcon::Crosshair);
     }
 
@@ -1202,9 +1211,14 @@ pub fn render_viewport_content(
         );
     }
 
-    // Render axis orientation gizmo in 3D mode
-    if viewport.viewport_mode == ViewportMode::Mode3D {
+    // Render axis orientation gizmo in 3D mode (skip in play mode)
+    if !in_play_mode && viewport.viewport_mode == ViewportMode::Mode3D {
         render_axis_gizmo(&ctx, orbit, content_rect);
+    }
+
+    // Skip drag-drop in play mode
+    if in_play_mode {
+        return;
     }
 
     // Handle asset drag and drop from assets panel

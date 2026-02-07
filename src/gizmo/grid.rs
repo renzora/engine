@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::core::{EditorSettings, OrbitCameraState};
+use crate::core::{EditorSettings, OrbitCameraState, PlayModeState, PlayState};
 use super::GridGizmoGroup;
 
 /// Snap a number to a "nice" value (1, 2, 5, 10, 20, 50, 100, etc.)
@@ -26,8 +26,8 @@ fn snap_to_nice_number(n: i32) -> i32 {
 }
 
 /// Draw an infinite reference grid on the XZ plane that follows the camera
-pub fn draw_grid(mut gizmos: Gizmos<GridGizmoGroup>, settings: Res<EditorSettings>, camera: Res<OrbitCameraState>) {
-    if !settings.show_grid {
+pub fn draw_grid(mut gizmos: Gizmos<GridGizmoGroup>, settings: Res<EditorSettings>, camera: Res<OrbitCameraState>, play_mode: Res<PlayModeState>) {
+    if !settings.show_grid || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 

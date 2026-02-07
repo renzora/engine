@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
-use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
+use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState};
 use crate::terrain::{TerrainChunkData, TerrainChunkOf};
 use crate::console_info;
 
@@ -18,13 +18,14 @@ pub fn gizmo_hover_system(
     selection: Res<SelectionState>,
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
+    play_mode: Res<PlayModeState>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
-    // Disable gizmo during modal transform
-    if modal.active {
+    // Disable gizmo during modal transform or fullscreen play mode
+    if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         gizmo.hovered_axis = None;
         return;
     }
@@ -172,6 +173,7 @@ pub fn gizmo_interaction_system(
     mut selection: ResMut<SelectionState>,
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
+    play_mode: Res<PlayModeState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
@@ -184,8 +186,8 @@ pub fn gizmo_interaction_system(
     mut command_history: ResMut<CommandHistory>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
-    // Disable gizmo interaction during modal transform
-    if modal.active {
+    // Disable gizmo interaction during modal transform or fullscreen play mode
+    if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 
@@ -512,6 +514,7 @@ pub fn object_drag_system(
     selection: Res<SelectionState>,
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
+    play_mode: Res<PlayModeState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
@@ -521,8 +524,8 @@ pub fn object_drag_system(
     mut scene_state: ResMut<SceneManagerState>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
 ) {
-    // Disable gizmo drag during modal transform
-    if modal.active {
+    // Disable gizmo drag during modal transform or fullscreen play mode
+    if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 
@@ -830,13 +833,14 @@ pub fn object_drag_system(
 pub fn terrain_chunk_selection_system(
     selection: Res<SelectionState>,
     modal: Res<super::modal_transform::ModalTransformState>,
+    play_mode: Res<PlayModeState>,
     gizmo_state: Res<super::GizmoState>,
     terrain_chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     terrain_query: Query<&crate::terrain::TerrainData>,
     mut gizmos: Gizmos<super::TerrainSelectionGizmoGroup>,
 ) {
-    // Don't show during modal transform or collider edit mode
-    if modal.active || gizmo_state.collider_edit.is_active() {
+    // Don't show during modal transform, collider edit mode, or fullscreen play mode
+    if modal.active || gizmo_state.collider_edit.is_active() || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 

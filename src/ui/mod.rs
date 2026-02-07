@@ -218,6 +218,7 @@ pub fn editor_ui(
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     material_preview_image: Option<Res<MaterialPreviewImage>>,
+    time: Res<Time>,
     mut local_state: Local<(UiRenderer, AnimationPanelState, panels::NodeExplorerState)>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
@@ -291,63 +292,68 @@ pub fn editor_ui(
     // Collect all UI events to forward to plugins
     let mut all_ui_events = Vec::new();
 
-    // Render custom title bar (includes menu)
-    let title_bar_events = render_title_bar(
-        ctx,
-        &mut editor.window_state,
-        &mut editor.selection,
-        &mut editor.scene_state,
-        &mut editor.settings,
-        &mut editor.export_state,
-        &mut editor.assets,
-        &editor.plugin_host,
-        &mut editor.command_history,
-        &mut editor.docking,
-        &mut editor.viewport,
-        &editor.theme_manager.active_theme,
-    );
-    all_ui_events.extend(title_bar_events);
-
-    let toolbar_height = 36.0;
-
-    // Check if selected entity is a terrain
-    let terrain_selected = editor.selection.selected_entity
-        .map(|e| hierarchy_queries.components.terrains.get(e).is_ok())
-        .unwrap_or(false);
-
-    let toolbar_events = render_toolbar(
-        ctx,
-        &mut editor.gizmo,
-        &mut editor.settings,
-        TITLE_BAR_HEIGHT,
-        toolbar_height,
-        1600.0, // Default width, will be constrained by panel
-        &editor.plugin_host,
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &mut editor.selection,
-        &mut editor.hierarchy,
-        &mut editor.play_mode,
-        &mut editor.docking,
-        &mut editor.brush_settings,
-        &mut editor.terrain_settings,
-        terrain_selected,
-        &editor.theme_manager.active_theme,
-    );
-    all_ui_events.extend(toolbar_events);
-
     // Check if we're in fullscreen play mode (not scripts-only)
     let in_fullscreen_play = matches!(editor.play_mode.state, PlayState::Playing | PlayState::Paused);
+
+    // In fullscreen play mode, skip title bar and toolbar entirely
+    let toolbar_height = 36.0;
+    let content_start_y;
+
+    if !in_fullscreen_play {
+        // Render custom title bar (includes menu)
+        let title_bar_events = render_title_bar(
+            ctx,
+            &mut editor.window_state,
+            &mut editor.selection,
+            &mut editor.scene_state,
+            &mut editor.settings,
+            &mut editor.export_state,
+            &mut editor.assets,
+            &editor.plugin_host,
+            &mut editor.command_history,
+            &mut editor.docking,
+            &mut editor.viewport,
+            &editor.theme_manager.active_theme,
+        );
+        all_ui_events.extend(title_bar_events);
+
+        // Check if selected entity is a terrain
+        let terrain_selected = editor.selection.selected_entity
+            .map(|e| hierarchy_queries.components.terrains.get(e).is_ok())
+            .unwrap_or(false);
+
+        let toolbar_events = render_toolbar(
+            ctx,
+            &mut editor.gizmo,
+            &mut editor.settings,
+            TITLE_BAR_HEIGHT,
+            toolbar_height,
+            1600.0, // Default width, will be constrained by panel
+            &editor.plugin_host,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut editor.selection,
+            &mut editor.hierarchy,
+            &mut editor.play_mode,
+            &mut editor.docking,
+            &mut editor.brush_settings,
+            &mut editor.terrain_settings,
+            terrain_selected,
+            &editor.theme_manager.active_theme,
+        );
+        all_ui_events.extend(toolbar_events);
+
+        content_start_y = TITLE_BAR_HEIGHT + toolbar_height;
+    } else {
+        content_start_y = 0.0;
+    }
 
     let screen_rect = ctx.content_rect();
     let status_bar_height = if in_fullscreen_play { 0.0 } else { 24.0 };
 
     // Suppress unused import warning
     let _ = get_legacy_layout_values;
-
-    // In fullscreen play mode, skip docking and render full viewport
-    let content_start_y = TITLE_BAR_HEIGHT + toolbar_height;
 
     if in_fullscreen_play {
         // Full-screen viewport in play mode
@@ -372,10 +378,18 @@ pub fn editor_ui(
             &editor.selection,
             &mut editor.hierarchy,
             &mut editor.command_history,
+            true, // in_play_mode
         );
 
         // Render play mode overlay with info
         render_play_mode_overlay(ctx, &mut editor.play_mode);
+
+        // Render on-screen console logs over the fullscreen viewport
+        let fullscreen_vp_rect = bevy_egui::egui::Rect::from_min_size(
+            bevy_egui::egui::Pos2::new(0.0, content_start_y),
+            bevy_egui::egui::Vec2::new(screen_rect.width(), central_height),
+        );
+        render_viewport_logs(ctx, &editor.console, time.elapsed_secs_f64(), fullscreen_vp_rect);
     } else {
         // DOCKING SYSTEM - Render dock tree with draggable panels
 
@@ -510,6 +524,30 @@ pub fn editor_ui(
                 }
             }
             editor.docking.end_drag();
+        }
+
+        // Sync plugin panels into dock tree
+        {
+            let api = editor.plugin_host.api();
+            for (panel_def, _plugin_id) in &api.panels {
+                let dock_id = PanelId::Plugin(panel_def.id.clone());
+                if !editor.docking.dock_tree.contains_panel(&dock_id) {
+                    // Add plugin panel to dock tree based on its preferred location
+                    let target = match panel_def.default_location {
+                        crate::plugin_core::PanelLocation::Left => Some(PanelId::Hierarchy),
+                        crate::plugin_core::PanelLocation::Right => Some(PanelId::Inspector),
+                        crate::plugin_core::PanelLocation::Bottom => Some(PanelId::Assets),
+                        _ => None,
+                    };
+                    if let Some(target_panel) = target {
+                        editor.docking.dock_tree.add_tab(&target_panel, dock_id);
+                    } else {
+                        // Floating preference - add as tab to inspector as fallback
+                        editor.docking.dock_tree.add_tab(&PanelId::Inspector, dock_id);
+                    }
+                    editor.docking.mark_modified();
+                }
+            }
         }
 
         // Get drag info for panel rendering
@@ -725,7 +763,16 @@ pub fn editor_ui(
                         &editor.selection,
                         &mut editor.hierarchy,
                         &mut editor.command_history,
+                        false, // not in fullscreen play mode when docked
                     );
+
+                    // Render on-screen console logs in viewport
+                    // Use actual viewport content area (below tabs) from viewport state
+                    let vp_rect = bevy_egui::egui::Rect::from_min_size(
+                        bevy_egui::egui::Pos2::new(editor.viewport.position[0], editor.viewport.position[1]),
+                        bevy_egui::egui::Vec2::new(editor.viewport.size[0], editor.viewport.size[1]),
+                    );
+                    render_viewport_logs(ctx, &editor.console, time.elapsed_secs_f64(), vp_rect);
                 }
 
                 PanelId::Animation => {
@@ -1007,7 +1054,17 @@ pub fn editor_ui(
 
                 PanelId::Plugin(name) => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        ui.label(format!("Plugin: {}", name));
+                        let api = editor.plugin_host.api();
+                        if let Some(widgets) = api.panel_contents.get(name.as_str()) {
+                            for widget in widgets {
+                                local_state.0.render(ui, widget);
+                            }
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label(bevy_egui::egui::RichText::new(format!("Plugin: {}", name))
+                                    .color(bevy_egui::egui::Color32::GRAY));
+                            });
+                        }
                     });
                 }
             }
@@ -1151,8 +1208,17 @@ pub fn editor_ui(
             current_project.as_deref(),
         );
 
-        // Render plugin-registered panels (floating windows only for now)
-        let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut local_state.0);
+        // Render plugin-registered panels (skip those already docked in the tree)
+        let docked_plugin_ids: std::collections::HashSet<String> = {
+            let api = editor.plugin_host.api();
+            api.panels.iter()
+                .filter(|(panel_def, _)| {
+                    editor.docking.dock_tree.contains_panel(&PanelId::Plugin(panel_def.id.clone()))
+                })
+                .map(|(panel_def, _)| panel_def.id.clone())
+                .collect()
+        };
+        let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut local_state.0, &docked_plugin_ids);
         all_ui_events.extend(plugin_events);
     }
 
@@ -1192,7 +1258,7 @@ fn render_play_mode_overlay(ctx: &bevy_egui::egui::Context, play_mode: &mut Play
 
     // Top-center status indicator
     egui::Area::new(egui::Id::new("play_mode_status"))
-        .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 80.0))
+        .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 16.0))
         .show(ctx, |ui| {
             egui::Frame::NONE
                 .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 180))
@@ -1251,6 +1317,83 @@ fn render_play_mode_overlay(ctx: &bevy_egui::egui::Context, play_mode: &mut Play
                     });
                 });
         });
+}
+
+/// Render on-screen console logs in the viewport during play mode (like Unreal Engine)
+fn render_viewport_logs(
+    ctx: &bevy_egui::egui::Context,
+    console: &ConsoleState,
+    current_time: f64,
+    viewport_rect: bevy_egui::egui::Rect,
+) {
+    use bevy_egui::egui::{self, Color32, FontId, Pos2, Vec2};
+
+    const MAX_VISIBLE: usize = 12;
+    const DISPLAY_DURATION: f64 = 5.0;
+    const FADE_DURATION: f64 = 1.0;
+    const LINE_HEIGHT: f32 = 14.0;
+    const MARGIN_X: f32 = 12.0;
+    const MARGIN_Y: f32 = 12.0;
+
+    // Collect recent entries within the display window
+    let recent: Vec<_> = console.entries.iter().rev()
+        .filter(|e| {
+            let age = current_time - e.timestamp;
+            age >= 0.0 && age < DISPLAY_DURATION
+        })
+        .take(MAX_VISIBLE)
+        .collect();
+
+    if recent.is_empty() {
+        return;
+    }
+
+    // Paint directly with a clipped painter to stay within viewport bounds
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("viewport_console_logs")))
+        .with_clip_rect(viewport_rect);
+
+    let origin = Pos2::new(viewport_rect.min.x + MARGIN_X, viewport_rect.min.y + MARGIN_Y);
+
+    // Render oldest at top, newest at bottom
+    for (i, entry) in recent.iter().rev().enumerate() {
+        let age = current_time - entry.timestamp;
+        let alpha = if age > DISPLAY_DURATION - FADE_DURATION {
+            ((DISPLAY_DURATION - age) / FADE_DURATION) as f32
+        } else {
+            1.0
+        };
+
+        let [r, g, b] = entry.level.color();
+        let text_color = Color32::from_rgba_unmultiplied(r, g, b, (alpha * 255.0) as u8);
+        let shadow_color = Color32::from_rgba_unmultiplied(0, 0, 0, (alpha * 200.0) as u8);
+
+        let y = i as f32 * LINE_HEIGHT;
+        let pos = Pos2::new(origin.x, origin.y + y);
+
+        let text = if entry.category.is_empty() {
+            entry.message.clone()
+        } else {
+            format!("[{}] {}", entry.category, entry.message)
+        };
+
+        // Drop shadow for readability
+        painter.text(
+            Pos2::new(pos.x + 1.0, pos.y + 1.0),
+            egui::Align2::LEFT_TOP,
+            &text,
+            FontId::new(10.0, egui::FontFamily::Monospace),
+            shadow_color,
+        );
+
+        // Main text
+        painter.text(
+            pos,
+            egui::Align2::LEFT_TOP,
+            &text,
+            FontId::new(10.0, egui::FontFamily::Monospace),
+            text_color,
+        );
+    }
 }
 
 /// Maximum number of thumbnails to load concurrently
