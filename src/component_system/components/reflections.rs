@@ -38,24 +38,17 @@ fn inspect_reflections(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "SSR Enabled", |ui| {
-        ui.checkbox(&mut ssr.enabled, "").changed()
+    changed |= inline_property(ui, row, "Intensity", |ui| {
+        ui.add(egui::DragValue::new(&mut ssr.intensity).speed(0.1).range(0.0..=1.0)).changed()
     });
     row += 1;
 
-    if ssr.enabled {
-        changed |= inline_property(ui, row, "Intensity", |ui| {
-            ui.add(egui::DragValue::new(&mut ssr.intensity).speed(0.1).range(0.0..=1.0)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "Max Steps", |ui| {
-            let mut steps = ssr.max_steps as i32;
-            let resp = ui.add(egui::DragValue::new(&mut steps).range(16..=256)).changed();
-            if resp { ssr.max_steps = steps as u32; }
-            resp
-        });
-    }
+    changed |= inline_property(ui, row, "Max Steps", |ui| {
+        let mut steps = ssr.max_steps as i32;
+        let resp = ui.add(egui::DragValue::new(&mut steps).range(16..=256)).changed();
+        if resp { ssr.max_steps = steps as u32; }
+        resp
+    });
 
     changed
 }
@@ -77,7 +70,7 @@ pub(crate) fn sync_reflections(
     if let Some((ssr, _editor, dc)) = active {
         let disabled = dc.map_or(false, |d| d.is_disabled("reflections"));
         for cam in cameras.iter() {
-            if !disabled && ssr.enabled {
+            if !disabled {
                 commands.entity(cam).insert(ScreenSpaceReflections::default());
             } else {
                 commands.entity(cam).remove::<ScreenSpaceReflections>();

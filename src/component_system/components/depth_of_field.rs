@@ -39,21 +39,14 @@ fn inspect_depth_of_field(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut dof.enabled, "").changed()
+    changed |= inline_property(ui, row, "Focal Distance", |ui| {
+        ui.add(egui::DragValue::new(&mut dof.focal_distance).speed(0.1).range(0.1..=100.0)).changed()
     });
     row += 1;
 
-    if dof.enabled {
-        changed |= inline_property(ui, row, "Focal Distance", |ui| {
-            ui.add(egui::DragValue::new(&mut dof.focal_distance).speed(0.1).range(0.1..=100.0)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "Aperture", |ui| {
-            ui.add(egui::DragValue::new(&mut dof.aperture).speed(0.01).range(0.001..=0.5)).changed()
-        });
-    }
+    changed |= inline_property(ui, row, "Aperture", |ui| {
+        ui.add(egui::DragValue::new(&mut dof.aperture).speed(0.01).range(0.001..=0.5)).changed()
+    });
 
     changed
 }
@@ -75,7 +68,7 @@ pub(crate) fn sync_depth_of_field(
     if let Some((dof, _editor, dc)) = active {
         let disabled = dc.map_or(false, |d| d.is_disabled("depth_of_field"));
         for cam in cameras.iter() {
-            if !disabled && dof.enabled {
+            if !disabled {
                 commands.entity(cam).insert(DepthOfField {
                     focal_distance: dof.focal_distance,
                     aperture_f_stops: dof.aperture,

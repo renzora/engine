@@ -39,21 +39,14 @@ fn inspect_ambient_occlusion(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut ao.enabled, "").changed()
+    changed |= inline_property(ui, row, "Intensity", |ui| {
+        ui.add(egui::DragValue::new(&mut ao.intensity).speed(0.1).range(0.0..=3.0)).changed()
     });
     row += 1;
 
-    if ao.enabled {
-        changed |= inline_property(ui, row, "Intensity", |ui| {
-            ui.add(egui::DragValue::new(&mut ao.intensity).speed(0.1).range(0.0..=3.0)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "Radius", |ui| {
-            ui.add(egui::DragValue::new(&mut ao.radius).speed(0.01).range(0.01..=2.0)).changed()
-        });
-    }
+    changed |= inline_property(ui, row, "Radius", |ui| {
+        ui.add(egui::DragValue::new(&mut ao.radius).speed(0.01).range(0.01..=2.0)).changed()
+    });
 
     changed
 }
@@ -75,7 +68,7 @@ pub(crate) fn sync_ambient_occlusion(
     if let Some((ao, _editor, dc)) = active {
         let disabled = dc.map_or(false, |d| d.is_disabled("ambient_occlusion"));
         for cam in cameras.iter() {
-            if !disabled && ao.enabled {
+            if !disabled {
                 commands.entity(cam).insert(ScreenSpaceAmbientOcclusion::default());
             } else {
                 commands.entity(cam).remove::<ScreenSpaceAmbientOcclusion>();

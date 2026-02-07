@@ -39,21 +39,14 @@ fn inspect_bloom(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut bloom.enabled, "").changed()
+    changed |= inline_property(ui, row, "Intensity", |ui| {
+        ui.add(egui::DragValue::new(&mut bloom.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;
 
-    if bloom.enabled {
-        changed |= inline_property(ui, row, "Intensity", |ui| {
-            ui.add(egui::DragValue::new(&mut bloom.intensity).speed(0.01).range(0.0..=1.0)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "Threshold", |ui| {
-            ui.add(egui::DragValue::new(&mut bloom.threshold).speed(0.1).range(0.0..=5.0)).changed()
-        });
-    }
+    changed |= inline_property(ui, row, "Threshold", |ui| {
+        ui.add(egui::DragValue::new(&mut bloom.threshold).speed(0.1).range(0.0..=5.0)).changed()
+    });
 
     changed
 }
@@ -75,7 +68,7 @@ pub(crate) fn sync_bloom(
     if let Some((bloom, _editor, dc)) = active {
         let disabled = dc.map_or(false, |d| d.is_disabled("bloom"));
         for cam in cameras.iter() {
-            if !disabled && bloom.enabled {
+            if !disabled {
                 commands.entity(cam).insert(Bloom {
                     intensity: bloom.intensity,
                     low_frequency_boost: bloom.threshold * 0.5,

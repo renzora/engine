@@ -88,7 +88,7 @@ pub(crate) fn sync_clouds(
 ) {
     // Find first active, non-disabled clouds component
     let active_clouds = clouds_query.iter().find(|(data, editor, dc)| {
-        editor.visible && data.enabled && !dc.map_or(false, |d| d.is_disabled("clouds"))
+        editor.visible && !dc.map_or(false, |d| d.is_disabled("clouds"))
     });
 
     let Some((clouds_data, _, _)) = active_clouds else {
@@ -200,77 +200,70 @@ fn inspect_clouds(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut data.enabled, "").changed()
+    changed |= inline_property(ui, row, "Coverage", |ui| {
+        ui.add(egui::DragValue::new(&mut data.coverage).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;
 
-    if data.enabled {
-        changed |= inline_property(ui, row, "Coverage", |ui| {
-            ui.add(egui::DragValue::new(&mut data.coverage).speed(0.01).range(0.0..=1.0)).changed()
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Density", |ui| {
+        ui.add(egui::DragValue::new(&mut data.density).speed(0.01).range(0.0..=1.0)).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Density", |ui| {
-            ui.add(egui::DragValue::new(&mut data.density).speed(0.01).range(0.0..=1.0)).changed()
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Scale", |ui| {
+        ui.add(egui::DragValue::new(&mut data.scale).speed(0.1).range(0.1..=50.0)).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Scale", |ui| {
-            ui.add(egui::DragValue::new(&mut data.scale).speed(0.1).range(0.1..=50.0)).changed()
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Speed", |ui| {
+        ui.add(egui::DragValue::new(&mut data.speed).speed(0.001).range(0.0..=1.0)).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Speed", |ui| {
-            ui.add(egui::DragValue::new(&mut data.speed).speed(0.001).range(0.0..=1.0)).changed()
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Wind Direction", |ui| {
+        ui.add(egui::DragValue::new(&mut data.wind_direction).speed(1.0).range(0.0..=360.0).suffix("°")).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Wind Direction", |ui| {
-            ui.add(egui::DragValue::new(&mut data.wind_direction).speed(1.0).range(0.0..=360.0).suffix("°")).changed()
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Altitude", |ui| {
+        ui.add(egui::DragValue::new(&mut data.altitude).speed(0.01).range(0.0..=1.0)).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Altitude", |ui| {
-            ui.add(egui::DragValue::new(&mut data.altitude).speed(0.01).range(0.0..=1.0)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "Color", |ui| {
-            let mut color = egui::Color32::from_rgb(
-                (data.color.0 * 255.0) as u8,
-                (data.color.1 * 255.0) as u8,
-                (data.color.2 * 255.0) as u8,
+    changed |= inline_property(ui, row, "Color", |ui| {
+        let mut color = egui::Color32::from_rgb(
+            (data.color.0 * 255.0) as u8,
+            (data.color.1 * 255.0) as u8,
+            (data.color.2 * 255.0) as u8,
+        );
+        let resp = ui.color_edit_button_srgba(&mut color).changed();
+        if resp {
+            data.color = (
+                color.r() as f32 / 255.0,
+                color.g() as f32 / 255.0,
+                color.b() as f32 / 255.0,
             );
-            let resp = ui.color_edit_button_srgba(&mut color).changed();
-            if resp {
-                data.color = (
-                    color.r() as f32 / 255.0,
-                    color.g() as f32 / 255.0,
-                    color.b() as f32 / 255.0,
-                );
-            }
-            resp
-        });
-        row += 1;
+        }
+        resp
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Shadow Color", |ui| {
-            let mut color = egui::Color32::from_rgb(
-                (data.shadow_color.0 * 255.0) as u8,
-                (data.shadow_color.1 * 255.0) as u8,
-                (data.shadow_color.2 * 255.0) as u8,
+    changed |= inline_property(ui, row, "Shadow Color", |ui| {
+        let mut color = egui::Color32::from_rgb(
+            (data.shadow_color.0 * 255.0) as u8,
+            (data.shadow_color.1 * 255.0) as u8,
+            (data.shadow_color.2 * 255.0) as u8,
+        );
+        let resp = ui.color_edit_button_srgba(&mut color).changed();
+        if resp {
+            data.shadow_color = (
+                color.r() as f32 / 255.0,
+                color.g() as f32 / 255.0,
+                color.b() as f32 / 255.0,
             );
-            let resp = ui.color_edit_button_srgba(&mut color).changed();
-            if resp {
-                data.shadow_color = (
-                    color.r() as f32 / 255.0,
-                    color.g() as f32 / 255.0,
-                    color.b() as f32 / 255.0,
-                );
-            }
-            resp
-        });
-    }
+        }
+        resp
+    });
 
     changed
 }

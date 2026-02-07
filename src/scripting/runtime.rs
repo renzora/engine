@@ -15,7 +15,7 @@ use super::resources::{
     RaycastHit, RaycastResults, RenderingCommand, RenderingCommandQueue, SceneCommandQueue,
     ScriptCollisionEvents, ScriptTimers, SpriteAnimationCommandQueue, TweenProperty, array_to_color,
 };
-use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
+use crate::core::{DisabledComponents, EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
 use crate::core::resources::console::{console_log, LogLevel};
 use crate::project::CurrentProject;
 
@@ -64,7 +64,7 @@ pub fn run_scripts(
     input: Res<ScriptInput>,
     registry: Res<ScriptRegistry>,
     play_mode: Res<PlayModeState>,
-    mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform)>,
+    mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&DisabledComponents>)>,
     frame_count: Local<u64>,
 ) {
     // Only run scripts during play mode
@@ -79,8 +79,8 @@ pub fn run_scripts(
         frame_count: *frame_count,
     };
 
-    for (entity, mut script_comp, mut transform) in scripts.iter_mut() {
-        if !script_comp.enabled {
+    for (entity, mut script_comp, mut transform, dc) in scripts.iter_mut() {
+        if dc.map_or(false, |d| d.is_disabled("script")) {
             continue;
         }
 
@@ -180,7 +180,7 @@ pub fn run_rhai_scripts(
     current_project: Option<Res<CurrentProject>>,
     play_mode: Option<Res<PlayModeState>>,
     runtime_mode: Option<Res<RuntimeMode>>,
-    mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>)>,
+    mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>, Option<&DisabledComponents>)>,
     mut all_transforms: Query<&mut Transform, Without<ScriptComponent>>,
     mut editor_entities: Query<(Entity, &mut EditorEntity)>,
     mut world_environments: Query<(
@@ -258,8 +258,8 @@ pub fn run_rhai_scripts(
         }
     }
 
-    for (entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
-        if !script_comp.enabled {
+    for (entity, mut script_comp, mut transform, parent_ref, children_ref, dc) in scripts.iter_mut() {
+        if dc.map_or(false, |d| d.is_disabled("script")) {
             continue;
         }
 

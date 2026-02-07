@@ -40,39 +40,32 @@ fn inspect_fog(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut fog.enabled, "").changed()
+    changed |= inline_property(ui, row, "Color", |ui| {
+        let mut color = egui::Color32::from_rgb(
+            (fog.color.0 * 255.0) as u8,
+            (fog.color.1 * 255.0) as u8,
+            (fog.color.2 * 255.0) as u8,
+        );
+        let resp = ui.color_edit_button_srgba(&mut color).changed();
+        if resp {
+            fog.color = (
+                color.r() as f32 / 255.0,
+                color.g() as f32 / 255.0,
+                color.b() as f32 / 255.0,
+            );
+        }
+        resp
     });
     row += 1;
 
-    if fog.enabled {
-        changed |= inline_property(ui, row, "Color", |ui| {
-            let mut color = egui::Color32::from_rgb(
-                (fog.color.0 * 255.0) as u8,
-                (fog.color.1 * 255.0) as u8,
-                (fog.color.2 * 255.0) as u8,
-            );
-            let resp = ui.color_edit_button_srgba(&mut color).changed();
-            if resp {
-                fog.color = (
-                    color.r() as f32 / 255.0,
-                    color.g() as f32 / 255.0,
-                    color.b() as f32 / 255.0,
-                );
-            }
-            resp
-        });
-        row += 1;
+    changed |= inline_property(ui, row, "Start", |ui| {
+        ui.add(egui::DragValue::new(&mut fog.start).speed(0.1)).changed()
+    });
+    row += 1;
 
-        changed |= inline_property(ui, row, "Start", |ui| {
-            ui.add(egui::DragValue::new(&mut fog.start).speed(0.1)).changed()
-        });
-        row += 1;
-
-        changed |= inline_property(ui, row, "End", |ui| {
-            ui.add(egui::DragValue::new(&mut fog.end).speed(0.1)).changed()
-        });
-    }
+    changed |= inline_property(ui, row, "End", |ui| {
+        ui.add(egui::DragValue::new(&mut fog.end).speed(0.1)).changed()
+    });
 
     changed
 }
@@ -97,7 +90,7 @@ pub(crate) fn sync_fog(
     if let Some((fog, _editor, dc)) = active_fog {
         let disabled = dc.map_or(false, |d| d.is_disabled("fog"));
         for cam in cameras.iter() {
-            if !disabled && fog.enabled {
+            if !disabled {
                 commands.entity(cam).insert(DistanceFog {
                     color: Color::srgba(fog.color.0, fog.color.1, fog.color.2, 1.0),
                     falloff: FogFalloff::Linear {

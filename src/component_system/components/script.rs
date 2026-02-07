@@ -112,16 +112,5 @@ fn inspect_script(
         });
     });
 
-    property_row(ui, 2, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Enabled");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.checkbox(&mut script.enabled, "").changed() {
-                    changed = true;
-                }
-            });
-        });
-    });
-
     changed
 }

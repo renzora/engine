@@ -347,7 +347,7 @@ pub fn render_category_removable(
             .show(ui, |ui| {
 
                 // Header bar
-                ui.scope(|ui| {
+                let header_response = ui.scope(|ui| {
                     egui::Frame::new()
                         .fill(effective_header_bg)
                         .corner_radius(CornerRadius {
@@ -359,10 +359,8 @@ pub fn render_category_removable(
                         .inner_margin(egui::Margin::symmetric(8, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // Left side: clickable area for collapse toggle
-                                // We allocate a group that covers caret+icon+label,
-                                // then interact with just that rect for collapse.
-                                let left_response = ui.scope(|ui| {
+                                // Left side: caret + icon + label (no individual click handler)
+                                ui.scope(|ui| {
                                     // Collapse indicator
                                     let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
                                     ui.label(RichText::new(caret).size(12.0).color(text_muted));
@@ -374,16 +372,7 @@ pub fn render_category_removable(
 
                                     // Label
                                     ui.label(RichText::new(label).size(13.0).strong().color(effective_text));
-                                }).response;
-
-                                // Make the left part clickable for collapse
-                                let left_click = left_response.interact(Sense::click());
-                                if left_click.hovered() {
-                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                                }
-                                if left_click.clicked() {
-                                    state.toggle(ui);
-                                }
+                                });
 
                                 // Right-aligned: Toggle switch + Trash button
                                 if can_remove {
@@ -412,23 +401,21 @@ pub fn render_category_removable(
                                         }
                                     });
                                 } else {
-                                    // Fill remaining width - also clickable for collapse
-                                    let (fill_rect, _) = ui.allocate_exact_size(ui.available_size(), Sense::click());
-                                    let fill_response = ui.interact(fill_rect, id.with("fill"), Sense::click());
-                                    if fill_response.hovered() {
-                                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                                    }
-                                    if fill_response.clicked() {
-                                        state.toggle(ui);
-                                    }
+                                    // Fill remaining width so header has full width
+                                    ui.allocate_space(ui.available_size());
                                 }
                             });
                         });
-                });
+                }).response;
 
-                // Also make the gap between label and buttons clickable for collapse
-                // by checking the horizontal area response from the header scope
-                // (The left_click + fill areas cover this already)
+                // Entire header is clickable for collapse (except toggle/trash which set their own flags)
+                let header_click = header_response.interact(Sense::click());
+                if header_click.hovered() && !toggle_clicked && !remove_clicked {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if header_click.clicked() && !toggle_clicked && !remove_clicked {
+                    state.toggle(ui);
+                }
 
                 // Content area with padding
                 if state.is_open() {

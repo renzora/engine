@@ -36,18 +36,11 @@ fn inspect_motion_blur(
     sanitize_f32(&mut mb.intensity, 0.0, 1.0, 0.5);
 
     let mut changed = false;
-    let mut row = 0;
+    let row = 0;
 
-    changed |= inline_property(ui, row, "Enabled", |ui| {
-        ui.checkbox(&mut mb.enabled, "").changed()
+    changed |= inline_property(ui, row, "Intensity", |ui| {
+        ui.add(egui::DragValue::new(&mut mb.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
-
-    if mb.enabled {
-        row += 1;
-        changed |= inline_property(ui, row, "Intensity", |ui| {
-            ui.add(egui::DragValue::new(&mut mb.intensity).speed(0.01).range(0.0..=1.0)).changed()
-        });
-    }
 
     changed
 }
@@ -69,7 +62,7 @@ pub(crate) fn sync_motion_blur(
     if let Some((mb, _editor, dc)) = active {
         let disabled = dc.map_or(false, |d| d.is_disabled("motion_blur"));
         for cam in cameras.iter() {
-            if !disabled && mb.enabled {
+            if !disabled {
                 commands.entity(cam).insert(MotionBlur {
                     shutter_angle: mb.intensity * 360.0,
                     samples: 4,
