@@ -16,14 +16,17 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: renzora_editor.exe
             artifact: renzora-editor-windows
+            features: editor,solari
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: renzora_editor
             artifact: renzora-editor-linux
+            features: editor,solari
           - os: macos-latest
             target: aarch64-apple-darwin
             binary: renzora_editor
             artifact: renzora-editor-macos
+            features: editor
 
     runs-on: ${{ matrix.os }}
 
@@ -35,6 +38,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install Vulkan SDK
+        if: runner.os != 'macOS'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: latest
+          cache: true
+
+      - name: Download DLSS SDK headers
+        if: runner.os != 'macOS'
+        shell: bash
+        run: git clone --depth 1 https://github.com/NVIDIA/DLSS.git DLSS_SDK
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -48,7 +63,10 @@ jobs:
             libvulkan-dev
 
       - name: Build
-        run: cargo build --release --no-default-features --features editor --target ${{ matrix.target }}
+        shell: bash
+        env:
+          BINDGEN_EXTRA_CLANG_ARGS: ${{ runner.os != 'macOS' && format('-I{0}/DLSS_SDK/include', github.workspace) || '' }}
+        run: cargo build --release --no-default-features --features ${{ matrix.features }} --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
