@@ -31,6 +31,7 @@ mod ecs_stats;
 mod memory_profiler;
 mod physics_debug;
 mod camera_debug;
+mod script_variables;
 mod system_profiler;
 
 pub use animation::{render_animation_content, AnimationPanelState};
@@ -67,6 +68,7 @@ pub use image_preview::render_image_preview_content;
 pub use image_preview::open_image;
 pub use particle_editor::render_particle_editor_content;
 pub use particle_preview::render_particle_preview_content;
+pub use script_variables::render_script_variables_content;
 pub use settings::render_settings_content;
 pub use splash::render_splash;
 pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};

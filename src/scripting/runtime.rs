@@ -84,29 +84,35 @@ pub fn run_scripts(
             continue;
         }
 
-        // Get the script from registry
-        let Some(script) = registry.get(&script_comp.script_id) else {
-            continue;
-        };
+        for entry in script_comp.scripts.iter_mut() {
+            if !entry.enabled || entry.script_id.is_empty() {
+                continue;
+            }
 
-        // Create context
-        let script_transform = ScriptTransform::from_transform(&transform);
-        let mut ctx = ScriptContext::new(entity, script_transform, script_time, &input);
+            // Get the script from registry
+            let Some(script) = registry.get(&entry.script_id) else {
+                continue;
+            };
 
-        // Call on_ready if not initialized
-        if !script_comp.runtime_state.initialized {
-            script.on_ready(&mut ctx, &script_comp.variables);
-            script_comp.runtime_state.initialized = true;
+            // Create context
+            let script_transform = ScriptTransform::from_transform(&transform);
+            let mut ctx = ScriptContext::new(entity, script_transform, script_time, &input);
+
+            // Call on_ready if not initialized
+            if !entry.runtime_state.initialized {
+                script.on_ready(&mut ctx, &entry.variables);
+                entry.runtime_state.initialized = true;
+            }
+
+            // Call on_update
+            script.on_update(&mut ctx, &entry.variables);
+
+            // Apply commands
+            let script_commands = ctx.take_commands();
+            apply_script_commands(&mut commands, &mut transform, &script_commands);
+
+            entry.runtime_state.last_frame = *frame_count;
         }
-
-        // Call on_update
-        script.on_update(&mut ctx, &script_comp.variables);
-
-        // Apply commands
-        let script_commands = ctx.take_commands();
-        apply_script_commands(&mut commands, &mut transform, &script_commands);
-
-        script_comp.runtime_state.last_frame = *frame_count;
     }
 }
 
@@ -263,344 +269,361 @@ pub fn run_rhai_scripts(
             continue;
         }
 
-        // Only process file-based scripts
-        let Some(script_path) = &script_comp.script_path else {
-            continue;
-        };
-
-        // Load/reload the script (supports both .rhai and .blueprint files)
-        let compiled = match rhai_engine.load_script_file(script_path) {
-            Ok(c) => {
-                // Clear any previous error state
-                if script_comp.runtime_state.has_error {
-                    console_log(LogLevel::Success, "Script", format!("'{}' loaded successfully", c.name));
-                    script_comp.runtime_state.has_error = false;
-                }
-                c
-            }
-            Err(_e) => {
-                // Error already logged by load_script_file, just mark error state
-                script_comp.runtime_state.has_error = true;
+        for entry in script_comp.scripts.iter_mut() {
+            if !entry.enabled {
                 continue;
             }
-        };
 
-        // Create Rhai context
-        let script_transform = ScriptTransform::from_transform(&transform);
-        let mut ctx = RhaiScriptContext::new(script_time, script_transform);
+            // Only process file-based scripts
+            let Some(script_path) = &entry.script_path else {
+                continue;
+            };
 
-        // Set self entity info
-        ctx.self_entity_id = entity.to_bits();
-        ctx.self_entity_name = editor_entities
-            .get(entity)
-            .map(|(_, e)| e.name.clone())
-            .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
+            // Resolve relative paths against project directory
+            let resolved_path = if script_path.is_relative() {
+                if let Some(ref proj) = current_project {
+                    proj.path.join(script_path)
+                } else {
+                    script_path.clone()
+                }
+            } else {
+                script_path.clone()
+            };
 
-        // Set entity lookup data (cloned per-script to allow concurrent access)
-        ctx.found_entities = entities_by_name.clone();
-        ctx.entities_by_tag = entities_by_tag.clone();
+            // Load/reload the script (supports both .rhai and .blueprint files)
+            let compiled = match rhai_engine.load_script_file(&resolved_path) {
+                Ok(c) => {
+                    // Clear any previous error state
+                    if entry.runtime_state.has_error {
+                        console_log(LogLevel::Success, "Script", format!("'{}' loaded successfully", c.name));
+                        entry.runtime_state.has_error = false;
+                    }
+                    c
+                }
+                Err(_e) => {
+                    // Error already logged by load_script_file, just mark error state
+                    entry.runtime_state.has_error = true;
+                    continue;
+                }
+            };
 
-        // Set collision data for this entity
-        ctx.collisions_entered = queues.collisions.get_collisions_entered(entity)
-            .iter().map(|e| e.to_bits()).collect();
-        ctx.collisions_exited = queues.collisions.get_collisions_exited(entity)
-            .iter().map(|e| e.to_bits()).collect();
-        ctx.active_collisions = queues.collisions.get_active_collisions(entity)
-            .iter().map(|e| e.to_bits()).collect();
+            // Create Rhai context
+            let script_transform = ScriptTransform::from_transform(&transform);
+            let mut ctx = RhaiScriptContext::new(script_time, script_transform);
 
-        // Set timer data - get list of timers that just finished
-        ctx.timers_just_finished = queues.timers.get_just_finished();
+            // Set self entity info
+            ctx.self_entity_id = entity.to_bits();
+            ctx.self_entity_name = editor_entities
+                .get(entity)
+                .map(|(_, e)| e.name.clone())
+                .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
 
-        // Set raycast results for this entity
-        // Extract results where the requester entity matches
-        for ((req_entity, var_name), hit) in queues.raycast_results.results.iter() {
-            if *req_entity == entity {
-                ctx.raycast_results.insert(var_name.clone(), hit.clone());
+            // Set entity lookup data (cloned per-script to allow concurrent access)
+            ctx.found_entities = entities_by_name.clone();
+            ctx.entities_by_tag = entities_by_tag.clone();
+
+            // Set collision data for this entity
+            ctx.collisions_entered = queues.collisions.get_collisions_entered(entity)
+                .iter().map(|e| e.to_bits()).collect();
+            ctx.collisions_exited = queues.collisions.get_collisions_exited(entity)
+                .iter().map(|e| e.to_bits()).collect();
+            ctx.active_collisions = queues.collisions.get_active_collisions(entity)
+                .iter().map(|e| e.to_bits()).collect();
+
+            // Set timer data - get list of timers that just finished
+            ctx.timers_just_finished = queues.timers.get_just_finished();
+
+            // Set raycast results for this entity
+            // Extract results where the requester entity matches
+            for ((req_entity, var_name), hit) in queues.raycast_results.results.iter() {
+                if *req_entity == entity {
+                    ctx.raycast_results.insert(var_name.clone(), hit.clone());
+                }
             }
-        }
 
-        ctx.input_movement = input.get_movement_vector();
-        ctx.mouse_position = input.mouse_position;
-        ctx.mouse_delta = input.mouse_delta;
+            ctx.input_movement = input.get_movement_vector();
+            ctx.mouse_position = input.mouse_position;
+            ctx.mouse_delta = input.mouse_delta;
 
-        // Gamepad input (using gamepad 0)
-        ctx.gamepad_left_stick = Vec2::new(
-            input.get_gamepad_left_stick_x(0),
-            input.get_gamepad_left_stick_y(0),
-        );
-        ctx.gamepad_right_stick = Vec2::new(
-            input.get_gamepad_right_stick_x(0),
-            input.get_gamepad_right_stick_y(0),
-        );
-        ctx.gamepad_left_trigger = input.get_gamepad_left_trigger(0);
-        ctx.gamepad_right_trigger = input.get_gamepad_right_trigger(0);
-        // Map common buttons
-        use bevy::input::gamepad::GamepadButton;
-        ctx.gamepad_buttons[0] = input.is_gamepad_button_pressed(0, GamepadButton::South); // A
-        ctx.gamepad_buttons[1] = input.is_gamepad_button_pressed(0, GamepadButton::East);  // B
-        ctx.gamepad_buttons[2] = input.is_gamepad_button_pressed(0, GamepadButton::West);  // X
-        ctx.gamepad_buttons[3] = input.is_gamepad_button_pressed(0, GamepadButton::North); // Y
-        ctx.gamepad_buttons[4] = input.is_gamepad_button_pressed(0, GamepadButton::LeftTrigger);  // LB
-        ctx.gamepad_buttons[5] = input.is_gamepad_button_pressed(0, GamepadButton::RightTrigger); // RB
-        ctx.gamepad_buttons[6] = input.is_gamepad_button_pressed(0, GamepadButton::Select);
-        ctx.gamepad_buttons[7] = input.is_gamepad_button_pressed(0, GamepadButton::Start);
-        ctx.gamepad_buttons[8] = input.is_gamepad_button_pressed(0, GamepadButton::LeftThumb);  // L3
-        ctx.gamepad_buttons[9] = input.is_gamepad_button_pressed(0, GamepadButton::RightThumb); // R3
-        ctx.gamepad_buttons[10] = input.is_gamepad_button_pressed(0, GamepadButton::DPadUp);
-        ctx.gamepad_buttons[11] = input.is_gamepad_button_pressed(0, GamepadButton::DPadDown);
-        ctx.gamepad_buttons[12] = input.is_gamepad_button_pressed(0, GamepadButton::DPadLeft);
-        ctx.gamepad_buttons[13] = input.is_gamepad_button_pressed(0, GamepadButton::DPadRight);
+            // Gamepad input (using gamepad 0)
+            ctx.gamepad_left_stick = Vec2::new(
+                input.get_gamepad_left_stick_x(0),
+                input.get_gamepad_left_stick_y(0),
+            );
+            ctx.gamepad_right_stick = Vec2::new(
+                input.get_gamepad_right_stick_x(0),
+                input.get_gamepad_right_stick_y(0),
+            );
+            ctx.gamepad_left_trigger = input.get_gamepad_left_trigger(0);
+            ctx.gamepad_right_trigger = input.get_gamepad_right_trigger(0);
+            // Map common buttons
+            use bevy::input::gamepad::GamepadButton;
+            ctx.gamepad_buttons[0] = input.is_gamepad_button_pressed(0, GamepadButton::South); // A
+            ctx.gamepad_buttons[1] = input.is_gamepad_button_pressed(0, GamepadButton::East);  // B
+            ctx.gamepad_buttons[2] = input.is_gamepad_button_pressed(0, GamepadButton::West);  // X
+            ctx.gamepad_buttons[3] = input.is_gamepad_button_pressed(0, GamepadButton::North); // Y
+            ctx.gamepad_buttons[4] = input.is_gamepad_button_pressed(0, GamepadButton::LeftTrigger);  // LB
+            ctx.gamepad_buttons[5] = input.is_gamepad_button_pressed(0, GamepadButton::RightTrigger); // RB
+            ctx.gamepad_buttons[6] = input.is_gamepad_button_pressed(0, GamepadButton::Select);
+            ctx.gamepad_buttons[7] = input.is_gamepad_button_pressed(0, GamepadButton::Start);
+            ctx.gamepad_buttons[8] = input.is_gamepad_button_pressed(0, GamepadButton::LeftThumb);  // L3
+            ctx.gamepad_buttons[9] = input.is_gamepad_button_pressed(0, GamepadButton::RightThumb); // R3
+            ctx.gamepad_buttons[10] = input.is_gamepad_button_pressed(0, GamepadButton::DPadUp);
+            ctx.gamepad_buttons[11] = input.is_gamepad_button_pressed(0, GamepadButton::DPadDown);
+            ctx.gamepad_buttons[12] = input.is_gamepad_button_pressed(0, GamepadButton::DPadLeft);
+            ctx.gamepad_buttons[13] = input.is_gamepad_button_pressed(0, GamepadButton::DPadRight);
 
-        // Get parent info if available
-        if let Some(child_of) = parent_ref {
-            ctx.has_parent = true;
-            ctx.parent_entity = Some(child_of.0);
-            if let Ok(parent_transform) = all_transforms.get(child_of.0) {
-                ctx.parent_position = parent_transform.translation;
-                let (x, y, z) = parent_transform.rotation.to_euler(EulerRot::XYZ);
-                ctx.parent_rotation = Vec3::new(
-                    x.to_degrees(),
-                    y.to_degrees(),
-                    z.to_degrees(),
+            // Get parent info if available
+            if let Some(child_of) = parent_ref {
+                ctx.has_parent = true;
+                ctx.parent_entity = Some(child_of.0);
+                if let Ok(parent_transform) = all_transforms.get(child_of.0) {
+                    ctx.parent_position = parent_transform.translation;
+                    let (x, y, z) = parent_transform.rotation.to_euler(EulerRot::XYZ);
+                    ctx.parent_rotation = Vec3::new(
+                        x.to_degrees(),
+                        y.to_degrees(),
+                        z.to_degrees(),
+                    );
+                    ctx.parent_scale = parent_transform.scale;
+                }
+            }
+
+            // Get children info if available - build name to entity mapping
+            let mut child_name_to_entity: HashMap<String, Entity> = HashMap::new();
+            if let Some(children) = children_ref {
+                for child_entity in children.iter() {
+                    if let Ok(child_transform) = all_transforms.get(child_entity) {
+                        let child_name = editor_entities
+                            .get(child_entity)
+                            .map(|(_, e)| e.name.clone())
+                            .unwrap_or_else(|_| format!("Entity_{}", child_entity.index()));
+
+                        let (rx, ry, rz) = child_transform.rotation.to_euler(EulerRot::XYZ);
+                        ctx.children.push(ChildNodeInfo {
+                            entity: child_entity,
+                            name: child_name.clone(),
+                            position: child_transform.translation,
+                            rotation: Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees()),
+                            scale: child_transform.scale,
+                        });
+                        child_name_to_entity.insert(child_name, child_entity);
+                    }
+                }
+            }
+
+            // Get light data if this entity has a light component
+            if let Ok(light) = component_queries.point_lights.get(entity) {
+                ctx.self_light_intensity = light.intensity;
+                ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+            } else if let Ok(light) = component_queries.spot_lights.get(entity) {
+                ctx.self_light_intensity = light.intensity;
+                ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+            } else if let Ok(light) = component_queries.directional_lights.get(entity) {
+                ctx.self_light_intensity = light.illuminance;
+                ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
+            }
+
+            // Get material color if this entity has a mesh material
+            if let Ok(material_handle) = component_queries.mesh_materials.get(entity) {
+                if let Some(material) = queues.materials.get(&material_handle.0) {
+                    let color = material.base_color.to_srgba();
+                    ctx.self_material_color = [color.red, color.green, color.blue, color.alpha];
+                }
+            }
+
+            // Call on_ready if not initialized
+            if !entry.runtime_state.initialized {
+                console_log(LogLevel::Info, "Script", format!("Initializing '{}'", compiled.name));
+                rhai_engine.call_on_ready(&compiled, &mut ctx, &entry.variables);
+                entry.runtime_state.initialized = true;
+            }
+
+            // Call on_update
+            rhai_engine.call_on_update(&compiled, &mut ctx, &entry.variables);
+
+            // Apply transform results to self
+            if let Some(pos) = ctx.new_position {
+                transform.translation = pos;
+            }
+
+            if let Some(rot) = ctx.new_rotation {
+                transform.rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    rot.x.to_radians(),
+                    rot.y.to_radians(),
+                    rot.z.to_radians(),
                 );
-                ctx.parent_scale = parent_transform.scale;
             }
-        }
 
-        // Get children info if available - build name to entity mapping
-        let mut child_name_to_entity: HashMap<String, Entity> = HashMap::new();
-        if let Some(children) = children_ref {
-            for child_entity in children.iter() {
-                if let Ok(child_transform) = all_transforms.get(child_entity) {
-                    let child_name = editor_entities
-                        .get(child_entity)
-                        .map(|(_, e)| e.name.clone())
-                        .unwrap_or_else(|_| format!("Entity_{}", child_entity.index()));
+            // Apply rotation delta (degrees per frame)
+            if let Some(rot_delta) = ctx.rotation_delta {
+                let delta_quat = Quat::from_euler(
+                    EulerRot::XYZ,
+                    rot_delta.x.to_radians(),
+                    rot_delta.y.to_radians(),
+                    rot_delta.z.to_radians(),
+                );
+                transform.rotation = delta_quat * transform.rotation;
+            }
 
-                    let (rx, ry, rz) = child_transform.rotation.to_euler(EulerRot::XYZ);
-                    ctx.children.push(ChildNodeInfo {
-                        entity: child_entity,
-                        name: child_name.clone(),
-                        position: child_transform.translation,
-                        rotation: Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees()),
-                        scale: child_transform.scale,
+            if let Some(delta) = ctx.translation {
+                if delta.length_squared() > 0.0001 {
+                    info!("[Rhai] Translating by {:?}", delta);
+                }
+                transform.translation += delta;
+            }
+
+            if let Some(msg) = ctx.print_message {
+                console_log(LogLevel::Info, "Script", msg);
+            }
+
+            // Collect parent transform changes
+            if let Some(parent_entity) = ctx.parent_entity {
+                let has_parent_changes = ctx.parent_new_position.is_some()
+                    || ctx.parent_new_rotation.is_some()
+                    || ctx.parent_translation.is_some();
+
+                if has_parent_changes {
+                    parent_changes.insert(parent_entity, TransformChange {
+                        new_position: ctx.parent_new_position,
+                        new_rotation: ctx.parent_new_rotation,
+                        translation: ctx.parent_translation,
                     });
-                    child_name_to_entity.insert(child_name, child_entity);
                 }
             }
-        }
 
-        // Get light data if this entity has a light component
-        if let Ok(light) = component_queries.point_lights.get(entity) {
-            ctx.self_light_intensity = light.intensity;
-            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
-        } else if let Ok(light) = component_queries.spot_lights.get(entity) {
-            ctx.self_light_intensity = light.intensity;
-            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
-        } else if let Ok(light) = component_queries.directional_lights.get(entity) {
-            ctx.self_light_intensity = light.illuminance;
-            ctx.self_light_color = [light.color.to_srgba().red, light.color.to_srgba().green, light.color.to_srgba().blue];
-        }
-
-        // Get material color if this entity has a mesh material
-        if let Ok(material_handle) = component_queries.mesh_materials.get(entity) {
-            if let Some(material) = queues.materials.get(&material_handle.0) {
-                let color = material.base_color.to_srgba();
-                ctx.self_material_color = [color.red, color.green, color.blue, color.alpha];
-            }
-        }
-
-        // Call on_ready if not initialized
-        if !script_comp.runtime_state.initialized {
-            console_log(LogLevel::Info, "Script", format!("Initializing '{}'", compiled.name));
-            rhai_engine.call_on_ready(&compiled, &mut ctx, &script_comp.variables);
-            script_comp.runtime_state.initialized = true;
-        }
-
-        // Call on_update
-        rhai_engine.call_on_update(&compiled, &mut ctx, &script_comp.variables);
-
-        // Apply transform results to self
-        if let Some(pos) = ctx.new_position {
-            transform.translation = pos;
-        }
-
-        if let Some(rot) = ctx.new_rotation {
-            transform.rotation = Quat::from_euler(
-                EulerRot::XYZ,
-                rot.x.to_radians(),
-                rot.y.to_radians(),
-                rot.z.to_radians(),
-            );
-        }
-
-        // Apply rotation delta (degrees per frame)
-        if let Some(rot_delta) = ctx.rotation_delta {
-            let delta_quat = Quat::from_euler(
-                EulerRot::XYZ,
-                rot_delta.x.to_radians(),
-                rot_delta.y.to_radians(),
-                rot_delta.z.to_radians(),
-            );
-            transform.rotation = delta_quat * transform.rotation;
-        }
-
-        if let Some(delta) = ctx.translation {
-            if delta.length_squared() > 0.0001 {
-                info!("[Rhai] Translating by {:?}", delta);
-            }
-            transform.translation += delta;
-        }
-
-        if let Some(msg) = ctx.print_message {
-            console_log(LogLevel::Info, "Script", msg);
-        }
-
-        // Collect parent transform changes
-        if let Some(parent_entity) = ctx.parent_entity {
-            let has_parent_changes = ctx.parent_new_position.is_some()
-                || ctx.parent_new_rotation.is_some()
-                || ctx.parent_translation.is_some();
-
-            if has_parent_changes {
-                parent_changes.insert(parent_entity, TransformChange {
-                    new_position: ctx.parent_new_position,
-                    new_rotation: ctx.parent_new_rotation,
-                    translation: ctx.parent_translation,
-                });
-            }
-        }
-
-        // Collect child transform changes
-        for (child_name, change) in &ctx.child_changes {
-            if let Some(&child_entity) = child_name_to_entity.get(child_name) {
-                child_changes.insert(child_entity, TransformChange {
-                    new_position: change.new_position,
-                    new_rotation: change.new_rotation,
-                    translation: change.translation,
-                });
-            }
-        }
-
-        // Apply environment changes (to all WorldEnvironmentMarker entities)
-        let has_env_changes = ctx.env_sky_mode.is_some()
-            || ctx.env_clear_color.is_some()
-            || ctx.env_ambient_brightness.is_some()
-            || ctx.env_ambient_color.is_some()
-            || ctx.env_ev100.is_some()
-            || ctx.env_sky_top_color.is_some()
-            || ctx.env_sky_horizon_color.is_some()
-            || ctx.env_sky_curve.is_some()
-            || ctx.env_ground_bottom_color.is_some()
-            || ctx.env_ground_horizon_color.is_some()
-            || ctx.env_ground_curve.is_some()
-            || ctx.env_fog_enabled.is_some()
-            || ctx.env_fog_color.is_some()
-            || ctx.env_fog_start.is_some()
-            || ctx.env_fog_end.is_some();
-
-        if has_env_changes {
-            use crate::shared::SkyMode;
-            for (_world_env, ambient_opt, skybox_opt, fog_opt, tm_opt) in world_environments.iter_mut() {
-                // Ambient light
-                if let Some(mut ambient) = ambient_opt {
-                    if let Some(brightness) = ctx.env_ambient_brightness {
-                        ambient.brightness = brightness;
-                    }
-                    if let Some((r, g, b)) = ctx.env_ambient_color {
-                        ambient.color = (r, g, b);
-                    }
+            // Collect child transform changes
+            for (child_name, change) in &ctx.child_changes {
+                if let Some(&child_entity) = child_name_to_entity.get(child_name) {
+                    child_changes.insert(child_entity, TransformChange {
+                        new_position: change.new_position,
+                        new_rotation: change.new_rotation,
+                        translation: change.translation,
+                    });
                 }
+            }
 
-                // Sky/Skybox changes
-                if let Some(mut skybox) = skybox_opt {
-                    if let Some(mode) = ctx.env_sky_mode {
-                        skybox.sky_mode = match mode {
-                            0 => SkyMode::Color,
-                            1 => SkyMode::Procedural,
-                            2 => SkyMode::Panorama,
-                            _ => SkyMode::Procedural,
-                        };
-                    }
-                    if let Some((r, g, b)) = ctx.env_clear_color {
-                        skybox.clear_color = (r, g, b);
-                    }
-                    // Procedural Sky
-                    if let Some((r, g, b)) = ctx.env_sky_top_color {
-                        skybox.procedural_sky.sky_top_color = (r, g, b);
-                    }
-                    if let Some((r, g, b)) = ctx.env_sky_horizon_color {
-                        skybox.procedural_sky.sky_horizon_color = (r, g, b);
-                    }
-                    if let Some(curve) = ctx.env_sky_curve {
-                        skybox.procedural_sky.sky_curve = curve;
-                    }
-                    if let Some((r, g, b)) = ctx.env_ground_bottom_color {
-                        skybox.procedural_sky.ground_bottom_color = (r, g, b);
-                    }
-                    if let Some((r, g, b)) = ctx.env_ground_horizon_color {
-                        skybox.procedural_sky.ground_horizon_color = (r, g, b);
-                    }
-                    if let Some(curve) = ctx.env_ground_curve {
-                        skybox.procedural_sky.ground_curve = curve;
-                    }
-                }
+            // Apply environment changes (to all WorldEnvironmentMarker entities)
+            let has_env_changes = ctx.env_sky_mode.is_some()
+                || ctx.env_clear_color.is_some()
+                || ctx.env_ambient_brightness.is_some()
+                || ctx.env_ambient_color.is_some()
+                || ctx.env_ev100.is_some()
+                || ctx.env_sky_top_color.is_some()
+                || ctx.env_sky_horizon_color.is_some()
+                || ctx.env_sky_curve.is_some()
+                || ctx.env_ground_bottom_color.is_some()
+                || ctx.env_ground_horizon_color.is_some()
+                || ctx.env_ground_curve.is_some()
+                || ctx.env_fog_enabled.is_some()
+                || ctx.env_fog_color.is_some()
+                || ctx.env_fog_start.is_some()
+                || ctx.env_fog_end.is_some();
 
-                // Fog changes
-                if let Some(mut fog) = fog_opt {
-                    if let Some(enabled) = ctx.env_fog_enabled {
-                        fog.enabled = enabled;
+            if has_env_changes {
+                use crate::shared::SkyMode;
+                for (_world_env, ambient_opt, skybox_opt, fog_opt, tm_opt) in world_environments.iter_mut() {
+                    // Ambient light
+                    if let Some(mut ambient) = ambient_opt {
+                        if let Some(brightness) = ctx.env_ambient_brightness {
+                            ambient.brightness = brightness;
+                        }
+                        if let Some((r, g, b)) = ctx.env_ambient_color {
+                            ambient.color = (r, g, b);
+                        }
                     }
-                    if let Some((r, g, b)) = ctx.env_fog_color {
-                        fog.color = (r, g, b);
-                    }
-                    if let Some(start) = ctx.env_fog_start {
-                        fog.start = start;
-                    }
-                    if let Some(end) = ctx.env_fog_end {
-                        fog.end = end;
-                    }
-                }
 
-                // Tonemapping/exposure changes
-                if let Some(mut tm) = tm_opt {
-                    if let Some(ev100) = ctx.env_ev100 {
-                        tm.ev100 = ev100;
+                    // Sky/Skybox changes
+                    if let Some(mut skybox) = skybox_opt {
+                        if let Some(mode) = ctx.env_sky_mode {
+                            skybox.sky_mode = match mode {
+                                0 => SkyMode::Color,
+                                1 => SkyMode::Procedural,
+                                2 => SkyMode::Panorama,
+                                _ => SkyMode::Procedural,
+                            };
+                        }
+                        if let Some((r, g, b)) = ctx.env_clear_color {
+                            skybox.clear_color = (r, g, b);
+                        }
+                        // Procedural Sky
+                        if let Some((r, g, b)) = ctx.env_sky_top_color {
+                            skybox.procedural_sky.sky_top_color = (r, g, b);
+                        }
+                        if let Some((r, g, b)) = ctx.env_sky_horizon_color {
+                            skybox.procedural_sky.sky_horizon_color = (r, g, b);
+                        }
+                        if let Some(curve) = ctx.env_sky_curve {
+                            skybox.procedural_sky.sky_curve = curve;
+                        }
+                        if let Some((r, g, b)) = ctx.env_ground_bottom_color {
+                            skybox.procedural_sky.ground_bottom_color = (r, g, b);
+                        }
+                        if let Some((r, g, b)) = ctx.env_ground_horizon_color {
+                            skybox.procedural_sky.ground_horizon_color = (r, g, b);
+                        }
+                        if let Some(curve) = ctx.env_ground_curve {
+                            skybox.procedural_sky.ground_curve = curve;
+                        }
+                    }
+
+                    // Fog changes
+                    if let Some(mut fog) = fog_opt {
+                        if let Some(enabled) = ctx.env_fog_enabled {
+                            fog.enabled = enabled;
+                        }
+                        if let Some((r, g, b)) = ctx.env_fog_color {
+                            fog.color = (r, g, b);
+                        }
+                        if let Some(start) = ctx.env_fog_start {
+                            fog.start = start;
+                        }
+                        if let Some(end) = ctx.env_fog_end {
+                            fog.end = end;
+                        }
+                    }
+
+                    // Tonemapping/exposure changes
+                    if let Some(mut tm) = tm_opt {
+                        if let Some(ev100) = ctx.env_ev100 {
+                            tm.ev100 = ev100;
+                        }
                     }
                 }
             }
-        }
 
-        // Apply sun changes to SunData components
-        let has_sun_changes = ctx.env_sun_azimuth.is_some()
-            || ctx.env_sun_elevation.is_some()
-            || ctx.env_sun_color.is_some()
-            || ctx.env_sun_energy.is_some()
-            || ctx.env_sun_disk_scale.is_some();
+            // Apply sun changes to SunData components
+            let has_sun_changes = ctx.env_sun_azimuth.is_some()
+                || ctx.env_sun_elevation.is_some()
+                || ctx.env_sun_color.is_some()
+                || ctx.env_sun_energy.is_some()
+                || ctx.env_sun_disk_scale.is_some();
 
-        if has_sun_changes {
-            for mut sun in component_queries.sun_data.iter_mut() {
-                if let Some(azimuth) = ctx.env_sun_azimuth {
-                    sun.azimuth = azimuth;
-                }
-                if let Some(elevation) = ctx.env_sun_elevation {
-                    sun.elevation = elevation;
-                }
-                if let Some((r, g, b)) = ctx.env_sun_color {
-                    sun.color = bevy::math::Vec3::new(r, g, b);
-                }
-                if let Some(energy) = ctx.env_sun_energy {
-                    sun.illuminance = energy * 10000.0;
-                }
-                if let Some(scale) = ctx.env_sun_disk_scale {
-                    sun.angular_diameter = scale;
+            if has_sun_changes {
+                for mut sun in component_queries.sun_data.iter_mut() {
+                    if let Some(azimuth) = ctx.env_sun_azimuth {
+                        sun.azimuth = azimuth;
+                    }
+                    if let Some(elevation) = ctx.env_sun_elevation {
+                        sun.elevation = elevation;
+                    }
+                    if let Some((r, g, b)) = ctx.env_sun_color {
+                        sun.color = bevy::math::Vec3::new(r, g, b);
+                    }
+                    if let Some(energy) = ctx.env_sun_energy {
+                        sun.illuminance = energy * 10000.0;
+                    }
+                    if let Some(scale) = ctx.env_sun_disk_scale {
+                        sun.angular_diameter = scale;
+                    }
                 }
             }
-        }
 
-        // Collect Rhai commands for processing after the loop
-        for cmd in ctx.commands.drain(..) {
-            all_rhai_commands.push((entity, cmd));
+            // Collect Rhai commands for processing after the loop
+            for cmd in ctx.commands.drain(..) {
+                all_rhai_commands.push((entity, cmd));
+            }
         }
     }
 

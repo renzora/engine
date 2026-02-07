@@ -171,8 +171,10 @@ fn reset_scripts_on_play_start(
             console_log(LogLevel::Info, "Script", format!("Play mode started - initializing {} script(s)", count));
         }
         for mut script in scripts.iter_mut() {
-            script.runtime_state.initialized = false;
-            script.runtime_state.has_error = false; // Reset errors on play start
+            for entry in script.scripts.iter_mut() {
+                entry.runtime_state.initialized = false;
+                entry.runtime_state.has_error = false;
+            }
         }
     }
     *last_play_state = play_mode.state;
@@ -340,8 +342,10 @@ fn initialize_runtime_scripts(
     if count > 0 {
         bevy::log::info!("[RuntimeScripting] Initializing {} script(s)", count);
         for mut script in scripts.iter_mut() {
-            script.runtime_state.initialized = false;
-            script.runtime_state.has_error = false;
+            for entry in script.scripts.iter_mut() {
+                entry.runtime_state.initialized = false;
+                entry.runtime_state.has_error = false;
+            }
         }
         *initialized = true;
     }

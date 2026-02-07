@@ -228,6 +228,14 @@ impl RhaiScriptEngine {
         }
     }
 
+    /// Parse props from in-memory script source (for live preview)
+    pub fn get_props_from_source(&self, source: &str) -> Vec<ScriptVariableDefinition> {
+        match self.engine.compile(source) {
+            Ok(ast) => parse_script_props(&self.engine, &ast),
+            Err(_) => Vec::new(),
+        }
+    }
+
     /// Load and compile a script from file
     pub fn load_script(&self, path: &Path) -> Result<CompiledScript, String> {
         // Check if already compiled and up to date

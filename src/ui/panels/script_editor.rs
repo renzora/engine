@@ -906,6 +906,9 @@ pub fn render_script_editor_content(
     let digit_count = (line_count as f32).log10().floor() as usize + 1;
     let gutter_width = (digit_count.max(2) as f32 * 10.0) + 24.0;
 
+    // Paint editor background for the full area
+    ui.painter().rect_filled(editor_rect, 0.0, theme_colors.surface_faint);
+
     // Allocate space for editor area
     ui.allocate_space(Vec2::new(0.0, toolbar_height));
 
@@ -914,10 +917,6 @@ pub fn render_script_editor_content(
         .max_height(content_height)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.style_mut().visuals.extreme_bg_color = theme_colors.surface_faint;
-            ui.style_mut().visuals.widgets.inactive.bg_fill = theme_colors.surface_faint;
-            ui.style_mut().visuals.widgets.hovered.bg_fill = theme_colors.widget_inactive_bg;
-
             ui.horizontal_top(|ui| {
                 // Line numbers gutter
                 ui.vertical(|ui| {
@@ -969,12 +968,14 @@ pub fn render_script_editor_content(
                     };
 
                     let editor_width = content_width - gutter_width - 4.0;
+                    let text_height = (line_count as f32 * line_height + 20.0).max(content_height);
                     let response = ui.add_sized(
-                        Vec2::new(editor_width, content_height),
+                        Vec2::new(editor_width, text_height),
                         TextEdit::multiline(&mut script.content)
                             .font(FontId::new(font_size, FontFamily::Monospace))
                             .code_editor()
                             .desired_width(editor_width)
+                            .frame(false)
                             .lock_focus(true)
                             .layouter(&mut layouter)
                     );

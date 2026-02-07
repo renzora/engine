@@ -746,23 +746,37 @@ fn play_dropdown(
 }
 
 fn play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
-    let response = ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        ui.colored_label(icon_color, icon);
-        ui.label(label);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new(shortcut).small().weak());
-        });
-    }).response;
+    let desired_size = Vec2::new(ui.available_width().max(160.0), 24.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
-    let clicked = response.interact(Sense::click()).clicked();
     if response.hovered() {
-        ui.painter().rect_filled(
-            response.rect,
-            CornerRadius::same(2),
-            Color32::from_white_alpha(15),
-        );
+        ui.painter().rect_filled(rect, CornerRadius::same(2), Color32::from_white_alpha(15));
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
-    clicked
+
+    ui.painter().text(
+        Pos2::new(rect.left() + 16.0, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        egui::FontId::proportional(13.0),
+        icon_color,
+    );
+
+    ui.painter().text(
+        Pos2::new(rect.left() + 32.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(12.0),
+        Color32::WHITE,
+    );
+
+    ui.painter().text(
+        Pos2::new(rect.right() - 8.0, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        shortcut,
+        egui::FontId::proportional(10.0),
+        Color32::from_white_alpha(100),
+    );
+
+    response.clicked()
 }

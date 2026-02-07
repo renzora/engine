@@ -86,16 +86,16 @@ pub fn default_layout() -> DockTree {
     )
 }
 
-/// Scripting layout: Hierarchy+Assets | ScriptEditor+Console | Inspector
+/// Scripting layout: Hierarchy+Assets | ScriptEditor+Console | Inspector+ScriptVariables
 ///
 /// ```text
-/// ┌─────────┬──────────────────────┬──────────┐
-/// │         │                      │          │
-/// │Hierarchy│    Script Editor     │ Inspector│
-/// │         │                      │          │
-/// ├─────────┼──────────────────────┤          │
-/// │ Assets  │      Console         │          │
-/// └─────────┴──────────────────────┴──────────┘
+/// ┌─────────┬──────────────────────┬──────────────┐
+/// │         │                      │  Inspector   │
+/// │Hierarchy│    Script Editor     │              │
+/// │         │                      ├──────────────┤
+/// ├─────────┼──────────────────────┤   Script     │
+/// │ Assets  │      Console         │  Variables   │
+/// └─────────┴──────────────────────┴──────────────┘
 /// ```
 pub fn scripting_layout() -> DockTree {
     DockTree::horizontal(
@@ -110,10 +110,14 @@ pub fn scripting_layout() -> DockTree {
                 DockTree::leaf(PanelId::Console),
                 0.7,
             ),
-            DockTree::Leaf {
-                tabs: vec![PanelId::Inspector, PanelId::History],
-                active_tab: 0,
-            },
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::History],
+                    active_tab: 0,
+                },
+                DockTree::leaf(PanelId::ScriptVariables),
+                0.5,
+            ),
             0.78,
         ),
         0.18,

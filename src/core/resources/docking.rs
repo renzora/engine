@@ -155,6 +155,7 @@ impl DockingState {
             PanelId::History | PanelId::Settings => Some(PanelId::Inspector),
             PanelId::Console | PanelId::Animation => Some(PanelId::Assets),
             PanelId::ScriptEditor => Some(PanelId::Viewport),
+            PanelId::ScriptVariables => Some(PanelId::ScriptEditor),
             _ => None,
         };
 

@@ -60,6 +60,8 @@ pub enum PanelId {
     ParticlePreview,
     /// Texture editor panel
     TextureEditor,
+    /// Script Variables panel - shows props from active script
+    ScriptVariables,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -98,6 +100,7 @@ impl PanelId {
             PanelId::ParticleEditor => "Particles",
             PanelId::ParticlePreview => "Particle Preview",
             PanelId::TextureEditor => "Textures",
+            PanelId::ScriptVariables => "Script Variables",
             PanelId::Plugin(name) => name,
         }
     }
@@ -135,6 +138,7 @@ impl PanelId {
             PanelId::ParticleEditor => SPARKLE,
             PanelId::ParticlePreview => SPARKLE,
             PanelId::TextureEditor => PAINT_BUCKET,
+            PanelId::ScriptVariables => SLIDERS_HORIZONTAL,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

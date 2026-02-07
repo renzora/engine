@@ -1033,13 +1033,7 @@ fn render_tree_node(
 
         // Add Script
         if ui.button(format!("{} Add Script", CODE)).clicked() {
-            commands.entity(entity).insert(ScriptComponent {
-                script_id: String::new(),
-                script_path: None,
-                enabled: true,
-                variables: Default::default(),
-                runtime_state: Default::default(),
-            });
+            commands.entity(entity).insert(ScriptComponent::new());
             ui.close_menu();
         }
 

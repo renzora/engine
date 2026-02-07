@@ -165,9 +165,10 @@ fn script_variable_definition_with_hint() {
 
 #[test]
 fn script_component_new() {
-    let comp = ScriptComponent::new("my_script");
-    assert_eq!(comp.script_id, "my_script");
-    assert!(comp.enabled);
+    let comp = ScriptComponent::with_script("my_script");
+    assert_eq!(comp.script_id(), "my_script");
+    assert_eq!(comp.scripts.len(), 1);
+    assert!(comp.scripts[0].enabled);
     assert!(!comp.is_file_script());
 }
 
@@ -175,15 +176,16 @@ fn script_component_new() {
 fn script_component_from_file() {
     let comp = ScriptComponent::from_file(std::path::PathBuf::from("scripts/test.rhai"));
     assert!(comp.is_file_script());
-    assert!(comp.enabled);
-    assert_eq!(comp.script_path, Some(std::path::PathBuf::from("scripts/test.rhai")));
+    assert_eq!(comp.scripts.len(), 1);
+    assert!(comp.scripts[0].enabled);
+    assert_eq!(comp.scripts[0].script_path, Some(std::path::PathBuf::from("scripts/test.rhai")));
 }
 
 #[test]
 fn script_component_with_variable() {
-    let comp = ScriptComponent::new("test")
+    let comp = ScriptComponent::with_script("test")
         .with_variable("speed", ScriptValue::Float(10.0));
-    assert_eq!(comp.variables.get_float("speed"), Some(10.0));
+    assert_eq!(comp.scripts[0].variables.get_float("speed"), Some(10.0));
 }
 
 #[test]
@@ -191,8 +193,22 @@ fn script_component_is_file_script() {
     let file_comp = ScriptComponent::from_file("test.rhai".into());
     assert!(file_comp.is_file_script());
 
-    let id_comp = ScriptComponent::new("test");
+    let id_comp = ScriptComponent::with_script("test");
     assert!(!id_comp.is_file_script());
+}
+
+#[test]
+fn script_component_multi_script() {
+    let mut comp = ScriptComponent::new();
+    assert!(comp.scripts.is_empty());
+
+    comp.add_file_script("script_a.rhai".into());
+    comp.add_file_script("script_b.rhai".into());
+    assert_eq!(comp.scripts.len(), 2);
+
+    comp.remove_script(0);
+    assert_eq!(comp.scripts.len(), 1);
+    assert_eq!(comp.scripts[0].script_path, Some(std::path::PathBuf::from("script_b.rhai")));
 }
 
 // =============================================================================

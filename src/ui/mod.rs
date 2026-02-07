@@ -213,7 +213,7 @@ pub fn editor_ui(
     mut materials: ResMut<Assets<StandardMaterial>>,
     current_project: Option<Res<CurrentProject>>,
     _script_registry: Res<ScriptRegistry>,
-    _rhai_engine: Res<RhaiScriptEngine>,
+    rhai_engine: Res<RhaiScriptEngine>,
     app_state: Res<State<AppState>>,
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
@@ -991,6 +991,17 @@ pub fn editor_ui(
                                 .size(18.0)
                                 .color(editor.theme_manager.active_theme.text.muted.to_color32()));
                         });
+                    });
+                }
+
+                PanelId::ScriptVariables => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        panels::render_script_variables_content(
+                            ui,
+                            &editor.scene_state,
+                            &rhai_engine,
+                            current_project.as_deref(),
+                        );
                     });
                 }
 

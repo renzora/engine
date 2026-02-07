@@ -5,10 +5,11 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Component that marks an entity as having a script attached
-#[derive(Component, Clone, Reflect)]
-#[reflect(Component)]
-pub struct ScriptComponent {
+/// A single script entry within a ScriptComponent
+#[derive(Clone, Reflect)]
+pub struct ScriptEntry {
+    /// Unique ID within this component
+    pub id: u32,
     /// The script identifier (registered name) - for built-in scripts
     pub script_id: String,
     /// Path to .rhai script file (relative to project) - for file-based scripts
@@ -18,14 +19,14 @@ pub struct ScriptComponent {
     /// Script-local variables (persisted)
     pub variables: ScriptVariables,
     /// Runtime state (not persisted)
-    #[allow(dead_code)]
     #[reflect(ignore)]
     pub runtime_state: ScriptRuntimeState,
 }
 
-impl ScriptComponent {
-    pub fn new(script_id: impl Into<String>) -> Self {
+impl ScriptEntry {
+    pub fn new(id: u32, script_id: impl Into<String>) -> Self {
         Self {
+            id,
             script_id: script_id.into(),
             script_path: None,
             enabled: true,
@@ -34,8 +35,9 @@ impl ScriptComponent {
         }
     }
 
-    pub fn from_file(path: std::path::PathBuf) -> Self {
+    pub fn from_file(id: u32, path: std::path::PathBuf) -> Self {
         Self {
+            id,
             script_id: String::new(),
             script_path: Some(path),
             enabled: true,
@@ -44,14 +46,127 @@ impl ScriptComponent {
         }
     }
 
-    pub fn with_variable(mut self, name: impl Into<String>, value: ScriptValue) -> Self {
-        self.variables.set(name, value);
-        self
-    }
-
     /// Check if this is a file-based script
     pub fn is_file_script(&self) -> bool {
         self.script_path.is_some()
+    }
+}
+
+/// Component that marks an entity as having scripts attached
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
+pub struct ScriptComponent {
+    /// List of script entries
+    pub scripts: Vec<ScriptEntry>,
+    /// Next ID for auto-incrementing
+    next_id: u32,
+}
+
+impl ScriptComponent {
+    /// Create a new empty ScriptComponent
+    pub fn new() -> Self {
+        Self {
+            scripts: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Create with a single named script
+    pub fn with_script(script_id: impl Into<String>) -> Self {
+        let mut comp = Self::new();
+        comp.add_script(script_id);
+        comp
+    }
+
+    /// Create with a single file-based script
+    pub fn from_file(path: std::path::PathBuf) -> Self {
+        let mut comp = Self::new();
+        comp.add_file_script(path);
+        comp
+    }
+
+    /// Add a named script entry, returns the entry ID
+    pub fn add_script(&mut self, script_id: impl Into<String>) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.scripts.push(ScriptEntry::new(id, script_id));
+        id
+    }
+
+    /// Add a file-based script entry, returns the entry ID
+    pub fn add_file_script(&mut self, path: std::path::PathBuf) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.scripts.push(ScriptEntry::from_file(id, path));
+        id
+    }
+
+    /// Remove a script entry by index
+    pub fn remove_script(&mut self, index: usize) {
+        if index < self.scripts.len() {
+            self.scripts.remove(index);
+        }
+    }
+
+    /// Add a variable to a specific script entry
+    pub fn with_variable(mut self, name: impl Into<String>, value: ScriptValue) -> Self {
+        if let Some(entry) = self.scripts.last_mut() {
+            entry.variables.set(name, value);
+        }
+        self
+    }
+
+    // === Legacy compatibility accessors ===
+
+    /// Get the script_id of the first entry (for backward compat)
+    pub fn script_id(&self) -> &str {
+        self.scripts.first().map(|e| e.script_id.as_str()).unwrap_or("")
+    }
+
+    /// Get the script_path of the first entry (for backward compat)
+    pub fn script_path(&self) -> Option<&std::path::PathBuf> {
+        self.scripts.first().and_then(|e| e.script_path.as_ref())
+    }
+
+    /// Get the enabled state of the first entry (for backward compat)
+    pub fn enabled(&self) -> bool {
+        self.scripts.first().map(|e| e.enabled).unwrap_or(true)
+    }
+
+    /// Get the runtime_state of the first entry (for backward compat)
+    pub fn runtime_state(&self) -> &ScriptRuntimeState {
+        static DEFAULT: ScriptRuntimeState = ScriptRuntimeState {
+            initialized: false,
+            last_frame: 0,
+            has_error: false,
+        };
+        self.scripts.first().map(|e| &e.runtime_state).unwrap_or(&DEFAULT)
+    }
+
+    /// Check if this has a file-based script (any entry)
+    pub fn is_file_script(&self) -> bool {
+        self.scripts.iter().any(|e| e.is_file_script())
+    }
+
+    /// Migrate from legacy single-script format
+    pub fn from_legacy(
+        script_id: String,
+        script_path: Option<std::path::PathBuf>,
+        enabled: bool,
+        variables: ScriptVariables,
+    ) -> Self {
+        let mut comp = Self::new();
+        let id = comp.next_id;
+        comp.next_id += 1;
+        comp.scripts.push(ScriptEntry {
+            id,
+            script_id,
+            script_path,
+            enabled,
+            variables,
+            runtime_state: ScriptRuntimeState::default(),
+        });
+        comp
     }
 }
 

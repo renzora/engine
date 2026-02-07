@@ -211,6 +211,7 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::ParticleEditor => Vec2::new(300.0, 400.0),
         PanelId::ParticlePreview => Vec2::new(300.0, 300.0),
         PanelId::TextureEditor => Vec2::new(300.0, 300.0),
+        PanelId::ScriptVariables => Vec2::new(220.0, 200.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

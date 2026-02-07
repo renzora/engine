@@ -75,98 +75,100 @@ pub fn run_runtime_scripts(
     let mut all_commands: Vec<(Entity, RhaiCommand)> = Vec::new();
 
     for (entity, mut script_comp, mut transform) in scripts.iter_mut() {
-        if !script_comp.enabled {
-            continue;
-        }
-
-        let Some(script_path) = &script_comp.script_path else {
-            continue;
-        };
-
-        let compiled = match engine.load_script_file(script_path) {
-            Ok(c) => {
-                if script_comp.runtime_state.has_error {
-                    info!("[Script] '{}' loaded successfully", c.name);
-                    script_comp.runtime_state.has_error = false;
-                }
-                c
-            }
-            Err(e) => {
-                if !script_comp.runtime_state.has_error {
-                    error!("[Script] Failed to load '{}': {}", script_path, e);
-                    script_comp.runtime_state.has_error = true;
-                }
+        for entry in script_comp.scripts.iter_mut() {
+            if !entry.enabled {
                 continue;
             }
-        };
 
-        let script_transform = ScriptTransform::from_transform(&transform);
-        let mut ctx = RhaiScriptContext::new(script_time, script_transform);
+            let Some(script_path) = &entry.script_path else {
+                continue;
+            };
 
-        ctx.self_entity_id = entity.to_bits();
-        ctx.self_entity_name = editor_entities
-            .get(entity)
-            .map(|(_, e)| e.name.clone())
-            .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
+            let compiled = match engine.load_script_file(script_path) {
+                Ok(c) => {
+                    if entry.runtime_state.has_error {
+                        info!("[Script] '{}' loaded successfully", c.name);
+                        entry.runtime_state.has_error = false;
+                    }
+                    c
+                }
+                Err(e) => {
+                    if !entry.runtime_state.has_error {
+                        error!("[Script] Failed to load '{}': {}", script_path, e);
+                        entry.runtime_state.has_error = true;
+                    }
+                    continue;
+                }
+            };
 
-        ctx.found_entities = entities_by_name.clone();
-        ctx.entities_by_tag = entities_by_tag.clone();
+            let script_transform = ScriptTransform::from_transform(&transform);
+            let mut ctx = RhaiScriptContext::new(script_time, script_transform);
 
-        ctx.collisions_entered = read_res.collisions.get_collisions_entered(entity)
-            .iter().map(|e| e.to_bits()).collect();
-        ctx.collisions_exited = read_res.collisions.get_collisions_exited(entity)
-            .iter().map(|e| e.to_bits()).collect();
-        ctx.active_collisions = read_res.collisions.get_active_collisions(entity)
-            .iter().map(|e| e.to_bits()).collect();
+            ctx.self_entity_id = entity.to_bits();
+            ctx.self_entity_name = editor_entities
+                .get(entity)
+                .map(|(_, e)| e.name.clone())
+                .unwrap_or_else(|_| format!("Entity_{}", entity.index()));
 
-        ctx.timers_just_finished = queues.timers.get_just_finished();
+            ctx.found_entities = entities_by_name.clone();
+            ctx.entities_by_tag = entities_by_tag.clone();
 
-        for ((req_entity, var_name), hit) in read_res.raycast_results.results.iter() {
-            if *req_entity == entity {
-                ctx.raycast_results.insert(var_name.clone(), hit.clone());
+            ctx.collisions_entered = read_res.collisions.get_collisions_entered(entity)
+                .iter().map(|e| e.to_bits()).collect();
+            ctx.collisions_exited = read_res.collisions.get_collisions_exited(entity)
+                .iter().map(|e| e.to_bits()).collect();
+            ctx.active_collisions = read_res.collisions.get_active_collisions(entity)
+                .iter().map(|e| e.to_bits()).collect();
+
+            ctx.timers_just_finished = queues.timers.get_just_finished();
+
+            for ((req_entity, var_name), hit) in read_res.raycast_results.results.iter() {
+                if *req_entity == entity {
+                    ctx.raycast_results.insert(var_name.clone(), hit.clone());
+                }
             }
-        }
 
-        ctx.input_movement = read_res.input.get_movement_vector();
-        ctx.mouse_position = read_res.input.mouse_position;
-        ctx.mouse_delta = read_res.input.mouse_delta;
-        ctx.gamepad_left_stick = Vec2::new(
-            read_res.input.get_gamepad_left_stick_x(0),
-            read_res.input.get_gamepad_left_stick_y(0),
-        );
-        ctx.gamepad_right_stick = Vec2::new(
-            read_res.input.get_gamepad_right_stick_x(0),
-            read_res.input.get_gamepad_right_stick_y(0),
-        );
+            ctx.input_movement = read_res.input.get_movement_vector();
+            ctx.mouse_position = read_res.input.mouse_position;
+            ctx.mouse_delta = read_res.input.mouse_delta;
+            ctx.gamepad_left_stick = Vec2::new(
+                read_res.input.get_gamepad_left_stick_x(0),
+                read_res.input.get_gamepad_left_stick_y(0),
+            );
+            ctx.gamepad_right_stick = Vec2::new(
+                read_res.input.get_gamepad_right_stick_x(0),
+                read_res.input.get_gamepad_right_stick_y(0),
+            );
 
-        if !script_comp.runtime_state.initialized {
-            info!("[Script] Initializing '{}'", compiled.name);
-            if let Err(e) = engine.run_on_ready(&compiled, &mut ctx, &script_comp.variables) {
-                error!("[Script] on_ready error in '{}': {}", compiled.name, e);
-                script_comp.runtime_state.has_error = true;
+            if !entry.runtime_state.initialized {
+                info!("[Script] Initializing '{}'", compiled.name);
+                if let Err(e) = engine.run_on_ready(&compiled, &mut ctx, &entry.variables) {
+                    error!("[Script] on_ready error in '{}': {}", compiled.name, e);
+                    entry.runtime_state.has_error = true;
+                    continue;
+                }
+                entry.runtime_state.initialized = true;
+            }
+
+            if let Err(e) = engine.run_on_update(&compiled, &mut ctx, &entry.variables) {
+                error!("[Script] on_update error in '{}': {}", compiled.name, e);
+                entry.runtime_state.has_error = true;
                 continue;
             }
-            script_comp.runtime_state.initialized = true;
-        }
 
-        if let Err(e) = engine.run_on_update(&compiled, &mut ctx, &script_comp.variables) {
-            error!("[Script] on_update error in '{}': {}", compiled.name, e);
-            script_comp.runtime_state.has_error = true;
-            continue;
-        }
+            if let Some(new_pos) = ctx.new_position {
+                transform.translation = new_pos;
+            }
+            if let Some(new_rot) = ctx.new_rotation {
+                transform.rotation = new_rot;
+            }
+            if let Some(new_scale) = ctx.new_scale {
+                transform.scale = new_scale;
+            }
 
-        if let Some(new_pos) = ctx.new_position {
-            transform.translation = new_pos;
-        }
-        if let Some(new_rot) = ctx.new_rotation {
-            transform.rotation = new_rot;
-        }
-        if let Some(new_scale) = ctx.new_scale {
-            transform.scale = new_scale;
-        }
-
-        for cmd in ctx.commands.drain(..) {
-            all_commands.push((entity, cmd));
+            for cmd in ctx.commands.drain(..) {
+                all_commands.push((entity, cmd));
+            }
         }
     }
 
