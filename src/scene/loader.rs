@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 use bevy::scene::{DynamicSceneRoot, SceneInstanceReady};
+#[cfg(feature = "solari")]
 use bevy::solari::scene::RaytracingMesh3d;
 use std::path::Path;
 
@@ -561,6 +562,7 @@ fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
 /// This catches meshes spawned by GLTF scenes and other sources.
 /// Excludes editor gizmo meshes and the cloud dome (custom material incompatible
 /// with Solari's StandardMaterial-only raytracing) from the acceleration structure.
+#[cfg(feature = "solari")]
 pub fn add_raytracing_to_meshes(
     mut commands: Commands,
     query: Query<(Entity, &Mesh3d), (Without<RaytracingMesh3d>, Without<GizmoMesh>, Without<CloudDomeMarker>)>,

@@ -6,7 +6,9 @@
 
 use bevy::prelude::*;
 use bevy::asset::UnapprovedPathMode;
+#[cfg(feature = "solari")]
 use bevy::anti_alias::dlss::DlssProjectId;
+#[cfg(feature = "solari")]
 use bevy::asset::uuid::Uuid;
 use bevy::camera::RenderTarget;
 use bevy::render::render_resource::{
@@ -22,10 +24,13 @@ const THUMBNAIL_SIZE: u32 = 128;
 
 /// Run the headless thumbnail renderer
 pub fn run_thumbnail_renderer(model_path: String, output_path: String) {
-    App::new()
-        // DLSS requires a project ID before plugin initialization
-        .insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)))
-        .add_plugins(
+    let mut app = App::new();
+
+    // DLSS requires a project ID before plugin initialization
+    #[cfg(feature = "solari")]
+    app.insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)));
+
+    app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {

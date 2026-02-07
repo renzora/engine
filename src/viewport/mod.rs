@@ -35,8 +35,11 @@ pub use texture::{resize_viewport_texture, setup_viewport_texture, ViewportTextu
 
 use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
+#[cfg(feature = "solari")]
 use bevy::solari::realtime::SolariLighting;
+#[cfg(feature = "solari")]
 use bevy::solari::scene::RaytracingMesh3d;
+#[cfg(feature = "solari")]
 use bevy::anti_alias::dlss::{Dlss, DlssRayReconstructionFeature};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -45,6 +48,7 @@ use crate::component_system::components::clouds::CloudDomeMarker;
 use crate::console_info;
 use crate::core::{AppState, DockingState, EditorSettings, MainCamera, RenderToggles, SelectionState, ViewportState, VisualizationMode};
 use crate::gizmo::meshes::GizmoMesh;
+#[cfg(feature = "solari")]
 use crate::shared::{DlssQualityMode, SolariLightingData};
 use crate::spawn::{EditorSceneRoot, SceneType};
 use crate::ui::docking::PanelId;
@@ -129,7 +133,6 @@ impl Plugin for ViewportPlugin {
             .init_resource::<LastRenderState>()
             .init_resource::<Camera2DState>()
             .init_resource::<ModelPreviewCache>()
-            .init_resource::<SolariState>()
             .add_systems(Startup, (setup_viewport_texture, setup_camera_preview_texture))
             .add_systems(
                 Update,
@@ -137,7 +140,7 @@ impl Plugin for ViewportPlugin {
             )
             .add_systems(
                 Update,
-                (auto_switch_viewport_mode, sync_layout_camera_settings, sync_rendering_settings, sync_camera_activity).run_if(in_state(AppState::Editor)),
+                (auto_switch_viewport_mode, sync_layout_camera_settings, sync_camera_activity).run_if(in_state(AppState::Editor)),
             )
             // Model preview systems for asset browser thumbnails
             .add_systems(
@@ -151,6 +154,16 @@ impl Plugin for ViewportPlugin {
                     .chain()
                     .run_if(in_state(AppState::Editor)),
             );
+
+        // Solari raytraced lighting sync (requires solari feature + SDKs)
+        #[cfg(feature = "solari")]
+        {
+            app.init_resource::<SolariState>()
+                .add_systems(
+                    Update,
+                    sync_rendering_settings.run_if(in_state(AppState::Editor)),
+                );
+        }
     }
 }
 
@@ -476,6 +489,7 @@ fn restore_material_states(
 }
 
 /// Resource to track whether Solari is currently active
+#[cfg(feature = "solari")]
 #[derive(Resource, Default)]
 pub struct SolariState {
     pub enabled: bool,
@@ -487,6 +501,7 @@ pub struct SolariState {
 /// - Adding/removing RaytracingMesh3d on all meshes
 /// - Switching viewport texture format (Bgra8UnormSrgb <-> Rgba16Float)
 /// - Adding/removing Solari-specific camera settings (Hdr, CameraMainTextureUsages)
+#[cfg(feature = "solari")]
 fn sync_rendering_settings(
     mut commands: Commands,
     solari_query: Query<&SolariLightingData, Or<(Changed<SolariLightingData>, Changed<crate::core::DisabledComponents>)>>,
@@ -728,6 +743,7 @@ fn sync_rendering_settings(
 }
 
 /// Debug system to log Solari state - runs once per second
+#[cfg(feature = "solari")]
 fn debug_solari_state(
     time: Res<Time>,
     mut last_log: Local<f32>,

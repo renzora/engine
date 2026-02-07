@@ -11,6 +11,7 @@ mod export;
 mod gizmo;
 mod gltf_animation;
 mod input;
+#[cfg(feature = "solari")]
 mod meshlet;
 mod particles;
 mod play_mode;
@@ -35,9 +36,13 @@ use bevy::render::{
     settings::{RenderCreation, WgpuSettings},
     RenderPlugin,
 };
+#[cfg(feature = "solari")]
 use bevy::solari::SolariPlugins;
+#[cfg(feature = "solari")]
 use bevy::pbr::experimental::meshlet::MeshletPlugin;
+#[cfg(feature = "solari")]
 use bevy::anti_alias::dlss::DlssProjectId;
+#[cfg(feature = "solari")]
 use bevy::asset::uuid::Uuid;
 use bevy::window::{WindowMode, WindowResizeConstraints};
 use bevy::winit::WinitWindows;
@@ -95,11 +100,14 @@ fn main() {
         return;
     }
 
-    App::new()
-        // DLSS requires a project ID before plugin initialization
-        // Use a fixed UUID for Renzora Engine (generated once, kept consistent)
-        .insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)))
-        .add_plugins(
+    let mut app = App::new();
+
+    // DLSS requires a project ID before plugin initialization
+    // Use a fixed UUID for Renzora Engine (generated once, kept consistent)
+    #[cfg(feature = "solari")]
+    app.insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)));
+
+    app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
@@ -130,10 +138,13 @@ fn main() {
                     ..default()
                 })
         )
-        .add_plugins(bevy_egui::EguiPlugin::default())
-        .add_plugins(SolariPlugins)
-        .add_plugins(MeshletPlugin { cluster_buffer_slots: 8192 })
-        .add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
+        .add_plugins(bevy_egui::EguiPlugin::default());
+
+    #[cfg(feature = "solari")]
+    app.add_plugins(SolariPlugins)
+        .add_plugins(MeshletPlugin { cluster_buffer_slots: 8192 });
+
+    app.add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
         .add_plugins(bevy_mod_outline::OutlinePlugin)
         // Register types for Bevy's scene system
         // Shared components
@@ -236,9 +247,13 @@ fn main() {
             gltf_animation::GltfAnimationPlugin,
             // GPU particle effects (Hanabi)
             particles::ParticlesPlugin,
-            // Meshlet/Virtual Geometry integration
-            meshlet::MeshletIntegrationPlugin,
-        ))
+        ));
+
+    // Meshlet/Virtual Geometry integration (requires solari feature)
+    #[cfg(feature = "solari")]
+    app.add_plugins(meshlet::MeshletIntegrationPlugin);
+
+    app
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)
         // Initialize app state
@@ -436,8 +451,9 @@ fn main() {
         .init_resource::<project::EditorStateDirty>()
         .init_resource::<project::LoadedEditorState>()
         // Initialize modal transform state
-        .init_resource::<gizmo::ModalTransformState>()
-        .run();
+        .init_resource::<gizmo::ModalTransformState>();
+
+    app.run();
 }
 
 /// Setup a simple camera for the splash screen

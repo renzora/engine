@@ -13,6 +13,10 @@ runtime = ["physics"]
 physics = ["dep:avian3d"]
 dynamic = ["bevy/dynamic_linking"]
 memory-profiling = ["dep:memory-stats"]
+# Raytraced global illumination, DLSS, and virtual geometry (meshlets).
+# Requires Vulkan SDK and DLSS SDK installed for compilation.
+# Build without this feature if you don't have the SDKs: cargo run --features editor
+solari = ["bevy/bevy_solari", "bevy/dlss", "bevy/meshlet", "bevy/meshlet_processor"]
 
 [[bin]]
 name = "renzora_editor"
@@ -29,7 +33,7 @@ name = "renzora_updater"
 path = "updater/src/main.rs"
 
 [dependencies]
-bevy = { version = "0.18", features = ["jpeg", "bevy_solari", "dlss", "meshlet", "meshlet_processor"] }
+bevy = { version = "0.18", features = ["jpeg"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ron = "0.8"

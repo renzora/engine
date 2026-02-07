@@ -16,6 +16,80 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 2. Windows 10/11, Linux, or macOS
 3. **Linux only:** Wayland dev libraries — `sudo apt install libwayland-dev` (Debian/Ubuntu)
 
+### Solari / Ray Tracing (Optional)
+
+The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruction, and meshlet virtual geometry. If you don't have the required SDKs or hardware, the engine builds and runs fine without it — just don't enable the `solari` feature.
+
+**Platform compatibility:**
+
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| Compile | Yes | Yes | No |
+| Runtime | NVIDIA RTX only | NVIDIA RTX only | No |
+
+DLSS is an NVIDIA-proprietary technology — the SDK only provides libraries for Windows and Linux, and requires an RTX GPU at runtime. macOS and AMD/Intel GPU users should build without this feature.
+
+#### 1. Vulkan SDK (1.3.x or newer)
+
+Download from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home) and run the installer. Any version with Vulkan 1.3+ headers works.
+
+- **Windows:** The installer sets the `VULKAN_SDK` environment variable automatically (e.g. `C:\VulkanSDK\1.4.309.0`). No extra steps needed.
+- **Linux:** `sudo apt install vulkan-sdk` or use the LunarG tarball and set `VULKAN_SDK` to the extracted directory.
+
+Verify it's set:
+```bash
+echo %VULKAN_SDK%          # Windows (cmd)
+echo $env:VULKAN_SDK       # Windows (PowerShell)
+echo $VULKAN_SDK           # Linux/macOS
+```
+
+The build needs the `Include/` (Windows) or `include/` (Linux) directory containing `vulkan/vulkan.h`.
+
+#### 2. DLSS SDK (v310.4.0)
+
+Clone the exact version from NVIDIA's GitHub repo:
+
+```bash
+git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git C:\DLSS_SDK
+```
+
+Then set the `DLSS_SDK` environment variable:
+
+**Windows (permanent, run as admin):**
+```cmd
+setx DLSS_SDK "C:\DLSS_SDK" /M
+```
+
+**Windows (current session only):**
+```powershell
+$env:DLSS_SDK = "C:\DLSS_SDK"
+```
+
+**Linux:**
+```bash
+export DLSS_SDK=/path/to/DLSS    # add to ~/.bashrc for persistence
+```
+
+The build expects this directory structure (which the cloned repo provides):
+```
+DLSS_SDK/
+  include/              # Headers (nvsdk_ngx.h, etc.)
+  lib/
+    Windows_x86_64/
+      x64/              # nvsdk_ngx_s.lib, nvsdk_ngx_d.lib
+      rel/              # nvngx_dlss.dll, nvngx_dlssd.dll (ship with your game)
+    Linux_x86_64/
+      rel/              # libnvidia-ngx-dlss.so (ship with your game)
+```
+
+#### 3. Build with Solari
+
+After both SDKs are installed and environment variables are set, restart your terminal and run:
+
+```bash
+cargo run --features solari
+```
+
 ### Faster Linking (Recommended)
 
 **Windows:**
@@ -45,11 +119,9 @@ rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 ### Development
 
-Debug builds use dynamic linking for fast iteration:
-
 ```bash
-cargo run       # run the editor
-cargo build     # build the editor
+cargo run                      # run the editor (default features)
+cargo run --features solari    # run with raytraced lighting + DLSS (requires SDKs)
 ```
 
 ### Release
@@ -102,9 +174,12 @@ cargo test -- file_drop
 |---------|-------------|
 | `editor` | Full editor with UI, asset browser, scene editing |
 | `runtime` | Minimal runtime for exported games |
-| `dynamic` | Dynamic linking for faster dev builds (default) |
+| `physics` | Avian3D physics engine integration |
+| `solari` | Raytraced GI, DLSS, and meshlet virtual geometry (requires Vulkan SDK + DLSS SDK) |
+| `dynamic` | Dynamic linking for faster dev builds |
+| `memory-profiling` | Memory usage tracking in diagnostics |
 
-Default: `editor`, `dynamic`
+Default: `editor`, `physics`, `memory-profiling`
 
 ---
 

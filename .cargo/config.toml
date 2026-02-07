@@ -7,7 +7,8 @@ release-runtime = "build --release --no-default-features --features runtime --bi
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 
-# DLSS SDK include path for bindgen
+# DLSS SDK include path for bindgen (only used when building with --features solari)
+# Update this path if your DLSS SDK is installed elsewhere
 [env]
 BINDGEN_EXTRA_CLANG_ARGS = "-IC:\\DLSS_SDK\\include"
 
