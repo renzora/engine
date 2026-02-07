@@ -46,6 +46,7 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Level Design", level_design_layout()),
         WorkspaceLayout::builtin("Terrain", terrain_layout()),
         WorkspaceLayout::builtin("Image Preview", image_preview_layout()),
+        WorkspaceLayout::builtin("Particles", particles_layout()),
     ]
 }
 
@@ -316,6 +317,24 @@ pub fn image_preview_layout() -> DockTree {
     )
 }
 
+/// Particles layout: Particle Preview on left, Particle Editor on right
+///
+/// ```text
+/// ┌──────────────────────┬───────────────────────┐
+/// │                      │                       │
+/// │   Particle Preview   │    Particle Editor    │
+/// │                      │                       │
+/// │                      │                       │
+/// └──────────────────────┴───────────────────────┘
+/// ```
+pub fn particles_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::ParticlePreview),
+        DockTree::leaf(PanelId::ParticleEditor),
+        0.8,
+    )
+}
+
 /// Minimal layout: Just viewport
 #[allow(dead_code)]
 pub fn minimal_layout() -> DockTree {
@@ -383,17 +402,17 @@ impl DockingLayoutConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_builtin_layouts_contain_required_panels() {
         let layouts = builtin_layouts();
 
         for layout in layouts {
-            // All layouts should contain at least a viewport
-            assert!(
-                layout.dock_tree.contains_panel(&PanelId::Viewport) ||
-                layout.dock_tree.contains_panel(&PanelId::ScriptEditor),
-                "Layout '{}' should contain Viewport or ScriptEditor",
+            // All layouts should have at least one panel
+            let panels = layout.dock_tree.all_panels();
+            assert!(!panels.is_empty(),
+                "Layout '{}' should contain at least one panel",
                 layout.name
             );
         }
@@ -408,5 +427,82 @@ mod tests {
         assert!(layout.contains_panel(&PanelId::Inspector));
         assert!(layout.contains_panel(&PanelId::Assets));
         assert!(layout.contains_panel(&PanelId::Console));
+    }
+
+    #[test]
+    fn test_builtin_layouts_count() {
+        let layouts = builtin_layouts();
+        assert_eq!(layouts.len(), 9, "Expected 9 built-in layouts");
+    }
+
+    #[test]
+    fn test_all_builtin_layouts_are_builtin() {
+        for layout in builtin_layouts() {
+            assert!(layout.is_builtin, "Layout '{}' should be marked as builtin", layout.name);
+        }
+    }
+
+    #[test]
+    fn test_workspace_layout_new_is_not_builtin() {
+        let layout = WorkspaceLayout::new("Custom", DockTree::leaf(PanelId::Viewport));
+        assert!(!layout.is_builtin);
+        assert_eq!(layout.name, "Custom");
+    }
+
+    #[test]
+    fn test_builtin_layouts_have_unique_names() {
+        let layouts = builtin_layouts();
+        let mut names = HashSet::new();
+        for layout in &layouts {
+            assert!(names.insert(&layout.name), "Duplicate layout name: {}", layout.name);
+        }
+    }
+
+    #[test]
+    fn test_scripting_layout_has_script_editor() {
+        let layout = scripting_layout();
+        assert!(layout.contains_panel(&PanelId::ScriptEditor),
+            "Scripting layout should contain ScriptEditor");
+    }
+
+    #[test]
+    fn test_debug_layout_has_performance_panels() {
+        let layout = debug_layout();
+        assert!(layout.contains_panel(&PanelId::Performance),
+            "Debug layout should contain Performance panel");
+        assert!(layout.contains_panel(&PanelId::EcsStats),
+            "Debug layout should contain EcsStats panel");
+    }
+
+    #[test]
+    fn test_blueprints_layout_has_blueprint_editor() {
+        let layout = blueprints_layout();
+        assert!(layout.contains_panel(&PanelId::Blueprint),
+            "Blueprints layout should contain Blueprint panel");
+        assert!(layout.contains_panel(&PanelId::NodeLibrary),
+            "Blueprints layout should contain NodeLibrary panel");
+    }
+
+    #[test]
+    fn test_docking_layout_config_default() {
+        let config = DockingLayoutConfig::default();
+        assert!(config.custom_layouts.is_empty());
+        assert!(config.current_tree.is_none());
+        assert!(config.active_layout.is_empty());
+    }
+
+    #[test]
+    fn test_docking_layout_config_save_and_delete() {
+        let mut config = DockingLayoutConfig::default();
+        config.save_custom_layout("Test".to_string(), DockTree::leaf(PanelId::Viewport));
+        assert_eq!(config.custom_layouts.len(), 1);
+        assert!(!config.custom_layouts[0].is_builtin);
+
+        // Delete it
+        assert!(config.delete_layout("Test"));
+        assert!(config.custom_layouts.is_empty());
+
+        // Delete non-existent
+        assert!(!config.delete_layout("NonExistent"));
     }
 }

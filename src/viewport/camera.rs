@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
-use bevy::window::{CursorGrabMode, CursorOptions};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
 use crate::gizmo::{ModalTransformState, GizmoState};
@@ -20,7 +20,7 @@ pub fn camera_controller(
     entity_query: Query<&Transform, (With<EditorEntity>, Without<ViewportCamera>)>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
-    mut cursor_query: Query<&mut CursorOptions>,
+    mut window_query: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
     gizmo: Res<GizmoState>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
@@ -99,7 +99,16 @@ pub fn camera_controller(
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some();
     let left_click_drag_disabled = viewport.disable_left_click_drag;
-    if let Ok(mut cursor) = cursor_query.single_mut() {
+    if let Ok((mut cursor, window)) = window_query.single_mut() {
+        // Capture cursor position on right-click press for click-vs-drag detection
+        if right_just_pressed && viewport.hovered && !alt_held {
+            if let Some(pos) = window.cursor_position() {
+                viewport.context_menu_pos = None; // close any existing menu
+                viewport.right_click_origin = Some(bevy::math::Vec2::new(pos.x, pos.y));
+                viewport.right_click_moved = false;
+            }
+        }
+
         // Start camera drag only when mouse button is first pressed while inside viewport
         // For left click, don't start if gizmo is hovered or being dragged
         // Middle/right click always work for camera control
@@ -118,6 +127,16 @@ pub fn camera_controller(
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
             viewport.camera_dragging = false;
+
+            // Right-click without drag -> open context menu
+            if right_just_released {
+                if let Some(origin) = viewport.right_click_origin.take() {
+                    if !viewport.right_click_moved {
+                        viewport.context_menu_pos = Some(origin);
+                    }
+                }
+                viewport.right_click_moved = false;
+            }
         }
     }
 
@@ -219,6 +238,10 @@ pub fn camera_controller(
             );
 
         for ev in mouse_motion.read() {
+            // Track that mouse moved during right-click hold
+            if viewport.right_click_origin.is_some() {
+                viewport.right_click_moved = true;
+            }
             orbit.yaw -= ev.delta.x * look_speed;
             orbit.pitch += ev.delta.y * look_speed * invert_y;
             // Clamp pitch to avoid flipping

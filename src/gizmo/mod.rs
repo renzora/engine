@@ -1,7 +1,7 @@
 mod drawing;
 mod grid;
 mod interaction;
-mod meshes;
+pub mod meshes;
 pub mod modal_transform;
 mod physics;
 pub mod picking;

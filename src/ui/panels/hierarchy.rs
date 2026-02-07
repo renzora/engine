@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
+use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon, Align2, Order};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
-use crate::component_system::{ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset, spawn_component_as_node, preset_component_ids};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
@@ -299,14 +299,13 @@ pub fn render_hierarchy_content(
                 .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
         );
 
-        // Add button with centered dropdown menu
-        ui.menu_button(
-            RichText::new(format!("{} Add", PLUS)).color(accent_color),
-            |ui| {
-                ui.set_min_width(180.0);
-                render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy, theme);
-            }
-        );
+        // Add button opens centered popup
+        if ui.button(RichText::new(format!("{} Add", PLUS)).color(accent_color)).clicked() {
+            hierarchy.show_add_entity_popup = true;
+            hierarchy.add_entity_search.clear();
+            hierarchy.add_entity_parent = scene_root_entity;
+            hierarchy.add_entity_focus_search = true;
+        }
 
         ui.add_space(4.0);
     });
@@ -466,6 +465,11 @@ pub fn render_hierarchy_content(
     // for now and pass them through. The actual rendering happens in render_tree_node.
     // For simplicity, we store the items in a local to be used by the tree node rendering.
     let _ = hierarchy_context_items; // Used in tree node context menus
+
+    // Render the "Add Entity" popup overlay
+    if render_add_entity_popup(outer_ctx, hierarchy, commands, meshes, materials, component_registry, selection, theme) {
+        scene_changed = true;
+    }
 
     (ui_events, scene_changed)
 }
@@ -996,10 +1000,10 @@ fn render_tree_node(
         hierarchy: &mut HierarchyState,
         hierarchy_queries: &HierarchyQueries,
         commands: &mut Commands,
-        meshes: &mut Assets<Mesh>,
-        materials: &mut Assets<StandardMaterial>,
-        component_registry: &ComponentRegistry,
-        selection: &mut SelectionState,
+        _meshes: &mut Assets<Mesh>,
+        _materials: &mut Assets<StandardMaterial>,
+        _component_registry: &ComponentRegistry,
+        _selection: &mut SelectionState,
         plugin_host: &PluginHost,
         ui_events: &mut Vec<UiEvent>,
         scene_changed: &mut bool,
@@ -1013,15 +1017,19 @@ fn render_tree_node(
             hierarchy.renaming_entity = Some(entity);
             hierarchy.rename_buffer = editor_entity.name.clone();
             hierarchy.rename_focus_set = false;
-            ui.close();
+            ui.close_menu();
         }
 
         ui.separator();
 
-        // Add Child Entity submenu with categories
-        ui.menu_button(RichText::new(format!("{} Add Child Entity", PLUS)), |ui| {
-            render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy, theme);
-        });
+        // Add Child Entity opens popup
+        if ui.button(RichText::new(format!("{} Add Child Entity", PLUS))).clicked() {
+            hierarchy.show_add_entity_popup = true;
+            hierarchy.add_entity_search.clear();
+            hierarchy.add_entity_parent = Some(entity);
+            hierarchy.add_entity_focus_search = true;
+            ui.close_menu();
+        }
 
         // Add Script
         if ui.button(format!("{} Add Script", CODE)).clicked() {
@@ -1032,7 +1040,7 @@ fn render_tree_node(
                 variables: Default::default(),
                 runtime_state: Default::default(),
             });
-            ui.close();
+            ui.close_menu();
         }
 
         // Camera-specific options
@@ -1042,7 +1050,7 @@ fn render_tree_node(
             ui.separator();
             if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
                 hierarchy.pending_make_default_camera = Some(entity);
-                ui.close();
+                ui.close_menu();
             }
         }
 
@@ -1052,13 +1060,13 @@ fn render_tree_node(
         if ui.button(format!("{} Duplicate", COPY)).clicked() {
             queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
             *scene_changed = true;
-            ui.close();
+            ui.close_menu();
         }
 
         // Reparent to root
         if ui.button(format!("{} Unparent", ARROW_SQUARE_OUT)).clicked() {
             commands.entity(entity).remove::<ChildOf>();
-            ui.close();
+            ui.close_menu();
         }
 
         ui.separator();
@@ -1070,7 +1078,7 @@ fn render_tree_node(
             // Remove from expanded set
             hierarchy.expanded_entities.remove(&entity);
             *scene_changed = true;
-            ui.close();
+            ui.close_menu();
         }
 
         // Plugin context menu items
@@ -1171,7 +1179,7 @@ fn render_plugin_context_menu_item(ui: &mut egui::Ui, item: &PluginMenuItem) -> 
         let response = ui.add_enabled(item.enabled, button);
 
         if response.clicked() {
-            ui.close();
+            ui.close_menu();
             return true;
         }
     } else {
@@ -1341,137 +1349,455 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
     (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190))
 }
 
-/// Render the Create menu with presets organized by category
-fn render_preset_menu(
-    ui: &mut egui::Ui,
+/// Render the Godot-style "Add Entity" popup overlay
+/// Returns true if an entity was spawned (scene changed)
+fn render_add_entity_popup(
+    ctx: &egui::Context,
+    hierarchy: &mut HierarchyState,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     registry: &ComponentRegistry,
-    parent: Option<Entity>,
     selection: &mut SelectionState,
-    hierarchy: &mut HierarchyState,
     theme: &Theme,
-) {
-    let text_primary = theme.text.primary.to_color32();
-    let text_muted = theme.text.muted.to_color32();
-
-    for category in PresetCategory::all_in_order() {
-        // Skip Empty category at top level - we'll show it separately
-        if *category == PresetCategory::Empty {
-            continue;
-        }
-
-        let presets = get_presets_by_category(*category);
-        if presets.is_empty() {
-            continue;
-        }
-
-        let cat_icon = category.icon();
-        let cat_color = get_category_color(*category, theme);
-        let label = format!("{} {}", cat_icon, category.display_name());
-
-        ui.menu_button(RichText::new(label).color(cat_color), |ui| {
-            ui.set_min_width(160.0);
-
-            for preset in presets {
-                let item_label = format!("{} {}", preset.icon, preset.display_name);
-
-                if ui.button(RichText::new(item_label).color(text_primary)).clicked() {
-                    let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
-                    selection.selected_entity = Some(entity);
-                    if let Some(parent_entity) = parent {
-                        hierarchy.expanded_entities.insert(parent_entity);
-                    }
-                    ui.close();
-                }
-            }
-        });
+) -> bool {
+    if !hierarchy.show_add_entity_popup {
+        return false;
     }
 
-    ui.separator();
+    let mut spawned = false;
+    let mut close_popup = false;
 
-    // Empty Entity at the bottom
-    let empty_presets = get_presets_by_category(PresetCategory::Empty);
-    for preset in empty_presets {
-        let item_label = format!("{} {}", preset.icon, preset.display_name);
+    // Semi-transparent backdrop - clicking it closes the popup
+    let screen_rect = ctx.input(|i| i.screen_rect());
+    egui::Area::new(egui::Id::new("add_entity_backdrop"))
+        .fixed_pos(Pos2::ZERO)
+        .order(Order::Foreground)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let (rect, response) = ui.allocate_exact_size(screen_rect.size(), Sense::click());
+            ui.painter().rect_filled(rect, 0.0, Color32::from_black_alpha(120));
+            if response.clicked() {
+                close_popup = true;
+            }
+        });
 
-        if ui.button(RichText::new(item_label).color(text_muted)).clicked() {
+    // Escape to close
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        close_popup = true;
+    }
+
+    // Collect search text and first match before the window (for Enter to spawn)
+    let search_lower = hierarchy.add_entity_search.to_lowercase();
+    let has_search = !hierarchy.add_entity_search.is_empty();
+
+    // Enter to spawn first match (search presets first, then registry components)
+    if has_search && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        let preset_ids = preset_component_ids();
+
+        // Try presets first (excluding Empty)
+        let first_preset = PresetCategory::all_in_order()
+            .iter()
+            .filter(|c| **c != PresetCategory::Empty)
+            .flat_map(|c| get_presets_by_category(*c))
+            .find(|p| p.display_name.to_lowercase().contains(&search_lower));
+
+        if let Some(preset) = first_preset {
+            let parent = hierarchy.add_entity_parent;
             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
             selection.selected_entity = Some(entity);
             if let Some(parent_entity) = parent {
                 hierarchy.expanded_entities.insert(parent_entity);
             }
-            ui.close();
-        }
-    }
-}
+            spawned = true;
+            close_popup = true;
+        } else {
+            // Try registry components not covered by presets
+            let first_component = ComponentCategory::all_in_order()
+                .iter()
+                .flat_map(|cat| registry.get_by_category(*cat).iter())
+                .find(|def| {
+                    !preset_ids.contains(def.type_id)
+                        && def.display_name.to_lowercase().contains(&search_lower)
+                })
+                .copied();
 
-/// Render the Create menu with presets organized by category (with close signal for custom popups)
-fn render_preset_menu_with_close(
-    ui: &mut egui::Ui,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    registry: &ComponentRegistry,
-    parent: Option<Entity>,
-    selection: &mut SelectionState,
-    hierarchy: &mut HierarchyState,
-    close_menu: &mut bool,
-    theme: &Theme,
-) {
-    let text_primary = theme.text.primary.to_color32();
-    let text_muted = theme.text.muted.to_color32();
-
-    for category in PresetCategory::all_in_order() {
-        if *category == PresetCategory::Empty {
-            continue;
-        }
-
-        let presets = get_presets_by_category(*category);
-        if presets.is_empty() {
-            continue;
-        }
-
-        let cat_icon = category.icon();
-        let cat_color = get_category_color(*category, theme);
-        let label = format!("{} {}", cat_icon, category.display_name());
-
-        ui.menu_button(RichText::new(label).color(cat_color), |ui| {
-            ui.set_min_width(160.0);
-
-            for preset in presets {
-                let item_label = format!("{} {}", preset.icon, preset.display_name);
-
-                if ui.button(RichText::new(item_label).color(text_primary)).clicked() {
-                    let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
-                    selection.selected_entity = Some(entity);
-                    if let Some(parent_entity) = parent {
-                        hierarchy.expanded_entities.insert(parent_entity);
-                    }
-                    *close_menu = true;
-                    ui.close();
+            if let Some(def) = first_component {
+                let parent = hierarchy.add_entity_parent;
+                let entity = spawn_component_as_node(commands, meshes, materials, registry, def, parent);
+                selection.selected_entity = Some(entity);
+                if let Some(parent_entity) = parent {
+                    hierarchy.expanded_entities.insert(parent_entity);
                 }
+                spawned = true;
+                close_popup = true;
             }
-        });
-    }
-
-    ui.separator();
-
-    let empty_presets = get_presets_by_category(PresetCategory::Empty);
-    for preset in empty_presets {
-        let item_label = format!("{} {}", preset.icon, preset.display_name);
-
-        if ui.button(RichText::new(item_label).color(text_muted)).clicked() {
-            let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
-            selection.selected_entity = Some(entity);
-            if let Some(parent_entity) = parent {
-                hierarchy.expanded_entities.insert(parent_entity);
-            }
-            *close_menu = true;
-            ui.close();
         }
     }
+
+    // Main popup window
+    if !close_popup {
+        egui::Window::new("add_entity_popup")
+            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .fixed_size([340.0, 420.0])
+            .order(Order::Foreground)
+            .frame(egui::Frame::window(&ctx.style()).fill(theme.surfaces.panel.to_color32()).inner_margin(12.0))
+            .show(ctx, |ui| {
+                // Title bar with close button
+                ui.horizontal(|ui| {
+                    let title = if hierarchy.add_entity_parent.is_some() {
+                        "Add Child Entity"
+                    } else {
+                        "Create Node"
+                    };
+                    ui.label(RichText::new(title).size(14.0).strong().color(theme.text.primary.to_color32()));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(RichText::new("\u{2715}").size(14.0)).clicked() {
+                            close_popup = true;
+                        }
+                    });
+                });
+
+                ui.add_space(6.0);
+
+                // Search bar
+                let search_response = ui.add_sized(
+                    [ui.available_width(), 22.0],
+                    egui::TextEdit::singleline(&mut hierarchy.add_entity_search)
+                        .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+                );
+
+                if hierarchy.add_entity_focus_search {
+                    search_response.request_focus();
+                    hierarchy.add_entity_focus_search = false;
+                }
+
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(2.0);
+
+                // Scrollable unified node list (hierarchy-style tree)
+                // Merges presets and registry components into one list grouped by ComponentCategory.
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.style_mut().spacing.item_spacing.y = 0.0;
+                    let search_lower = hierarchy.add_entity_search.to_lowercase();
+                    let has_search = !hierarchy.add_entity_search.is_empty();
+                    let tree_line_color = theme.widgets.border.to_color32();
+                    let line_stroke = Stroke::new(1.5, tree_line_color);
+                    let popup_row_height = ROW_HEIGHT;
+                    let popup_indent = INDENT_SIZE;
+
+                    let mut row_index: usize = 0;
+
+                    // Collect preset type_ids for deduplication
+                    let preset_ids = preset_component_ids();
+
+                    // Map PresetCategory -> ComponentCategory for unified grouping
+                    fn preset_to_component_category(pc: PresetCategory) -> Option<ComponentCategory> {
+                        match pc {
+                            PresetCategory::Objects3D => Some(ComponentCategory::Rendering),
+                            PresetCategory::Lights => Some(ComponentCategory::Lighting),
+                            PresetCategory::Cameras => Some(ComponentCategory::Camera),
+                            PresetCategory::Physics => Some(ComponentCategory::Physics),
+                            PresetCategory::Objects2D => Some(ComponentCategory::Rendering),
+                            PresetCategory::UI => Some(ComponentCategory::UI),
+                            PresetCategory::Environment => None, // distributed across categories
+                            PresetCategory::Empty => None,
+                        }
+                    }
+
+                    // An item in the unified list: either a preset or a component definition
+                    enum NodeItem {
+                        Preset(&'static crate::component_system::presets::EntityPreset),
+                        Component(&'static crate::component_system::ComponentDefinition),
+                    }
+                    impl NodeItem {
+                        fn display_name(&self) -> &str {
+                            match self {
+                                NodeItem::Preset(p) => p.display_name,
+                                NodeItem::Component(d) => d.display_name,
+                            }
+                        }
+                        fn icon(&self) -> &str {
+                            match self {
+                                NodeItem::Preset(p) => p.icon,
+                                NodeItem::Component(d) => d.icon,
+                            }
+                        }
+                    }
+
+                    // Build unified categories: for each ComponentCategory, collect presets + non-preset components
+                    let unified_categories: Vec<_> = ComponentCategory::all_in_order()
+                        .iter()
+                        .filter_map(|comp_cat| {
+                            let mut items: Vec<NodeItem> = Vec::new();
+
+                            // Collect presets that map to this component category
+                            for preset_cat in PresetCategory::all_in_order() {
+                                if *preset_cat == PresetCategory::Empty { continue; }
+                                if preset_to_component_category(*preset_cat) == Some(*comp_cat) {
+                                    for preset in get_presets_by_category(*preset_cat) {
+                                        if has_search && !preset.display_name.to_lowercase().contains(&search_lower) {
+                                            continue;
+                                        }
+                                        items.push(NodeItem::Preset(preset));
+                                    }
+                                }
+                            }
+
+                            // Collect "Environment" presets that match this category by component type_id
+                            // Environment presets don't map to a single ComponentCategory, so match by looking up
+                            // their primary component in the registry
+                            for preset in get_presets_by_category(PresetCategory::Environment) {
+                                if has_search && !preset.display_name.to_lowercase().contains(&search_lower) {
+                                    continue;
+                                }
+                                // Check if this preset's primary component belongs to this category
+                                if let Some(primary_id) = preset.components.first() {
+                                    if let Some(def) = registry.get(primary_id) {
+                                        if def.category == *comp_cat {
+                                            items.push(NodeItem::Preset(preset));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Collect registry components not already covered by presets
+                            for def in registry.get_by_category(*comp_cat) {
+                                if preset_ids.contains(def.type_id) { continue; }
+                                if has_search && !def.display_name.to_lowercase().contains(&search_lower) {
+                                    continue;
+                                }
+                                items.push(NodeItem::Component(def));
+                            }
+
+                            if items.is_empty() { None } else { Some((*comp_cat, items)) }
+                        })
+                        .collect();
+
+                    let cat_count = unified_categories.len();
+
+                    for (cat_idx, (comp_cat, items)) in unified_categories.iter().enumerate() {
+                        let cat_color = get_component_category_color(*comp_cat, theme);
+                        let is_last_cat = cat_idx == cat_count - 1;
+
+                        // Use a persistent ID for expand state per category
+                        let cat_id = egui::Id::new("add_popup_unified_cat").with(comp_cat.display_name());
+                        let is_expanded = if has_search {
+                            true // auto-expand when searching
+                        } else {
+                            ui.ctx().data_mut(|d| *d.get_persisted_mut_or_insert_with(cat_id, || true))
+                        };
+
+                        // --- Category row ---
+                        let (cat_rect, cat_response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), popup_row_height),
+                            Sense::click(),
+                        );
+                        let painter = ui.painter();
+
+                        // Alternating row bg
+                        if row_index % 2 == 1 {
+                            painter.rect_filled(cat_rect, 0.0, row_odd_bg(theme));
+                        }
+                        // Hover highlight
+                        if cat_response.hovered() {
+                            let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                            painter.rect_filled(cat_rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
+                        }
+                        row_index += 1;
+
+                        let base_x = cat_rect.min.x + 4.0;
+                        let center_y = cat_rect.center().y;
+
+                        // Caret icon
+                        let (caret, caret_color) = if is_expanded {
+                            (CARET_DOWN, Color32::from_rgb(150, 150, 160))
+                        } else {
+                            (CARET_RIGHT, Color32::from_rgb(110, 110, 120))
+                        };
+                        painter.text(
+                            Pos2::new(base_x + 2.0, center_y),
+                            egui::Align2::LEFT_CENTER,
+                            caret,
+                            egui::FontId::proportional(10.0),
+                            caret_color,
+                        );
+
+                        // Category icon + name
+                        let text_x = base_x + 16.0;
+                        let cat_label = format!("{} {}", comp_cat.icon(), comp_cat.display_name());
+                        painter.text(
+                            Pos2::new(text_x, center_y),
+                            egui::Align2::LEFT_CENTER,
+                            &cat_label,
+                            egui::FontId::proportional(12.0),
+                            cat_color,
+                        );
+
+                        if cat_response.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+
+                        // Toggle expand on click
+                        if cat_response.clicked() && !has_search {
+                            let new_val = !is_expanded;
+                            ui.ctx().data_mut(|d| d.insert_persisted(cat_id, new_val));
+                        }
+
+                        // --- Children (unified items) ---
+                        if is_expanded {
+                            let item_count = items.len();
+                            for (i_idx, item) in items.iter().enumerate() {
+                                let is_last_item = i_idx == item_count - 1;
+
+                                let (row_rect, row_response) = ui.allocate_exact_size(
+                                    Vec2::new(ui.available_width(), popup_row_height),
+                                    Sense::click(),
+                                );
+                                let painter = ui.painter();
+
+                                // Alternating row bg
+                                if row_index % 2 == 1 {
+                                    painter.rect_filled(row_rect, 0.0, row_odd_bg(theme));
+                                }
+                                // Hover highlight
+                                if row_response.hovered() {
+                                    let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                                    painter.rect_filled(row_rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
+                                }
+                                row_index += 1;
+
+                                let child_base_x = base_x;
+                                let child_center_y = row_rect.center().y;
+                                let line_x_offset = popup_indent / 2.0 - 1.0;
+
+                                // Vertical continuation line from parent category
+                                let line_x = child_base_x + line_x_offset;
+                                let line_overlap = 3.0;
+                                if !is_last_item {
+                                    painter.line_segment(
+                                        [Pos2::new(line_x, row_rect.min.y - line_overlap), Pos2::new(line_x, row_rect.max.y + line_overlap)],
+                                        line_stroke,
+                                    );
+                                } else {
+                                    painter.line_segment(
+                                        [Pos2::new(line_x, row_rect.min.y - line_overlap), Pos2::new(line_x, child_center_y)],
+                                        line_stroke,
+                                    );
+                                }
+
+                                // Horizontal connector line
+                                let h_end_x = child_base_x + popup_indent - 2.0;
+                                painter.line_segment(
+                                    [Pos2::new(line_x, child_center_y), Pos2::new(h_end_x, child_center_y)],
+                                    line_stroke,
+                                );
+
+                                // Item icon + name (indented)
+                                let item_x = child_base_x + popup_indent + 2.0;
+                                let item_label = format!("{} {}", item.icon(), item.display_name());
+                                painter.text(
+                                    Pos2::new(item_x, child_center_y),
+                                    egui::Align2::LEFT_CENTER,
+                                    &item_label,
+                                    egui::FontId::proportional(12.0),
+                                    cat_color,
+                                );
+
+                                if row_response.hovered() {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
+
+                                if row_response.clicked() {
+                                    let parent = hierarchy.add_entity_parent;
+                                    let entity = match item {
+                                        NodeItem::Preset(preset) => {
+                                            spawn_preset(commands, meshes, materials, registry, preset, parent)
+                                        }
+                                        NodeItem::Component(def) => {
+                                            spawn_component_as_node(commands, meshes, materials, registry, def, parent)
+                                        }
+                                    };
+                                    selection.selected_entity = Some(entity);
+                                    if let Some(parent_entity) = parent {
+                                        hierarchy.expanded_entities.insert(parent_entity);
+                                    }
+                                    spawned = true;
+                                    close_popup = true;
+                                }
+                            }
+                        }
+
+                        // Separator line between category groups (not after last)
+                        if !is_last_cat {
+                            ui.add_space(1.0);
+                        }
+                    }
+
+                    // Separator before Empty Entity
+                    ui.add_space(2.0);
+                    let sep_rect = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover()).0;
+                    ui.painter().rect_filled(sep_rect, 0.0, tree_line_color);
+                    ui.add_space(2.0);
+
+                    // Empty Entity at bottom
+                    let empty_presets = get_presets_by_category(PresetCategory::Empty);
+                    let text_muted = theme.text.muted.to_color32();
+                    for preset in &empty_presets {
+                        if has_search && !preset.display_name.to_lowercase().contains(&search_lower) {
+                            continue;
+                        }
+                        let (row_rect, row_response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), popup_row_height),
+                            Sense::click(),
+                        );
+                        let painter = ui.painter();
+                        if row_index % 2 == 1 {
+                            painter.rect_filled(row_rect, 0.0, row_odd_bg(theme));
+                        }
+                        if row_response.hovered() {
+                            let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                            painter.rect_filled(row_rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
+                        }
+                        row_index += 1;
+
+                        let item_label = format!("{} {}", preset.icon, preset.display_name);
+                        painter.text(
+                            Pos2::new(row_rect.min.x + 6.0, row_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            &item_label,
+                            egui::FontId::proportional(12.0),
+                            text_muted,
+                        );
+
+                        if row_response.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if row_response.clicked() {
+                            let parent = hierarchy.add_entity_parent;
+                            let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
+                            selection.selected_entity = Some(entity);
+                            if let Some(parent_entity) = parent {
+                                hierarchy.expanded_entities.insert(parent_entity);
+                            }
+                            spawned = true;
+                            close_popup = true;
+                        }
+                    }
+                });
+            });
+    }
+
+    if close_popup {
+        hierarchy.show_add_entity_popup = false;
+        hierarchy.add_entity_search.clear();
+    }
+
+    spawned
 }
 
 /// Get color for a preset category
@@ -1485,5 +1811,21 @@ fn get_category_color(category: PresetCategory, theme: &Theme) -> Color32 {
         PresetCategory::Objects2D => theme.categories.nodes_2d.accent.to_color32(),
         PresetCategory::UI => theme.categories.ui.accent.to_color32(),
         PresetCategory::Environment => theme.categories.environment.accent.to_color32(),
+    }
+}
+
+/// Get color for a component category
+fn get_component_category_color(category: ComponentCategory, theme: &Theme) -> Color32 {
+    match category {
+        ComponentCategory::Rendering => theme.categories.rendering.accent.to_color32(),
+        ComponentCategory::Lighting => theme.categories.lighting.accent.to_color32(),
+        ComponentCategory::Camera => theme.categories.camera.accent.to_color32(),
+        ComponentCategory::Physics => theme.categories.physics.accent.to_color32(),
+        ComponentCategory::Audio => theme.categories.audio.accent.to_color32(),
+        ComponentCategory::Effects => theme.categories.effects.accent.to_color32(),
+        ComponentCategory::PostProcess => theme.categories.post_process.accent.to_color32(),
+        ComponentCategory::Gameplay => theme.categories.gameplay.accent.to_color32(),
+        ComponentCategory::Scripting => theme.categories.scripting.accent.to_color32(),
+        ComponentCategory::UI => theme.categories.ui.accent.to_color32(),
     }
 }

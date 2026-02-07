@@ -3,7 +3,11 @@
 use bevy::prelude::*;
 
 use crate::core::{AudioListenerMarker, EditorEntity, SceneNode, WorldEnvironmentMarker};
-use crate::shared::WorldEnvironmentData;
+use crate::shared::{
+    AmbientLightData,
+    SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
+    ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData,
+};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[
@@ -27,9 +31,17 @@ pub fn spawn_world_environment(
             locked: false,
         },
         SceneNode,
-        WorldEnvironmentMarker {
-            data: WorldEnvironmentData::default(),
-        },
+        WorldEnvironmentMarker,
+        AmbientLightData::default(),
+        SkyboxData::default(),
+        FogData::default(),
+        AntiAliasingData::default(),
+        AmbientOcclusionData::default(),
+        ReflectionsData::default(),
+        BloomData::default(),
+        TonemappingData::default(),
+        DepthOfFieldData::default(),
+        MotionBlurData::default(),
     ));
 
     if let Some(parent_entity) = parent {

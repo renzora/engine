@@ -29,6 +29,14 @@ pub struct HierarchyState {
     pub building_entity_order: Vec<Entity>,
     /// Search filter for hierarchy
     pub search: String,
+    /// Whether the "Add Entity" popup is visible
+    pub show_add_entity_popup: bool,
+    /// Search text within the "Add Entity" popup
+    pub add_entity_search: String,
+    /// Parent entity for the new entity (None = scene root)
+    pub add_entity_parent: Option<Entity>,
+    /// Request focus on the search box next frame
+    pub add_entity_focus_search: bool,
 }
 
 impl HierarchyState {

@@ -4,12 +4,16 @@
 
 use bevy::prelude::*;
 use bevy::scene::{DynamicSceneRoot, SceneInstanceReady};
+use bevy::solari::scene::RaytracingMesh3d;
 use std::path::Path;
 
+use crate::component_system::components::clouds::CloudDomeMarker;
 use crate::core::{EditorEntity, SceneNode, SceneTabId, HierarchyState, OrbitCameraState};
+use crate::gizmo::meshes::GizmoMesh;
 use crate::shared::{
     MeshNodeData, MeshPrimitiveType,
-    PointLightData, DirectionalLightData, SpotLightData,
+    PointLightData, DirectionalLightData, SpotLightData, SunData,
+    CameraNodeData, CameraRigData, Camera2DData,
 };
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use crate::component_system::components::terrain::{NeedsTerrainMaterial, DEFAULT_TERRAIN_MATERIAL};
@@ -226,6 +230,8 @@ pub fn rehydrate_mesh_components(
         });
 
         // Add rendering components
+        // Note: RaytracingMesh3d is NOT added here - it's managed by sync_rendering_settings
+        // based on whether Solari is enabled in the scene
         commands.entity(entity).insert((
             Mesh3d(mesh),
             MeshMaterial3d(material),
@@ -269,6 +275,27 @@ pub fn rehydrate_directional_lights(
         });
 
         console_info!("Scene", "Rehydrated directional light for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate sun components after scene loading.
+pub fn rehydrate_sun_lights(
+    mut commands: Commands,
+    query: Query<(Entity, &SunData), Without<DirectionalLight>>,
+) {
+    for (entity, sun_data) in query.iter() {
+        let dir = sun_data.direction();
+        commands.entity(entity).insert((
+            DirectionalLight {
+                color: Color::srgb(sun_data.color.x, sun_data.color.y, sun_data.color.z),
+                illuminance: sun_data.illuminance,
+                shadows_enabled: sun_data.shadows_enabled,
+                ..default()
+            },
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+        ));
+
+        console_info!("Scene", "Rehydrated sun light for entity {:?}", entity);
     }
 }
 
@@ -364,6 +391,7 @@ pub fn rehydrate_terrain_chunks(
 
         // Add transform, mesh, material, visibility, and the runtime TerrainChunkOf link
         // Note: This should overwrite any existing Transform from scene load
+        // Note: RaytracingMesh3d is NOT added here - it's managed by sync_rendering_settings
         commands.entity(chunk_entity).insert((
             Transform::from_translation(origin),
             Mesh3d(mesh_handle),
@@ -421,6 +449,7 @@ pub fn rehydrate_terrain_chunks(
 
                 let origin = terrain_data.chunk_world_origin(cx, cz);
 
+                // Note: RaytracingMesh3d is NOT added here - it's managed by sync_rendering_settings
                 commands.spawn((
                     Mesh3d(mesh_handle),
                     MeshMaterial3d(material.clone()),
@@ -528,6 +557,82 @@ fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
     images.add(image)
 }
 
+/// System to add RaytracingMesh3d to any Mesh3d entity that doesn't have it.
+/// This catches meshes spawned by GLTF scenes and other sources.
+/// Excludes editor gizmo meshes and the cloud dome (custom material incompatible
+/// with Solari's StandardMaterial-only raytracing) from the acceleration structure.
+pub fn add_raytracing_to_meshes(
+    mut commands: Commands,
+    query: Query<(Entity, &Mesh3d), (Without<RaytracingMesh3d>, Without<GizmoMesh>, Without<CloudDomeMarker>)>,
+) {
+    for (entity, mesh3d) in query.iter() {
+        commands.entity(entity).insert(RaytracingMesh3d(mesh3d.0.clone()));
+    }
+}
+
+/// System to ensure all meshes have the required attributes for rendering.
+/// Adds UV coordinates and tangents if missing. Tangents are needed for normal mapping.
+/// Only processes newly added meshes to avoid per-frame overhead.
+pub fn prepare_meshes_for_solari(
+    mut meshes: ResMut<Assets<Mesh>>,
+    new_meshes: Query<(Entity, &Mesh3d), Added<Mesh3d>>,
+) {
+    let new_count = new_meshes.iter().count();
+    if new_count > 0 {
+        console_info!("MeshPrep", "=== PREPARING {} NEW MESHES FOR RENDERING ===", new_count);
+    }
+
+    // Only process newly added meshes, not all meshes every frame
+    for (entity, mesh3d) in new_meshes.iter() {
+        // First check with immutable access if we need to modify anything
+        let needs_uvs;
+        let needs_tangents;
+        let has_normals;
+        let vertex_count_info;
+
+        if let Some(mesh) = meshes.get(&mesh3d.0) {
+            needs_uvs = !mesh.contains_attribute(Mesh::ATTRIBUTE_UV_0);
+            needs_tangents = !mesh.contains_attribute(Mesh::ATTRIBUTE_TANGENT);
+            has_normals = mesh.contains_attribute(Mesh::ATTRIBUTE_NORMAL);
+            vertex_count_info = mesh.count_vertices();
+
+            console_info!("MeshPrep", "Entity {:?}: vertices={} has_uvs={} has_tangents={} has_normals={}",
+                entity, vertex_count_info, !needs_uvs, !needs_tangents, has_normals);
+        } else {
+            console_warn!("MeshPrep", "Entity {:?}: mesh asset not found!", entity);
+            continue;
+        }
+
+        // Only get mutable access if we actually need to modify the mesh
+        if needs_uvs || (needs_tangents && has_normals) {
+            if let Some(mesh) = meshes.get_mut(&mesh3d.0) {
+                // Add UV coordinates if missing
+                if needs_uvs {
+                    if let Some(positions) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+                        let vertex_count = positions.len();
+                        let uvs: Vec<[f32; 2]> = (0..vertex_count).map(|_| [0.0, 0.0]).collect();
+                        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+                        console_info!("MeshPrep", "  Added UV_0 attribute ({} vertices)", vertex_count);
+                    }
+                }
+
+                // Generate tangents if missing (requires normals and UVs)
+                if needs_tangents && has_normals {
+                    // Re-check UV after potentially adding them above
+                    if mesh.contains_attribute(Mesh::ATTRIBUTE_UV_0) {
+                        if let Err(e) = mesh.generate_tangents() {
+                            // Tangent generation can fail for some mesh topologies, that's ok
+                            console_warn!("MeshPrep", "  Failed to generate tangents: {:?}", e);
+                        } else {
+                            console_info!("MeshPrep", "  Generated tangents");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// System to rebuild Bevy's Children component from ChildOf relationships.
 /// This is needed after scene loading because Children isn't saved, only ChildOf is.
 /// The hierarchy panel relies on Children to display parent-child relationships.
@@ -576,5 +681,41 @@ pub fn rebuild_children_from_child_of(
                 console_info!("Scene", "Added {} missing children to parent {:?}", missing.len(), parent_entity);
             }
         }
+    }
+}
+
+/// System to rehydrate 3D camera components after scene loading.
+/// Adds Camera3d with Msaa::Off to entities that have CameraNodeData but no Camera3d.
+pub fn rehydrate_cameras_3d(
+    mut commands: Commands,
+    query: Query<(Entity, &CameraNodeData), Without<Camera3d>>,
+) {
+    for (entity, _camera_data) in query.iter() {
+        commands.entity(entity).insert((Camera3d::default(), Msaa::Off));
+        console_info!("Scene", "Rehydrated Camera3D for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate camera rig components after scene loading.
+/// Adds Camera3d with Msaa::Off to entities that have CameraRigData but no Camera3d.
+pub fn rehydrate_camera_rigs(
+    mut commands: Commands,
+    query: Query<(Entity, &CameraRigData), Without<Camera3d>>,
+) {
+    for (entity, _rig_data) in query.iter() {
+        commands.entity(entity).insert((Camera3d::default(), Msaa::Off));
+        console_info!("Scene", "Rehydrated CameraRig for entity {:?}", entity);
+    }
+}
+
+/// System to rehydrate 2D camera components after scene loading.
+/// Adds Camera2d with Msaa::Off to entities that have Camera2DData but no Camera2d.
+pub fn rehydrate_cameras_2d(
+    mut commands: Commands,
+    query: Query<(Entity, &Camera2DData), Without<Camera2d>>,
+) {
+    for (entity, _camera_data) in query.iter() {
+        commands.entity(entity).insert((Camera2d, Msaa::Off));
+        console_info!("Scene", "Rehydrated Camera2D for entity {:?}", entity);
     }
 }

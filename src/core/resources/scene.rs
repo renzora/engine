@@ -33,7 +33,7 @@ impl TabKind {
             TabKind::Audio(_) => "DAW",
             TabKind::Animation(_) => "Animation",
             TabKind::Texture(_) => "Scene",
-            TabKind::ParticleFX(_) => "Particle FX",
+            TabKind::ParticleFX(_) => "Particles",
             TabKind::Level(_) => "Level Design",
             TabKind::Terrain(_) => "Terrain",
         }

@@ -20,6 +20,15 @@ pub mod preview;
 mod preview_eval;
 pub mod serialization;
 
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod graph_tests;
+#[cfg(test)]
+mod codegen_tests;
+#[cfg(test)]
+mod serialization_tests;
+
 pub use canvas::*;
 pub use codegen::*;
 pub use codegen_wgsl::*;

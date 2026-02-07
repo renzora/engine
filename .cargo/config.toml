@@ -3,8 +3,15 @@
 release-editor = "build --release --no-default-features --features editor --target-dir app"
 release-runtime = "build --release --no-default-features --features runtime --bin renzora_runtime --target-dir app"
 
+# Static link the MSVC runtime (eliminates VCRUNTIME140.dll dependency)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# DLSS SDK include path for bindgen
+[env]
+BINDGEN_EXTRA_CLANG_ARGS = "-IC:\\DLSS_SDK\\include"
+
 # Note: rust-lld doesn't work with Bevy dynamic linking on Windows nightly
-# [target.x86_64-pc-windows-msvc]
 # linker = "rust-lld.exe"
 
 # Faster linking for Linux (uses lld via clang)

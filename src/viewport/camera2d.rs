@@ -31,6 +31,7 @@ pub fn setup_editor_camera_2d(
 
     commands.spawn((
         Camera2d,
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.12, 0.12, 0.14)),
             order: -1, // Render before 3D camera

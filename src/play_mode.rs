@@ -235,6 +235,7 @@ fn enter_play_mode(
         // Add Camera3d component to the game camera entity
         commands.entity(entity).insert((
             Camera3d::default(),
+            Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                 order: 1, // Render on top of editor camera
@@ -263,6 +264,7 @@ fn enter_play_mode(
         // Add Camera3d component to the camera rig entity
         commands.entity(entity).insert((
             Camera3d::default(),
+            Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                 order: 1, // Render on top of editor camera
@@ -291,6 +293,7 @@ fn enter_play_mode(
 
         commands.entity(entity).insert((
             Camera3d::default(),
+            Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                 order: 1,
@@ -318,6 +321,7 @@ fn enter_play_mode(
 
         commands.entity(entity).insert((
             Camera3d::default(),
+            Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                 order: 1,

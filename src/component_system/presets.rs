@@ -7,13 +7,13 @@
 
 use bevy::prelude::*;
 
-use super::ComponentRegistry;
+use super::{ComponentDefinition, ComponentRegistry};
 
 // Phosphor icons
 use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
     VIDEO_CAMERA, ATOM, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
-    GLOBE, SPEAKER_HIGH, CIRCLE, MOUNTAINS,
+    GLOBE, SPEAKER_HIGH, CIRCLE, MOUNTAINS, SPARKLE,
 };
 
 /// Categories for the Create menu
@@ -174,6 +174,15 @@ pub static PRESETS: &[EntityPreset] = &[
         components: &["spot_light"],
         priority: 2,
     },
+    EntityPreset {
+        id: "solari_lighting",
+        display_name: "Solari Lighting",
+        category: PresetCategory::Lights,
+        icon: SPARKLE,
+        default_name: "Solari Lighting",
+        components: &["solari_lighting"],
+        priority: 3,
+    },
     // Cameras
     EntityPreset {
         id: "camera_3d",
@@ -294,6 +303,46 @@ pub fn get_preset(id: &str) -> Option<&'static EntityPreset> {
     PRESETS.iter().find(|p| p.id == id)
 }
 
+/// Get the set of component type_ids already covered by presets
+pub fn preset_component_ids() -> std::collections::HashSet<&'static str> {
+    PRESETS.iter()
+        .flat_map(|p| p.components.iter().copied())
+        .collect()
+}
+
+/// Spawn a new entity from a component definition (node = entity + component)
+pub fn spawn_component_as_node(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    registry: &ComponentRegistry,
+    def: &ComponentDefinition,
+    parent: Option<Entity>,
+) -> Entity {
+    use crate::core::{EditorEntity, SceneNode};
+
+    let mut entity_commands = commands.spawn((
+        Transform::default(),
+        Visibility::default(),
+        EditorEntity {
+            name: def.display_name.to_string(),
+            tag: String::new(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+    ));
+
+    if let Some(parent_entity) = parent {
+        entity_commands.insert(ChildOf(parent_entity));
+    }
+
+    let entity = entity_commands.id();
+
+    (def.add_fn)(commands, entity, meshes, materials);
+    entity
+}
+
 /// Spawn an entity from a preset
 pub fn spawn_preset(
     commands: &mut Commands,
@@ -350,6 +399,7 @@ pub fn spawn_preset(
                 ..default()
             });
 
+            // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
             commands.entity(entity).insert((
                 Mesh3d(mesh),
                 MeshMaterial3d(material),

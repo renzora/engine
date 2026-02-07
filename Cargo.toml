@@ -7,8 +7,8 @@ edition = "2021"
 default-run = "renzora_editor"
 
 [features]
-default = ["editor", "dynamic", "physics", "memory-profiling"]
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "dep:arboard", "dep:ureq", "dep:open"]
+default = ["editor", "physics", "memory-profiling"]
+editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "dep:arboard", "dep:ureq", "dep:open", "dep:bevy_hanabi"]
 runtime = ["physics"]
 physics = ["dep:avian3d"]
 dynamic = ["bevy/dynamic_linking"]
@@ -29,7 +29,7 @@ name = "renzora_updater"
 path = "updater/src/main.rs"
 
 [dependencies]
-bevy = { version = "0.18", features = ["dynamic_linking", "jpeg"] }
+bevy = { version = "0.18", features = ["jpeg", "bevy_solari", "dlss", "meshlet", "meshlet_processor"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ron = "0.8"
@@ -43,6 +43,9 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 
 # Physics engine (Avian - ECS-native physics for Bevy)
 avian3d = { version = "0.5", optional = true }
+
+# GPU particle system (Hanabi)
+bevy_hanabi = { version = "0.18", default-features = false, features = ["3d", "serde"], optional = true }
 
 # Mesh outline rendering
 bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false, features = ["reflect"] }

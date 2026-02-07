@@ -25,6 +25,13 @@ impl ComponentRegistry {
         }
     }
 
+    /// Register an owned component definition by leaking it to get a 'static reference.
+    /// This is intentional — the registry lives for the program's lifetime.
+    pub fn register_owned(&mut self, definition: ComponentDefinition) {
+        let leaked: &'static ComponentDefinition = Box::leak(Box::new(definition));
+        self.register(leaked);
+    }
+
     /// Register a component definition
     pub fn register(&mut self, definition: &'static ComponentDefinition) {
         self.components.insert(definition.type_id, definition);

@@ -277,6 +277,7 @@ pub fn handle_image_panel_drop(
         let parent_entity = plane_entity.id();
 
         // Spawn the actual mesh as a child
+        // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
         commands.spawn((
             Mesh3d(plane_mesh),
             MeshMaterial3d(plane_material),
@@ -511,14 +512,23 @@ pub fn check_mesh_instance_models(
 ) {
     for (entity, mesh_data) in query.iter() {
         if let Some(model_path) = &mesh_data.model_path {
+            console_info!("ModelLoad", "=== MESH INSTANCE MODEL LOAD START ===");
+            console_info!("ModelLoad", "Entity: {:?}", entity);
+            console_info!("ModelLoad", "Original path: {}", model_path);
+
             // Resolve the path - if relative, make it absolute using project path
             let resolved_path = if std::path::Path::new(model_path).is_absolute() {
+                console_info!("ModelLoad", "Path is absolute");
                 PathBuf::from(model_path)
             } else if let Some(ref project) = current_project {
+                console_info!("ModelLoad", "Resolving relative to project: {:?}", project.path);
                 project.path.join(model_path)
             } else {
+                console_info!("ModelLoad", "No project, using path as-is");
                 PathBuf::from(model_path)
             };
+
+            console_info!("ModelLoad", "Resolved path: {:?}", resolved_path);
 
             // Get file name and size
             let name = resolved_path
@@ -533,7 +543,7 @@ pub fn check_mesh_instance_models(
             // Check if file exists
             if !resolved_path.exists() {
                 error!("Model file not found: {:?}", resolved_path);
-                console_error!("Asset", "Model not found: {}", name);
+                console_error!("ModelLoad", "File not found: {:?}", resolved_path);
                 continue;
             }
 
@@ -541,10 +551,12 @@ pub fn check_mesh_instance_models(
                 .map(|m| m.len())
                 .unwrap_or(0);
 
+            console_info!("ModelLoad", "File exists, size: {} bytes", file_size);
+
             // Load the GLTF asset using the resolved absolute path
             let handle: Handle<Gltf> = asset_server.load(resolved_path.clone());
 
-            info!("Initiated model load for MeshInstance: {:?} -> {:?}", entity, resolved_path);
+            console_info!("ModelLoad", "Asset load initiated for: {}", name);
             console_info!("Asset", "Loading model: {}", name);
 
             // Track for progress bar
@@ -553,8 +565,10 @@ pub fn check_mesh_instance_models(
             pending_loads.loads.push(PendingMeshInstanceLoad {
                 entity,
                 handle,
-                name,
+                name: name.clone(),
             });
+
+            console_info!("ModelLoad", "Pending loads count: {}", pending_loads.loads.len());
         }
     }
 }
@@ -570,12 +584,17 @@ pub fn spawn_mesh_instance_models(
     scene_roots: Query<Entity, With<SceneRoot>>,
     mut gltf_anims_query: Query<&mut GltfAnimations>,
     mut logged_pending: Local<bool>,
+    materials: Res<Assets<StandardMaterial>>,
+    images: Res<Assets<Image>>,
 ) {
     use bevy::asset::LoadState;
 
     // Log once when we have pending loads
     if !pending_loads.loads.is_empty() && !*logged_pending {
-        info!("Pending mesh instance loads: {}", pending_loads.loads.len());
+        console_info!("ModelLoad", "=== PROCESSING {} PENDING MODEL LOADS ===", pending_loads.loads.len());
+        for (i, load) in pending_loads.loads.iter().enumerate() {
+            console_info!("ModelLoad", "  [{}] {} for entity {:?}", i, load.name, load.entity);
+        }
         *logged_pending = true;
     } else if pending_loads.loads.is_empty() {
         *logged_pending = false;
@@ -589,6 +608,34 @@ pub fn spawn_mesh_instance_models(
 
         // First try to get the asset directly - this is the most reliable check
         if let Some(gltf) = gltf_assets.get(&pending.handle) {
+            console_info!("ModelLoad", "=== GLTF LOADED: {} ===", pending.name);
+            console_info!("ModelLoad", "Scenes: {}", gltf.scenes.len());
+            console_info!("ModelLoad", "Meshes: {}", gltf.meshes.len());
+            console_info!("ModelLoad", "Materials: {}", gltf.materials.len());
+            console_info!("ModelLoad", "Animations: {}", gltf.named_animations.len());
+
+            // Log material details
+            for (i, (name, mat_handle)) in gltf.named_materials.iter().enumerate() {
+                if let Some(mat) = materials.get(mat_handle) {
+                    console_info!("ModelLoad", "  Material[{}] '{}': base_color={:?} metallic={:.2} roughness={:.2}",
+                        i, name, mat.base_color, mat.metallic, mat.perceptual_roughness);
+                    if mat.base_color_texture.is_some() {
+                        console_info!("ModelLoad", "    has base_color_texture");
+                    }
+                    if mat.normal_map_texture.is_some() {
+                        console_info!("ModelLoad", "    has normal_map_texture");
+                    }
+                    if mat.metallic_roughness_texture.is_some() {
+                        console_info!("ModelLoad", "    has metallic_roughness_texture");
+                    }
+                    if mat.emissive_texture.is_some() {
+                        console_info!("ModelLoad", "    has emissive_texture");
+                    }
+                } else {
+                    console_info!("ModelLoad", "  Material[{}] '{}': NOT YET LOADED", i, name);
+                }
+            }
+
             // Check if this entity already has a SceneRoot child (to prevent duplicates)
             let already_has_scene = if let Ok(children) = children_query.get(pending.entity) {
                 children.iter().any(|child| scene_roots.get(child).is_ok())
@@ -597,24 +644,27 @@ pub fn spawn_mesh_instance_models(
             };
 
             if already_has_scene {
-                info!("MeshInstance {:?} already has a SceneRoot child, skipping spawn", pending.entity);
+                console_info!("ModelLoad", "Entity {:?} already has SceneRoot, skipping spawn", pending.entity);
                 completed.push(index);
                 continue;
             }
 
             // Get the scene handle to spawn
             let scene_handle = if let Some(default_scene) = &gltf.default_scene {
+                console_info!("ModelLoad", "Using default scene");
                 Some(default_scene.clone())
             } else if !gltf.scenes.is_empty() {
+                console_info!("ModelLoad", "Using first scene (no default)");
                 Some(gltf.scenes[0].clone())
             } else {
-                warn!("GLTF file has no scenes for MeshInstance {:?}", pending.entity);
+                console_error!("ModelLoad", "GLTF has no scenes!");
                 console_warn!("Asset", "GLTF has no scenes");
                 completed.push(index);
                 continue;
             };
 
             if let Some(scene) = scene_handle {
+                console_info!("ModelLoad", "Spawning SceneRoot as child of {:?}", pending.entity);
                 // Spawn the GLTF scene as a child of the existing MeshInstance
                 commands.spawn((
                     SceneRoot(scene),
@@ -623,7 +673,7 @@ pub fn spawn_mesh_instance_models(
                     ChildOf(pending.entity),
                 ));
 
-                info!("Spawned model as child of MeshInstance {:?}", pending.entity);
+                console_info!("ModelLoad", "=== MODEL SPAWN COMPLETE: {} ===", pending.name);
                 console_success!("Asset", "Model loaded: {}", pending.name);
             }
 
@@ -635,8 +685,7 @@ pub fn spawn_mesh_instance_models(
                     clip_names.push(name.to_string());
                     clips.push(handle.clone());
                 }
-                info!("Found {} animations in GLTF for MeshInstance {:?}: {:?}",
-                    clip_names.len(), pending.entity, clip_names);
+                console_info!("ModelLoad", "Found {} animations: {:?}", clip_names.len(), clip_names);
 
                 // Store animation handles in the resource
                 animation_storage.handles.insert(pending.entity, GltfAnimationHandles::with_clips(clips));
@@ -649,10 +698,11 @@ pub fn spawn_mesh_instance_models(
                     if existing.clip_names.is_empty() {
                         existing.clip_names = clip_names;
                     }
-                    info!("Reset GltfAnimations for {:?} to trigger animation setup", pending.entity);
+                    console_info!("ModelLoad", "Reset GltfAnimations for {:?}", pending.entity);
                 } else {
                     // Add new GltfAnimations component
                     commands.entity(pending.entity).insert(GltfAnimations::with_clip_names(clip_names));
+                    console_info!("ModelLoad", "Added GltfAnimations to {:?}", pending.entity);
                 }
             }
 
@@ -661,15 +711,15 @@ pub fn spawn_mesh_instance_models(
             // Check load state for errors
             match load_state {
                 Some(LoadState::Failed(err)) => {
-                    error!("Failed to load model for MeshInstance {:?}: {:?}", pending.entity, err);
+                    console_error!("ModelLoad", "FAILED to load model: {:?}", err);
                     console_error!("Asset", "Failed to load: {:?}", err);
                     completed.push(index);
                 }
                 Some(LoadState::Loading) => {
-                    // Still loading, this is normal
+                    // Still loading, this is normal (don't spam logs)
                 }
                 Some(LoadState::NotLoaded) => {
-                    // Not started loading yet
+                    console_info!("ModelLoad", "Asset not yet loading for: {}", pending.name);
                     info!("Asset not yet loading for {:?}", pending.entity);
                 }
                 Some(LoadState::Loaded) => {
@@ -1135,4 +1185,165 @@ fn get_entity_display_name(
 
     // Fallback to entity ID
     format!("Entity {:?}", entity)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::Dir3;
+
+    fn ray(origin: Vec3, direction: Vec3) -> Ray3d {
+        Ray3d {
+            origin,
+            direction: Dir3::new(direction).unwrap(),
+        }
+    }
+
+    // === ray_aabb_intersection ===
+
+    #[test]
+    fn test_ray_hitting_box_center() {
+        // Ray along +Z hitting a unit box at origin
+        let r = ray(Vec3::new(0.0, 0.0, -5.0), Vec3::new(0.0, 0.0, 1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_some(), "Ray should hit the box");
+        let t = result.unwrap();
+        assert!(t > 0.0, "Distance should be positive");
+        // Should hit at z = -1.0, so t = 4.0
+        assert!((t - 4.0).abs() < 0.01, "Expected t ~4.0, got {}", t);
+    }
+
+    #[test]
+    fn test_ray_missing_box() {
+        // Ray along +Z but offset far in X
+        let r = ray(Vec3::new(10.0, 0.0, -5.0), Vec3::new(0.0, 0.0, 1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_none(), "Ray should miss the box");
+    }
+
+    #[test]
+    fn test_ray_inside_box() {
+        // Ray starting inside the box
+        let r = ray(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_some(), "Ray starting inside box should still return intersection");
+        let t = result.unwrap();
+        // Should return exit point distance
+        assert!(t > 0.0, "Should return positive exit distance");
+    }
+
+    #[test]
+    fn test_ray_along_axis() {
+        // Ray along +X hitting box centered at (5, 0, 0) with half-extent 1
+        let r = ray(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+        let result = ray_aabb_intersection(&r, Vec3::new(5.0, 0.0, 0.0), Vec3::splat(1.0));
+        assert!(result.is_some());
+        let t = result.unwrap();
+        // Should hit at x=4.0
+        assert!((t - 4.0).abs() < 0.01, "Expected t ~4.0, got {}", t);
+    }
+
+    #[test]
+    fn test_ray_backward_misses() {
+        // Ray pointing away from the box
+        let r = ray(Vec3::new(0.0, 0.0, -5.0), Vec3::new(0.0, 0.0, -1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_none(), "Ray pointing away should miss");
+    }
+
+    #[test]
+    fn test_ray_diagonal_hit() {
+        // Diagonal ray through a box at origin
+        let dir = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let r = ray(Vec3::new(-5.0, -5.0, -5.0), dir);
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_some(), "Diagonal ray should hit box");
+    }
+
+    #[test]
+    fn test_ray_grazing_miss() {
+        // Ray that just barely misses the box edge
+        let r = ray(Vec3::new(1.01, 0.0, -5.0), Vec3::new(0.0, 0.0, 1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::splat(1.0));
+        assert!(result.is_none(), "Barely-missing ray should return None");
+    }
+
+    #[test]
+    fn test_ray_non_unit_box() {
+        // Box with different half-extents per axis
+        let r = ray(Vec3::new(0.0, 0.0, -10.0), Vec3::new(0.0, 0.0, 1.0));
+        let result = ray_aabb_intersection(&r, Vec3::ZERO, Vec3::new(2.0, 3.0, 4.0));
+        assert!(result.is_some());
+        let t = result.unwrap();
+        // Should hit at z = -4.0, so t = 6.0
+        assert!((t - 6.0).abs() < 0.01, "Expected t ~6.0, got {}", t);
+    }
+}
+
+/// System to handle HDR/EXR files dropped on the viewport
+/// Creates or updates a WorldEnvironment entity with a panorama skybox
+pub fn handle_pending_skybox_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+    project: Option<Res<CurrentProject>>,
+    registry: Res<crate::component_system::ComponentRegistry>,
+    world_env_query: Query<Entity, With<crate::core::WorldEnvironmentMarker>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
+) {
+    let Some(path) = assets.pending_skybox_drop.take() else { return; };
+
+    // Copy to project environments folder and get relative path
+    let rel_path = if let Some(ref proj) = project {
+        crate::component_system::components::skybox::copy_sky_to_project_assets(&path, &proj.path)
+            .unwrap_or_else(|| path.to_string_lossy().to_string())
+    } else {
+        path.to_string_lossy().to_string()
+    };
+
+    // Find existing WorldEnvironment or create one
+    let entity = if let Ok(entity) = world_env_query.single() {
+        entity
+    } else {
+        // Find scene root to parent the new entity
+        let scene_root = scene_roots.iter().next().map(|(e, _)| e);
+
+        // Spawn a new WorldEnvironment from preset
+        let preset = crate::component_system::presets::get_preset("world_environment")
+            .expect("world_environment preset must exist");
+        let entity = crate::component_system::presets::spawn_preset(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &registry,
+            preset,
+            scene_root,
+        );
+
+        if let Some(root) = scene_root {
+            hierarchy.expanded_entities.insert(root);
+        }
+
+        info!("Created WorldEnvironment for skybox drop");
+        entity
+    };
+
+    // Apply SkyboxData with panorama mode
+    use crate::shared::{SkyboxData, SkyMode, PanoramaSkyData};
+    commands.entity(entity).insert(SkyboxData {
+        sky_mode: SkyMode::Panorama,
+        panorama_sky: PanoramaSkyData {
+            panorama_path: rel_path,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    // Select the entity so user sees it in the inspector
+    selection.selected_entity = Some(entity);
+
+    info!("Applied skybox from dropped HDR/EXR: {:?}", path);
 }

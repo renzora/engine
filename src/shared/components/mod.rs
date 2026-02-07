@@ -6,23 +6,30 @@
 
 pub mod animation;
 mod camera;
-mod environment;
+pub mod environment;
 mod instances;
 mod physics;
+pub mod post_process;
 mod rendering;
 mod ui;
 
 // Re-export all types for convenient access
 pub use camera::{Camera2DData, CameraNodeData, CameraRigData};
 pub use environment::{
-    PanoramaSkyData, ProceduralSkyData, SkyMode, TonemappingMode, WorldEnvironmentData,
+    CloudsData, PanoramaSkyData, ProceduralSkyData, SkyMode, WorldEnvironmentData,
+};
+pub use post_process::{
+    TonemappingMode, SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
+    ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData,
+    AmbientLightData,
 };
 pub use instances::{MeshInstanceData, SceneInstanceData};
 pub use physics::{
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
 };
 pub use rendering::{
-    DirectionalLightData, MaterialData, MeshNodeData, MeshPrimitiveType, PointLightData, SpotLightData,
-    Sprite2DData, SpriteAnimation, SpriteSheetData,
+    DirectionalLightData, DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType,
+    MeshletMeshData, PointLightData, SolariLightingData, SpotLightData, Sprite2DData,
+    SpriteAnimation, SpriteSheetData, SunData,
 };
 pub use ui::{UIButtonData, UIImageData, UILabelData, UIPanelData};

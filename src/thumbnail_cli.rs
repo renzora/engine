@@ -6,6 +6,8 @@
 
 use bevy::prelude::*;
 use bevy::asset::UnapprovedPathMode;
+use bevy::anti_alias::dlss::DlssProjectId;
+use bevy::asset::uuid::Uuid;
 use bevy::camera::RenderTarget;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
@@ -21,6 +23,8 @@ const THUMBNAIL_SIZE: u32 = 128;
 /// Run the headless thumbnail renderer
 pub fn run_thumbnail_renderer(model_path: String, output_path: String) {
     App::new()
+        // DLSS requires a project ID before plugin initialization
+        .insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)))
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -139,6 +143,7 @@ fn setup_thumbnail_scene(
     // Camera (will be positioned later)
     let camera_entity = commands.spawn((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 0.0)),
             ..default()

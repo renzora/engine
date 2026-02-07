@@ -84,9 +84,11 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
         MeshNodeData, CameraNodeData, CameraRigData, MeshInstanceData, SceneInstanceData,
         PhysicsBodyData, CollisionShapeData, Sprite2DData, Camera2DData,
         UIPanelData, UILabelData, UIButtonData, UIImageData, MaterialData,
+        SolariLightingData, MeshletMeshData,
     };
     use crate::scripting::ScriptComponent;
     use crate::terrain::{TerrainData, TerrainChunkData};
+    use crate::particles::HanabiEffectData;
 
     let mut registry = SceneSaveableRegistry::new();
 
@@ -98,6 +100,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     // Editor components
     registry.register::<EditorEntity>();
     registry.register::<SceneNode>();
+    registry.register::<crate::core::DisabledComponents>();
 
     // Shared game components
     registry.register::<MeshNodeData>();
@@ -121,14 +124,35 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     // Environment
     registry.register::<WorldEnvironmentMarker>();
 
+    // Post-processing components
+    registry.register::<crate::shared::SkyboxData>();
+    registry.register::<crate::shared::FogData>();
+    registry.register::<crate::shared::AntiAliasingData>();
+    registry.register::<crate::shared::AmbientOcclusionData>();
+    registry.register::<crate::shared::ReflectionsData>();
+    registry.register::<crate::shared::BloomData>();
+    registry.register::<crate::shared::TonemappingData>();
+    registry.register::<crate::shared::DepthOfFieldData>();
+    registry.register::<crate::shared::MotionBlurData>();
+    registry.register::<crate::shared::AmbientLightData>();
+    registry.register::<crate::shared::CloudsData>();
+
+    // Advanced rendering
+    registry.register::<SolariLightingData>();  // Raytraced lighting settings
+    registry.register::<MeshletMeshData>();     // Virtual geometry/meshlet settings
+
     // Terrain (both root and chunk data)
     registry.register::<TerrainData>();
     registry.register::<TerrainChunkData>();
 
-    // Lights (Bevy built-in)
+    // Particle effects
+    registry.register::<HanabiEffectData>();
+
+    // Lights (Bevy built-in + data components)
     registry.register::<PointLight>();
     registry.register::<DirectionalLight>();
     registry.register::<SpotLight>();
+    registry.register::<crate::shared::SunData>();
 
     registry
 }

@@ -137,6 +137,7 @@ fn activate_3d_camera(
 ) {
     commands.entity(entity).insert((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             ..default()
@@ -159,6 +160,7 @@ fn activate_camera_rig(
 ) {
     commands.entity(entity).insert((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             ..default()
@@ -189,6 +191,7 @@ fn activate_2d_camera(
     // Camera2d marker and projection wrapped in Projection enum
     commands.entity(entity).insert((
         Camera2d,
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             ..default()

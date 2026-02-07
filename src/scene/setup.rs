@@ -2,8 +2,8 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
-use bevy::render::view::Hdr;
 
+use crate::console_info;
 use crate::core::{MainCamera, ViewportCamera, OrbitCameraState, ViewportState};
 use crate::gizmo::editor_camera_layers;
 use crate::viewport::ViewportImage;
@@ -25,6 +25,8 @@ pub fn setup_editor_camera(
     orbit: &OrbitCameraState,
     viewport: &ViewportState,
 ) {
+    console_info!("Camera", "=== SETUP EDITOR CAMERA ===");
+
     // Camera that renders to the viewport texture
     // Position calculated from orbit parameters
     let cam_pos = orbit.focus
@@ -34,6 +36,10 @@ pub fn setup_editor_camera(
             orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
         );
 
+    console_info!("Camera", "Position: ({:.2}, {:.2}, {:.2})", cam_pos.x, cam_pos.y, cam_pos.z);
+    console_info!("Camera", "Focus: ({:.2}, {:.2}, {:.2})", orbit.focus.x, orbit.focus.y, orbit.focus.z);
+    console_info!("Camera", "Distance: {:.2}, Pitch: {:.2}, Yaw: {:.2}", orbit.distance, orbit.pitch, orbit.yaw);
+
     // Calculate initial aspect ratio from viewport size
     let aspect = if viewport.size[1] > 0.0 {
         viewport.size[0] / viewport.size[1]
@@ -41,9 +47,17 @@ pub fn setup_editor_camera(
         16.0 / 9.0 // Default aspect ratio
     };
 
+    console_info!("Camera", "Viewport size: {}x{}, aspect: {:.3}", viewport.size[0], viewport.size[1], aspect);
+    console_info!("Camera", "Render target: viewport texture (Bgra8UnormSrgb initially)");
+    console_info!("Camera", "MSAA: Off (required for MeshletPlugin)");
+    console_info!("Camera", "Clear color: sRGB(0.15, 0.15, 0.18)");
+    console_info!("Camera", "NOTE: No Solari components - added dynamically by sync_rendering_settings");
+
+    // Standard camera setup - no Solari-specific settings
+    // Solari components are added dynamically by sync_rendering_settings when enabled
     commands.spawn((
         Camera3d::default(),
-        Hdr, // Enable HDR for bloom, tonemapping, and other post-processing
+        Msaa::Off, // MeshletPlugin requires explicit Msaa::Off
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.15, 0.15, 0.18)),
             ..default()
@@ -61,4 +75,5 @@ pub fn setup_editor_camera(
         editor_camera_layers(),
     ));
 
+    console_info!("Camera", "=== CAMERA SETUP COMPLETE ===");
 }

@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings, SelectionState, HierarchyState};
+use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::terrain::TerrainSculptState;
 use crate::viewport::Camera2DState;
@@ -10,6 +11,7 @@ use crate::theming::Theme;
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
     IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA,
+    COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
 };
 
 /// Height of the viewport mode tabs bar
@@ -38,6 +40,9 @@ pub fn render_viewport(
     content_height: f32,
     viewport_texture_id: Option<TextureId>,
     theme: &Theme,
+    selection: &SelectionState,
+    hierarchy: &mut HierarchyState,
+    command_history: &mut CommandHistory,
 ) {
     let screen_rect = ctx.content_rect();
 
@@ -89,6 +94,9 @@ pub fn render_viewport(
     if modal_transform.active {
         render_modal_transform_hud(ctx, modal_transform, content_rect);
     }
+
+    // Render viewport right-click context menu
+    render_viewport_context_menu(ctx, viewport, assets, selection, hierarchy, command_history, theme);
 }
 
 /// Render the 3D/2D mode tabs at the top of the viewport with tool controls
@@ -1214,12 +1222,17 @@ pub fn render_viewport_content(
                     let norm_y = local_y / content_rect.height();
 
                     // Check file type
+                    let is_hdr = is_hdr_file(&asset_path);
                     let is_image = is_image_file(&asset_path);
                     let is_material = is_blueprint_material(&asset_path);
                     let is_2d_mode = viewport.viewport_mode == ViewportMode::Mode2D;
 
+                    // Handle HDR/EXR drops → create/update skybox
+                    if is_hdr {
+                        assets.pending_skybox_drop = Some(asset_path);
+                    }
                     // Handle material blueprint drops (only in 3D mode)
-                    if is_material && !is_2d_mode {
+                    else if is_material && !is_2d_mode {
                         // Store cursor position for entity picking in the system
                         assets.pending_material_drop = Some(PendingMaterialDrop {
                             path: asset_path,
@@ -1298,6 +1311,14 @@ pub fn render_viewport_content(
         // Note: Don't clear dragging_asset when released outside viewport
         // Other panels (like Inspector) may handle the drop
     }
+}
+
+/// Check if a file is an HDR/EXR environment texture
+fn is_hdr_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| matches!(ext.to_lowercase().as_str(), "hdr" | "exr"))
+        .unwrap_or(false)
 }
 
 /// Check if a file is an image based on extension
@@ -1577,4 +1598,250 @@ fn axis_constraint_to_color32(axis: AxisConstraint) -> Color32 {
         AxisConstraint::Y | AxisConstraint::PlaneXZ => Color32::from_rgb(139, 201, 63),  // Green
         AxisConstraint::Z | AxisConstraint::PlaneXY => Color32::from_rgb(68, 138, 255),  // Blue
     }
+}
+
+/// Render the viewport right-click context menu
+fn render_viewport_context_menu(
+    ctx: &egui::Context,
+    viewport: &mut ViewportState,
+    assets: &mut AssetBrowserState,
+    selection: &SelectionState,
+    hierarchy: &mut HierarchyState,
+    command_history: &mut CommandHistory,
+    theme: &Theme,
+) {
+    let Some(pos) = viewport.context_menu_pos else { return };
+
+    // Close menu on Escape
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        viewport.context_menu_pos = None;
+        return;
+    }
+
+    // Smart positioning - flip if near screen edge
+    let menu_height = 280.0;
+    let menu_width = 160.0;
+    let screen_rect = ctx.screen_rect();
+
+    let menu_y = if pos.y + menu_height > screen_rect.max.y {
+        pos.y - menu_height
+    } else {
+        pos.y
+    };
+
+    let menu_x = if pos.x + menu_width > screen_rect.max.x {
+        pos.x - menu_width
+    } else {
+        pos.x
+    };
+
+    let area_response = egui::Area::new(egui::Id::new("viewport_context_menu"))
+        .fixed_pos(egui::pos2(menu_x, menu_y))
+        .order(egui::Order::Foreground)
+        .constrain(true)
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style())
+                .show(ui, |ui| {
+                    render_viewport_context_menu_items(ui, viewport, assets, selection, hierarchy, command_history, theme);
+                });
+        });
+
+    // Close menu when clicking outside of it
+    if ctx.input(|i| i.pointer.primary_clicked() || i.pointer.secondary_clicked()) {
+        if let Some(click_pos) = ctx.input(|i| i.pointer.interact_pos()) {
+            if !area_response.response.rect.contains(click_pos) {
+                viewport.context_menu_pos = None;
+            }
+        }
+    }
+}
+
+/// Render the items inside the viewport context menu
+fn render_viewport_context_menu_items(
+    ui: &mut egui::Ui,
+    viewport: &mut ViewportState,
+    assets: &mut AssetBrowserState,
+    selection: &SelectionState,
+    hierarchy: &mut HierarchyState,
+    command_history: &mut CommandHistory,
+    theme: &Theme,
+) {
+    ui.set_min_width(160.0);
+    ui.set_max_width(160.0);
+
+    let text_primary = theme.text.primary.to_color32();
+    let text_disabled = theme.text.disabled.to_color32();
+    let has_selection = selection.selected_entity.is_some();
+    let has_clipboard = viewport.clipboard_entity.is_some();
+
+    // Helper for menu items (matches assets panel style)
+    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32, enabled: bool| -> bool {
+        let desired_size = Vec2::new(160.0, 22.0);
+        let (rect, response) = ui.allocate_exact_size(desired_size, if enabled { Sense::click() } else { Sense::hover() });
+
+        let label_color = if enabled { text_primary } else { text_disabled };
+        let icon_color = if enabled { color } else { text_disabled };
+
+        if enabled && response.hovered() {
+            ui.painter().rect_filled(
+                rect,
+                4.0,
+                theme.panels.item_hover.to_color32(),
+            );
+        }
+
+        // Icon
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(12.0),
+            icon_color,
+        );
+
+        // Label
+        ui.painter().text(
+            egui::pos2(rect.min.x + 30.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(11.0),
+            label_color,
+        );
+
+        enabled && response.clicked()
+    };
+
+    // Helper for large menu items with color indicator bar
+    let large_menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+        let desired_size = Vec2::new(160.0, 28.0);
+        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+        if response.hovered() {
+            ui.painter().rect_filled(
+                rect,
+                4.0,
+                theme.panels.item_hover.to_color32(),
+            );
+        }
+
+        // Color indicator bar on left
+        let indicator_rect = egui::Rect::from_min_size(
+            rect.min,
+            Vec2::new(3.0, rect.height()),
+        );
+        ui.painter().rect_filled(indicator_rect, CornerRadius::ZERO, color);
+
+        // Icon with color
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(14.0),
+            color,
+        );
+
+        // Label
+        ui.painter().text(
+            egui::pos2(rect.min.x + 30.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(12.0),
+            text_primary,
+        );
+
+        response.clicked()
+    };
+
+    // === Entity Operations ===
+    ui.add_space(2.0);
+
+    let entity_color = theme.text.secondary.to_color32();
+
+    // Copy
+    if menu_item(ui, COPY, "Copy", entity_color, has_selection) {
+        viewport.clipboard_entity = selection.selected_entity;
+        viewport.context_menu_pos = None;
+    }
+
+    // Paste
+    if menu_item(ui, CLIPBOARD, "Paste", entity_color, has_clipboard) {
+        if let Some(entity) = viewport.clipboard_entity {
+            queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
+        }
+        viewport.context_menu_pos = None;
+    }
+
+    // Duplicate
+    if menu_item(ui, COPY, "Duplicate", entity_color, has_selection) {
+        if let Some(entity) = selection.selected_entity {
+            queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
+        }
+        viewport.context_menu_pos = None;
+    }
+
+    // Delete
+    let delete_color = if has_selection { theme.semantic.error.to_color32() } else { text_disabled };
+    if menu_item(ui, TRASH, "Delete", delete_color, has_selection) {
+        if let Some(entity) = selection.selected_entity {
+            queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
+        }
+        viewport.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // === Add Node ===
+    let add_color = theme.semantic.accent.to_color32();
+    if menu_item(ui, PLUS, "Add Node", add_color, true) {
+        hierarchy.show_add_entity_popup = true;
+        hierarchy.add_entity_parent = None; // scene root
+        viewport.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // === Asset Creation (matches assets panel) ===
+    let material_color = Color32::from_rgb(0, 200, 83);
+    let scene_color = Color32::from_rgb(115, 191, 242);
+    let folder_color = Color32::from_rgb(255, 196, 0);
+    let script_color = Color32::from_rgb(255, 128, 0);
+
+    if large_menu_item(ui, PALETTE, "Create Material", material_color) {
+        assets.show_create_material_dialog = true;
+        assets.new_material_name = "NewMaterial".to_string();
+        viewport.context_menu_pos = None;
+    }
+
+    if large_menu_item(ui, FILM_SCRIPT, "New Scene", scene_color) {
+        assets.show_create_scene_dialog = true;
+        assets.new_scene_name = "NewScene".to_string();
+        viewport.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    if menu_item(ui, FOLDER_PLUS, "New Folder", folder_color, true) {
+        assets.show_create_folder_dialog = true;
+        assets.new_folder_name = "New Folder".to_string();
+        viewport.context_menu_pos = None;
+    }
+
+    if menu_item(ui, SCROLL, "Create Script", script_color, true) {
+        assets.show_create_script_dialog = true;
+        assets.new_script_name = "new_script".to_string();
+        viewport.context_menu_pos = None;
+    }
+
+    if menu_item(ui, DOWNLOAD, "Import", text_primary, true) {
+        assets.show_import_dialog = true;
+        viewport.context_menu_pos = None;
+    }
+
+    ui.add_space(2.0);
 }

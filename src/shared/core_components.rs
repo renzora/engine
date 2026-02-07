@@ -148,21 +148,43 @@ impl Default for ScriptVariableValue {
 // WORLD ENVIRONMENT
 // =============================================================================
 
-/// Marker for world environment node
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+// =============================================================================
+// DISABLED COMPONENTS
+// =============================================================================
+
+/// Tracks which components are disabled (toggled off) on an entity.
+/// Disabled components remain attached but their data is grayed out in the inspector.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
-pub struct WorldEnvironmentMarker {
-    /// Environment data
-    pub data: super::WorldEnvironmentData,
+pub struct DisabledComponents {
+    /// Component type_ids that are currently disabled
+    pub disabled: Vec<String>,
 }
 
-impl Default for WorldEnvironmentMarker {
-    fn default() -> Self {
-        Self {
-            data: super::WorldEnvironmentData::default(),
+impl DisabledComponents {
+    /// Check if a component type is disabled
+    pub fn is_disabled(&self, type_id: &str) -> bool {
+        self.disabled.iter().any(|id| id == type_id)
+    }
+
+    /// Toggle a component's disabled state
+    pub fn toggle(&mut self, type_id: &str) {
+        if let Some(pos) = self.disabled.iter().position(|id| id == type_id) {
+            self.disabled.remove(pos);
+        } else {
+            self.disabled.push(type_id.to_string());
         }
     }
 }
+
+// =============================================================================
+// WORLD ENVIRONMENT
+// =============================================================================
+
+/// Marker for world environment convenience group
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct WorldEnvironmentMarker;
 
 // =============================================================================
 // REGISTRATION
@@ -180,6 +202,18 @@ pub fn register_core_types(app: &mut App) {
         // Scripting
         .register_type::<ScriptComponent>()
         .register_type::<ScriptVariableValue>()
+        // Disabled components tracking
+        .register_type::<DisabledComponents>()
         // Environment
-        .register_type::<WorldEnvironmentMarker>();
+        .register_type::<WorldEnvironmentMarker>()
+        // Post-processing
+        .register_type::<super::SkyboxData>()
+        .register_type::<super::FogData>()
+        .register_type::<super::AntiAliasingData>()
+        .register_type::<super::AmbientOcclusionData>()
+        .register_type::<super::ReflectionsData>()
+        .register_type::<super::BloomData>()
+        .register_type::<super::TonemappingData>()
+        .register_type::<super::DepthOfFieldData>()
+        .register_type::<super::MotionBlurData>();
 }

@@ -558,6 +558,10 @@ fn render_menu_items(
             apply_layout("Debug", docking_state, viewport_state);
             ui.close();
         }
+        if menu_item(ui, "Particles           Ctrl+5") {
+            apply_layout("Particles", docking_state, viewport_state);
+            ui.close();
+        }
 
         ui.separator();
 
@@ -590,6 +594,10 @@ fn render_menu_items(
                 PanelId::Gamepad,
                 PanelId::Performance,
                 PanelId::RenderStats,
+                PanelId::ParticleEditor,
+                PanelId::VideoEditor,
+                PanelId::DAW,
+                PanelId::TextureEditor,
             ];
 
             for panel in all_panels {

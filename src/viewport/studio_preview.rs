@@ -17,7 +17,8 @@ use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::scene::EditorOnly;
-use crate::core::{AppState, SelectionState, ViewportState};
+use crate::core::{AppState, DockingState, SelectionState, ViewportState};
+use crate::ui::docking::PanelId;
 
 /// Render layer for studio preview (isolated from main scene)
 pub const STUDIO_RENDER_LAYER: usize = 5;
@@ -134,6 +135,7 @@ pub fn setup_studio_preview(
     // Spawn the studio preview camera
     commands.spawn((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.12, 0.12, 0.14)),
             order: -2, // Render before main camera
@@ -452,12 +454,16 @@ impl Plugin for StudioPreviewPlugin {
         app.init_resource::<StudioPreviewImage>();
         // Setup when entering Editor state (not during splash)
         app.add_systems(OnEnter(AppState::Editor), setup_studio_preview);
-        // Only run these systems in Editor state
+        // Register texture always (needed before panel opens)
+        app.add_systems(Update,
+            register_studio_preview_texture.run_if(in_state(AppState::Editor))
+        );
+        // Only run expensive update systems when panel is visible
         app.add_systems(Update, (
-            register_studio_preview_texture,
             update_studio_preview_camera,
             sync_selection_to_preview,
             sync_preview_joint_transforms,
-        ).run_if(in_state(AppState::Editor)));
+        ).run_if(in_state(AppState::Editor))
+         .run_if(|docking: Res<DockingState>| docking.is_panel_visible(&PanelId::StudioPreview)));
     }
 }

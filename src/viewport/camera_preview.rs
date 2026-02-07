@@ -89,6 +89,7 @@ pub fn update_camera_preview(
             None => {
                 commands.spawn((
                     Camera3d::default(),
+                    Msaa::Off,
                     Camera {
                         clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                         order: -1,
@@ -120,6 +121,7 @@ pub fn update_camera_preview(
             None => {
                 commands.spawn((
                     Camera3d::default(),
+                    Msaa::Off,
                     Camera {
                         clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
                         order: -1,

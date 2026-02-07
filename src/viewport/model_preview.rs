@@ -441,6 +441,7 @@ pub fn spawn_model_previews(
         let camera_entity = commands
             .spawn((
                 Camera3d::default(),
+                Msaa::Off,
                 Camera {
                     clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 0.0)),
                     order: -100,

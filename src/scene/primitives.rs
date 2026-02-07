@@ -24,6 +24,7 @@ pub fn spawn_primitive(
         PrimitiveType::Plane => meshes.add(Plane3d::default().mesh().size(2.0, 2.0)),
     };
 
+    // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
     let mut entity_commands = commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(materials.add(StandardMaterial {

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{MeshNodeData, MeshPrimitiveType, MeshInstanceData};
+use crate::shared::{MeshNodeData, MeshPrimitiveType, MeshInstanceData, MeshletMeshData};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[
@@ -12,6 +12,7 @@ pub static TEMPLATES: &[EntityTemplate] = &[
     EntityTemplate { name: "Cylinder", category: Category::Mesh, spawn: spawn_cylinder },
     EntityTemplate { name: "Plane", category: Category::Mesh, spawn: spawn_plane },
     EntityTemplate { name: "MeshInstance", category: Category::Mesh, spawn: spawn_mesh_instance },
+    EntityTemplate { name: "MeshletMesh", category: Category::Mesh, spawn: spawn_meshlet_mesh },
     EntityTemplate { name: "Node3D (Empty)", category: Category::Nodes3D, spawn: spawn_node3d },
 ];
 
@@ -75,6 +76,7 @@ fn spawn_mesh_entity(
     name: &str,
     parent: Option<Entity>,
 ) -> Entity {
+    // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
     let mut entity_commands = commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(material),
@@ -114,6 +116,39 @@ pub fn spawn_mesh_instance(
         },
         SceneNode,
         MeshInstanceData { model_path: None },
+    ));
+
+    if let Some(parent_entity) = parent {
+        entity_commands.insert(ChildOf(parent_entity));
+    }
+
+    entity_commands.id()
+}
+
+/// Spawn an entity configured for meshlet (virtual geometry) rendering.
+/// The entity starts with no mesh - assign a .meshlet asset path via the inspector.
+/// Meshlet rendering provides GPU-driven LOD and occlusion culling for high-poly meshes.
+pub fn spawn_meshlet_mesh(
+    commands: &mut Commands,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+    parent: Option<Entity>,
+) -> Entity {
+    let mut entity_commands = commands.spawn((
+        Transform::default(),
+        Visibility::default(),
+        EditorEntity {
+            name: "MeshletMesh".to_string(),
+            tag: String::new(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+        MeshletMeshData {
+            meshlet_path: String::new(),
+            enabled: true,
+            lod_bias: 0.0,
+        },
     ));
 
     if let Some(parent_entity) = parent {

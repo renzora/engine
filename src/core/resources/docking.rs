@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn test_default_state() {
         let state = DockingState::default();
-        assert_eq!(state.active_layout, "Default");
+        assert_eq!(state.active_layout, "Scene");
         assert!(!state.is_modified);
         assert!(state.is_panel_visible(&PanelId::Viewport));
     }

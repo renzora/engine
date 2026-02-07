@@ -745,6 +745,8 @@ use crate::shared::{
     PhysicsBodyData, CollisionShapeData,
     UIPanelData, UILabelData, UIButtonData, UIImageData,
     WorldEnvironmentMarker, HealthData, ScriptComponent,
+    SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
+    ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData, AmbientLightData,
 };
 
 // ============================================================================
@@ -899,6 +901,38 @@ impl DuplicateEntityCommand {
 
         // Environment
         if let Some(data) = world.get::<WorldEnvironmentMarker>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+
+        // Post-processing components
+        if let Some(data) = world.get::<SkyboxData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<FogData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<AntiAliasingData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<AmbientOcclusionData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<ReflectionsData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<BloomData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<TonemappingData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<DepthOfFieldData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<MotionBlurData>(source).cloned() {
+            world.entity_mut(new_id).insert(data);
+        }
+        if let Some(data) = world.get::<AmbientLightData>(source).cloned() {
             world.entity_mut(new_id).insert(data);
         }
 

@@ -9,6 +9,9 @@ mod command;
 mod history;
 mod entity_commands;
 
+#[cfg(test)]
+mod tests;
+
 pub use command::{Command, CommandContext, CommandResult};
 pub use history::{CommandHistory, undo, redo};
 pub use entity_commands::*;

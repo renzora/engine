@@ -165,6 +165,7 @@ pub fn setup_material_preview(
 
     commands.spawn((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             order: -5, // Render before main camera but after splash scene camera (-10)

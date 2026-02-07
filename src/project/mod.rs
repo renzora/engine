@@ -2,6 +2,9 @@ mod config;
 pub mod editor_state;
 mod project;
 
+#[cfg(test)]
+mod tests;
+
 use bevy::prelude::*;
 
 pub use config::AppConfig;

@@ -1,50 +1,11 @@
 #![allow(dead_code)]
 
-use bevy::ecs::system::SystemParam;
-use bevy::prelude::*;
-use crate::{console_info, console_error};
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 
-use crate::component_system::{
-    AddComponentPopupState, ComponentCategory, ComponentRegistry,
-    get_category_style,
-};
 use crate::commands::CommandHistory;
-use crate::core::{EditorEntity, RightPanelTab, SelectionState, WorldEnvironmentMarker};
-use crate::gizmo::GizmoState;
 use crate::theming::Theme;
-use crate::ui::inspectors::{
-    render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
-    render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
-    render_script_inspector, render_spot_light_inspector, render_transform_inspector,
-    render_world_environment_inspector,
-    // 2D inspectors
-    render_sprite2d_inspector, render_camera2d_inspector,
-    // UI inspectors
-    render_ui_panel_inspector, render_ui_label_inspector, render_ui_button_inspector, render_ui_image_inspector,
-};
-use crate::shared::{
-    CameraNodeData, CameraRigData, CollisionShapeData, MaterialData, PhysicsBodyData,
-    // 2D components
-    Sprite2DData, Camera2DData,
-    // UI components
-    UIPanelData, UILabelData, UIButtonData, UIImageData,
-};
-use crate::input::MaterialApplied;
-use crate::plugin_core::{PluginHost, TabLocation};
-use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
-use crate::ui_api::{renderer::UiRenderer, UiEvent};
 
-// Icon for inspector tab
-use egui_phosphor::regular::{SLIDERS_HORIZONTAL, CLOCK_COUNTER_CLOCKWISE};
-
-// Phosphor icons for inspector
-use egui_phosphor::regular::{
-    ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
-    PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
-    CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK, X,
-    TAG, PENCIL_SIMPLE, PALETTE,
-};
+use egui_phosphor::regular::{CLOCK_COUNTER_CLOCKWISE, CARET_DOWN, CARET_RIGHT, IMAGE, TRASH};
 
 /// Default background colors for alternating rows (used by legacy functions without theme access)
 const ROW_BG_EVEN: Color32 = Color32::from_rgb(32, 34, 38);
@@ -261,7 +222,7 @@ fn get_category_colors(theme: &Theme, category: &str) -> (Color32, Color32) {
 }
 
 /// Renders a styled inspector category with header and content
-fn render_category(
+pub fn render_category(
     ui: &mut egui::Ui,
     icon: &str,
     label: &str,
@@ -342,9 +303,15 @@ fn render_category(
     ui.add_space(6.0);
 }
 
-/// Renders a styled inspector category with header, content, and optional remove button
-/// Returns true if the remove button was clicked
-fn render_category_removable(
+/// Result of a category header interaction
+pub struct CategoryHeaderAction {
+    pub remove_clicked: bool,
+    pub toggle_clicked: bool,
+}
+
+/// Renders a styled inspector category with header, content, toggle switch, and remove button
+/// Returns a CategoryHeaderAction indicating which buttons were clicked
+pub fn render_category_removable(
     ui: &mut egui::Ui,
     icon: &str,
     label: &str,
@@ -353,16 +320,24 @@ fn render_category_removable(
     id_source: &str,
     default_open: bool,
     can_remove: bool,
+    is_disabled: bool,
     add_contents: impl FnOnce(&mut egui::Ui),
-) -> bool {
+) -> CategoryHeaderAction {
     let id = ui.make_persistent_id(id_source);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
     let mut remove_clicked = false;
+    let mut toggle_clicked = false;
     let (accent_color, header_bg) = get_category_colors(theme, category);
     let frame_bg = theme.panels.category_frame_bg.to_color32();
     let text_muted = theme.text.muted.to_color32();
     let text_primary = theme.text.primary.to_color32();
     let error_color = theme.semantic.error.to_color32();
+
+    // Dim colors when disabled
+    let effective_accent = if is_disabled { dim_color(accent_color, 0.5) } else { accent_color };
+    let effective_header_bg = if is_disabled { dim_color(header_bg, 0.6) } else { header_bg };
+    let effective_text = if is_disabled { dim_color(text_primary, 0.5) } else { text_primary };
+    let effective_icon = if is_disabled { dim_color(accent_color, 0.4) } else { accent_color };
 
     ui.scope(|ui| {
         // Outer frame for the entire category
@@ -372,9 +347,9 @@ fn render_category_removable(
             .show(ui, |ui| {
 
                 // Header bar
-                let header_rect = ui.scope(|ui| {
+                ui.scope(|ui| {
                     egui::Frame::new()
-                        .fill(header_bg)
+                        .fill(effective_header_bg)
                         .corner_radius(CornerRadius {
                             nw: 6,
                             ne: 6,
@@ -384,44 +359,76 @@ fn render_category_removable(
                         .inner_margin(egui::Margin::symmetric(8, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // Collapse indicator
-                                let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
+                                // Left side: clickable area for collapse toggle
+                                // We allocate a group that covers caret+icon+label,
+                                // then interact with just that rect for collapse.
+                                let left_response = ui.scope(|ui| {
+                                    // Collapse indicator
+                                    let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                                    ui.label(RichText::new(caret).size(12.0).color(text_muted));
 
-                                // Icon
-                                ui.label(RichText::new(icon).size(15.0).color(accent_color));
+                                    // Icon
+                                    ui.label(RichText::new(icon).size(15.0).color(effective_icon));
 
-                                ui.add_space(4.0);
+                                    ui.add_space(4.0);
 
-                                // Label
-                                ui.label(RichText::new(label).size(13.0).strong().color(text_primary));
+                                    // Label
+                                    ui.label(RichText::new(label).size(13.0).strong().color(effective_text));
+                                }).response;
 
-                                // Remove button on the right
+                                // Make the left part clickable for collapse
+                                let left_click = left_response.interact(Sense::click());
+                                if left_click.hovered() {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
+                                if left_click.clicked() {
+                                    state.toggle(ui);
+                                }
+
+                                // Right-aligned: Toggle switch + Trash button
                                 if can_remove {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.add(
-                                            egui::Button::new(RichText::new(X).size(11.0).color(error_color))
+                                        // Trash icon (rightmost)
+                                        let trash_response = ui.add(
+                                            egui::Button::new(RichText::new(TRASH).size(13.0).color(text_muted))
                                                 .frame(false)
-                                        ).on_hover_text("Remove component").clicked() {
+                                        );
+                                        if trash_response.hovered() {
+                                            let painter = ui.painter();
+                                            let rect = trash_response.rect.expand(2.0);
+                                            painter.rect_filled(rect, 3.0, Color32::from_rgba_premultiplied(230, 89, 89, 30));
+                                        }
+                                        trash_response.clone().on_hover_text("Remove component");
+                                        if trash_response.clicked() {
                                             remove_clicked = true;
+                                        }
+
+                                        ui.add_space(4.0);
+
+                                        // Toggle switch
+                                        let toggle_response = paint_toggle_switch(ui, id.with("toggle"), !is_disabled);
+                                        if toggle_response.clicked {
+                                            toggle_clicked = true;
                                         }
                                     });
                                 } else {
-                                    // Fill remaining width
-                                    ui.allocate_space(ui.available_size());
+                                    // Fill remaining width - also clickable for collapse
+                                    let (fill_rect, _) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+                                    let fill_response = ui.interact(fill_rect, id.with("fill"), Sense::click());
+                                    if fill_response.hovered() {
+                                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                    }
+                                    if fill_response.clicked() {
+                                        state.toggle(ui);
+                                    }
                                 }
                             });
                         });
-                }).response.rect;
+                });
 
-                // Make header clickable (but not the remove button area)
-                let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
-                if header_response.hovered() {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                }
-                if header_response.clicked() && !remove_clicked {
-                    state.toggle(ui);
-                }
+                // Also make the gap between label and buttons clickable for collapse
+                // by checking the horizontal area response from the header scope
+                // (The left_click + fill areas cover this already)
 
                 // Content area with padding
                 if state.is_open() {
@@ -429,6 +436,8 @@ fn render_category_removable(
                     egui::Frame::new()
                         .inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 4 })
                         .show(ui, |ui| {
+                            // Disable all content widgets when component is disabled
+                            ui.set_enabled(!is_disabled);
                             add_contents(ui);
                         });
                 }
@@ -439,862 +448,58 @@ fn render_category_removable(
 
     ui.add_space(6.0);
 
-    remove_clicked
+    CategoryHeaderAction { remove_clicked, toggle_clicked }
 }
 
-/// System parameter that bundles all inspector-related queries
-#[derive(SystemParam)]
-pub struct InspectorQueries<'w, 's> {
-    pub transforms: Query<'w, 's, &'static mut Transform>,
-    pub world_environments: Query<'w, 's, &'static mut WorldEnvironmentMarker>,
-    pub point_lights: Query<'w, 's, &'static mut PointLight>,
-    pub directional_lights: Query<'w, 's, &'static mut DirectionalLight>,
-    pub spot_lights: Query<'w, 's, &'static mut SpotLight>,
-    pub scripts: Query<'w, 's, &'static mut ScriptComponent>,
-    pub cameras: Query<'w, 's, &'static mut CameraNodeData>,
-    pub camera_rigs: Query<'w, 's, &'static mut CameraRigData>,
-    pub physics_bodies: Query<'w, 's, &'static mut PhysicsBodyData>,
-    pub collision_shapes: Query<'w, 's, &'static mut CollisionShapeData>,
-    // 2D components
-    pub sprites2d: Query<'w, 's, &'static mut Sprite2DData>,
-    pub cameras2d: Query<'w, 's, &'static mut Camera2DData>,
-    // UI components
-    pub ui_panels: Query<'w, 's, &'static mut UIPanelData>,
-    pub ui_labels: Query<'w, 's, &'static mut UILabelData>,
-    pub ui_buttons: Query<'w, 's, &'static mut UIButtonData>,
-    pub ui_images: Query<'w, 's, &'static mut UIImageData>,
-    // Material component
-    pub materials_data: Query<'w, 's, &'static mut MaterialData>,
-    pub materials_applied: Query<'w, 's, &'static MaterialApplied>,
+/// Dim a Color32 by a brightness factor (0.0 = black, 1.0 = unchanged)
+fn dim_color(color: Color32, factor: f32) -> Color32 {
+    Color32::from_rgb(
+        (color.r() as f32 * factor) as u8,
+        (color.g() as f32 * factor) as u8,
+        (color.b() as f32 * factor) as u8,
+    )
 }
 
-pub fn render_inspector(
-    ctx: &egui::Context,
-    selection: &SelectionState,
-    entities: &Query<(Entity, &EditorEntity)>,
-    queries: &mut InspectorQueries,
-    script_registry: &ScriptRegistry,
-    rhai_engine: &RhaiScriptEngine,
-    stored_width: f32,
-    camera_preview_texture_id: Option<TextureId>,
-    plugin_host: &PluginHost,
-    ui_renderer: &mut UiRenderer,
-    component_registry: &ComponentRegistry,
-    add_component_popup: &mut AddComponentPopupState,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    gizmo_state: &mut GizmoState,
-    command_history: &mut CommandHistory,
-    right_panel_tab: &mut RightPanelTab,
-    theme: &Theme,
-) -> (Vec<UiEvent>, f32, bool) {
-    let mut ui_events = Vec::new();
-    let mut scene_changed = false;
-
-    // Get plugin tabs for right panel
-    let api = plugin_host.api();
-    let plugin_tabs = api.get_tabs_for_location(TabLocation::Right);
-    let active_plugin_tab = api.get_active_tab(TabLocation::Right);
-
-    // Calculate max width based on screen size (max 500px to match load-time clamping)
-    let screen_width = ctx.content_rect().width();
-    let min_viewport_width = 200.0;
-    let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
-    let display_width = stored_width.clamp(100.0, max_width);
-    let mut actual_width = display_width;
-
-    // Theme colors for panel
-    let panel_bg = theme.surfaces.panel.to_color32();
-    let bar_bg = theme.widgets.noninteractive_bg.to_color32();
-    let border_color = theme.widgets.border.to_color32();
-    let tab_selected = theme.panels.tab_active.to_color32();
-    let tab_hover = theme.panels.tab_hover.to_color32();
-    let text_active = theme.text.primary.to_color32();
-    let text_inactive = theme.text.muted.to_color32();
-
-    egui::SidePanel::right("inspector")
-        .exact_width(display_width)
-        .resizable(false)
-        .frame(egui::Frame::new().fill(panel_bg).inner_margin(egui::Margin::ZERO))
-        .show(ctx, |ui| {
-
-            // Tab bar styled like bottom panel
-            let bar_height = 24.0;
-            let available_width = ui.available_width();
-            let (bar_rect, _) = ui.allocate_exact_size(
-                Vec2::new(available_width, bar_height),
-                Sense::hover(),
-            );
-
-            // Draw bar background
-            ui.painter().rect_filled(
-                bar_rect,
-                CornerRadius::ZERO,
-                bar_bg,
-            );
-
-            // Draw bottom border
-            ui.painter().line_segment(
-                [
-                    egui::pos2(bar_rect.min.x, bar_rect.max.y),
-                    egui::pos2(bar_rect.max.x, bar_rect.max.y),
-                ],
-                egui::Stroke::new(1.0, border_color),
-            );
-
-            // Draw tabs inside the bar
-            let mut tab_x = bar_rect.min.x + 8.0;
-            let tab_y = bar_rect.min.y;
-            let tab_height = bar_height;
-
-            // Inspector tab
-            let inspector_selected = *right_panel_tab == RightPanelTab::Inspector && active_plugin_tab.is_none();
-            let inspector_text = format!("{} Inspector", SLIDERS_HORIZONTAL);
-            let inspector_width = 80.0;
-            let inspector_rect = egui::Rect::from_min_size(
-                egui::pos2(tab_x, tab_y),
-                Vec2::new(inspector_width, tab_height),
-            );
-
-            let inspector_response = ui.interact(inspector_rect, ui.id().with("inspector_tab"), Sense::click());
-            if inspector_response.hovered() {
-                ctx.set_cursor_icon(CursorIcon::PointingHand);
-            }
-            if inspector_response.clicked() {
-                *right_panel_tab = RightPanelTab::Inspector;
-                ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
-            }
-
-            let inspector_bg = if inspector_selected {
-                tab_selected
-            } else if inspector_response.hovered() {
-                tab_hover
-            } else {
-                Color32::TRANSPARENT
-            };
-            if inspector_bg != Color32::TRANSPARENT {
-                ui.painter().rect_filled(inspector_rect, 0.0, inspector_bg);
-            }
-            ui.painter().text(
-                inspector_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                &inspector_text,
-                egui::FontId::proportional(12.0),
-                if inspector_selected { text_active } else { text_inactive },
-            );
-
-            tab_x += inspector_width + 4.0;
-
-            // History tab
-            let history_selected = *right_panel_tab == RightPanelTab::History && active_plugin_tab.is_none();
-            let undo_count = command_history.undo_count();
-            let history_text = if undo_count > 0 {
-                format!("{} History ({})", CLOCK_COUNTER_CLOCKWISE, undo_count)
-            } else {
-                format!("{} History", CLOCK_COUNTER_CLOCKWISE)
-            };
-            let history_width = if undo_count > 0 { 90.0 } else { 70.0 };
-            let history_rect = egui::Rect::from_min_size(
-                egui::pos2(tab_x, tab_y),
-                Vec2::new(history_width, tab_height),
-            );
-
-            let history_response = ui.interact(history_rect, ui.id().with("history_tab"), Sense::click());
-            if history_response.hovered() {
-                ctx.set_cursor_icon(CursorIcon::PointingHand);
-            }
-            if history_response.clicked() {
-                *right_panel_tab = RightPanelTab::History;
-                ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
-            }
-
-            let history_bg = if history_selected {
-                tab_selected
-            } else if history_response.hovered() {
-                tab_hover
-            } else {
-                Color32::TRANSPARENT
-            };
-            if history_bg != Color32::TRANSPARENT {
-                ui.painter().rect_filled(history_rect, 0.0, history_bg);
-            }
-            ui.painter().text(
-                history_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                &history_text,
-                egui::FontId::proportional(12.0),
-                if history_selected { text_active } else { text_inactive },
-            );
-
-            tab_x += history_width + 4.0;
-
-            // Plugin tabs
-            for tab in &plugin_tabs {
-                let is_selected = active_plugin_tab == Some(tab.id.as_str());
-                let tab_icon = tab.icon.as_deref().unwrap_or("");
-                let tab_text = format!("{} {}", tab_icon, tab.title);
-                let plugin_tab_width = 80.0;
-                let plugin_rect = egui::Rect::from_min_size(
-                    egui::pos2(tab_x, tab_y),
-                    Vec2::new(plugin_tab_width, tab_height),
-                );
-
-                let plugin_response = ui.interact(plugin_rect, ui.id().with(&tab.id), Sense::click());
-                if plugin_response.hovered() {
-                    ctx.set_cursor_icon(CursorIcon::PointingHand);
-                }
-                if plugin_response.clicked() {
-                    ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: tab.id.clone() });
-                }
-
-                let plugin_bg = if is_selected {
-                    tab_selected
-                } else if plugin_response.hovered() {
-                    tab_hover
-                } else {
-                    Color32::TRANSPARENT
-                };
-                if plugin_bg != Color32::TRANSPARENT {
-                    ui.painter().rect_filled(plugin_rect, 0.0, plugin_bg);
-                }
-                ui.painter().text(
-                    plugin_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &tab_text,
-                    egui::FontId::proportional(12.0),
-                    if is_selected { text_active } else { text_inactive },
-                );
-
-                tab_x += plugin_tab_width + 4.0;
-            }
-            let _ = tab_x; // Suppress unused warning
-
-            // Render content based on active tab
-            if let Some(tab_id) = active_plugin_tab {
-                // Render plugin tab content
-                if let Some(widgets) = api.get_tab_content(tab_id) {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for widget in widgets {
-                            ui_renderer.render(ui, widget);
-                        }
-                    });
-                } else {
-                    ui.label(RichText::new("No content").color(Color32::GRAY));
-                }
-            } else if *right_panel_tab == RightPanelTab::History {
-                // Render history tab
-                render_history_content(ui, command_history);
-            } else {
-                // Render normal inspector (legacy path - no assets drag-drop support)
-                // This function is not actively used - docking uses render_inspector_content directly
-                let mut dummy_assets = crate::core::AssetBrowserState::default();
-                let mut dummy_thumbnails = crate::core::ThumbnailCache::default();
-                let (events, changed) = render_inspector_content(
-                    ui, selection, entities, queries, script_registry, rhai_engine,
-                    camera_preview_texture_id, plugin_host, ui_renderer,
-                    component_registry, add_component_popup, commands, meshes, materials,
-                    gizmo_state, None, &mut dummy_assets, &mut dummy_thumbnails,
-                    theme,
-                );
-                ui_events.extend(events);
-                scene_changed = changed;
-            }
-        });
-
-    // Custom resize handle at the left edge of the panel (full height)
-    let resize_x = screen_width - display_width - 3.0;
-    let resize_height = ctx.content_rect().height();
-
-    egui::Area::new(egui::Id::new("inspector_resize"))
-        .fixed_pos(egui::Pos2::new(resize_x, 0.0))
-        .order(egui::Order::Foreground)
-        .interactable(true)
-        .show(ctx, |ui| {
-            let (resize_rect, resize_response) = ui.allocate_exact_size(
-                Vec2::new(6.0, resize_height),
-                egui::Sense::drag(),
-            );
-
-            if resize_response.hovered() || resize_response.dragged() {
-                ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-            }
-
-            // Use pointer position for smooth resizing
-            if resize_response.dragged() {
-                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
-                    let new_width = screen_width - pointer_pos.x;
-                    actual_width = new_width.clamp(100.0, max_width);
-                }
-            }
-
-            // Invisible resize handle - just show cursor change
-            let _ = resize_rect; // Still need the rect for interaction
-        });
-
-    (ui_events, actual_width, scene_changed)
+/// Result of a toggle switch interaction
+struct ToggleSwitchResponse {
+    clicked: bool,
+    rect: egui::Rect,
 }
 
-/// Render inspector content (for use in docking)
-/// Returns (ui_events, scene_changed)
-pub fn render_inspector_content(
-    ui: &mut egui::Ui,
-    selection: &SelectionState,
-    entities: &Query<(Entity, &EditorEntity)>,
-    queries: &mut InspectorQueries,
-    script_registry: &ScriptRegistry,
-    rhai_engine: &RhaiScriptEngine,
-    camera_preview_texture_id: Option<TextureId>,
-    plugin_host: &PluginHost,
-    ui_renderer: &mut UiRenderer,
-    component_registry: &ComponentRegistry,
-    add_component_popup: &mut AddComponentPopupState,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    gizmo_state: &mut GizmoState,
-    project_path: Option<&std::path::PathBuf>,
-    assets: &mut crate::core::AssetBrowserState,
-    thumbnail_cache: &mut crate::core::ThumbnailCache,
-    theme: &Theme,
-) -> (Vec<UiEvent>, bool) {
-    // Store theme colors in egui context for inspector components to access
-    set_inspector_theme(ui.ctx(), theme);
+/// Paint a custom toggle switch (pill-shaped) and return whether it was clicked
+fn paint_toggle_switch(ui: &mut egui::Ui, id: egui::Id, enabled: bool) -> ToggleSwitchResponse {
+    let desired_size = Vec2::new(28.0, 14.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
-    let mut scene_changed = false;
-    let mut component_to_remove: Option<&'static str> = None;
+    if ui.is_rect_visible(rect) {
+        let how_on = ui.ctx().animate_bool_with_time(id, enabled, 0.15);
 
-    // Debug: Log if there's a dragging asset when inspector renders
-    if let Some(drag) = &assets.dragging_asset {
-        let released = ui.ctx().input(|i| i.pointer.any_released());
-        if released {
-            console_info!("Inspector", "Has dragging asset on release: {}",
-                drag.file_name().unwrap_or_default().to_string_lossy());
-        }
+        let bg_color = Color32::from_rgb(
+            (80.0 + (89.0 - 80.0) * how_on) as u8,
+            (80.0 + (191.0 - 80.0) * how_on) as u8,
+            (85.0 + (115.0 - 85.0) * how_on) as u8,
+        );
+
+        // Draw pill background
+        let radius = rect.height() / 2.0;
+        ui.painter().rect_filled(rect, radius, bg_color);
+
+        // Draw circle knob
+        let knob_radius = radius - 2.0;
+        let knob_x = rect.left() + radius + how_on * (rect.width() - 2.0 * radius);
+        let knob_center = egui::pos2(knob_x, rect.center().y);
+        ui.painter().circle_filled(knob_center, knob_radius, Color32::WHITE);
     }
 
-    // Content area with padding
-    egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(6, 4))
-        .show(ui, |ui| {
-
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if let Some(selected) = selection.selected_entity {
-            if let Ok((_, editor_entity)) = entities.get(selected) {
-                // Show multi-selection indicator if applicable
-                let multi_count = selection.multi_selection.len();
-                if multi_count > 1 {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("{} items selected", multi_count))
-                            .color(Color32::from_rgb(140, 191, 242)));
-                    });
-                    ui.add_space(4.0);
-                }
-
-                // Clone editor entity data upfront to avoid borrow issues
-                let mut current_name = editor_entity.name.clone();
-                let mut current_tag = editor_entity.tag.clone();
-                let current_visible = editor_entity.visible;
-                let current_locked = editor_entity.locked;
-
-                // Entity header with editable name
-                let mut name_changed = false;
-                let mut tag_changed = false;
-
-                ui.horizontal(|ui| {
-                    // Accent bar
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 20.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 0.0, theme.semantic.accent.to_color32());
-
-                    ui.label(RichText::new(PENCIL_SIMPLE).size(14.0).color(theme.text.muted.to_color32()));
-
-                    // Editable entity name
-                    let name_response = ui.add(
-                        egui::TextEdit::singleline(&mut current_name)
-                            .desired_width(ui.available_width() - 80.0)
-                            .font(egui::TextStyle::Heading)
-                    );
-                    if name_response.changed() && !current_name.is_empty() {
-                        name_changed = true;
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Active indicator
-                        ui.label(RichText::new(CHECK_CIRCLE).color(theme.semantic.success.to_color32()));
-                    });
-                });
-
-                ui.add_space(4.0);
-
-                // Tag input
-                ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    ui.label(RichText::new(TAG).size(14.0).color(theme.text.muted.to_color32()));
-                    ui.label(RichText::new("Tag").size(12.0).color(theme.text.muted.to_color32()));
-
-                    let tag_response = ui.add(
-                        egui::TextEdit::singleline(&mut current_tag)
-                            .desired_width(100.0)
-                            .hint_text("Untagged")
-                    );
-                    if tag_response.changed() {
-                        tag_changed = true;
-                    }
-                });
-
-                // Apply changes after UI code completes
-                if name_changed || tag_changed {
-                    commands.entity(selected).insert(EditorEntity {
-                        name: current_name,
-                        tag: current_tag,
-                        visible: current_visible,
-                        locked: current_locked,
-                    });
-                    scene_changed = true;
-                }
-
-                ui.add_space(8.0);
-
-                // Add Component dropdown button (full width)
-                egui::Frame::default()
-                    .fill(theme.widgets.inactive_bg.to_color32())
-                    .corner_radius(CornerRadius::same(4))
-                    .show(ui, |ui| {
-                        ui.set_min_width(ui.available_width() - 12.0);
-                        ui.menu_button(
-                            RichText::new(format!("{} Add Component", PLUS)).color(theme.text.hyperlink.to_color32()),
-                            |ui| {
-                                ui.set_min_width(220.0);
-
-                                for category in ComponentCategory::all_in_order() {
-                                    let in_category: Vec<_> = component_registry
-                                        .all()
-                                        .filter(|d| d.category == *category)
-                                        .collect();
-
-                                    if !in_category.is_empty() {
-                                        let (accent, _header_bg) = get_category_style(*category);
-                                        let label = format!("{} {}", category.icon(), category.display_name());
-
-                                        ui.menu_button(RichText::new(label).color(accent), |ui| {
-                                            ui.set_min_width(180.0);
-
-                                            for def in in_category {
-                                                let item_label = format!("{} {}", def.icon, def.display_name);
-                                                if ui.button(RichText::new(item_label)).clicked() {
-                                                    (def.add_fn)(commands, selected, meshes, materials);
-                                                    scene_changed = true;
-                                                    ui.close();
-                                                }
-                                            }
-                                        });
-                                    }
-                                }
-                            },
-                        );
-                    });
-
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                // Transform section
-                if let Ok(mut transform) = queries.transforms.get_mut(selected) {
-                    render_category(
-                        ui,
-                        ARROWS_OUT_CARDINAL,
-                        "Transform",
-                        "transform",
-                        theme,
-                        "inspector_transform",
-                        true,
-                        |ui| {
-                            if render_transform_inspector(ui, &mut transform) {
-                                scene_changed = true;
-                            }
-                        },
-                    );
-                }
-
-                // World Environment
-                if let Ok(mut world_env) = queries.world_environments.get_mut(selected) {
-                    render_category(
-                        ui,
-                        GLOBE,
-                        "World Environment",
-                        "environment",
-                        theme,
-                        "inspector_world_env",
-                        true,
-                        |ui| {
-                            render_world_environment_inspector(ui, &mut world_env, assets, project_path);
-                        },
-                    );
-                }
-
-                // Lights (with remove buttons)
-                if let Ok(mut point_light) = queries.point_lights.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        LIGHTBULB,
-                        "Point Light",
-                        "lighting",
-                        theme,
-                        "inspector_point_light",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_point_light_inspector(ui, &mut point_light);
-                        },
-                    ) {
-                        component_to_remove = Some("point_light");
-                    }
-                }
-
-                if let Ok(mut dir_light) = queries.directional_lights.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        SUN,
-                        "Directional Light",
-                        "lighting",
-                        theme,
-                        "inspector_dir_light",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_directional_light_inspector(ui, &mut dir_light);
-                        },
-                    ) {
-                        component_to_remove = Some("directional_light");
-                    }
-                }
-
-                if let Ok(mut spot_light) = queries.spot_lights.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        FLASHLIGHT,
-                        "Spot Light",
-                        "lighting",
-                        theme,
-                        "inspector_spot_light",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_spot_light_inspector(ui, &mut spot_light);
-                        },
-                    ) {
-                        component_to_remove = Some("spot_light");
-                    }
-                }
-
-                // Camera component (with remove button)
-                if let Ok(mut camera_data) = queries.cameras.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        VIDEO_CAMERA,
-                        "Camera3D",
-                        "camera",
-                        theme,
-                        "inspector_camera",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_camera_inspector(ui, &mut camera_data, camera_preview_texture_id);
-                        },
-                    ) {
-                        component_to_remove = Some("camera_3d");
-                    }
-                }
-
-                // Camera rig component (with remove button)
-                if let Ok(mut rig_data) = queries.camera_rigs.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        VIDEO_CAMERA,
-                        "Camera Rig",
-                        "camera",
-                        theme,
-                        "inspector_camera_rig",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_camera_rig_inspector(ui, &mut rig_data, camera_preview_texture_id) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("camera_rig");
-                    }
-                }
-
-                // Script component (with remove button)
-                if let Ok(mut script) = queries.scripts.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        CODE,
-                        "Script",
-                        "scripting",
-                        theme,
-                        "inspector_script",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_script_inspector(ui, &mut script, script_registry, rhai_engine);
-                        },
-                    ) {
-                        component_to_remove = Some("script");
-                    }
-                }
-
-                // Physics body (with remove button)
-                if let Ok(mut physics_body) = queries.physics_bodies.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        ATOM,
-                        "Rigid Body",
-                        "physics",
-                        theme,
-                        "inspector_physics_body",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_physics_body_inspector(ui, &mut physics_body);
-                        },
-                    ) {
-                        component_to_remove = Some("rigid_body");
-                    }
-                }
-
-                // Collision shape (with remove button)
-                if let Ok(mut collision_shape) = queries.collision_shapes.get_mut(selected) {
-                    // Determine which collider type to remove based on shape_type
-                    let collider_type = match collision_shape.shape_type {
-                        crate::shared::CollisionShapeType::Box => "box_collider",
-                        crate::shared::CollisionShapeType::Sphere => "sphere_collider",
-                        crate::shared::CollisionShapeType::Capsule => "capsule_collider",
-                        crate::shared::CollisionShapeType::Cylinder => "box_collider", // fallback
-                    };
-                    if render_category_removable(
-                        ui,
-                        CUBE,
-                        "Collider",
-                        "physics",
-                        theme,
-                        "inspector_collision_shape",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_collision_shape_inspector(ui, &mut collision_shape, selected, gizmo_state);
-                        },
-                    ) {
-                        component_to_remove = Some(collider_type);
-                    }
-                }
-
-                // 2D Sprite (with remove button)
-                if let Ok(mut sprite_data) = queries.sprites2d.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        IMAGE,
-                        "Sprite2D",
-                        "nodes_2d",
-                        theme,
-                        "inspector_sprite2d",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_sprite2d_inspector(ui, &mut sprite_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("sprite_2d");
-                    }
-                }
-
-                // 2D Camera (with remove button)
-                if let Ok(mut camera_data) = queries.cameras2d.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        VIDEO_CAMERA,
-                        "Camera2D",
-                        "nodes_2d",
-                        theme,
-                        "inspector_camera2d",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_camera2d_inspector(ui, &mut camera_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("camera_2d");
-                    }
-                }
-
-                // UI Panel (with remove button)
-                if let Ok(mut panel_data) = queries.ui_panels.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        STACK,
-                        "UI Panel",
-                        "ui",
-                        theme,
-                        "inspector_ui_panel",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_ui_panel_inspector(ui, &mut panel_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("ui_panel");
-                    }
-                }
-
-                // UI Label (with remove button)
-                if let Ok(mut label_data) = queries.ui_labels.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        TEXTBOX,
-                        "UI Label",
-                        "ui",
-                        theme,
-                        "inspector_ui_label",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_ui_label_inspector(ui, &mut label_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("ui_label");
-                    }
-                }
-
-                // UI Button (with remove button)
-                if let Ok(mut button_data) = queries.ui_buttons.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        CURSOR_CLICK,
-                        "UI Button",
-                        "ui",
-                        theme,
-                        "inspector_ui_button",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_ui_button_inspector(ui, &mut button_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("ui_button");
-                    }
-                }
-
-                // UI Image (with remove button)
-                if let Ok(mut image_data) = queries.ui_images.get_mut(selected) {
-                    if render_category_removable(
-                        ui,
-                        IMAGE,
-                        "UI Image",
-                        "ui",
-                        theme,
-                        "inspector_ui_image",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            if render_ui_image_inspector(ui, &mut image_data) {
-                                scene_changed = true;
-                            }
-                        },
-                    ) {
-                        component_to_remove = Some("ui_image");
-                    }
-                }
-
-                // Material component (with remove button)
-                if let Ok(mut material_data) = queries.materials_data.get_mut(selected) {
-                    let is_applied = queries.materials_applied.get(selected).is_ok();
-                    if render_category_removable(
-                        ui,
-                        PALETTE,
-                        "Material",
-                        "rendering",
-                        theme,
-                        "inspector_material",
-                        true,
-                        true, // can_remove
-                        |ui| {
-                            render_material_inspector(
-                                ui, &mut material_data, is_applied, project_path, assets, theme
-                            );
-                        },
-                    ) {
-                        component_to_remove = Some("material");
-                    }
-                }
-
-                // Plugin-registered inspector sections
-                let api = plugin_host.api();
-                for (type_id, inspector_def, _plugin_id) in &api.inspectors {
-                    if let Some(content) = api.inspector_contents.get(type_id) {
-                        render_category(
-                            ui,
-                            PUZZLE_PIECE,
-                            &inspector_def.label,
-                            "plugin",
-                            theme,
-                            &format!("inspector_plugin_{:?}", type_id),
-                            true,
-                            |ui| {
-                                for widget in content {
-                                    ui_renderer.render(ui, widget);
-                                }
-                            },
-                        );
-                    }
-                }
-
-            }
-        } else if let Some(asset_path) = &assets.selected_asset.clone() {
-            // Close popup when no entity is selected
-            add_component_popup.is_open = false;
-
-            // Show asset information
-            render_asset_inspector(ui, asset_path, thumbnail_cache, theme);
-        } else {
-            // Close popup when nothing is selected
-            add_component_popup.is_open = false;
-
-            // No selection state
-            ui.add_space(20.0);
-            ui.vertical_centered(|ui| {
-                ui.label(RichText::new(MAGNIFYING_GLASS).size(32.0).color(theme.text.disabled.to_color32()));
-                ui.add_space(8.0);
-                ui.label(RichText::new("No Selection").weak());
-                ui.add_space(8.0);
-                ui.label(RichText::new("Select an entity in the Hierarchy\nor click on an object in the Scene.").weak());
-            });
-        }
-    });
-
-    }); // End content frame
-
-    // Handle component removal
-    if let (Some(type_id), Some(selected)) = (component_to_remove, selection.selected_entity) {
-        if let Some(def) = component_registry.get(type_id) {
-            (def.remove_fn)(commands, selected);
-            scene_changed = true;
-        }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        response.clone().on_hover_text(if enabled { "Disable component" } else { "Enable component" });
     }
 
-    // Collect events from ui_renderer
-    (ui_renderer.drain_events().collect(), scene_changed)
+    ToggleSwitchResponse {
+        clicked: response.clicked(),
+        rect,
+    }
 }
 
 /// Render the history panel content
@@ -1496,281 +701,8 @@ pub fn render_history_content(
         });
 }
 
-/// Render a single component item in the Add Component popup
-fn render_component_menu_item(
-    ui: &mut egui::Ui,
-    def: &crate::component_system::ComponentDefinition,
-) -> bool {
-    let response = ui.add_sized(
-        Vec2::new(ui.available_width(), 24.0),
-        egui::Button::new(
-            RichText::new(format!("{} {}", def.icon, def.display_name))
-                .color(Color32::from_rgb(200, 200, 210)),
-        )
-        .fill(Color32::TRANSPARENT)
-        .frame(false),
-    );
-
-    if response.hovered() {
-        ui.painter().rect_filled(
-            response.rect,
-            3.0,
-            Color32::from_rgb(55, 60, 70),
-        );
-    }
-
-    response.clicked()
-}
-
-/// Render the Material component inspector
-fn render_material_inspector(
-    ui: &mut egui::Ui,
-    material_data: &mut MaterialData,
-    is_applied: bool,
-    project_path: Option<&std::path::PathBuf>,
-    assets: &mut crate::core::AssetBrowserState,
-    theme: &Theme,
-) {
-
-    let display_path = material_data
-        .material_path
-        .as_ref()
-        .map(|p| {
-            // Show just the filename for brevity
-            std::path::Path::new(p)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(p)
-        })
-        .unwrap_or("None");
-
-    property_row_themed(ui, 0, theme, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Blueprint");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(display_path);
-            });
-        });
-    });
-
-    // Show applied status
-    property_row_themed(ui, 1, theme, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Status");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if material_data.material_path.is_some() {
-                    if is_applied {
-                        ui.colored_label(theme.semantic.success.to_color32(), "Applied");
-                    } else {
-                        ui.colored_label(theme.semantic.warning.to_color32(), "Pending...");
-                    }
-                } else {
-                    ui.colored_label(theme.text.muted.to_color32(), "No material");
-                }
-            });
-        });
-    });
-
-    // Clear button (only shown if material is set)
-    if material_data.material_path.is_some() {
-        property_row_themed(ui, 2, theme, |ui| {
-            if ui.button("Clear Material").clicked() {
-                material_data.material_path = None;
-            }
-        });
-    }
-
-    ui.add_space(4.0);
-
-    // Check if we're dragging a valid asset
-    let is_dragging_valid = assets.dragging_asset.as_ref().map(|p| {
-        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        ext == "material_bp" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga"
-    }).unwrap_or(false);
-
-    // Create drop zone with browse button
-    let drop_zone_height = 22.0;
-    let available_width = ui.available_width();
-
-    ui.horizontal(|ui| {
-        // Drop zone area - styled like an input box
-        let drop_width = available_width - 30.0;
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(drop_width, drop_zone_height),
-            Sense::click_and_drag(),
-        );
-
-        // Check hover using rect directly (more reliable than response.hovered())
-        let is_hovered = ui.ctx().input(|i| {
-            i.pointer.hover_pos().map_or(false, |pos| rect.contains(pos))
-        });
-
-        // Input box style background - use theme colors
-        let bg_color = if is_dragging_valid && is_hovered {
-            theme.widgets.hovered_bg.to_color32()
-        } else {
-            theme.panels.inspector_row_even.to_color32()
-        };
-
-        let stroke_color = if is_dragging_valid && is_hovered {
-            theme.semantic.accent.to_color32()
-        } else if is_dragging_valid {
-            theme.widgets.border.to_color32()
-        } else {
-            theme.widgets.border_light.to_color32()
-        };
-
-        ui.painter().rect_filled(rect, 2.0, bg_color);
-        ui.painter().rect_stroke(
-            rect,
-            2.0,
-            egui::Stroke::new(1.0, stroke_color),
-            egui::StrokeKind::Inside,
-        );
-
-        // Text inside - left aligned like an input
-        let text = material_data.material_path.as_ref()
-            .and_then(|p| std::path::Path::new(p).file_stem())
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| if is_dragging_valid { "Drop here...".to_string() } else { "Drop texture here...".to_string() });
-
-        let text_color = if material_data.material_path.is_some() {
-            theme.text.secondary.to_color32()
-        } else {
-            theme.text.disabled.to_color32()
-        };
-
-        let text_rect = rect.shrink2(egui::vec2(6.0, 0.0));
-        ui.painter().text(
-            egui::pos2(text_rect.min.x, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            text,
-            egui::FontId::proportional(12.0),
-            text_color,
-        );
-
-        // Handle drop from assets panel - check for pointer release while hovering
-        let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
-
-        // Debug: Log every frame when there's ANY dragging asset
-        if let Some(drag_path) = &assets.dragging_asset {
-            let ext = drag_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if pointer_released {
-                console_info!("Material", "DROP: hovered={}, valid={}, ext={}, file={}",
-                    is_hovered, is_dragging_valid, ext,
-                    drag_path.file_name().unwrap_or_default().to_string_lossy());
-            }
-        }
-
-        if is_hovered && is_dragging_valid && pointer_released {
-            // Take the drag immediately to prevent viewport from clearing it
-            if let Some(path) = assets.dragging_asset.take() {
-                let ext = path.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|s| s.to_lowercase())
-                    .unwrap_or_default();
-
-                console_info!("Material", "Drop detected: {} (ext: {})",
-                    path.file_name().unwrap_or_default().to_string_lossy(), ext);
-
-                if ext == "material_bp" {
-                    let path_str = path.to_string_lossy().to_string();
-                    console_info!("Material", "Setting blueprint: {}", path_str);
-                    material_data.material_path = Some(path_str);
-                } else if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga") {
-                    console_info!("Material", "Creating material from texture...");
-                    if let Some(project) = project_path {
-                        if let Some(bp_path) = import_texture_and_create_material(&path, project) {
-                            console_info!("Material", "Created blueprint: {}", bp_path);
-                            material_data.material_path = Some(bp_path);
-                        } else {
-                            console_error!("Material", "Failed to create material from texture");
-                        }
-                    } else {
-                        console_error!("Material", "No project path available");
-                    }
-                }
-            }
-        }
-
-        // Browse button with image icon
-        if ui.add_sized([26.0, drop_zone_height], egui::Button::new(IMAGE.to_string())).clicked() {
-            if let Some(texture_path) = rfd::FileDialog::new()
-                .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga"])
-                .pick_file()
-            {
-                if let Some(project) = project_path {
-                    if let Some(bp_path) = import_texture_and_create_material(&texture_path, project) {
-                        material_data.material_path = Some(bp_path);
-                    }
-                }
-            }
-        }
-    });
-}
-
-/// Import a texture file and create a material blueprint from it
-/// Returns the path to the created blueprint file
-fn import_texture_and_create_material(
-    texture_path: &std::path::Path,
-    project_path: &std::path::PathBuf,
-) -> Option<String> {
-    use crate::blueprint::{BlueprintFile, create_material_from_texture, sanitize_filename};
-
-    // Get texture filename
-    let texture_filename = texture_path.file_name()?.to_str()?;
-    let texture_stem = texture_path.file_stem()?.to_str()?;
-
-    // Determine destination paths
-    let textures_dir = project_path.join("assets").join("textures");
-    let blueprints_dir = project_path.join("blueprints");
-
-    // Create directories if needed
-    if let Err(e) = std::fs::create_dir_all(&textures_dir) {
-        error!("Failed to create textures directory: {}", e);
-        return None;
-    }
-    if let Err(e) = std::fs::create_dir_all(&blueprints_dir) {
-        error!("Failed to create blueprints directory: {}", e);
-        return None;
-    }
-
-    // Copy texture to project's assets/textures folder
-    let dest_texture_path = textures_dir.join(texture_filename);
-    if !dest_texture_path.exists() {
-        if let Err(e) = std::fs::copy(texture_path, &dest_texture_path) {
-            error!("Failed to copy texture: {}", e);
-            return None;
-        }
-        info!("Copied texture to {:?}", dest_texture_path);
-    }
-
-    // Create relative texture path for the blueprint
-    let relative_texture_path = format!("assets/textures/{}", texture_filename);
-
-    // Generate material name from texture name
-    let material_name = sanitize_filename(texture_stem);
-    let blueprint_filename = format!("{}.material_bp", material_name);
-    let blueprint_path = blueprints_dir.join(&blueprint_filename);
-
-    // Create the material blueprint
-    let graph = create_material_from_texture(&material_name, &relative_texture_path);
-    let blueprint_file = BlueprintFile::new(graph);
-
-    // Save the blueprint
-    if let Err(e) = blueprint_file.save(&blueprint_path) {
-        error!("Failed to save material blueprint: {}", e);
-        return None;
-    }
-
-    info!("Created material blueprint: {:?}", blueprint_path);
-
-    Some(blueprint_path.to_string_lossy().to_string())
-}
-
 /// Render asset information in the inspector when an asset is selected
-fn render_asset_inspector(
+pub fn render_asset_inspector(
     ui: &mut egui::Ui,
     asset_path: &std::path::PathBuf,
     thumbnail_cache: &mut crate::core::ThumbnailCache,

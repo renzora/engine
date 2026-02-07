@@ -251,7 +251,7 @@ pub fn brush_preview_system(
         commands.entity(entity).despawn();
     }
 
-    // Spawn new preview
+    // Spawn new preview (no RaytracingMesh3d - managed by sync_rendering_settings)
     let preview = commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(preview_material),
@@ -320,6 +320,7 @@ pub fn brush_creation_end_system(
 
     let brush_name = format!("{}", brush_state.creating_brush_type.display_name());
 
+    // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
     commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(material),
@@ -404,6 +405,7 @@ pub fn spawn_brush(
 
     let brush_name = format!("{}", brush_type.display_name());
 
+    // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
     commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(material),

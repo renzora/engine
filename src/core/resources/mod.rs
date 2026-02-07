@@ -9,6 +9,7 @@ mod export;
 mod gamepad_debug;
 mod hierarchy;
 mod input_focus;
+mod inspector_render;
 mod play_mode;
 mod scene;
 mod selection;
@@ -30,7 +31,10 @@ pub use default_camera::DefaultCameraEntity;
 pub use export::{ExportLogLevel, ExportLogger, ExportState};
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
-pub use scene::{BuildError, BuildState, OpenImage, OpenScript, SceneManagerState, SceneTab, ScriptError, TabKind};
+pub use scene::{
+    BuildError, BuildState, OpenImage, OpenScript, SceneManagerState, SceneTab, ScriptError, TabKind,
+    OpenVideo, OpenAudio, OpenAnimation, OpenTexture, OpenParticleFX, OpenLevel, OpenTerrain,
+};
 pub use selection::SelectionState;
 pub use settings::{CameraSettings, CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
 pub use thumbnails::{ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview};
@@ -51,3 +55,4 @@ pub use physics_debug::{
 pub use camera_debug::{
     CameraDebugState, CameraProjectionType,
 };
+pub use inspector_render::InspectorPanelRenderState;

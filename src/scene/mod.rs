@@ -18,8 +18,10 @@ pub use setup::{setup_editor_camera, EditorOnly, UiCamera};
 // Scene management exports
 pub use loader::{
     load_scene_bevy, on_bevy_scene_ready, rehydrate_mesh_components,
-    rehydrate_point_lights, rehydrate_directional_lights, rehydrate_spot_lights,
+    rehydrate_point_lights, rehydrate_directional_lights, rehydrate_spot_lights, rehydrate_sun_lights,
     rehydrate_terrain_chunks, apply_terrain_materials, rebuild_children_from_child_of,
+    add_raytracing_to_meshes, prepare_meshes_for_solari,
+    rehydrate_cameras_3d, rehydrate_camera_rigs, rehydrate_cameras_2d,
 };
 pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera, auto_save_scene};
 pub use saver::EditorSceneMetadata;

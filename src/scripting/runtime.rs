@@ -11,9 +11,9 @@ use super::{
 use super::resources::{
     AnimationCommandQueue, AudioCommand, AudioCommandQueue, CameraCommand, CameraCommandQueue,
     DebugDrawCommand, DebugDrawQueue, EasingFunction, HealthCommand, HealthCommandQueue,
-    PhysicsCommand, PhysicsCommandQueue, RaycastHit, RaycastResults, RenderingCommand,
-    RenderingCommandQueue, SceneCommandQueue, ScriptCollisionEvents, ScriptTimers,
-    SpriteAnimationCommandQueue, TweenProperty, array_to_color,
+    ParticleScriptCommand, ParticleScriptCommandQueue, PhysicsCommand, PhysicsCommandQueue,
+    RaycastHit, RaycastResults, RenderingCommand, RenderingCommandQueue, SceneCommandQueue,
+    ScriptCollisionEvents, ScriptTimers, SpriteAnimationCommandQueue, TweenProperty, array_to_color,
 };
 use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker, PlayModeState};
 use crate::core::resources::console::{console_log, LogLevel};
@@ -33,6 +33,7 @@ pub struct ScriptCommandQueues<'w> {
     pub animation: ResMut<'w, AnimationCommandQueue>,
     pub health: ResMut<'w, HealthCommandQueue>,
     pub sprite_animation: ResMut<'w, SpriteAnimationCommandQueue>,
+    pub particles: ResMut<'w, ParticleScriptCommandQueue>,
     // Assets for primitive spawning
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -52,6 +53,8 @@ pub struct ScriptComponentQueries<'w, 's> {
     // Material queries for reading current values
     pub mesh_materials: Query<'w, 's, &'static MeshMaterial3d<StandardMaterial>>,
     // Note: material_assets moved to ScriptCommandQueues as ResMut to avoid conflict
+    // Sun data for scripting environment changes
+    pub sun_data: Query<'w, 's, &'static mut crate::shared::SunData>,
 }
 
 /// System that runs all scripts
@@ -180,12 +183,18 @@ pub fn run_rhai_scripts(
     mut scripts: Query<(Entity, &mut ScriptComponent, &mut Transform, Option<&ChildOf>, Option<&Children>)>,
     mut all_transforms: Query<&mut Transform, Without<ScriptComponent>>,
     mut editor_entities: Query<(Entity, &mut EditorEntity)>,
-    mut world_environments: Query<&mut WorldEnvironmentMarker>,
+    mut world_environments: Query<(
+        &mut WorldEnvironmentMarker,
+        Option<&mut crate::shared::AmbientLightData>,
+        Option<&mut crate::shared::SkyboxData>,
+        Option<&mut crate::shared::FogData>,
+        Option<&mut crate::shared::TonemappingData>,
+    )>,
     mut visibility_query: Query<&mut Visibility>,
     // Bundled command queues to stay within 16-param limit
     mut queues: ScriptCommandQueues,
     // Bundled component queries for reading entity state
-    component_queries: ScriptComponentQueries,
+    mut component_queries: ScriptComponentQueries,
 ) {
     use std::collections::HashMap;
 
@@ -485,11 +494,6 @@ pub fn run_rhai_scripts(
             || ctx.env_ground_bottom_color.is_some()
             || ctx.env_ground_horizon_color.is_some()
             || ctx.env_ground_curve.is_some()
-            || ctx.env_sun_azimuth.is_some()
-            || ctx.env_sun_elevation.is_some()
-            || ctx.env_sun_color.is_some()
-            || ctx.env_sun_energy.is_some()
-            || ctx.env_sun_disk_scale.is_some()
             || ctx.env_fog_enabled.is_some()
             || ctx.env_fog_color.is_some()
             || ctx.env_fog_start.is_some()
@@ -497,78 +501,99 @@ pub fn run_rhai_scripts(
 
         if has_env_changes {
             use crate::shared::SkyMode;
-            for mut world_env in world_environments.iter_mut() {
-                // General
-                if let Some(mode) = ctx.env_sky_mode {
-                    world_env.data.sky_mode = match mode {
-                        0 => SkyMode::Color,
-                        1 => SkyMode::Procedural,
-                        2 => SkyMode::Panorama,
-                        _ => SkyMode::Procedural,
-                    };
-                }
-                if let Some((r, g, b)) = ctx.env_clear_color {
-                    world_env.data.clear_color = (r, g, b);
-                }
-                if let Some(brightness) = ctx.env_ambient_brightness {
-                    world_env.data.ambient_brightness = brightness;
-                }
-                if let Some((r, g, b)) = ctx.env_ambient_color {
-                    world_env.data.ambient_color = (r, g, b);
-                }
-                if let Some(ev100) = ctx.env_ev100 {
-                    world_env.data.ev100 = ev100;
+            for (_world_env, ambient_opt, skybox_opt, fog_opt, tm_opt) in world_environments.iter_mut() {
+                // Ambient light
+                if let Some(mut ambient) = ambient_opt {
+                    if let Some(brightness) = ctx.env_ambient_brightness {
+                        ambient.brightness = brightness;
+                    }
+                    if let Some((r, g, b)) = ctx.env_ambient_color {
+                        ambient.color = (r, g, b);
+                    }
                 }
 
-                // Procedural Sky
-                if let Some((r, g, b)) = ctx.env_sky_top_color {
-                    world_env.data.procedural_sky.sky_top_color = (r, g, b);
-                }
-                if let Some((r, g, b)) = ctx.env_sky_horizon_color {
-                    world_env.data.procedural_sky.sky_horizon_color = (r, g, b);
-                }
-                if let Some(curve) = ctx.env_sky_curve {
-                    world_env.data.procedural_sky.sky_curve = curve;
-                }
-                if let Some((r, g, b)) = ctx.env_ground_bottom_color {
-                    world_env.data.procedural_sky.ground_bottom_color = (r, g, b);
-                }
-                if let Some((r, g, b)) = ctx.env_ground_horizon_color {
-                    world_env.data.procedural_sky.ground_horizon_color = (r, g, b);
-                }
-                if let Some(curve) = ctx.env_ground_curve {
-                    world_env.data.procedural_sky.ground_curve = curve;
+                // Sky/Skybox changes
+                if let Some(mut skybox) = skybox_opt {
+                    if let Some(mode) = ctx.env_sky_mode {
+                        skybox.sky_mode = match mode {
+                            0 => SkyMode::Color,
+                            1 => SkyMode::Procedural,
+                            2 => SkyMode::Panorama,
+                            _ => SkyMode::Procedural,
+                        };
+                    }
+                    if let Some((r, g, b)) = ctx.env_clear_color {
+                        skybox.clear_color = (r, g, b);
+                    }
+                    // Procedural Sky
+                    if let Some((r, g, b)) = ctx.env_sky_top_color {
+                        skybox.procedural_sky.sky_top_color = (r, g, b);
+                    }
+                    if let Some((r, g, b)) = ctx.env_sky_horizon_color {
+                        skybox.procedural_sky.sky_horizon_color = (r, g, b);
+                    }
+                    if let Some(curve) = ctx.env_sky_curve {
+                        skybox.procedural_sky.sky_curve = curve;
+                    }
+                    if let Some((r, g, b)) = ctx.env_ground_bottom_color {
+                        skybox.procedural_sky.ground_bottom_color = (r, g, b);
+                    }
+                    if let Some((r, g, b)) = ctx.env_ground_horizon_color {
+                        skybox.procedural_sky.ground_horizon_color = (r, g, b);
+                    }
+                    if let Some(curve) = ctx.env_ground_curve {
+                        skybox.procedural_sky.ground_curve = curve;
+                    }
                 }
 
-                // Sun
+                // Fog changes
+                if let Some(mut fog) = fog_opt {
+                    if let Some(enabled) = ctx.env_fog_enabled {
+                        fog.enabled = enabled;
+                    }
+                    if let Some((r, g, b)) = ctx.env_fog_color {
+                        fog.color = (r, g, b);
+                    }
+                    if let Some(start) = ctx.env_fog_start {
+                        fog.start = start;
+                    }
+                    if let Some(end) = ctx.env_fog_end {
+                        fog.end = end;
+                    }
+                }
+
+                // Tonemapping/exposure changes
+                if let Some(mut tm) = tm_opt {
+                    if let Some(ev100) = ctx.env_ev100 {
+                        tm.ev100 = ev100;
+                    }
+                }
+            }
+        }
+
+        // Apply sun changes to SunData components
+        let has_sun_changes = ctx.env_sun_azimuth.is_some()
+            || ctx.env_sun_elevation.is_some()
+            || ctx.env_sun_color.is_some()
+            || ctx.env_sun_energy.is_some()
+            || ctx.env_sun_disk_scale.is_some();
+
+        if has_sun_changes {
+            for mut sun in component_queries.sun_data.iter_mut() {
                 if let Some(azimuth) = ctx.env_sun_azimuth {
-                    world_env.data.procedural_sky.sun_angle_azimuth = azimuth;
+                    sun.azimuth = azimuth;
                 }
                 if let Some(elevation) = ctx.env_sun_elevation {
-                    world_env.data.procedural_sky.sun_angle_elevation = elevation;
+                    sun.elevation = elevation;
                 }
                 if let Some((r, g, b)) = ctx.env_sun_color {
-                    world_env.data.procedural_sky.sun_color = (r, g, b);
+                    sun.color = bevy::math::Vec3::new(r, g, b);
                 }
                 if let Some(energy) = ctx.env_sun_energy {
-                    world_env.data.procedural_sky.sun_energy = energy;
+                    sun.illuminance = energy * 10000.0;
                 }
                 if let Some(scale) = ctx.env_sun_disk_scale {
-                    world_env.data.procedural_sky.sun_disk_scale = scale;
-                }
-
-                // Fog
-                if let Some(enabled) = ctx.env_fog_enabled {
-                    world_env.data.fog_enabled = enabled;
-                }
-                if let Some((r, g, b)) = ctx.env_fog_color {
-                    world_env.data.fog_color = (r, g, b);
-                }
-                if let Some(start) = ctx.env_fog_start {
-                    world_env.data.fog_start = start;
-                }
-                if let Some(end) = ctx.env_fog_end {
-                    world_env.data.fog_end = end;
+                    sun.angular_diameter = scale;
                 }
             }
         }
@@ -635,6 +660,7 @@ pub fn run_rhai_scripts(
             &mut queues.animation,
             &mut queues.health,
             &mut queues.sprite_animation,
+            &mut queues.particles,
             &mut queues.meshes,
             &mut queues.materials,
             source_entity,
@@ -658,6 +684,7 @@ fn process_rhai_command(
     animation_queue: &mut ResMut<AnimationCommandQueue>,
     health_queue: &mut ResMut<HealthCommandQueue>,
     sprite_animation_queue: &mut ResMut<SpriteAnimationCommandQueue>,
+    particle_queue: &mut ResMut<ParticleScriptCommandQueue>,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     source_entity: Entity,
@@ -707,6 +734,7 @@ fn process_rhai_command(
                 transform.scale = s;
             }
 
+            // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
             commands.spawn((
                 transform,
                 Visibility::default(),
@@ -1129,6 +1157,47 @@ fn process_rhai_command(
                 .unwrap_or(source_entity);
             // Generic component field setting - log for now, would need reflection system
             debug!("[Script] SetComponentField({:?}, {}, {}) = {:?}", entity, component_type, field_name, value);
+        }
+
+        // Particle Commands
+        RhaiCommand::ParticlePlay { entity_id } => {
+            particle_queue.push(ParticleScriptCommand::Play { entity_id });
+        }
+        RhaiCommand::ParticlePause { entity_id } => {
+            particle_queue.push(ParticleScriptCommand::Pause { entity_id });
+        }
+        RhaiCommand::ParticleStop { entity_id } => {
+            particle_queue.push(ParticleScriptCommand::Stop { entity_id });
+        }
+        RhaiCommand::ParticleReset { entity_id } => {
+            particle_queue.push(ParticleScriptCommand::Reset { entity_id });
+        }
+        RhaiCommand::ParticleBurst { entity_id, count } => {
+            particle_queue.push(ParticleScriptCommand::Burst { entity_id, count });
+        }
+        RhaiCommand::ParticleSetRate { entity_id, multiplier } => {
+            particle_queue.push(ParticleScriptCommand::SetRate { entity_id, multiplier });
+        }
+        RhaiCommand::ParticleSetScale { entity_id, multiplier } => {
+            particle_queue.push(ParticleScriptCommand::SetScale { entity_id, multiplier });
+        }
+        RhaiCommand::ParticleSetTimeScale { entity_id, scale } => {
+            particle_queue.push(ParticleScriptCommand::SetTimeScale { entity_id, scale });
+        }
+        RhaiCommand::ParticleSetTint { entity_id, r, g, b, a } => {
+            particle_queue.push(ParticleScriptCommand::SetTint { entity_id, r, g, b, a });
+        }
+        RhaiCommand::ParticleSetVariableFloat { entity_id, name, value } => {
+            particle_queue.push(ParticleScriptCommand::SetVariableFloat { entity_id, name, value });
+        }
+        RhaiCommand::ParticleSetVariableColor { entity_id, name, r, g, b, a } => {
+            particle_queue.push(ParticleScriptCommand::SetVariableColor { entity_id, name, r, g, b, a });
+        }
+        RhaiCommand::ParticleSetVariableVec3 { entity_id, name, x, y, z } => {
+            particle_queue.push(ParticleScriptCommand::SetVariableVec3 { entity_id, name, x, y, z });
+        }
+        RhaiCommand::ParticleEmitAt { entity_id, x, y, z, count } => {
+            particle_queue.push(ParticleScriptCommand::EmitAt { entity_id, x, y, z, count });
         }
     }
 }

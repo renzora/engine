@@ -110,6 +110,7 @@ fn spawn_terrain_with_size(
             // Calculate chunk position
             let origin = terrain_data.chunk_world_origin(cx, cz);
 
+            // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
             commands.spawn((
                 Mesh3d(mesh_handle),
                 MeshMaterial3d(material.clone()),

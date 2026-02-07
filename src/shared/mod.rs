@@ -12,20 +12,26 @@ pub mod light_spawner;
 pub mod physics_plugin;
 pub mod physics_spawner;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export commonly used items
 pub use components::{
     // Camera
     Camera2DData, CameraNodeData, CameraRigData,
     // Environment
-    PanoramaSkyData, ProceduralSkyData, SkyMode, TonemappingMode, WorldEnvironmentData,
+    CloudsData, PanoramaSkyData, ProceduralSkyData, SkyMode, WorldEnvironmentData,
+    // Post-processing
+    TonemappingMode, SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
+    ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData, AmbientLightData,
     // Instances
     MeshInstanceData, SceneInstanceData,
     // Lights
-    DirectionalLightData, PointLightData, SpotLightData,
+    DirectionalLightData, PointLightData, SpotLightData, SunData,
     // Physics
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
     // Rendering
-    MaterialData, MeshNodeData, MeshPrimitiveType, Sprite2DData,
+    DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType, MeshletMeshData, SolariLightingData, Sprite2DData,
     // UI
     UIButtonData, UIImageData, UILabelData, UIPanelData,
     // Animation
@@ -47,6 +53,6 @@ pub use physics_spawner::{
 
 // Core component exports (for runtime scripting support)
 pub use core_components::{
-    EditorEntity, HealthData, SceneNode, SceneTabId, ScriptComponent, ScriptRuntimeState,
-    ScriptVariableValue, WorldEnvironmentMarker, register_core_types,
+    DisabledComponents, EditorEntity, HealthData, SceneNode, SceneTabId, ScriptComponent,
+    ScriptRuntimeState, ScriptVariableValue, WorldEnvironmentMarker, register_core_types,
 };

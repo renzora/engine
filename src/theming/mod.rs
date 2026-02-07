@@ -8,6 +8,9 @@
 mod defaults;
 mod loader;
 
+#[cfg(test)]
+mod tests;
+
 pub use loader::*;
 
 use bevy_egui::egui::Color32;
@@ -335,6 +338,7 @@ pub struct CategoryColors {
     pub audio: CategoryStyle,
     pub ui: CategoryStyle,
     pub effects: CategoryStyle,
+    pub post_process: CategoryStyle,
     pub gameplay: CategoryStyle,
     pub nodes_2d: CategoryStyle,
     pub plugin: CategoryStyle,
@@ -382,6 +386,10 @@ impl Default for CategoryColors {
             effects: CategoryStyle {
                 accent: ThemeColor::new(255, 180, 220),
                 header_bg: ThemeColor::new(50, 38, 45),
+            },
+            post_process: CategoryStyle {
+                accent: ThemeColor::new(130, 200, 160),
+                header_bg: ThemeColor::new(35, 48, 45),
             },
             gameplay: CategoryStyle {
                 accent: ThemeColor::new(255, 150, 150),

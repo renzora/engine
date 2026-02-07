@@ -127,6 +127,36 @@ pub enum RhaiCommand {
     SetInvincible { entity_id: Option<u64>, invincible: bool, duration: f32 },
     Kill { entity_id: Option<u64> },
     Revive { entity_id: Option<u64> },
+
+    // ===================
+    // Particle Commands
+    // ===================
+    /// Start/resume playing the particle effect
+    ParticlePlay { entity_id: u64 },
+    /// Pause the particle effect
+    ParticlePause { entity_id: u64 },
+    /// Stop and reset the particle effect
+    ParticleStop { entity_id: u64 },
+    /// Reset the effect to initial state
+    ParticleReset { entity_id: u64 },
+    /// Emit a burst of particles
+    ParticleBurst { entity_id: u64, count: u32 },
+    /// Set the spawn rate multiplier
+    ParticleSetRate { entity_id: u64, multiplier: f32 },
+    /// Set the particle size multiplier
+    ParticleSetScale { entity_id: u64, multiplier: f32 },
+    /// Set the time scale
+    ParticleSetTimeScale { entity_id: u64, scale: f32 },
+    /// Set the color tint
+    ParticleSetTint { entity_id: u64, r: f32, g: f32, b: f32, a: f32 },
+    /// Set a custom float variable
+    ParticleSetVariableFloat { entity_id: u64, name: String, value: f32 },
+    /// Set a custom color variable
+    ParticleSetVariableColor { entity_id: u64, name: String, r: f32, g: f32, b: f32, a: f32 },
+    /// Set a custom vec3 variable
+    ParticleSetVariableVec3 { entity_id: u64, name: String, x: f32, y: f32, z: f32 },
+    /// Move emitter and emit at position
+    ParticleEmitAt { entity_id: u64, x: f32, y: f32, z: f32, count: Option<u32> },
 }
 
 /// Value types for component fields

@@ -124,6 +124,10 @@ impl Theme {
                     accent: ThemeColor::new(210, 140, 180),
                     header_bg: ThemeColor::new(250, 235, 242),
                 },
+                post_process: CategoryStyle {
+                    accent: ThemeColor::new(90, 170, 130),
+                    header_bg: ThemeColor::new(230, 248, 240),
+                },
                 gameplay: CategoryStyle {
                     accent: ThemeColor::new(210, 110, 110),
                     header_bg: ThemeColor::new(250, 235, 235),

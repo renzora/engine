@@ -11,14 +11,15 @@ use egui_phosphor::regular::{PLAY, PAUSE, STOP};
 use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DiagnosticsState, DockingState,
-    EditorEntity, ExportState, GamepadDebugState, ImagePreviewTextures, InputFocusState, KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
+    EditorEntity, ExportState, GamepadDebugState, ImagePreviewTextures, InputFocusState, InspectorPanelRenderState,
+    KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
     AnimationTimelineState, TabKind,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
-use crate::viewport::{Camera2DState, ModelPreviewCache};
+use crate::viewport::{Camera2DState, ModelPreviewCache, ParticlePreviewImage};
 use crate::brushes::{BrushSettings, BrushState, BlockEditState};
 use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::update::{UpdateState, UpdateDialogState};
@@ -76,6 +77,9 @@ pub struct EditorResources<'w> {
     pub update_dialog: ResMut<'w, UpdateDialogState>,
     pub app_config: ResMut<'w, AppConfig>,
     pub animation_timeline: ResMut<'w, AnimationTimelineState>,
+    pub particle_preview_image: Option<Res<'w, ParticlePreviewImage>>,
+    pub particle_editor_state: ResMut<'w, ParticleEditorState>,
+    pub inspector_render_state: ResMut<'w, InspectorPanelRenderState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -95,13 +99,16 @@ use panels::{
     render_export_dialog, render_plugin_panels,
     render_document_tabs, render_script_editor_content, render_image_preview_content,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
-    InspectorQueries, TITLE_BAR_HEIGHT,
-    render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
+    TITLE_BAR_HEIGHT,
+    render_hierarchy_content, render_assets_content, render_assets_dialogs,
     render_console_content, render_history_content, render_gamepad_content, render_performance_content,
     render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
     render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
     render_level_tools_content, render_animation_content, AnimationPanelState,
+    render_particle_editor_content,
+    render_particle_preview_content,
 };
+use crate::particles::ParticleEditorState;
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors};
 use style::{apply_editor_style_with_theme, init_fonts};
@@ -195,18 +202,18 @@ pub fn splash_ui(
 }
 
 /// Editor UI system (runs in Editor state)
+#[allow(clippy::too_many_arguments)]
 pub fn editor_ui(
     mut contexts: EguiContexts,
     mut editor: EditorResources,
     mut commands: Commands,
     mut hierarchy_queries: HierarchyQueries,
-    entities_for_inspector: Query<(Entity, &EditorEntity)>,
-    mut inspector_queries: InspectorQueries,
+    _entities_for_inspector: Query<(Entity, &EditorEntity)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     current_project: Option<Res<CurrentProject>>,
-    script_registry: Res<ScriptRegistry>,
-    rhai_engine: Res<RhaiScriptEngine>,
+    _script_registry: Res<ScriptRegistry>,
+    _rhai_engine: Res<RhaiScriptEngine>,
     app_state: Res<State<AppState>>,
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
@@ -217,6 +224,9 @@ pub fn editor_ui(
     if *app_state.get() != AppState::Editor {
         return;
     }
+
+    // Reset inspector render state for this frame
+    editor.inspector_render_state.reset();
 
     // Register and get viewport texture ID from egui
     let viewport_texture_id = viewport_image.as_ref().map(|img| {
@@ -239,6 +249,20 @@ pub fn editor_ui(
             contexts.add_image(EguiTextureHandle::Weak(img.0.id()))
         })
     });
+
+    // Register and get particle preview texture ID from egui
+    let particle_preview_texture_id = editor.particle_preview_image.as_ref().and_then(|img| {
+        img.texture_id.or_else(|| {
+            if img.handle != bevy::prelude::Handle::default() {
+                Some(contexts.add_image(EguiTextureHandle::Weak(img.handle.id())))
+            } else {
+                None
+            }
+        })
+    });
+    let particle_preview_size = editor.particle_preview_image.as_ref()
+        .map(|img| img.size)
+        .unwrap_or((256, 256));
 
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -345,6 +369,9 @@ pub fn editor_ui(
             central_height,
             viewport_texture_id,
             &editor.theme_manager.active_theme,
+            &editor.selection,
+            &mut editor.hierarchy,
+            &mut editor.command_history,
         );
 
         // Render play mode overlay with info
@@ -613,33 +640,20 @@ pub fn editor_ui(
                 }
 
                 PanelId::Inspector => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        let (events, changed) = render_inspector_content(
-                            ui,
-                            &editor.selection,
-                            &entities_for_inspector,
-                            &mut inspector_queries,
-                            &script_registry,
-                            &rhai_engine,
-                            camera_preview_texture_id,
-                            &editor.plugin_host,
-                            &mut local_state.0,
-                            &editor.component_registry,
-                            &mut editor.add_component_popup,
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            &mut editor.gizmo,
-                            current_project.as_ref().map(|p| &p.path),
-                            &mut editor.assets,
-                            &mut editor.thumbnail_cache,
-                            &editor.theme_manager.active_theme,
-                        );
-                        all_ui_events.extend(events);
-                        if changed {
-                            editor.scene_state.mark_modified();
-                        }
+                    // Render panel frame but defer content to exclusive system
+                    // This allows the inspector to use registry-based component iteration
+                    // with &mut World access
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |_ui| {
+                        // Content will be rendered by inspector_content_exclusive system
                     });
+
+                    // Store render state for exclusive system
+                    editor.inspector_render_state.dragging_asset_path = editor.assets.dragging_asset.clone();
+                    editor.inspector_render_state.request_render(
+                        panel_ctx.content_rect,
+                        camera_preview_texture_id,
+                        &editor.theme_manager.active_theme,
+                    );
                 }
 
                 PanelId::Assets => {
@@ -708,6 +722,9 @@ pub fn editor_ui(
                         content_rect.height(),
                         viewport_texture_id,
                         &editor.theme_manager.active_theme,
+                        &editor.selection,
+                        &mut editor.hierarchy,
+                        &mut editor.command_history,
                     );
                 }
 
@@ -942,12 +959,28 @@ pub fn editor_ui(
                 }
 
                 PanelId::ParticleEditor => {
+                    // Temporarily take the particle editor state to avoid borrow conflicts
+                    let mut particle_state = std::mem::take(&mut *editor.particle_editor_state);
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(bevy_egui::egui::RichText::new("Particle FX Editor")
-                                .size(18.0)
-                                .color(editor.theme_manager.active_theme.text.muted.to_color32()));
-                        });
+                        render_particle_editor_content(
+                            ui,
+                            &mut particle_state,
+                            &mut editor.scene_state,
+                            particle_preview_texture_id,
+                            particle_preview_size,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                    // Put the state back
+                    *editor.particle_editor_state = particle_state;
+                }
+
+                PanelId::ParticlePreview => {
+                    // Use local copies to avoid borrow issues in closure
+                    let tex_id = particle_preview_texture_id;
+                    let tex_size = particle_preview_size;
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_particle_preview_content(ui, tex_id, tex_size);
                     });
                 }
 
@@ -1355,16 +1388,26 @@ fn handle_global_file_drops(
     };
 
     for path in dropped_files {
-        if assets_rect.contains(pos) || viewport_rect.contains(pos) {
+        let is_hdr = path.extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| matches!(ext.to_lowercase().as_str(), "hdr" | "exr"))
+            .unwrap_or(false);
+
+        if is_hdr && viewport_rect.contains(pos) {
+            // HDR/EXR on viewport → create/update skybox + import to assets
+            assets.pending_skybox_drop = Some(path.clone());
+            assets.pending_file_imports.push(path);
+        } else if assets_rect.contains(pos) || viewport_rect.contains(pos) {
             // Dropped in assets panel or viewport - queue for import (copy to folder)
             info!("File dropped, importing to assets: {:?}", path);
             assets.pending_file_imports.push(path);
-            // Store the target folder for import if current_folder is not set
-            if assets.current_folder.is_none() {
-                assets.current_folder = Some(folder.clone());
-            }
         }
         // If dropped elsewhere, ignore
+
+        // Store the target folder for import if current_folder is not set
+        if assets.current_folder.is_none() {
+            assets.current_folder = Some(folder.clone());
+        }
     }
 }
 
@@ -1490,4 +1533,128 @@ fn render_window_resize_edges(ctx: &bevy_egui::egui::Context, window_state: &mut
         ResizeEdge::TopLeft,
         CursorIcon::ResizeNwSe,
     );
+}
+
+/// Exclusive system for rendering inspector panel content with World access
+///
+/// This runs after `editor_ui` and renders the actual Inspector content using
+/// registry-based component iteration, which requires `&mut World`.
+pub fn inspector_content_exclusive(world: &mut World) {
+    use bevy_egui::{egui, EguiContext, PrimaryEguiContext};
+    use crate::core::{InspectorPanelRenderState, SelectionState, AssetBrowserState, ThumbnailCache, AppState};
+    use crate::component_system::AddComponentPopupState;
+    use crate::plugin_core::PluginHost;
+    use crate::ui_api::renderer::UiRenderer;
+
+    // Check if we should run (only in Editor state)
+    let should_run = world
+        .get_resource::<State<AppState>>()
+        .map(|s| *s.get() == AppState::Editor)
+        .unwrap_or(false);
+
+    if !should_run {
+        return;
+    }
+
+    // Check if inspector panel was requested for render
+    let render_state = {
+        let Some(state) = world.get_resource::<InspectorPanelRenderState>() else {
+            return;
+        };
+        if !state.should_render || state.content_rect.is_none() || state.theme.is_none() {
+            return;
+        }
+        // Clone the state so we can release the borrow
+        (
+            state.content_rect.unwrap(),
+            state.camera_preview_texture_id,
+            state.theme.clone().unwrap(),
+        )
+    };
+
+    let (content_rect, _camera_preview_texture, theme) = render_state;
+
+    // Use nested resource_scope to properly manage borrows
+    // This extracts resources, runs the closure, and puts them back
+    world.resource_scope(|world, mut add_component_popup: Mut<AddComponentPopupState>| {
+        world.resource_scope(|world, mut assets: Mut<AssetBrowserState>| {
+            world.resource_scope(|world, mut thumbnail_cache: Mut<ThumbnailCache>| {
+                // Clone the egui context
+                let ctx = {
+                    let mut query = world.query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>();
+                    let Ok(mut egui_ctx) = query.single_mut(world) else {
+                        return;
+                    };
+                    egui_ctx.get_mut().clone()
+                };
+
+                // Create a temporary UiRenderer
+                let mut ui_renderer = UiRenderer::default();
+
+                // Render inspector content using Area at the stored position
+                // Note: We pass None for plugin_host to avoid borrow conflicts.
+                // Plugin-registered inspector sections will be skipped.
+                let (events, scene_changed) = egui::Area::new(egui::Id::new("inspector_content_area"))
+                    .fixed_pos(content_rect.min)
+                    .order(egui::Order::Middle)
+                    .show(&ctx, |ui| {
+                        ui.set_clip_rect(content_rect);
+                        ui.set_min_size(content_rect.size());
+                        ui.set_max_size(content_rect.size());
+
+                        // Clone selection inside a scope to end the borrow before mutable access
+                        let selection = {
+                            let s = world.resource::<SelectionState>();
+                            SelectionState {
+                                selected_entity: s.selected_entity,
+                                multi_selection: s.multi_selection.clone(),
+                                context_menu_entity: s.context_menu_entity,
+                                selection_anchor: s.selection_anchor,
+                            }
+                        };
+
+                        // Call the world-based inspector renderer
+                        panels::render_inspector_content_world(
+                            ui,
+                            world,
+                            &selection,
+                            None, // Plugin sections skipped to avoid borrow conflicts
+                            &mut ui_renderer,
+                            &mut add_component_popup,
+                            &mut assets,
+                            &mut thumbnail_cache,
+                            &theme,
+                        )
+                    }).inner;
+
+                // Store scene_changed in render state
+                world.resource_mut::<InspectorPanelRenderState>().scene_changed = scene_changed;
+
+                // Forward events to plugin host
+                let mut plugin_host = world.resource_mut::<PluginHost>();
+                for event in events {
+                    plugin_host.api_mut().push_ui_event(convert_ui_event_to_api(event));
+                }
+
+                // Mark scene as modified if changed
+                if scene_changed {
+                    world.resource_mut::<crate::core::SceneManagerState>().mark_modified();
+                }
+            });
+        });
+    });
+
+    // Process drag results now that AssetBrowserState is back in the world
+    let render_state = world.resource::<InspectorPanelRenderState>();
+    let drag_accepted = render_state.drag_accepted;
+    let pending_import = render_state.pending_file_import.clone();
+
+    if drag_accepted {
+        world.resource_mut::<AssetBrowserState>().dragging_asset = None;
+    }
+    if let Some(import_path) = pending_import {
+        world.resource_mut::<AssetBrowserState>().pending_file_imports.push(import_path);
+    }
+    world.resource_mut::<InspectorPanelRenderState>().drag_accepted = false;
+    world.resource_mut::<InspectorPanelRenderState>().pending_file_import = None;
 }

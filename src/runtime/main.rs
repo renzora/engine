@@ -191,6 +191,18 @@ impl Plugin for RuntimePlugin {
             .register_type::<shared::ProceduralSkyData>()
             .register_type::<shared::PanoramaSkyData>()
             .register_type::<shared::TonemappingMode>()
+            // Post-processing components
+            .register_type::<shared::SkyboxData>()
+            .register_type::<shared::FogData>()
+            .register_type::<shared::AntiAliasingData>()
+            .register_type::<shared::AmbientOcclusionData>()
+            .register_type::<shared::ReflectionsData>()
+            .register_type::<shared::BloomData>()
+            .register_type::<shared::TonemappingData>()
+            .register_type::<shared::DepthOfFieldData>()
+            .register_type::<shared::MotionBlurData>()
+            .register_type::<shared::AmbientLightData>()
+            .register_type::<shared::CloudsData>()
             // Add plugins
             .add_plugins((
                 loader::RuntimeLoaderPlugin,

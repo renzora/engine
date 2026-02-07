@@ -10,3 +10,6 @@ pub mod build;
 pub mod pack;
 
 pub use build::{ExportConfig, ExportTarget, BuildType, run_export, is_target_installed};
+
+#[cfg(test)]
+mod tests;

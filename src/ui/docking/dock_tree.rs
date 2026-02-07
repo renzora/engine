@@ -9,6 +9,7 @@ use egui_phosphor::regular::{
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
+    SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
 };
 
 /// Direction of a split in the dock tree
@@ -49,6 +50,16 @@ pub enum PanelId {
     NodeExplorer,
     /// Image preview panel for viewing images
     ImagePreview,
+    /// Video editor panel
+    VideoEditor,
+    /// Digital Audio Workstation panel
+    DAW,
+    /// Particle FX editor panel
+    ParticleEditor,
+    /// Particle preview panel - isolated viewport for particle effects
+    ParticlePreview,
+    /// Texture editor panel
+    TextureEditor,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -82,6 +93,11 @@ impl PanelId {
             PanelId::StudioPreview => "Studio Preview",
             PanelId::NodeExplorer => "Node Explorer",
             PanelId::ImagePreview => "Image Preview",
+            PanelId::VideoEditor => "Video Editor",
+            PanelId::DAW => "Audio",
+            PanelId::ParticleEditor => "Particles",
+            PanelId::ParticlePreview => "Particle Preview",
+            PanelId::TextureEditor => "Textures",
             PanelId::Plugin(name) => name,
         }
     }
@@ -114,6 +130,11 @@ impl PanelId {
             PanelId::StudioPreview => VIDEO_CAMERA,
             PanelId::NodeExplorer => TREE_STRUCTURE,
             PanelId::ImagePreview => IMAGE,
+            PanelId::VideoEditor => VIDEO,
+            PanelId::DAW => SPEAKER_HIGH,
+            PanelId::ParticleEditor => SPARKLE,
+            PanelId::ParticlePreview => SPARKLE,
+            PanelId::TextureEditor => PAINT_BUCKET,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }
@@ -541,5 +562,218 @@ mod tests {
         } else {
             panic!("Expected leaf");
         }
+    }
+
+    #[test]
+    fn test_split_at_horizontal() {
+        let mut tree = DockTree::leaf(PanelId::Viewport);
+        let result = tree.split_at(&PanelId::Viewport, PanelId::Inspector, SplitDirection::Horizontal, false);
+        assert!(result);
+        assert!(tree.contains_panel(&PanelId::Viewport));
+        assert!(tree.contains_panel(&PanelId::Inspector));
+        if let DockTree::Split { direction, .. } = &tree {
+            assert_eq!(*direction, SplitDirection::Horizontal);
+        } else {
+            panic!("Expected split");
+        }
+    }
+
+    #[test]
+    fn test_split_at_vertical() {
+        let mut tree = DockTree::leaf(PanelId::Viewport);
+        let result = tree.split_at(&PanelId::Viewport, PanelId::Console, SplitDirection::Vertical, false);
+        assert!(result);
+        if let DockTree::Split { direction, .. } = &tree {
+            assert_eq!(*direction, SplitDirection::Vertical);
+        } else {
+            panic!("Expected split");
+        }
+    }
+
+    #[test]
+    fn test_split_at_insert_first() {
+        let mut tree = DockTree::leaf(PanelId::Viewport);
+        tree.split_at(&PanelId::Viewport, PanelId::Hierarchy, SplitDirection::Horizontal, true);
+        if let DockTree::Split { first, .. } = &tree {
+            assert!(first.contains_panel(&PanelId::Hierarchy));
+        } else {
+            panic!("Expected split");
+        }
+    }
+
+    #[test]
+    fn test_remove_last_tab_becomes_empty() {
+        let mut tree = DockTree::leaf(PanelId::Console);
+        tree.remove_panel(&PanelId::Console);
+        // After removing the only tab, should become Empty
+        assert!(!tree.contains_panel(&PanelId::Console));
+    }
+
+    #[test]
+    fn test_panel_id_title_non_empty() {
+        let panels = [
+            PanelId::Hierarchy, PanelId::Inspector, PanelId::Assets,
+            PanelId::Console, PanelId::Viewport, PanelId::Animation,
+            PanelId::ScriptEditor, PanelId::Blueprint, PanelId::Settings,
+            PanelId::Performance, PanelId::ParticleEditor,
+        ];
+        for panel in &panels {
+            assert!(!panel.title().is_empty(), "{:?} should have a title", panel);
+        }
+    }
+
+    #[test]
+    fn test_panel_id_icon_non_empty() {
+        let panels = [
+            PanelId::Hierarchy, PanelId::Inspector, PanelId::Assets,
+            PanelId::Console, PanelId::Viewport, PanelId::Blueprint,
+        ];
+        for panel in &panels {
+            assert!(!panel.icon().is_empty(), "{:?} should have an icon", panel);
+        }
+    }
+
+    #[test]
+    fn test_viewport_cannot_close() {
+        assert!(!PanelId::Viewport.can_close());
+    }
+
+    #[test]
+    fn test_other_panels_can_close() {
+        let closeable = [
+            PanelId::Console, PanelId::Inspector, PanelId::Assets,
+            PanelId::Hierarchy, PanelId::ScriptEditor,
+        ];
+        for panel in &closeable {
+            assert!(panel.can_close(), "{:?} should be closeable", panel);
+        }
+    }
+
+    #[test]
+    fn test_find_leaf_in_nested_tree() {
+        let tree = DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::horizontal(
+                    DockTree::leaf(PanelId::Console),
+                    DockTree::leaf(PanelId::Inspector),
+                    0.5,
+                ),
+                0.7,
+            ),
+            0.2,
+        );
+        assert!(tree.find_leaf(&PanelId::Console).is_some());
+        assert!(tree.find_leaf(&PanelId::Inspector).is_some());
+        assert!(tree.find_leaf(&PanelId::Settings).is_none());
+    }
+
+    #[test]
+    fn test_contains_panel_absent() {
+        let tree = DockTree::leaf(PanelId::Viewport);
+        assert!(!tree.contains_panel(&PanelId::Settings));
+    }
+
+    #[test]
+    fn test_remove_tab_returns_false_for_absent() {
+        let mut tree = DockTree::leaf(PanelId::Viewport);
+        let result = tree.remove_panel(&PanelId::Settings);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_add_tab_returns_false_for_absent_target() {
+        let mut tree = DockTree::leaf(PanelId::Viewport);
+        let result = tree.add_tab(&PanelId::Settings, PanelId::Console);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_empty_tree_operations() {
+        let mut tree = DockTree::Empty;
+        assert!(!tree.contains_panel(&PanelId::Viewport));
+        assert!(!tree.remove_panel(&PanelId::Viewport));
+        assert!(tree.find_leaf(&PanelId::Viewport).is_none());
+    }
+
+    #[test]
+    fn test_ratio_clamping() {
+        let tree = DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Viewport),
+            0.05, // should be clamped to 0.1
+        );
+        if let DockTree::Split { ratio, .. } = tree {
+            assert!(ratio >= 0.1, "Ratio {} should be >= 0.1", ratio);
+        }
+
+        let tree2 = DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Viewport),
+            0.95, // should be clamped to 0.9
+        );
+        if let DockTree::Split { ratio, .. } = tree2 {
+            assert!(ratio <= 0.9, "Ratio {} should be <= 0.9", ratio);
+        }
+    }
+
+    #[test]
+    fn test_leaf_count() {
+        let tree = DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::leaf(PanelId::Console),
+                0.5,
+            ),
+            0.3,
+        );
+        assert_eq!(tree.leaf_count(), 3);
+    }
+
+    #[test]
+    fn test_all_panels() {
+        let tree = DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::Leaf {
+                tabs: vec![PanelId::Viewport, PanelId::Console],
+                active_tab: 0,
+            },
+            0.3,
+        );
+        let panels = tree.all_panels();
+        assert_eq!(panels.len(), 3);
+        assert!(panels.contains(&PanelId::Hierarchy));
+        assert!(panels.contains(&PanelId::Viewport));
+        assert!(panels.contains(&PanelId::Console));
+    }
+
+    #[test]
+    fn test_set_active_tab() {
+        let mut tree = DockTree::Leaf {
+            tabs: vec![PanelId::Viewport, PanelId::Console, PanelId::Assets],
+            active_tab: 0,
+        };
+        tree.set_active_tab(&PanelId::Console);
+        if let DockTree::Leaf { active_tab, .. } = tree {
+            assert_eq!(active_tab, 1);
+        }
+    }
+
+    #[test]
+    fn test_plugin_panel_id() {
+        let panel = PanelId::Plugin("My Plugin".into());
+        assert_eq!(panel.title(), "My Plugin");
+        assert!(panel.can_close());
+    }
+
+    #[test]
+    fn test_drop_zone_to_split_params() {
+        assert!(DropZone::Tab.to_split_params().is_none());
+        assert_eq!(DropZone::Left.to_split_params(), Some((SplitDirection::Horizontal, true)));
+        assert_eq!(DropZone::Right.to_split_params(), Some((SplitDirection::Horizontal, false)));
+        assert_eq!(DropZone::Top.to_split_params(), Some((SplitDirection::Vertical, true)));
+        assert_eq!(DropZone::Bottom.to_split_params(), Some((SplitDirection::Vertical, false)));
     }
 }

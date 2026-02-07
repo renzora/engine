@@ -11,6 +11,8 @@ mod export;
 mod gizmo;
 mod gltf_animation;
 mod input;
+mod meshlet;
+mod particles;
 mod play_mode;
 mod plugin_core;
 mod project;
@@ -33,6 +35,10 @@ use bevy::render::{
     settings::{RenderCreation, WgpuSettings},
     RenderPlugin,
 };
+use bevy::solari::SolariPlugins;
+use bevy::pbr::experimental::meshlet::MeshletPlugin;
+use bevy::anti_alias::dlss::DlssProjectId;
+use bevy::asset::uuid::Uuid;
 use bevy::window::{WindowMode, WindowResizeConstraints};
 use bevy::winit::WinitWindows;
 use bevy_egui::EguiPrimaryContextPass;
@@ -90,6 +96,9 @@ fn main() {
     }
 
     App::new()
+        // DLSS requires a project ID before plugin initialization
+        // Use a fixed UUID for Renzora Engine (generated once, kept consistent)
+        .insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)))
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -122,6 +131,8 @@ fn main() {
                 })
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
+        .add_plugins(SolariPlugins)
+        .add_plugins(MeshletPlugin { cluster_buffer_slots: 8192 })
         .add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
         .add_plugins(bevy_mod_outline::OutlinePlugin)
         // Register types for Bevy's scene system
@@ -154,12 +165,27 @@ fn main() {
         .register_type::<shared::PointLightData>()
         .register_type::<shared::DirectionalLightData>()
         .register_type::<shared::SpotLightData>()
+        .register_type::<shared::SolariLightingData>()
+        .register_type::<shared::DlssQualityMode>()
+        .register_type::<shared::SunData>()
         // Environment components
         .register_type::<shared::WorldEnvironmentData>()
         .register_type::<shared::SkyMode>()
         .register_type::<shared::ProceduralSkyData>()
         .register_type::<shared::PanoramaSkyData>()
         .register_type::<shared::TonemappingMode>()
+        // Post-processing components
+        .register_type::<shared::SkyboxData>()
+        .register_type::<shared::FogData>()
+        .register_type::<shared::AntiAliasingData>()
+        .register_type::<shared::AmbientOcclusionData>()
+        .register_type::<shared::ReflectionsData>()
+        .register_type::<shared::BloomData>()
+        .register_type::<shared::TonemappingData>()
+        .register_type::<shared::DepthOfFieldData>()
+        .register_type::<shared::MotionBlurData>()
+        .register_type::<shared::AmbientLightData>()
+        .register_type::<shared::CloudsData>()
         // Core components
         .register_type::<core::EditorEntity>()
         .register_type::<core::SceneNode>()
@@ -174,6 +200,8 @@ fn main() {
         .register_type::<scripting::ScriptValue>()
         // Scene metadata (editor-only, stripped during export)
         .register_type::<scene::EditorSceneMetadata>()
+        // Meshlet components
+        .register_type::<shared::MeshletMeshData>()
         // Generic types used by components
         .register_type::<Option<String>>()
         .register_type::<std::path::PathBuf>()
@@ -187,6 +215,7 @@ fn main() {
             component_system::ComponentSystemPlugin,
             viewport::ViewportPlugin,
             viewport::StudioPreviewPlugin,
+            viewport::ParticlePreviewPlugin,
             gizmo::GizmoPlugin,
             input::InputPlugin,
             ui::UiPlugin,
@@ -205,6 +234,10 @@ fn main() {
             update::UpdatePlugin,
             // GLTF animation playback
             gltf_animation::GltfAnimationPlugin,
+            // GPU particle effects (Hanabi)
+            particles::ParticlesPlugin,
+            // Meshlet/Virtual Geometry integration
+            meshlet::MeshletIntegrationPlugin,
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)
@@ -233,6 +266,12 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             ui::editor_ui,
+        )
+        // Inspector content exclusive system (renders inspector panel content with World access)
+        // Must run after editor_ui to get the panel rect
+        .add_systems(
+            EguiPrimaryContextPass,
+            ui::inspector_content_exclusive.after(ui::editor_ui),
         )
         // Thumbnail loading system - loads and registers asset preview thumbnails
         .add_systems(
@@ -330,6 +369,7 @@ fn main() {
                 input::handle_asset_panel_drop,
                 input::handle_image_panel_drop,
                 input::handle_material_panel_drop,
+                input::handle_pending_skybox_drop,
                 input::apply_material_data,
                 input::handle_scene_hierarchy_drop,
                 input::spawn_loaded_gltfs,
@@ -350,9 +390,17 @@ fn main() {
                 scene::rehydrate_point_lights,
                 scene::rehydrate_directional_lights,
                 scene::rehydrate_spot_lights,
+                scene::rehydrate_sun_lights,
                 scene::rehydrate_terrain_chunks,
                 scene::apply_terrain_materials,
                 scene::rebuild_children_from_child_of,
+                scene::rehydrate_cameras_3d,
+                scene::rehydrate_camera_rigs,
+                scene::rehydrate_cameras_2d,
+                // RaytracingMesh3d is now managed by sync_rendering_settings in viewport/mod.rs
+                // based on whether Solari lighting is enabled in the scene
+                // Ensure meshes have UVs and tangents for Solari (when enabled)
+                scene::prepare_meshes_for_solari,
             )
                 .run_if(in_state(AppState::Editor)),
         )
@@ -396,6 +444,7 @@ fn main() {
 fn setup_splash_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             ..default()

@@ -10,6 +10,9 @@ mod builtin_scripts;
 pub mod resources;
 pub mod systems;
 
+#[cfg(test)]
+mod tests;
+
 pub use api::*;
 pub use component::*;
 pub use registry::*;
@@ -68,6 +71,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ActiveTweens>()
             .init_resource::<SpriteAnimationCommandQueue>()
             .init_resource::<HealthCommandQueue>()
+            .init_resource::<ParticleScriptCommandQueue>()
             // Configure system set ordering
             .configure_sets(
                 Update,
@@ -125,6 +129,7 @@ impl Plugin for ScriptingPlugin {
                     process_sprite_animation_commands,
                     update_sprite_animations,
                     process_health_commands,
+                    process_particle_script_commands,
                 )
                     .in_set(ScriptingSet::CommandProcessing),
             )
@@ -264,6 +269,7 @@ impl Plugin for RuntimeScriptingPlugin {
             .init_resource::<ActiveTweens>()
             .init_resource::<SpriteAnimationCommandQueue>()
             .init_resource::<HealthCommandQueue>()
+            .init_resource::<ParticleScriptCommandQueue>()
             // Configure system set ordering (no run_if conditions - always runs)
             .configure_sets(
                 Update,
@@ -310,6 +316,7 @@ impl Plugin for RuntimeScriptingPlugin {
                     process_sprite_animation_commands,
                     update_sprite_animations,
                     process_health_commands,
+                    process_particle_script_commands,
                 ).in_set(RuntimeScriptingSet::CommandProcessing),
             )
             // Debug draw

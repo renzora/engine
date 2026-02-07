@@ -3,6 +3,7 @@ use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 
+use crate::console_info;
 use crate::core::{MainCamera, ViewportState};
 
 use super::ViewportImage;
@@ -15,18 +16,29 @@ pub struct ViewportTextureSize {
 }
 
 pub fn setup_viewport_texture(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    console_info!("Viewport", "=== SETUP VIEWPORT TEXTURE ===");
+
     let size = Extent3d {
         width: 1050,
         height: 881,
         depth_or_array_layers: 1,
     };
 
+    console_info!("Viewport", "Initial size: {}x{}", size.width, size.height);
+    console_info!("Viewport", "Format: Bgra8UnormSrgb (standard sRGB for non-Solari)");
+    console_info!("Viewport", "Usage: TEXTURE_BINDING | COPY_DST | RENDER_ATTACHMENT");
+    console_info!("Viewport", "NOTE: Solari will switch to Rgba16Float + STORAGE_BINDING when enabled");
+
+    // Use standard sRGB format for normal rendering
+    // Solari requires Rgba16Float + STORAGE_BINDING, but that breaks standard rendering
+    // when Solari isn't active. Start with standard format - Solari will work but
+    // may need the viewport texture recreated if HDR is needed.
     let mut image = Image {
         texture_descriptor: TextureDescriptor {
             label: Some("viewport_texture"),
             size,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8UnormSrgb,
+            format: TextureFormat::Bgra8UnormSrgb, // Standard sRGB format
             mip_level_count: 1,
             sample_count: 1,
             usage: TextureUsages::TEXTURE_BINDING
@@ -44,6 +56,8 @@ pub fn setup_viewport_texture(mut commands: Commands, mut images: ResMut<Assets<
         width: size.width,
         height: size.height,
     });
+
+    console_info!("Viewport", "=== VIEWPORT TEXTURE READY ===");
 }
 
 /// System to resize the viewport texture when the UI viewport size changes

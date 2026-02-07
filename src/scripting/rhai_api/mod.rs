@@ -16,6 +16,7 @@ mod animation;
 mod camera;
 mod components;
 mod scene;
+mod particles;
 
 use rhai::Engine;
 
@@ -35,4 +36,5 @@ pub fn register_all(engine: &mut Engine) {
     camera::register(engine);
     components::register(engine);
     scene::register(engine);
+    particles::register(engine);
 }

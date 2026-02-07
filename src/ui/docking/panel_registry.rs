@@ -100,6 +100,11 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::StudioPreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
         PanelId::NodeExplorer => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::ImagePreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
+        PanelId::VideoEditor => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
+        PanelId::DAW => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
+        PanelId::ParticleEditor => PanelConstraints::default().with_min_width(350.0).with_min_height(400.0),
+        PanelId::ParticlePreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
+        PanelId::TextureEditor => PanelConstraints::default().with_min_width(350.0).with_min_height(350.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -133,6 +138,11 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::StudioPreview,
         PanelId::NodeExplorer,
         PanelId::ImagePreview,
+        PanelId::VideoEditor,
+        PanelId::DAW,
+        PanelId::ParticleEditor,
+        PanelId::ParticlePreview,
+        PanelId::TextureEditor,
     ]
 }
 

@@ -15,6 +15,10 @@ pub struct AddComponentPopupState {
     pub is_open: bool,
     pub search_text: String,
     pub selected_category: Option<ComponentCategory>,
+    /// Pending component addition (entity, type_id) - processed next frame
+    pub pending_add: Option<(Entity, &'static str)>,
+    /// Pending component removal (entity, type_id) - processed next frame
+    pub pending_remove: Option<(Entity, &'static str)>,
 }
 
 /// Render the "Add Component" button and popup
@@ -226,6 +230,10 @@ pub fn get_category_style(category: ComponentCategory) -> (Color32, Color32) {
         ComponentCategory::Effects => (
             Color32::from_rgb(255, 180, 220),  // Pink/magenta
             Color32::from_rgb(50, 38, 45),
+        ),
+        ComponentCategory::PostProcess => (
+            Color32::from_rgb(130, 200, 160),  // Teal-green
+            Color32::from_rgb(35, 48, 45),
         ),
         ComponentCategory::Gameplay => (
             Color32::from_rgb(255, 150, 150),  // Red/coral

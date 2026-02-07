@@ -184,6 +184,7 @@ pub fn setup_splash_scene(mut commands: Commands, mut images: ResMut<Assets<Imag
     // Spawn the splash scene camera
     commands.spawn((
         Camera3d::default(),
+        Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.02, 0.02, 0.04)),
             order: -10, // Render before everything

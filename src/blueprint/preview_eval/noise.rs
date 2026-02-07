@@ -108,6 +108,116 @@ pub fn evaluate(
             Some(PinValue::Float(noise))
         }
 
+        // Brick pattern
+        "shader/brick" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let brick_width = get_pin_value(graph, node, "brick_width").and_then(as_float).unwrap_or(0.5);
+            let brick_height = get_pin_value(graph, node, "brick_height").and_then(as_float).unwrap_or(0.25);
+            let mortar_size = get_pin_value(graph, node, "mortar_size").and_then(as_float).unwrap_or(0.05);
+
+            let row = if brick_height > 0.0 { (uv[1] / brick_height).floor() } else { 0.0 };
+            let offset = if (row as i32) % 2 == 1 { 0.5 } else { 0.0 };
+            let brick_x = if brick_width > 0.0 { (uv[0] / brick_width + offset).fract() } else { 0.0 };
+            let brick_y = if brick_height > 0.0 { (uv[1] / brick_height).fract() } else { 0.0 };
+
+            let is_brick = if brick_x >= mortar_size && brick_x <= 1.0 - mortar_size
+                && brick_y >= mortar_size && brick_y <= 1.0 - mortar_size
+            {
+                1.0
+            } else {
+                0.0
+            };
+
+            match output_pin {
+                "brick" => Some(PinValue::Float(is_brick)),
+                "mortar" => Some(PinValue::Float(1.0 - is_brick)),
+                _ => Some(PinValue::Float(is_brick)),
+            }
+        }
+
+        // Sine wave pattern
+        "shader/wave_sine" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let frequency = get_pin_value(graph, node, "frequency").and_then(as_float).unwrap_or(5.0);
+            let amplitude = get_pin_value(graph, node, "amplitude").and_then(as_float).unwrap_or(1.0);
+            let phase = get_pin_value(graph, node, "phase").and_then(as_float).unwrap_or(0.0);
+
+            let value = (uv[0] * frequency + phase).sin() * amplitude * 0.5 + 0.5;
+            Some(PinValue::Float(value.clamp(0.0, 1.0)))
+        }
+
+        // Square wave pattern
+        "shader/wave_square" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let frequency = get_pin_value(graph, node, "frequency").and_then(as_float).unwrap_or(5.0);
+            let duty = get_pin_value(graph, node, "duty_cycle").and_then(as_float).unwrap_or(0.5);
+
+            let t = (uv[0] * frequency).fract();
+            let value = if t < duty { 1.0 } else { 0.0 };
+            Some(PinValue::Float(value))
+        }
+
+        // Sawtooth wave pattern
+        "shader/wave_sawtooth" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let frequency = get_pin_value(graph, node, "frequency").and_then(as_float).unwrap_or(5.0);
+
+            let value = (uv[0] * frequency).fract();
+            Some(PinValue::Float(value))
+        }
+
+        // Radial gradient
+        "shader/radial_gradient" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let center = get_pin_value(graph, node, "center").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let radius = get_pin_value(graph, node, "radius").and_then(as_float).unwrap_or(0.5);
+
+            let dx = uv[0] - center[0];
+            let dy = uv[1] - center[1];
+            let dist = (dx * dx + dy * dy).sqrt();
+            let value = if radius > 0.0 { (dist / radius).clamp(0.0, 1.0) } else { 1.0 };
+            Some(PinValue::Float(value))
+        }
+
+        // Spiral pattern
+        "shader/spiral" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let arms = get_pin_value(graph, node, "arms").and_then(as_float).unwrap_or(1.0);
+            let tightness = get_pin_value(graph, node, "tightness").and_then(as_float).unwrap_or(5.0);
+
+            let dx = uv[0] - 0.5;
+            let dy = uv[1] - 0.5;
+            let angle = dy.atan2(dx);
+            let dist = (dx * dx + dy * dy).sqrt();
+            let value = ((angle * arms + dist * tightness) / std::f32::consts::TAU).fract();
+            Some(PinValue::Float(value))
+        }
+
+        // SDF Circle
+        "shader/sdf_circle" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let center = get_pin_value(graph, node, "center").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let radius = get_pin_value(graph, node, "radius").and_then(as_float).unwrap_or(0.25);
+
+            let dx = uv[0] - center[0];
+            let dy = uv[1] - center[1];
+            let dist = (dx * dx + dy * dy).sqrt() - radius;
+            Some(PinValue::Float(dist))
+        }
+
+        // SDF Box
+        "shader/sdf_box" => {
+            let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let center = get_pin_value(graph, node, "center").and_then(as_vec2).unwrap_or([0.5, 0.5]);
+            let size = get_pin_value(graph, node, "size").and_then(as_vec2).unwrap_or([0.25, 0.25]);
+
+            let dx = (uv[0] - center[0]).abs() - size[0];
+            let dy = (uv[1] - center[1]).abs() - size[1];
+            let outside = (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt();
+            let inside = dx.max(dy).min(0.0);
+            Some(PinValue::Float(outside + inside))
+        }
+
         // Domain warp
         "shader/domain_warp" => {
             let uv = get_pin_value(graph, node, "uv").and_then(as_vec2).unwrap_or([0.5, 0.5]);

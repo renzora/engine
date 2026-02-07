@@ -1410,6 +1410,85 @@ impl RhaiScriptEngine {
                     ctx.commands.push(RhaiCommand::TweenScale { entity_id, target: Vec3::new(x, y, z), duration, easing });
                 }
 
+                // Particle commands
+                "particle_play" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    ctx.commands.push(RhaiCommand::ParticlePlay { entity_id });
+                }
+                "particle_pause" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    ctx.commands.push(RhaiCommand::ParticlePause { entity_id });
+                }
+                "particle_stop" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    ctx.commands.push(RhaiCommand::ParticleStop { entity_id });
+                }
+                "particle_reset" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    ctx.commands.push(RhaiCommand::ParticleReset { entity_id });
+                }
+                "particle_burst" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let count = cmd_map.get("count").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(10) as u32;
+                    ctx.commands.push(RhaiCommand::ParticleBurst { entity_id, count });
+                }
+                "particle_set_rate" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let multiplier = cmd_map.get("multiplier").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    ctx.commands.push(RhaiCommand::ParticleSetRate { entity_id, multiplier });
+                }
+                "particle_set_scale" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let multiplier = cmd_map.get("multiplier").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    ctx.commands.push(RhaiCommand::ParticleSetScale { entity_id, multiplier });
+                }
+                "particle_set_time_scale" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let scale = cmd_map.get("scale").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    ctx.commands.push(RhaiCommand::ParticleSetTimeScale { entity_id, scale });
+                }
+                "particle_set_tint" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                    ctx.commands.push(RhaiCommand::ParticleSetTint { entity_id, r, g, b, a });
+                }
+                "particle_set_variable" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
+                    let var_type = cmd_map.get("var_type").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "float".to_string());
+                    match var_type.as_str() {
+                        "float" => {
+                            let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                            ctx.commands.push(RhaiCommand::ParticleSetVariableFloat { entity_id, name, value });
+                        }
+                        "color" => {
+                            let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                            let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                            let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                            let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+                            ctx.commands.push(RhaiCommand::ParticleSetVariableColor { entity_id, name, r, g, b, a });
+                        }
+                        "vec3" => {
+                            let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                            let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                            let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                            ctx.commands.push(RhaiCommand::ParticleSetVariableVec3 { entity_id, name, x, y, z });
+                        }
+                        _ => {}
+                    }
+                }
+                "particle_emit_at" => {
+                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
+                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+                    let count = cmd_map.get("count").and_then(|v| v.clone().try_cast::<i64>()).map(|c| c as u32);
+                    ctx.commands.push(RhaiCommand::ParticleEmitAt { entity_id, x, y, z, count });
+                }
+
                 _ => {}
             }
         }

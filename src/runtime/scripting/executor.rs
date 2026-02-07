@@ -226,6 +226,7 @@ fn process_command(
             let material = materials.add(StandardMaterial::default());
             let pos = position.unwrap_or(Vec3::ZERO);
 
+            // Note: RaytracingMesh3d is managed by sync_rendering_settings based on Solari state
             commands.spawn((
                 Mesh3d(mesh),
                 MeshMaterial3d(material),

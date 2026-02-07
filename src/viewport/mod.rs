@@ -5,6 +5,7 @@ mod camera_preview;
 pub mod camera2d;
 pub mod grid2d;
 pub mod model_preview;
+pub mod particle_preview;
 pub mod render_2d;
 pub mod studio_preview;
 mod texture;
@@ -26,14 +27,27 @@ pub use studio_preview::{
     StudioPreviewImage, StudioPreviewOrbit, StudioPreviewCamera, StudioPreviewLight,
     StudioPreviewPlugin, STUDIO_RENDER_LAYER,
 };
-pub use texture::{resize_viewport_texture, setup_viewport_texture};
+pub use particle_preview::{
+    ParticlePreviewImage, ParticlePreviewOrbit, ParticlePreviewCamera,
+    ParticlePreviewPlugin, PARTICLE_PREVIEW_LAYER,
+};
+pub use texture::{resize_viewport_texture, setup_viewport_texture, ViewportTextureSize};
 
 use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
+use bevy::solari::realtime::SolariLighting;
+use bevy::solari::scene::RaytracingMesh3d;
+use bevy::anti_alias::dlss::{Dlss, DlssRayReconstructionFeature};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
-use crate::core::{AppState, DockingState, EditorSettings, RenderToggles, SelectionState, ViewportState, VisualizationMode};
+use crate::component_system::components::clouds::CloudDomeMarker;
+use crate::console_info;
+use crate::core::{AppState, DockingState, EditorSettings, MainCamera, RenderToggles, SelectionState, ViewportState, VisualizationMode};
+use crate::gizmo::meshes::GizmoMesh;
+use crate::shared::{DlssQualityMode, SolariLightingData};
 use crate::spawn::{EditorSceneRoot, SceneType};
+use crate::ui::docking::PanelId;
 use crate::shared::{
     Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
     MeshNodeData, PhysicsBodyData, Sprite2DData, UIButtonData, UIImageData, UILabelData,
@@ -115,6 +129,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<LastRenderState>()
             .init_resource::<Camera2DState>()
             .init_resource::<ModelPreviewCache>()
+            .init_resource::<SolariState>()
             .add_systems(Startup, (setup_viewport_texture, setup_camera_preview_texture))
             .add_systems(
                 Update,
@@ -122,7 +137,7 @@ impl Plugin for ViewportPlugin {
             )
             .add_systems(
                 Update,
-                (auto_switch_viewport_mode, sync_layout_camera_settings).run_if(in_state(AppState::Editor)),
+                (auto_switch_viewport_mode, sync_layout_camera_settings, sync_rendering_settings, sync_camera_activity).run_if(in_state(AppState::Editor)),
             )
             // Model preview systems for asset browser thumbnails
             .add_systems(
@@ -456,6 +471,319 @@ fn restore_material_states(
             material.alpha_mode = state.alpha_mode;
             material.metallic = state.metallic;
             material.perceptual_roughness = state.perceptual_roughness;
+        }
+    }
+}
+
+/// Resource to track whether Solari is currently active
+#[derive(Resource, Default)]
+pub struct SolariState {
+    pub enabled: bool,
+}
+
+/// System to sync SolariLightingData component to the main camera
+/// Handles:
+/// - Adding/removing SolariLighting and DLSS components on camera
+/// - Adding/removing RaytracingMesh3d on all meshes
+/// - Switching viewport texture format (Bgra8UnormSrgb <-> Rgba16Float)
+/// - Adding/removing Solari-specific camera settings (Hdr, CameraMainTextureUsages)
+fn sync_rendering_settings(
+    mut commands: Commands,
+    solari_query: Query<&SolariLightingData, Or<(Changed<SolariLightingData>, Changed<crate::core::DisabledComponents>)>>,
+    solari_all: Query<(&SolariLightingData, Option<&crate::core::DisabledComponents>)>,
+    camera_query: Query<
+        (Entity, Option<&SolariLighting>, Option<&Dlss<DlssRayReconstructionFeature>>),
+        With<MainCamera>,
+    >,
+    // Meshes that need RaytracingMesh3d added (when enabling Solari)
+    meshes_without_rt: Query<(Entity, &Mesh3d), (Without<RaytracingMesh3d>, Without<GizmoMesh>, Without<CloudDomeMarker>)>,
+    // Meshes that have RaytracingMesh3d (when disabling Solari)
+    meshes_with_rt: Query<Entity, With<RaytracingMesh3d>>,
+    mut solari_state: ResMut<SolariState>,
+    // For texture format switching
+    viewport_image: Res<ViewportImage>,
+    mut images: ResMut<Assets<Image>>,
+    texture_size: Res<texture::ViewportTextureSize>,
+    // Track if we need to check for new meshes
+    new_meshes: Query<Entity, Added<Mesh3d>>,
+    mut logged_startup: Local<bool>,
+) {
+    use bevy::render::render_resource::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
+    use bevy::camera::CameraMainTextureUsages;
+    use bevy::render::view::Hdr;
+
+    // Log startup state once
+    if !*logged_startup {
+        console_info!("Solari", "=== RENDERING SETTINGS SYNC INITIALIZED ===");
+        let solari_data_count = solari_all.iter().count();
+        let enabled_count = solari_all.iter().filter(|(s, dc)| s.enabled && !dc.map_or(false, |d| d.is_disabled("solari_lighting"))).count();
+        let mesh_count = meshes_without_rt.iter().count() + meshes_with_rt.iter().count();
+        console_info!("Solari", "SolariLightingData entities: {} (enabled: {})", solari_data_count, enabled_count);
+        console_info!("Solari", "Total meshes in scene: {}", mesh_count);
+        console_info!("Solari", "Meshes with RaytracingMesh3d: {}", meshes_with_rt.iter().count());
+        console_info!("Solari", "Meshes without RaytracingMesh3d: {}", meshes_without_rt.iter().count());
+        console_info!("Solari", "Current Solari state: {}", solari_state.enabled);
+        if let Some(image) = images.get(&viewport_image.0) {
+            console_info!("Solari", "Viewport texture format: {:?}", image.texture_descriptor.format);
+            console_info!("Solari", "Viewport texture usage: {:?}", image.texture_descriptor.usage);
+        }
+        *logged_startup = true;
+    }
+
+    // Early out: if no SolariLightingData changed and no new meshes, skip most work
+    let has_changes = !solari_query.is_empty();
+    let has_new_meshes = !new_meshes.is_empty();
+
+    // Log new meshes
+    if has_new_meshes {
+        let new_mesh_count = new_meshes.iter().count();
+        console_info!("Solari", "Detected {} new Mesh3d entities", new_mesh_count);
+    }
+
+    // If nothing changed and Solari is disabled, skip entirely
+    if !has_changes && !has_new_meshes && !solari_state.enabled {
+        return;
+    }
+
+    let Ok((camera_entity, has_solari, has_dlss)) = camera_query.single() else {
+        console_info!("Solari", "WARNING: No MainCamera found!");
+        return;
+    };
+
+    // Find the first enabled SolariLightingData in the scene
+    // A component is considered disabled if it's in DisabledComponents or if .enabled is false
+    let active_settings = solari_all.iter().find(|(s, dc)| {
+        s.enabled && !dc.map_or(false, |d| d.is_disabled("solari_lighting"))
+    }).map(|(s, _)| s);
+    let should_enable = active_settings.is_some();
+
+    // Track state changes
+    let state_changed = solari_state.enabled != should_enable;
+
+    if has_changes && state_changed {
+        console_info!("Solari", "SolariLightingData changed:");
+        console_info!("Solari", "  should_enable={} state_changed={}", should_enable, state_changed);
+        console_info!("Solari", "  camera has SolariLighting: {}", has_solari.is_some());
+        console_info!("Solari", "  camera has DLSS: {}", has_dlss.is_some());
+    }
+
+    match active_settings {
+        Some(settings) => {
+            // Solari should be enabled
+            if state_changed {
+                console_info!("Solari", "=== ENABLING SOLARI RAYTRACED LIGHTING ===");
+                console_info!("Solari", "DLSS settings: enabled={} quality={:?}", settings.dlss_enabled, settings.dlss_quality);
+
+                // Switch viewport texture to HDR format for Solari
+                if let Some(image) = images.get_mut(&viewport_image.0) {
+                    let old_format = image.texture_descriptor.format;
+                    let old_usage = image.texture_descriptor.usage;
+
+                    let size = Extent3d {
+                        width: texture_size.width.max(1),
+                        height: texture_size.height.max(1),
+                        depth_or_array_layers: 1,
+                    };
+
+                    *image = Image {
+                        texture_descriptor: TextureDescriptor {
+                            label: Some("viewport_texture"),
+                            size,
+                            dimension: TextureDimension::D2,
+                            format: TextureFormat::Rgba16Float, // HDR format for Solari
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            usage: TextureUsages::TEXTURE_BINDING
+                                | TextureUsages::COPY_DST
+                                | TextureUsages::RENDER_ATTACHMENT
+                                | TextureUsages::STORAGE_BINDING, // Required for Solari
+                            view_formats: &[],
+                        },
+                        ..default()
+                    };
+                    image.resize(size);
+                    console_info!("Solari", "Viewport texture format: {:?} -> Rgba16Float", old_format);
+                    console_info!("Solari", "Viewport texture usage: {:?} -> TEXTURE_BINDING | COPY_DST | RENDER_ATTACHMENT | STORAGE_BINDING", old_usage);
+                    console_info!("Solari", "Viewport texture size: {}x{}", size.width, size.height);
+                }
+
+                // Add Solari-specific camera components
+                console_info!("Solari", "Adding camera components: SolariLighting, Hdr, CameraMainTextureUsages");
+                commands.entity(camera_entity).insert((
+                    SolariLighting::default(),
+                    Hdr, // HDR for raytracing
+                    CameraMainTextureUsages(
+                        TextureUsages::RENDER_ATTACHMENT
+                        | TextureUsages::TEXTURE_BINDING
+                        | TextureUsages::STORAGE_BINDING
+                    ),
+                ));
+
+                // Add RaytracingMesh3d to all existing meshes
+                let mut count = 0;
+                for (entity, mesh3d) in meshes_without_rt.iter() {
+                    commands.entity(entity).insert(RaytracingMesh3d(mesh3d.0.clone()));
+                    count += 1;
+                }
+                console_info!("Solari", "Added RaytracingMesh3d to {} meshes", count);
+                console_info!("Solari", "=== SOLARI ENABLED ===");
+            } else if has_new_meshes && solari_state.enabled {
+                // Solari already enabled, just add RaytracingMesh3d to new meshes
+                let mut count = 0;
+                for (entity, mesh3d) in meshes_without_rt.iter() {
+                    commands.entity(entity).insert(RaytracingMesh3d(mesh3d.0.clone()));
+                    count += 1;
+                }
+                if count > 0 {
+                    console_info!("Solari", "Added RaytracingMesh3d to {} new meshes (Solari already active)", count);
+                }
+            }
+
+            // Handle DLSS (only check when SolariLightingData changed)
+            if has_changes {
+                if settings.dlss_enabled {
+                    let dlss_quality = match settings.dlss_quality {
+                        DlssQualityMode::Auto => bevy::anti_alias::dlss::DlssPerfQualityMode::Auto,
+                        DlssQualityMode::Dlaa => bevy::anti_alias::dlss::DlssPerfQualityMode::Dlaa,
+                        DlssQualityMode::Quality => bevy::anti_alias::dlss::DlssPerfQualityMode::Quality,
+                        DlssQualityMode::Balanced => bevy::anti_alias::dlss::DlssPerfQualityMode::Balanced,
+                        DlssQualityMode::Performance => bevy::anti_alias::dlss::DlssPerfQualityMode::Performance,
+                        DlssQualityMode::UltraPerformance => bevy::anti_alias::dlss::DlssPerfQualityMode::UltraPerformance,
+                    };
+
+                    if has_dlss.is_none() {
+                        console_info!("Solari", "Enabling DLSS Ray Reconstruction: quality={:?}", dlss_quality);
+                        commands.entity(camera_entity).insert(Dlss::<DlssRayReconstructionFeature> {
+                            perf_quality_mode: dlss_quality,
+                            reset: false,
+                            _phantom_data: PhantomData,
+                        });
+                    }
+                } else if has_dlss.is_some() {
+                    console_info!("Solari", "Disabling DLSS Ray Reconstruction");
+                    commands.entity(camera_entity).remove::<Dlss<DlssRayReconstructionFeature>>();
+                }
+            }
+
+            solari_state.enabled = true;
+        }
+        None => {
+            // No enabled SolariLightingData - disable Solari
+            if state_changed && solari_state.enabled {
+                console_info!("Solari", "=== DISABLING SOLARI RAYTRACED LIGHTING ===");
+
+                // Switch viewport texture back to standard sRGB format
+                if let Some(image) = images.get_mut(&viewport_image.0) {
+                    let old_format = image.texture_descriptor.format;
+                    let old_usage = image.texture_descriptor.usage;
+
+                    let size = Extent3d {
+                        width: texture_size.width.max(1),
+                        height: texture_size.height.max(1),
+                        depth_or_array_layers: 1,
+                    };
+
+                    *image = Image {
+                        texture_descriptor: TextureDescriptor {
+                            label: Some("viewport_texture"),
+                            size,
+                            dimension: TextureDimension::D2,
+                            format: TextureFormat::Bgra8UnormSrgb, // Standard sRGB format
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            usage: TextureUsages::TEXTURE_BINDING
+                                | TextureUsages::COPY_DST
+                                | TextureUsages::RENDER_ATTACHMENT,
+                            view_formats: &[],
+                        },
+                        ..default()
+                    };
+                    image.resize(size);
+                    console_info!("Solari", "Viewport texture format: {:?} -> Bgra8UnormSrgb", old_format);
+                    console_info!("Solari", "Viewport texture usage: {:?} -> TEXTURE_BINDING | COPY_DST | RENDER_ATTACHMENT", old_usage);
+                    console_info!("Solari", "Viewport texture size: {}x{}", size.width, size.height);
+                }
+
+                // Remove Solari-specific camera components
+                console_info!("Solari", "Removing camera components: SolariLighting, Hdr, CameraMainTextureUsages, DLSS");
+                commands.entity(camera_entity)
+                    .remove::<SolariLighting>()
+                    .remove::<Dlss<DlssRayReconstructionFeature>>()
+                    .remove::<Hdr>()
+                    .remove::<CameraMainTextureUsages>();
+
+                // Remove RaytracingMesh3d from all meshes
+                let mut count = 0;
+                for entity in meshes_with_rt.iter() {
+                    commands.entity(entity).remove::<RaytracingMesh3d>();
+                    count += 1;
+                }
+                console_info!("Solari", "Removed RaytracingMesh3d from {} meshes", count);
+                console_info!("Solari", "=== SOLARI DISABLED (STANDARD RENDERING) ===");
+            }
+
+            solari_state.enabled = false;
+        }
+    }
+}
+
+/// Debug system to log Solari state - runs once per second
+fn debug_solari_state(
+    time: Res<Time>,
+    mut last_log: Local<f32>,
+    cameras_with_solari: Query<Entity, (With<Camera3d>, With<SolariLighting>)>,
+    cameras_without_solari: Query<Entity, (With<Camera3d>, Without<SolariLighting>)>,
+    solari_data: Query<&SolariLightingData>,
+    solari_state: Res<SolariState>,
+) {
+    // Only log once per second
+    let elapsed = time.elapsed_secs();
+    if elapsed - *last_log < 1.0 {
+        return;
+    }
+    *last_log = elapsed;
+
+    let with_count = cameras_with_solari.iter().count();
+    let without_count = cameras_without_solari.iter().count();
+    let data_count = solari_data.iter().count();
+    let enabled_data_count = solari_data.iter().filter(|d| d.enabled).count();
+
+    console_info!(
+        "Solari",
+        "cameras_with_SolariLighting={}, cameras_without={}, SolariLightingData={} (enabled={}), state={}",
+        with_count, without_count, data_count, enabled_data_count, solari_state.enabled
+    );
+}
+
+/// System to enable/disable cameras based on whether their panels are visible.
+/// This prevents rendering to textures that aren't being displayed, improving performance.
+fn sync_camera_activity(
+    docking: Res<DockingState>,
+    mut main_cameras: Query<&mut Camera, With<MainCamera>>,
+    mut studio_cameras: Query<&mut Camera, (With<StudioPreviewCamera>, Without<MainCamera>, Without<ParticlePreviewCamera>)>,
+    mut particle_cameras: Query<&mut Camera, (With<ParticlePreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>)>,
+) {
+    // Main viewport camera - always active if Viewport panel is visible
+    let viewport_visible = docking.is_panel_visible(&PanelId::Viewport);
+    for mut camera in main_cameras.iter_mut() {
+        if camera.is_active != viewport_visible {
+            camera.is_active = viewport_visible;
+        }
+    }
+
+    // Studio preview camera - only active if StudioPreview panel is visible
+    let studio_visible = docking.is_panel_visible(&PanelId::StudioPreview);
+    for mut camera in studio_cameras.iter_mut() {
+        if camera.is_active != studio_visible {
+            camera.is_active = studio_visible;
+        }
+    }
+
+    // Particle preview camera - only active if ParticlePreview panel is visible
+    let particle_visible = docking.is_panel_visible(&PanelId::ParticlePreview);
+    for mut camera in particle_cameras.iter_mut() {
+        if camera.is_active != particle_visible {
+            camera.is_active = particle_visible;
         }
     }
 }

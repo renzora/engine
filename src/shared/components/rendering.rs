@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Data component for mesh nodes - stores the mesh type so it can be serialized
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
 pub struct MeshNodeData {
     pub mesh_type: MeshPrimitiveType,
@@ -238,6 +238,135 @@ impl Default for SpotLightData {
             inner_angle: 0.3,
             outer_angle: 0.5,
             shadows_enabled: true,
+        }
+    }
+}
+
+// =============================================================================
+// Sun Data
+// =============================================================================
+
+/// Data component for a sun light — a directional light positioned by azimuth/elevation angles.
+/// Automatically orients a DirectionalLight based on the angular position.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct SunData {
+    /// Azimuth angle in degrees (0-360, compass direction of the sun)
+    pub azimuth: f32,
+    /// Elevation angle in degrees (-90 to 90, height above horizon)
+    pub elevation: f32,
+    /// Light color (RGB, 0-1 range)
+    pub color: Vec3,
+    /// Illuminance in lux
+    pub illuminance: f32,
+    /// Whether this light casts shadows
+    pub shadows_enabled: bool,
+    /// Angular diameter of the sun disk in degrees (default ~0.53 for Earth's sun)
+    pub angular_diameter: f32,
+}
+
+impl Default for SunData {
+    fn default() -> Self {
+        Self {
+            azimuth: 0.0,
+            elevation: 50.0,
+            color: Vec3::new(1.0, 0.96, 0.90),
+            illuminance: 100_000.0,
+            shadows_enabled: true,
+            angular_diameter: 0.53,
+        }
+    }
+}
+
+impl SunData {
+    /// Compute the sun's direction vector from azimuth and elevation.
+    /// Returns the direction the light travels (pointing away from the sun toward the scene).
+    pub fn direction(&self) -> Vec3 {
+        let az = self.azimuth.to_radians();
+        let el = self.elevation.to_radians();
+        // Direction FROM the sun (light travels this way)
+        Vec3::new(
+            -el.cos() * az.sin(),
+            -el.sin(),
+            -el.cos() * az.cos(),
+        )
+    }
+}
+
+// =============================================================================
+// Solari Raytracing Settings
+// =============================================================================
+
+/// DLSS quality/performance mode
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
+pub enum DlssQualityMode {
+    /// Let DLSS choose the best mode
+    #[default]
+    Auto,
+    /// DLAA - Deep Learning Anti-Aliasing (native resolution)
+    Dlaa,
+    /// Highest quality upscaling
+    Quality,
+    /// Balanced quality/performance
+    Balanced,
+    /// Higher performance, lower quality
+    Performance,
+    /// Maximum performance (lowest quality)
+    UltraPerformance,
+}
+
+/// Data component for Solari raytraced lighting settings
+/// Add this to an entity to enable raytracing in the scene
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct SolariLightingData {
+    /// Enable Solari raytraced lighting
+    pub enabled: bool,
+    /// Enable DLSS Ray Reconstruction for denoising (NVIDIA GPUs only)
+    pub dlss_enabled: bool,
+    /// DLSS quality mode
+    pub dlss_quality: DlssQualityMode,
+}
+
+impl Default for SolariLightingData {
+    fn default() -> Self {
+        Self {
+            enabled: true, // Enabled when component is added
+            dlss_enabled: false,
+            dlss_quality: DlssQualityMode::Auto,
+        }
+    }
+}
+
+// =============================================================================
+// Meshlet/Virtual Geometry Settings
+// =============================================================================
+
+/// Data component for meshlet (virtual geometry) mesh rendering
+/// Entities with this component use GPU-driven meshlet rendering instead of standard mesh rendering.
+/// This is beneficial for high-polygon meshes as it provides:
+/// - Automatic LOD through meshlet clustering
+/// - Visibility buffer rendering
+/// - Occlusion culling
+///
+/// Note: Only supports opaque, non-deforming meshes
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct MeshletMeshData {
+    /// Path to the preprocessed .meshlet asset file
+    pub meshlet_path: String,
+    /// Whether meshlet rendering is enabled for this entity
+    pub enabled: bool,
+    /// LOD bias for this mesh (-1.0 = prefer higher LOD, 1.0 = prefer lower LOD)
+    pub lod_bias: f32,
+}
+
+impl Default for MeshletMeshData {
+    fn default() -> Self {
+        Self {
+            meshlet_path: String::new(),
+            enabled: true,
+            lod_bias: 0.0,
         }
     }
 }

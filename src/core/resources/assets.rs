@@ -68,6 +68,8 @@ pub struct AssetBrowserState {
     pub pending_scene_drop: Option<(PathBuf, Option<Entity>)>,
     /// Pending material blueprint drop (path, cursor position for picking)
     pub pending_material_drop: Option<PendingMaterialDrop>,
+    /// Pending HDR/EXR file to apply as skybox (from viewport drop)
+    pub pending_skybox_drop: Option<PathBuf>,
     /// Search filter text
     pub search: String,
     /// Current view mode (grid or list)

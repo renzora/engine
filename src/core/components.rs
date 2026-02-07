@@ -1,4 +1,30 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+
+/// Tracks which components are disabled (toggled off) on an entity.
+/// Disabled components remain attached but their data is grayed out in the inspector.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct DisabledComponents {
+    /// Component type_ids that are currently disabled
+    pub disabled: Vec<String>,
+}
+
+impl DisabledComponents {
+    /// Check if a component type is disabled
+    pub fn is_disabled(&self, type_id: &str) -> bool {
+        self.disabled.iter().any(|id| id == type_id)
+    }
+
+    /// Toggle a component's disabled state
+    pub fn toggle(&mut self, type_id: &str) {
+        if let Some(pos) = self.disabled.iter().position(|id| id == type_id) {
+            self.disabled.remove(pos);
+        } else {
+            self.disabled.push(type_id.to_string());
+        }
+    }
+}
 
 /// Marker component for entities visible in the editor hierarchy
 #[derive(Component, Clone, Reflect)]
@@ -42,12 +68,10 @@ pub struct SceneNode;
 #[reflect(Component)]
 pub struct SceneTabId(pub usize);
 
-/// Marker for world environment node (ambient light, fog, clear color)
+/// Marker for world environment convenience group
 #[derive(Component, Reflect)]
 #[reflect(Component)]
-pub struct WorldEnvironmentMarker {
-    pub data: crate::shared::WorldEnvironmentData,
-}
+pub struct WorldEnvironmentMarker;
 
 /// Marker for audio listener node
 #[derive(Component)]
