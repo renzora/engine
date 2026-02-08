@@ -39,6 +39,43 @@ pub type InspectorFn = fn(
     &mut Assets<StandardMaterial>,
 ) -> bool;
 
+/// Value type for script-accessible properties
+#[derive(Clone, Debug)]
+pub enum PropertyValue {
+    Float(f32),
+    Int(i32),
+    Bool(bool),
+    String(String),
+    Vec2(Vec2),
+    Vec3(Vec3),
+    Color(Vec4),
+}
+
+/// Lightweight type tag for script-visible property metadata.
+/// Used at registration time (no World access needed) to describe property types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropertyValueType {
+    Float,
+    Int,
+    Bool,
+    String,
+    Vec2,
+    Vec3,
+    Color,
+}
+
+/// Returns metadata about script-visible properties (name + type) without needing World access.
+/// Used for blueprint node generation at startup.
+pub type ScriptPropertyMetaFn = fn() -> Vec<(&'static str, PropertyValueType)>;
+
+/// Get script-visible properties from this component on an entity.
+/// Returns list of (property_name, value) pairs.
+pub type GetScriptPropertiesFn = fn(&World, Entity) -> Vec<(&'static str, PropertyValue)>;
+
+/// Set a script-visible property on this component.
+/// Returns true if the property was handled.
+pub type SetScriptPropertyFn = fn(&mut World, Entity, &str, &PropertyValue) -> bool;
+
 /// Categories for grouping components in the Add Component menu
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComponentCategory {
@@ -154,6 +191,15 @@ pub struct ComponentDefinition {
 
     /// Components that this one requires (must be present)
     pub requires: &'static [&'static str],
+
+    /// Get script-visible properties from this component on an entity
+    pub get_script_properties_fn: Option<GetScriptPropertiesFn>,
+
+    /// Set a script-visible property on this component
+    pub set_script_property_fn: Option<SetScriptPropertyFn>,
+
+    /// Lightweight metadata about script properties (no World access needed)
+    pub script_property_meta_fn: Option<ScriptPropertyMetaFn>,
 }
 
 impl ComponentDefinition {

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Hello World",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_ready",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "debug/log",
+        "position": [400.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "message", "label": "Message", "pin_type": "String", "direction": "Input", "default_value": { "String": "" }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "message": { "String": "Hello from Blueprint!" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 2, "pin_name": "exec", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 3
+  }
+}

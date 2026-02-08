@@ -73,7 +73,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api", "crates/bevy_mod_outline"]
+members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/notes_plugin"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

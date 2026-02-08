@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText, Vec2};
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::InspectorPanelRenderState;
 use crate::register_component;
 use crate::shared::CameraNodeData;
@@ -151,6 +151,34 @@ fn inspect_camera_3d(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn camera_3d_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("fov", PropertyValueType::Float),
+        ("is_default_camera", PropertyValueType::Bool),
+    ]
+}
+
+fn camera_3d_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<CameraNodeData>(entity) else { return vec![] };
+    vec![
+        ("fov", PropertyValue::Float(data.fov)),
+        ("is_default_camera", PropertyValue::Bool(data.is_default_camera)),
+    ]
+}
+
+fn camera_3d_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<CameraNodeData>(entity) else { return false };
+    match prop {
+        "fov" => { if let PropertyValue::Float(v) = val { data.fov = *v; true } else { false } }
+        "is_default_camera" => { if let PropertyValue::Bool(v) = val { data.is_default_camera = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -166,5 +194,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         custom_add: add_camera_3d,
         custom_remove: remove_camera_3d,
         custom_deserialize: deserialize_camera_3d,
+        custom_script_properties: camera_3d_get_props,
+        custom_script_set: camera_3d_set_prop,
+        custom_script_meta: camera_3d_property_meta,
     }));
 }

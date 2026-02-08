@@ -8,7 +8,7 @@ use crate::update::{UpdateState, UpdateDialogState};
 
 // Phosphor icons
 use egui_phosphor::regular::{
-    CARET_DOWN, CARET_RIGHT, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
+    CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
     TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE, ARROW_CLOCKWISE,
     DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK,
 };
@@ -123,6 +123,13 @@ impl SettingsCategoryStyle {
         Self {
             accent_color: Color32::from_rgb(120, 180, 230),  // Light blue
             header_bg: Color32::from_rgb(35, 42, 52),
+        }
+    }
+
+    fn scripting() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(100, 200, 140),  // Green/teal
+            header_bg: Color32::from_rgb(35, 50, 42),
         }
     }
 }
@@ -354,6 +361,22 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
         |ui| {
             settings_row(ui, 0, "Dev Mode", theme, |ui| {
                 ui.checkbox(&mut settings.dev_mode, "Enable plugin tools")
+            });
+        },
+    );
+
+    // Scripting Section
+    render_settings_category(
+        ui,
+        CODE,
+        "Scripting",
+        SettingsCategoryStyle::scripting(),
+        "settings_scripting",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Hot Reload", theme, |ui| {
+                ui.checkbox(&mut settings.script_rerun_on_ready_on_reload, "Re-run on_ready on hot reload")
             });
         },
     );

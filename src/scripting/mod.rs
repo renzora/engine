@@ -5,8 +5,8 @@ mod rhai_engine;
 mod rhai_context;
 mod rhai_commands;
 mod rhai_api;
+pub(crate) mod entity_data_store;
 mod runtime;
-mod builtin_scripts;
 pub mod resources;
 pub mod systems;
 
@@ -19,7 +19,7 @@ pub use registry::*;
 pub use rhai_engine::*;
 pub use rhai_context::*;
 pub use rhai_commands::*;
-pub use runtime::{run_rhai_scripts, run_scripts, RuntimeMode, ScriptCommandQueues, ScriptComponentQueries};
+pub use runtime::{run_rhai_scripts, RuntimeMode, ScriptCommandQueues, ScriptComponentQueries, DeferredPropertyWrites, apply_deferred_property_writes, populate_entity_data_store};
 pub use resources::*;
 pub use systems::*;
 
@@ -34,7 +34,7 @@ use std::path::PathBuf;
 pub enum ScriptingSet {
     /// Pre-script systems (input update, timer update, folder detection)
     PreScript,
-    /// Script execution (run_scripts, run_rhai_scripts)
+    /// Script execution (run_rhai_scripts)
     ScriptExecution,
     /// Post-script command processing (physics, audio, rendering, camera)
     CommandProcessing,
@@ -48,11 +48,7 @@ pub struct ScriptingPlugin;
 
 impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
-        // Initialize registry with built-in scripts
-        let mut registry = ScriptRegistry::new();
-        builtin_scripts::register_builtin_scripts(&mut registry);
-
-        app.insert_resource(registry)
+        app.insert_resource(ScriptRegistry::new())
             .insert_resource(RhaiScriptEngine::new())
             .init_resource::<ScriptInput>()
             // Initialize scripting resources
@@ -72,6 +68,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<SpriteAnimationCommandQueue>()
             .init_resource::<HealthCommandQueue>()
             .init_resource::<ParticleScriptCommandQueue>()
+            .init_resource::<DeferredPropertyWrites>()
             // Configure system set ordering
             .configure_sets(
                 Update,
@@ -101,16 +98,15 @@ impl Plugin for ScriptingPlugin {
                 Update,
                 (collect_collision_events,).in_set(ScriptingSet::PreScript),
             )
-            // Script execution systems - run_scripts before run_rhai_scripts
+            // Entity data store population (exclusive system for registry-based properties)
             .add_systems(
                 Update,
-                (run_scripts,).in_set(ScriptingSet::ScriptExecution),
+                populate_entity_data_store.in_set(ScriptingSet::PreScript),
             )
+            // Script execution
             .add_systems(
                 Update,
-                (run_rhai_scripts,)
-                    .in_set(ScriptingSet::ScriptExecution)
-                    .after(run_scripts),
+                (run_rhai_scripts,).in_set(ScriptingSet::ScriptExecution),
             )
             // Post-script command processing systems
             .add_systems(
@@ -132,6 +128,11 @@ impl Plugin for ScriptingPlugin {
                     process_particle_script_commands,
                 )
                     .in_set(ScriptingSet::CommandProcessing),
+            )
+            // Deferred property writes (exclusive system for cross-entity set() calls)
+            .add_systems(
+                Update,
+                apply_deferred_property_writes.in_set(ScriptingSet::CommandProcessing),
             )
             // Debug draw systems
             .add_systems(
@@ -272,6 +273,7 @@ impl Plugin for RuntimeScriptingPlugin {
             .init_resource::<SpriteAnimationCommandQueue>()
             .init_resource::<HealthCommandQueue>()
             .init_resource::<ParticleScriptCommandQueue>()
+            .init_resource::<DeferredPropertyWrites>()
             // Configure system set ordering (no run_if conditions - always runs)
             .configure_sets(
                 Update,
@@ -295,6 +297,11 @@ impl Plugin for RuntimeScriptingPlugin {
             .add_systems(
                 Update,
                 initialize_runtime_scripts.in_set(RuntimeScriptingSet::PreScript),
+            )
+            // Entity data store population (exclusive system for registry-based properties)
+            .add_systems(
+                Update,
+                populate_entity_data_store.in_set(RuntimeScriptingSet::PreScript),
             )
             // Script execution
             .add_systems(
@@ -320,6 +327,11 @@ impl Plugin for RuntimeScriptingPlugin {
                     process_health_commands,
                     process_particle_script_commands,
                 ).in_set(RuntimeScriptingSet::CommandProcessing),
+            )
+            // Deferred property writes (exclusive system for cross-entity set() calls)
+            .add_systems(
+                Update,
+                apply_deferred_property_writes.in_set(RuntimeScriptingSet::CommandProcessing),
             )
             // Debug draw
             .add_systems(

@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Patrol",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "utility/get_elapsed",
+        "position": [100.0, 400.0],
+        "pins": [
+          { "name": "elapsed", "label": "Elapsed", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "math/multiply",
+        "position": [300.0, 400.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 0.3 }
+        },
+        "comment": "Elapsed * Cycle Speed (speed/distance ratio)",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "math/sin",
+        "position": [500.0, 400.0],
+        "pins": [
+          { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Oscillate -1 to 1",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "math/multiply",
+        "position": [700.0, 400.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 5.0 }
+        },
+        "comment": "Sin * Half Distance (patrol goes -5 to +5)",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 6,
+        "node_type": "transform/set_position",
+        "position": [950.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
+          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "z", "label": "Z", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "y": { "Float": 0.0 },
+          "z": { "Float": 0.0 }
+        },
+        "comment": "Patrol along X axis",
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "elapsed", "direction": "Output" },
+        "to": { "node_id": 3, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 5, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "x", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 7
+  }
+}

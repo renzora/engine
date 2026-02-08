@@ -1,6 +1,7 @@
 //! Animation API functions for Rhai scripts
 
-use rhai::{Dynamic, Engine, Map, ImmutableString};
+use rhai::{Engine, ImmutableString};
+use super::super::rhai_commands::RhaiCommand;
 
 /// Register animation functions
 pub fn register(engine: &mut Engine) {
@@ -8,166 +9,75 @@ pub fn register(engine: &mut Engine) {
     // Skeletal Animation
     // ===================
 
-    // play_animation(name) - Play animation on self
-    engine.register_fn("play_animation", |name: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_animation"));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(true));
-        m.insert("speed".into(), Dynamic::from(1.0));
-        m
+    engine.register_fn("play_animation", |name: ImmutableString| {
+        super::push_command(RhaiCommand::PlayAnimation { entity_id: None, name: name.to_string(), looping: true, speed: 1.0 });
     });
 
-    // play_animation_once(name) - Play animation once (no loop)
-    engine.register_fn("play_animation_once", |name: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_animation"));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(false));
-        m.insert("speed".into(), Dynamic::from(1.0));
-        m
+    engine.register_fn("play_animation_once", |name: ImmutableString| {
+        super::push_command(RhaiCommand::PlayAnimation { entity_id: None, name: name.to_string(), looping: false, speed: 1.0 });
     });
 
-    // play_animation_speed(name, speed) - Play animation with custom speed
-    engine.register_fn("play_animation_speed", |name: ImmutableString, speed: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_animation"));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(true));
-        m.insert("speed".into(), Dynamic::from(speed));
-        m
+    engine.register_fn("play_animation_speed", |name: ImmutableString, speed: f64| {
+        super::push_command(RhaiCommand::PlayAnimation { entity_id: None, name: name.to_string(), looping: true, speed: speed as f32 });
     });
 
-    // play_animation_on(entity_id, name)
-    engine.register_fn("play_animation_on", |entity_id: i64, name: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_animation"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(true));
-        m.insert("speed".into(), Dynamic::from(1.0));
-        m
+    engine.register_fn("play_animation_on", |entity_id: i64, name: ImmutableString| {
+        super::push_command(RhaiCommand::PlayAnimation { entity_id: Some(entity_id as u64), name: name.to_string(), looping: true, speed: 1.0 });
     });
 
-    // stop_animation() - Stop animation on self
-    engine.register_fn("stop_animation", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("stop_animation"));
-        m
+    engine.register_fn("stop_animation", || {
+        super::push_command(RhaiCommand::StopAnimation { entity_id: None });
     });
 
-    // stop_animation_on(entity_id)
-    engine.register_fn("stop_animation_on", |entity_id: i64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("stop_animation"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m
+    engine.register_fn("stop_animation_on", |entity_id: i64| {
+        super::push_command(RhaiCommand::StopAnimation { entity_id: Some(entity_id as u64) });
     });
 
-    // pause_animation()
-    engine.register_fn("pause_animation", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("pause_animation"));
-        m
+    engine.register_fn("pause_animation", || {
+        super::push_command(RhaiCommand::PauseAnimation { entity_id: None });
     });
 
-    // resume_animation()
-    engine.register_fn("resume_animation", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("resume_animation"));
-        m
+    engine.register_fn("resume_animation", || {
+        super::push_command(RhaiCommand::ResumeAnimation { entity_id: None });
     });
 
-    // set_animation_speed(speed)
-    engine.register_fn("set_animation_speed", |speed: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_animation_speed"));
-        m.insert("speed".into(), Dynamic::from(speed));
-        m
+    engine.register_fn("set_animation_speed", |speed: f64| {
+        super::push_command(RhaiCommand::SetAnimationSpeed { entity_id: None, speed: speed as f32 });
     });
 
     // ===================
     // Sprite Animation
     // ===================
 
-    // play_sprite_animation(name)
-    engine.register_fn("play_sprite_animation", |name: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_sprite_animation"));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(true));
-        m
+    engine.register_fn("play_sprite_animation", |name: ImmutableString| {
+        super::push_command(RhaiCommand::PlaySpriteAnimation { entity_id: None, name: name.to_string(), looping: true });
     });
 
-    // play_sprite_animation_once(name)
-    engine.register_fn("play_sprite_animation_once", |name: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("play_sprite_animation"));
-        m.insert("name".into(), Dynamic::from(name));
-        m.insert("looping".into(), Dynamic::from(false));
-        m
+    engine.register_fn("play_sprite_animation_once", |name: ImmutableString| {
+        super::push_command(RhaiCommand::PlaySpriteAnimation { entity_id: None, name: name.to_string(), looping: false });
     });
 
-    // set_sprite_frame(frame_index)
-    engine.register_fn("set_sprite_frame", |frame: i64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_sprite_frame"));
-        m.insert("frame".into(), Dynamic::from(frame));
-        m
+    engine.register_fn("set_sprite_frame", |frame: i64| {
+        super::push_command(RhaiCommand::SetSpriteFrame { entity_id: None, frame });
     });
 
     // ===================
-    // Tweening (value interpolation)
+    // Tweening
     // ===================
 
-    // tween_to(property, target_value, duration, easing)
-    // Properties: "position_x", "position_y", "position_z", "rotation_y", "scale", "opacity"
-    engine.register_fn("tween_to", |property: ImmutableString, target: f64, duration: f64, easing: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("tween"));
-        m.insert("property".into(), Dynamic::from(property));
-        m.insert("target".into(), Dynamic::from(target));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m.insert("easing".into(), Dynamic::from(easing));
-        m
+    engine.register_fn("tween_to", |property: ImmutableString, target: f64, duration: f64, easing: ImmutableString| {
+        super::push_command(RhaiCommand::Tween { entity_id: None, property: property.to_string(), target: target as f32, duration: duration as f32, easing: easing.to_string() });
     });
 
-    // tween_position(x, y, z, duration, easing)
-    engine.register_fn("tween_position", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("tween_position"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m.insert("easing".into(), Dynamic::from(easing));
-        m
+    engine.register_fn("tween_position", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| {
+        super::push_command(RhaiCommand::TweenPosition { entity_id: None, target: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32), duration: duration as f32, easing: easing.to_string() });
     });
 
-    // tween_rotation(x, y, z, duration, easing) - degrees
-    engine.register_fn("tween_rotation", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("tween_rotation"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m.insert("easing".into(), Dynamic::from(easing));
-        m
+    engine.register_fn("tween_rotation", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| {
+        super::push_command(RhaiCommand::TweenRotation { entity_id: None, target: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32), duration: duration as f32, easing: easing.to_string() });
     });
 
-    // tween_scale(x, y, z, duration, easing)
-    engine.register_fn("tween_scale", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("tween_scale"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m.insert("easing".into(), Dynamic::from(easing));
-        m
+    engine.register_fn("tween_scale", |x: f64, y: f64, z: f64, duration: f64, easing: ImmutableString| {
+        super::push_command(RhaiCommand::TweenScale { entity_id: None, target: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32), duration: duration as f32, easing: easing.to_string() });
     });
-
-    // Easing functions available: "linear", "ease_in", "ease_out", "ease_in_out",
-    // "bounce", "elastic", "back", "sine", "quad", "cubic", "quart", "quint", "expo"
 }

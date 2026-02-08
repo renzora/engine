@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
 use crate::shared::SpotLightData;
 use crate::ui::property_row;
@@ -202,6 +202,49 @@ fn inspect_spot_light(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn spot_light_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("intensity", PropertyValueType::Float),
+        ("inner_angle", PropertyValueType::Float),
+        ("outer_angle", PropertyValueType::Float),
+        ("range", PropertyValueType::Float),
+        ("color_r", PropertyValueType::Float),
+        ("color_g", PropertyValueType::Float),
+        ("color_b", PropertyValueType::Float),
+        ("shadows_enabled", PropertyValueType::Bool),
+    ]
+}
+
+fn spot_light_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<SpotLightData>(entity) else { return vec![] };
+    vec![
+        ("intensity", PropertyValue::Float(data.intensity)),
+        ("inner_angle", PropertyValue::Float(data.inner_angle)),
+        ("outer_angle", PropertyValue::Float(data.outer_angle)),
+        ("range", PropertyValue::Float(data.range)),
+        ("color_r", PropertyValue::Float(data.color.x)),
+        ("color_g", PropertyValue::Float(data.color.y)),
+        ("color_b", PropertyValue::Float(data.color.z)),
+        ("shadows_enabled", PropertyValue::Bool(data.shadows_enabled)),
+    ]
+}
+
+fn spot_light_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<SpotLightData>(entity) else { return false };
+    match prop {
+        "intensity" => { if let PropertyValue::Float(v) = val { data.intensity = *v; true } else { false } }
+        "inner_angle" => { if let PropertyValue::Float(v) = val { data.inner_angle = *v; true } else { false } }
+        "outer_angle" => { if let PropertyValue::Float(v) = val { data.outer_angle = *v; true } else { false } }
+        "range" => { if let PropertyValue::Float(v) = val { data.range = *v; true } else { false } }
+        "shadows_enabled" => { if let PropertyValue::Bool(v) = val { data.shadows_enabled = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -217,5 +260,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         custom_add: add_spot_light,
         custom_remove: remove_spot_light,
         custom_deserialize: deserialize_spot_light,
+        custom_script_properties: spot_light_get_props,
+        custom_script_set: spot_light_set_prop,
+        custom_script_meta: spot_light_property_meta,
     }));
 }

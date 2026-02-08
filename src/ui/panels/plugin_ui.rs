@@ -127,15 +127,20 @@ fn render_menu_item(ui: &mut egui::Ui, item: &MenuItem) -> bool {
     false
 }
 
-/// Render plugin-registered panels
+/// Render plugin-registered panels as floating windows.
+/// Panels that are docked in the dock tree are skipped (they render inline).
 pub fn render_plugin_panels(
     ctx: &egui::Context,
     plugin_host: &PluginHost,
     renderer: &mut UiRenderer,
+    docked_panel_ids: &std::collections::HashSet<String>,
 ) -> Vec<UiEvent> {
     let api = plugin_host.api();
 
     for (panel, _plugin_id) in &api.panels {
+        if docked_panel_ids.contains(&panel.id) {
+            continue;
+        }
         render_panel(ctx, panel, &api.panel_contents, renderer);
     }
 

@@ -38,7 +38,9 @@
           }
         ],
         "input_values": {},
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       },
       {
         "id": 2,
@@ -88,10 +90,12 @@
             ]
           },
           "scale": {
-            "Float": 3.0
+            "Float": 16.0
           }
         },
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       },
       {
         "id": 3,
@@ -151,6 +155,9 @@
           }
         ],
         "input_values": {
+          "t": {
+            "Float": 0.5
+          },
           "b": {
             "Color": [
               1.0,
@@ -166,12 +173,11 @@
               0.0,
               1.0
             ]
-          },
-          "t": {
-            "Float": 0.5
           }
         },
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       },
       {
         "id": 4,
@@ -216,14 +222,16 @@
         "input_values": {
           "color": {
             "Color": [
-              0.0,
-              0.0,
-              0.0,
+              0.73333335,
+              0.74509805,
+              0.6627451,
               1.0
             ]
           }
         },
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       },
       {
         "id": 5,
@@ -268,14 +276,16 @@
         "input_values": {
           "color": {
             "Color": [
-              0.34901962,
-              0.45882353,
-              0.7254902,
+              0.6,
+              0.5764706,
+              0.44705883,
               1.0
             ]
           }
         },
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       },
       {
         "id": 6,
@@ -365,15 +375,6 @@
           }
         ],
         "input_values": {
-          "roughness": {
-            "Float": 0.5
-          },
-          "alpha": {
-            "Float": 1.0
-          },
-          "ao": {
-            "Float": 1.0
-          },
           "base_color": {
             "Color": [
               1.0,
@@ -382,8 +383,11 @@
               1.0
             ]
           },
-          "metallic": {
-            "Float": 0.0
+          "ao": {
+            "Float": 1.0
+          },
+          "alpha": {
+            "Float": 1.0
           },
           "emissive": {
             "Color": [
@@ -392,9 +396,17 @@
               0.0,
               1.0
             ]
+          },
+          "roughness": {
+            "Float": 0.5
+          },
+          "metallic": {
+            "Float": 0.0
           }
         },
-        "comment": null
+        "comment": null,
+        "display_name": null,
+        "color": null
       }
     ],
     "connections": [

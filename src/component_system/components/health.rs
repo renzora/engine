@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use serde::{Deserialize, Serialize};
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
 
 use egui_phosphor::regular::HEART;
@@ -78,6 +78,43 @@ fn inspect_health(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn health_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("health", PropertyValueType::Float),
+        ("max_health", PropertyValueType::Float),
+        ("regen_rate", PropertyValueType::Float),
+        ("invincible", PropertyValueType::Bool),
+        ("destroy_on_death", PropertyValueType::Bool),
+    ]
+}
+
+fn health_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<HealthData>(entity) else { return vec![] };
+    vec![
+        ("health", PropertyValue::Float(data.current_health)),
+        ("max_health", PropertyValue::Float(data.max_health)),
+        ("regen_rate", PropertyValue::Float(data.regeneration_rate)),
+        ("invincible", PropertyValue::Bool(data.invincible)),
+        ("destroy_on_death", PropertyValue::Bool(data.destroy_on_death)),
+    ]
+}
+
+fn health_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<HealthData>(entity) else { return false };
+    match prop {
+        "health" => { if let PropertyValue::Float(v) = val { data.current_health = *v; true } else { false } }
+        "max_health" => { if let PropertyValue::Float(v) = val { data.max_health = *v; true } else { false } }
+        "regen_rate" => { if let PropertyValue::Float(v) = val { data.regeneration_rate = *v; true } else { false } }
+        "invincible" => { if let PropertyValue::Bool(v) = val { data.invincible = *v; true } else { false } }
+        "destroy_on_death" => { if let PropertyValue::Bool(v) = val { data.destroy_on_death = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -89,5 +126,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         icon: HEART,
         priority: 0,
         custom_inspector: inspect_health,
+        custom_script_properties: health_get_props,
+        custom_script_set: health_set_prop,
+        custom_script_meta: health_property_meta,
     }));
 }

@@ -9,7 +9,7 @@ use super::{
     BlueprintCanvasState, BlueprintEditorState, BlueprintGraph, BlueprintNode, NodeId,
     PinDirection, PinId, AddNodePopup,
     canvas::{NODE_PIN_RADIUS, NODE_HEADER_HEIGHT, NODE_PIN_HEIGHT},
-    nodes::NodeRegistry,
+    nodes::{NodeRegistry, NodeEntry},
 };
 
 /// Result of processing canvas interactions
@@ -408,14 +408,26 @@ pub fn render_add_node_popup(
                             categories.sort();
 
                             for category in categories {
-                                if let Some(nodes) = registry.nodes_in_category(category) {
-                                    // Filter nodes by search
-                                    let filtered: Vec<_> = nodes
+                                if let Some(entries) = registry.entries_in_category(category) {
+                                    // Collect matching entries as (type_id, display_name, description)
+                                    let filtered: Vec<(&str, &str, &str)> = entries
                                         .iter()
-                                        .filter(|n| {
-                                            search_lower.is_empty()
-                                                || n.display_name.to_lowercase().contains(&search_lower)
-                                                || n.type_id.to_lowercase().contains(&search_lower)
+                                        .filter_map(|entry| {
+                                            let (tid, dname, desc) = match entry {
+                                                NodeEntry::Static(def) => (def.type_id, def.display_name, def.description),
+                                                NodeEntry::Dynamic(key) => {
+                                                    let cdef = registry.get_component_node(key)?;
+                                                    (cdef.type_id.as_str(), cdef.display_name.as_str(), cdef.description.as_str())
+                                                }
+                                            };
+                                            if search_lower.is_empty()
+                                                || dname.to_lowercase().contains(&search_lower)
+                                                || tid.to_lowercase().contains(&search_lower)
+                                            {
+                                                Some((tid, dname, desc))
+                                            } else {
+                                                None
+                                            }
                                         })
                                         .collect();
 
@@ -424,14 +436,14 @@ pub fn render_add_node_popup(
                                     }
 
                                     ui.collapsing(category, |ui| {
-                                        for node_def in filtered {
+                                        for (type_id, display_name, description) in &filtered {
                                             if ui
-                                                .selectable_label(false, node_def.display_name)
-                                                .on_hover_text(node_def.description)
+                                                .selectable_label(false, *display_name)
+                                                .on_hover_text(*description)
                                                 .clicked()
                                             {
                                                 result = Some((
-                                                    node_def.type_id.to_string(),
+                                                    type_id.to_string(),
                                                     position,
                                                     connecting_from.clone(),
                                                 ));

@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Follow Target",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "ecs/self",
+        "position": [100.0, 400.0],
+        "pins": [
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "ecs/find_by_name",
+        "position": [100.0, 550.0],
+        "pins": [
+          { "name": "name", "label": "Name", "pin_type": "String", "direction": "Input", "default_value": { "String": "" }, "required": false },
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false },
+          { "name": "found", "label": "Found", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "name": { "String": "Player" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "camera/follow",
+        "position": [450.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "camera", "label": "Camera", "pin_type": "Entity", "direction": "Input", "default_value": null, "required": false },
+          { "name": "target", "label": "Target", "pin_type": "Entity", "direction": "Input", "default_value": null, "required": false },
+          { "name": "offset", "label": "Offset", "pin_type": "Vec3", "direction": "Input", "default_value": { "Vec3": [0.0, 5.0, -10.0] }, "required": false },
+          { "name": "smooth", "label": "Smoothing", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 5.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "offset": { "Vec3": [0.0, 5.0, -10.0] },
+          "smooth": { "Float": 5.0 }
+        },
+        "comment": "Smoothly follow target with offset",
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "entity", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "camera", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "entity", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "target", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 5
+  }
+}

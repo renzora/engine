@@ -29,6 +29,9 @@ pub static SCRIPT: ComponentDefinition = ComponentDefinition {
     inspector_fn: inspect_script,
     conflicts_with: &[],
     requires: &[],
+    get_script_properties_fn: None,
+    set_script_property_fn: None,
+    script_property_meta_fn: None,
 };
 
 pub fn register(registry: &mut ComponentRegistry) {
@@ -365,31 +368,6 @@ fn inspect_script(
                         egui::RichText::new(X).size(12.0).color(theme_colors.semantic_error),
                     ).frame(false)).clicked() {
                         remove_index = Some(idx);
-                        changed = true;
-                    }
-                });
-            });
-        });
-
-        // Path editor (for non-file entries or direct path editing)
-        property_row(ui, row_base + 1, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Path").size(11.0));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let mut path_str = entry.script_path
-                        .as_ref()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let response = ui.add_sized(
-                        [ui.available_width(), 16.0],
-                        egui::TextEdit::singleline(&mut path_str).font(egui::TextStyle::Small),
-                    );
-                    if response.changed() {
-                        entry.script_path = if path_str.is_empty() {
-                            None
-                        } else {
-                            Some(std::path::PathBuf::from(path_str))
-                        };
                         changed = true;
                     }
                 });

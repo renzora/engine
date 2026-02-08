@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "FPS Controller",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "input/get_mouse_delta",
+        "position": [100.0, 450.0],
+        "pins": [
+          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "transform/get_rotation",
+        "position": [100.0, 620.0],
+        "pins": [
+          { "name": "rotation", "label": "Rotation", "pin_type": "Vec3", "direction": "Output", "default_value": null, "required": false },
+          { "name": "pitch", "label": "Pitch", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "yaw", "label": "Yaw", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "roll", "label": "Roll", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "math/multiply",
+        "position": [340.0, 420.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": -0.15 }
+        },
+        "comment": "Mouse X * -Sensitivity",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "math/multiply",
+        "position": [340.0, 560.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": -0.15 }
+        },
+        "comment": "Mouse Y * -Sensitivity",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 6,
+        "node_type": "math/add",
+        "position": [540.0, 420.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Current Yaw + Mouse Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 7,
+        "node_type": "math/add",
+        "position": [540.0, 560.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Current Pitch + Mouse Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 8,
+        "node_type": "math/clamp",
+        "position": [740.0, 560.0],
+        "pins": [
+          { "name": "value", "label": "Value", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "min", "label": "Min", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "max", "label": "Max", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "min": { "Float": -89.0 },
+          "max": { "Float": 89.0 }
+        },
+        "comment": "Clamp Pitch to ±89°",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 9,
+        "node_type": "transform/set_rotation",
+        "position": [960.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
+          { "name": "pitch", "label": "Pitch", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "yaw", "label": "Yaw", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "roll", "label": "Roll", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "roll": { "Float": 0.0 }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 10,
+        "node_type": "input/get_axis",
+        "position": [100.0, 850.0],
+        "pins": [
+          { "name": "x", "label": "X (A/D)", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "y", "label": "Y (W/S)", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 11,
+        "node_type": "math/multiply",
+        "position": [340.0, 820.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 8.0 }
+        },
+        "comment": "Input X * Move Speed",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 12,
+        "node_type": "math/multiply",
+        "position": [340.0, 960.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 8.0 }
+        },
+        "comment": "Input Y * Move Speed",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 13,
+        "node_type": "math/multiply",
+        "position": [560.0, 820.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Move X * Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 14,
+        "node_type": "math/multiply",
+        "position": [560.0, 960.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Move Z * Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 15,
+        "node_type": "transform/translate",
+        "position": [960.0, 500.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
+          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "z", "label": "Z", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "WASD movement (top-down, not direction-relative)",
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 9, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 9, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "x", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "y", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "yaw", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "pitch", "direction": "Output" },
+        "to": { "node_id": 7, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 5, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 7, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 6, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 9, "pin_name": "yaw", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 7, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 8, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 8, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 9, "pin_name": "pitch", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 10, "pin_name": "x", "direction": "Output" },
+        "to": { "node_id": 11, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 10, "pin_name": "y", "direction": "Output" },
+        "to": { "node_id": 12, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 11, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 13, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 12, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 14, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" },
+        "to": { "node_id": 13, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" },
+        "to": { "node_id": 14, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 13, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "x", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 14, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "z", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 16
+  }
+}

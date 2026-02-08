@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use super::{ScriptValue, ScriptVariables, ScriptVariableDefinition};
 use super::rhai_api;
 use super::rhai_context::{RhaiScriptContext, ChildChange};
-use super::rhai_commands::{RhaiCommand, ComponentValue};
+use super::rhai_commands::RhaiCommand;
 use crate::blueprint::{BlueprintFile, generate_rhai_code};
 use crate::core::resources::console::{console_log, LogLevel};
 
@@ -375,12 +375,15 @@ impl RhaiScriptEngine {
         &self,
         script: &CompiledScript,
         ctx: &mut RhaiScriptContext,
-        vars: &ScriptVariables,
+        vars: &mut ScriptVariables,
     ) {
         let mut scope = Scope::new();
         self.setup_scope(&mut scope, ctx, vars);
 
-        match self.engine.call_fn::<()>(&mut scope, &script.ast, "on_ready", ()) {
+        // Drain any stale commands before executing
+        rhai_api::drain_commands();
+
+        match self.engine.call_fn::<Dynamic>(&mut scope, &script.ast, "on_ready", ()) {
             Ok(_) => {}
             Err(e) => {
                 // Check if it's just a missing function (which is OK)
@@ -391,7 +394,8 @@ impl RhaiScriptEngine {
             }
         }
 
-        self.read_scope_changes(&scope, ctx);
+        self.read_back_variables(&scope, vars);
+        self.process_command_buffer(ctx);
     }
 
     /// Execute on_update function
@@ -399,12 +403,15 @@ impl RhaiScriptEngine {
         &self,
         script: &CompiledScript,
         ctx: &mut RhaiScriptContext,
-        vars: &ScriptVariables,
+        vars: &mut ScriptVariables,
     ) {
         let mut scope = Scope::new();
         self.setup_scope(&mut scope, ctx, vars);
 
-        match self.engine.call_fn::<()>(&mut scope, &script.ast, "on_update", ()) {
+        // Drain any stale commands before executing
+        rhai_api::drain_commands();
+
+        match self.engine.call_fn::<Dynamic>(&mut scope, &script.ast, "on_update", ()) {
             Ok(_) => {}
             Err(e) => {
                 let err_str = e.to_string();
@@ -414,7 +421,76 @@ impl RhaiScriptEngine {
             }
         }
 
-        self.read_scope_changes(&scope, ctx);
+        self.read_back_variables(&scope, vars);
+        self.process_command_buffer(ctx);
+    }
+
+    /// Read back modified script variables from scope into ScriptVariables
+    fn read_back_variables(&self, scope: &Scope, vars: &mut ScriptVariables) {
+        // Collect names first to avoid borrow conflict
+        let var_names: Vec<String> = vars.iter_all().map(|(k, _)| k.clone()).collect();
+        for name in &var_names {
+            if let Some(value) = scope.get_value::<Dynamic>(name) {
+                if let Some(sv) = dynamic_to_script_value(&value) {
+                    vars.set(name.clone(), sv);
+                }
+            }
+        }
+    }
+
+    /// Process commands from the thread-local buffer (auto-pushed by API functions)
+    fn process_command_buffer(&self, ctx: &mut RhaiScriptContext) {
+        let commands = rhai_api::drain_commands();
+        for cmd in commands {
+            match cmd {
+                // Self-transform commands — write directly to context fields
+                RhaiCommand::SetPosition { x, y, z } => ctx.new_position = Some(Vec3::new(x, y, z)),
+                RhaiCommand::SetRotation { x, y, z } => ctx.new_rotation = Some(Vec3::new(x, y, z)),
+                RhaiCommand::SetScale { x, y, z } => ctx.new_scale = Some(Vec3::new(x, y, z)),
+                RhaiCommand::Translate { x, y, z } => ctx.translation = Some(Vec3::new(x, y, z)),
+                RhaiCommand::Rotate { x, y, z } => ctx.rotation_delta = Some(Vec3::new(x, y, z)),
+                RhaiCommand::LookAt { x, y, z } => ctx.look_at_target = Some(Vec3::new(x, y, z)),
+
+                // Parent transform commands
+                RhaiCommand::ParentSetPosition { x, y, z } => ctx.parent_new_position = Some(Vec3::new(x, y, z)),
+                RhaiCommand::ParentSetRotation { x, y, z } => ctx.parent_new_rotation = Some(Vec3::new(x, y, z)),
+                RhaiCommand::ParentTranslate { x, y, z } => ctx.parent_translation = Some(Vec3::new(x, y, z)),
+
+                // Child transform commands
+                RhaiCommand::ChildSetPosition { name, x, y, z } => {
+                    let change = ctx.child_changes.entry(name).or_insert(ChildChange::default());
+                    change.new_position = Some(Vec3::new(x, y, z));
+                }
+                RhaiCommand::ChildSetRotation { name, x, y, z } => {
+                    let change = ctx.child_changes.entry(name).or_insert(ChildChange::default());
+                    change.new_rotation = Some(Vec3::new(x, y, z));
+                }
+                RhaiCommand::ChildTranslate { name, x, y, z } => {
+                    let change = ctx.child_changes.entry(name).or_insert(ChildChange::default());
+                    change.translation = Some(Vec3::new(x, y, z));
+                }
+
+                // Environment commands — write directly to context fields
+                RhaiCommand::SetSunAngles { azimuth, elevation } => {
+                    ctx.env_sun_azimuth = Some(azimuth);
+                    ctx.env_sun_elevation = Some(elevation);
+                }
+                RhaiCommand::SetAmbientBrightness { brightness } => ctx.env_ambient_brightness = Some(brightness),
+                RhaiCommand::SetAmbientColor { r, g, b } => ctx.env_ambient_color = Some((r, g, b)),
+                RhaiCommand::SetSkyTopColor { r, g, b } => ctx.env_sky_top_color = Some((r, g, b)),
+                RhaiCommand::SetSkyHorizonColor { r, g, b } => ctx.env_sky_horizon_color = Some((r, g, b)),
+                RhaiCommand::SetFog { enabled, start, end } => {
+                    ctx.env_fog_enabled = Some(enabled);
+                    ctx.env_fog_start = Some(start);
+                    ctx.env_fog_end = Some(end);
+                }
+                RhaiCommand::SetFogColor { r, g, b } => ctx.env_fog_color = Some((r, g, b)),
+                RhaiCommand::SetEv100 { value } => ctx.env_ev100 = Some(value),
+
+                // All other commands — push directly to ctx.commands
+                other => ctx.commands.push(other),
+            }
+        }
     }
 
     fn setup_scope(&self, scope: &mut Scope, ctx: &RhaiScriptContext, vars: &ScriptVariables) {
@@ -574,12 +650,12 @@ impl RhaiScriptEngine {
         scope.push("self_material_color_b", ctx.self_material_color[2] as f64);
         scope.push("self_material_color_a", ctx.self_material_color[3] as f64);
 
-        // Variables
+        // Variables - push as direct scope variables AND in vars map for backward compat
         let mut var_map = Map::new();
         for (key, value) in vars.iter_all() {
             let dyn_val = match value {
                 ScriptValue::Float(v) => Dynamic::from(*v as f64),
-                ScriptValue::Int(v) => Dynamic::from(*v),
+                ScriptValue::Int(v) => Dynamic::from(*v as i64),
                 ScriptValue::Bool(v) => Dynamic::from(*v),
                 ScriptValue::String(v) => Dynamic::from(v.clone()),
                 ScriptValue::Vec2(v) => {
@@ -604,32 +680,12 @@ impl RhaiScriptEngine {
                     Dynamic::from(m)
                 }
             };
+            // Push as direct scope variable
+            scope.push(key.as_str(), dyn_val.clone());
             var_map.insert(key.clone().into(), dyn_val);
         }
         scope.push("vars", var_map);
 
-        // Output flags
-        scope.push("_set_position", false);
-        scope.push("_new_position_x", 0.0_f64);
-        scope.push("_new_position_y", 0.0_f64);
-        scope.push("_new_position_z", 0.0_f64);
-
-        scope.push("_set_rotation", false);
-        scope.push("_new_rotation_x", 0.0_f64);
-        scope.push("_new_rotation_y", 0.0_f64);
-        scope.push("_new_rotation_z", 0.0_f64);
-
-        scope.push("_translate", false);
-        scope.push("_translate_x", 0.0_f64);
-        scope.push("_translate_y", 0.0_f64);
-        scope.push("_translate_z", 0.0_f64);
-
-        scope.push("_rotate", false);
-        scope.push("_rotate_x", 0.0_f64);
-        scope.push("_rotate_y", 0.0_f64);
-        scope.push("_rotate_z", 0.0_f64);
-
-        scope.push("_print_message", ImmutableString::new());
 
         // Parent info
         scope.push("has_parent", ctx.has_parent);
@@ -643,18 +699,6 @@ impl RhaiScriptEngine {
         scope.push("parent_scale_y", ctx.parent_scale.y as f64);
         scope.push("parent_scale_z", ctx.parent_scale.z as f64);
 
-        scope.push("_parent_set_position", false);
-        scope.push("_parent_new_position_x", 0.0_f64);
-        scope.push("_parent_new_position_y", 0.0_f64);
-        scope.push("_parent_new_position_z", 0.0_f64);
-        scope.push("_parent_set_rotation", false);
-        scope.push("_parent_new_rotation_x", 0.0_f64);
-        scope.push("_parent_new_rotation_y", 0.0_f64);
-        scope.push("_parent_new_rotation_z", 0.0_f64);
-        scope.push("_parent_translate", false);
-        scope.push("_parent_translate_x", 0.0_f64);
-        scope.push("_parent_translate_y", 0.0_f64);
-        scope.push("_parent_translate_z", 0.0_f64);
 
         // Children
         let mut dollar_map = Map::new();
@@ -676,829 +720,6 @@ impl RhaiScriptEngine {
         }
         scope.push("$", dollar_map);
         scope.push("children", children_names);
-        scope.push("_child_commands", rhai::Array::new());
-
-        // Environment - General
-        scope.push("_set_sky_mode", false);
-        scope.push("_sky_mode", 1_i64);  // 0=Color, 1=Procedural, 2=Panorama
-        scope.push("_set_clear_color", false);
-        scope.push("_clear_color_r", 0.4_f64);
-        scope.push("_clear_color_g", 0.6_f64);
-        scope.push("_clear_color_b", 0.9_f64);
-        scope.push("_set_ambient_brightness", false);
-        scope.push("_ambient_brightness", 300.0_f64);
-        scope.push("_set_ambient_color", false);
-        scope.push("_ambient_color_r", 1.0_f64);
-        scope.push("_ambient_color_g", 1.0_f64);
-        scope.push("_ambient_color_b", 1.0_f64);
-        scope.push("_set_ev100", false);
-        scope.push("_ev100", 9.7_f64);
-
-        // Environment - Procedural Sky
-        scope.push("_set_sky_top_color", false);
-        scope.push("_sky_top_r", 0.15_f64);
-        scope.push("_sky_top_g", 0.35_f64);
-        scope.push("_sky_top_b", 0.65_f64);
-        scope.push("_set_sky_horizon_color", false);
-        scope.push("_sky_horizon_r", 0.55_f64);
-        scope.push("_sky_horizon_g", 0.70_f64);
-        scope.push("_sky_horizon_b", 0.85_f64);
-        scope.push("_set_sky_curve", false);
-        scope.push("_sky_curve", 0.15_f64);
-        scope.push("_set_ground_bottom_color", false);
-        scope.push("_ground_bottom_r", 0.2_f64);
-        scope.push("_ground_bottom_g", 0.17_f64);
-        scope.push("_ground_bottom_b", 0.13_f64);
-        scope.push("_set_ground_horizon_color", false);
-        scope.push("_ground_horizon_r", 0.55_f64);
-        scope.push("_ground_horizon_g", 0.55_f64);
-        scope.push("_ground_horizon_b", 0.52_f64);
-        scope.push("_set_ground_curve", false);
-        scope.push("_ground_curve", 0.02_f64);
-
-        // Environment - Sun
-        scope.push("_set_sun_angles", false);
-        scope.push("_sun_azimuth", 0.0_f64);
-        scope.push("_sun_elevation", 45.0_f64);
-        scope.push("_set_sun_color", false);
-        scope.push("_sun_color_r", 1.0_f64);
-        scope.push("_sun_color_g", 0.95_f64);
-        scope.push("_sun_color_b", 0.85_f64);
-        scope.push("_set_sun_energy", false);
-        scope.push("_sun_energy", 1.0_f64);
-        scope.push("_set_sun_disk_scale", false);
-        scope.push("_sun_disk_scale", 1.0_f64);
-
-        // Environment - Fog
-        scope.push("_set_fog", false);
-        scope.push("_fog_enabled", false);
-        scope.push("_fog_start", 10.0_f64);
-        scope.push("_fog_end", 100.0_f64);
-        scope.push("_set_fog_color", false);
-        scope.push("_fog_color_r", 0.5_f64);
-        scope.push("_fog_color_g", 0.5_f64);
-        scope.push("_fog_color_b", 0.5_f64);
-
-        // Commands array
-        scope.push("_commands", rhai::Array::new());
-    }
-
-    fn read_scope_changes(&self, scope: &Scope, ctx: &mut RhaiScriptContext) {
-        // Position
-        if scope.get_value::<bool>("_set_position").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_new_position_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_new_position_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_new_position_z").unwrap_or(0.0) as f32;
-            ctx.new_position = Some(Vec3::new(x, y, z));
-        }
-
-        // Rotation
-        if scope.get_value::<bool>("_set_rotation").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_new_rotation_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_new_rotation_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_new_rotation_z").unwrap_or(0.0) as f32;
-            ctx.new_rotation = Some(Vec3::new(x, y, z));
-        }
-
-        // Translation
-        if scope.get_value::<bool>("_translate").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_translate_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_translate_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_translate_z").unwrap_or(0.0) as f32;
-            ctx.translation = Some(Vec3::new(x, y, z));
-        }
-
-        // Rotation delta
-        if scope.get_value::<bool>("_rotate").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_rotate_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_rotate_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_rotate_z").unwrap_or(0.0) as f32;
-            ctx.rotation_delta = Some(Vec3::new(x, y, z));
-        }
-
-        // Print
-        if let Some(msg) = scope.get_value::<ImmutableString>("_print_message") {
-            if !msg.is_empty() {
-                ctx.print_message = Some(msg.to_string());
-            }
-        }
-
-        // Parent changes
-        if scope.get_value::<bool>("_parent_set_position").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_parent_new_position_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_parent_new_position_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_parent_new_position_z").unwrap_or(0.0) as f32;
-            ctx.parent_new_position = Some(Vec3::new(x, y, z));
-        }
-        if scope.get_value::<bool>("_parent_set_rotation").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_parent_new_rotation_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_parent_new_rotation_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_parent_new_rotation_z").unwrap_or(0.0) as f32;
-            ctx.parent_new_rotation = Some(Vec3::new(x, y, z));
-        }
-        if scope.get_value::<bool>("_parent_translate").unwrap_or(false) {
-            let x = scope.get_value::<f64>("_parent_translate_x").unwrap_or(0.0) as f32;
-            let y = scope.get_value::<f64>("_parent_translate_y").unwrap_or(0.0) as f32;
-            let z = scope.get_value::<f64>("_parent_translate_z").unwrap_or(0.0) as f32;
-            ctx.parent_translation = Some(Vec3::new(x, y, z));
-        }
-
-        // Child commands
-        if let Some(commands) = scope.get_value::<rhai::Array>("_child_commands") {
-            for cmd_dyn in commands {
-                if let Some(cmd_map) = cmd_dyn.try_cast::<Map>() {
-                    let cmd_type = cmd_map.get("_child_cmd").and_then(|v| v.clone().try_cast::<ImmutableString>());
-                    let name = cmd_map.get("_child_name").and_then(|v| v.clone().try_cast::<ImmutableString>());
-                    let x = cmd_map.get("_child_x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("_child_y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("_child_z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-
-                    if let (Some(cmd), Some(child_name)) = (cmd_type, name) {
-                        let change = ctx.child_changes.entry(child_name.to_string()).or_insert(ChildChange::default());
-                        match cmd.as_str() {
-                            "set_position" => change.new_position = Some(Vec3::new(x, y, z)),
-                            "set_rotation" => change.new_rotation = Some(Vec3::new(x, y, z)),
-                            "translate" => change.translation = Some(Vec3::new(x, y, z)),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-
-        // Environment - General
-        if scope.get_value::<bool>("_set_sky_mode").unwrap_or(false) {
-            ctx.env_sky_mode = Some(scope.get_value::<i64>("_sky_mode").unwrap_or(1) as u8);
-        }
-        if scope.get_value::<bool>("_set_clear_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_clear_color_r").unwrap_or(0.4) as f32;
-            let g = scope.get_value::<f64>("_clear_color_g").unwrap_or(0.6) as f32;
-            let b = scope.get_value::<f64>("_clear_color_b").unwrap_or(0.9) as f32;
-            ctx.env_clear_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_ambient_brightness").unwrap_or(false) {
-            ctx.env_ambient_brightness = Some(scope.get_value::<f64>("_ambient_brightness").unwrap_or(300.0) as f32);
-        }
-        if scope.get_value::<bool>("_set_ambient_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_ambient_color_r").unwrap_or(1.0) as f32;
-            let g = scope.get_value::<f64>("_ambient_color_g").unwrap_or(1.0) as f32;
-            let b = scope.get_value::<f64>("_ambient_color_b").unwrap_or(1.0) as f32;
-            ctx.env_ambient_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_ev100").unwrap_or(false) {
-            ctx.env_ev100 = Some(scope.get_value::<f64>("_ev100").unwrap_or(9.7) as f32);
-        }
-
-        // Environment - Procedural Sky
-        if scope.get_value::<bool>("_set_sky_top_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_sky_top_r").unwrap_or(0.15) as f32;
-            let g = scope.get_value::<f64>("_sky_top_g").unwrap_or(0.35) as f32;
-            let b = scope.get_value::<f64>("_sky_top_b").unwrap_or(0.65) as f32;
-            ctx.env_sky_top_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_sky_horizon_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_sky_horizon_r").unwrap_or(0.55) as f32;
-            let g = scope.get_value::<f64>("_sky_horizon_g").unwrap_or(0.70) as f32;
-            let b = scope.get_value::<f64>("_sky_horizon_b").unwrap_or(0.85) as f32;
-            ctx.env_sky_horizon_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_sky_curve").unwrap_or(false) {
-            ctx.env_sky_curve = Some(scope.get_value::<f64>("_sky_curve").unwrap_or(0.15) as f32);
-        }
-        if scope.get_value::<bool>("_set_ground_bottom_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_ground_bottom_r").unwrap_or(0.2) as f32;
-            let g = scope.get_value::<f64>("_ground_bottom_g").unwrap_or(0.17) as f32;
-            let b = scope.get_value::<f64>("_ground_bottom_b").unwrap_or(0.13) as f32;
-            ctx.env_ground_bottom_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_ground_horizon_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_ground_horizon_r").unwrap_or(0.55) as f32;
-            let g = scope.get_value::<f64>("_ground_horizon_g").unwrap_or(0.55) as f32;
-            let b = scope.get_value::<f64>("_ground_horizon_b").unwrap_or(0.52) as f32;
-            ctx.env_ground_horizon_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_ground_curve").unwrap_or(false) {
-            ctx.env_ground_curve = Some(scope.get_value::<f64>("_ground_curve").unwrap_or(0.02) as f32);
-        }
-
-        // Environment - Sun
-        if scope.get_value::<bool>("_set_sun_angles").unwrap_or(false) {
-            ctx.env_sun_azimuth = Some(scope.get_value::<f64>("_sun_azimuth").unwrap_or(0.0) as f32);
-            ctx.env_sun_elevation = Some(scope.get_value::<f64>("_sun_elevation").unwrap_or(45.0) as f32);
-        }
-        if scope.get_value::<bool>("_set_sun_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_sun_color_r").unwrap_or(1.0) as f32;
-            let g = scope.get_value::<f64>("_sun_color_g").unwrap_or(0.95) as f32;
-            let b = scope.get_value::<f64>("_sun_color_b").unwrap_or(0.85) as f32;
-            ctx.env_sun_color = Some((r, g, b));
-        }
-        if scope.get_value::<bool>("_set_sun_energy").unwrap_or(false) {
-            ctx.env_sun_energy = Some(scope.get_value::<f64>("_sun_energy").unwrap_or(1.0) as f32);
-        }
-        if scope.get_value::<bool>("_set_sun_disk_scale").unwrap_or(false) {
-            ctx.env_sun_disk_scale = Some(scope.get_value::<f64>("_sun_disk_scale").unwrap_or(1.0) as f32);
-        }
-
-        // Environment - Fog
-        if scope.get_value::<bool>("_set_fog").unwrap_or(false) {
-            ctx.env_fog_enabled = Some(scope.get_value::<bool>("_fog_enabled").unwrap_or(false));
-            ctx.env_fog_start = Some(scope.get_value::<f64>("_fog_start").unwrap_or(10.0) as f32);
-            ctx.env_fog_end = Some(scope.get_value::<f64>("_fog_end").unwrap_or(100.0) as f32);
-        }
-        if scope.get_value::<bool>("_set_fog_color").unwrap_or(false) {
-            let r = scope.get_value::<f64>("_fog_color_r").unwrap_or(0.5) as f32;
-            let g = scope.get_value::<f64>("_fog_color_g").unwrap_or(0.5) as f32;
-            let b = scope.get_value::<f64>("_fog_color_b").unwrap_or(0.5) as f32;
-            ctx.env_fog_color = Some((r, g, b));
-        }
-
-        // Read commands array (ECS, audio, debug, physics, etc.)
-        self.read_commands_array(scope, ctx);
-    }
-
-    fn read_commands_array(&self, scope: &Scope, ctx: &mut RhaiScriptContext) {
-        let Some(commands) = scope.get_value::<rhai::Array>("_commands") else { return };
-
-        for cmd_dyn in commands {
-            let Some(cmd_map) = cmd_dyn.try_cast::<Map>() else { continue };
-            let Some(cmd_type) = cmd_map.get("_cmd").and_then(|v| v.clone().try_cast::<ImmutableString>()) else { continue };
-
-            match cmd_type.as_str() {
-                "spawn_entity" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "Entity".to_string());
-                    ctx.commands.push(RhaiCommand::SpawnEntity { name });
-                }
-                "spawn_primitive" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "Primitive".to_string());
-                    let primitive_type = cmd_map.get("primitive_type").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "cube".to_string());
-                    // Optional position
-                    let position = if cmd_map.contains_key("x") {
-                        let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                        let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                        let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                        Some(Vec3::new(x, y, z))
-                    } else {
-                        None
-                    };
-                    // Optional scale
-                    let scale = if cmd_map.contains_key("sx") {
-                        let sx = cmd_map.get("sx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                        let sy = cmd_map.get("sy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                        let sz = cmd_map.get("sz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                        Some(Vec3::new(sx, sy, sz))
-                    } else {
-                        None
-                    };
-                    ctx.commands.push(RhaiCommand::SpawnPrimitive { name, primitive_type, position, scale });
-                }
-                "despawn_entity" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::DespawnEntity { entity_id });
-                }
-                "despawn_self" => ctx.commands.push(RhaiCommand::DespawnSelf),
-                "play_sound" => {
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let volume = cmd_map.get("volume").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let looping = cmd_map.get("looping").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false);
-                    ctx.commands.push(RhaiCommand::PlaySound { path, volume, looping });
-                }
-                "play_sound_3d" => {
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let volume = cmd_map.get("volume").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::PlaySound3D { path, volume, position: Vec3::new(x, y, z) });
-                }
-                "stop_all_sounds" => ctx.commands.push(RhaiCommand::StopAllSounds),
-                "log" => {
-                    let level = cmd_map.get("level").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "info".to_string());
-                    let message = cmd_map.get("message").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::Log { level, message });
-                }
-                "draw_line" => {
-                    let sx = cmd_map.get("sx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let sy = cmd_map.get("sy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let sz = cmd_map.get("sz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let ex = cmd_map.get("ex").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let ey = cmd_map.get("ey").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let ez = cmd_map.get("ez").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::DrawLine { start: Vec3::new(sx, sy, sz), end: Vec3::new(ex, ey, ez), color: [r, g, b, a], duration });
-                }
-                "draw_sphere" => {
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let radius = cmd_map.get("radius").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::DrawSphere { center: Vec3::new(x, y, z), radius, color: [r, g, b, a], duration });
-                }
-                "draw_box" => {
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let hx = cmd_map.get("hx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
-                    let hy = cmd_map.get("hy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
-                    let hz = cmd_map.get("hz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::DrawBox { center: Vec3::new(x, y, z), half_extents: Vec3::new(hx, hy, hz), color: [r, g, b, a], duration });
-                }
-                "apply_force" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::ApplyForce { entity_id, force: Vec3::new(x, y, z) });
-                }
-                "apply_impulse" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::ApplyImpulse { entity_id, impulse: Vec3::new(x, y, z) });
-                }
-                "set_velocity" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetVelocity { entity_id, velocity: Vec3::new(x, y, z) });
-                }
-                "start_timer" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let repeat = cmd_map.get("repeat").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false);
-                    ctx.commands.push(RhaiCommand::StartTimer { name, duration, repeat });
-                }
-                "stop_timer" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::StopTimer { name });
-                }
-                "pause_timer" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::PauseTimer { name });
-                }
-                "resume_timer" => {
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::ResumeTimer { name });
-                }
-
-                // ECS - additional commands
-                "set_entity_name" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::SetEntityName { entity_id, name });
-                }
-                "add_tag" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let tag = cmd_map.get("tag").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::AddTag { entity_id, tag });
-                }
-                "remove_tag" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let tag = cmd_map.get("tag").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::RemoveTag { entity_id, tag });
-                }
-
-                // Audio - additional commands
-                "play_music" => {
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let volume = cmd_map.get("volume").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let fade_in = cmd_map.get("fade_in").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::PlayMusic { path, volume, fade_in });
-                }
-                "stop_music" => {
-                    let fade_out = cmd_map.get("fade_out").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::StopMusic { fade_out });
-                }
-                "set_master_volume" => {
-                    let volume = cmd_map.get("volume").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetMasterVolume { volume });
-                }
-
-                // Debug - additional commands
-                "draw_ray" => {
-                    let ox = cmd_map.get("ox").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let oy = cmd_map.get("oy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let oz = cmd_map.get("oz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let dx = cmd_map.get("dx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let dy = cmd_map.get("dy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let dz = cmd_map.get("dz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let length = cmd_map.get("length").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::DrawRay { origin: Vec3::new(ox, oy, oz), direction: Vec3::new(dx, dy, dz), length, color: [r, g, b, a], duration });
-                }
-                "draw_point" => {
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let size = cmd_map.get("size").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(5.0) as f32;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::DrawPoint { position: Vec3::new(x, y, z), size, color: [r, g, b, a], duration });
-                }
-
-                // Physics - additional commands
-                "apply_torque" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::ApplyTorque { entity_id, torque: Vec3::new(x, y, z) });
-                }
-                "set_angular_velocity" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetAngularVelocity { entity_id, velocity: Vec3::new(x, y, z) });
-                }
-                "set_gravity_scale" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let scale = cmd_map.get("scale").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetGravityScale { entity_id, scale });
-                }
-                "raycast" => {
-                    let ox = cmd_map.get("ox").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let oy = cmd_map.get("oy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let oz = cmd_map.get("oz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let dx = cmd_map.get("dx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let dy = cmd_map.get("dy").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(-1.0) as f32;
-                    let dz = cmd_map.get("dz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let max_distance = cmd_map.get("max_distance").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(100.0) as f32;
-                    let result_var = cmd_map.get("result_var").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "raycast_result".to_string());
-                    ctx.commands.push(RhaiCommand::Raycast { origin: Vec3::new(ox, oy, oz), direction: Vec3::new(dx, dy, dz), max_distance, result_var });
-                }
-
-                // Scene commands
-                "load_scene" => {
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    ctx.commands.push(RhaiCommand::LoadScene { path });
-                }
-                "unload_scene" => {
-                    let handle_id = cmd_map.get("handle_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::UnloadScene { handle_id });
-                }
-                "spawn_prefab" => {
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let rx = cmd_map.get("rx").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let ry = cmd_map.get("ry").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let rz = cmd_map.get("rz").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SpawnPrefab { path, position: Vec3::new(x, y, z), rotation: Vec3::new(rx, ry, rz) });
-                }
-                "spawn_prefab_here" => {
-                    // Spawn at the calling entity's current position
-                    let path = cmd_map.get("path").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let position = ctx.transform.position;
-                    ctx.commands.push(RhaiCommand::SpawnPrefab { path, position, rotation: Vec3::ZERO });
-                }
-
-                // Animation commands
-                "play_animation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let looping = cmd_map.get("looping").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
-                    let speed = cmd_map.get("speed").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::PlayAnimation { entity_id, name, looping, speed });
-                }
-                "stop_animation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    ctx.commands.push(RhaiCommand::StopAnimation { entity_id });
-                }
-                "set_animation_speed" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let speed = cmd_map.get("speed").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetAnimationSpeed { entity_id, speed });
-                }
-
-                // Rendering commands
-                "set_visibility" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let visible = cmd_map.get("visible").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
-                    ctx.commands.push(RhaiCommand::SetVisibility { entity_id, visible });
-                }
-                "set_material_color" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetMaterialColor { entity_id, color: [r, g, b, a] });
-                }
-                "set_light_intensity" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let intensity = cmd_map.get("intensity").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetLightIntensity { entity_id, intensity });
-                }
-                "set_light_color" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetLightColor { entity_id, color: [r, g, b] });
-                }
-
-                // Camera commands
-                "set_camera_target" | "camera_look_at" => {
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetCameraTarget { position: Vec3::new(x, y, z) });
-                }
-                "set_camera_zoom" => {
-                    let zoom = cmd_map.get("zoom").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetCameraZoom { zoom });
-                }
-                "screen_shake" => {
-                    let intensity = cmd_map.get("intensity").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.5) as f32;
-                    ctx.commands.push(RhaiCommand::ScreenShake { intensity, duration });
-                }
-                "camera_follow" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let offset_x = cmd_map.get("offset_x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let offset_y = cmd_map.get("offset_y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(5.0) as f32;
-                    let offset_z = cmd_map.get("offset_z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
-                    let smoothing = cmd_map.get("smoothing").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.1) as f32;
-                    ctx.commands.push(RhaiCommand::CameraFollow {
-                        entity_id,
-                        offset: Vec3::new(offset_x, offset_y, offset_z),
-                        smoothing,
-                    });
-                }
-                "camera_follow_self" => {
-                    // Use self entity for following
-                    let offset_x = cmd_map.get("offset_x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let offset_y = cmd_map.get("offset_y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(5.0) as f32;
-                    let offset_z = cmd_map.get("offset_z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
-                    let smoothing = cmd_map.get("smoothing").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.1) as f32;
-                    ctx.commands.push(RhaiCommand::CameraFollow {
-                        entity_id: ctx.self_entity_id,
-                        offset: Vec3::new(offset_x, offset_y, offset_z),
-                        smoothing,
-                    });
-                }
-                "camera_stop_follow" => {
-                    ctx.commands.push(RhaiCommand::StopCameraFollow);
-                }
-
-                // Component commands - Health
-                "set_health" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(100.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetHealth { entity_id, value });
-                }
-                "set_max_health" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(100.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetMaxHealth { entity_id, value });
-                }
-                "damage" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let amount = cmd_map.get("amount").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
-                    ctx.commands.push(RhaiCommand::Damage { entity_id, amount });
-                }
-                "heal" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let amount = cmd_map.get("amount").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(10.0) as f32;
-                    ctx.commands.push(RhaiCommand::Heal { entity_id, amount });
-                }
-                "set_invincible" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let invincible = cmd_map.get("invincible").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetInvincible { entity_id, invincible, duration });
-                }
-                "kill" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    ctx.commands.push(RhaiCommand::Kill { entity_id });
-                }
-                "revive" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    ctx.commands.push(RhaiCommand::Revive { entity_id });
-                }
-
-                // Component commands - Material emissive
-                "set_material_emissive" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    ctx.commands.push(RhaiCommand::SetComponentField {
-                        entity_id,
-                        component_type: "material".to_string(),
-                        field_name: "emissive".to_string(),
-                        value: ComponentValue::Vec3([r, g, b]),
-                    });
-                }
-
-                // Generic component field setting
-                "set_component_field" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let component_type = cmd_map.get("component_type")
-                        .and_then(|v| v.clone().into_immutable_string().ok())
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    let field_name = cmd_map.get("field")
-                        .and_then(|v| v.clone().into_immutable_string().ok())
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    let value_type = cmd_map.get("value_type")
-                        .and_then(|v| v.clone().into_immutable_string().ok())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "float".to_string());
-
-                    let value = match value_type.as_str() {
-                        "float" => ComponentValue::Float(
-                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32
-                        ),
-                        "int" => ComponentValue::Int(
-                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0)
-                        ),
-                        "bool" => ComponentValue::Bool(
-                            cmd_map.get("value").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false)
-                        ),
-                        "string" => ComponentValue::String(
-                            cmd_map.get("value")
-                                .and_then(|v| v.clone().into_immutable_string().ok())
-                                .map(|s| s.to_string())
-                                .unwrap_or_default()
-                        ),
-                        _ => ComponentValue::Float(0.0),
-                    };
-
-                    ctx.commands.push(RhaiCommand::SetComponentField {
-                        entity_id,
-                        component_type,
-                        field_name,
-                        value,
-                    });
-                }
-
-                // Additional animation commands
-                "pause_animation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    ctx.commands.push(RhaiCommand::PauseAnimation { entity_id });
-                }
-                "resume_animation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    ctx.commands.push(RhaiCommand::ResumeAnimation { entity_id });
-                }
-
-                // Sprite animation commands
-                "play_sprite_animation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let looping = cmd_map.get("looping").and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(true);
-                    ctx.commands.push(RhaiCommand::PlaySpriteAnimation { entity_id, name, looping });
-                }
-                "set_sprite_frame" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let frame = cmd_map.get("frame").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0);
-                    ctx.commands.push(RhaiCommand::SetSpriteFrame { entity_id, frame });
-                }
-
-                // Tween commands
-                "tween" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let property = cmd_map.get("property").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let target = cmd_map.get("target").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
-                    ctx.commands.push(RhaiCommand::Tween { entity_id, property, target, duration, easing });
-                }
-                "tween_position" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
-                    ctx.commands.push(RhaiCommand::TweenPosition { entity_id, target: Vec3::new(x, y, z), duration, easing });
-                }
-                "tween_rotation" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
-                    ctx.commands.push(RhaiCommand::TweenRotation { entity_id, target: Vec3::new(x, y, z), duration, easing });
-                }
-                "tween_scale" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).map(|id| id as u64);
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let duration = cmd_map.get("duration").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let easing = cmd_map.get("easing").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "linear".to_string());
-                    ctx.commands.push(RhaiCommand::TweenScale { entity_id, target: Vec3::new(x, y, z), duration, easing });
-                }
-
-                // Particle commands
-                "particle_play" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::ParticlePlay { entity_id });
-                }
-                "particle_pause" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::ParticlePause { entity_id });
-                }
-                "particle_stop" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::ParticleStop { entity_id });
-                }
-                "particle_reset" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    ctx.commands.push(RhaiCommand::ParticleReset { entity_id });
-                }
-                "particle_burst" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let count = cmd_map.get("count").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(10) as u32;
-                    ctx.commands.push(RhaiCommand::ParticleBurst { entity_id, count });
-                }
-                "particle_set_rate" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let multiplier = cmd_map.get("multiplier").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::ParticleSetRate { entity_id, multiplier });
-                }
-                "particle_set_scale" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let multiplier = cmd_map.get("multiplier").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::ParticleSetScale { entity_id, multiplier });
-                }
-                "particle_set_time_scale" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let scale = cmd_map.get("scale").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::ParticleSetTimeScale { entity_id, scale });
-                }
-                "particle_set_tint" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                    ctx.commands.push(RhaiCommand::ParticleSetTint { entity_id, r, g, b, a });
-                }
-                "particle_set_variable" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let name = cmd_map.get("name").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_default();
-                    let var_type = cmd_map.get("var_type").and_then(|v| v.clone().try_cast::<ImmutableString>()).map(|s| s.to_string()).unwrap_or_else(|| "float".to_string());
-                    match var_type.as_str() {
-                        "float" => {
-                            let value = cmd_map.get("value").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                            ctx.commands.push(RhaiCommand::ParticleSetVariableFloat { entity_id, name, value });
-                        }
-                        "color" => {
-                            let r = cmd_map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                            let g = cmd_map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                            let b = cmd_map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                            let a = cmd_map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-                            ctx.commands.push(RhaiCommand::ParticleSetVariableColor { entity_id, name, r, g, b, a });
-                        }
-                        "vec3" => {
-                            let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                            let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                            let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                            ctx.commands.push(RhaiCommand::ParticleSetVariableVec3 { entity_id, name, x, y, z });
-                        }
-                        _ => {}
-                    }
-                }
-                "particle_emit_at" => {
-                    let entity_id = cmd_map.get("entity_id").and_then(|v| v.clone().try_cast::<i64>()).unwrap_or(0) as u64;
-                    let x = cmd_map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let y = cmd_map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let z = cmd_map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-                    let count = cmd_map.get("count").and_then(|v| v.clone().try_cast::<i64>()).map(|c| c as u32);
-                    ctx.commands.push(RhaiCommand::ParticleEmitAt { entity_id, x, y, z, count });
-                }
-
-                _ => {}
-            }
-        }
     }
 }
+

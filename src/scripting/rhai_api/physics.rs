@@ -1,6 +1,7 @@
 //! Physics API functions for Rhai scripts
 
-use rhai::{Dynamic, Engine, Map, ImmutableString};
+use rhai::{Engine, ImmutableString};
+use super::super::rhai_commands::RhaiCommand;
 
 /// Register physics functions
 pub fn register(engine: &mut Engine) {
@@ -9,55 +10,28 @@ pub fn register(engine: &mut Engine) {
     // ===================
 
     // apply_force(x, y, z) - Apply force to self
-    engine.register_fn("apply_force", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("apply_force"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("apply_force", |x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::ApplyForce { entity_id: None, force: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // apply_force_to(entity_id, x, y, z) - Apply force to entity
-    engine.register_fn("apply_force_to", |entity_id: i64, x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("apply_force"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("apply_force_to", |entity_id: i64, x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::ApplyForce { entity_id: Some(entity_id as u64), force: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // apply_impulse(x, y, z) - Apply instant impulse to self
-    engine.register_fn("apply_impulse", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("apply_impulse"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("apply_impulse", |x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::ApplyImpulse { entity_id: None, impulse: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // apply_impulse_to(entity_id, x, y, z) - Apply instant impulse to entity
-    engine.register_fn("apply_impulse_to", |entity_id: i64, x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("apply_impulse"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("apply_impulse_to", |entity_id: i64, x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::ApplyImpulse { entity_id: Some(entity_id as u64), impulse: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // apply_torque(x, y, z) - Apply rotational force to self
-    engine.register_fn("apply_torque", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("apply_torque"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("apply_torque", |x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::ApplyTorque { entity_id: None, torque: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // ===================
@@ -65,34 +39,18 @@ pub fn register(engine: &mut Engine) {
     // ===================
 
     // set_velocity(x, y, z) - Set linear velocity of self
-    engine.register_fn("set_velocity", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_velocity"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("set_velocity", |x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::SetVelocity { entity_id: None, velocity: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // set_velocity_of(entity_id, x, y, z) - Set velocity of entity
-    engine.register_fn("set_velocity_of", |entity_id: i64, x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_velocity"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("set_velocity_of", |entity_id: i64, x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::SetVelocity { entity_id: Some(entity_id as u64), velocity: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // set_angular_velocity(x, y, z) - Set angular velocity of self
-    engine.register_fn("set_angular_velocity", |x: f64, y: f64, z: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_angular_velocity"));
-        m.insert("x".into(), Dynamic::from(x));
-        m.insert("y".into(), Dynamic::from(y));
-        m.insert("z".into(), Dynamic::from(z));
-        m
+    engine.register_fn("set_angular_velocity", |x: f64, y: f64, z: f64| {
+        super::push_command(RhaiCommand::SetAngularVelocity { entity_id: None, velocity: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
     });
 
     // ===================
@@ -100,11 +58,8 @@ pub fn register(engine: &mut Engine) {
     // ===================
 
     // set_gravity_scale(scale) - Set gravity scale for self (1.0 = normal, 0.0 = no gravity)
-    engine.register_fn("set_gravity_scale", |scale: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_gravity_scale"));
-        m.insert("scale".into(), Dynamic::from(scale));
-        m
+    engine.register_fn("set_gravity_scale", |scale: f64| {
+        super::push_command(RhaiCommand::SetGravityScale { entity_id: None, scale: scale as f32 });
     });
 
     // ===================
@@ -112,24 +67,18 @@ pub fn register(engine: &mut Engine) {
     // ===================
 
     // raycast(origin_x, origin_y, origin_z, dir_x, dir_y, dir_z, max_dist, result_var)
-    // Result is stored in a variable that can be accessed
     engine.register_fn("raycast", |
         ox: f64, oy: f64, oz: f64,
         dx: f64, dy: f64, dz: f64,
         max_dist: f64,
         result_var: ImmutableString
-    | -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("raycast"));
-        m.insert("ox".into(), Dynamic::from(ox));
-        m.insert("oy".into(), Dynamic::from(oy));
-        m.insert("oz".into(), Dynamic::from(oz));
-        m.insert("dx".into(), Dynamic::from(dx));
-        m.insert("dy".into(), Dynamic::from(dy));
-        m.insert("dz".into(), Dynamic::from(dz));
-        m.insert("max_dist".into(), Dynamic::from(max_dist));
-        m.insert("result_var".into(), Dynamic::from(result_var));
-        m
+    | {
+        super::push_command(RhaiCommand::Raycast {
+            origin: bevy::prelude::Vec3::new(ox as f32, oy as f32, oz as f32),
+            direction: bevy::prelude::Vec3::new(dx as f32, dy as f32, dz as f32),
+            max_distance: max_dist as f32,
+            result_var: result_var.to_string(),
+        });
     });
 
     // raycast_down(origin_x, origin_y, origin_z, max_dist) - Shorthand for downward raycast
@@ -137,17 +86,12 @@ pub fn register(engine: &mut Engine) {
         ox: f64, oy: f64, oz: f64,
         max_dist: f64,
         result_var: ImmutableString
-    | -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("raycast"));
-        m.insert("ox".into(), Dynamic::from(ox));
-        m.insert("oy".into(), Dynamic::from(oy));
-        m.insert("oz".into(), Dynamic::from(oz));
-        m.insert("dx".into(), Dynamic::from(0.0));
-        m.insert("dy".into(), Dynamic::from(-1.0));
-        m.insert("dz".into(), Dynamic::from(0.0));
-        m.insert("max_dist".into(), Dynamic::from(max_dist));
-        m.insert("result_var".into(), Dynamic::from(result_var));
-        m
+    | {
+        super::push_command(RhaiCommand::Raycast {
+            origin: bevy::prelude::Vec3::new(ox as f32, oy as f32, oz as f32),
+            direction: bevy::prelude::Vec3::new(0.0, -1.0, 0.0),
+            max_distance: max_dist as f32,
+            result_var: result_var.to_string(),
+        });
     });
 }

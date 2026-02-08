@@ -139,6 +139,7 @@ impl ScriptComponent {
             initialized: false,
             last_frame: 0,
             has_error: false,
+            last_script_modified: None,
         };
         self.scripts.first().map(|e| &e.runtime_state).unwrap_or(&DEFAULT)
     }
@@ -272,6 +273,8 @@ pub struct ScriptRuntimeState {
     pub last_frame: u64,
     /// Whether the script has a load/compile error (to avoid log spam)
     pub has_error: bool,
+    /// Last known script file modification time (for hot-reload detection)
+    pub last_script_modified: Option<std::time::SystemTime>,
 }
 
 /// Defines a variable that can be exposed in the inspector

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
 use crate::shared::DirectionalLightData;
 use crate::ui::property_row;
@@ -131,6 +131,40 @@ fn inspect_directional_light(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn directional_light_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("illuminance", PropertyValueType::Float),
+        ("color_r", PropertyValueType::Float),
+        ("color_g", PropertyValueType::Float),
+        ("color_b", PropertyValueType::Float),
+        ("shadows_enabled", PropertyValueType::Bool),
+    ]
+}
+
+fn directional_light_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<DirectionalLightData>(entity) else { return vec![] };
+    vec![
+        ("illuminance", PropertyValue::Float(data.illuminance)),
+        ("color_r", PropertyValue::Float(data.color.x)),
+        ("color_g", PropertyValue::Float(data.color.y)),
+        ("color_b", PropertyValue::Float(data.color.z)),
+        ("shadows_enabled", PropertyValue::Bool(data.shadows_enabled)),
+    ]
+}
+
+fn directional_light_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<DirectionalLightData>(entity) else { return false };
+    match prop {
+        "illuminance" => { if let PropertyValue::Float(v) = val { data.illuminance = *v; true } else { false } }
+        "shadows_enabled" => { if let PropertyValue::Bool(v) = val { data.shadows_enabled = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -146,5 +180,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         custom_add: add_directional_light,
         custom_remove: remove_directional_light,
         custom_deserialize: deserialize_directional_light,
+        custom_script_properties: directional_light_get_props,
+        custom_script_set: directional_light_set_prop,
+        custom_script_meta: directional_light_property_meta,
     }));
 }

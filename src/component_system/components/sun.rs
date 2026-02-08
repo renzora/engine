@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
 use crate::shared::SunData;
@@ -323,6 +323,49 @@ fn inspect_sun(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn sun_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("azimuth", PropertyValueType::Float),
+        ("elevation", PropertyValueType::Float),
+        ("illuminance", PropertyValueType::Float),
+        ("sun_color_r", PropertyValueType::Float),
+        ("sun_color_g", PropertyValueType::Float),
+        ("sun_color_b", PropertyValueType::Float),
+        ("shadows_enabled", PropertyValueType::Bool),
+        ("angular_diameter", PropertyValueType::Float),
+    ]
+}
+
+fn sun_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<SunData>(entity) else { return vec![] };
+    vec![
+        ("azimuth", PropertyValue::Float(data.azimuth)),
+        ("elevation", PropertyValue::Float(data.elevation)),
+        ("illuminance", PropertyValue::Float(data.illuminance)),
+        ("sun_color_r", PropertyValue::Float(data.color.x)),
+        ("sun_color_g", PropertyValue::Float(data.color.y)),
+        ("sun_color_b", PropertyValue::Float(data.color.z)),
+        ("shadows_enabled", PropertyValue::Bool(data.shadows_enabled)),
+        ("angular_diameter", PropertyValue::Float(data.angular_diameter)),
+    ]
+}
+
+fn sun_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<SunData>(entity) else { return false };
+    match prop {
+        "azimuth" => { if let PropertyValue::Float(v) = val { data.azimuth = *v; true } else { false } }
+        "elevation" => { if let PropertyValue::Float(v) = val { data.elevation = *v; true } else { false } }
+        "illuminance" => { if let PropertyValue::Float(v) = val { data.illuminance = *v; true } else { false } }
+        "shadows_enabled" => { if let PropertyValue::Bool(v) = val { data.shadows_enabled = *v; true } else { false } }
+        "angular_diameter" => { if let PropertyValue::Float(v) = val { data.angular_diameter = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -338,5 +381,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         custom_add: add_sun,
         custom_remove: remove_sun,
         custom_deserialize: deserialize_sun,
+        custom_script_properties: sun_get_props,
+        custom_script_set: sun_set_prop,
+        custom_script_meta: sun_property_meta,
     }));
 }

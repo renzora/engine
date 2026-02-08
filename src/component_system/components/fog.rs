@@ -5,12 +5,45 @@ use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy_egui::egui;
 use egui_phosphor::regular::CLOUD;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
 use crate::shared::FogData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
+
+fn fog_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("fog_enabled", PropertyValueType::Bool),
+        ("fog_color_r", PropertyValueType::Float),
+        ("fog_color_g", PropertyValueType::Float),
+        ("fog_color_b", PropertyValueType::Float),
+        ("fog_start", PropertyValueType::Float),
+        ("fog_end", PropertyValueType::Float),
+    ]
+}
+
+fn fog_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<FogData>(entity) else { return vec![] };
+    vec![
+        ("fog_enabled", PropertyValue::Bool(data.enabled)),
+        ("fog_color_r", PropertyValue::Float(data.color.0)),
+        ("fog_color_g", PropertyValue::Float(data.color.1)),
+        ("fog_color_b", PropertyValue::Float(data.color.2)),
+        ("fog_start", PropertyValue::Float(data.start)),
+        ("fog_end", PropertyValue::Float(data.end)),
+    ]
+}
+
+fn fog_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<FogData>(entity) else { return false };
+    match prop {
+        "fog_enabled" => { if let PropertyValue::Bool(v) = val { data.enabled = *v; true } else { false } }
+        "fog_start" => { if let PropertyValue::Float(v) = val { data.start = *v; true } else { false } }
+        "fog_end" => { if let PropertyValue::Float(v) = val { data.end = *v; true } else { false } }
+        _ => false,
+    }
+}
 
 /// Register FogData with the component registry.
 pub fn register(registry: &mut ComponentRegistry) {
@@ -20,6 +53,9 @@ pub fn register(registry: &mut ComponentRegistry) {
         category: ComponentCategory::PostProcess,
         icon: CLOUD,
         custom_inspector: inspect_fog,
+        custom_script_properties: fog_get_props,
+        custom_script_set: fog_set_prop,
+        custom_script_meta: fog_property_meta,
     }));
 }
 

@@ -557,6 +557,11 @@ pub fn editor_ui(
             })
         });
 
+        // Capture drag state before panel loop — the assets panel's safety reset
+        // clears dragging_asset when pointer is released, which would race with the
+        // inspector panel's copy if assets renders first in the docking order.
+        editor.inspector_render_state.dragging_asset_path = editor.assets.dragging_asset.clone();
+
         for (panel_id, panel_rect, is_active) in panel_rects {
             if !is_active {
                 continue; // Only render active tabs
@@ -686,7 +691,6 @@ pub fn editor_ui(
                     });
 
                     // Store render state for exclusive system
-                    editor.inspector_render_state.dragging_asset_path = editor.assets.dragging_asset.clone();
                     editor.inspector_render_state.request_render(
                         panel_ctx.content_rect,
                         camera_preview_texture_id,

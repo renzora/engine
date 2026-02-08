@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Spawner",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "time/every_n_seconds",
+        "position": [350.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "interval", "label": "Interval", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "interval": { "Float": 2.0 }
+        },
+        "comment": "Spawn every 2 seconds",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "transform/get_position",
+        "position": [350.0, 420.0],
+        "pins": [
+          { "name": "position", "label": "Position", "pin_type": "Vec3", "direction": "Output", "default_value": null, "required": false },
+          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "z", "label": "Z", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Spawn at this entity's position",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "rendering/spawn_primitive",
+        "position": [650.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "shape", "label": "Shape", "pin_type": "String", "direction": "Input", "default_value": { "String": "cube" }, "required": false },
+          { "name": "size", "label": "Size", "pin_type": "Vec3", "direction": "Input", "default_value": { "Vec3": [1.0, 1.0, 1.0] }, "required": false },
+          { "name": "position", "label": "Position", "pin_type": "Vec3", "direction": "Input", "default_value": { "Vec3": [0.0, 0.0, 0.0] }, "required": false },
+          { "name": "color", "label": "Color", "pin_type": "Color", "direction": "Input", "default_value": { "Color": [1.0, 1.0, 1.0, 1.0] }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false },
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "shape": { "String": "cube" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "debug/log",
+        "position": [950.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "message", "label": "Message", "pin_type": "String", "direction": "Input", "default_value": { "String": "" }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "message": { "String": "Spawned cube!" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 2, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "position", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "position", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "exec", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 6
+  }
+}

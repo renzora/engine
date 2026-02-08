@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
 use crate::shared::PointLightData;
 use crate::ui::property_row;
@@ -154,6 +154,46 @@ fn inspect_point_light(
 }
 
 // ============================================================================
+// Script Property Access
+// ============================================================================
+
+fn point_light_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("light_intensity", PropertyValueType::Float),
+        ("light_range", PropertyValueType::Float),
+        ("light_radius", PropertyValueType::Float),
+        ("light_color_r", PropertyValueType::Float),
+        ("light_color_g", PropertyValueType::Float),
+        ("light_color_b", PropertyValueType::Float),
+        ("shadows_enabled", PropertyValueType::Bool),
+    ]
+}
+
+fn point_light_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<PointLightData>(entity) else { return vec![] };
+    vec![
+        ("light_intensity", PropertyValue::Float(data.intensity)),
+        ("light_range", PropertyValue::Float(data.range)),
+        ("light_radius", PropertyValue::Float(data.radius)),
+        ("light_color_r", PropertyValue::Float(data.color.x)),
+        ("light_color_g", PropertyValue::Float(data.color.y)),
+        ("light_color_b", PropertyValue::Float(data.color.z)),
+        ("shadows_enabled", PropertyValue::Bool(data.shadows_enabled)),
+    ]
+}
+
+fn point_light_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<PointLightData>(entity) else { return false };
+    match prop {
+        "light_intensity" => { if let PropertyValue::Float(v) = val { data.intensity = *v; true } else { false } }
+        "light_range" => { if let PropertyValue::Float(v) = val { data.range = *v; true } else { false } }
+        "light_radius" => { if let PropertyValue::Float(v) = val { data.radius = *v; true } else { false } }
+        "shadows_enabled" => { if let PropertyValue::Bool(v) = val { data.shadows_enabled = *v; true } else { false } }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -169,5 +209,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         custom_add: add_point_light,
         custom_remove: remove_point_light,
         custom_deserialize: deserialize_point_light,
+        custom_script_properties: point_light_get_props,
+        custom_script_set: point_light_set_prop,
+        custom_script_meta: point_light_property_meta,
     }));
 }

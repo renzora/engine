@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Proximity Trigger",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "ecs/self",
+        "position": [100.0, 400.0],
+        "pins": [
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "ecs/find_by_name",
+        "position": [100.0, 560.0],
+        "pins": [
+          { "name": "name", "label": "Name", "pin_type": "String", "direction": "Input", "default_value": { "String": "" }, "required": false },
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false },
+          { "name": "found", "label": "Found", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "name": { "String": "Player" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "ai/is_in_range",
+        "position": [380.0, 400.0],
+        "pins": [
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Input", "default_value": null, "required": false },
+          { "name": "target", "label": "Target", "pin_type": "Entity", "direction": "Input", "default_value": null, "required": false },
+          { "name": "range", "label": "Range", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 5.0 }, "required": false },
+          { "name": "in_range", "label": "In Range", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "range": { "Float": 3.0 }
+        },
+        "comment": "Trigger radius = 3.0",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "logic/if",
+        "position": [650.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "condition", "label": "Condition", "pin_type": "Bool", "direction": "Input", "default_value": { "Bool": false }, "required": false },
+          { "name": "true", "label": "True", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false },
+          { "name": "false", "label": "False", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 6,
+        "node_type": "debug/log",
+        "position": [920.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "message", "label": "Message", "pin_type": "String", "direction": "Input", "default_value": { "String": "" }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "message": { "String": "Player entered trigger zone!" }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "entity", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "entity", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "entity", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "target", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "in_range", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "condition", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 5, "pin_name": "true", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "exec", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 7
+  }
+}

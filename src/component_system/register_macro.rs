@@ -51,6 +51,9 @@ macro_rules! register_component {
         $(, custom_remove: $remove_fn:expr)?
         $(, custom_serialize: $serialize_fn:expr)?
         $(, custom_deserialize: $deserialize_fn:expr)?
+        $(, custom_script_properties: $script_props_fn:expr)?
+        $(, custom_script_set: $script_set_fn:expr)?
+        $(, custom_script_meta: $script_meta_fn:expr)?
         $(,)?
     }) => {
         $crate::component_system::register_macro::create_component_definition::<$component>(
@@ -66,6 +69,9 @@ macro_rules! register_component {
             register_component!(@remove $component $(, $remove_fn)?),
             register_component!(@serialize $component $(, $serialize_fn)?),
             register_component!(@deserialize $component $(, $deserialize_fn)?),
+            register_component!(@script_properties $(, $script_props_fn)?),
+            register_component!(@script_set $(, $script_set_fn)?),
+            register_component!(@script_meta $(, $script_meta_fn)?),
         )
     };
 
@@ -120,6 +126,30 @@ macro_rules! register_component {
     (@deserialize $component:ty, $deserialize_fn:expr) => {
         Some($deserialize_fn as $crate::component_system::DeserializeComponentFn)
     };
+
+    // Helper: Use custom script properties or none
+    (@script_properties) => {
+        None::<$crate::component_system::GetScriptPropertiesFn>
+    };
+    (@script_properties, $script_props_fn:expr) => {
+        Some($script_props_fn as $crate::component_system::GetScriptPropertiesFn)
+    };
+
+    // Helper: Use custom script set or none
+    (@script_set) => {
+        None::<$crate::component_system::SetScriptPropertyFn>
+    };
+    (@script_set, $script_set_fn:expr) => {
+        Some($script_set_fn as $crate::component_system::SetScriptPropertyFn)
+    };
+
+    // Helper: Use custom script meta or none
+    (@script_meta) => {
+        None::<$crate::component_system::ScriptPropertyMetaFn>
+    };
+    (@script_meta, $script_meta_fn:expr) => {
+        Some($script_meta_fn as $crate::component_system::ScriptPropertyMetaFn)
+    };
 }
 
 use bevy::prelude::*;
@@ -128,7 +158,8 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use super::{
     AddComponentFn, ComponentCategory, ComponentDefinition, DeserializeComponentFn,
-    HasComponentFn, InspectorFn, RemoveComponentFn, SerializeComponentFn,
+    GetScriptPropertiesFn, HasComponentFn, InspectorFn, RemoveComponentFn,
+    ScriptPropertyMetaFn, SerializeComponentFn, SetScriptPropertyFn,
 };
 
 /// Create a ComponentDefinition with automatic function generation
@@ -148,6 +179,9 @@ pub fn create_component_definition<T>(
     custom_remove: Option<RemoveComponentFn>,
     custom_serialize: Option<SerializeComponentFn>,
     custom_deserialize: Option<DeserializeComponentFn>,
+    custom_script_properties: Option<GetScriptPropertiesFn>,
+    custom_script_set: Option<SetScriptPropertyFn>,
+    custom_script_meta: Option<ScriptPropertyMetaFn>,
 ) -> ComponentDefinition
 where
     T: Component<Mutability = bevy::ecs::component::Mutable> + Default + Serialize + DeserializeOwned + 'static,
@@ -166,6 +200,9 @@ where
         inspector_fn: custom_inspector.unwrap_or(default_inspector::<T>),
         conflicts_with,
         requires,
+        get_script_properties_fn: custom_script_properties,
+        set_script_property_fn: custom_script_set,
+        script_property_meta_fn: custom_script_meta,
     }
 }
 
@@ -235,6 +272,9 @@ pub struct ComponentDefBuilder<T> {
     remove_fn: Option<RemoveComponentFn>,
     serialize_fn: Option<SerializeComponentFn>,
     deserialize_fn: Option<DeserializeComponentFn>,
+    script_properties_fn: Option<GetScriptPropertiesFn>,
+    script_set_fn: Option<SetScriptPropertyFn>,
+    script_meta_fn: Option<ScriptPropertyMetaFn>,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -262,6 +302,9 @@ where
             remove_fn: None,
             serialize_fn: None,
             deserialize_fn: None,
+            script_properties_fn: None,
+            script_set_fn: None,
+            script_meta_fn: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -314,6 +357,24 @@ where
         self
     }
 
+    /// Set custom script properties function
+    pub fn script_properties(mut self, f: GetScriptPropertiesFn) -> Self {
+        self.script_properties_fn = Some(f);
+        self
+    }
+
+    /// Set custom script set function
+    pub fn script_set(mut self, f: SetScriptPropertyFn) -> Self {
+        self.script_set_fn = Some(f);
+        self
+    }
+
+    /// Set script property meta function
+    pub fn script_meta(mut self, f: ScriptPropertyMetaFn) -> Self {
+        self.script_meta_fn = Some(f);
+        self
+    }
+
     /// Build the ComponentDefinition
     pub fn build(self) -> ComponentDefinition {
         create_component_definition::<T>(
@@ -329,6 +390,9 @@ where
             self.remove_fn,
             self.serialize_fn,
             self.deserialize_fn,
+            self.script_properties_fn,
+            self.script_set_fn,
+            self.script_meta_fn,
         )
     }
 }

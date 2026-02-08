@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::component_system::{ComponentCategory, ComponentRegistry};
+use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
 use crate::shared::{PhysicsBodyData, PhysicsBodyType};
 use crate::ui::property_row;
@@ -174,6 +174,36 @@ fn inspect_rigid_body(
     changed
 }
 
+fn rigid_body_property_meta() -> Vec<(&'static str, PropertyValueType)> {
+    vec![
+        ("mass", PropertyValueType::Float),
+        ("gravity_scale", PropertyValueType::Float),
+        ("linear_damping", PropertyValueType::Float),
+        ("angular_damping", PropertyValueType::Float),
+    ]
+}
+
+fn rigid_body_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
+    let Some(data) = world.get::<PhysicsBodyData>(entity) else { return vec![] };
+    vec![
+        ("mass", PropertyValue::Float(data.mass)),
+        ("gravity_scale", PropertyValue::Float(data.gravity_scale)),
+        ("linear_damping", PropertyValue::Float(data.linear_damping)),
+        ("angular_damping", PropertyValue::Float(data.angular_damping)),
+    ]
+}
+
+fn rigid_body_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
+    let Some(mut data) = world.get_mut::<PhysicsBodyData>(entity) else { return false };
+    match prop {
+        "mass" => { if let PropertyValue::Float(v) = val { data.mass = *v; true } else { false } }
+        "gravity_scale" => { if let PropertyValue::Float(v) = val { data.gravity_scale = *v; true } else { false } }
+        "linear_damping" => { if let PropertyValue::Float(v) = val { data.linear_damping = *v; true } else { false } }
+        "angular_damping" => { if let PropertyValue::Float(v) = val { data.angular_damping = *v; true } else { false } }
+        _ => false,
+    }
+}
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -186,5 +216,8 @@ pub fn register(registry: &mut ComponentRegistry) {
         icon: ATOM,
         priority: 0,
         custom_inspector: inspect_rigid_body,
+        custom_script_properties: rigid_body_get_props,
+        custom_script_set: rigid_body_set_prop,
+        custom_script_meta: rigid_body_property_meta,
     }));
 }

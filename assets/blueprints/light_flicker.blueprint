@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Light Flicker",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "utility/get_elapsed",
+        "position": [100.0, 400.0],
+        "pins": [
+          { "name": "elapsed", "label": "Elapsed", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "math/multiply",
+        "position": [300.0, 400.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 8.0 }
+        },
+        "comment": "Elapsed * Flicker Speed",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "math/sin",
+        "position": [500.0, 400.0],
+        "pins": [
+          { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "math/multiply",
+        "position": [700.0, 400.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 300.0 }
+        },
+        "comment": "Sin * Flicker Amount",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 6,
+        "node_type": "math/add",
+        "position": [900.0, 400.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "a": { "Float": 1000.0 }
+        },
+        "comment": "Base Intensity + Variation",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 7,
+        "node_type": "ecs/self",
+        "position": [700.0, 200.0],
+        "pins": [
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 8,
+        "node_type": "rendering/set_light_intensity",
+        "position": [1150.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "entity", "label": "Entity", "pin_type": "Entity", "direction": "Input", "default_value": null, "required": false },
+          { "name": "intensity", "label": "Intensity", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1000.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 8, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "elapsed", "direction": "Output" },
+        "to": { "node_id": 3, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 5, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 7, "pin_name": "entity", "direction": "Output" },
+        "to": { "node_id": 8, "pin_name": "entity", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 6, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 8, "pin_name": "intensity", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 9
+  }
+}

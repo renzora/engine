@@ -7,6 +7,7 @@ mod animation;
 mod arrays;
 mod audio;
 mod camera;
+pub mod components;
 mod debug;
 mod easing;
 mod ecs;
@@ -72,35 +73,88 @@ impl NodeTypeDefinition {
     }
 }
 
+/// Dynamic node definition for auto-generated component nodes.
+/// Unlike NodeTypeDefinition (which uses static refs), this owns its data.
+pub struct ComponentNodeDef {
+    pub type_id: String,
+    pub display_name: String,
+    pub category: String,
+    pub description: String,
+    pub pins: Vec<Pin>,
+    pub color: [u8; 3],
+}
+
+impl ComponentNodeDef {
+    /// Create a node instance from this dynamic definition
+    pub fn create_node(&self, id: NodeId) -> BlueprintNode {
+        let mut node = BlueprintNode::with_pins(id, &self.type_id, self.pins.clone());
+
+        for pin in &node.pins {
+            if pin.direction == PinDirection::Input {
+                if let Some(default) = &pin.default_value {
+                    node.input_values.insert(pin.name.clone(), default.clone());
+                }
+            }
+        }
+
+        node
+    }
+}
+
+/// Entry in the node palette — either a static built-in or a dynamic component node
+pub enum NodeEntry {
+    Static(&'static NodeTypeDefinition),
+    Dynamic(String), // key into component_nodes
+}
+
 /// Registry of all available node types
 #[derive(Resource)]
 pub struct NodeRegistry {
-    /// Node types indexed by type_id
+    /// Static node types indexed by type_id
     pub types: HashMap<String, &'static NodeTypeDefinition>,
-    /// Node types organized by category
-    pub by_category: HashMap<String, Vec<&'static NodeTypeDefinition>>,
+    /// Dynamic component nodes indexed by type_id
+    pub component_nodes: HashMap<String, ComponentNodeDef>,
+    /// Node entries organized by category (includes both static and dynamic)
+    pub by_category: HashMap<String, Vec<NodeEntry>>,
 }
 
 impl NodeRegistry {
     pub fn new() -> Self {
         Self {
             types: HashMap::new(),
+            component_nodes: HashMap::new(),
             by_category: HashMap::new(),
         }
     }
 
-    /// Register a node type
+    /// Register a static node type
     pub fn register(&mut self, def: &'static NodeTypeDefinition) {
         self.types.insert(def.type_id.to_string(), def);
         self.by_category
             .entry(def.category.to_string())
             .or_default()
-            .push(def);
+            .push(NodeEntry::Static(def));
     }
 
-    /// Get a node type by ID
+    /// Register a dynamic component node
+    pub fn register_component_node(&mut self, def: ComponentNodeDef) {
+        let type_id = def.type_id.clone();
+        let category = def.category.clone();
+        self.component_nodes.insert(type_id.clone(), def);
+        self.by_category
+            .entry(category)
+            .or_default()
+            .push(NodeEntry::Dynamic(type_id));
+    }
+
+    /// Get a static node type by ID
     pub fn get(&self, type_id: &str) -> Option<&'static NodeTypeDefinition> {
         self.types.get(type_id).copied()
+    }
+
+    /// Get a dynamic component node by ID
+    pub fn get_component_node(&self, type_id: &str) -> Option<&ComponentNodeDef> {
+        self.component_nodes.get(type_id)
     }
 
     /// Get all categories
@@ -108,14 +162,20 @@ impl NodeRegistry {
         self.by_category.keys()
     }
 
-    /// Get all node types in a category
-    pub fn nodes_in_category(&self, category: &str) -> Option<&Vec<&'static NodeTypeDefinition>> {
+    /// Get all node entries in a category
+    pub fn entries_in_category(&self, category: &str) -> Option<&Vec<NodeEntry>> {
         self.by_category.get(category)
     }
 
-    /// Create a node instance from a type ID
+    /// Create a node instance from a type ID (checks both static and dynamic)
     pub fn create_node(&self, type_id: &str, id: NodeId) -> Option<BlueprintNode> {
-        self.get(type_id).map(|def| def.create_node(id))
+        if let Some(def) = self.get(type_id) {
+            return Some(def.create_node(id));
+        }
+        if let Some(def) = self.get_component_node(type_id) {
+            return Some(def.create_node(id));
+        }
+        None
     }
 }
 

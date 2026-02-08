@@ -3,6 +3,7 @@
 //! These functions check input state that's been pre-populated in the scope.
 
 use rhai::{Dynamic, Engine, Map, ImmutableString};
+use crate::core::resources::console::{console_log, LogLevel};
 
 /// Register input functions
 pub fn register(engine: &mut Engine) {
@@ -107,10 +108,8 @@ pub fn register(engine: &mut Engine) {
     // Print for debugging
     // ===================
 
-    // print_log(msg) - Print to console
-    engine.register_fn("print_log", |msg: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_print_message".into(), Dynamic::from(msg));
-        m
+    // print_log(msg) - Print to console (executes immediately)
+    engine.register_fn("print_log", |msg: ImmutableString| {
+        console_log(LogLevel::Info, "Script", msg.to_string());
     });
 }

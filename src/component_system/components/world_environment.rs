@@ -36,6 +36,9 @@ pub static WORLD_ENVIRONMENT: ComponentDefinition = ComponentDefinition {
     inspector_fn: inspect_world_environment,
     conflicts_with: &[],
     requires: &[],
+    get_script_properties_fn: None,
+    set_script_property_fn: None,
+    script_property_meta_fn: None,
 };
 
 pub fn register(registry: &mut ComponentRegistry) {

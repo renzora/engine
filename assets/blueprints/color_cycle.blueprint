@@ -1,0 +1,308 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Color Cycle",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "utility/get_elapsed",
+        "position": [100.0, 450.0],
+        "pins": [
+          { "name": "elapsed", "label": "Elapsed", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "math/multiply",
+        "position": [280.0, 450.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 1.0 }
+        },
+        "comment": "Elapsed * Cycle Speed",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 4,
+        "node_type": "math/add",
+        "position": [440.0, 580.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 2.094 }
+        },
+        "comment": "Green phase offset (120°)",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 5,
+        "node_type": "math/add",
+        "position": [440.0, 720.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 4.189 }
+        },
+        "comment": "Blue phase offset (240°)",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 6,
+        "node_type": "math/sin",
+        "position": [620.0, 450.0],
+        "pins": [
+          { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Red channel wave",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 7,
+        "node_type": "math/sin",
+        "position": [620.0, 580.0],
+        "pins": [
+          { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Green channel wave",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 8,
+        "node_type": "math/sin",
+        "position": [620.0, 720.0],
+        "pins": [
+          { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Blue channel wave",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 9,
+        "node_type": "math/multiply",
+        "position": [790.0, 450.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 0.5 }
+        },
+        "comment": "Scale to ±0.5",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 10,
+        "node_type": "math/multiply",
+        "position": [790.0, 580.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 0.5 }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 11,
+        "node_type": "math/multiply",
+        "position": [790.0, 720.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 0.5 }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 12,
+        "node_type": "math/add",
+        "position": [960.0, 450.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "a": { "Float": 0.5 }
+        },
+        "comment": "Shift to 0-1 range → R",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 13,
+        "node_type": "math/add",
+        "position": [960.0, 580.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "a": { "Float": 0.5 }
+        },
+        "comment": "→ G",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 14,
+        "node_type": "math/add",
+        "position": [960.0, 720.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "a": { "Float": 0.5 }
+        },
+        "comment": "→ B",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 15,
+        "node_type": "component/set_point_light",
+        "position": [1200.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
+          { "name": "name", "label": "Name", "pin_type": "String", "direction": "Input", "default_value": { "String": "Point Light" }, "required": false },
+          { "name": "intensity", "label": "Intensity", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "range", "label": "Range", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "radius", "label": "Radius", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "color_r", "label": "Color R", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "color_g", "label": "Color G", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "color_b", "label": "Color B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "shadows_enabled", "label": "Shadows Enabled", "pin_type": "Bool", "direction": "Input", "default_value": { "Bool": false }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "name": { "String": "Point Light" }
+        },
+        "comment": "Only connected pins (color_r/g/b) are written",
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "elapsed", "direction": "Output" },
+        "to": { "node_id": 3, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 6, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 4, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 3, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 5, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 4, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 7, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 5, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 8, "pin_name": "value", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 6, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 9, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 7, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 10, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 8, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 11, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 9, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 12, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 10, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 13, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 11, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 14, "pin_name": "b", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 12, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "color_r", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 13, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "color_g", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 14, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 15, "pin_name": "color_b", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 16
+  }
+}

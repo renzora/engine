@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "graph": {
+    "name": "Rotate",
+    "graph_type": "Behavior",
+    "nodes": [
+      {
+        "id": 1,
+        "node_type": "event/on_update",
+        "position": [100.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false },
+          { "name": "delta", "label": "Delta", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 2,
+        "node_type": "math/multiply",
+        "position": [350.0, 300.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "b": { "Float": 45.0 }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 3,
+        "node_type": "transform/rotate",
+        "position": [600.0, 200.0],
+        "pins": [
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
+          { "name": "pitch", "label": "Pitch", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "yaw", "label": "Yaw", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "roll", "label": "Roll", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {
+          "pitch": { "Float": 0.0 },
+          "yaw": { "Float": 0.0 },
+          "roll": { "Float": 0.0 }
+        },
+        "comment": null,
+        "display_name": null,
+        "color": null
+      }
+    ],
+    "connections": [
+      {
+        "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" },
+        "to": { "node_id": 3, "pin_name": "exec", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" },
+        "to": { "node_id": 2, "pin_name": "a", "direction": "Input" }
+      },
+      {
+        "from": { "node_id": 2, "pin_name": "result", "direction": "Output" },
+        "to": { "node_id": 3, "pin_name": "yaw", "direction": "Input" }
+      }
+    ],
+    "variables": [],
+    "next_node_id": 4
+  }
+}

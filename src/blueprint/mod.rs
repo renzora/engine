@@ -49,6 +49,7 @@ pub use serialization::*;
 
 use bevy::prelude::*;
 use crate::core::AppState;
+use crate::component_system::ComponentRegistry;
 use crate::project::CurrentProject;
 
 /// Plugin for the blueprint visual scripting system
@@ -67,6 +68,7 @@ impl Plugin for BlueprintPlugin {
             .add_plugins(BlueprintMaterialPlugin)
             // Add the custom render pipeline for per-entity shaders
             .add_plugins(BlueprintMaterialRenderPlugin)
+            .add_systems(Startup, register_component_blueprint_nodes)
             .add_systems(
                 Update,
                 (
@@ -77,6 +79,14 @@ impl Plugin for BlueprintPlugin {
                     .run_if(in_state(AppState::Editor)),
             );
     }
+}
+
+/// Startup system: generate blueprint nodes from the component registry.
+fn register_component_blueprint_nodes(
+    mut node_reg: ResMut<nodes::NodeRegistry>,
+    comp_reg: Res<ComponentRegistry>,
+) {
+    nodes::components::generate_component_nodes(&mut node_reg, &comp_reg);
 }
 
 /// Resource tracking the blueprints folder for the current project

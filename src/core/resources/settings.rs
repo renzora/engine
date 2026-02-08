@@ -144,6 +144,8 @@ pub struct EditorSettings {
     pub dev_mode: bool,
     /// Base font size in points
     pub font_size: f32,
+    /// Re-run on_ready when a script is hot-reloaded
+    pub script_rerun_on_ready_on_reload: bool,
 }
 
 impl Default for EditorSettings {
@@ -163,6 +165,7 @@ impl Default for EditorSettings {
             visualization_mode: VisualizationMode::default(),
             dev_mode: false,
             font_size: 13.0,
+            script_rerun_on_ready_on_reload: true,
         }
     }
 }

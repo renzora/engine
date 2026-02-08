@@ -2116,6 +2116,10 @@ fn handle_item_interaction(
             assets.current_folder = Some(item.path.clone());
             assets.selected_assets.clear();
             assets.selected_asset = None;
+        } else if item.name.to_lowercase().ends_with(".blueprint") {
+            // Open behavior blueprint files in blueprint editor
+            assets.pending_blueprint_open = Some(item.path.clone());
+            assets.requested_layout = Some("Blueprints".to_string());
         } else if is_script_file(&item.path) {
             // Open script files in the editor and switch to Scripting layout
             super::script_editor::open_script(scene_state, item.path.clone());
@@ -2189,8 +2193,11 @@ fn handle_item_interaction(
                 .show(ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            let lower_name = item.name.to_lowercase();
                             let (icon, color, hint) = if is_scene_file(&item.name) {
                                 (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
+                            } else if lower_name.ends_with(".rhai") || lower_name.ends_with(".blueprint") {
+                                (FILM_SCRIPT, Color32::from_rgb(130, 230, 180), "Drop on Script component")
                             } else if is_image_file(&item.name) {
                                 (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
                             } else if is_hdr_file(&item.name) {
@@ -3661,7 +3668,8 @@ fn is_blueprint_material_file(filename: &str) -> bool {
 }
 
 fn is_draggable_asset(filename: &str) -> bool {
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename)
+    let lower = filename.to_lowercase();
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint")
 }
 
 fn is_video_file(filename: &str) -> bool {

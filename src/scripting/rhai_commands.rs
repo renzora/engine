@@ -1,10 +1,52 @@
 //! Commands that can be issued from Rhai scripts
 
 use bevy::prelude::*;
+use crate::component_system::PropertyValue;
 
 /// Commands that can be issued from Rhai scripts
 #[derive(Clone, Debug)]
 pub enum RhaiCommand {
+    // ===================
+    // Self-Transform Commands
+    // ===================
+    SetPosition { x: f32, y: f32, z: f32 },
+    SetRotation { x: f32, y: f32, z: f32 },
+    SetScale { x: f32, y: f32, z: f32 },
+    Translate { x: f32, y: f32, z: f32 },
+    Rotate { x: f32, y: f32, z: f32 },
+    LookAt { x: f32, y: f32, z: f32 },
+
+    // ===================
+    // Parent Transform Commands
+    // ===================
+    ParentSetPosition { x: f32, y: f32, z: f32 },
+    ParentSetRotation { x: f32, y: f32, z: f32 },
+    ParentTranslate { x: f32, y: f32, z: f32 },
+
+    // ===================
+    // Child Transform Commands
+    // ===================
+    ChildSetPosition { name: String, x: f32, y: f32, z: f32 },
+    ChildSetRotation { name: String, x: f32, y: f32, z: f32 },
+    ChildTranslate { name: String, x: f32, y: f32, z: f32 },
+
+    // ===================
+    // Environment Commands
+    // ===================
+    SetSunAngles { azimuth: f32, elevation: f32 },
+    SetAmbientBrightness { brightness: f32 },
+    SetAmbientColor { r: f32, g: f32, b: f32 },
+    SetSkyTopColor { r: f32, g: f32, b: f32 },
+    SetSkyHorizonColor { r: f32, g: f32, b: f32 },
+    SetFog { enabled: bool, start: f32, end: f32 },
+    SetFogColor { r: f32, g: f32, b: f32 },
+    SetEv100 { value: f32 },
+
+    // ===================
+    // Property Write (cross-entity)
+    // ===================
+    SetProperty { entity_id: u64, property: String, value: PropertyValue },
+
     // ===================
     // ECS Commands
     // ===================

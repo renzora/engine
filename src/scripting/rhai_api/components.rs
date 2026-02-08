@@ -1,8 +1,7 @@
 //! Component API functions for Rhai scripts
-//!
-//! Provides access to component data on entities.
 
-use rhai::{Dynamic, Engine, Map, ImmutableString};
+use rhai::{Engine, ImmutableString};
+use super::super::rhai_commands::{RhaiCommand, ComponentValue};
 
 /// Register component functions
 pub fn register(engine: &mut Engine) {
@@ -10,322 +9,165 @@ pub fn register(engine: &mut Engine) {
     // Health Component
     // ===================
 
-    // get_health() - Get current health of self
-    // Returns the health value from scope variable (populated by runtime)
-    engine.register_fn("get_health", || -> f64 {
-        // This is a placeholder - actual value comes from scope
-        0.0
+    engine.register_fn("get_health", || -> f64 { 0.0 });
+
+    engine.register_fn("set_health", |value: f64| {
+        super::push_command(RhaiCommand::SetHealth { entity_id: None, value: value as f32 });
     });
 
-    // set_health(value) - Set health of self
-    engine.register_fn("set_health", |value: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_health"));
-        m.insert("value".into(), Dynamic::from(value));
-        m
+    engine.register_fn("set_health_of", |entity_id: i64, value: f64| {
+        super::push_command(RhaiCommand::SetHealth { entity_id: Some(entity_id as u64), value: value as f32 });
     });
 
-    // set_health_of(entity_id, value) - Set health of entity
-    engine.register_fn("set_health_of", |entity_id: i64, value: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_health"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("value".into(), Dynamic::from(value));
-        m
+    engine.register_fn("set_max_health", |value: f64| {
+        super::push_command(RhaiCommand::SetMaxHealth { entity_id: None, value: value as f32 });
     });
 
-    // set_max_health(value) - Set max health of self
-    engine.register_fn("set_max_health", |value: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_max_health"));
-        m.insert("value".into(), Dynamic::from(value));
-        m
+    engine.register_fn("set_max_health_of", |entity_id: i64, value: f64| {
+        super::push_command(RhaiCommand::SetMaxHealth { entity_id: Some(entity_id as u64), value: value as f32 });
     });
 
-    // set_max_health_of(entity_id, value) - Set max health of entity
-    engine.register_fn("set_max_health_of", |entity_id: i64, value: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_max_health"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("value".into(), Dynamic::from(value));
-        m
+    engine.register_fn("damage", |amount: f64| {
+        super::push_command(RhaiCommand::Damage { entity_id: None, amount: amount as f32 });
     });
 
-    // damage(amount) - Deal damage to self
-    engine.register_fn("damage", |amount: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("damage"));
-        m.insert("amount".into(), Dynamic::from(amount));
-        m
+    engine.register_fn("damage_entity", |entity_id: i64, amount: f64| {
+        super::push_command(RhaiCommand::Damage { entity_id: Some(entity_id as u64), amount: amount as f32 });
     });
 
-    // damage_entity(entity_id, amount) - Deal damage to entity
-    engine.register_fn("damage_entity", |entity_id: i64, amount: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("damage"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("amount".into(), Dynamic::from(amount));
-        m
+    engine.register_fn("heal", |amount: f64| {
+        super::push_command(RhaiCommand::Heal { entity_id: None, amount: amount as f32 });
     });
 
-    // heal(amount) - Heal self
-    engine.register_fn("heal", |amount: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("heal"));
-        m.insert("amount".into(), Dynamic::from(amount));
-        m
+    engine.register_fn("heal_entity", |entity_id: i64, amount: f64| {
+        super::push_command(RhaiCommand::Heal { entity_id: Some(entity_id as u64), amount: amount as f32 });
     });
 
-    // heal_entity(entity_id, amount) - Heal entity
-    engine.register_fn("heal_entity", |entity_id: i64, amount: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("heal"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("amount".into(), Dynamic::from(amount));
-        m
+    engine.register_fn("set_invincible", |invincible: bool| {
+        super::push_command(RhaiCommand::SetInvincible { entity_id: None, invincible, duration: 0.0 });
     });
 
-    // set_invincible(invincible) - Set invincibility of self
-    engine.register_fn("set_invincible", |invincible: bool| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
-        m.insert("invincible".into(), Dynamic::from(invincible));
-        m
+    engine.register_fn("set_invincible_of", |entity_id: i64, invincible: bool| {
+        super::push_command(RhaiCommand::SetInvincible { entity_id: Some(entity_id as u64), invincible, duration: 0.0 });
     });
 
-    // set_invincible_of(entity_id, invincible) - Set invincibility of entity
-    engine.register_fn("set_invincible_of", |entity_id: i64, invincible: bool| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("invincible".into(), Dynamic::from(invincible));
-        m
+    engine.register_fn("set_invincible_duration", |invincible: bool, duration: f64| {
+        super::push_command(RhaiCommand::SetInvincible { entity_id: None, invincible, duration: duration as f32 });
     });
 
-    // set_invincible_duration(invincible, duration) - Set invincibility of self with duration
-    engine.register_fn("set_invincible_duration", |invincible: bool, duration: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
-        m.insert("invincible".into(), Dynamic::from(invincible));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m
+    engine.register_fn("set_invincible_of_duration", |entity_id: i64, invincible: bool, duration: f64| {
+        super::push_command(RhaiCommand::SetInvincible { entity_id: Some(entity_id as u64), invincible, duration: duration as f32 });
     });
 
-    // set_invincible_of_duration(entity_id, invincible, duration) - Set invincibility of entity with duration
-    engine.register_fn("set_invincible_of_duration", |entity_id: i64, invincible: bool, duration: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_invincible"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("invincible".into(), Dynamic::from(invincible));
-        m.insert("duration".into(), Dynamic::from(duration));
-        m
+    engine.register_fn("kill", || {
+        super::push_command(RhaiCommand::Kill { entity_id: None });
     });
 
-    // kill() - Instantly kill self (set health to 0)
-    engine.register_fn("kill", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("kill"));
-        m
+    engine.register_fn("kill_entity", |entity_id: i64| {
+        super::push_command(RhaiCommand::Kill { entity_id: Some(entity_id as u64) });
     });
 
-    // kill_entity(entity_id) - Instantly kill entity
-    engine.register_fn("kill_entity", |entity_id: i64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("kill"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m
+    engine.register_fn("revive", || {
+        super::push_command(RhaiCommand::Revive { entity_id: None });
     });
 
-    // revive() - Revive self (restore to max health)
-    engine.register_fn("revive", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("revive"));
-        m
+    engine.register_fn("revive_entity", |entity_id: i64| {
+        super::push_command(RhaiCommand::Revive { entity_id: Some(entity_id as u64) });
     });
 
-    // revive_entity(entity_id) - Revive entity
-    engine.register_fn("revive_entity", |entity_id: i64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("revive"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m
-    });
-
-    // is_dead() - Check if self is dead (health <= 0)
-    // Uses scope variable self_health
     engine.register_fn("is_dead", |self_health: f64| -> bool {
         self_health <= 0.0
     });
 
     // ===================
-    // Light Component
+    // Light Component (duplicates from rendering — kept for backwards compatibility)
     // ===================
 
-    // set_light_color(r, g, b) - Set light color of self
-    engine.register_fn("set_light_color", |r: f64, g: f64, b: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_light_color"));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m
+    engine.register_fn("set_light_color", |r: f64, g: f64, b: f64| {
+        super::push_command(RhaiCommand::SetLightColor { entity_id: None, color: [r as f32, g as f32, b as f32] });
     });
 
-    // set_light_color_of(entity_id, r, g, b) - Set light color of entity
-    engine.register_fn("set_light_color_of", |entity_id: i64, r: f64, g: f64, b: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_light_color"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m
+    engine.register_fn("set_light_color_of", |entity_id: i64, r: f64, g: f64, b: f64| {
+        super::push_command(RhaiCommand::SetLightColor { entity_id: Some(entity_id as u64), color: [r as f32, g as f32, b as f32] });
     });
 
-    // set_light_intensity(intensity) - Set light intensity of self
-    engine.register_fn("set_light_intensity", |intensity: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_light_intensity"));
-        m.insert("intensity".into(), Dynamic::from(intensity));
-        m
+    engine.register_fn("set_light_intensity", |intensity: f64| {
+        super::push_command(RhaiCommand::SetLightIntensity { entity_id: None, intensity: intensity as f32 });
     });
 
-    // set_light_intensity_of(entity_id, intensity) - Set light intensity of entity
-    engine.register_fn("set_light_intensity_of", |entity_id: i64, intensity: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_light_intensity"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("intensity".into(), Dynamic::from(intensity));
-        m
+    engine.register_fn("set_light_intensity_of", |entity_id: i64, intensity: f64| {
+        super::push_command(RhaiCommand::SetLightIntensity { entity_id: Some(entity_id as u64), intensity: intensity as f32 });
     });
 
     // ===================
     // Material Component
     // ===================
 
-    // set_material_color(r, g, b, a) - Set material base color of self
-    engine.register_fn("set_material_color", |r: f64, g: f64, b: f64, a: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_material_color"));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m.insert("a".into(), Dynamic::from(a));
-        m
+    engine.register_fn("set_material_color", |r: f64, g: f64, b: f64, a: f64| {
+        super::push_command(RhaiCommand::SetMaterialColor { entity_id: None, color: [r as f32, g as f32, b as f32, a as f32] });
     });
 
-    // set_material_color_of(entity_id, r, g, b, a) - Set material base color of entity
-    engine.register_fn("set_material_color_of", |entity_id: i64, r: f64, g: f64, b: f64, a: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_material_color"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m.insert("a".into(), Dynamic::from(a));
-        m
+    engine.register_fn("set_material_color_of", |entity_id: i64, r: f64, g: f64, b: f64, a: f64| {
+        super::push_command(RhaiCommand::SetMaterialColor { entity_id: Some(entity_id as u64), color: [r as f32, g as f32, b as f32, a as f32] });
     });
 
-    // set_material_emissive(r, g, b) - Set emissive color of self
-    engine.register_fn("set_material_emissive", |r: f64, g: f64, b: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_material_emissive"));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m
+    engine.register_fn("set_material_emissive", |_r: f64, _g: f64, _b: f64| {
+        // Emissive handled through component system
     });
 
-    // set_material_emissive_of(entity_id, r, g, b) - Set emissive color of entity
-    engine.register_fn("set_material_emissive_of", |entity_id: i64, r: f64, g: f64, b: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_material_emissive"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("r".into(), Dynamic::from(r));
-        m.insert("g".into(), Dynamic::from(g));
-        m.insert("b".into(), Dynamic::from(b));
-        m
+    engine.register_fn("set_material_emissive_of", |_entity_id: i64, _r: f64, _g: f64, _b: f64| {
+        // Emissive handled through component system
     });
 
     // ===================
     // Generic Component Access
     // ===================
 
-    // set_component(component_type, field, value) - Set a component field on self
-    engine.register_fn("set_component_float", |component_type: ImmutableString, field: ImmutableString, value: f64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_component_field"));
-        m.insert("component_type".into(), Dynamic::from(component_type));
-        m.insert("field".into(), Dynamic::from(field));
-        m.insert("value".into(), Dynamic::from(value));
-        m.insert("value_type".into(), Dynamic::from("float"));
-        m
+    engine.register_fn("set_component_float", |component_type: ImmutableString, field: ImmutableString, value: f64| {
+        super::push_command(RhaiCommand::SetComponentField {
+            entity_id: None, component_type: component_type.to_string(),
+            field_name: field.to_string(), value: ComponentValue::Float(value as f32),
+        });
     });
 
-    engine.register_fn("set_component_int", |component_type: ImmutableString, field: ImmutableString, value: i64| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_component_field"));
-        m.insert("component_type".into(), Dynamic::from(component_type));
-        m.insert("field".into(), Dynamic::from(field));
-        m.insert("value".into(), Dynamic::from(value));
-        m.insert("value_type".into(), Dynamic::from("int"));
-        m
+    engine.register_fn("set_component_int", |component_type: ImmutableString, field: ImmutableString, value: i64| {
+        super::push_command(RhaiCommand::SetComponentField {
+            entity_id: None, component_type: component_type.to_string(),
+            field_name: field.to_string(), value: ComponentValue::Int(value),
+        });
     });
 
-    engine.register_fn("set_component_bool", |component_type: ImmutableString, field: ImmutableString, value: bool| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_component_field"));
-        m.insert("component_type".into(), Dynamic::from(component_type));
-        m.insert("field".into(), Dynamic::from(field));
-        m.insert("value".into(), Dynamic::from(value));
-        m.insert("value_type".into(), Dynamic::from("bool"));
-        m
+    engine.register_fn("set_component_bool", |component_type: ImmutableString, field: ImmutableString, value: bool| {
+        super::push_command(RhaiCommand::SetComponentField {
+            entity_id: None, component_type: component_type.to_string(),
+            field_name: field.to_string(), value: ComponentValue::Bool(value),
+        });
     });
 
-    engine.register_fn("set_component_string", |component_type: ImmutableString, field: ImmutableString, value: ImmutableString| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_component_field"));
-        m.insert("component_type".into(), Dynamic::from(component_type));
-        m.insert("field".into(), Dynamic::from(field));
-        m.insert("value".into(), Dynamic::from(value));
-        m.insert("value_type".into(), Dynamic::from("string"));
-        m
+    engine.register_fn("set_component_string", |component_type: ImmutableString, field: ImmutableString, value: ImmutableString| {
+        super::push_command(RhaiCommand::SetComponentField {
+            entity_id: None, component_type: component_type.to_string(),
+            field_name: field.to_string(), value: ComponentValue::String(value.to_string()),
+        });
     });
 
     // ===================
     // Visibility
     // ===================
 
-    // set_visible(visible) - Set visibility of self
-    engine.register_fn("set_visible", |visible: bool| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_visibility"));
-        m.insert("visible".into(), Dynamic::from(visible));
-        m
+    engine.register_fn("set_visible", |visible: bool| {
+        super::push_command(RhaiCommand::SetVisibility { entity_id: None, visible });
     });
 
-    // set_visible_of(entity_id, visible) - Set visibility of entity
-    engine.register_fn("set_visible_of", |entity_id: i64, visible: bool| -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_visibility"));
-        m.insert("entity_id".into(), Dynamic::from(entity_id));
-        m.insert("visible".into(), Dynamic::from(visible));
-        m
+    engine.register_fn("set_visible_of", |entity_id: i64, visible: bool| {
+        super::push_command(RhaiCommand::SetVisibility { entity_id: Some(entity_id as u64), visible });
     });
 
-    // show() - Make self visible
-    engine.register_fn("show", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_visibility"));
-        m.insert("visible".into(), Dynamic::from(true));
-        m
+    engine.register_fn("show", || {
+        super::push_command(RhaiCommand::SetVisibility { entity_id: None, visible: true });
     });
 
-    // hide() - Make self invisible
-    engine.register_fn("hide", || -> Map {
-        let mut m = Map::new();
-        m.insert("_cmd".into(), Dynamic::from("set_visibility"));
-        m.insert("visible".into(), Dynamic::from(false));
-        m
+    engine.register_fn("hide", || {
+        super::push_command(RhaiCommand::SetVisibility { entity_id: None, visible: false });
     });
 }

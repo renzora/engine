@@ -870,7 +870,7 @@ impl<'a> CodegenContext<'a> {
             }
 
             // ECS query data nodes
-            "ecs/find_entity_by_name" => {
+            "ecs/find_by_name" | "ecs/find_entity_by_name" => {
                 let name = self.get_input_value(node, "name");
                 let result_var = self.next_var("found_entity");
                 lines.push(format!("{}let {} = find_entity_by_name(_entities_by_name, {});", indent, result_var, name));
@@ -882,7 +882,7 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}let {} = get_entities_by_tag(_entities_by_tag, {});", indent, result_var, tag));
                 self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
             }
-            "ecs/self_entity" => {
+            "ecs/self" | "ecs/self_entity" => {
                 let result_var = self.next_var("self_id");
                 lines.push(format!("{}let {} = self_entity_id;", indent, result_var));
                 self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
@@ -1699,6 +1699,28 @@ impl<'a> CodegenContext<'a> {
                 self.output_vars.insert(PinId::new(node.id, "reachable"), result_var);
             }
 
+            // ── Component getter nodes (auto-generated) ──────────────
+            "component/get_property" => {
+                let name = self.get_input_value(node, "name");
+                let prop = self.get_input_value(node, "property");
+                let ent_var = self.next_var("ent");
+                let val_var = self.next_var("prop_val");
+                lines.push(format!("{}let {} = entity({});", indent, ent_var, name));
+                lines.push(format!("{}let {} = {}.get({});", indent, val_var, ent_var, prop));
+                self.output_vars.insert(PinId::new(node.id, "value"), val_var);
+            }
+
+            _ if node.node_type.starts_with("component/get_") => {
+                let name = self.get_input_value(node, "name");
+                let ent_var = self.next_var("ent");
+                lines.push(format!("{}let {} = entity({});", indent, ent_var, name));
+                for pin in node.output_pins() {
+                    let var = self.next_var(&pin.name);
+                    lines.push(format!("{}let {} = {}.{};", indent, var, ent_var, pin.name));
+                    self.output_vars.insert(PinId::new(node.id, &pin.name), var);
+                }
+            }
+
             _ => {}
         }
 
@@ -1965,6 +1987,14 @@ impl<'a> CodegenContext<'a> {
                 let duration = self.get_input_value(node, "duration");
                 lines.push(format!("{}screen_shake({}, {});", indent, intensity, duration));
             }
+            "camera/follow" => {
+                let target = self.get_input_value(node, "target");
+                let offset = self.get_input_value(node, "offset");
+                let smooth = self.get_input_value(node, "smooth");
+                let ofs_var = self.next_var("ofs");
+                lines.push(format!("{}let {} = {};", indent, ofs_var, offset));
+                lines.push(format!("{}camera_follow({}, {}[0], {}[1], {}[2], {});", indent, target, ofs_var, ofs_var, ofs_var, smooth));
+            }
             "camera/follow_entity" => {
                 let entity = self.get_input_value(node, "entity");
                 let offset_x = self.get_input_value(node, "offset_x");
@@ -2005,7 +2035,7 @@ impl<'a> CodegenContext<'a> {
             }
 
             // Debug actions
-            "debug/log_message" | "debug/print" => {
+            "debug/log" | "debug/log_message" | "debug/print" => {
                 let message = self.get_input_value(node, "message");
                 lines.push(format!("{}log({});", indent, message));
             }
@@ -2017,7 +2047,7 @@ impl<'a> CodegenContext<'a> {
                 let message = self.get_input_value(node, "message");
                 lines.push(format!("{}log_error({});", indent, message));
             }
-            "debug/debug_line" => {
+            "debug/line" | "debug/debug_line" => {
                 let sx = self.get_input_value(node, "start_x");
                 let sy = self.get_input_value(node, "start_y");
                 let sz = self.get_input_value(node, "start_z");
@@ -2026,14 +2056,14 @@ impl<'a> CodegenContext<'a> {
                 let ez = self.get_input_value(node, "end_z");
                 lines.push(format!("{}draw_line({}, {}, {}, {}, {}, {});", indent, sx, sy, sz, ex, ey, ez));
             }
-            "debug/debug_sphere" => {
+            "debug/sphere" | "debug/debug_sphere" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
                 let radius = self.get_input_value(node, "radius");
                 lines.push(format!("{}draw_sphere({}, {}, {}, {});", indent, x, y, z, radius));
             }
-            "debug/debug_box" => {
+            "debug/box" | "debug/debug_box" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
@@ -2042,14 +2072,14 @@ impl<'a> CodegenContext<'a> {
                 let hz = self.get_input_value(node, "half_z");
                 lines.push(format!("{}draw_box({}, {}, {}, {}, {}, {});", indent, x, y, z, hx, hy, hz));
             }
-            "debug/debug_point" => {
+            "debug/point" | "debug/debug_point" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
                 let size = self.get_input_value(node, "size");
                 lines.push(format!("{}draw_point({}, {}, {}, {});", indent, x, y, z, size));
             }
-            "debug/debug_ray" => {
+            "debug/ray" | "debug/debug_ray" => {
                 let ox = self.get_input_value(node, "origin_x");
                 let oy = self.get_input_value(node, "origin_y");
                 let oz = self.get_input_value(node, "origin_z");
@@ -3288,11 +3318,11 @@ impl<'a> CodegenContext<'a> {
             "debug/toggle_bounding_boxes" => {
                 lines.push(format!("{}toggle_bounding_boxes();", indent));
             }
-            "debug/clear_debug_draws" => {
+            "debug/clear" | "debug/clear_debug_draws" => {
                 lines.push(format!("{}clear_debug_draws();", indent));
             }
             "debug/log_value" => {
-                let label = self.get_input_value(node, "label");
+                let label = self.get_input_value(node, "name");
                 let value = self.get_input_value(node, "value");
                 lines.push(format!("{}log({} + \": \" + {});", indent, label, value));
             }
@@ -3313,7 +3343,7 @@ impl<'a> CodegenContext<'a> {
             "debug/breakpoint" => {
                 lines.push(format!("{}breakpoint();", indent));
             }
-            "debug/debug_arrow" => {
+            "debug/arrow" | "debug/debug_arrow" => {
                 let sx = self.get_input_value(node, "start_x");
                 let sy = self.get_input_value(node, "start_y");
                 let sz = self.get_input_value(node, "start_z");
@@ -3323,14 +3353,14 @@ impl<'a> CodegenContext<'a> {
                 let length = self.get_input_value(node, "length");
                 lines.push(format!("{}draw_arrow({}, {}, {}, {}, {}, {}, {});", indent, sx, sy, sz, dx, dy, dz, length));
             }
-            "debug/debug_axes" => {
+            "debug/axes" | "debug/debug_axes" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
                 let size = self.get_input_value(node, "size");
                 lines.push(format!("{}draw_axes({}, {}, {}, {});", indent, x, y, z, size));
             }
-            "debug/debug_capsule" => {
+            "debug/capsule" | "debug/debug_capsule" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
@@ -3338,18 +3368,45 @@ impl<'a> CodegenContext<'a> {
                 let half_height = self.get_input_value(node, "half_height");
                 lines.push(format!("{}draw_capsule({}, {}, {}, {}, {});", indent, x, y, z, radius, half_height));
             }
-            "debug/debug_text_3d" => {
+            "debug/text_3d" | "debug/debug_text_3d" => {
                 let text = self.get_input_value(node, "text");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
                 lines.push(format!("{}draw_text_3d({}, {}, {}, {});", indent, text, x, y, z));
             }
-            "debug/debug_text_2d" => {
+            "debug/text_2d" | "debug/debug_text_2d" => {
                 let text = self.get_input_value(node, "text");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 lines.push(format!("{}draw_text_2d({}, {}, {});", indent, text, x, y));
+            }
+
+            // ── Component setter nodes (auto-generated) ──────────────
+            "component/set_property" => {
+                let name = self.get_input_value(node, "name");
+                let prop = self.get_input_value(node, "property");
+                let value = self.get_input_value(node, "value");
+                let ent_var = self.next_var("ent");
+                lines.push(format!("{}let {} = entity({});", indent, ent_var, name));
+                lines.push(format!("{}set({}, {}, {});", indent, ent_var, prop, value));
+            }
+
+            _ if node.node_type.starts_with("component/set_") => {
+                let name = self.get_input_value(node, "name");
+                let ent_var = self.next_var("ent");
+                lines.push(format!("{}let {} = entity({});", indent, ent_var, name));
+                // Only set properties whose input pins have connections
+                for pin in node.input_pins() {
+                    if pin.name == "exec" || pin.name == "name" {
+                        continue;
+                    }
+                    let check_pin = PinId::input(node.id, &pin.name);
+                    if self.graph.is_pin_connected(&check_pin) {
+                        let value = self.get_input_value(node, &pin.name);
+                        lines.push(format!("{}set({}, \"{}\", {});", indent, ent_var, pin.name, value));
+                    }
+                }
             }
 
             _ => {}

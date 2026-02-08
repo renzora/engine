@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, ScrollArea, Sense, Vec2};
 
 use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, BlueprintType};
-use crate::blueprint::nodes::NodeRegistry;
+use crate::blueprint::nodes::{NodeRegistry, NodeEntry};
 
 /// Render the node library panel
 pub fn render_node_library_panel(
@@ -48,14 +48,26 @@ pub fn render_node_library_panel(
                         continue;
                     }
 
-                    if let Some(nodes) = node_registry.nodes_in_category(category) {
-                        // Filter nodes by search
-                        let filtered: Vec<_> = nodes
+                    if let Some(entries) = node_registry.entries_in_category(category) {
+                        // Collect matching entries as (type_id, display_name, description)
+                        let filtered: Vec<(String, String, String)> = entries
                             .iter()
-                            .filter(|n| {
-                                search_lower.is_empty()
-                                    || n.display_name.to_lowercase().contains(&search_lower)
-                                    || n.type_id.to_lowercase().contains(&search_lower)
+                            .filter_map(|entry| {
+                                let (tid, dname, desc) = match entry {
+                                    NodeEntry::Static(def) => (def.type_id.to_string(), def.display_name.to_string(), def.description.to_string()),
+                                    NodeEntry::Dynamic(key) => {
+                                        let cdef = node_registry.get_component_node(key)?;
+                                        (cdef.type_id.clone(), cdef.display_name.clone(), cdef.description.clone())
+                                    }
+                                };
+                                if search_lower.is_empty()
+                                    || dname.to_lowercase().contains(&search_lower)
+                                    || tid.to_lowercase().contains(&search_lower)
+                                {
+                                    Some((tid, dname, desc))
+                                } else {
+                                    None
+                                }
                             })
                             .collect();
 
@@ -78,15 +90,13 @@ pub fn render_node_library_panel(
                         });
 
                         ui.indent(category, |ui| {
-                            for node_def in filtered {
-                                let node_type_id = node_def.type_id.to_string();
-
+                            for (type_id, display_name, description) in &filtered {
                                 // Create a draggable button
                                 let button_size = Vec2::new(ui.available_width() - 8.0, 24.0);
                                 let (rect, response) = ui.allocate_exact_size(button_size, Sense::click_and_drag());
 
                                 // Visual feedback
-                                let is_being_dragged = editor_state.dragging_new_node.as_ref() == Some(&node_type_id);
+                                let is_being_dragged = editor_state.dragging_new_node.as_deref() == Some(type_id.as_str());
                                 let is_hovered = response.hovered();
                                 let bg_color = if is_being_dragged {
                                     Color32::from_rgb(80, 100, 140)
@@ -105,7 +115,7 @@ pub fn render_node_library_panel(
                                 ui.painter().text(
                                     rect.left_center() + egui::vec2(8.0, 0.0),
                                     egui::Align2::LEFT_CENTER,
-                                    node_def.display_name,
+                                    display_name,
                                     egui::FontId::proportional(12.0),
                                     Color32::from_rgb(220, 220, 220),
                                 );
@@ -113,19 +123,19 @@ pub fn render_node_library_panel(
                                 // Show tooltip on hover (only when not dragging)
                                 if !is_being_dragged {
                                     response.clone().on_hover_ui(|ui| {
-                                        ui.label(RichText::new(node_def.display_name).strong());
-                                        ui.label(node_def.description);
+                                        ui.label(RichText::new(display_name.as_str()).strong());
+                                        ui.label(description.as_str());
                                     });
                                 }
 
                                 // Start drag
                                 if response.drag_started() {
-                                    editor_state.dragging_new_node = Some(node_type_id.clone());
+                                    editor_state.dragging_new_node = Some(type_id.clone());
                                 }
 
                                 // Double-click to add at center
                                 if response.double_clicked() {
-                                    add_node_to_canvas(editor_state, node_registry, node_def.type_id, canvas_state);
+                                    add_node_to_canvas(editor_state, node_registry, type_id, canvas_state);
                                 }
                             }
                         });
@@ -161,6 +171,7 @@ fn get_category_color(category: &str) -> Color32 {
         "Shader Vector" => Color32::from_rgb(200, 180, 100),
         "Shader Output" => Color32::from_rgb(220, 80, 80),
         "Shader Noise" => Color32::from_rgb(180, 140, 200),
+        "Components" => Color32::from_rgb(100, 180, 220),
         _ => Color32::from_rgb(100, 100, 100),
     }
 }
