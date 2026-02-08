@@ -19,4 +19,4 @@ BINDGEN_EXTRA_CLANG_ARGS = "-IC:\\DLSS_SDK\\include"
 # Faster linking for Linux (uses lld via clang)
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld","-Zshare-generics=y"]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
