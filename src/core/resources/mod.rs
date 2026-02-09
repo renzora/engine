@@ -36,7 +36,7 @@ pub use scene::{
     OpenVideo, OpenAudio, OpenAnimation, OpenTexture, OpenParticleFX, OpenLevel, OpenTerrain,
 };
 pub use selection::SelectionState;
-pub use settings::{CameraSettings, CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
+pub use settings::{CameraSettings, CollisionGizmoVisibility, EditorSettings, MonoFont, RenderToggles, SettingsTab, UiFont, VisualizationMode};
 pub use thumbnails::{ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview, supports_shader_thumbnail};
 pub use viewport::{BottomPanelTab, RightPanelTab, ViewportState};
 pub use crate::viewport::ViewportMode;

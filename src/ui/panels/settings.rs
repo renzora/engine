@@ -1,7 +1,7 @@
 use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
 
-use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, SceneManagerState, bindable_keys};
+use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SettingsTab, SceneManagerState, UiFont, bindable_keys};
 use crate::project::AppConfig;
 use crate::theming::{Theme, ThemeManager};
 use crate::update::{UpdateState, UpdateDialogState};
@@ -294,6 +294,53 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
 
 fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_state: &mut SceneManagerState, theme: &Theme) {
     let text_muted = theme.text.muted.to_color32();
+
+    // Interface / Font Section
+    render_settings_category(
+        ui,
+        TEXT_AA,
+        "Interface",
+        SettingsCategoryStyle::interface(),
+        "settings_interface",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "UI Font", theme, |ui| {
+                let prev = settings.ui_font;
+                egui::ComboBox::from_id_salt("ui_font_selector")
+                    .selected_text(settings.ui_font.label())
+                    .show_ui(ui, |ui| {
+                        for &font in UiFont::ALL {
+                            ui.selectable_value(&mut settings.ui_font, font, font.label());
+                        }
+                    });
+                if settings.ui_font != prev {
+                    crate::ui::style::set_ui_font(ui.ctx(), settings.ui_font);
+                }
+            });
+
+            settings_row(ui, 1, "Code Font", theme, |ui| {
+                let prev = settings.mono_font;
+                egui::ComboBox::from_id_salt("mono_font_selector")
+                    .selected_text(settings.mono_font.label())
+                    .show_ui(ui, |ui| {
+                        for &font in MonoFont::ALL {
+                            ui.selectable_value(&mut settings.mono_font, font, font.label());
+                        }
+                    });
+                if settings.mono_font != prev {
+                    crate::ui::style::set_mono_font(ui.ctx(), settings.mono_font);
+                }
+            });
+
+            settings_row(ui, 2, "Font Size", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut settings.font_size)
+                    .range(10.0..=24.0)
+                    .speed(0.5)
+                    .suffix(" px"))
+            });
+        },
+    );
 
     // Auto Save Section
     render_settings_category(

@@ -79,6 +79,84 @@ pub enum SettingsTab {
     Updates,
 }
 
+/// Available proportional (UI) font families
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UiFont {
+    #[default]
+    Inter,
+    Roboto,
+    OpenSans,
+    NotoSans,
+    UbuntuLight,
+}
+
+impl UiFont {
+    pub fn label(&self) -> &'static str {
+        match self {
+            UiFont::Inter => "Inter",
+            UiFont::Roboto => "Roboto",
+            UiFont::OpenSans => "Open Sans",
+            UiFont::NotoSans => "Noto Sans",
+            UiFont::UbuntuLight => "Ubuntu Light",
+        }
+    }
+
+    pub const ALL: &'static [UiFont] = &[
+        UiFont::Inter,
+        UiFont::Roboto,
+        UiFont::OpenSans,
+        UiFont::NotoSans,
+        UiFont::UbuntuLight,
+    ];
+
+    pub fn font_key(&self) -> &'static str {
+        match self {
+            UiFont::Inter => "inter",
+            UiFont::Roboto => "roboto",
+            UiFont::OpenSans => "open-sans",
+            UiFont::NotoSans => "noto-sans",
+            UiFont::UbuntuLight => "Ubuntu-Light",
+        }
+    }
+}
+
+/// Available monospace (code) font families
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MonoFont {
+    #[default]
+    JetBrainsMono,
+    FiraCode,
+    SourceCodePro,
+    Hack,
+}
+
+impl MonoFont {
+    pub fn label(&self) -> &'static str {
+        match self {
+            MonoFont::JetBrainsMono => "JetBrains Mono",
+            MonoFont::FiraCode => "Fira Code",
+            MonoFont::SourceCodePro => "Source Code Pro",
+            MonoFont::Hack => "Hack",
+        }
+    }
+
+    pub const ALL: &'static [MonoFont] = &[
+        MonoFont::JetBrainsMono,
+        MonoFont::FiraCode,
+        MonoFont::SourceCodePro,
+        MonoFont::Hack,
+    ];
+
+    pub fn font_key(&self) -> &'static str {
+        match self {
+            MonoFont::JetBrainsMono => "jetbrains-mono",
+            MonoFont::FiraCode => "fira-code",
+            MonoFont::SourceCodePro => "source-code-pro",
+            MonoFont::Hack => "Hack",
+        }
+    }
+}
+
 /// Camera sensitivity settings
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CameraSettings {
@@ -144,6 +222,10 @@ pub struct EditorSettings {
     pub dev_mode: bool,
     /// Base font size in points
     pub font_size: f32,
+    /// Selected UI (proportional) font family
+    pub ui_font: UiFont,
+    /// Selected monospace (code) font family
+    pub mono_font: MonoFont,
     /// Re-run on_ready when a script is hot-reloaded
     pub script_rerun_on_ready_on_reload: bool,
 }
@@ -165,6 +247,8 @@ impl Default for EditorSettings {
             visualization_mode: VisualizationMode::default(),
             dev_mode: false,
             font_size: 13.0,
+            ui_font: UiFont::default(),
+            mono_font: MonoFont::default(),
             script_rerun_on_ready_on_reload: true,
         }
     }

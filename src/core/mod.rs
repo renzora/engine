@@ -12,7 +12,7 @@ pub use resources::{
     AnimationTimelineState, TimelinePlayState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState,
-    DockingState, EditorSettings, RenderStats, CameraSettings,
+    DockingState, EditorSettings, MonoFont, RenderStats, CameraSettings, UiFont,
     ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, InspectorPanelRenderState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,

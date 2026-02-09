@@ -1,29 +1,92 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Stroke, Visuals};
 
+use crate::core::{UiFont, MonoFont};
 use crate::theming::Theme;
 
-/// Initialize phosphor icons font (call once at startup)
+/// Initialize all available fonts (call once at startup)
 pub fn init_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    // Add phosphor regular icon font using raw bytes (to avoid version mismatch)
+    // -- Proportional fonts --
+    fonts.font_data.insert(
+        "inter".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/Inter-Medium.ttf")).into(),
+    );
+    fonts.font_data.insert(
+        "roboto".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/Roboto-Regular.ttf")).into(),
+    );
+    fonts.font_data.insert(
+        "open-sans".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/OpenSans-Regular.ttf")).into(),
+    );
+    fonts.font_data.insert(
+        "noto-sans".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoSans-Regular.ttf")).into(),
+    );
+
+    // -- Monospace fonts --
+    fonts.font_data.insert(
+        "jetbrains-mono".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf")).into(),
+    );
+    fonts.font_data.insert(
+        "fira-code".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/FiraCode-Regular.ttf")).into(),
+    );
+    fonts.font_data.insert(
+        "source-code-pro".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/SourceCodePro-Regular.ttf")).into(),
+    );
+
+    // -- Icon fonts --
     fonts.font_data.insert(
         "phosphor".into(),
         egui::FontData::from_static(egui_phosphor::Variant::Regular.font_bytes()).into(),
     );
-
-    // Add phosphor fill icon font
     fonts.font_data.insert(
         "phosphor-fill".into(),
         egui::FontData::from_static(egui_phosphor::Variant::Fill.font_bytes()).into(),
     );
 
-    // Add to proportional family as fallback (after default font)
-    if let Some(font_keys) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        font_keys.insert(1, "phosphor".into());
-        font_keys.insert(2, "phosphor-fill".into());
-    }
+    // Default families (Inter + JetBrains Mono)
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            UiFont::default().font_key().into(),
+            "phosphor".into(),
+            "phosphor-fill".into(),
+        ],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        vec![MonoFont::default().font_key().into()],
+    );
 
+    ctx.set_fonts(fonts);
+}
+
+/// Switch the active proportional (UI) font family
+pub fn set_ui_font(ctx: &egui::Context, font: UiFont) {
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            font.font_key().into(),
+            "phosphor".into(),
+            "phosphor-fill".into(),
+        ],
+    );
+    ctx.set_fonts(fonts);
+}
+
+/// Switch the active monospace (code) font family
+pub fn set_mono_font(ctx: &egui::Context, font: MonoFont) {
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        vec![font.font_key().into()],
+    );
     ctx.set_fonts(fonts);
 }
 
