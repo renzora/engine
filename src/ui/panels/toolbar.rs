@@ -47,12 +47,19 @@ pub fn render_toolbar(
             .fill(theme.surfaces.extreme.to_color32())
             .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
         .show(ctx, |ui| {
-            let _available_width = ui.available_width();
+            let available_width = ui.available_width();
 
             let button_size = Vec2::new(28.0, 24.0);
 
+            // Center toolbar contents by measuring width from previous frame
+            let width_id = ui.id().with("toolbar_content_width");
+            let last_width: f32 = ui.ctx().data_mut(|d| d.get_temp(width_id).unwrap_or(0.0));
+            let leading_space = ((available_width - last_width) / 2.0).max(0.0);
+
             // Horizontal layout with vertical centering
             ui.horizontal_centered(|ui| {
+                ui.add_space(leading_space);
+                let start_x = ui.cursor().left();
                 let active_color = theme.semantic.accent.to_color32();
                 let inactive_color = theme.widgets.inactive_bg.to_color32();
 
@@ -348,6 +355,11 @@ pub fn render_toolbar(
                 let layout_color = theme.text.secondary.to_color32();
                 let current_layout = docking_state.active_layout.clone();
                 layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state, gizmo);
+
+                // Store measured width for centering on next frame
+                let end_x = ui.cursor().left();
+                let measured_width = end_x - start_x;
+                ui.ctx().data_mut(|d| d.insert_temp(width_id, measured_width));
             });
         });
 
