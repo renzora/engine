@@ -688,36 +688,63 @@ pub fn rebuild_children_from_child_of(
 
 /// System to rehydrate 3D camera components after scene loading.
 /// Adds Camera3d with Msaa::Off to entities that have CameraNodeData but no Camera3d.
+/// Scene cameras are inactive by default - the camera preview system handles rendering from them.
 pub fn rehydrate_cameras_3d(
     mut commands: Commands,
     query: Query<(Entity, &CameraNodeData), Without<Camera3d>>,
 ) {
     for (entity, _camera_data) in query.iter() {
-        commands.entity(entity).insert((Camera3d::default(), Msaa::Off));
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Msaa::Off,
+            Camera {
+                is_active: false,
+                ..default()
+            },
+            Name::new("Scene Camera"),
+        ));
         console_info!("Scene", "Rehydrated Camera3D for entity {:?}", entity);
     }
 }
 
 /// System to rehydrate camera rig components after scene loading.
 /// Adds Camera3d with Msaa::Off to entities that have CameraRigData but no Camera3d.
+/// Scene cameras are inactive by default - the camera preview system handles rendering from them.
 pub fn rehydrate_camera_rigs(
     mut commands: Commands,
     query: Query<(Entity, &CameraRigData), Without<Camera3d>>,
 ) {
     for (entity, _rig_data) in query.iter() {
-        commands.entity(entity).insert((Camera3d::default(), Msaa::Off));
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Msaa::Off,
+            Camera {
+                is_active: false,
+                ..default()
+            },
+            Name::new("Scene Camera Rig"),
+        ));
         console_info!("Scene", "Rehydrated CameraRig for entity {:?}", entity);
     }
 }
 
 /// System to rehydrate 2D camera components after scene loading.
 /// Adds Camera2d with Msaa::Off to entities that have Camera2DData but no Camera2d.
+/// Scene cameras are inactive by default - the camera preview system handles rendering from them.
 pub fn rehydrate_cameras_2d(
     mut commands: Commands,
     query: Query<(Entity, &Camera2DData), Without<Camera2d>>,
 ) {
     for (entity, _camera_data) in query.iter() {
-        commands.entity(entity).insert((Camera2d, Msaa::Off));
+        commands.entity(entity).insert((
+            Camera2d,
+            Msaa::Off,
+            Camera {
+                is_active: false,
+                ..default()
+            },
+            Name::new("Scene Camera 2D"),
+        ));
         console_info!("Scene", "Rehydrated Camera2D for entity {:?}", entity);
     }
 }

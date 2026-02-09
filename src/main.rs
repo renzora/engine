@@ -527,6 +527,7 @@ fn setup_splash_camera(mut commands: Commands) {
             ..default()
         },
         SplashCamera,
+        Name::new("UI Camera"),
     ));
 }
 

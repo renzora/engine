@@ -126,6 +126,7 @@ pub fn setup_particle_preview(
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),
             order: -3, // Render before main camera and studio preview
+            is_active: false,
             ..default()
         },
         RenderTarget::Image(image_handle.into()),

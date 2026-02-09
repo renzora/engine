@@ -9,10 +9,6 @@ pub fn init_fonts(ctx: &egui::Context) {
 
     // -- Proportional fonts --
     fonts.font_data.insert(
-        "inter".into(),
-        egui::FontData::from_static(include_bytes!("../../assets/fonts/Inter-Medium.ttf")).into(),
-    );
-    fonts.font_data.insert(
         "roboto".into(),
         egui::FontData::from_static(include_bytes!("../../assets/fonts/Roboto-Regular.ttf")).into(),
     );

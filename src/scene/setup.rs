@@ -73,6 +73,7 @@ pub fn setup_editor_camera(
         EditorOnly,
         // Render both scene (layer 0) and gizmos (layer 1)
         editor_camera_layers(),
+        Name::new("Main Viewport Camera"),
     ));
 
     console_info!("Camera", "=== CAMERA SETUP COMPLETE ===");

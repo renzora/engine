@@ -105,6 +105,7 @@ pub fn update_camera_preview(
                     CameraPreviewMarker,
                     EditorOnly,
                     preview_camera_layers(),
+                    Name::new("Camera Preview"),
                 ));
             }
         }
@@ -137,6 +138,7 @@ pub fn update_camera_preview(
                     CameraPreviewMarker,
                     EditorOnly,
                     preview_camera_layers(),
+                    Name::new("Camera Preview"),
                 ));
             }
         }

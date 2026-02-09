@@ -169,12 +169,14 @@ pub fn setup_material_preview(
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
             order: -5, // Render before main camera but after splash scene camera (-10)
+            is_active: false,
             ..default()
         },
         RenderTarget::Image(image_handle.into()),
         Transform::from_translation(cam_pos).looking_at(offset, Vec3::Y),
         MaterialPreviewCamera,
         MaterialPreviewEntity,
+        Name::new("Material Preview Camera"),
     ));
 
     // Create preview mesh (sphere by default)

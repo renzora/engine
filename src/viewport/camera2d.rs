@@ -43,6 +43,7 @@ pub fn setup_editor_camera_2d(
         Editor2DCamera,
         EditorOnly,
         editor_camera_layers(),
+        Name::new("Editor 2D Camera"),
     ));
 }
 

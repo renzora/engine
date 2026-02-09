@@ -83,39 +83,31 @@ pub enum SettingsTab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UiFont {
     #[default]
-    Inter,
     Roboto,
     OpenSans,
     NotoSans,
-    UbuntuLight,
 }
 
 impl UiFont {
     pub fn label(&self) -> &'static str {
         match self {
-            UiFont::Inter => "Inter",
             UiFont::Roboto => "Roboto",
             UiFont::OpenSans => "Open Sans",
             UiFont::NotoSans => "Noto Sans",
-            UiFont::UbuntuLight => "Ubuntu Light",
         }
     }
 
     pub const ALL: &'static [UiFont] = &[
-        UiFont::Inter,
         UiFont::Roboto,
         UiFont::OpenSans,
         UiFont::NotoSans,
-        UiFont::UbuntuLight,
     ];
 
     pub fn font_key(&self) -> &'static str {
         match self {
-            UiFont::Inter => "inter",
             UiFont::Roboto => "roboto",
             UiFont::OpenSans => "open-sans",
             UiFont::NotoSans => "noto-sans",
-            UiFont::UbuntuLight => "Ubuntu-Light",
         }
     }
 }

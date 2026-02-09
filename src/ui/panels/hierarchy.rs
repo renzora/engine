@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon, Align2, Order};
 
-use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
+use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, GroupEntitiesCommand, queue_command};
 use crate::component_system::{ComponentCategory, ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset, spawn_component_as_node, preset_component_ids};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
@@ -1106,6 +1106,16 @@ fn render_tree_node(
         if ui.button(format!("{} Unparent", ARROW_SQUARE_OUT)).clicked() {
             commands.entity(entity).remove::<ChildOf>();
             ui.close_menu();
+        }
+
+        // Group selected entities under a new parent
+        if _selection.has_multi_selection() {
+            if ui.button(format!("{} Group as Children", FOLDER_SIMPLE)).clicked() {
+                let selected = _selection.get_all_selected();
+                queue_command(command_history, Box::new(GroupEntitiesCommand::new(selected)));
+                *scene_changed = true;
+                ui.close_menu();
+            }
         }
 
         ui.separator();

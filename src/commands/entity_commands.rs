@@ -1157,6 +1157,160 @@ impl Command for SpawnMeshInstanceCommand {
 }
 
 // ============================================================================
+// Group Entities Command (Create Parent)
+// ============================================================================
+
+/// Command to group selected entities under a new parent entity
+pub struct GroupEntitiesCommand {
+    /// Entities to group
+    pub entities: Vec<Entity>,
+    /// The created parent entity (set after execution)
+    created_parent: Option<Entity>,
+    /// Original parents of each entity (for undo)
+    original_parents: Vec<(Entity, Option<Entity>)>,
+    /// Previous selection (for undo)
+    previous_selection: Option<Entity>,
+}
+
+impl GroupEntitiesCommand {
+    pub fn new(entities: Vec<Entity>) -> Self {
+        Self {
+            entities,
+            created_parent: None,
+            original_parents: Vec::new(),
+            previous_selection: None,
+        }
+    }
+}
+
+impl Command for GroupEntitiesCommand {
+    fn description(&self) -> String {
+        format!("Group {} entities", self.entities.len())
+    }
+
+    fn execute(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        if self.entities.is_empty() {
+            return CommandResult::Failed("No entities to group".to_string());
+        }
+
+        // Store previous selection
+        let selection = ctx.world.resource::<SelectionState>();
+        self.previous_selection = selection.selected_entity;
+
+        // Store original parents
+        self.original_parents.clear();
+        for &entity in &self.entities {
+            let parent = ctx.world.get::<ChildOf>(entity).map(|c| c.0);
+            self.original_parents.push((entity, parent));
+        }
+
+        // Find the common parent (if all share the same parent, use that; otherwise root)
+        let first_parent = self.original_parents.first().and_then(|(_, p)| *p);
+        let common_parent = if self.original_parents.iter().all(|(_, p)| *p == first_parent) {
+            first_parent
+        } else {
+            None
+        };
+
+        // Compute center position of all entities
+        let mut center = Vec3::ZERO;
+        let mut count = 0;
+        for &entity in &self.entities {
+            if let Some(transform) = ctx.world.get::<Transform>(entity) {
+                center += transform.translation;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            center /= count as f32;
+        }
+
+        // Create the parent entity
+        let mut parent_commands = ctx.world.spawn((
+            Transform::from_translation(center),
+            Visibility::Inherited,
+            EditorEntity {
+                name: "Group".to_string(),
+                tag: String::new(),
+                visible: true,
+                locked: false,
+            },
+            SceneNode,
+        ));
+
+        if let Some(common) = common_parent {
+            parent_commands.insert(ChildOf(common));
+        }
+
+        let parent_entity = parent_commands.id();
+        self.created_parent = Some(parent_entity);
+
+        // Reparent all entities under the new parent, adjusting transforms to be relative
+        for &entity in &self.entities {
+            // Offset child transform so world position stays the same
+            if let Some(mut transform) = ctx.world.get_mut::<Transform>(entity) {
+                transform.translation -= center;
+            }
+            let mut entity_mut = ctx.world.entity_mut(entity);
+            entity_mut.remove::<ChildOf>();
+            entity_mut.insert(ChildOf(parent_entity));
+        }
+
+        // Select the new parent
+        let mut selection = ctx.world.resource_mut::<SelectionState>();
+        selection.select(parent_entity);
+
+        CommandResult::Success
+    }
+
+    fn undo(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        let Some(parent_entity) = self.created_parent else {
+            return CommandResult::Failed("No parent entity to undo".to_string());
+        };
+
+        // Get the parent's translation for restoring child positions
+        let parent_translation = ctx.world.get::<Transform>(parent_entity)
+            .map(|t| t.translation)
+            .unwrap_or(Vec3::ZERO);
+
+        // Restore original parents and positions
+        for (entity, original_parent) in &self.original_parents {
+            if ctx.world.get_entity(*entity).is_err() {
+                continue;
+            }
+            // Restore world position
+            if let Some(mut transform) = ctx.world.get_mut::<Transform>(*entity) {
+                transform.translation += parent_translation;
+            }
+            let mut entity_mut = ctx.world.entity_mut(*entity);
+            entity_mut.remove::<ChildOf>();
+            if let Some(parent) = original_parent {
+                entity_mut.insert(ChildOf(*parent));
+            }
+        }
+
+        // Restore previous selection
+        let mut selection = ctx.world.resource_mut::<SelectionState>();
+        if let Some(prev) = self.previous_selection {
+            selection.select(prev);
+        } else {
+            selection.clear();
+        }
+
+        // Despawn the parent entity
+        ctx.world.despawn(parent_entity);
+        self.created_parent = None;
+
+        CommandResult::Success
+    }
+
+    fn redo(&mut self, ctx: &mut CommandContext) -> CommandResult {
+        self.created_parent = None;
+        self.execute(ctx)
+    }
+}
+
+// ============================================================================
 // Downcast helper - uses Any trait bound
 // ============================================================================
 

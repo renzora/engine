@@ -51,6 +51,7 @@ use crate::gizmo::meshes::GizmoMesh;
 #[cfg(feature = "solari")]
 use crate::shared::{DlssQualityMode, SolariLightingData};
 use crate::spawn::{EditorSceneRoot, SceneType};
+use crate::blueprint::preview::MaterialPreviewCamera;
 use crate::ui::docking::PanelId;
 use crate::shared::{
     Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
@@ -778,6 +779,10 @@ fn sync_camera_activity(
     mut main_cameras: Query<&mut Camera, With<MainCamera>>,
     mut studio_cameras: Query<&mut Camera, (With<StudioPreviewCamera>, Without<MainCamera>, Without<ParticlePreviewCamera>)>,
     mut particle_cameras: Query<&mut Camera, (With<ParticlePreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>)>,
+    mut material_cameras: Query<&mut Camera, (With<MaterialPreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>)>,
+    mut scene_cameras_3d: Query<&mut Camera, (With<CameraNodeData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
+    mut scene_rigs: Query<&mut Camera, (With<CameraRigData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>)>,
+    mut scene_cameras_2d: Query<&mut Camera, (With<Camera2DData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<CameraRigData>)>,
 ) {
     // Main viewport camera - always active if Viewport panel is visible
     let viewport_visible = docking.is_panel_visible(&PanelId::Viewport);
@@ -800,6 +805,32 @@ fn sync_camera_activity(
     for mut camera in particle_cameras.iter_mut() {
         if camera.is_active != particle_visible {
             camera.is_active = particle_visible;
+        }
+    }
+
+    // Material preview camera - only active if MaterialPreview panel is visible
+    let material_visible = docking.is_panel_visible(&PanelId::MaterialPreview);
+    for mut camera in material_cameras.iter_mut() {
+        if camera.is_active != material_visible {
+            camera.is_active = material_visible;
+        }
+    }
+
+    // Scene cameras must stay inactive - they exist for data/preview only,
+    // the camera preview system spawns its own camera to render from them
+    for mut camera in scene_cameras_3d.iter_mut() {
+        if camera.is_active {
+            camera.is_active = false;
+        }
+    }
+    for mut camera in scene_rigs.iter_mut() {
+        if camera.is_active {
+            camera.is_active = false;
+        }
+    }
+    for mut camera in scene_cameras_2d.iter_mut() {
+        if camera.is_active {
+            camera.is_active = false;
         }
     }
 }
