@@ -243,6 +243,15 @@ pub fn render_document_tabs(
                         let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
                         (text, MOUNTAINS, accent, inactive)
                     }
+                    TabKind::Shader(idx) => {
+                        let script = &scene_state.open_scripts[*idx];
+                        let name = script.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or("Shader".to_string());
+                        let text = if script.is_modified { format!("{}*", name) } else { name };
+                        let accent = Color32::from_rgb(180, 130, 255); // Purple for shaders
+                        let [r, g, b, _] = accent.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, egui_phosphor::regular::MONITOR, accent, inactive)
+                    }
                 };
 
                 // Calculate tab width based on text, with max width and ellipsis
@@ -379,6 +388,7 @@ pub fn render_document_tabs(
                     TabKind::ParticleFX(_) => true,
                     TabKind::Level(_) => true,
                     TabKind::Terrain(_) => true,
+                    TabKind::Shader(_) => true,
                 };
 
                 if can_close {
@@ -593,6 +603,7 @@ fn sync_tab_order(scene_state: &mut SceneManagerState, blueprint_editor: &Bluepr
         TabKind::ParticleFX(idx) => *idx < scene_state.open_particles.len(),
         TabKind::Level(idx) => *idx < scene_state.open_levels.len(),
         TabKind::Terrain(idx) => *idx < scene_state.open_terrains.len(),
+        TabKind::Shader(idx) => *idx < scene_state.open_scripts.len(),
     });
 
     // Add any missing scene tabs
@@ -840,6 +851,16 @@ fn close_tab(scene_state: &mut SceneManagerState, blueprint_editor: &mut Bluepri
             scene_state.open_terrains.remove(idx);
             if let Some(active) = scene_state.active_terrain_tab {
                 if active > idx { scene_state.active_terrain_tab = Some(active - 1); }
+            }
+        }
+        TabKind::Shader(idx) => {
+            if let Some(pos) = order_pos { scene_state.tab_order.remove(pos); }
+            for kind in &mut scene_state.tab_order {
+                if let TabKind::Shader(i) = kind { if *i > idx { *i -= 1; } }
+            }
+            scene_state.open_scripts.remove(idx);
+            if let Some(active) = scene_state.active_script_tab {
+                if active > idx { scene_state.active_script_tab = Some(active - 1); }
             }
         }
     }

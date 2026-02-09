@@ -107,3 +107,134 @@ pub static ROTATE: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// EXTENDED TRANSFORM NODES
+// =============================================================================
+
+/// Set Scale Uniform - set uniform scale on all axes
+pub static SET_SCALE_UNIFORM: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/set_scale_uniform",
+    display_name: "Set Scale Uniform",
+    category: "Transform",
+    description: "Set uniform scale on all axes",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Parent Set Position - set position on parent entity
+pub static PARENT_SET_POSITION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/parent_set_position",
+    display_name: "Parent Set Position",
+    category: "Transform",
+    description: "Set position on parent entity",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Parent Set Rotation - set rotation on parent entity
+pub static PARENT_SET_ROTATION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/parent_set_rotation",
+    display_name: "Parent Set Rotation",
+    category: "Transform",
+    description: "Set rotation on parent entity",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Parent Translate - translate parent entity
+pub static PARENT_TRANSLATE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/parent_translate",
+    display_name: "Parent Translate",
+    category: "Transform",
+    description: "Translate parent entity by offset",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set Child Position - set position on a named child
+pub static SET_CHILD_POSITION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/set_child_position",
+    display_name: "Set Child Position",
+    category: "Transform",
+    description: "Set position on a named child entity",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("name", "Child Name", PinType::String).with_default(PinValue::String("".into())),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set Child Rotation - set rotation on a named child
+pub static SET_CHILD_ROTATION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/set_child_rotation",
+    display_name: "Set Child Rotation",
+    category: "Transform",
+    description: "Set rotation on a named child entity",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("name", "Child Name", PinType::String).with_default(PinValue::String("".into())),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Child Translate - translate a named child entity
+pub static CHILD_TRANSLATE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "transform/child_translate",
+    display_name: "Child Translate",
+    category: "Transform",
+    description: "Translate a named child entity by offset",
+    create_pins: || vec![
+        Pin::input("exec", "", PinType::Flow),
+        Pin::input("name", "Child Name", PinType::String).with_default(PinValue::String("".into())),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "", PinType::Flow),
+    ],
+    color: [200, 150, 100],
+    is_event: false,
+    is_comment: false,
+};

@@ -835,3 +835,227 @@ pub static RANDOM_DIRECTION: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// EXTENDED MATH NODES
+// =============================================================================
+
+/// Smootherstep (Ken Perlin's improved version)
+pub static SMOOTHERSTEP: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/smootherstep",
+    display_name: "Smootherstep",
+    category: "Math",
+    description: "Smootherstep interpolation (6t^5 - 15t^4 + 10t^3)",
+    create_pins: || vec![
+        Pin::input("edge0", "Edge 0", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("edge1", "Edge 1", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Move Towards - move a value towards a target at max speed
+pub static MOVE_TOWARDS: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/move_towards",
+    display_name: "Move Towards",
+    category: "Math",
+    description: "Move a value towards target by at most max_delta per step",
+    create_pins: || vec![
+        Pin::input("current", "Current", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("target", "Target", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("max_delta", "Max Delta", PinType::Float).with_default(PinValue::Float(0.1)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Normalize Angle - normalize angle to 0..360 range
+pub static NORMALIZE_ANGLE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/normalize_angle",
+    display_name: "Normalize Angle",
+    category: "Math",
+    description: "Normalize an angle to the 0..360 degree range",
+    create_pins: || vec![
+        Pin::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Angle Difference - shortest difference between two angles
+pub static ANGLE_DIFFERENCE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/angle_difference",
+    display_name: "Angle Difference",
+    category: "Math",
+    description: "Shortest signed difference between two angles in degrees",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Lerp Angle - linearly interpolate between two angles
+pub static LERP_ANGLE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/lerp_angle",
+    display_name: "Lerp Angle",
+    category: "Math",
+    description: "Linearly interpolate between two angles (handles wrapping)",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Inverse Lerp - determine where a value falls between two endpoints
+pub static INVERSE_LERP: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/inverse_lerp",
+    display_name: "Inverse Lerp",
+    category: "Math",
+    description: "Returns the t value that produces the given value between a and b",
+    create_pins: || vec![
+        Pin::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Pi constant
+pub static PI: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/pi",
+    display_name: "Pi",
+    category: "Math",
+    description: "The constant Pi (3.14159...)",
+    create_pins: || vec![
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Tau constant (2*Pi)
+pub static TAU: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/tau",
+    display_name: "Tau",
+    category: "Math",
+    description: "The constant Tau (2*Pi = 6.28318...)",
+    create_pins: || vec![
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// E constant
+pub static E: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/e",
+    display_name: "E",
+    category: "Math",
+    description: "Euler's number (2.71828...)",
+    create_pins: || vec![
+        Pin::output("value", "Value", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Truncate - remove fractional part
+pub static TRUNC: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/trunc",
+    display_name: "Truncate",
+    category: "Math",
+    description: "Remove the fractional part of a float (round towards zero)",
+    create_pins: || vec![
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Log base 10
+pub static LOG10: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/log10",
+    display_name: "Log10",
+    category: "Math",
+    description: "Base-10 logarithm",
+    create_pins: || vec![
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Log base 2
+pub static LOG2: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/log2",
+    display_name: "Log2",
+    category: "Math",
+    description: "Base-2 logarithm",
+    create_pins: || vec![
+        Pin::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// 2D Distance
+pub static DISTANCE_2D: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/distance_2d",
+    display_name: "Distance 2D",
+    category: "Math Vector",
+    description: "Distance between two 2D points",
+    create_pins: || vec![
+        Pin::input("x1", "X1", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y1", "Y1", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("x2", "X2", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y2", "Y2", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};
+
+/// 2D Vector Length
+pub static LENGTH_2D: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "math/length_2d",
+    display_name: "Length 2D",
+    category: "Math Vector",
+    description: "Length of a 2D vector",
+    create_pins: || vec![
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("result", "Result", PinType::Float),
+    ],
+    color: [100, 200, 100],
+    is_event: false,
+    is_comment: false,
+};

@@ -543,3 +543,146 @@ pub static STOP_PARTICLES: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// ENVIRONMENT
+// =============================================================================
+
+/// Set sun angles
+pub static SET_SUN_ANGLES: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_sun_angles",
+    display_name: "Set Sun Angles",
+    category: "Environment",
+    description: "Set the sun direction using azimuth and elevation angles",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("azimuth", "Azimuth", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("elevation", "Elevation", PinType::Float).with_default(PinValue::Float(45.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set sun direction
+pub static SET_SUN_DIRECTION: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_sun_direction",
+    display_name: "Set Sun Direction",
+    category: "Environment",
+    description: "Set the sun direction vector",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::input("y", "Y", PinType::Float).with_default(PinValue::Float(-1.0)),
+        Pin::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set ambient brightness
+pub static SET_AMBIENT_BRIGHTNESS: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_ambient_brightness",
+    display_name: "Set Ambient Brightness",
+    category: "Environment",
+    description: "Set the ambient light brightness",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("brightness", "Brightness", PinType::Float).with_default(PinValue::Float(0.3)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set ambient color
+pub static SET_AMBIENT_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_ambient_color",
+    display_name: "Set Ambient Color",
+    category: "Environment",
+    description: "Set the ambient light color",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("r", "R", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("g", "G", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set sky top color
+pub static SET_SKY_TOP_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_sky_top_color",
+    display_name: "Set Sky Top Color",
+    category: "Environment",
+    description: "Set the sky zenith color",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("r", "R", PinType::Float).with_default(PinValue::Float(0.5)),
+        Pin::input("g", "G", PinType::Float).with_default(PinValue::Float(0.7)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set sky horizon color
+pub static SET_SKY_HORIZON_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_sky_horizon_color",
+    display_name: "Set Sky Horizon Color",
+    category: "Environment",
+    description: "Set the sky horizon color",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("r", "R", PinType::Float).with_default(PinValue::Float(0.8)),
+        Pin::input("g", "G", PinType::Float).with_default(PinValue::Float(0.9)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set fog color
+pub static SET_FOG_COLOR: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_fog_color",
+    display_name: "Set Fog Color",
+    category: "Environment",
+    description: "Set the fog color",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("r", "R", PinType::Float).with_default(PinValue::Float(0.8)),
+        Pin::input("g", "G", PinType::Float).with_default(PinValue::Float(0.8)),
+        Pin::input("b", "B", PinType::Float).with_default(PinValue::Float(0.8)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Set exposure
+pub static SET_EXPOSURE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "rendering/set_exposure",
+    display_name: "Set Exposure",
+    category: "Environment",
+    description: "Set the camera exposure value",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("exposure", "Exposure", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [220, 180, 80],
+    is_event: false,
+    is_comment: false,
+};

@@ -12,6 +12,7 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
     IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA,
     COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
+    CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD,
 };
 
 /// Height of the viewport mode tabs bar
@@ -1629,11 +1630,12 @@ fn render_viewport_context_menu(
     // Close menu on Escape
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
         return;
     }
 
     // Smart positioning - flip if near screen edge
-    let menu_height = 280.0;
+    let menu_height = 220.0;
     let menu_width = 160.0;
     let screen_rect = ctx.screen_rect();
 
@@ -1660,11 +1662,19 @@ fn render_viewport_context_menu(
                 });
         });
 
-    // Close menu when clicking outside of it
+    // Read submenu rect from egui memory
+    let submenu_rect: Option<egui::Rect> = ctx.memory(|mem| {
+        mem.data.get_temp(egui::Id::new("viewport_submenu_rect"))
+    });
+
+    // Close menu when clicking outside of both menu and submenu
     if ctx.input(|i| i.pointer.primary_clicked() || i.pointer.secondary_clicked()) {
         if let Some(click_pos) = ctx.input(|i| i.pointer.interact_pos()) {
-            if !area_response.response.rect.contains(click_pos) {
+            let in_menu = area_response.response.rect.contains(click_pos);
+            let in_submenu = submenu_rect.map_or(false, |r| r.contains(click_pos));
+            if !in_menu && !in_submenu {
                 viewport.context_menu_pos = None;
+                viewport.context_submenu = None;
             }
         }
     }
@@ -1680,126 +1690,119 @@ fn render_viewport_context_menu_items(
     command_history: &mut CommandHistory,
     theme: &Theme,
 ) {
-    ui.set_min_width(160.0);
-    ui.set_max_width(160.0);
+    let menu_width = 160.0;
+    ui.set_min_width(menu_width);
+    ui.set_max_width(menu_width);
 
     let text_primary = theme.text.primary.to_color32();
     let text_disabled = theme.text.disabled.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
     let has_selection = selection.selected_entity.is_some();
     let has_clipboard = viewport.clipboard_entity.is_some();
 
-    // Helper for menu items (matches assets panel style)
+    let item_height = 20.0;
+    let item_font = 11.0;
+
+    // Helper for compact menu items with enabled state
     let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32, enabled: bool| -> bool {
-        let desired_size = Vec2::new(160.0, 22.0);
+        let desired_size = Vec2::new(menu_width, item_height);
         let (rect, response) = ui.allocate_exact_size(desired_size, if enabled { Sense::click() } else { Sense::hover() });
 
         let label_color = if enabled { text_primary } else { text_disabled };
         let icon_color = if enabled { color } else { text_disabled };
 
         if enabled && response.hovered() {
-            ui.painter().rect_filled(
-                rect,
-                4.0,
-                theme.panels.item_hover.to_color32(),
-            );
+            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
         }
 
-        // Icon
         ui.painter().text(
             egui::pos2(rect.min.x + 14.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(12.0),
-            icon_color,
+            egui::Align2::CENTER_CENTER, icon,
+            egui::FontId::proportional(item_font), icon_color,
         );
-
-        // Label
         ui.painter().text(
-            egui::pos2(rect.min.x + 30.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(11.0),
-            label_color,
+            egui::pos2(rect.min.x + 28.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(item_font), label_color,
         );
 
         enabled && response.clicked()
     };
 
-    // Helper for large menu items with color indicator bar
-    let large_menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
-        let desired_size = Vec2::new(160.0, 28.0);
-        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
-
-        if response.hovered() {
-            ui.painter().rect_filled(
-                rect,
-                4.0,
-                theme.panels.item_hover.to_color32(),
-            );
-        }
-
-        // Color indicator bar on left
-        let indicator_rect = egui::Rect::from_min_size(
-            rect.min,
-            Vec2::new(3.0, rect.height()),
-        );
-        ui.painter().rect_filled(indicator_rect, CornerRadius::ZERO, color);
-
-        // Icon with color
+    // Section header
+    let section_header = |ui: &mut egui::Ui, label: &str| {
+        let desired_size = Vec2::new(menu_width, 14.0);
+        let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
         ui.painter().text(
-            egui::pos2(rect.min.x + 14.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(14.0),
-            color,
+            egui::pos2(rect.min.x + 8.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(9.0), text_secondary,
         );
-
-        // Label
-        ui.painter().text(
-            egui::pos2(rect.min.x + 30.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(12.0),
-            text_primary,
-        );
-
-        response.clicked()
     };
 
-    // === Entity Operations ===
+    // Submenu trigger
+    let submenu_trigger = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32, submenu_id: &str, current_submenu: &Option<String>| -> (bool, egui::Rect) {
+        let desired_size = Vec2::new(menu_width, item_height);
+        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+        let is_open = current_submenu.as_deref() == Some(submenu_id);
+        if response.hovered() || is_open {
+            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+        }
+
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, icon,
+            egui::FontId::proportional(item_font), color,
+        );
+        ui.painter().text(
+            egui::pos2(rect.min.x + 28.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(item_font), text_primary,
+        );
+        ui.painter().text(
+            egui::pos2(rect.max.x - 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, CARET_RIGHT,
+            egui::FontId::proportional(10.0), text_secondary,
+        );
+
+        (response.hovered(), rect)
+    };
+
     ui.add_space(2.0);
 
+    // === Entity Operations ===
     let entity_color = theme.text.secondary.to_color32();
 
-    // Copy
     if menu_item(ui, COPY, "Copy", entity_color, has_selection) {
         viewport.clipboard_entity = selection.selected_entity;
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
-    // Paste
     if menu_item(ui, CLIPBOARD, "Paste", entity_color, has_clipboard) {
         if let Some(entity) = viewport.clipboard_entity {
             queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
         }
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
-    // Duplicate
     if menu_item(ui, COPY, "Duplicate", entity_color, has_selection) {
         if let Some(entity) = selection.selected_entity {
             queue_command(command_history, Box::new(DuplicateEntityCommand::new(entity)));
         }
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
-    // Delete
     let delete_color = if has_selection { theme.semantic.error.to_color32() } else { text_disabled };
     if menu_item(ui, TRASH, "Delete", delete_color, has_selection) {
         if let Some(entity) = selection.selected_entity {
             queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
         }
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
     ui.add_space(2.0);
@@ -1810,52 +1813,143 @@ fn render_viewport_context_menu_items(
     let add_color = theme.semantic.accent.to_color32();
     if menu_item(ui, PLUS, "Add Node", add_color, true) {
         hierarchy.show_add_entity_popup = true;
-        hierarchy.add_entity_parent = None; // scene root
+        hierarchy.add_entity_parent = None;
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
     ui.add_space(2.0);
     ui.separator();
     ui.add_space(2.0);
 
-    // === Asset Creation (matches assets panel) ===
+    // === Create section ===
+    section_header(ui, "CREATE");
+    ui.add_space(1.0);
+
     let material_color = Color32::from_rgb(0, 200, 83);
     let scene_color = Color32::from_rgb(115, 191, 242);
-    let folder_color = Color32::from_rgb(255, 196, 0);
     let script_color = Color32::from_rgb(255, 128, 0);
+    let shader_color = Color32::from_rgb(220, 120, 255);
+    let blueprint_color = Color32::from_rgb(100, 160, 255);
 
-    if large_menu_item(ui, PALETTE, "Create Material", material_color) {
+    if menu_item(ui, PALETTE, "Material", material_color, true) {
         assets.show_create_material_dialog = true;
         assets.new_material_name = "NewMaterial".to_string();
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
-    if large_menu_item(ui, FILM_SCRIPT, "New Scene", scene_color) {
+    if menu_item(ui, FILM_SCRIPT, "Scene", scene_color, true) {
         assets.show_create_scene_dialog = true;
         assets.new_scene_name = "NewScene".to_string();
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
+
+    if menu_item(ui, SCROLL, "Script", script_color, true) {
+        assets.show_create_script_dialog = true;
+        assets.new_script_name = "new_script".to_string();
+        viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
+    }
+
+    if menu_item(ui, GRAPHICS_CARD, "Shader", shader_color, true) {
+        assets.show_create_shader_dialog = true;
+        assets.new_shader_name = "new_shader".to_string();
+        viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
+    }
+
+    // === Blueprint submenu ===
+    let (bp_hovered, bp_rect) = submenu_trigger(ui, BLUEPRINT, "Blueprint", blueprint_color, "blueprint", &viewport.context_submenu);
 
     ui.add_space(2.0);
     ui.separator();
     ui.add_space(2.0);
-
-    if menu_item(ui, FOLDER_PLUS, "New Folder", folder_color, true) {
-        assets.show_create_folder_dialog = true;
-        assets.new_folder_name = "New Folder".to_string();
-        viewport.context_menu_pos = None;
-    }
-
-    if menu_item(ui, SCROLL, "Create Script", script_color, true) {
-        assets.show_create_script_dialog = true;
-        assets.new_script_name = "new_script".to_string();
-        viewport.context_menu_pos = None;
-    }
 
     if menu_item(ui, DOWNLOAD, "Import", text_primary, true) {
         assets.show_import_dialog = true;
         viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
     }
 
     ui.add_space(2.0);
+
+    // Track submenu hover
+    if bp_hovered {
+        viewport.context_submenu = Some("blueprint".to_string());
+    }
+
+    // Render blueprint submenu
+    let menu_rect = ui.min_rect();
+    if viewport.context_submenu.as_deref() == Some("blueprint") {
+        let submenu_x = menu_rect.max.x + 1.0;
+
+        let submenu_response = egui::Area::new(egui::Id::new("viewport_submenu_blueprint"))
+            .fixed_pos(egui::pos2(submenu_x, bp_rect.min.y))
+            .order(egui::Order::Foreground)
+            .constrain(true)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style())
+                    .show(ui, |ui| {
+                        let sub_width = 160.0;
+                        ui.set_min_width(sub_width);
+                        ui.set_max_width(sub_width);
+
+                        let sub_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+                            let desired_size = Vec2::new(sub_width, item_height);
+                            let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+                            if response.hovered() {
+                                ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+                            }
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 14.0, rect.center().y),
+                                egui::Align2::CENTER_CENTER, icon,
+                                egui::FontId::proportional(item_font), color,
+                            );
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 28.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER, label,
+                                egui::FontId::proportional(item_font), text_primary,
+                            );
+                            response.clicked()
+                        };
+
+                        ui.add_space(2.0);
+
+                        if sub_item(ui, PALETTE, "Material Blueprint", material_color) {
+                            assets.show_create_material_blueprint_dialog = true;
+                            assets.new_material_blueprint_name = "NewMaterial".to_string();
+                            viewport.context_menu_pos = None;
+                            viewport.context_submenu = None;
+                        }
+                        if sub_item(ui, SCROLL, "Script Blueprint", script_color) {
+                            assets.show_create_script_blueprint_dialog = true;
+                            assets.new_script_blueprint_name = "NewScript".to_string();
+                            viewport.context_menu_pos = None;
+                            viewport.context_submenu = None;
+                        }
+
+                        ui.add_space(2.0);
+                    });
+            });
+
+        // Store submenu rect for click-outside detection
+        ui.ctx().memory_mut(|mem| {
+            mem.data.insert_temp(egui::Id::new("viewport_submenu_rect"), submenu_response.response.rect);
+        });
+
+        // Close submenu if pointer moves away from both areas
+        if let Some(pointer_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+            let expanded_menu = menu_rect.expand(2.0);
+            let expanded_submenu = submenu_response.response.rect.expand(2.0);
+            if !expanded_menu.contains(pointer_pos) && !expanded_submenu.contains(pointer_pos) {
+                viewport.context_submenu = None;
+            }
+        }
+    } else {
+        ui.ctx().memory_mut(|mem| {
+            mem.data.remove::<egui::Rect>(egui::Id::new("viewport_submenu_rect"));
+        });
+    }
 }

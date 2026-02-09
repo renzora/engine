@@ -1492,12 +1492,12 @@ pub fn generate_wgsl_code(graph: &BlueprintGraph) -> WgslCodegenResult {
         ctx.fragment_lines.push(format!("    pbr_input.material.metallic = {};", metallic));
         ctx.fragment_lines.push(format!("    pbr_input.material.perceptual_roughness = {};", roughness));
         ctx.fragment_lines.push(format!("    pbr_input.material.emissive = {}.rgb * {}.a;", emissive, emissive));
-        ctx.fragment_lines.push(format!("    pbr_input.occlusion = vec3<f32>({});", ao));
+        ctx.fragment_lines.push(format!("    pbr_input.diffuse_occlusion = vec3<f32>({});", ao));
         ctx.fragment_lines.push(format!("    pbr_input.world_normal = normalize({});", normal));
-        ctx.fragment_lines.push(format!("    pbr_input.world_position = vec4<f32>(in.world_position, 1.0);"));
+        ctx.fragment_lines.push(format!("    pbr_input.world_position = in.world_position;"));
         ctx.fragment_lines.push(format!("    pbr_input.frag_coord = in.position;"));
         ctx.fragment_lines.push(String::new());
-        ctx.fragment_lines.push(format!("    var color = pbr(pbr_input);"));
+        ctx.fragment_lines.push(format!("    var color = apply_pbr_lighting(pbr_input);"));
         ctx.fragment_lines.push(format!("    color.a = {};", alpha));
         ctx.fragment_lines.push("    return color;".to_string());
     } else {
@@ -1532,7 +1532,7 @@ pub fn generate_wgsl_code(graph: &BlueprintGraph) -> WgslCodegenResult {
 
     let pbr_imports = if is_pbr {
         r#"#import bevy_pbr::{
-    pbr_functions::pbr,
+    pbr_functions::apply_pbr_lighting,
     pbr_types::PbrInput,
     pbr_types::pbr_input_new,
     mesh_view_bindings::view,

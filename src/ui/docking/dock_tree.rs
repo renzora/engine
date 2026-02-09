@@ -10,6 +10,7 @@ use egui_phosphor::regular::{
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
     SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
+    PENCIL_SIMPLE, PALETTE, PAINT_BRUSH,
 };
 
 /// Direction of a split in the dock tree
@@ -29,7 +30,9 @@ pub enum PanelId {
     Viewport,
     Animation,
     Timeline,
-    ScriptEditor,
+    #[serde(alias = "ScriptEditor")]
+    CodeEditor,
+    ShaderPreview,
     History,
     Blueprint,
     NodeLibrary,
@@ -62,6 +65,18 @@ pub enum PanelId {
     TextureEditor,
     /// Script Variables panel - shows props from active script
     ScriptVariables,
+    /// Pixel art canvas - main drawing area
+    PixelCanvas,
+    /// Pixel art layers panel
+    PixelLayers,
+    /// Pixel art color palette
+    PixelPalette,
+    /// Pixel art tools panel
+    PixelTools,
+    /// Pixel art animation timeline
+    PixelTimeline,
+    /// Pixel art brush settings
+    PixelBrushSettings,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -77,7 +92,8 @@ impl PanelId {
             PanelId::Viewport => "Viewport",
             PanelId::Animation => "Animation",
             PanelId::Timeline => "Timeline",
-            PanelId::ScriptEditor => "Script Editor",
+            PanelId::CodeEditor => "Code Editor",
+            PanelId::ShaderPreview => "Shader Preview",
             PanelId::History => "History",
             PanelId::Blueprint => "Blueprint",
             PanelId::NodeLibrary => "Node Library",
@@ -101,6 +117,12 @@ impl PanelId {
             PanelId::ParticlePreview => "Particle Preview",
             PanelId::TextureEditor => "Textures",
             PanelId::ScriptVariables => "Script Variables",
+            PanelId::PixelCanvas => "Pixel Canvas",
+            PanelId::PixelLayers => "Layers",
+            PanelId::PixelPalette => "Palette",
+            PanelId::PixelTools => "Tools",
+            PanelId::PixelTimeline => "Timeline",
+            PanelId::PixelBrushSettings => "Brush",
             PanelId::Plugin(name) => name,
         }
     }
@@ -115,7 +137,8 @@ impl PanelId {
             PanelId::Viewport => MONITOR,
             PanelId::Animation => FILM_STRIP,
             PanelId::Timeline => WAVEFORM,
-            PanelId::ScriptEditor => CODE,
+            PanelId::CodeEditor => CODE,
+            PanelId::ShaderPreview => MONITOR,
             PanelId::History => CLOCK_COUNTER_CLOCKWISE,
             PanelId::Blueprint => GRAPH,
             PanelId::NodeLibrary => LIST_BULLETS,
@@ -139,6 +162,12 @@ impl PanelId {
             PanelId::ParticlePreview => SPARKLE,
             PanelId::TextureEditor => PAINT_BUCKET,
             PanelId::ScriptVariables => SLIDERS_HORIZONTAL,
+            PanelId::PixelCanvas => PENCIL_SIMPLE,
+            PanelId::PixelLayers => STACK,
+            PanelId::PixelPalette => PALETTE,
+            PanelId::PixelTools => PENCIL_SIMPLE,
+            PanelId::PixelTimeline => FILM_STRIP,
+            PanelId::PixelBrushSettings => PAINT_BRUSH,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }
@@ -618,7 +647,7 @@ mod tests {
         let panels = [
             PanelId::Hierarchy, PanelId::Inspector, PanelId::Assets,
             PanelId::Console, PanelId::Viewport, PanelId::Animation,
-            PanelId::ScriptEditor, PanelId::Blueprint, PanelId::Settings,
+            PanelId::CodeEditor, PanelId::Blueprint, PanelId::Settings,
             PanelId::Performance, PanelId::ParticleEditor,
         ];
         for panel in &panels {
@@ -646,7 +675,7 @@ mod tests {
     fn test_other_panels_can_close() {
         let closeable = [
             PanelId::Console, PanelId::Inspector, PanelId::Assets,
-            PanelId::Hierarchy, PanelId::ScriptEditor,
+            PanelId::Hierarchy, PanelId::CodeEditor,
         ];
         for panel in &closeable {
             assert!(panel.can_close(), "{:?} should be closeable", panel);

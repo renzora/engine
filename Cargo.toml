@@ -45,9 +45,6 @@ image = { version = "0.25", optional = true }
 memory-stats = { version = "1.2", optional = true }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
-# WGSL shader validation
-naga = { version = "27", features = ["wgsl-in"] }
-
 # Physics engine (Avian - ECS-native physics for Bevy)
 avian3d = { version = "0.5", optional = true }
 

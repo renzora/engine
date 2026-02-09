@@ -353,3 +353,59 @@ pub static SET_SPATIAL_PROPERTIES: NodeTypeDefinition = NodeTypeDefinition {
     is_event: false,
     is_comment: false,
 };
+
+// =============================================================================
+// EXTENDED AUDIO NODES
+// =============================================================================
+
+/// Play sound looping
+pub static PLAY_SOUND_LOOPING: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "audio/play_sound_looping",
+    display_name: "Play Sound Looping",
+    category: "Audio",
+    description: "Play a sound effect in a loop",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("path", "Path", PinType::String).with_default(PinValue::String("".into())),
+        Pin::input("volume", "Volume", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+        Pin::output("handle", "Handle", PinType::AudioHandle),
+    ],
+    color: [180, 100, 220],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Play music with fade in
+pub static PLAY_MUSIC_FADE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "audio/play_music_fade",
+    display_name: "Play Music (Fade In)",
+    category: "Audio",
+    description: "Play music with a fade-in effect",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("path", "Path", PinType::String).with_default(PinValue::String("".into())),
+        Pin::input("volume", "Volume", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::input("fade_duration", "Fade Duration", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [180, 100, 220],
+    is_event: false,
+    is_comment: false,
+};
+
+/// Stop music with fade out
+pub static STOP_MUSIC_FADE: NodeTypeDefinition = NodeTypeDefinition {
+    type_id: "audio/stop_music_fade",
+    display_name: "Stop Music (Fade Out)",
+    category: "Audio",
+    description: "Stop music with a fade-out effect",
+    create_pins: || vec![
+        Pin::input("exec", "Exec", PinType::Execution),
+        Pin::input("fade_duration", "Fade Duration", PinType::Float).with_default(PinValue::Float(1.0)),
+        Pin::output("exec", "Exec", PinType::Execution),
+    ],
+    color: [180, 100, 220],
+    is_event: false,
+    is_comment: false,
+};

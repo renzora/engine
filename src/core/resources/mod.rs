@@ -37,7 +37,7 @@ pub use scene::{
 };
 pub use selection::SelectionState;
 pub use settings::{CameraSettings, CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
-pub use thumbnails::{ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview};
+pub use thumbnails::{ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview, supports_shader_thumbnail};
 pub use viewport::{BottomPanelTab, RightPanelTab, ViewportState};
 pub use crate::viewport::ViewportMode;
 pub use window::{WindowState, ResizeEdge};

@@ -17,5 +17,8 @@ Thumbs.db
 # Claude
 .claude/
 
+# Exported builds
+/export/
+
 # Editor cache
 .renzora/thumbnails/

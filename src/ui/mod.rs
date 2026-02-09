@@ -20,6 +20,7 @@ use crate::core::{
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache, ParticlePreviewImage};
+use crate::shader_thumbnail::ShaderThumbnailCache;
 use crate::brushes::{BrushSettings, BrushState, BlockEditState};
 use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::update::{UpdateState, UpdateDialogState};
@@ -80,6 +81,10 @@ pub struct EditorResources<'w> {
     pub particle_preview_image: Option<Res<'w, ParticlePreviewImage>>,
     pub particle_editor_state: ResMut<'w, ParticleEditorState>,
     pub inspector_render_state: ResMut<'w, InspectorPanelRenderState>,
+    pub pixel_editor: ResMut<'w, PixelEditorState>,
+    pub shader_preview: ResMut<'w, ShaderPreviewState>,
+    pub shader_preview_render: Res<'w, ShaderPreviewRender>,
+    pub shader_thumbnail_cache: ResMut<'w, ShaderThumbnailCache>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -97,7 +102,7 @@ use docking::{
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
-    render_document_tabs, render_script_editor_content, render_image_preview_content,
+    render_document_tabs, render_code_editor_content, render_image_preview_content,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_assets_content, render_assets_dialogs,
@@ -107,8 +112,17 @@ use panels::{
     render_level_tools_content, render_animation_content, AnimationPanelState,
     render_particle_editor_content,
     render_particle_preview_content,
+    render_shader_preview_content,
+    render_pixel_canvas_content,
+    render_pixel_layers_content,
+    render_pixel_palette_content,
+    render_pixel_tools_content,
+    render_pixel_timeline_content,
+    render_pixel_brush_settings_content,
 };
 use crate::particles::ParticleEditorState;
+use crate::pixel_editor::PixelEditorState;
+use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors};
 use style::{apply_editor_style_with_theme, init_fonts};
@@ -711,6 +725,7 @@ pub fn editor_ui(
                             &mut editor.scene_state,
                             &mut editor.thumbnail_cache,
                             &mut editor.model_preview_cache,
+                            &mut editor.shader_thumbnail_cache,
                             &editor.theme_manager.active_theme,
                         );
                     });
@@ -805,13 +820,29 @@ pub fn editor_ui(
                     });
                 }
 
-                PanelId::ScriptEditor => {
+                PanelId::CodeEditor => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_script_editor_content(
+                        render_code_editor_content(
                             ui,
                             ctx,
                             &mut editor.scene_state,
                             current_project.as_deref(),
+                        );
+                    });
+                }
+
+                PanelId::ShaderPreview => {
+                    let preview_tex = match editor.shader_preview.shader_type {
+                        ShaderType::Compute => editor.shader_preview_render.compute_texture_id,
+                        ShaderType::Fragment | ShaderType::PbrFragment => editor.shader_preview_render.texture_id,
+                    };
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_shader_preview_content(
+                            ui,
+                            &mut editor.shader_preview,
+                            &editor.scene_state,
+                            &editor.theme_manager.active_theme,
+                            preview_tex,
                         );
                     });
                 }
@@ -1052,6 +1083,68 @@ pub fn editor_ui(
                             &editor.scene_state,
                             &rhai_engine,
                             current_project.as_deref(),
+                        );
+                    });
+                }
+
+                PanelId::PixelCanvas => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_canvas_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::PixelLayers => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_layers_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::PixelPalette => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_palette_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::PixelTools => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_tools_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::PixelTimeline => {
+                    let dt_ms = time.delta_secs() * 1000.0;
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_timeline_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
+                            dt_ms,
+                        );
+                    });
+                }
+
+                PanelId::PixelBrushSettings => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_pixel_brush_settings_content(
+                            ui,
+                            &mut editor.pixel_editor,
+                            &editor.theme_manager.active_theme,
                         );
                     });
                 }

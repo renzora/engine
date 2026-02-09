@@ -111,3 +111,9 @@ pub fn is_model_file_for_preview(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx")
 }
+
+/// Identifies WGSL shader files that support rendered shader thumbnails
+pub fn supports_shader_thumbnail(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    ext == "wgsl"
+}

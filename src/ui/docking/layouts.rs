@@ -47,6 +47,8 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Terrain", terrain_layout()),
         WorkspaceLayout::builtin("Image Preview", image_preview_layout()),
         WorkspaceLayout::builtin("Particles", particles_layout()),
+        WorkspaceLayout::builtin("Pixels", pixels_layout()),
+        WorkspaceLayout::builtin("Shaders", shaders_layout()),
     ]
 }
 
@@ -86,7 +88,7 @@ pub fn default_layout() -> DockTree {
     )
 }
 
-/// Scripting layout: Hierarchy+Assets | ScriptEditor+Console | Inspector+ScriptVariables
+/// Scripting layout: Hierarchy+Assets | CodeEditor+Console | Inspector+ScriptVariables
 ///
 /// ```text
 /// ┌─────────┬──────────────────────┬──────────────┐
@@ -106,7 +108,7 @@ pub fn scripting_layout() -> DockTree {
         ),
         DockTree::horizontal(
             DockTree::vertical(
-                DockTree::leaf(PanelId::ScriptEditor),
+                DockTree::leaf(PanelId::CodeEditor),
                 DockTree::leaf(PanelId::Console),
                 0.7,
             ),
@@ -339,6 +341,66 @@ pub fn particles_layout() -> DockTree {
     )
 }
 
+/// Pixels layout: Pixel art editor workspace
+///
+/// ```text
+/// ┌──────────┬──────────────────────┬──────────┐
+/// │PixelTools│                      │PixelLayer│
+/// │          │                      │          │
+/// ├──────────┤    PixelCanvas       ├──────────┤
+/// │PixelBrush│                      │PixelPalet│
+/// │ Settings │                      │          │
+/// ├──────────┴──────────────────────┴──────────┤
+/// │              PixelTimeline                  │
+/// └─────────────────────────────────────────────┘
+/// ```
+pub fn pixels_layout() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::PixelCanvas),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::PixelLayers),
+                DockTree::vertical(
+                    DockTree::leaf(PanelId::PixelBrushSettings),
+                    DockTree::leaf(PanelId::PixelPalette),
+                    0.45,
+                ),
+                0.35,
+            ),
+            0.78,
+        ),
+        DockTree::leaf(PanelId::PixelTimeline),
+        0.78,
+    )
+}
+
+/// Shaders layout: Code Editor with Shader Preview side by side
+///
+/// ```text
+/// ┌───────────┬──────────────────────┬──────────────┐
+/// │           │                      │              │
+/// │  Assets   │    Code Editor       │   Shader     │
+/// │           │                      │   Preview    │
+/// ├───────────┼──────────────────────┤              │
+/// │  Console  │                      │              │
+/// └───────────┴──────────────────────┴──────────────┘
+/// ```
+pub fn shaders_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Assets),
+            DockTree::leaf(PanelId::Console),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::CodeEditor),
+            DockTree::leaf(PanelId::ShaderPreview),
+            0.6,
+        ),
+        0.18,
+    )
+}
+
 /// Minimal layout: Just viewport
 #[allow(dead_code)]
 pub fn minimal_layout() -> DockTree {
@@ -436,7 +498,7 @@ mod tests {
     #[test]
     fn test_builtin_layouts_count() {
         let layouts = builtin_layouts();
-        assert_eq!(layouts.len(), 9, "Expected 9 built-in layouts");
+        assert_eq!(layouts.len(), 11, "Expected 11 built-in layouts");
     }
 
     #[test]
@@ -463,10 +525,10 @@ mod tests {
     }
 
     #[test]
-    fn test_scripting_layout_has_script_editor() {
+    fn test_scripting_layout_has_code_editor() {
         let layout = scripting_layout();
-        assert!(layout.contains_panel(&PanelId::ScriptEditor),
-            "Scripting layout should contain ScriptEditor");
+        assert!(layout.contains_panel(&PanelId::CodeEditor),
+            "Scripting layout should contain CodeEditor");
     }
 
     #[test]

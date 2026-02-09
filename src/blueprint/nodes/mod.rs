@@ -18,6 +18,7 @@ mod hierarchy;
 mod input;
 mod logic;
 mod math;
+mod particles;
 mod physics;
 mod rendering;
 mod scene;
@@ -218,6 +219,15 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&transform::GET_ROTATION);
     registry.register(&transform::SET_ROTATION);
     registry.register(&transform::ROTATE);
+
+    // Transform - Extended (new)
+    registry.register(&transform::SET_SCALE_UNIFORM);
+    registry.register(&transform::PARENT_SET_POSITION);
+    registry.register(&transform::PARENT_SET_ROTATION);
+    registry.register(&transform::PARENT_TRANSLATE);
+    registry.register(&transform::SET_CHILD_POSITION);
+    registry.register(&transform::SET_CHILD_ROTATION);
+    registry.register(&transform::CHILD_TRANSLATE);
 
     // Input
     registry.register(&input::GET_INPUT_AXIS);
@@ -494,6 +504,11 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&audio::SET_AUDIO_LISTENER);
     registry.register(&audio::SET_SPATIAL_PROPERTIES);
 
+    // Audio - Extended (new)
+    registry.register(&audio::PLAY_SOUND_LOOPING);
+    registry.register(&audio::PLAY_MUSIC_FADE);
+    registry.register(&audio::STOP_MUSIC_FADE);
+
     // Animation - Skeletal
     registry.register(&animation::PLAY_ANIMATION);
     registry.register(&animation::PLAY_ANIMATION_ONCE);
@@ -594,6 +609,29 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&rendering::SPAWN_PARTICLES);
     registry.register(&rendering::PLAY_PARTICLES);
     registry.register(&rendering::STOP_PARTICLES);
+
+    // Rendering - Environment (new)
+    registry.register(&rendering::SET_SUN_ANGLES);
+    registry.register(&rendering::SET_SUN_DIRECTION);
+    registry.register(&rendering::SET_AMBIENT_BRIGHTNESS);
+    registry.register(&rendering::SET_AMBIENT_COLOR);
+    registry.register(&rendering::SET_SKY_TOP_COLOR);
+    registry.register(&rendering::SET_SKY_HORIZON_COLOR);
+    registry.register(&rendering::SET_FOG_COLOR);
+    registry.register(&rendering::SET_EXPOSURE);
+
+    // Particles (new module)
+    registry.register(&particles::BURST);
+    registry.register(&particles::SET_RATE);
+    registry.register(&particles::SET_SCALE);
+    registry.register(&particles::SET_TIME_SCALE);
+    registry.register(&particles::SET_TINT);
+    registry.register(&particles::RESET);
+    registry.register(&particles::SET_VARIABLE_FLOAT);
+    registry.register(&particles::SET_VARIABLE_COLOR);
+    registry.register(&particles::SET_VARIABLE_VEC3);
+    registry.register(&particles::EMIT_AT);
+    registry.register(&particles::EMIT_AT_COUNT);
 
     // UI - Text
     registry.register(&ui::SPAWN_TEXT);
@@ -960,6 +998,22 @@ pub fn register_all_nodes(registry: &mut NodeRegistry) {
     registry.register(&math::BREAK_VEC3);
     registry.register(&math::RANDOM_VEC3);
     registry.register(&math::RANDOM_DIRECTION);
+
+    // Math - Extended (new)
+    registry.register(&math::SMOOTHERSTEP);
+    registry.register(&math::MOVE_TOWARDS);
+    registry.register(&math::NORMALIZE_ANGLE);
+    registry.register(&math::ANGLE_DIFFERENCE);
+    registry.register(&math::LERP_ANGLE);
+    registry.register(&math::INVERSE_LERP);
+    registry.register(&math::PI);
+    registry.register(&math::TAU);
+    registry.register(&math::E);
+    registry.register(&math::TRUNC);
+    registry.register(&math::LOG10);
+    registry.register(&math::LOG2);
+    registry.register(&math::DISTANCE_2D);
+    registry.register(&math::LENGTH_2D);
 
     // =========================================================================
     // STRING NODES

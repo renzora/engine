@@ -256,6 +256,23 @@ pub fn run_rhai_scripts(
             ctx.mouse_position = input.mouse_position;
             ctx.mouse_delta = input.mouse_delta;
 
+            // Keyboard state
+            for (key, &pressed) in &input.keys_pressed {
+                if pressed {
+                    ctx.keys_pressed.insert(format!("{:?}", key), true);
+                }
+            }
+            for (key, &pressed) in &input.keys_just_pressed {
+                if pressed {
+                    ctx.keys_just_pressed.insert(format!("{:?}", key), true);
+                }
+            }
+            for (key, &released) in &input.keys_just_released {
+                if released {
+                    ctx.keys_just_released.insert(format!("{:?}", key), true);
+                }
+            }
+
             // Gamepad input (using gamepad 0)
             ctx.gamepad_left_stick = Vec2::new(
                 input.get_gamepad_left_stick_x(0),

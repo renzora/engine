@@ -19,6 +19,7 @@ pub enum TabKind {
     ParticleFX(usize),
     Level(usize),
     Terrain(usize),
+    Shader(usize),
 }
 
 impl TabKind {
@@ -36,6 +37,7 @@ impl TabKind {
             TabKind::ParticleFX(_) => "Particles",
             TabKind::Level(_) => "Level Design",
             TabKind::Terrain(_) => "Terrain",
+            TabKind::Shader(_) => "Shaders",
         }
     }
 }
@@ -267,6 +269,9 @@ impl SceneManagerState {
             }
             TabKind::Terrain(idx) => {
                 self.active_terrain_tab = Some(*idx);
+            }
+            TabKind::Shader(idx) => {
+                self.active_script_tab = Some(*idx);
             }
         }
 

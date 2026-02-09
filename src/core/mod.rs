@@ -18,7 +18,7 @@ pub use resources::{
     NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
-    ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview,
+    ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview, supports_shader_thumbnail,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
     // New debug/profiler resources
     EcsStatsState, MemoryProfilerState, MemoryTrend,
@@ -58,6 +58,8 @@ impl Plugin for CorePlugin {
             .init_resource::<ImagePreviewTextures>()
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
+            .init_resource::<crate::pixel_editor::PixelEditorState>()
+            // ShaderPreviewState is registered by ShaderPreviewPlugin
             .init_resource::<GamepadDebugState>()
             .init_resource::<crate::theming::ThemeManager>()
             .init_resource::<resources::InspectorPanelRenderState>()

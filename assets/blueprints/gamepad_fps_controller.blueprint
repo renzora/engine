@@ -1,7 +1,7 @@
 {
   "version": 1,
   "graph": {
-    "name": "FPS Controller",
+    "name": "Gamepad FPS Controller",
     "graph_type": "Behavior",
     "nodes": [
       {
@@ -19,14 +19,14 @@
       },
       {
         "id": 2,
-        "node_type": "input/get_mouse_delta",
+        "node_type": "input/get_gamepad_right_stick",
         "position": [100.0, 450.0],
         "pins": [
           { "name": "x", "label": "X", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
           { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {},
-        "comment": null,
+        "comment": "Right stick for camera look",
         "display_name": null,
         "color": null
       },
@@ -55,9 +55,9 @@
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {
-          "b": { "Float": -0.15 }
+          "b": { "Float": -120.0 }
         },
-        "comment": "Mouse X * -Sensitivity",
+        "comment": "Right X * -Sensitivity (deg/sec)",
         "display_name": null,
         "color": null
       },
@@ -71,44 +71,72 @@
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {
-          "b": { "Float": -0.15 }
+          "b": { "Float": -120.0 }
         },
-        "comment": "Mouse Y * -Sensitivity",
+        "comment": "Right Y * -Sensitivity (deg/sec)",
         "display_name": null,
         "color": null
       },
       {
         "id": 6,
-        "node_type": "math/add",
-        "position": [560.0, 420.0],
+        "node_type": "math/multiply",
+        "position": [550.0, 420.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
-          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {},
-        "comment": "Current Yaw + Mouse Delta",
+        "comment": "Yaw rate * Delta",
         "display_name": null,
         "color": null
       },
       {
         "id": 7,
+        "node_type": "math/multiply",
+        "position": [550.0, 560.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Pitch rate * Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 8,
         "node_type": "math/add",
-        "position": [560.0, 560.0],
+        "position": [750.0, 420.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {},
-        "comment": "Current Pitch + Mouse Delta",
+        "comment": "Current Yaw + Stick Delta",
         "display_name": null,
         "color": null
       },
       {
-        "id": 8,
+        "id": 9,
+        "node_type": "math/add",
+        "position": [750.0, 560.0],
+        "pins": [
+          { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
+          { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+        ],
+        "input_values": {},
+        "comment": "Current Pitch + Stick Delta",
+        "display_name": null,
+        "color": null
+      },
+      {
+        "id": 10,
         "node_type": "math/clamp",
-        "position": [760.0, 560.0],
+        "position": [950.0, 560.0],
         "pins": [
           { "name": "value", "label": "Value", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "min", "label": "Min", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
@@ -124,9 +152,9 @@
         "color": null
       },
       {
-        "id": 9,
+        "id": 11,
         "node_type": "transform/set_rotation",
-        "position": [960.0, 200.0],
+        "position": [1150.0, 200.0],
         "pins": [
           { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
           { "name": "pitch", "label": "Pitch", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
@@ -142,7 +170,7 @@
         "color": null
       },
       {
-        "id": 10,
+        "id": 12,
         "node_type": "math/deg_to_rad",
         "position": [350.0, 800.0],
         "pins": [
@@ -155,9 +183,9 @@
         "color": null
       },
       {
-        "id": 11,
+        "id": 13,
         "node_type": "math/sin",
-        "position": [560.0, 780.0],
+        "position": [550.0, 780.0],
         "pins": [
           { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
@@ -168,9 +196,9 @@
         "color": null
       },
       {
-        "id": 12,
+        "id": 14,
         "node_type": "math/cos",
-        "position": [560.0, 900.0],
+        "position": [550.0, 900.0],
         "pins": [
           { "name": "value", "label": "Radians", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
@@ -181,9 +209,9 @@
         "color": null
       },
       {
-        "id": 13,
+        "id": 15,
         "node_type": "math/negate",
-        "position": [760.0, 780.0],
+        "position": [750.0, 780.0],
         "pins": [
           { "name": "value", "label": "Value", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
@@ -194,9 +222,9 @@
         "color": null
       },
       {
-        "id": 14,
+        "id": 16,
         "node_type": "math/negate",
-        "position": [760.0, 900.0],
+        "position": [750.0, 900.0],
         "pins": [
           { "name": "value", "label": "Value", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "result", "label": "Result", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
@@ -207,22 +235,22 @@
         "color": null
       },
       {
-        "id": 15,
-        "node_type": "input/get_axis",
+        "id": 17,
+        "node_type": "input/get_gamepad_left_stick",
         "position": [100.0, 1100.0],
         "pins": [
-          { "name": "x", "label": "X (A/D)", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
-          { "name": "y", "label": "Y (W/S)", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
+          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
+          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
         ],
         "input_values": {},
-        "comment": "WASD input",
+        "comment": "Left stick for movement",
         "display_name": null,
         "color": null
       },
       {
-        "id": 16,
+        "id": 18,
         "node_type": "math/multiply",
-        "position": [760.0, 1040.0],
+        "position": [750.0, 1040.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -234,9 +262,9 @@
         "color": null
       },
       {
-        "id": 17,
+        "id": 19,
         "node_type": "math/multiply",
-        "position": [760.0, 1160.0],
+        "position": [750.0, 1160.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -248,9 +276,9 @@
         "color": null
       },
       {
-        "id": 18,
+        "id": 20,
         "node_type": "math/add",
-        "position": [960.0, 1100.0],
+        "position": [950.0, 1100.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
@@ -262,9 +290,9 @@
         "color": null
       },
       {
-        "id": 19,
+        "id": 21,
         "node_type": "math/multiply",
-        "position": [760.0, 1280.0],
+        "position": [750.0, 1280.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -276,9 +304,9 @@
         "color": null
       },
       {
-        "id": 20,
+        "id": 22,
         "node_type": "math/multiply",
-        "position": [760.0, 1400.0],
+        "position": [750.0, 1400.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -290,9 +318,9 @@
         "color": null
       },
       {
-        "id": 21,
+        "id": 23,
         "node_type": "math/add",
-        "position": [960.0, 1340.0],
+        "position": [950.0, 1340.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
@@ -304,9 +332,9 @@
         "color": null
       },
       {
-        "id": 22,
+        "id": 24,
         "node_type": "math/multiply",
-        "position": [1160.0, 1100.0],
+        "position": [1150.0, 1100.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -320,9 +348,9 @@
         "color": null
       },
       {
-        "id": 23,
+        "id": 25,
         "node_type": "math/multiply",
-        "position": [1160.0, 1340.0],
+        "position": [1150.0, 1340.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -336,9 +364,9 @@
         "color": null
       },
       {
-        "id": 24,
+        "id": 26,
         "node_type": "math/multiply",
-        "position": [1360.0, 1100.0],
+        "position": [1350.0, 1100.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -350,9 +378,9 @@
         "color": null
       },
       {
-        "id": 25,
+        "id": 27,
         "node_type": "math/multiply",
-        "position": [1360.0, 1340.0],
+        "position": [1350.0, 1340.0],
         "pins": [
           { "name": "a", "label": "A", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
           { "name": "b", "label": "B", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 1.0 }, "required": false },
@@ -364,9 +392,9 @@
         "color": null
       },
       {
-        "id": 26,
+        "id": 28,
         "node_type": "transform/translate",
-        "position": [1560.0, 500.0],
+        "position": [1550.0, 500.0],
         "pins": [
           { "name": "exec", "label": "", "pin_type": "Flow", "direction": "Input", "default_value": null, "required": false },
           { "name": "x", "label": "X", "pin_type": "Float", "direction": "Input", "default_value": { "Float": 0.0 }, "required": false },
@@ -380,7 +408,7 @@
         "color": null
       },
       {
-        "id": 27,
+        "id": 29,
         "node_type": "debug/log_value",
         "position": [300.0, 200.0],
         "pins": [
@@ -389,13 +417,13 @@
           { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
           { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
         ],
-        "input_values": { "label": { "String": "Mouse dX" } },
+        "input_values": { "label": { "String": "RStick X" } },
         "comment": null,
         "display_name": null,
         "color": null
       },
       {
-        "id": 28,
+        "id": 30,
         "node_type": "debug/log_value",
         "position": [500.0, 200.0],
         "pins": [
@@ -404,13 +432,13 @@
           { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
           { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
         ],
-        "input_values": { "label": { "String": "Mouse dY" } },
+        "input_values": { "label": { "String": "RStick Y" } },
         "comment": null,
         "display_name": null,
         "color": null
       },
       {
-        "id": 29,
+        "id": 31,
         "node_type": "debug/log_value",
         "position": [700.0, 200.0],
         "pins": [
@@ -419,13 +447,13 @@
           { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
           { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
         ],
-        "input_values": { "label": { "String": "Axis X" } },
+        "input_values": { "label": { "String": "LStick X" } },
         "comment": null,
         "display_name": null,
         "color": null
       },
       {
-        "id": 30,
+        "id": 32,
         "node_type": "debug/log_value",
         "position": [900.0, 200.0],
         "pins": [
@@ -434,262 +462,84 @@
           { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
           { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
         ],
-        "input_values": { "label": { "String": "Axis Y" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 31,
-        "node_type": "transform/get_position",
-        "position": [100.0, 300.0],
-        "pins": [
-          { "name": "x", "label": "X", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
-          { "name": "y", "label": "Y", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false },
-          { "name": "z", "label": "Z", "pin_type": "Float", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": {},
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 32,
-        "node_type": "debug/log_value",
-        "position": [1100.0, 200.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Pos X" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 33,
-        "node_type": "debug/log_value",
-        "position": [1300.0, 200.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Pos Y" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 34,
-        "node_type": "debug/log_value",
-        "position": [1500.0, 200.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Pos Z" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      }
-      ,
-      {
-        "id": 35,
-        "node_type": "input/is_key_pressed",
-        "position": [100.0, 1600.0],
-        "pins": [
-          { "name": "pressed", "label": "Pressed", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "key": { "String": "KeyW" } },
-        "comment": "W key check",
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 36,
-        "node_type": "input/is_key_pressed",
-        "position": [100.0, 1700.0],
-        "pins": [
-          { "name": "pressed", "label": "Pressed", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "key": { "String": "KeyA" } },
-        "comment": "A key check",
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 37,
-        "node_type": "input/is_key_pressed",
-        "position": [100.0, 1800.0],
-        "pins": [
-          { "name": "pressed", "label": "Pressed", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "key": { "String": "KeyS" } },
-        "comment": "S key check",
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 38,
-        "node_type": "input/is_key_pressed",
-        "position": [100.0, 1900.0],
-        "pins": [
-          { "name": "pressed", "label": "Pressed", "pin_type": "Bool", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "key": { "String": "KeyD" } },
-        "comment": "D key check",
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 39,
-        "node_type": "debug/log_value",
-        "position": [350.0, 1600.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Key W" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 40,
-        "node_type": "debug/log_value",
-        "position": [550.0, 1700.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Key A" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 41,
-        "node_type": "debug/log_value",
-        "position": [750.0, 1800.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Key S" } },
-        "comment": null,
-        "display_name": null,
-        "color": null
-      },
-      {
-        "id": 42,
-        "node_type": "debug/log_value",
-        "position": [950.0, 1900.0],
-        "pins": [
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Input", "default_value": null, "required": false },
-          { "name": "label", "label": "Label", "pin_type": "String", "direction": "Input", "default_value": null, "required": false },
-          { "name": "value", "label": "Value", "pin_type": "Any", "direction": "Input", "default_value": null, "required": false },
-          { "name": "exec", "label": "Exec", "pin_type": "Execution", "direction": "Output", "default_value": null, "required": false }
-        ],
-        "input_values": { "label": { "String": "Key D" } },
+        "input_values": { "label": { "String": "LStick Y" } },
         "comment": null,
         "display_name": null,
         "color": null
       }
     ],
     "connections": [
-      { "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 27, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 27, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 28, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 28, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 29, "pin_name": "exec", "direction": "Input" } },
+      { "from": { "node_id": 1, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 29, "pin_name": "exec", "direction": "Input" } },
       { "from": { "node_id": 29, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 30, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 30, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 39, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 39, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 40, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 40, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 41, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 41, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 42, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 42, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 32, "pin_name": "exec", "direction": "Input" } },
+      { "from": { "node_id": 30, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 31, "pin_name": "exec", "direction": "Input" } },
+      { "from": { "node_id": 31, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 32, "pin_name": "exec", "direction": "Input" } },
+      { "from": { "node_id": 32, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 11, "pin_name": "exec", "direction": "Input" } },
+      { "from": { "node_id": 11, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 28, "pin_name": "exec", "direction": "Input" } },
 
-      { "from": { "node_id": 35, "pin_name": "pressed", "direction": "Output" }, "to": { "node_id": 39, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 36, "pin_name": "pressed", "direction": "Output" }, "to": { "node_id": 40, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 37, "pin_name": "pressed", "direction": "Output" }, "to": { "node_id": 41, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 38, "pin_name": "pressed", "direction": "Output" }, "to": { "node_id": 42, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 32, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 33, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 33, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 34, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 34, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 9, "pin_name": "exec", "direction": "Input" } },
-      { "from": { "node_id": 9, "pin_name": "exec", "direction": "Output" }, "to": { "node_id": 26, "pin_name": "exec", "direction": "Input" } },
-
-      { "from": { "node_id": 2, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 27, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 2, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 28, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 15, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 29, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 15, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 30, "pin_name": "value", "direction": "Input" } },
-
-      { "from": { "node_id": 31, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 32, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 31, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 33, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 31, "pin_name": "z", "direction": "Output" }, "to": { "node_id": 34, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 2, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 29, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 2, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 30, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 31, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 32, "pin_name": "value", "direction": "Input" } },
 
       { "from": { "node_id": 2, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 4, "pin_name": "a", "direction": "Input" } },
       { "from": { "node_id": 2, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 5, "pin_name": "a", "direction": "Input" } },
 
-      { "from": { "node_id": 3, "pin_name": "yaw", "direction": "Output" }, "to": { "node_id": 6, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 4, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 6, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 4, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 6, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 6, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 3, "pin_name": "pitch", "direction": "Output" }, "to": { "node_id": 7, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 5, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 7, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 5, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 7, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 7, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 7, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 8, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 3, "pin_name": "yaw", "direction": "Output" }, "to": { "node_id": 8, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 6, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 8, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 6, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 9, "pin_name": "yaw", "direction": "Input" } },
-      { "from": { "node_id": 8, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 9, "pin_name": "pitch", "direction": "Input" } },
+      { "from": { "node_id": 3, "pin_name": "pitch", "direction": "Output" }, "to": { "node_id": 9, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 7, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 9, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 6, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 10, "pin_name": "degrees", "direction": "Input" } },
+      { "from": { "node_id": 9, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 10, "pin_name": "value", "direction": "Input" } },
 
-      { "from": { "node_id": 10, "pin_name": "radians", "direction": "Output" }, "to": { "node_id": 11, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 10, "pin_name": "radians", "direction": "Output" }, "to": { "node_id": 12, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 8, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 11, "pin_name": "yaw", "direction": "Input" } },
+      { "from": { "node_id": 10, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 11, "pin_name": "pitch", "direction": "Input" } },
 
-      { "from": { "node_id": 11, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 13, "pin_name": "value", "direction": "Input" } },
-      { "from": { "node_id": 12, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 14, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 8, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 12, "pin_name": "degrees", "direction": "Input" } },
 
-      { "from": { "node_id": 15, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 16, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 12, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 16, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 12, "pin_name": "radians", "direction": "Output" }, "to": { "node_id": 13, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 12, "pin_name": "radians", "direction": "Output" }, "to": { "node_id": 14, "pin_name": "value", "direction": "Input" } },
 
-      { "from": { "node_id": 15, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 17, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 13, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 17, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 13, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 15, "pin_name": "value", "direction": "Input" } },
+      { "from": { "node_id": 14, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 16, "pin_name": "value", "direction": "Input" } },
 
-      { "from": { "node_id": 16, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 18, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 17, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 18, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 18, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 14, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 18, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 15, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 19, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 13, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 19, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 19, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 15, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 19, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 15, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 20, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 14, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 20, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 18, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 20, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 19, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 20, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 19, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 21, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 20, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 21, "pin_name": "b", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "x", "direction": "Output" }, "to": { "node_id": 21, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 15, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 21, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 18, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 22, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 17, "pin_name": "y", "direction": "Output" }, "to": { "node_id": 22, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 16, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 22, "pin_name": "b", "direction": "Input" } },
+
       { "from": { "node_id": 21, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 23, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 22, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 23, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 22, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 24, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 24, "pin_name": "b", "direction": "Input" } },
-
+      { "from": { "node_id": 20, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 24, "pin_name": "a", "direction": "Input" } },
       { "from": { "node_id": 23, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 25, "pin_name": "a", "direction": "Input" } },
-      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 25, "pin_name": "b", "direction": "Input" } },
 
-      { "from": { "node_id": 24, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 26, "pin_name": "x", "direction": "Input" } },
-      { "from": { "node_id": 25, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 26, "pin_name": "z", "direction": "Input" } }
+      { "from": { "node_id": 24, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 26, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 26, "pin_name": "b", "direction": "Input" } },
+
+      { "from": { "node_id": 25, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 27, "pin_name": "a", "direction": "Input" } },
+      { "from": { "node_id": 1, "pin_name": "delta", "direction": "Output" }, "to": { "node_id": 27, "pin_name": "b", "direction": "Input" } },
+
+      { "from": { "node_id": 26, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 28, "pin_name": "x", "direction": "Input" } },
+      { "from": { "node_id": 27, "pin_name": "result", "direction": "Output" }, "to": { "node_id": 28, "pin_name": "z", "direction": "Input" } }
     ],
     "variables": [],
-    "next_node_id": 43
+    "next_node_id": 33
   }
 }

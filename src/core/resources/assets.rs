@@ -122,8 +122,22 @@ pub struct AssetBrowserState {
     pub show_create_terrain_dialog: bool,
     /// New terrain name being entered
     pub new_terrain_name: String,
+    /// Show create shader dialog
+    pub show_create_shader_dialog: bool,
+    /// New shader name being entered
+    pub new_shader_name: String,
+    /// Show create material blueprint dialog
+    pub show_create_material_blueprint_dialog: bool,
+    /// New material blueprint name being entered
+    pub new_material_blueprint_name: String,
+    /// Show create script blueprint dialog
+    pub show_create_script_blueprint_dialog: bool,
+    /// New script blueprint name being entered
+    pub new_script_blueprint_name: String,
     /// Context menu open state and position
     pub context_menu_pos: Option<bevy::math::Vec2>,
+    /// Currently open submenu in context menu
+    pub context_submenu: Option<String>,
     /// Requested layout switch (processed by main UI loop)
     pub requested_layout: Option<String>,
     /// Pending blueprint to open (processed by main UI loop)

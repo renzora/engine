@@ -154,8 +154,9 @@ impl DockingState {
         let target = match &panel {
             PanelId::History | PanelId::Settings => Some(PanelId::Inspector),
             PanelId::Console | PanelId::Animation => Some(PanelId::Assets),
-            PanelId::ScriptEditor => Some(PanelId::Viewport),
-            PanelId::ScriptVariables => Some(PanelId::ScriptEditor),
+            PanelId::CodeEditor => Some(PanelId::Viewport),
+            PanelId::ShaderPreview => Some(PanelId::CodeEditor),
+            PanelId::ScriptVariables => Some(PanelId::CodeEditor),
             _ => None,
         };
 

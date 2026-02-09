@@ -133,6 +133,7 @@ pub fn camera_controller(
                 if let Some(origin) = viewport.right_click_origin.take() {
                     if !viewport.right_click_moved {
                         viewport.context_menu_pos = Some(origin);
+                        viewport.context_submenu = None;
                     }
                 }
                 viewport.right_click_moved = false;

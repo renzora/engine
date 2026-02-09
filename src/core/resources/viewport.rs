@@ -64,6 +64,8 @@ pub struct ViewportState {
     pub right_click_origin: Option<Vec2>,
     /// Whether the mouse moved during a right-click hold
     pub right_click_moved: bool,
+    /// Currently open submenu in viewport context menu
+    pub context_submenu: Option<String>,
 }
 
 impl Default for ViewportState {
@@ -89,6 +91,7 @@ impl Default for ViewportState {
             clipboard_entity: None,
             right_click_origin: None,
             right_click_moved: false,
+            context_submenu: None,
         }
     }
 }

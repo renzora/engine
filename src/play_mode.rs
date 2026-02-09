@@ -4,11 +4,13 @@
 //! default camera and hiding the editor UI.
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
 
 #[cfg(feature = "physics")]
 use avian3d::prelude::*;
 
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
+use crate::viewport::ViewportImage;
 use crate::shared::{
     CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData, RuntimePhysics,
     spawn_entity_physics, despawn_physics_components,
@@ -66,6 +68,7 @@ fn handle_play_mode_transitions(
     camera_rigs: Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
     mut editor_camera: Query<&mut Camera, With<ViewportCamera>>,
+    viewport_image: Res<ViewportImage>,
     // Physics queries
     physics_entities: Query<
         (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
@@ -76,7 +79,7 @@ fn handle_play_mode_transitions(
     // Handle request to enter play mode (fullscreen)
     if play_mode.request_play {
         play_mode.request_play = false;
-        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera);
+        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera, &viewport_image);
 
         // Spawn physics components for all entities with physics data
         spawn_play_mode_physics(&mut commands, &physics_entities);
@@ -210,6 +213,7 @@ fn enter_play_mode(
     cameras: &Query<(Entity, &CameraNodeData, &Transform), Without<CameraRigData>>,
     camera_rigs: &Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     editor_camera: &mut Query<&mut Camera, With<ViewportCamera>>,
+    viewport_image: &ViewportImage,
 ) {
     info!("Entering play mode");
     console_info!("Play Mode", "Starting play mode...");
@@ -241,6 +245,7 @@ fn enter_play_mode(
                 order: 1, // Render on top of editor camera
                 ..default()
             },
+            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: data.fov.to_radians(),
                 ..default()
@@ -270,6 +275,7 @@ fn enter_play_mode(
                 order: 1, // Render on top of editor camera
                 ..default()
             },
+            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: rig_data.fov.to_radians(),
                 ..default()
@@ -299,6 +305,7 @@ fn enter_play_mode(
                 order: 1,
                 ..default()
             },
+            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: data.fov.to_radians(),
                 ..default()
@@ -327,6 +334,7 @@ fn enter_play_mode(
                 order: 1,
                 ..default()
             },
+            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: rig_data.fov.to_radians(),
                 ..default()
@@ -365,6 +373,7 @@ fn exit_play_mode(
             .remove::<Camera3d>()
             .remove::<Camera>()
             .remove::<Projection>()
+            .remove::<RenderTarget>()
             .remove::<PlayModeCamera>();
     }
 

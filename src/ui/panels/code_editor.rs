@@ -9,7 +9,7 @@ use rhai::Engine;
 use crate::core::{SceneManagerState, OpenScript, ScriptError, BuildState, BuildError};
 use crate::project::CurrentProject;
 use crate::ui::get_inspector_theme;
-use super::syntax_highlight::{highlight_rhai, highlight_rust};
+use super::syntax_highlight::{highlight_rhai, highlight_rust, highlight_wgsl};
 
 use egui_phosphor::regular::{FLOPPY_DISK, WARNING, HAMMER, SPINNER, CHECK_CIRCLE};
 
@@ -17,6 +17,13 @@ use egui_phosphor::regular::{FLOPPY_DISK, WARNING, HAMMER, SPINNER, CHECK_CIRCLE
 fn is_rust_file(path: &PathBuf) -> bool {
     path.extension()
         .map(|ext| ext == "rs")
+        .unwrap_or(false)
+}
+
+/// Check if a file is a WGSL shader file
+fn is_wgsl_file(path: &PathBuf) -> bool {
+    path.extension()
+        .map(|ext| ext == "wgsl")
         .unwrap_or(false)
 }
 
@@ -186,7 +193,7 @@ fn check_script_errors(content: &str) -> Option<ScriptError> {
 
 /// Render the script editor panel (when a script tab is active)
 /// NOTE: This function is kept for reference but is no longer used.
-/// The script editor now uses render_script_editor_content via the docking system.
+/// The script editor now uses render_code_editor_content via the docking system.
 #[allow(dead_code)]
 fn render_script_editor(
     ctx: &egui::Context,
@@ -508,10 +515,13 @@ fn render_script_editor(
 
                                 // Code editor
                                 if let Some(script) = scene_state.open_scripts.get_mut(active_idx) {
-                                    let use_rust_highlight = is_rust_file(&script.path);
+                                    let use_rust = is_rust_file(&script.path);
+                                    let use_wgsl = is_wgsl_file(&script.path);
                                     let mut layouter = |ui: &egui::Ui, text: &dyn TextBuffer, _wrap_width: f32| {
-                                        let layout_job = if use_rust_highlight {
+                                        let layout_job = if use_rust {
                                             highlight_rust(text.as_str(), font_size)
+                                        } else if use_wgsl {
+                                            highlight_wgsl(text.as_str(), font_size)
                                         } else {
                                             highlight_rhai(text.as_str(), font_size)
                                         };
@@ -654,7 +664,7 @@ fn save_script(script: &mut OpenScript) {
 }
 
 /// Render script editor content into a docking panel
-pub fn render_script_editor_content(
+pub fn render_code_editor_content(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     scene_state: &mut SceneManagerState,
@@ -674,13 +684,13 @@ pub fn render_script_editor_content(
             );
             ui.add_space(12.0);
             ui.label(
-                egui::RichText::new("No Script Open")
+                egui::RichText::new("No File Open")
                     .size(16.0)
                     .color(theme_colors.text_muted),
             );
             ui.add_space(8.0);
             ui.label(
-                egui::RichText::new("Double-click a script file in Assets to open it")
+                egui::RichText::new("Double-click a .rhai, .rs, or .wgsl file in Assets to open it")
                     .size(12.0)
                     .color(theme_colors.text_disabled),
             );
@@ -693,16 +703,20 @@ pub fn render_script_editor_content(
     };
 
     let is_rust = is_rust_file(&script.path);
+    let is_wgsl = is_wgsl_file(&script.path);
 
-    // Check for errors if content changed (only for Rhai scripts, not Rust)
-    if !is_rust && script.content != script.last_checked_content {
+    // Check for errors if content changed (only for Rhai scripts, not Rust or WGSL)
+    if !is_rust && !is_wgsl && script.content != script.last_checked_content {
         script.error = check_script_errors(&script.content);
         script.last_checked_content = script.content.clone();
     }
 
     // For Rust files, show build errors instead of script errors
+    // WGSL files are validated by Bevy's pipeline cache in the shader preview panel
     let has_error = if is_rust {
         matches!(scene_state.build_state, BuildState::Failed(_))
+    } else if is_wgsl {
+        false // Shader preview panel handles WGSL validation
     } else {
         script.error.is_some()
     };
@@ -957,10 +971,13 @@ pub fn render_script_editor_content(
 
                 // Code editor
                 if let Some(script) = scene_state.open_scripts.get_mut(active_idx) {
-                    let use_rust_highlight = is_rust_file(&script.path);
+                    let use_rust = is_rust_file(&script.path);
+                    let use_wgsl = is_wgsl_file(&script.path);
                     let mut layouter = |ui: &egui::Ui, text: &dyn TextBuffer, _wrap_width: f32| {
-                        let layout_job = if use_rust_highlight {
+                        let layout_job = if use_rust {
                             highlight_rust(text.as_str(), font_size)
+                        } else if use_wgsl {
+                            highlight_wgsl(text.as_str(), font_size)
                         } else {
                             highlight_rhai(text.as_str(), font_size)
                         };

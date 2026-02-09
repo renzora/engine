@@ -53,7 +53,7 @@ impl<'a> CodegenContext<'a> {
     /// Get the value expression for an input pin
     fn get_input_value(&mut self, node: &BlueprintNode, pin_name: &str) -> String {
         // Check if there's a connection to this pin
-        let pin_id = PinId::new(node.id, pin_name);
+        let pin_id = PinId::input(node.id, pin_name);
         if let Some(conn) = self.graph.connection_to(&pin_id) {
             // Get the variable from the connected output
             if let Some(var_name) = self.output_vars.get(&conn.from) {
@@ -537,6 +537,103 @@ impl<'a> CodegenContext<'a> {
                 self.output_vars.insert(PinId::new(node.id, "z"), rz);
             }
 
+            // Extended math nodes
+            "math/smootherstep" => {
+                let edge0 = self.get_input_value(node, "edge0");
+                let edge1 = self.get_input_value(node, "edge1");
+                let x = self.get_input_value(node, "x");
+                let result_var = self.next_var("smootherstep");
+                lines.push(format!("{}let _t = clamp(({} - {}) / ({} - {}), 0.0, 1.0);", indent, x, edge0, edge1, edge0));
+                lines.push(format!("{}let {} = _t * _t * _t * (_t * (_t * 6.0 - 15.0) + 10.0);", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/move_towards" => {
+                let current = self.get_input_value(node, "current");
+                let target = self.get_input_value(node, "target");
+                let max_delta = self.get_input_value(node, "max_delta");
+                let result_var = self.next_var("move_towards");
+                lines.push(format!("{}let {} = move_towards({}, {}, {});", indent, result_var, current, target, max_delta));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/normalize_angle" => {
+                let angle = self.get_input_value(node, "angle");
+                let result_var = self.next_var("norm_angle");
+                lines.push(format!("{}let {} = normalize_angle({});", indent, result_var, angle));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/angle_difference" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let result_var = self.next_var("angle_diff");
+                lines.push(format!("{}let {} = angle_difference({}, {});", indent, result_var, a, b));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/lerp_angle" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let t = self.get_input_value(node, "t");
+                let result_var = self.next_var("lerp_angle");
+                lines.push(format!("{}let {} = lerp_angle({}, {}, {});", indent, result_var, a, b, t));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/inverse_lerp" => {
+                let a = self.get_input_value(node, "a");
+                let b = self.get_input_value(node, "b");
+                let value = self.get_input_value(node, "value");
+                let result_var = self.next_var("inv_lerp");
+                lines.push(format!("{}let {} = ({} - {}) / ({} - {});", indent, result_var, value, a, b, a));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/pi" => {
+                let result_var = self.next_var("pi");
+                lines.push(format!("{}let {} = 3.141592653589793;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+            "math/tau" => {
+                let result_var = self.next_var("tau");
+                lines.push(format!("{}let {} = 6.283185307179586;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+            "math/e" => {
+                let result_var = self.next_var("e");
+                lines.push(format!("{}let {} = 2.718281828459045;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+            "math/trunc" => {
+                let value = self.get_input_value(node, "value");
+                let result_var = self.next_var("trunc");
+                lines.push(format!("{}let {} = trunc({});", indent, result_var, value));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/log10" => {
+                let value = self.get_input_value(node, "value");
+                let result_var = self.next_var("log10");
+                lines.push(format!("{}let {} = log10({});", indent, result_var, value));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/log2" => {
+                let value = self.get_input_value(node, "value");
+                let result_var = self.next_var("log2");
+                lines.push(format!("{}let {} = log2({});", indent, result_var, value));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/distance_2d" => {
+                let x1 = self.get_input_value(node, "x1");
+                let y1 = self.get_input_value(node, "y1");
+                let x2 = self.get_input_value(node, "x2");
+                let y2 = self.get_input_value(node, "y2");
+                let result_var = self.next_var("dist2d");
+                lines.push(format!("{}let {} = sqrt(({} - {}) * ({} - {}) + ({} - {}) * ({} - {}));", indent, result_var, x2, x1, x2, x1, y2, y1, y2, y1));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "math/length_2d" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let result_var = self.next_var("len2d");
+                lines.push(format!("{}let {} = sqrt({} * {} + {} * {});", indent, result_var, x, x, y, y));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+
             // Logic nodes
             "logic/compare" => {
                 let a = self.get_input_value(node, "a");
@@ -583,7 +680,7 @@ impl<'a> CodegenContext<'a> {
                     .and_then(|v| if let PinValue::String(s) = v { Some(s.as_str()) } else { None })
                     .unwrap_or("Space");
                 let result_var = self.next_var("key");
-                lines.push(format!("{}let {} = is_key_pressed(\"{}\");", indent, result_var, key_name));
+                lines.push(format!("{}let {} = is_key_pressed(_keys_pressed, \"{}\");", indent, result_var, key_name));
                 self.output_vars.insert(PinId::new(node.id, "pressed"), result_var);
             }
             "input/get_mouse_position" => {
@@ -893,7 +990,7 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}let {} = {} >= 0;", indent, result_var, entity));
                 self.output_vars.insert(PinId::new(node.id, "valid"), result_var);
             }
-            "ecs/get_entity_name" => {
+            "ecs/get_name" | "ecs/get_entity_name" => {
                 // Returns self_entity_name for self
                 let result_var = self.next_var("name");
                 lines.push(format!("{}let {} = self_entity_name;", indent, result_var));
@@ -940,13 +1037,13 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}let {} = time_scale;", indent, scale_var));
                 self.output_vars.insert(PinId::new(node.id, "scale"), scale_var);
             }
-            "time/is_timer_finished" => {
+            "time/timer_finished" | "time/is_timer_finished" => {
                 let timer_name = self.get_input_value(node, "timer");
                 let result_var = self.next_var("timer_finished");
                 lines.push(format!("{}let {} = timer_just_finished(timers_finished, {});", indent, result_var, timer_name));
                 self.output_vars.insert(PinId::new(node.id, "finished"), result_var);
             }
-            "time/get_timer_progress" => {
+            "time/timer_progress" | "time/get_timer_progress" => {
                 let timer_name = self.get_input_value(node, "timer");
                 let result_var = self.next_var("timer_progress");
                 lines.push(format!("{}let {} = timer_progress(timers_progress, {});", indent, result_var, timer_name));
@@ -1699,6 +1796,507 @@ impl<'a> CodegenContext<'a> {
                 self.output_vars.insert(PinId::new(node.id, "reachable"), result_var);
             }
 
+            // ── Hierarchy data nodes ──────────────────────────────────
+            "hierarchy/get_parent" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("parent");
+                lines.push(format!("{}let {} = get_parent({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "parent"), result_var);
+            }
+            "hierarchy/has_parent" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("has_parent");
+                lines.push(format!("{}let {} = has_parent({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "has_parent"), result_var);
+            }
+            "hierarchy/get_children" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("children");
+                lines.push(format!("{}let {} = get_children({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "children"), result_var);
+            }
+            "hierarchy/get_child_at" => {
+                let entity = self.get_input_value(node, "entity");
+                let index = self.get_input_value(node, "index");
+                let result_var = self.next_var("child");
+                lines.push(format!("{}let {} = get_child_at({}, {});", indent, result_var, entity, index));
+                self.output_vars.insert(PinId::new(node.id, "child"), result_var);
+            }
+            "hierarchy/get_child_count" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("child_count");
+                lines.push(format!("{}let {} = get_child_count({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "count"), result_var);
+            }
+            "hierarchy/has_children" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("has_children");
+                lines.push(format!("{}let {} = get_child_count({}) > 0;", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "has_children"), result_var);
+            }
+            "hierarchy/get_root" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("root");
+                lines.push(format!("{}let {} = get_root({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "root"), result_var);
+            }
+            "hierarchy/is_root" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("is_root");
+                lines.push(format!("{}let {} = !has_parent({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "is_root"), result_var);
+            }
+            "hierarchy/is_ancestor_of" => {
+                let ancestor = self.get_input_value(node, "ancestor");
+                let descendant = self.get_input_value(node, "descendant");
+                let result_var = self.next_var("is_ancestor");
+                lines.push(format!("{}let {} = is_ancestor_of({}, {});", indent, result_var, ancestor, descendant));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "hierarchy/is_descendant_of" => {
+                let descendant = self.get_input_value(node, "descendant");
+                let ancestor = self.get_input_value(node, "ancestor");
+                let result_var = self.next_var("is_descendant");
+                lines.push(format!("{}let {} = is_ancestor_of({}, {});", indent, result_var, ancestor, descendant));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "hierarchy/get_all_descendants" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("descendants");
+                lines.push(format!("{}let {} = get_all_descendants({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "descendants"), result_var);
+            }
+            "hierarchy/get_depth" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("depth");
+                lines.push(format!("{}let {} = get_depth({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "depth"), result_var);
+            }
+            "hierarchy/get_local_position" => {
+                let entity = self.get_input_value(node, "entity");
+                let x_var = self.next_var("lx");
+                let y_var = self.next_var("ly");
+                let z_var = self.next_var("lz");
+                lines.push(format!("{}let {} = get_local_position_x({});", indent, x_var, entity));
+                lines.push(format!("{}let {} = get_local_position_y({});", indent, y_var, entity));
+                lines.push(format!("{}let {} = get_local_position_z({});", indent, z_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
+            "hierarchy/get_local_rotation" => {
+                let entity = self.get_input_value(node, "entity");
+                let x_var = self.next_var("lrx");
+                let y_var = self.next_var("lry");
+                let z_var = self.next_var("lrz");
+                lines.push(format!("{}let {} = get_local_rotation_x({});", indent, x_var, entity));
+                lines.push(format!("{}let {} = get_local_rotation_y({});", indent, y_var, entity));
+                lines.push(format!("{}let {} = get_local_rotation_z({});", indent, z_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
+            "hierarchy/get_local_scale" => {
+                let entity = self.get_input_value(node, "entity");
+                let x_var = self.next_var("lsx");
+                let y_var = self.next_var("lsy");
+                let z_var = self.next_var("lsz");
+                lines.push(format!("{}let {} = get_local_scale_x({});", indent, x_var, entity));
+                lines.push(format!("{}let {} = get_local_scale_y({});", indent, y_var, entity));
+                lines.push(format!("{}let {} = get_local_scale_z({});", indent, z_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
+            "hierarchy/local_to_world" => {
+                let entity = self.get_input_value(node, "entity");
+                let lx = self.get_input_value(node, "x");
+                let ly = self.get_input_value(node, "y");
+                let lz = self.get_input_value(node, "z");
+                let x_var = self.next_var("wx");
+                let y_var = self.next_var("wy");
+                let z_var = self.next_var("wz");
+                lines.push(format!("{}let _ltw = local_to_world({}, {}, {}, {});", indent, entity, lx, ly, lz));
+                lines.push(format!("{}let {} = _ltw[0];", indent, x_var));
+                lines.push(format!("{}let {} = _ltw[1];", indent, y_var));
+                lines.push(format!("{}let {} = _ltw[2];", indent, z_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
+            "hierarchy/world_to_local" => {
+                let entity = self.get_input_value(node, "entity");
+                let wx = self.get_input_value(node, "x");
+                let wy = self.get_input_value(node, "y");
+                let wz = self.get_input_value(node, "z");
+                let x_var = self.next_var("lx");
+                let y_var = self.next_var("ly");
+                let z_var = self.next_var("lz");
+                lines.push(format!("{}let _wtl = world_to_local({}, {}, {}, {});", indent, entity, wx, wy, wz));
+                lines.push(format!("{}let {} = _wtl[0];", indent, x_var));
+                lines.push(format!("{}let {} = _wtl[1];", indent, y_var));
+                lines.push(format!("{}let {} = _wtl[2];", indent, z_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "z"), z_var);
+            }
+
+            // ── Camera data nodes ────────────────────────────────────
+            "camera/world_to_screen" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let sx_var = self.next_var("sx");
+                let sy_var = self.next_var("sy");
+                lines.push(format!("{}let _wts = world_to_screen({}, {}, {});", indent, x, y, z));
+                lines.push(format!("{}let {} = _wts[0];", indent, sx_var));
+                lines.push(format!("{}let {} = _wts[1];", indent, sy_var));
+                self.output_vars.insert(PinId::new(node.id, "screen_x"), sx_var);
+                self.output_vars.insert(PinId::new(node.id, "screen_y"), sy_var);
+            }
+            "camera/screen_to_world" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let ox_var = self.next_var("ray_ox");
+                let oy_var = self.next_var("ray_oy");
+                let oz_var = self.next_var("ray_oz");
+                let dx_var = self.next_var("ray_dx");
+                let dy_var = self.next_var("ray_dy");
+                let dz_var = self.next_var("ray_dz");
+                lines.push(format!("{}let _stw = screen_to_ray({}, {});", indent, x, y));
+                lines.push(format!("{}let {} = _stw[0];", indent, ox_var));
+                lines.push(format!("{}let {} = _stw[1];", indent, oy_var));
+                lines.push(format!("{}let {} = _stw[2];", indent, oz_var));
+                lines.push(format!("{}let {} = _stw[3];", indent, dx_var));
+                lines.push(format!("{}let {} = _stw[4];", indent, dy_var));
+                lines.push(format!("{}let {} = _stw[5];", indent, dz_var));
+                self.output_vars.insert(PinId::new(node.id, "origin_x"), ox_var);
+                self.output_vars.insert(PinId::new(node.id, "origin_y"), oy_var);
+                self.output_vars.insert(PinId::new(node.id, "origin_z"), oz_var);
+                self.output_vars.insert(PinId::new(node.id, "direction_x"), dx_var);
+                self.output_vars.insert(PinId::new(node.id, "direction_y"), dy_var);
+                self.output_vars.insert(PinId::new(node.id, "direction_z"), dz_var);
+            }
+            "camera/screen_to_plane" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let plane_y = self.get_input_value(node, "plane_y");
+                let wx_var = self.next_var("plane_x");
+                let wz_var = self.next_var("plane_z");
+                lines.push(format!("{}let _stp = screen_to_world_plane({}, {}, {});", indent, x, y, plane_y));
+                lines.push(format!("{}let {} = _stp[0];", indent, wx_var));
+                lines.push(format!("{}let {} = _stp[1];", indent, wz_var));
+                self.output_vars.insert(PinId::new(node.id, "world_x"), wx_var);
+                self.output_vars.insert(PinId::new(node.id, "world_z"), wz_var);
+            }
+            "camera/get_viewport" => {
+                let w_var = self.next_var("vp_w");
+                let h_var = self.next_var("vp_h");
+                lines.push(format!("{}let {} = window_width;", indent, w_var));
+                lines.push(format!("{}let {} = window_height;", indent, h_var));
+                self.output_vars.insert(PinId::new(node.id, "width"), w_var);
+                self.output_vars.insert(PinId::new(node.id, "height"), h_var);
+            }
+            "camera/get_fov" => {
+                let result_var = self.next_var("fov");
+                lines.push(format!("{}let {} = camera_fov;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "fov"), result_var);
+            }
+            "camera/get_main" => {
+                let result_var = self.next_var("main_cam");
+                lines.push(format!("{}let {} = get_main_camera();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+
+            // ── State data nodes ─────────────────────────────────────
+            "state/get_current" => {
+                let result_var = self.next_var("current_state");
+                lines.push(format!("{}let {} = current_state;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "state"), result_var);
+            }
+            "state/is_in" => {
+                let state = self.get_input_value(node, "state");
+                let result_var = self.next_var("in_state");
+                lines.push(format!("{}let {} = is_in_state({});", indent, result_var, state));
+                self.output_vars.insert(PinId::new(node.id, "result"), result_var);
+            }
+            "state/is_paused" => {
+                let result_var = self.next_var("is_paused");
+                lines.push(format!("{}let {} = game_paused;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "paused"), result_var);
+            }
+            "state/get_global" => {
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("global_val");
+                lines.push(format!("{}let {} = get_global({});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+            "state/has_global" => {
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("has_global");
+                lines.push(format!("{}let {} = has_global({});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "exists"), result_var);
+            }
+            "state/has_save" => {
+                let slot = self.get_input_value(node, "slot");
+                let result_var = self.next_var("has_save");
+                lines.push(format!("{}let {} = has_save_data({});", indent, result_var, slot));
+                self.output_vars.insert(PinId::new(node.id, "exists"), result_var);
+            }
+            "state/get_saves" => {
+                let result_var = self.next_var("save_slots");
+                lines.push(format!("{}let {} = get_save_slots();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "slots"), result_var);
+            }
+
+            // ── Audio data nodes ─────────────────────────────────────
+            "audio/is_playing" => {
+                let sound = self.get_input_value(node, "handle");
+                let result_var = self.next_var("is_playing");
+                lines.push(format!("{}let {} = is_playing({});", indent, result_var, sound));
+                self.output_vars.insert(PinId::new(node.id, "playing"), result_var);
+            }
+            "audio/get_position" => {
+                let sound = self.get_input_value(node, "handle");
+                let result_var = self.next_var("playback_pos");
+                lines.push(format!("{}let {} = get_playback_position({});", indent, result_var, sound));
+                self.output_vars.insert(PinId::new(node.id, "position"), result_var);
+            }
+
+            // ── Animation data nodes ─────────────────────────────────
+            "animation/get_time" => {
+                let result_var = self.next_var("anim_time");
+                lines.push(format!("{}let {} = get_animation_time();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "time"), result_var);
+            }
+            "animation/is_playing" => {
+                let result_var = self.next_var("anim_playing");
+                lines.push(format!("{}let {} = is_animation_playing();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "playing"), result_var);
+            }
+            "animation/get_sprite_frame" => {
+                let result_var = self.next_var("sprite_frame");
+                lines.push(format!("{}let {} = get_sprite_frame();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "frame"), result_var);
+            }
+
+            // ── Time data nodes ──────────────────────────────────────
+            "time/unscaled_delta" => {
+                let result_var = self.next_var("unscaled_dt");
+                lines.push(format!("{}let {} = unscaled_delta;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "delta"), result_var);
+            }
+            "time/unscaled_elapsed" => {
+                let result_var = self.next_var("unscaled_elapsed");
+                lines.push(format!("{}let {} = unscaled_elapsed;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "elapsed"), result_var);
+            }
+            "time/timer_running" => {
+                let name = self.get_input_value(node, "timer");
+                let result_var = self.next_var("timer_running");
+                lines.push(format!("{}let {} = is_timer_running({});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "running"), result_var);
+            }
+            "time/is_on_cooldown" => {
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("on_cooldown");
+                lines.push(format!("{}let {} = is_on_cooldown({});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "on_cooldown"), result_var);
+            }
+            "time/system_time" => {
+                let h_var = self.next_var("hour");
+                let m_var = self.next_var("minute");
+                let s_var = self.next_var("second");
+                lines.push(format!("{}let _st = get_system_time();", indent));
+                lines.push(format!("{}let {} = _st[0];", indent, h_var));
+                lines.push(format!("{}let {} = _st[1];", indent, m_var));
+                lines.push(format!("{}let {} = _st[2];", indent, s_var));
+                self.output_vars.insert(PinId::new(node.id, "hour"), h_var);
+                self.output_vars.insert(PinId::new(node.id, "minute"), m_var);
+                self.output_vars.insert(PinId::new(node.id, "second"), s_var);
+            }
+            "time/system_date" => {
+                let y_var = self.next_var("year");
+                let m_var = self.next_var("month");
+                let d_var = self.next_var("day");
+                lines.push(format!("{}let _sd = get_system_date();", indent));
+                lines.push(format!("{}let {} = _sd[0];", indent, y_var));
+                lines.push(format!("{}let {} = _sd[1];", indent, m_var));
+                lines.push(format!("{}let {} = _sd[2];", indent, d_var));
+                self.output_vars.insert(PinId::new(node.id, "year"), y_var);
+                self.output_vars.insert(PinId::new(node.id, "month"), m_var);
+                self.output_vars.insert(PinId::new(node.id, "day"), d_var);
+            }
+            "time/timestamp" => {
+                let result_var = self.next_var("timestamp");
+                lines.push(format!("{}let {} = get_timestamp();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "timestamp"), result_var);
+            }
+
+            // ── Window data nodes ────────────────────────────────────
+            "window/get_size" | "window/get_window_size" => {
+                let w_var = self.next_var("win_w");
+                let h_var = self.next_var("win_h");
+                lines.push(format!("{}let {} = window_width;", indent, w_var));
+                lines.push(format!("{}let {} = window_height;", indent, h_var));
+                self.output_vars.insert(PinId::new(node.id, "width"), w_var);
+                self.output_vars.insert(PinId::new(node.id, "height"), h_var);
+            }
+            "window/get_position" | "window/get_window_position" => {
+                let x_var = self.next_var("win_x");
+                let y_var = self.next_var("win_y");
+                lines.push(format!("{}let {} = window_x;", indent, x_var));
+                lines.push(format!("{}let {} = window_y;", indent, y_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+            }
+            "window/get_title" | "window/get_window_title" => {
+                let result_var = self.next_var("win_title");
+                lines.push(format!("{}let {} = window_title;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "title"), result_var);
+            }
+            "window/is_fullscreen" => {
+                let result_var = self.next_var("is_fs");
+                lines.push(format!("{}let {} = is_fullscreen;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "fullscreen"), result_var);
+            }
+            "window/is_minimized" => {
+                let result_var = self.next_var("is_min");
+                lines.push(format!("{}let {} = is_minimized;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "minimized"), result_var);
+            }
+            "window/is_maximized" => {
+                let result_var = self.next_var("is_max");
+                lines.push(format!("{}let {} = is_maximized;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "maximized"), result_var);
+            }
+            "window/get_cursor" | "window/get_cursor_position" => {
+                let x_var = self.next_var("cursor_x");
+                let y_var = self.next_var("cursor_y");
+                lines.push(format!("{}let {} = cursor_x;", indent, x_var));
+                lines.push(format!("{}let {} = cursor_y;", indent, y_var));
+                self.output_vars.insert(PinId::new(node.id, "x"), x_var);
+                self.output_vars.insert(PinId::new(node.id, "y"), y_var);
+            }
+            "window/get_monitor_size" => {
+                let w_var = self.next_var("mon_w");
+                let h_var = self.next_var("mon_h");
+                lines.push(format!("{}let _ms = get_monitor_size();", indent));
+                lines.push(format!("{}let {} = _ms[0];", indent, w_var));
+                lines.push(format!("{}let {} = _ms[1];", indent, h_var));
+                self.output_vars.insert(PinId::new(node.id, "width"), w_var);
+                self.output_vars.insert(PinId::new(node.id, "height"), h_var);
+            }
+            "window/get_monitor_count" => {
+                let result_var = self.next_var("mon_count");
+                lines.push(format!("{}let {} = get_monitor_count();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "count"), result_var);
+            }
+            "window/get_scale_factor" => {
+                let result_var = self.next_var("scale_factor");
+                lines.push(format!("{}let {} = scale_factor;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "factor"), result_var);
+            }
+            "window/is_focused" | "window/is_window_focused" => {
+                let result_var = self.next_var("is_focused");
+                lines.push(format!("{}let {} = is_focused;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "focused"), result_var);
+            }
+            "window/is_vsync" | "window/is_vsync_enabled" => {
+                let result_var = self.next_var("vsync");
+                lines.push(format!("{}let {} = vsync_enabled;", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "enabled"), result_var);
+            }
+
+            // ── Rendering data nodes ─────────────────────────────────
+            "rendering/get_visibility" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("visible");
+                lines.push(format!("{}let {} = is_visible({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "visible"), result_var);
+            }
+
+            // ── ECS data nodes ───────────────────────────────────────
+            "ecs/has_component" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("has_comp");
+                lines.push(format!("{}let {} = has_component({}, {});", indent, result_var, entity, name));
+                self.output_vars.insert(PinId::new(node.id, "has"), result_var);
+            }
+            "ecs/get_all_entities" => {
+                let result_var = self.next_var("all_entities");
+                lines.push(format!("{}let {} = get_all_entities();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "ecs/get_closest" | "ecs/get_closest_entity" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let tag = self.get_input_value(node, "tag");
+                let result_var = self.next_var("closest");
+                lines.push(format!("{}let {} = get_closest_entity({}, {}, {}, {});", indent, result_var, x, y, z, tag));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+            "ecs/get_in_radius" | "ecs/get_entities_in_radius" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let radius = self.get_input_value(node, "radius");
+                let result_var = self.next_var("in_radius");
+                lines.push(format!("{}let {} = get_entities_in_radius({}, {}, {}, {});", indent, result_var, x, y, z, radius));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+
+            // ── UI data nodes ────────────────────────────────────────
+            "ui/get_text" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("ui_text");
+                lines.push(format!("{}let {} = get_text({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "text"), result_var);
+            }
+            "ui/get_size" | "ui/get_ui_size" => {
+                let entity = self.get_input_value(node, "entity");
+                let w_var = self.next_var("ui_w");
+                let h_var = self.next_var("ui_h");
+                lines.push(format!("{}let _us = get_ui_size({});", indent, entity));
+                lines.push(format!("{}let {} = _us[0];", indent, w_var));
+                lines.push(format!("{}let {} = _us[1];", indent, h_var));
+                self.output_vars.insert(PinId::new(node.id, "width"), w_var);
+                self.output_vars.insert(PinId::new(node.id, "height"), h_var);
+            }
+            "ui/get_input_value" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("input_val");
+                lines.push(format!("{}let {} = get_text_input_value({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+            "ui/get_slider_value" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("slider_val");
+                lines.push(format!("{}let {} = get_slider_value({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "value"), result_var);
+            }
+
+            // ── Scene data nodes ─────────────────────────────────────
+            "scene/get_current" => {
+                let result_var = self.next_var("current_scene");
+                lines.push(format!("{}let {} = get_current_scene();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "scene"), result_var);
+            }
+            "scene/is_loaded" => {
+                let handle = self.get_input_value(node, "handle");
+                let result_var = self.next_var("scene_loaded");
+                lines.push(format!("{}let {} = is_scene_loaded({});", indent, result_var, handle));
+                self.output_vars.insert(PinId::new(node.id, "loaded"), result_var);
+            }
+            "scene/gltf_scene_count" => {
+                let handle = self.get_input_value(node, "handle");
+                let result_var = self.next_var("gltf_count");
+                lines.push(format!("{}let {} = get_gltf_scene_count({});", indent, result_var, handle));
+                self.output_vars.insert(PinId::new(node.id, "count"), result_var);
+            }
+
             // ── Component getter nodes (auto-generated) ──────────────
             "component/get_property" => {
                 let name = self.get_input_value(node, "name");
@@ -1978,11 +2576,11 @@ impl<'a> CodegenContext<'a> {
                 let z = self.get_input_value(node, "z");
                 lines.push(format!("{}camera_look_at({}, {}, {});", indent, x, y, z));
             }
-            "camera/set_zoom" => {
+            "camera/zoom" | "camera/set_zoom" => {
                 let zoom = self.get_input_value(node, "zoom");
                 lines.push(format!("{}set_camera_zoom({});", indent, zoom));
             }
-            "camera/screen_shake" => {
+            "camera/shake" | "camera/screen_shake" => {
                 let intensity = self.get_input_value(node, "intensity");
                 let duration = self.get_input_value(node, "duration");
                 lines.push(format!("{}screen_shake({}, {});", indent, intensity, duration));
@@ -2012,14 +2610,14 @@ impl<'a> CodegenContext<'a> {
                 let path = self.get_input_value(node, "path");
                 lines.push(format!("{}load_scene({});", indent, path));
             }
-            "scene/spawn_prefab" => {
+            "scene/instantiate" | "scene/spawn_prefab" => {
                 let path = self.get_input_value(node, "path");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 let z = self.get_input_value(node, "z");
                 lines.push(format!("{}spawn_prefab({}, {}, {}, {});", indent, path, x, y, z));
             }
-            "scene/spawn_prefab_rotated" => {
+            "scene/instantiate_at" | "scene/spawn_prefab_rotated" => {
                 let path = self.get_input_value(node, "path");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
@@ -2712,7 +3310,7 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}}}", indent));
                 return lines;
             }
-            "time/every_n_seconds" => {
+            "time/every_seconds" | "time/every_n_seconds" => {
                 let interval = self.get_input_value(node, "interval");
                 let timer_var = self.next_var("periodic_timer");
                 lines.push(format!("{}{} += delta;", indent, timer_var));
@@ -2725,7 +3323,7 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}}}", indent));
                 return lines;
             }
-            "time/every_n_frames" => {
+            "time/every_frames" | "time/every_n_frames" => {
                 let n = self.get_input_value(node, "n");
                 let counter_var = self.next_var("frame_counter");
                 lines.push(format!("{}{} += 1;", indent, counter_var));
@@ -2761,68 +3359,68 @@ impl<'a> CodegenContext<'a> {
             }
 
             // State actions
-            "state/set_state" => {
+            "state/set" | "state/set_state" => {
                 let state = self.get_input_value(node, "state");
                 lines.push(format!("{}set_game_state({});", indent, state));
             }
-            "state/push_state" => {
+            "state/push" | "state/push_state" => {
                 let state = self.get_input_value(node, "state");
                 lines.push(format!("{}push_game_state({});", indent, state));
             }
-            "state/pop_state" => {
+            "state/pop" | "state/pop_state" => {
                 lines.push(format!("{}pop_game_state();", indent));
             }
-            "state/pause_game" => {
+            "state/pause" | "state/pause_game" => {
                 lines.push(format!("{}pause_game();", indent));
             }
-            "state/resume_game" => {
+            "state/resume" | "state/resume_game" => {
                 lines.push(format!("{}resume_game();", indent));
             }
             "state/toggle_pause" => {
                 lines.push(format!("{}toggle_pause();", indent));
             }
-            "state/quit_game" => {
+            "state/quit" | "state/quit_game" => {
                 lines.push(format!("{}quit_game();", indent));
             }
-            "state/restart_game" => {
+            "state/restart" | "state/restart_game" => {
                 lines.push(format!("{}restart_game();", indent));
             }
-            "state/set_global_var" => {
+            "state/set_global" | "state/set_global_var" => {
                 let name = self.get_input_value(node, "name");
                 let value = self.get_input_value(node, "value");
                 lines.push(format!("{}set_global({}, {});", indent, name, value));
             }
-            "state/save_game_data" => {
+            "state/save_data" | "state/save_game_data" => {
                 let slot = self.get_input_value(node, "slot");
                 let data = self.get_input_value(node, "data");
                 lines.push(format!("{}save_game({}, {});", indent, slot, data));
             }
-            "state/load_game_data" => {
+            "state/load_data" | "state/load_game_data" => {
                 let slot = self.get_input_value(node, "slot");
                 let result_var = self.next_var("save_data");
                 lines.push(format!("{}let {} = load_game({});", indent, result_var, slot));
                 self.output_vars.insert(PinId::new(node.id, "data"), result_var);
             }
-            "state/delete_save_data" => {
+            "state/delete_save" | "state/delete_save_data" => {
                 let slot = self.get_input_value(node, "slot");
                 lines.push(format!("{}delete_save({});", indent, slot));
             }
 
             // Window actions
-            "window/set_window_size" => {
+            "window/set_size" | "window/set_window_size" => {
                 let width = self.get_input_value(node, "width");
                 let height = self.get_input_value(node, "height");
                 lines.push(format!("{}set_window_size({}, {});", indent, width, height));
             }
-            "window/set_window_position" => {
+            "window/set_position" | "window/set_window_position" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 lines.push(format!("{}set_window_position({}, {});", indent, x, y));
             }
-            "window/center_window" => {
+            "window/center" | "window/center_window" => {
                 lines.push(format!("{}center_window();", indent));
             }
-            "window/set_window_title" => {
+            "window/set_title" | "window/set_window_title" => {
                 let title = self.get_input_value(node, "title");
                 lines.push(format!("{}set_window_title({});", indent, title));
             }
@@ -2837,13 +3435,13 @@ impl<'a> CodegenContext<'a> {
                 let enabled = self.get_input_value(node, "enabled");
                 lines.push(format!("{}set_borderless({});", indent, enabled));
             }
-            "window/minimize_window" => {
+            "window/minimize" | "window/minimize_window" => {
                 lines.push(format!("{}minimize_window();", indent));
             }
-            "window/maximize_window" => {
+            "window/maximize" | "window/maximize_window" => {
                 lines.push(format!("{}maximize_window();", indent));
             }
-            "window/restore_window" => {
+            "window/restore" | "window/restore_window" => {
                 lines.push(format!("{}restore_window();", indent));
             }
             "window/set_resizable" => {
@@ -2870,7 +3468,7 @@ impl<'a> CodegenContext<'a> {
             "window/confine_cursor" => {
                 lines.push(format!("{}confine_cursor();", indent));
             }
-            "window/set_cursor_position" => {
+            "window/set_cursor" | "window/set_cursor_position" => {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 lines.push(format!("{}set_cursor_position({}, {});", indent, x, y));
@@ -2926,7 +3524,7 @@ impl<'a> CodegenContext<'a> {
                 let enabled = self.get_input_value(node, "enabled");
                 lines.push(format!("{}set_button_enabled({}, {});", indent, entity, enabled));
             }
-            "ui/spawn_ui_image" => {
+            "ui/spawn_image" | "ui/spawn_ui_image" => {
                 let image = self.get_input_value(node, "image");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
@@ -2934,7 +3532,7 @@ impl<'a> CodegenContext<'a> {
                 lines.push(format!("{}let {} = spawn_ui_image({}, {}, {});", indent, entity_var, image, x, y));
                 self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
             }
-            "ui/set_ui_image" => {
+            "ui/set_image" | "ui/set_ui_image" => {
                 let entity = self.get_input_value(node, "entity");
                 let image = self.get_input_value(node, "image");
                 lines.push(format!("{}set_ui_image({}, {});", indent, entity, image));
@@ -2947,24 +3545,24 @@ impl<'a> CodegenContext<'a> {
                 let a = self.get_input_value(node, "a");
                 lines.push(format!("{}set_image_color({}, {}, {}, {}, {});", indent, entity, r, g, b, a));
             }
-            "ui/spawn_ui_node" => {
+            "ui/spawn_node" | "ui/spawn_ui_node" => {
                 let entity_var = self.next_var("ui_node");
                 lines.push(format!("{}let {} = spawn_ui_node();", indent, entity_var));
                 self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
             }
-            "ui/set_ui_position" => {
+            "ui/set_position" | "ui/set_ui_position" => {
                 let entity = self.get_input_value(node, "entity");
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 lines.push(format!("{}set_ui_position({}, {}, {});", indent, entity, x, y));
             }
-            "ui/set_ui_size" => {
+            "ui/set_size" | "ui/set_ui_size" => {
                 let entity = self.get_input_value(node, "entity");
                 let width = self.get_input_value(node, "width");
                 let height = self.get_input_value(node, "height");
                 lines.push(format!("{}set_ui_size({}, {}, {});", indent, entity, width, height));
             }
-            "ui/set_background_color" => {
+            "ui/set_background" | "ui/set_background_color" => {
                 let entity = self.get_input_value(node, "entity");
                 let r = self.get_input_value(node, "r");
                 let g = self.get_input_value(node, "g");
@@ -2972,12 +3570,12 @@ impl<'a> CodegenContext<'a> {
                 let a = self.get_input_value(node, "a");
                 lines.push(format!("{}set_background_color({}, {}, {}, {}, {});", indent, entity, r, g, b, a));
             }
-            "ui/set_ui_visibility" => {
+            "ui/set_visibility" | "ui/set_ui_visibility" => {
                 let entity = self.get_input_value(node, "entity");
                 let visible = self.get_input_value(node, "visible");
                 lines.push(format!("{}set_ui_visibility({}, {});", indent, entity, visible));
             }
-            "ui/toggle_ui_visibility" => {
+            "ui/toggle_visibility" | "ui/toggle_ui_visibility" => {
                 let entity = self.get_input_value(node, "entity");
                 lines.push(format!("{}toggle_ui_visibility({});", indent, entity));
             }
@@ -2995,12 +3593,12 @@ impl<'a> CodegenContext<'a> {
                 let value = self.get_input_value(node, "value");
                 lines.push(format!("{}set_progress_value({}, {});", indent, entity, value));
             }
-            "ui/add_ui_child" => {
+            "ui/add_child" | "ui/add_ui_child" => {
                 let parent = self.get_input_value(node, "parent");
                 let child = self.get_input_value(node, "child");
                 lines.push(format!("{}add_ui_child({}, {});", indent, parent, child));
             }
-            "ui/remove_ui_child" => {
+            "ui/remove_child" | "ui/remove_ui_child" => {
                 let parent = self.get_input_value(node, "parent");
                 let child = self.get_input_value(node, "child");
                 lines.push(format!("{}remove_ui_child({}, {});", indent, parent, child));
@@ -3117,28 +3715,28 @@ impl<'a> CodegenContext<'a> {
             }
 
             // Animation actions
-            "animation/play_animation_once" => {
+            "animation/play_once" | "animation/play_animation_once" => {
                 let name = self.get_input_value(node, "name");
                 let speed = self.get_input_value(node, "speed");
                 lines.push(format!("{}play_animation({}, false, {});", indent, name, speed));
             }
-            "animation/pause_animation" => {
+            "animation/pause" | "animation/pause_animation" => {
                 lines.push(format!("{}pause_animation();", indent));
             }
-            "animation/resume_animation" => {
+            "animation/resume" | "animation/resume_animation" => {
                 lines.push(format!("{}resume_animation();", indent));
             }
-            "animation/set_animation_time" => {
+            "animation/set_time" | "animation/set_animation_time" => {
                 let time = self.get_input_value(node, "time");
                 lines.push(format!("{}set_animation_time({});", indent, time));
             }
-            "animation/crossfade_animation" => {
+            "animation/crossfade" | "animation/crossfade_animation" => {
                 let from = self.get_input_value(node, "from");
                 let to = self.get_input_value(node, "to");
                 let duration = self.get_input_value(node, "duration");
                 lines.push(format!("{}crossfade_animation({}, {}, {});", indent, from, to, duration));
             }
-            "animation/set_animation_weight" => {
+            "animation/set_weight" | "animation/set_animation_weight" => {
                 let name = self.get_input_value(node, "name");
                 let weight = self.get_input_value(node, "weight");
                 lines.push(format!("{}set_animation_weight({}, {});", indent, name, weight));
@@ -3174,7 +3772,7 @@ impl<'a> CodegenContext<'a> {
                 let entity = self.get_input_value(node, "entity");
                 lines.push(format!("{}cancel_tween({});", indent, entity));
             }
-            "animation/play_sprite_animation" => {
+            "animation/play_sprite" | "animation/play_sprite_animation" => {
                 let name = self.get_input_value(node, "name");
                 let looping = self.get_input_value(node, "looping");
                 lines.push(format!("{}play_sprite_animation({}, {});", indent, name, looping));
@@ -3222,7 +3820,7 @@ impl<'a> CodegenContext<'a> {
                 let enabled = self.get_input_value(node, "enabled");
                 lines.push(format!("{}set_light_shadows({}, {});", indent, entity, enabled));
             }
-            "rendering/set_ambient_light" => {
+            "rendering/set_ambient" | "rendering/set_ambient_light" => {
                 let r = self.get_input_value(node, "r");
                 let g = self.get_input_value(node, "g");
                 let b = self.get_input_value(node, "b");
@@ -3300,7 +3898,7 @@ impl<'a> CodegenContext<'a> {
                 let b = self.get_input_value(node, "b");
                 lines.push(format!("{}set_clear_color({}, {}, {});", indent, r, g, b));
             }
-            "camera/camera_orbit" => {
+            "camera/orbit" | "camera/camera_orbit" => {
                 let target_x = self.get_input_value(node, "target_x");
                 let target_y = self.get_input_value(node, "target_y");
                 let target_z = self.get_input_value(node, "target_z");
@@ -3309,22 +3907,22 @@ impl<'a> CodegenContext<'a> {
             }
 
             // Debug toggles
-            "debug/toggle_physics_debug" => {
+            "debug/toggle_physics" | "debug/toggle_physics_debug" => {
                 lines.push(format!("{}toggle_physics_debug();", indent));
             }
             "debug/toggle_wireframe" => {
                 lines.push(format!("{}toggle_wireframe();", indent));
             }
-            "debug/toggle_bounding_boxes" => {
+            "debug/toggle_aabb" | "debug/toggle_bounding_boxes" => {
                 lines.push(format!("{}toggle_bounding_boxes();", indent));
             }
             "debug/clear" | "debug/clear_debug_draws" => {
                 lines.push(format!("{}clear_debug_draws();", indent));
             }
             "debug/log_value" => {
-                let label = self.get_input_value(node, "name");
+                let label = self.get_input_value(node, "label");
                 let value = self.get_input_value(node, "value");
-                lines.push(format!("{}log({} + \": \" + {});", indent, label, value));
+                lines.push(format!("{}log(\"\" + {} + \": \" + {});", indent, label, value));
             }
             "debug/start_timer" => {
                 let name = self.get_input_value(node, "name");
@@ -3380,6 +3978,564 @@ impl<'a> CodegenContext<'a> {
                 let x = self.get_input_value(node, "x");
                 let y = self.get_input_value(node, "y");
                 lines.push(format!("{}draw_text_2d({}, {}, {});", indent, text, x, y));
+            }
+
+            // ── Hierarchy flow nodes ──────────────────────────────────
+            "hierarchy/set_local_position" => {
+                let entity = self.get_input_value(node, "entity");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_local_position({}, {}, {}, {});", indent, entity, x, y, z));
+            }
+            "hierarchy/set_local_rotation" => {
+                let entity = self.get_input_value(node, "entity");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_local_rotation({}, {}, {}, {});", indent, entity, x, y, z));
+            }
+            "hierarchy/set_local_scale" => {
+                let entity = self.get_input_value(node, "entity");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_local_scale({}, {}, {}, {});", indent, entity, x, y, z));
+            }
+            "hierarchy/for_each_child" => {
+                let entity = self.get_input_value(node, "entity");
+                let child_var = self.next_var("child");
+                lines.push(format!("{}let _children = get_children({});", indent, entity));
+                lines.push(format!("{}for {} in _children {{", indent, child_var));
+                self.output_vars.insert(PinId::new(node.id, "child"), child_var.clone());
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "body");
+                lines.extend(body_lines);
+                self.indent -= 1;
+                lines.push(format!("{}}}", indent));
+                let after_lines = self.follow_flow_from(node.id, "exec");
+                lines.extend(after_lines);
+                return lines;
+            }
+
+            // ── Camera flow nodes ────────────────────────────────────
+            "camera/set_main" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}set_main_camera({});", indent, entity));
+            }
+            "camera/set_active" => {
+                let entity = self.get_input_value(node, "entity");
+                let active = self.get_input_value(node, "active");
+                lines.push(format!("{}set_camera_active({}, {});", indent, entity, active));
+            }
+            "camera/set_order" => {
+                let entity = self.get_input_value(node, "entity");
+                let order = self.get_input_value(node, "order");
+                lines.push(format!("{}set_camera_order({}, {});", indent, entity, order));
+            }
+
+            // ── Rendering flow nodes ─────────────────────────────────
+            "rendering/toggle_visibility" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}toggle_visibility({});", indent, entity));
+            }
+            "rendering/spawn_mesh" => {
+                let name = self.get_input_value(node, "name");
+                let path = self.get_input_value(node, "path");
+                let entity_var = self.next_var("mesh_entity");
+                lines.push(format!("{}let {} = spawn_mesh({}, {});", indent, entity_var, name, path));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
+            }
+            "rendering/set_mesh" => {
+                let entity = self.get_input_value(node, "entity");
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}set_mesh({}, {});", indent, entity, path));
+            }
+            "rendering/set_material" => {
+                let entity = self.get_input_value(node, "entity");
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}set_material({}, {});", indent, entity, path));
+            }
+            "rendering/set_emissive" => {
+                let entity = self.get_input_value(node, "entity");
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_material_emissive({}, {}, {}, {});", indent, entity, r, g, b));
+            }
+            "rendering/set_pbr" | "rendering/set_pbr_properties" => {
+                let entity = self.get_input_value(node, "entity");
+                let roughness = self.get_input_value(node, "roughness");
+                let metallic = self.get_input_value(node, "metallic");
+                lines.push(format!("{}set_pbr({}, {}, {});", indent, entity, roughness, metallic));
+            }
+            "rendering/set_texture" => {
+                let entity = self.get_input_value(node, "entity");
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}set_texture({}, {});", indent, entity, path));
+            }
+            "rendering/set_skybox" => {
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}set_skybox({});", indent, path));
+            }
+
+            // ── Environment flow nodes (new) ─────────────────────────
+            "rendering/set_sun_angles" => {
+                let azimuth = self.get_input_value(node, "azimuth");
+                let elevation = self.get_input_value(node, "elevation");
+                lines.push(format!("{}set_sun_angles({}, {});", indent, azimuth, elevation));
+            }
+            "rendering/set_sun_direction" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_sun_direction({}, {}, {});", indent, x, y, z));
+            }
+            "rendering/set_ambient_brightness" => {
+                let brightness = self.get_input_value(node, "brightness");
+                lines.push(format!("{}set_ambient_brightness({});", indent, brightness));
+            }
+            "rendering/set_ambient_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_ambient_color({}, {}, {});", indent, r, g, b));
+            }
+            "rendering/set_sky_top_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_sky_top_color({}, {}, {});", indent, r, g, b));
+            }
+            "rendering/set_sky_horizon_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_sky_horizon_color({}, {}, {});", indent, r, g, b));
+            }
+            "rendering/set_fog_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                lines.push(format!("{}set_fog_color({}, {}, {});", indent, r, g, b));
+            }
+            "rendering/set_exposure" => {
+                let exposure = self.get_input_value(node, "exposure");
+                lines.push(format!("{}set_exposure({});", indent, exposure));
+            }
+
+            // ── Transform extended flow nodes (new) ──────────────────
+            "transform/set_scale_uniform" => {
+                let scale = self.get_input_value(node, "scale");
+                lines.push(format!("{}set_scale({}, {}, {});", indent, scale, scale, scale));
+            }
+            "transform/parent_set_position" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}parent_set_position({}, {}, {});", indent, x, y, z));
+            }
+            "transform/parent_set_rotation" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}parent_set_rotation({}, {}, {});", indent, x, y, z));
+            }
+            "transform/parent_translate" => {
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}parent_translate({}, {}, {});", indent, x, y, z));
+            }
+            "transform/set_child_position" => {
+                let name = self.get_input_value(node, "name");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_child_position({}, {}, {}, {});", indent, name, x, y, z));
+            }
+            "transform/set_child_rotation" => {
+                let name = self.get_input_value(node, "name");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_child_rotation({}, {}, {}, {});", indent, name, x, y, z));
+            }
+            "transform/child_translate" => {
+                let name = self.get_input_value(node, "name");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}child_translate({}, {}, {}, {});", indent, name, x, y, z));
+            }
+
+            // ── Particle flow nodes (new) ────────────────────────────
+            "particles/burst" => {
+                let entity = self.get_input_value(node, "entity");
+                let count = self.get_input_value(node, "count");
+                lines.push(format!("{}particle_burst({}, {});", indent, entity, count));
+            }
+            "particles/set_rate" => {
+                let entity = self.get_input_value(node, "entity");
+                let rate = self.get_input_value(node, "rate");
+                lines.push(format!("{}set_particle_rate({}, {});", indent, entity, rate));
+            }
+            "particles/set_scale" => {
+                let entity = self.get_input_value(node, "entity");
+                let scale = self.get_input_value(node, "scale");
+                lines.push(format!("{}set_particle_scale({}, {});", indent, entity, scale));
+            }
+            "particles/set_time_scale" => {
+                let entity = self.get_input_value(node, "entity");
+                let time_scale = self.get_input_value(node, "time_scale");
+                lines.push(format!("{}set_particle_time_scale({}, {});", indent, entity, time_scale));
+            }
+            "particles/set_tint" => {
+                let entity = self.get_input_value(node, "entity");
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                let a = self.get_input_value(node, "a");
+                lines.push(format!("{}set_particle_tint({}, {}, {}, {}, {});", indent, entity, r, g, b, a));
+            }
+            "particles/reset" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}reset_particles({});", indent, entity));
+            }
+            "particles/set_variable_float" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                let value = self.get_input_value(node, "value");
+                lines.push(format!("{}set_particle_float({}, {}, {});", indent, entity, name, value));
+            }
+            "particles/set_variable_color" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                let a = self.get_input_value(node, "a");
+                lines.push(format!("{}set_particle_color({}, {}, {}, {}, {}, {});", indent, entity, name, r, g, b, a));
+            }
+            "particles/set_variable_vec3" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}set_particle_vec3({}, {}, {}, {}, {});", indent, entity, name, x, y, z));
+            }
+            "particles/emit_at" => {
+                let entity = self.get_input_value(node, "entity");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                lines.push(format!("{}emit_particle_at({}, {}, {}, {});", indent, entity, x, y, z));
+            }
+            "particles/emit_at_count" => {
+                let entity = self.get_input_value(node, "entity");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let z = self.get_input_value(node, "z");
+                let count = self.get_input_value(node, "count");
+                lines.push(format!("{}emit_particles_at({}, {}, {}, {}, {});", indent, entity, x, y, z, count));
+            }
+
+            // ── Audio extended flow nodes (new) ──────────────────────
+            "audio/play_sound_looping" => {
+                let path = self.get_input_value(node, "path");
+                let volume = self.get_input_value(node, "volume");
+                let result_var = self.next_var("loop_sound");
+                lines.push(format!("{}let {} = play_sound_looping({}, {});", indent, result_var, path, volume));
+                self.output_vars.insert(PinId::new(node.id, "handle"), result_var);
+            }
+            "audio/play_music_fade" => {
+                let path = self.get_input_value(node, "path");
+                let volume = self.get_input_value(node, "volume");
+                let fade = self.get_input_value(node, "fade_duration");
+                lines.push(format!("{}play_music_fade({}, {}, {});", indent, path, volume, fade));
+            }
+            "audio/stop_music_fade" => {
+                let fade = self.get_input_value(node, "fade_duration");
+                lines.push(format!("{}stop_music_fade({});", indent, fade));
+            }
+
+            // ── Audio flow nodes ─────────────────────────────────────
+            "audio/play_sound_attached" => {
+                let path = self.get_input_value(node, "path");
+                let entity = self.get_input_value(node, "entity");
+                let volume = self.get_input_value(node, "volume");
+                let result_var = self.next_var("sound");
+                lines.push(format!("{}let {} = play_sound_attached({}, {}, {});", indent, result_var, path, entity, volume));
+                self.output_vars.insert(PinId::new(node.id, "handle"), result_var);
+            }
+            "audio/stop_sound" => {
+                let handle = self.get_input_value(node, "handle");
+                lines.push(format!("{}stop_sound({});", indent, handle));
+            }
+            "audio/pause_sound" => {
+                let handle = self.get_input_value(node, "handle");
+                lines.push(format!("{}pause_sound({});", indent, handle));
+            }
+            "audio/resume_sound" => {
+                let handle = self.get_input_value(node, "handle");
+                lines.push(format!("{}resume_sound({});", indent, handle));
+            }
+            "audio/crossfade_music" => {
+                let path = self.get_input_value(node, "path");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}crossfade_music({}, {});", indent, path, duration));
+            }
+            "audio/set_pitch" => {
+                let handle = self.get_input_value(node, "handle");
+                let pitch = self.get_input_value(node, "pitch");
+                lines.push(format!("{}set_pitch({}, {});", indent, handle, pitch));
+            }
+            "audio/set_panning" => {
+                let handle = self.get_input_value(node, "handle");
+                let pan = self.get_input_value(node, "pan");
+                lines.push(format!("{}set_panning({}, {});", indent, handle, pan));
+            }
+            "audio/set_position" | "audio/set_playback_position" => {
+                let handle = self.get_input_value(node, "handle");
+                let position = self.get_input_value(node, "position");
+                lines.push(format!("{}set_playback_position({}, {});", indent, handle, position));
+            }
+            "audio/set_listener" | "audio/set_audio_listener" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}set_audio_listener({});", indent, entity));
+            }
+            "audio/set_spatial" | "audio/set_spatial_properties" => {
+                let entity = self.get_input_value(node, "entity");
+                let min_dist = self.get_input_value(node, "min_distance");
+                let max_dist = self.get_input_value(node, "max_distance");
+                lines.push(format!("{}set_spatial_properties({}, {}, {});", indent, entity, min_dist, max_dist));
+            }
+
+            // ── ECS flow nodes ───────────────────────────────────────
+            "ecs/set_name" | "ecs/set_entity_name" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}set_entity_name({}, {});", indent, entity, name));
+            }
+            "ecs/add_component" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}add_component({}, {});", indent, entity, name));
+            }
+            "ecs/remove_component" => {
+                let entity = self.get_input_value(node, "entity");
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}remove_component({}, {});", indent, entity, name));
+            }
+            "ecs/for_each_entity" => {
+                let tag = self.get_input_value(node, "tag");
+                let entity_var = self.next_var("ent");
+                lines.push(format!("{}let _ents = find_entities_by_tag({});", indent, tag));
+                lines.push(format!("{}for {} in _ents {{", indent, entity_var));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var.clone());
+                self.indent += 1;
+                let body_lines = self.follow_flow_from(node.id, "body");
+                lines.extend(body_lines);
+                self.indent -= 1;
+                lines.push(format!("{}}}", indent));
+                let after_lines = self.follow_flow_from(node.id, "exec");
+                lines.extend(after_lines);
+                return lines;
+            }
+
+            // ── Physics flow nodes ───────────────────────────────────
+            "physics/add_mesh_collider" => {
+                let entity = self.get_input_value(node, "entity");
+                lines.push(format!("{}add_mesh_collider({});", indent, entity));
+            }
+
+            // ── Animation flow nodes ─────────────────────────────────
+            "animation/tween_float" => {
+                let property = self.get_input_value(node, "property");
+                let target = self.get_input_value(node, "target");
+                let duration = self.get_input_value(node, "duration");
+                let easing = self.get_input_value(node, "easing");
+                lines.push(format!("{}tween_to({}, {}, {}, {});", indent, property, target, duration, easing));
+            }
+            "animation/tween_color" => {
+                let r = self.get_input_value(node, "r");
+                let g = self.get_input_value(node, "g");
+                let b = self.get_input_value(node, "b");
+                let a = self.get_input_value(node, "a");
+                let duration = self.get_input_value(node, "duration");
+                let easing = self.get_input_value(node, "easing");
+                lines.push(format!("{}tween_color({}, {}, {}, {}, {}, {});", indent, r, g, b, a, duration, easing));
+            }
+
+            // ── Time flow nodes ──────────────────────────────────────
+            "time/set_scale" => {
+                let scale = self.get_input_value(node, "scale");
+                lines.push(format!("{}set_time_scale({});", indent, scale));
+            }
+            "time/create_timer" => {
+                let name = self.get_input_value(node, "name");
+                let duration = self.get_input_value(node, "duration");
+                let repeating = self.get_input_value(node, "repeating");
+                lines.push(format!("{}create_timer({}, {}, {});", indent, name, duration, repeating));
+            }
+            "time/reset_timer" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}reset_timer({});", indent, name));
+            }
+            "time/delay_frames" => {
+                let count = self.get_input_value(node, "count");
+                lines.push(format!("{}delay_frames({});", indent, count));
+            }
+            "time/retrigger_delay" | "time/retriggerable_delay" => {
+                let name = self.get_input_value(node, "name");
+                let duration = self.get_input_value(node, "duration");
+                lines.push(format!("{}retriggerable_delay({}, {});", indent, name, duration));
+            }
+
+            // ── State flow nodes ─────────────────────────────────────
+            "state/remove_global" | "state/remove_global_var" => {
+                let name = self.get_input_value(node, "name");
+                lines.push(format!("{}remove_global({});", indent, name));
+            }
+
+            // ── UI flow nodes ────────────────────────────────────────
+            "ui/set_border" | "ui/set_ui_border" => {
+                let entity = self.get_input_value(node, "entity");
+                let width = self.get_input_value(node, "width");
+                lines.push(format!("{}set_ui_border({}, {});", indent, entity, width));
+            }
+            "ui/set_border_radius" => {
+                let entity = self.get_input_value(node, "entity");
+                let radius = self.get_input_value(node, "radius");
+                lines.push(format!("{}set_border_radius({}, {});", indent, entity, radius));
+            }
+            "ui/spawn_text_input" => {
+                let text = self.get_input_value(node, "text");
+                let x = self.get_input_value(node, "x");
+                let y = self.get_input_value(node, "y");
+                let entity_var = self.next_var("input_entity");
+                lines.push(format!("{}let {} = spawn_text_input({}, {}, {});", indent, entity_var, text, x, y));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
+            }
+            "ui/set_input_value" | "ui/set_text_input_value" => {
+                let entity = self.get_input_value(node, "entity");
+                let text = self.get_input_value(node, "value");
+                lines.push(format!("{}set_text_input_value({}, {});", indent, entity, text));
+            }
+            "ui/spawn_slider" => {
+                let min = self.get_input_value(node, "min");
+                let max = self.get_input_value(node, "max");
+                let default = self.get_input_value(node, "default");
+                let entity_var = self.next_var("slider_entity");
+                lines.push(format!("{}let {} = spawn_slider({}, {}, {});", indent, entity_var, min, max, default));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
+            }
+            "ui/set_slider_value" => {
+                let entity = self.get_input_value(node, "entity");
+                let value = self.get_input_value(node, "value");
+                lines.push(format!("{}set_slider_value({}, {});", indent, entity, value));
+            }
+
+            // ── Scene flow nodes ─────────────────────────────────────
+            "scene/load_async" => {
+                let path = self.get_input_value(node, "path");
+                let result_var = self.next_var("scene_handle");
+                lines.push(format!("{}let {} = load_scene_async({});", indent, result_var, path));
+                self.output_vars.insert(PinId::new(node.id, "handle"), result_var);
+            }
+            "scene/spawn" => {
+                let handle = self.get_input_value(node, "handle");
+                let entity_var = self.next_var("scene_entity");
+                lines.push(format!("{}let {} = spawn_scene({});", indent, entity_var, handle));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
+            }
+            "scene/unload" => {
+                let handle = self.get_input_value(node, "handle");
+                lines.push(format!("{}unload_scene({});", indent, handle));
+            }
+            "scene/change" => {
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}change_scene({});", indent, path));
+            }
+            "scene/reload" => {
+                lines.push(format!("{}reload_scene();", indent));
+            }
+            "scene/load_prefab" => {
+                let path = self.get_input_value(node, "path");
+                let result_var = self.next_var("prefab_handle");
+                lines.push(format!("{}let {} = load_prefab({});", indent, result_var, path));
+                self.output_vars.insert(PinId::new(node.id, "handle"), result_var);
+            }
+            "scene/load_gltf" => {
+                let path = self.get_input_value(node, "path");
+                let result_var = self.next_var("gltf_handle");
+                lines.push(format!("{}let {} = load_gltf({});", indent, result_var, path));
+                self.output_vars.insert(PinId::new(node.id, "handle"), result_var);
+            }
+            "scene/spawn_gltf" | "scene/spawn_gltf_scene" => {
+                let handle = self.get_input_value(node, "handle");
+                let index = self.get_input_value(node, "index");
+                let entity_var = self.next_var("gltf_entity");
+                lines.push(format!("{}let {} = spawn_gltf_scene({}, {});", indent, entity_var, handle, index));
+                self.output_vars.insert(PinId::new(node.id, "entity"), entity_var);
+            }
+            "scene/find" | "scene/find_in_scene" => {
+                let name = self.get_input_value(node, "name");
+                let result_var = self.next_var("found_entity");
+                lines.push(format!("{}let {} = find_in_scene({});", indent, result_var, name));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+            "scene/find_all" | "scene/find_all_in_scene" => {
+                let tag = self.get_input_value(node, "tag");
+                let result_var = self.next_var("found_entities");
+                lines.push(format!("{}let {} = find_all_in_scene({});", indent, result_var, tag));
+                self.output_vars.insert(PinId::new(node.id, "entities"), result_var);
+            }
+            "scene/get_root" | "scene/get_scene_root" => {
+                let result_var = self.next_var("scene_root");
+                lines.push(format!("{}let {} = get_scene_root();", indent, result_var));
+                self.output_vars.insert(PinId::new(node.id, "root"), result_var);
+            }
+            "scene/save" | "scene/save_scene" => {
+                let path = self.get_input_value(node, "path");
+                lines.push(format!("{}save_scene({});", indent, path));
+            }
+            "scene/clone_tree" | "scene/clone_entity_tree" => {
+                let entity = self.get_input_value(node, "entity");
+                let result_var = self.next_var("cloned_entity");
+                lines.push(format!("{}let {} = clone_entity_tree({});", indent, result_var, entity));
+                self.output_vars.insert(PinId::new(node.id, "entity"), result_var);
+            }
+
+            // ── Window flow nodes ────────────────────────────────────
+            "window/set_fullscreen" => {
+                let fullscreen = self.get_input_value(node, "fullscreen");
+                lines.push(format!("{}set_fullscreen({});", indent, fullscreen));
+            }
+            "window/set_borderless" => {
+                let borderless = self.get_input_value(node, "borderless");
+                lines.push(format!("{}set_borderless({});", indent, borderless));
+            }
+            "window/set_resizable" => {
+                let resizable = self.get_input_value(node, "resizable");
+                lines.push(format!("{}set_resizable({});", indent, resizable));
+            }
+            "window/set_decorations" => {
+                let decorations = self.get_input_value(node, "decorations");
+                lines.push(format!("{}set_decorations({});", indent, decorations));
+            }
+            "window/set_always_on_top" => {
+                let on_top = self.get_input_value(node, "on_top");
+                lines.push(format!("{}set_always_on_top({});", indent, on_top));
+            }
+            "window/set_vsync" => {
+                let enabled = self.get_input_value(node, "enabled");
+                lines.push(format!("{}set_vsync({});", indent, enabled));
+            }
+            "window/set_cursor_icon" => {
+                let icon = self.get_input_value(node, "icon");
+                lines.push(format!("{}set_cursor_icon({});", indent, icon));
             }
 
             // ── Component setter nodes (auto-generated) ──────────────
@@ -3454,7 +4610,7 @@ impl<'a> CodegenContext<'a> {
 
         // Find all input connections
         for pin in node.input_pins() {
-            let pin_id = PinId::new(node.id, &pin.name);
+            let pin_id = PinId::input(node.id, &pin.name);
             if let Some(conn) = self.graph.connection_to(&pin_id) {
                 if let Some(source_node) = self.graph.get_node(conn.from.node_id) {
                     if !self.processed_nodes.contains(&source_node.id) {
@@ -3511,12 +4667,31 @@ pub fn generate_rhai_code(graph: &BlueprintGraph) -> CodegenResult {
         code_lines.push(String::new());
     }
 
-    // Generate on_update function if there's an On Update event
+    // Collect event nodes that need polling (non on_ready/on_update events)
+    let polling_events: Vec<_> = graph.nodes.iter()
+        .filter(|n| {
+            n.node_type != "event/on_ready" && n.node_type != "event/on_update" && (
+                n.node_type.starts_with("physics/on_") ||
+                n.node_type.starts_with("component/on_") ||
+                n.node_type.starts_with("time/on_") ||
+                n.node_type.starts_with("ui/on_") ||
+                n.node_type.starts_with("state/on_") ||
+                n.node_type.starts_with("audio/on_") ||
+                n.node_type.starts_with("window/on_") ||
+                n.node_type.starts_with("scene/on_") ||
+                n.node_type.starts_with("animation/on_")
+            )
+        })
+        .collect();
+
+    // Generate on_update function if there's an On Update event OR polling events
     let update_events: Vec<_> = graph.nodes.iter()
         .filter(|n| n.node_type == "event/on_update")
         .collect();
 
-    if !update_events.is_empty() {
+    let needs_update = !update_events.is_empty() || !polling_events.is_empty();
+
+    if needs_update {
         code_lines.push("fn on_update() {".to_string());
 
         // The delta output from On Update is available as 'delta'
@@ -3532,6 +4707,234 @@ pub fn generate_rhai_code(graph: &BlueprintGraph) -> CodegenResult {
             code_lines.extend(flow_lines);
         }
 
+        // Generate polling checks for event nodes
+        for event in &polling_events {
+            ctx.processed_nodes.clear();
+            ctx.processed_nodes.insert(event.id);
+
+            let indent = "    ";
+            match event.node_type.as_str() {
+                // Physics collision events
+                "physics/on_collision_enter" => {
+                    code_lines.push(format!("{}for _col_ent in collisions_entered {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "entity"), "_col_ent".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "physics/on_collision_exit" => {
+                    code_lines.push(format!("{}for _col_ent in collisions_exited {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "entity"), "_col_ent".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "physics/on_collision_stay" => {
+                    code_lines.push(format!("{}for _col_ent in active_collisions {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "entity"), "_col_ent".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "physics/on_trigger_enter" => {
+                    code_lines.push(format!("{}for _trig_ent in triggers_entered {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "entity"), "_trig_ent".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "physics/on_trigger_exit" => {
+                    code_lines.push(format!("{}for _trig_ent in triggers_exited {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "entity"), "_trig_ent".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Health events
+                "component/on_damage" => {
+                    code_lines.push(format!("{}if health_damage_taken > 0.0 {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "amount"), "health_damage_taken".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "component/on_death" => {
+                    code_lines.push(format!("{}if health_just_died {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "component/on_heal" => {
+                    code_lines.push(format!("{}if health_healed > 0.0 {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "amount"), "health_healed".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Timer events
+                "time/on_timer_finished" => {
+                    let timer_name = ctx.get_input_value(event, "timer");
+                    code_lines.push(format!("{}if timer_just_finished(timers_finished, {}) {{", indent, timer_name));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // UI events
+                "ui/on_button_clicked" => {
+                    let entity = ctx.get_input_value(event, "entity");
+                    code_lines.push(format!("{}if button_just_clicked(buttons_clicked, {}) {{", indent, entity));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "ui/on_button_hovered" => {
+                    let entity = ctx.get_input_value(event, "entity");
+                    code_lines.push(format!("{}if button_hovered(buttons_hovered, {}) {{", indent, entity));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "ui/on_input_changed" => {
+                    let entity = ctx.get_input_value(event, "entity");
+                    code_lines.push(format!("{}if input_changed(inputs_changed, {}) {{", indent, entity));
+                    ctx.output_vars.insert(PinId::new(event.id, "value"), format!("get_text_input_value({})", entity));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "ui/on_input_submitted" => {
+                    let entity = ctx.get_input_value(event, "entity");
+                    code_lines.push(format!("{}if input_submitted(inputs_submitted, {}) {{", indent, entity));
+                    ctx.output_vars.insert(PinId::new(event.id, "value"), format!("get_text_input_value({})", entity));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "ui/on_slider_changed" => {
+                    let entity = ctx.get_input_value(event, "entity");
+                    code_lines.push(format!("{}if slider_changed(sliders_changed, {}) {{", indent, entity));
+                    ctx.output_vars.insert(PinId::new(event.id, "value"), format!("get_slider_value({})", entity));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // State events
+                "state/on_enter" => {
+                    let state = ctx.get_input_value(event, "state");
+                    code_lines.push(format!("{}if state_just_entered({}) {{", indent, state));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "state/on_exit" => {
+                    let state = ctx.get_input_value(event, "state");
+                    code_lines.push(format!("{}if state_just_exited({}) {{", indent, state));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "state/on_transition" => {
+                    let from = ctx.get_input_value(event, "from");
+                    let to = ctx.get_input_value(event, "to");
+                    code_lines.push(format!("{}if state_transitioned({}, {}) {{", indent, from, to));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "state/on_pause" => {
+                    code_lines.push(format!("{}if game_just_paused {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "state/on_resume" => {
+                    code_lines.push(format!("{}if game_just_resumed {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Audio events
+                "audio/on_finished" => {
+                    let handle = ctx.get_input_value(event, "handle");
+                    code_lines.push(format!("{}if sound_just_finished(sounds_finished, {}) {{", indent, handle));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Animation events
+                "animation/on_finished" => {
+                    code_lines.push(format!("{}if animation_just_finished {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "animation/on_loop" => {
+                    code_lines.push(format!("{}if animation_just_looped {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Window events
+                "window/on_resized" => {
+                    code_lines.push(format!("{}if window_just_resized {{", indent));
+                    ctx.output_vars.insert(PinId::new(event.id, "width"), "window_width".to_string());
+                    ctx.output_vars.insert(PinId::new(event.id, "height"), "window_height".to_string());
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "window/on_moved" => {
+                    code_lines.push(format!("{}if window_just_moved {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "window/on_focused" => {
+                    code_lines.push(format!("{}if window_just_focused {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+                "window/on_close_requested" => {
+                    code_lines.push(format!("{}if close_requested {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Scene events
+                "scene/on_loaded" => {
+                    code_lines.push(format!("{}if scene_just_loaded {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                // Quit events
+                "state/on_quit_requested" => {
+                    code_lines.push(format!("{}if quit_requested {{", indent));
+                    let body = ctx.follow_flow_from(event.id, "exec");
+                    code_lines.extend(body);
+                    code_lines.push(format!("{}}}", indent));
+                }
+
+                _ => {
+                    // Unknown event node, generate a warning
+                    warnings.push(format!(
+                        "Event node '{}' has no codegen handler",
+                        event.node_type
+                    ));
+                }
+            }
+        }
+
         code_lines.push("}".to_string());
     }
 
@@ -3539,7 +4942,7 @@ pub fn generate_rhai_code(graph: &BlueprintGraph) -> CodegenResult {
     for node in &graph.nodes {
         for pin in node.input_pins() {
             if pin.required {
-                let pin_id = PinId::new(node.id, &pin.name);
+                let pin_id = PinId::input(node.id, &pin.name);
                 if graph.connection_to(&pin_id).is_none() {
                     warnings.push(format!(
                         "Node '{}' has unconnected required input '{}'",
@@ -3555,10 +4958,17 @@ pub fn generate_rhai_code(graph: &BlueprintGraph) -> CodegenResult {
     for event in graph.event_nodes() {
         collect_reachable(graph, event.id, &mut reachable);
     }
+    // Also mark polling event nodes and their descendants as reachable
+    for node in &graph.nodes {
+        if node.node_type.contains("/on_") && !node.node_type.starts_with("event/") {
+            collect_reachable(graph, node.id, &mut reachable);
+        }
+    }
 
     for node in &graph.nodes {
         if !node.node_type.starts_with("event/")
             && !node.node_type.starts_with("utility/comment")
+            && !node.node_type.contains("/on_")
             && !reachable.contains(&node.id)
         {
             warnings.push(format!(
@@ -3593,7 +5003,7 @@ fn collect_reachable(graph: &BlueprintGraph, start: NodeId, visited: &mut HashSe
 
         // Also follow data connections to this node's inputs
         for pin in node.input_pins() {
-            let to_pin = PinId::new(start, &pin.name);
+            let to_pin = PinId::input(start, &pin.name);
             if let Some(conn) = graph.connection_to(&to_pin) {
                 collect_reachable(graph, conn.from.node_id, visited);
             }

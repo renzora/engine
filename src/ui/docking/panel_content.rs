@@ -188,7 +188,8 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::Console => Vec2::new(200.0, 60.0),
         PanelId::Animation => Vec2::new(200.0, 80.0),
         PanelId::Timeline => Vec2::new(400.0, 150.0),
-        PanelId::ScriptEditor => Vec2::new(300.0, 200.0),
+        PanelId::CodeEditor => Vec2::new(300.0, 200.0),
+        PanelId::ShaderPreview => Vec2::new(300.0, 300.0),
         PanelId::History => Vec2::new(150.0, 100.0),
         PanelId::Blueprint => Vec2::new(400.0, 300.0),
         PanelId::NodeLibrary => Vec2::new(180.0, 200.0),
@@ -212,6 +213,12 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::ParticlePreview => Vec2::new(300.0, 300.0),
         PanelId::TextureEditor => Vec2::new(300.0, 300.0),
         PanelId::ScriptVariables => Vec2::new(220.0, 200.0),
+        PanelId::PixelCanvas => Vec2::new(300.0, 300.0),
+        PanelId::PixelLayers => Vec2::new(150.0, 200.0),
+        PanelId::PixelPalette => Vec2::new(150.0, 200.0),
+        PanelId::PixelTools => Vec2::new(100.0, 200.0),
+        PanelId::PixelTimeline => Vec2::new(400.0, 80.0),
+        PanelId::PixelBrushSettings => Vec2::new(100.0, 150.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

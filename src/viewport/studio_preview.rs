@@ -139,6 +139,7 @@ pub fn setup_studio_preview(
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgb(0.12, 0.12, 0.14)),
             order: -2, // Render before main camera
+            is_active: false,
             ..default()
         },
         RenderTarget::Image(image_handle.into()),
@@ -443,6 +444,17 @@ pub fn sync_preview_joint_transforms(
     }
 }
 
+/// Activate/deactivate the studio preview camera based on panel visibility
+fn toggle_studio_camera(
+    docking: Res<DockingState>,
+    mut cameras: Query<&mut Camera, With<StudioPreviewCamera>>,
+) {
+    let panel_open = docking.is_panel_visible(&PanelId::StudioPreview);
+    for mut camera in cameras.iter_mut() {
+        camera.is_active = panel_open;
+    }
+}
+
 /// Plugin for the studio preview system
 pub struct StudioPreviewPlugin;
 
@@ -454,9 +466,10 @@ impl Plugin for StudioPreviewPlugin {
         app.init_resource::<StudioPreviewImage>();
         // Setup when entering Editor state (not during splash)
         app.add_systems(OnEnter(AppState::Editor), setup_studio_preview);
-        // Register texture always (needed before panel opens)
+        // Register texture and toggle camera always (needed before panel opens)
         app.add_systems(Update,
-            register_studio_preview_texture.run_if(in_state(AppState::Editor))
+            (register_studio_preview_texture, toggle_studio_camera)
+                .run_if(in_state(AppState::Editor))
         );
         // Only run expensive update systems when panel is visible
         app.add_systems(Update, (

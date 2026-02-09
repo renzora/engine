@@ -8,8 +8,10 @@ use crate::core::{
     AssetBrowserState, AssetViewMode, BottomPanelTab, ColliderImportType, ConsoleState,
     ConvertAxes, LogLevel, MeshHandling, NormalImportMethod, TangentImportMethod,
     ViewportState, SceneManagerState, ThumbnailCache, supports_thumbnail, supports_model_preview,
+    supports_shader_thumbnail,
 };
 use crate::viewport::ModelPreviewCache;
+use crate::shader_thumbnail::ShaderThumbnailCache;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
@@ -23,6 +25,7 @@ use egui_phosphor::regular::{
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
     PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE, CODE, ATOM, PAINT_BRUSH,
     STACK, NOTE, MUSIC_NOTES, VIDEO, BLUEPRINT, SPARKLE, MOUNTAINS, GAME_CONTROLLER,
+    GRAPHICS_CARD,
 };
 
 const MIN_TILE_SIZE: f32 = 64.0;
@@ -45,6 +48,7 @@ pub fn render_assets(
     ui_renderer: &mut UiRenderer,
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    shader_thumbnail_cache: &mut ShaderThumbnailCache,
     theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
@@ -340,7 +344,7 @@ pub fn render_assets(
                 // Render built-in tabs
                 match viewport.bottom_panel_tab {
                     BottomPanelTab::Assets => {
-                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache, theme);
+                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache, shader_thumbnail_cache, theme);
                     }
                     BottomPanelTab::Console => {
                         render_console_content(ui, console, theme);
@@ -365,6 +369,9 @@ pub fn render_assets(
     // Dialogs (only for assets tab)
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
+    render_create_material_blueprint_dialog(ctx, assets);
+    render_create_script_blueprint_dialog(ctx, assets);
+    render_create_shader_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
 
@@ -388,6 +395,9 @@ pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState
     render_create_particle_dialog(ctx, assets);
     render_create_level_dialog(ctx, assets);
     render_create_terrain_dialog(ctx, assets);
+    render_create_material_blueprint_dialog(ctx, assets);
+    render_create_script_blueprint_dialog(ctx, assets);
+    render_create_shader_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
     process_pending_file_imports(assets);
@@ -401,6 +411,7 @@ pub fn render_assets_content(
     scene_state: &mut SceneManagerState,
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    shader_thumbnail_cache: &mut ShaderThumbnailCache,
     theme: &Theme,
 ) {
     let ctx = ui.ctx().clone();
@@ -502,7 +513,7 @@ pub fn render_assets_content(
                                 .id_salt("assets_grid_scroll")
                                 .max_height(available_height.max(50.0))
                                 .show(ui, |ui| {
-                                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, theme);
+                                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, shader_thumbnail_cache, theme);
 
                                     // Fill remaining space to ensure context menu works in empty areas
                                     let remaining = ui.available_size();
@@ -531,6 +542,7 @@ pub fn render_assets_content(
             if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
                 if content_rect.contains(pos) {
                     assets.context_menu_pos = Some(bevy::math::Vec2::new(pos.x, pos.y));
+                    assets.context_submenu = None;
                 }
             }
         }
@@ -538,6 +550,7 @@ pub fn render_assets_content(
         // Close menu on Escape
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             assets.context_menu_pos = None;
+            assets.context_submenu = None;
         }
 
         // Show context menu popup
@@ -564,11 +577,19 @@ pub fn render_assets_content(
                         });
                 });
 
-            // Close menu when clicking outside of it
+            // Read submenu rect from egui memory (set by render_context_menu)
+            let submenu_rect: Option<egui::Rect> = ctx.memory(|mem| {
+                mem.data.get_temp(egui::Id::new("assets_submenu_rect"))
+            });
+
+            // Close menu when clicking outside of both menu and submenu
             if ctx.input(|i| i.pointer.primary_clicked()) {
                 if let Some(click_pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                    if !area_response.response.rect.contains(click_pos) {
+                    let in_menu = area_response.response.rect.contains(click_pos);
+                    let in_submenu = submenu_rect.map_or(false, |r| r.contains(click_pos));
+                    if !in_menu && !in_submenu {
                         assets.context_menu_pos = None;
+                        assets.context_submenu = None;
                     }
                 }
             }
@@ -895,6 +916,7 @@ fn render_grid_view(
     items: &[&AssetItem],
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    shader_thumbnail_cache: &mut ShaderThumbnailCache,
     theme: &Theme,
 ) {
     let available_width = ui.available_width();
@@ -960,6 +982,7 @@ fn render_grid_view(
             let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
             let has_image_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
             let has_model_preview = !item.is_folder && supports_model_preview(&item.name);
+            let has_shader_thumbnail = !item.is_folder && supports_shader_thumbnail(&item.name);
 
             // All items can be dragged for folder moves (folders and files)
             let (rect, response) = ui.allocate_exact_size(
@@ -1104,6 +1127,25 @@ fn render_grid_view(
                     model_preview_cache.request_preview(item.path.clone());
                 }
             }
+            // Try shader thumbnails
+            else if has_shader_thumbnail {
+                if let Some(texture_id) = shader_thumbnail_cache.get_texture_id(&item.path) {
+                    let thumb_rect = egui::Rect::from_center_size(
+                        icon_center,
+                        Vec2::splat(thumbnail_size),
+                    );
+
+                    ui.painter().image(
+                        texture_id,
+                        thumb_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    thumbnail_shown = true;
+                } else if !shader_thumbnail_cache.is_loading(&item.path) && !shader_thumbnail_cache.has_failed(&item.path) {
+                    shader_thumbnail_cache.request_thumbnail(item.path.clone());
+                }
+            }
 
             // Fall back to icon if no thumbnail
             if !thumbnail_shown {
@@ -1127,7 +1169,8 @@ fn render_grid_view(
 
                 // Show loading indicator
                 let is_loading = (has_image_thumbnail && thumbnail_cache.is_loading(&item.path))
-                    || (has_model_preview && model_preview_cache.is_loading(&item.path));
+                    || (has_model_preview && model_preview_cache.is_loading(&item.path))
+                    || (has_shader_thumbnail && shader_thumbnail_cache.is_loading(&item.path));
                 if is_loading {
                     let spinner_pos = egui::pos2(rect.max.x - 14.0, rect.min.y + 14.0);
                     ui.painter().circle_filled(spinner_pos, 6.0, Color32::from_rgba_unmultiplied(0, 0, 0, 100));
@@ -2120,9 +2163,13 @@ fn handle_item_interaction(
             // Open behavior blueprint files in blueprint editor
             assets.pending_blueprint_open = Some(item.path.clone());
             assets.requested_layout = Some("Blueprints".to_string());
+        } else if item.path.extension().map(|e| e == "wgsl").unwrap_or(false) {
+            // Open WGSL shader files in code editor and switch to Shaders layout
+            super::code_editor::open_script(scene_state, item.path.clone());
+            assets.requested_layout = Some("Shaders".to_string());
         } else if is_script_file(&item.path) {
             // Open script files in the editor and switch to Scripting layout
-            super::script_editor::open_script(scene_state, item.path.clone());
+            super::code_editor::open_script(scene_state, item.path.clone());
             assets.requested_layout = Some("Scripting".to_string());
         } else if is_image_file(&item.name) {
             // Open image in preview tab and switch to Image Preview layout
@@ -2215,184 +2262,142 @@ fn handle_item_interaction(
 }
 
 fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState, theme: &Theme) {
-    ui.set_min_width(150.0);
-    ui.set_max_width(150.0);
+    let menu_width = 160.0;
+    ui.set_min_width(menu_width);
+    ui.set_max_width(menu_width);
 
-    // Colors for different categories (Unreal-style)
-    let material_color = Color32::from_rgb(0, 200, 83);    // Green for materials
-    let scene_color = Color32::from_rgb(115, 191, 242);    // Blue for scenes
-    let folder_color = Color32::from_rgb(255, 196, 0);     // Yellow/gold for folders
-    let script_color = Color32::from_rgb(255, 128, 0);     // Orange for scripts
+    // Colors
+    let material_color = Color32::from_rgb(0, 200, 83);
+    let scene_color = Color32::from_rgb(115, 191, 242);
+    let folder_color = Color32::from_rgb(255, 196, 0);
+    let script_color = Color32::from_rgb(255, 128, 0);
+    let shader_color = Color32::from_rgb(220, 120, 255);
+    let blueprint_color = Color32::from_rgb(100, 160, 255);
+    let media_color = Color32::from_rgb(180, 100, 220);
+    let world_color = Color32::from_rgb(100, 200, 180);
     let text_primary = theme.text.primary.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
 
-    // Helper to render a large menu item with icon and color
-    let large_menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
-        let desired_size = Vec2::new(150.0, 28.0);
-        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+    let item_height = 20.0;
+    let item_font = 11.0;
 
-        let is_hovered = response.hovered();
-        if is_hovered {
-            ui.painter().rect_filled(
-                rect,
-                4.0,
-                theme.panels.item_hover.to_color32(),
-            );
-        }
-
-        // Color indicator bar on left
-        let indicator_rect = egui::Rect::from_min_size(
-            rect.min,
-            Vec2::new(3.0, rect.height()),
-        );
-        ui.painter().rect_filled(indicator_rect, CornerRadius::ZERO, color);
-
-        // Icon with color
-        ui.painter().text(
-            egui::pos2(rect.min.x + 14.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(14.0),
-            color,
-        );
-
-        // Label
-        ui.painter().text(
-            egui::pos2(rect.min.x + 30.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(12.0),
-            text_primary,
-        );
-
-        response.clicked()
-    };
-
-    // Helper for normal menu items
+    // Helper for compact menu items
     let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
-        let desired_size = Vec2::new(150.0, 22.0);
+        let desired_size = Vec2::new(menu_width, item_height);
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
-        let is_hovered = response.hovered();
-        if is_hovered {
-            ui.painter().rect_filled(
-                rect,
-                4.0,
-                theme.panels.item_hover.to_color32(),
-            );
+        if response.hovered() {
+            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
         }
 
-        // Icon with color
         ui.painter().text(
             egui::pos2(rect.min.x + 14.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(12.0),
-            color,
+            egui::Align2::CENTER_CENTER, icon,
+            egui::FontId::proportional(item_font), color,
         );
-
-        // Label
         ui.painter().text(
-            egui::pos2(rect.min.x + 30.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(11.0),
-            text_primary,
+            egui::pos2(rect.min.x + 28.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(item_font), text_primary,
         );
 
         response.clicked()
     };
 
-    // === Primary Create Actions (Large Items) ===
+    // Helper for submenu trigger items (with arrow indicator)
+    let submenu_trigger = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32, submenu_id: &str, current_submenu: &Option<String>| -> (bool, egui::Rect) {
+        let desired_size = Vec2::new(menu_width, item_height);
+        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+        let is_open = current_submenu.as_deref() == Some(submenu_id);
+        if response.hovered() || is_open {
+            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+        }
+
+        ui.painter().text(
+            egui::pos2(rect.min.x + 14.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, icon,
+            egui::FontId::proportional(item_font), color,
+        );
+        ui.painter().text(
+            egui::pos2(rect.min.x + 28.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(item_font), text_primary,
+        );
+        // Arrow indicator
+        ui.painter().text(
+            egui::pos2(rect.max.x - 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, CARET_RIGHT,
+            egui::FontId::proportional(10.0), text_secondary,
+        );
+
+        (response.hovered(), rect)
+    };
+
+    // Section header
+    let section_header = |ui: &mut egui::Ui, label: &str| {
+        let desired_size = Vec2::new(menu_width, 14.0);
+        let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
+        ui.painter().text(
+            egui::pos2(rect.min.x + 8.0, rect.center().y),
+            egui::Align2::LEFT_CENTER, label,
+            egui::FontId::proportional(9.0), text_secondary,
+        );
+    };
+
     ui.add_space(2.0);
 
-    if large_menu_item(ui, PALETTE, "Create Material", material_color) {
-        assets.show_create_material_dialog = true;
-        assets.new_material_name = "NewMaterial".to_string();
-        assets.context_menu_pos = None;
-    }
+    // === Create section ===
+    section_header(ui, "CREATE");
+    ui.add_space(1.0);
 
-    if large_menu_item(ui, FILM_SCRIPT, "New Scene", scene_color) {
-        assets.show_create_scene_dialog = true;
-        assets.new_scene_name = "NewScene".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    ui.add_space(2.0);
-    ui.separator();
-    ui.add_space(2.0);
-
-    // === Standard Create Actions ===
     if menu_item(ui, FOLDER_PLUS, "New Folder", folder_color) {
         assets.show_create_folder_dialog = true;
         assets.new_folder_name = "New Folder".to_string();
         assets.context_menu_pos = None;
+        assets.context_submenu = None;
     }
 
-    if menu_item(ui, SCROLL, "Create Script", script_color) {
+    if menu_item(ui, PALETTE, "Material", material_color) {
+        assets.show_create_material_dialog = true;
+        assets.new_material_name = "NewMaterial".to_string();
+        assets.context_menu_pos = None;
+        assets.context_submenu = None;
+    }
+
+    if menu_item(ui, FILM_SCRIPT, "Scene", scene_color) {
+        assets.show_create_scene_dialog = true;
+        assets.new_scene_name = "NewScene".to_string();
+        assets.context_menu_pos = None;
+        assets.context_submenu = None;
+    }
+
+    if menu_item(ui, SCROLL, "Script", script_color) {
         assets.show_create_script_dialog = true;
         assets.new_script_name = "new_script".to_string();
         assets.context_menu_pos = None;
+        assets.context_submenu = None;
+    }
+
+    if menu_item(ui, GRAPHICS_CARD, "Shader", shader_color) {
+        assets.show_create_shader_dialog = true;
+        assets.new_shader_name = "new_shader".to_string();
+        assets.context_menu_pos = None;
+        assets.context_submenu = None;
     }
 
     ui.add_space(2.0);
     ui.separator();
     ui.add_space(2.0);
 
-    // === Media Assets ===
-    let video_color = Color32::from_rgb(220, 80, 80);      // Red for video
-    let audio_color = Color32::from_rgb(180, 100, 220);    // Purple for audio
-    let animation_color = Color32::from_rgb(100, 180, 220); // Light blue for animation
-    let texture_color = Color32::from_rgb(120, 200, 120);  // Green for textures
-    let particle_color = Color32::from_rgb(255, 180, 50);  // Orange/gold for particles
-    let level_color = Color32::from_rgb(100, 200, 180);    // Teal for levels
-    let terrain_color = Color32::from_rgb(140, 180, 100);  // Olive for terrain
+    // === Blueprint submenu ===
+    let (bp_hovered, bp_rect) = submenu_trigger(ui, BLUEPRINT, "Blueprint", blueprint_color, "blueprint", &assets.context_submenu);
 
-    if menu_item(ui, VIDEO, "Video Project", video_color) {
-        assets.show_create_video_dialog = true;
-        assets.new_video_name = "NewVideo".to_string();
-        assets.context_menu_pos = None;
-    }
+    // === Media submenu ===
+    let (media_hovered, _media_rect) = submenu_trigger(ui, MUSIC_NOTES, "Media", media_color, "media", &assets.context_submenu);
 
-    if menu_item(ui, MUSIC_NOTES, "Audio Project", audio_color) {
-        assets.show_create_audio_dialog = true;
-        assets.new_audio_name = "NewAudio".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    if menu_item(ui, FILM_SCRIPT, "Animation", animation_color) {
-        assets.show_create_animation_dialog = true;
-        assets.new_animation_name = "NewAnimation".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    if menu_item(ui, PAINT_BRUSH, "Texture", texture_color) {
-        assets.show_create_texture_dialog = true;
-        assets.new_texture_name = "NewTexture".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    if menu_item(ui, SPARKLE, "Particle FX", particle_color) {
-        assets.show_create_particle_dialog = true;
-        assets.new_particle_name = "NewParticle".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    ui.add_space(2.0);
-    ui.separator();
-    ui.add_space(2.0);
-
-    // === Level/Terrain (scene variants) ===
-    if menu_item(ui, GAME_CONTROLLER, "Level", level_color) {
-        assets.show_create_level_dialog = true;
-        assets.new_level_name = "NewLevel".to_string();
-        assets.context_menu_pos = None;
-    }
-
-    if menu_item(ui, MOUNTAINS, "Terrain", terrain_color) {
-        assets.show_create_terrain_dialog = true;
-        assets.new_terrain_name = "NewTerrain".to_string();
-        assets.context_menu_pos = None;
-    }
+    // === World submenu ===
+    let (world_hovered, _world_rect) = submenu_trigger(ui, MOUNTAINS, "World", world_color, "world", &assets.context_submenu);
 
     ui.add_space(2.0);
     ui.separator();
@@ -2402,9 +2407,165 @@ fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState, theme:
     if menu_item(ui, DOWNLOAD, "Import", text_primary) {
         assets.import_asset_requested = true;
         assets.context_menu_pos = None;
+        assets.context_submenu = None;
     }
 
     ui.add_space(2.0);
+
+    // Track which submenu to open based on hover
+    if bp_hovered {
+        assets.context_submenu = Some("blueprint".to_string());
+    } else if media_hovered {
+        assets.context_submenu = Some("media".to_string());
+    } else if world_hovered {
+        assets.context_submenu = Some("world".to_string());
+    }
+
+    // Render active submenu as a side popup
+    let menu_rect = ui.min_rect();
+    if let Some(ref submenu) = assets.context_submenu.clone() {
+        let submenu_x = menu_rect.max.x + 1.0;
+        let submenu_y = match submenu.as_str() {
+            "blueprint" => bp_rect.min.y,
+            _ => bp_rect.min.y, // fallback
+        };
+
+        // Position submenu at the hovered trigger item
+        let trigger_y = match submenu.as_str() {
+            "blueprint" => bp_rect.min.y,
+            "media" => bp_rect.min.y + item_height,
+            "world" => bp_rect.min.y + item_height * 2.0,
+            _ => bp_rect.min.y,
+        };
+
+        let submenu_response = egui::Area::new(egui::Id::new(format!("assets_submenu_{}", submenu)))
+            .fixed_pos(egui::pos2(submenu_x, trigger_y))
+            .order(egui::Order::Foreground)
+            .constrain(true)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style())
+                    .show(ui, |ui| {
+                        let sub_width = 160.0;
+                        ui.set_min_width(sub_width);
+                        ui.set_max_width(sub_width);
+
+                        let sub_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+                            let desired_size = Vec2::new(sub_width, item_height);
+                            let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+                            if response.hovered() {
+                                ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+                            }
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 14.0, rect.center().y),
+                                egui::Align2::CENTER_CENTER, icon,
+                                egui::FontId::proportional(item_font), color,
+                            );
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 28.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER, label,
+                                egui::FontId::proportional(item_font), text_primary,
+                            );
+                            response.clicked()
+                        };
+
+                        ui.add_space(2.0);
+
+                        match submenu.as_str() {
+                            "blueprint" => {
+                                if sub_item(ui, PALETTE, "Material Blueprint", material_color) {
+                                    assets.show_create_material_blueprint_dialog = true;
+                                    assets.new_material_blueprint_name = "NewMaterial".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, SCROLL, "Script Blueprint", script_color) {
+                                    assets.show_create_script_blueprint_dialog = true;
+                                    assets.new_script_blueprint_name = "NewScript".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                            }
+                            "media" => {
+                                let video_color = Color32::from_rgb(220, 80, 80);
+                                let audio_color = Color32::from_rgb(180, 100, 220);
+                                let animation_color = Color32::from_rgb(100, 180, 220);
+                                let texture_color = Color32::from_rgb(120, 200, 120);
+                                let particle_color = Color32::from_rgb(255, 180, 50);
+
+                                if sub_item(ui, VIDEO, "Video Project", video_color) {
+                                    assets.show_create_video_dialog = true;
+                                    assets.new_video_name = "NewVideo".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, MUSIC_NOTES, "Audio Project", audio_color) {
+                                    assets.show_create_audio_dialog = true;
+                                    assets.new_audio_name = "NewAudio".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, FILM_SCRIPT, "Animation", animation_color) {
+                                    assets.show_create_animation_dialog = true;
+                                    assets.new_animation_name = "NewAnimation".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, PAINT_BRUSH, "Texture", texture_color) {
+                                    assets.show_create_texture_dialog = true;
+                                    assets.new_texture_name = "NewTexture".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, SPARKLE, "Particle FX", particle_color) {
+                                    assets.show_create_particle_dialog = true;
+                                    assets.new_particle_name = "NewParticle".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                            }
+                            "world" => {
+                                let level_color = Color32::from_rgb(100, 200, 180);
+                                let terrain_color = Color32::from_rgb(140, 180, 100);
+
+                                if sub_item(ui, GAME_CONTROLLER, "Level", level_color) {
+                                    assets.show_create_level_dialog = true;
+                                    assets.new_level_name = "NewLevel".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                                if sub_item(ui, MOUNTAINS, "Terrain", terrain_color) {
+                                    assets.show_create_terrain_dialog = true;
+                                    assets.new_terrain_name = "NewTerrain".to_string();
+                                    assets.context_menu_pos = None;
+                                    assets.context_submenu = None;
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        ui.add_space(2.0);
+                    });
+            });
+
+        // Store submenu rect in memory for click-outside detection
+        ui.ctx().memory_mut(|mem| {
+            mem.data.insert_temp(egui::Id::new("assets_submenu_rect"), submenu_response.response.rect);
+        });
+
+        // Close submenu if pointer moves away from both menu and submenu
+        if let Some(pointer_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+            let expanded_menu = menu_rect.expand(2.0);
+            let expanded_submenu = submenu_response.response.rect.expand(2.0);
+            if !expanded_menu.contains(pointer_pos) && !expanded_submenu.contains(pointer_pos) {
+                assets.context_submenu = None;
+            }
+        }
+    } else {
+        // Clear stored submenu rect when no submenu is open
+        ui.ctx().memory_mut(|mem| {
+            mem.data.remove::<egui::Rect>(egui::Id::new("assets_submenu_rect"));
+        });
+    }
 }
 
 fn render_create_script_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
@@ -2995,6 +3156,170 @@ fn render_create_terrain_dialog(ctx: &egui::Context, assets: &mut AssetBrowserSt
     }
 }
 
+fn render_create_material_blueprint_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_material_blueprint_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("Create Material Blueprint")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_material_blueprint_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_material_blueprint_name.ends_with(".material_bp") {
+                            assets.new_material_blueprint_name.clone()
+                        } else {
+                            format!("{}.material_bp", assets.new_material_blueprint_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_material_blueprint_template(&assets.new_material_blueprint_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create material blueprint: {}", e);
+                        } else {
+                            info!("Created material blueprint: {}", path.display());
+                            assets.pending_blueprint_open = Some(path);
+                        }
+                    }
+
+                    assets.show_create_material_blueprint_dialog = false;
+                    assets.new_material_blueprint_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_material_blueprint_dialog = false;
+                    assets.new_material_blueprint_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_material_blueprint_dialog = false;
+    }
+}
+
+fn render_create_script_blueprint_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_script_blueprint_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("Create Script Blueprint")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_script_blueprint_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_script_blueprint_name.ends_with(".blueprint") {
+                            assets.new_script_blueprint_name.clone()
+                        } else {
+                            format!("{}.blueprint", assets.new_script_blueprint_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_script_blueprint_template(&assets.new_script_blueprint_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create script blueprint: {}", e);
+                        } else {
+                            info!("Created script blueprint: {}", path.display());
+                            assets.pending_blueprint_open = Some(path);
+                        }
+                    }
+
+                    assets.show_create_script_blueprint_dialog = false;
+                    assets.new_script_blueprint_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_script_blueprint_dialog = false;
+                    assets.new_script_blueprint_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_script_blueprint_dialog = false;
+    }
+}
+
+fn render_create_shader_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_shader_dialog {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new("Create Shader")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut assets.new_shader_name);
+            });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let name = if assets.new_shader_name.ends_with(".wgsl") {
+                            assets.new_shader_name.clone()
+                        } else {
+                            format!("{}.wgsl", assets.new_shader_name)
+                        };
+
+                        let path = current_folder.join(&name);
+                        let template = create_shader_template(&assets.new_shader_name);
+
+                        if let Err(e) = std::fs::write(&path, template) {
+                            error!("Failed to create shader: {}", e);
+                        } else {
+                            info!("Created shader: {}", path.display());
+                        }
+                    }
+
+                    assets.show_create_shader_dialog = false;
+                    assets.new_shader_name.clear();
+                }
+
+                if ui.button("Cancel").clicked() {
+                    assets.show_create_shader_dialog = false;
+                    assets.new_shader_name.clear();
+                }
+            });
+        });
+
+    if !open {
+        assets.show_create_shader_dialog = false;
+    }
+}
+
 /// Opens the file dialog to select files for import
 fn open_import_file_dialog(assets: &mut AssetBrowserState) {
     if let Some(paths) = rfd::FileDialog::new()
@@ -3535,6 +3860,50 @@ fn create_material_template(name: &str) -> String {
 }}"#, clean_name)
 }
 
+fn create_material_blueprint_template(name: &str) -> String {
+    let clean_name = name.trim_end_matches(".material_bp");
+    format!(r#"{{
+    "version": 1,
+    "graph": {{
+        "name": "{}",
+        "graph_type": "Material",
+        "nodes": [],
+        "connections": [],
+        "variables": [],
+        "next_node_id": 1
+    }}
+}}"#, clean_name)
+}
+
+fn create_script_blueprint_template(name: &str) -> String {
+    let clean_name = name.trim_end_matches(".blueprint");
+    format!(r#"{{
+    "version": 1,
+    "graph": {{
+        "name": "{}",
+        "graph_type": "Behavior",
+        "nodes": [],
+        "connections": [],
+        "variables": [],
+        "next_node_id": 1
+    }}
+}}"#, clean_name)
+}
+
+fn create_shader_template(name: &str) -> String {
+    let clean_name = name.trim_end_matches(".wgsl");
+    format!(r#"// Shader: {}
+#import bevy_pbr::forward_io::VertexOutput
+
+@fragment
+fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {{
+    let uv = mesh.uv;
+    let color = vec3<f32>(uv.x, uv.y, 0.5);
+    return vec4<f32>(color, 1.0);
+}}
+"#, clean_name)
+}
+
 fn create_scene_template(name: &str) -> String {
     format!(r#"{{
     "name": "{}",
@@ -4022,6 +4391,9 @@ fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
         "rhai" => (CODE, Color32::from_rgb(130, 230, 180)),  // Mint green
         "lua" => (CODE, Color32::from_rgb(80, 130, 230)),    // Lua blue
         "js" | "ts" => (CODE, Color32::from_rgb(240, 220, 80)),  // JavaScript yellow
+
+        // Shaders
+        "wgsl" | "glsl" | "vert" | "frag" => (GRAPHICS_CARD, Color32::from_rgb(220, 120, 255)),  // Purple for shaders
 
         // Rust source
         "rs" => (FILE_RS, Color32::from_rgb(255, 130, 80)),  // Rust orange

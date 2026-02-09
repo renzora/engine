@@ -381,10 +381,11 @@ pub enum ScriptCommand {
     Destroy { entity: Entity },
 }
 
-/// System to update ScriptInput from Bevy's input resources
+/// System to update ScriptInput from Bevy's input resources.
+/// Uses raw KeyboardInput events so keyboard state is not affected by egui absorption.
 pub fn update_script_input(
     mut script_input: ResMut<ScriptInput>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    mut keyboard_events: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
@@ -398,16 +399,17 @@ pub fn update_script_input(
     script_input.mouse_delta = Vec2::ZERO;
     script_input.scroll_delta = Vec2::ZERO;
 
-    // Update keyboard state
-    for key in keyboard.get_pressed() {
-        script_input.keys_pressed.insert(*key, true);
-    }
-    for key in keyboard.get_just_pressed() {
-        script_input.keys_just_pressed.insert(*key, true);
-    }
-    for key in keyboard.get_just_released() {
-        script_input.keys_pressed.remove(key);
-        script_input.keys_just_released.insert(*key, true);
+    // Update keyboard state from raw events (not affected by egui input absorption)
+    for event in keyboard_events.read() {
+        if event.state.is_pressed() {
+            if !script_input.keys_pressed.contains_key(&event.key_code) {
+                script_input.keys_just_pressed.insert(event.key_code, true);
+            }
+            script_input.keys_pressed.insert(event.key_code, true);
+        } else {
+            script_input.keys_pressed.remove(&event.key_code);
+            script_input.keys_just_released.insert(event.key_code, true);
+        }
     }
 
     // Update mouse buttons

@@ -14,11 +14,14 @@ mod input;
 #[cfg(feature = "solari")]
 mod meshlet;
 mod particles;
+mod pixel_editor;
 mod play_mode;
 mod plugin_core;
 mod project;
 mod scene;
 mod scripting;
+mod shader_preview;
+mod shader_thumbnail;
 mod shared;
 mod spawn;
 mod terrain;
@@ -45,7 +48,7 @@ use bevy::anti_alias::dlss::DlssProjectId;
 #[cfg(feature = "solari")]
 use bevy::asset::uuid::Uuid;
 use bevy::window::{WindowMode, WindowResizeConstraints};
-use bevy::winit::WinitWindows;
+use bevy::winit::{WinitSettings, WinitWindows};
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::core::AppState;
@@ -140,6 +143,14 @@ fn main() {
         )
         .add_plugins(bevy_egui::EguiPlugin::default());
 
+    // Pause rendering when the window is not focused to save CPU/GPU
+    app.insert_resource(WinitSettings {
+        focused_mode: bevy::winit::UpdateMode::Continuous,
+        unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
+            std::time::Duration::from_secs(1),
+        ),
+    });
+
     #[cfg(feature = "solari")]
     app.add_plugins(SolariPlugins)
         .add_plugins(MeshletPlugin { cluster_buffer_slots: 8192 });
@@ -227,6 +238,7 @@ fn main() {
             viewport::ViewportPlugin,
             viewport::StudioPreviewPlugin,
             viewport::ParticlePreviewPlugin,
+            shader_preview::ShaderPreviewPlugin,
             gizmo::GizmoPlugin,
             input::InputPlugin,
             ui::UiPlugin,
@@ -235,6 +247,7 @@ fn main() {
             play_mode::PlayModePlugin,
         ))
         .add_plugins((
+            shader_thumbnail::ShaderThumbnailPlugin,
             blueprint::BlueprintPlugin,
             blueprint::MaterialPreviewPlugin,
             brushes::BrushPlugin,
@@ -299,6 +312,20 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             viewport::register_model_preview_textures
+                .after(ui::editor_ui)
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Shader preview texture registration
+        .add_systems(
+            EguiPrimaryContextPass,
+            shader_preview::register_shader_preview_texture
+                .after(ui::editor_ui)
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Shader thumbnail texture registration (for asset browser thumbnails)
+        .add_systems(
+            EguiPrimaryContextPass,
+            shader_thumbnail::register_shader_thumbnail_textures
                 .after(ui::editor_ui)
                 .run_if(in_state(AppState::Editor)),
         )
