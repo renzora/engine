@@ -56,35 +56,34 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
 ///
 /// ```text
 /// ┌─────────┬──────────────────────┬──────────┐
-/// │         │                      │          │
-/// │Hierarchy│ Viewport|NodeExplorer│ Inspector│
-/// │         │                      │          │
-/// ├─────────┴──────────────────────┴──────────┤
-/// │       Assets | Console | Animation        │
-/// └───────────────────────────────────────────┘
+/// │         │ Viewport|NodeExplorer│          │
+/// │         │                      │Inspector │
+/// │Hierarchy├──────────────────────┤          │
+/// │         │ Assets|Console|Anim  │          │
+/// └─────────┴──────────────────────┴──────────┘
 /// ```
 pub fn default_layout() -> DockTree {
-    DockTree::vertical(
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::Hierarchy),
         DockTree::horizontal(
-            DockTree::leaf(PanelId::Hierarchy),
-            DockTree::horizontal(
+            DockTree::vertical(
                 DockTree::Leaf {
                     tabs: vec![PanelId::Viewport, PanelId::NodeExplorer],
                     active_tab: 0,
                 },
                 DockTree::Leaf {
-                    tabs: vec![PanelId::Inspector, PanelId::History],
+                    tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation],
                     active_tab: 0,
                 },
-                0.78,
+                0.72,
             ),
-            0.18,
+            DockTree::Leaf {
+                tabs: vec![PanelId::Inspector, PanelId::History],
+                active_tab: 0,
+            },
+            0.78,
         ),
-        DockTree::Leaf {
-            tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation],
-            active_tab: 0,
-        },
-        0.72,
+        0.18,
     )
 }
 
