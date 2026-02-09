@@ -41,6 +41,13 @@ pub struct PendingMeshInstanceLoad {
     pub name: String,
 }
 
+/// Marker component to indicate a spawned model needs its Y position adjusted
+/// so its bottom sits on the ground surface instead of its origin.
+#[derive(Component)]
+pub struct NeedsGroundAlignment {
+    pub target_y: f32,
+}
+
 /// Marker component to indicate a MeshInstance has had its model loading initiated
 #[derive(Component)]
 pub struct MeshInstanceModelLoading;
@@ -453,6 +460,11 @@ pub fn spawn_loaded_gltfs(
                     mesh_instance.insert(ChildOf(root));
                 }
 
+                // Attach ground alignment marker if spawned from a drop position
+                if let Some(pos) = pending.spawn_position {
+                    mesh_instance.insert(NeedsGroundAlignment { target_y: pos.y });
+                }
+
                 let mesh_instance_entity = mesh_instance.id();
 
                 // Store animation handles in the resource (separate from component for Bevy compatibility)
@@ -498,6 +510,59 @@ pub fn spawn_loaded_gltfs(
     // Remove completed loads (in reverse order to maintain indices)
     for index in completed.into_iter().rev() {
         pending_loads.loads.remove(index);
+    }
+}
+
+/// System to align dropped models so their bottom sits on the ground surface.
+/// Waits for Bevy to compute Aabb on child meshes, then offsets the parent Y position.
+pub fn align_models_to_ground(
+    mut commands: Commands,
+    mut query: Query<(Entity, &NeedsGroundAlignment, &Children, &mut Transform)>,
+    children_query: Query<&Children>,
+    aabb_query: Query<(&Aabb, &GlobalTransform)>,
+) {
+    for (entity, alignment, children, mut transform) in query.iter_mut() {
+        // Recursively collect all descendant entities and find the lowest world-space Y
+        let mut lowest_y: Option<f32> = None;
+
+        let mut stack: Vec<Entity> = children.iter().collect();
+        while let Some(child) = stack.pop() {
+            // Check if this entity has an Aabb
+            if let Ok((aabb, global_transform)) = aabb_query.get(child) {
+                // Compute the 8 corners of the AABB in local space, then transform to world space
+                let center = Vec3::from(aabb.center);
+                let half = Vec3::from(aabb.half_extents);
+
+                for &corner in &[
+                    Vec3::new(center.x - half.x, center.y - half.y, center.z - half.z),
+                    Vec3::new(center.x + half.x, center.y - half.y, center.z - half.z),
+                    Vec3::new(center.x - half.x, center.y + half.y, center.z - half.z),
+                    Vec3::new(center.x + half.x, center.y + half.y, center.z - half.z),
+                    Vec3::new(center.x - half.x, center.y - half.y, center.z + half.z),
+                    Vec3::new(center.x + half.x, center.y - half.y, center.z + half.z),
+                    Vec3::new(center.x - half.x, center.y + half.y, center.z + half.z),
+                    Vec3::new(center.x + half.x, center.y + half.y, center.z + half.z),
+                ] {
+                    let world_pos = global_transform.transform_point(corner);
+                    lowest_y = Some(match lowest_y {
+                        Some(prev) => prev.min(world_pos.y),
+                        None => world_pos.y,
+                    });
+                }
+            }
+
+            // Push grandchildren onto the stack
+            if let Ok(grandchildren) = children_query.get(child) {
+                stack.extend(grandchildren.iter());
+            }
+        }
+
+        // If we found AABBs, adjust the Y position; otherwise wait for next frame
+        if let Some(lowest_world_y) = lowest_y {
+            let offset = alignment.target_y - lowest_world_y;
+            transform.translation.y += offset;
+            commands.entity(entity).remove::<NeedsGroundAlignment>();
+        }
     }
 }
 
@@ -1277,6 +1342,197 @@ mod tests {
         let t = result.unwrap();
         // Should hit at z = -4.0, so t = 6.0
         assert!((t - 6.0).abs() < 0.01, "Expected t ~6.0, got {}", t);
+    }
+}
+
+// === Drag Preview System ===
+
+/// Resource tracking the drag-preview lifecycle
+#[derive(Resource, Default)]
+pub struct DragPreviewState {
+    pub phase: DragPreviewPhase,
+}
+
+/// Phases of the drag-preview lifecycle
+pub enum DragPreviewPhase {
+    None,
+    Loading {
+        handle: Handle<Gltf>,
+        path: PathBuf,
+    },
+    Active {
+        preview_root: Entity,
+        path: PathBuf,
+        preview_material: Handle<StandardMaterial>,
+    },
+}
+
+impl Default for DragPreviewPhase {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// Marker on the preview root entity (NOT an EditorEntity, so invisible to hierarchy/save)
+#[derive(Component)]
+pub struct DragPreviewEntity;
+
+/// Run condition: true when a model asset is being dragged OR a preview is active
+pub fn drag_preview_active(
+    assets: Res<AssetBrowserState>,
+    preview: Res<DragPreviewState>,
+) -> bool {
+    assets.dragging_asset.is_some() || !matches!(preview.phase, DragPreviewPhase::None)
+}
+
+/// Tracks which child meshes already got the unlit override material
+#[derive(Component)]
+pub struct DragPreviewMaterialApplied;
+
+/// Start loading the GLTF when a model drag begins
+pub fn start_drag_preview(
+    assets: Res<AssetBrowserState>,
+    asset_server: Res<AssetServer>,
+    mut preview: ResMut<DragPreviewState>,
+) {
+    let Some(ref dragging_path) = assets.dragging_asset else {
+        return;
+    };
+
+    if !matches!(preview.phase, DragPreviewPhase::None) {
+        return;
+    }
+
+    let ext = dragging_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if ext == "glb" || ext == "gltf" {
+        let handle: Handle<Gltf> = asset_server.load(dragging_path.clone());
+        preview.phase = DragPreviewPhase::Loading {
+            handle,
+            path: dragging_path.clone(),
+        };
+    }
+}
+
+/// Spawn and position the preview ghost mesh
+pub fn update_drag_preview(
+    mut commands: Commands,
+    assets: Res<AssetBrowserState>,
+    gltf_assets: Res<Assets<Gltf>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut preview: ResMut<DragPreviewState>,
+    mut transform_query: Query<&mut Transform, With<DragPreviewEntity>>,
+    children_query: Query<&Children>,
+    mesh3d_query: Query<Entity, (With<Mesh3d>, Without<DragPreviewMaterialApplied>)>,
+) {
+    match &preview.phase {
+        DragPreviewPhase::Loading { handle, path } => {
+            let Some(gltf) = gltf_assets.get(handle) else {
+                return; // Still loading
+            };
+
+            // Get scene handle
+            let scene_handle = if let Some(default_scene) = &gltf.default_scene {
+                default_scene.clone()
+            } else if !gltf.scenes.is_empty() {
+                gltf.scenes[0].clone()
+            } else {
+                preview.phase = DragPreviewPhase::None;
+                return;
+            };
+
+            // Create shared unlit semi-transparent preview material
+            let preview_material = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.6, 0.65, 0.7, 0.5),
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            // Spawn preview root at drag position or origin
+            let position = assets.drag_ground_position.unwrap_or(Vec3::ZERO);
+            let preview_root = commands
+                .spawn((
+                    Transform::from_translation(position),
+                    Visibility::default(),
+                    DragPreviewEntity,
+                ))
+                .id();
+
+            // Spawn scene as child
+            commands.spawn((
+                bevy::scene::SceneRoot(scene_handle),
+                Transform::default(),
+                Visibility::default(),
+                ChildOf(preview_root),
+            ));
+
+            let path = path.clone();
+            let mat = preview_material.clone();
+            preview.phase = DragPreviewPhase::Active {
+                preview_root,
+                path,
+                preview_material: mat,
+            };
+        }
+        DragPreviewPhase::Active {
+            preview_root,
+            preview_material,
+            ..
+        } => {
+            let root = *preview_root;
+            let mat = preview_material.clone();
+
+            // Update position from drag_ground_position
+            if let Some(pos) = assets.drag_ground_position {
+                if let Ok(mut tf) = transform_query.get_mut(root) {
+                    tf.translation = pos;
+                }
+            }
+
+            // Walk children and apply preview material to any new Mesh3d entities
+            let mut stack: Vec<Entity> = vec![root];
+            while let Some(entity) = stack.pop() {
+                // Check if this entity has a Mesh3d but no DragPreviewMaterialApplied
+                if mesh3d_query.get(entity).is_ok() {
+                    commands.entity(entity).insert((
+                        MeshMaterial3d(mat.clone()),
+                        DragPreviewMaterialApplied,
+                    ));
+                }
+                if let Ok(children) = children_query.get(entity) {
+                    stack.extend(children.iter());
+                }
+            }
+        }
+        DragPreviewPhase::None => {}
+    }
+}
+
+/// Despawn the preview when drag ends
+pub fn cleanup_drag_preview(
+    mut commands: Commands,
+    assets: Res<AssetBrowserState>,
+    mut preview: ResMut<DragPreviewState>,
+) {
+    if assets.dragging_asset.is_some() {
+        return; // Still dragging
+    }
+
+    match &preview.phase {
+        DragPreviewPhase::Active { preview_root, .. } => {
+            commands.entity(*preview_root).despawn();
+            preview.phase = DragPreviewPhase::None;
+        }
+        DragPreviewPhase::Loading { .. } => {
+            // Load started but not yet visible - just reset
+            preview.phase = DragPreviewPhase::None;
+        }
+        DragPreviewPhase::None => {}
     }
 }
 

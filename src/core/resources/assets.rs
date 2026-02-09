@@ -152,6 +152,8 @@ pub struct AssetBrowserState {
     pub expanded_folders: HashSet<PathBuf>,
     /// Width of the tree panel in split view
     pub tree_panel_width: f32,
+    /// Ground position under cursor during model drag (updated every frame by viewport)
+    pub drag_ground_position: Option<Vec3>,
 }
 
 /// Pending image drop information

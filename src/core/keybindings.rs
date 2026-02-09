@@ -26,6 +26,7 @@ pub enum EditorAction {
     ModalScale,
 
     // Selection
+    SelectUnderCursor,
     Delete,
     Duplicate,
     DuplicateAndMove,
@@ -80,6 +81,7 @@ impl EditorAction {
             EditorAction::ModalGrab => "Grab (Move)",
             EditorAction::ModalRotate => "Rotate",
             EditorAction::ModalScale => "Scale",
+            EditorAction::SelectUnderCursor => "Select Under Cursor",
             EditorAction::Delete => "Delete",
             EditorAction::Duplicate => "Duplicate",
             EditorAction::DuplicateAndMove => "Duplicate & Move",
@@ -127,7 +129,7 @@ impl EditorAction {
             | EditorAction::ModalRotate
             | EditorAction::ModalScale => "Transform",
 
-            EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
+            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
 
             EditorAction::Undo | EditorAction::Redo => "Edit",
 
@@ -175,6 +177,7 @@ impl EditorAction {
             EditorAction::ModalRotate,
             EditorAction::ModalScale,
             // Selection
+            EditorAction::SelectUnderCursor,
             EditorAction::Delete,
             EditorAction::Duplicate,
             EditorAction::DuplicateAndMove,
@@ -291,6 +294,7 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::ModalScale, KeyBinding::new(KeyCode::KeyS));
 
         // Selection defaults
+        bindings.insert(EditorAction::SelectUnderCursor, KeyBinding::new(KeyCode::KeyX));
         bindings.insert(EditorAction::Delete, KeyBinding::new(KeyCode::Delete));
         bindings.insert(EditorAction::Duplicate, KeyBinding::new(KeyCode::KeyD).ctrl());
         bindings.insert(EditorAction::DuplicateAndMove, KeyBinding::new(KeyCode::KeyD).alt());

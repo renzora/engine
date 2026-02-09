@@ -394,6 +394,17 @@ pub fn spawn_preset(
                 MeshPrimitiveType::Plane => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
             };
 
+            // Offset Y so the mesh bottom sits on the ground (Y=0)
+            let ground_offset = match mesh_type {
+                MeshPrimitiveType::Cube => 0.5,       // half of 1.0 height
+                MeshPrimitiveType::Sphere => 0.5,     // radius 0.5
+                MeshPrimitiveType::Cylinder => 1.0,   // half of 2.0 height
+                MeshPrimitiveType::Plane => 0.001,    // slight offset to avoid z-fighting with ground
+            };
+            commands.entity(entity).insert(
+                Transform::from_xyz(0.0, ground_offset, 0.0),
+            );
+
             let material = materials.add(StandardMaterial {
                 base_color: Color::srgb(0.8, 0.7, 0.6),
                 ..default()

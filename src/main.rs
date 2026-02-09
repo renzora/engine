@@ -386,6 +386,13 @@ fn main() {
                 gizmo::gizmo_2d_drag_system,
                 gizmo::draw_selection_gizmo_2d,
                 gizmo::handle_2d_picking,
+            )
+                .chain()
+                .run_if(in_state(AppState::Editor)),
+        )
+        .add_systems(
+            Update,
+            (
                 // Collider edit systems
                 gizmo::collider_edit_selection_sync,
                 gizmo::collider_edit_hover_system,
@@ -393,6 +400,7 @@ fn main() {
                 gizmo::collider_edit_drag_system,
             )
                 .chain()
+                .after(gizmo::handle_2d_picking)
                 .run_if(in_state(AppState::Editor)),
         )
         .add_systems(
@@ -422,6 +430,25 @@ fn main() {
                 scene::assign_scene_tab_ids,
             )
                 .chain()
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Drag preview systems (show ghost mesh while dragging model over viewport)
+        .add_systems(
+            Update,
+            (
+                input::start_drag_preview,
+                input::update_drag_preview,
+                input::cleanup_drag_preview,
+            )
+                .chain()
+                .before(input::handle_asset_panel_drop)
+                .run_if(in_state(AppState::Editor).and(input::drag_preview_active)),
+        )
+        // Ground alignment for dropped models (runs after spawn, needs Aabb computed)
+        .add_systems(
+            Update,
+            input::align_models_to_ground
+                .after(input::spawn_loaded_gltfs)
                 .run_if(in_state(AppState::Editor)),
         )
         // Scene component rehydration systems (recreate rendering components from data components after scene load)

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
-use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState};
+use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState, KeyBindings, EditorAction};
 use crate::terrain::{TerrainChunkData, TerrainChunkOf};
 use crate::console_info;
 
@@ -176,11 +176,11 @@ pub fn gizmo_interaction_system(
     play_mode: Res<PlayModeState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     editor_entities: Query<(Entity, &GlobalTransform, &EditorEntity)>,
     transforms: Query<&Transform, With<EditorEntity>>,
-    parents: Query<&ChildOf, With<SceneNode>>,
     parent_query: Query<&ChildOf>,
     mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
@@ -299,8 +299,11 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    // Only process clicks
-    if !mouse_button.just_pressed(MouseButton::Left) {
+    // Check for keyboard-triggered select (picks entity under cursor without initiating drag/box select)
+    let key_select = keybindings.just_pressed(EditorAction::SelectUnderCursor, &keyboard);
+
+    // Only process clicks or keyboard select
+    if !mouse_button.just_pressed(MouseButton::Left) && !key_select {
         return;
     }
 
@@ -315,7 +318,8 @@ pub fn gizmo_interaction_system(
     }
 
     // If in Transform mode and hovering over a gizmo axis, start axis-constrained drag
-    if gizmo.tool == EditorTool::Transform {
+    // (only for mouse clicks, not keyboard select)
+    if !key_select && gizmo.tool == EditorTool::Transform {
         if let Some(axis) = gizmo.hovered_axis {
             // Calculate initial drag state based on gizmo mode
             if let Some(selected) = selection.selected_entity {
@@ -429,7 +433,7 @@ pub fn gizmo_interaction_system(
         // In Select mode, always allow selecting any entity
         let should_select = if gizmo.tool == EditorTool::Transform {
             if let Some(current) = selection.selected_entity {
-                !is_descendant_of(clicked, current, &parents)
+                !is_descendant_of(clicked, current, &parent_query)
             } else {
                 true
             }
@@ -453,8 +457,8 @@ pub fn gizmo_interaction_system(
     } else {
         console_info!("Selection", "Clicked on empty space - clearing selection");
 
-        // No entity clicked
-        if gizmo.tool == EditorTool::Select {
+        // No entity clicked - start box selection only for mouse clicks (not keyboard select)
+        if !key_select && gizmo.tool == EditorTool::Select {
             // Start box selection in Select mode
             if let Some(window) = windows.iter().next() {
                 if let Some(cursor_pos) = window.cursor_position() {
@@ -498,7 +502,7 @@ fn find_editor_entity_ancestor(
 }
 
 /// Check if an entity is a descendant of another entity
-fn is_descendant_of(entity: Entity, ancestor: Entity, parents: &Query<&ChildOf, With<SceneNode>>) -> bool {
+fn is_descendant_of(entity: Entity, ancestor: Entity, parents: &Query<&ChildOf>) -> bool {
     let mut current = entity;
     while let Ok(child_of) = parents.get(current) {
         if child_of.0 == ancestor {

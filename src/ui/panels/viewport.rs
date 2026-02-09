@@ -1226,6 +1226,16 @@ pub fn render_viewport_content(
     let pointer_pos = ctx.pointer_hover_pos();
     let in_viewport = pointer_pos.map_or(false, |p| content_rect.contains(p));
 
+    // Update drag_ground_position every frame while dragging a model over the 3D viewport
+    if assets.dragging_asset.is_some() && in_viewport && viewport.viewport_mode == ViewportMode::Mode3D {
+        if let Some(mouse_pos) = pointer_pos {
+            let ground_pos = ground_plane_intersection(orbit, content_rect, mouse_pos);
+            assets.drag_ground_position = Some(ground_pos);
+        }
+    } else {
+        assets.drag_ground_position = None;
+    }
+
     if assets.dragging_asset.is_some() && ctx.input(|i| i.pointer.any_released()) {
         if in_viewport {
             if let Some(asset_path) = assets.dragging_asset.take() {
@@ -1353,6 +1363,37 @@ fn is_blueprint_material(path: &std::path::Path) -> bool {
         .and_then(|e| e.to_str())
         .map(|ext| ext.to_lowercase() == "material_bp")
         .unwrap_or(false)
+}
+
+/// Compute the ground plane (Y=0) intersection for a mouse position in the 3D viewport.
+fn ground_plane_intersection(orbit: &OrbitCameraState, content_rect: Rect, mouse_pos: Pos2) -> Vec3 {
+    let local_x = mouse_pos.x - content_rect.min.x;
+    let local_y = mouse_pos.y - content_rect.min.y;
+    let norm_x = local_x / content_rect.width();
+    let norm_y = local_y / content_rect.height();
+
+    let camera_pos = calculate_camera_position(orbit.focus, orbit.distance, orbit.yaw, orbit.pitch);
+    let fov = std::f32::consts::FRAC_PI_4;
+    let aspect = content_rect.width() / content_rect.height();
+
+    let ndc_x = norm_x * 2.0 - 1.0;
+    let ndc_y = 1.0 - norm_y * 2.0;
+
+    let tan_fov = (fov / 2.0).tan();
+    let ray_view = Vec3::new(ndc_x * tan_fov * aspect, ndc_y * tan_fov, -1.0).normalize();
+
+    let camera_forward = (orbit.focus - camera_pos).normalize();
+    let camera_right = camera_forward.cross(Vec3::Y).normalize();
+    let camera_up = camera_right.cross(camera_forward).normalize();
+
+    let ray_world = (camera_right * ray_view.x + camera_up * ray_view.y - camera_forward * ray_view.z).normalize();
+
+    if ray_world.y.abs() > 0.0001 {
+        let t = -camera_pos.y / ray_world.y;
+        if t > 0.0 { camera_pos + ray_world * t } else { Vec3::ZERO }
+    } else {
+        Vec3::ZERO
+    }
 }
 
 /// Calculate camera position from orbit parameters
