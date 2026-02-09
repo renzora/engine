@@ -1399,7 +1399,7 @@ fn render_add_entity_popup(
         if let Some(preset) = first_preset {
             let parent = hierarchy.add_entity_parent;
             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
-            selection.selected_entity = Some(entity);
+            selection.select(entity);
             if let Some(parent_entity) = parent {
                 hierarchy.expanded_entities.insert(parent_entity);
             }
@@ -1419,7 +1419,7 @@ fn render_add_entity_popup(
             if let Some(def) = first_component {
                 let parent = hierarchy.add_entity_parent;
                 let entity = spawn_component_as_node(commands, meshes, materials, registry, def, parent);
-                selection.selected_entity = Some(entity);
+                selection.select(entity);
                 if let Some(parent_entity) = parent {
                     hierarchy.expanded_entities.insert(parent_entity);
                 }
@@ -1716,7 +1716,7 @@ fn render_add_entity_popup(
                                             spawn_component_as_node(commands, meshes, materials, registry, def, parent)
                                         }
                                     };
-                                    selection.selected_entity = Some(entity);
+                                    selection.select(entity);
                                     if let Some(parent_entity) = parent {
                                         hierarchy.expanded_entities.insert(parent_entity);
                                     }
@@ -1774,7 +1774,7 @@ fn render_add_entity_popup(
                         if row_response.clicked() {
                             let parent = hierarchy.add_entity_parent;
                             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             if let Some(parent_entity) = parent {
                                 hierarchy.expanded_entities.insert(parent_entity);
                             }

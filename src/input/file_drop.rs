@@ -229,7 +229,7 @@ pub fn handle_image_panel_drop(
         info!("Spawned Sprite2D '{}' with texture", name);
 
         // Auto-select the new entity
-        selection.selected_entity = Some(entity);
+        selection.select(entity);
         if let Some(root) = scene_root_entity {
             hierarchy.expanded_entities.insert(root);
         }
@@ -289,7 +289,7 @@ pub fn handle_image_panel_drop(
         info!("Spawned textured plane '{}' with image", name);
 
         // Auto-select the new entity
-        selection.selected_entity = Some(parent_entity);
+        selection.select(parent_entity);
         if let Some(root) = scene_root_entity {
             hierarchy.expanded_entities.insert(root);
         }
@@ -483,7 +483,7 @@ pub fn spawn_loaded_gltfs(
                 );
 
                 // Auto-select the MeshInstance parent
-                selection.selected_entity = Some(mesh_instance_entity);
+                selection.select(mesh_instance_entity);
                 // Auto-expand the scene root and MeshInstance in hierarchy
                 if let Some(root) = scene_root_entity {
                     hierarchy.expanded_entities.insert(root);
@@ -790,7 +790,7 @@ pub fn handle_scene_hierarchy_drop(
         let entity = scene_instance.id();
 
         // Select the new scene instance
-        selection.selected_entity = Some(entity);
+        selection.select(entity);
 
         info!("Scene instance created: {:?}", entity);
     }
@@ -1343,7 +1343,7 @@ pub fn handle_pending_skybox_drop(
     });
 
     // Select the entity so user sees it in the inspector
-    selection.selected_entity = Some(entity);
+    selection.select(entity);
 
     info!("Applied skybox from dropped HDR/EXR: {:?}", path);
 }

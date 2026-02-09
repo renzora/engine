@@ -1147,7 +1147,7 @@ impl Command for SpawnMeshInstanceCommand {
         self.entity_exists = true;
 
         // Select the respawned entity
-        ctx.world.resource_mut::<SelectionState>().selected_entity = Some(self.entity);
+        ctx.world.resource_mut::<SelectionState>().select(self.entity);
 
         // Note: The model will be reloaded by check_mesh_instance_models system
         // since the entity has MeshInstanceData but no MeshInstanceModelLoading marker

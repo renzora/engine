@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy::window::CursorOptions;
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
-use crate::core::{InputFocusState, SelectionState, ViewportState, OrbitCameraState, KeyBindings, EditorAction};
+use crate::core::{InputFocusState, SelectionState, ViewportState, ViewportCamera, OrbitCameraState, KeyBindings, EditorAction};
 use crate::terrain::TerrainChunkData;
 
 /// Modal transform mode
@@ -217,10 +217,12 @@ pub fn modal_transform_input_system(
     viewport: Res<ViewportState>,
     mut modal: ResMut<ModalTransformState>,
     transforms: Query<&Transform>,
-    windows: Query<&Window>,
+    global_transforms: Query<&GlobalTransform>,
+    mut windows: Query<&mut Window>,
     mut cursor_options: Query<&mut CursorOptions>,
     input_focus: Res<InputFocusState>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
 ) {
     // Don't start new modal if one is active
     if modal.active {
@@ -240,11 +242,6 @@ pub fn modal_transform_input_system(
     // Need at least one selected entity
     let selected = selection.get_all_selected();
     if selected.is_empty() {
-        return;
-    }
-
-    // Only respond when viewport is hovered
-    if !viewport.hovered {
         return;
     }
 
@@ -271,12 +268,48 @@ pub fn modal_transform_input_system(
     };
 
     if let Some(mode) = mode {
-        // Get cursor position
-        let cursor_pos = windows
-            .single()
-            .ok()
-            .and_then(|w| w.cursor_position())
-            .unwrap_or(Vec2::ZERO);
+        let Ok(mut window) = windows.single_mut() else { return };
+
+        // Get cursor position: use actual cursor if viewport is hovered,
+        // otherwise snap cursor to the selected entity's screen position
+        let cursor_pos = if viewport.hovered {
+            window.cursor_position().unwrap_or(Vec2::ZERO)
+        } else {
+            // Compute average world position of selected entities
+            let mut avg_pos = Vec3::ZERO;
+            let mut count = 0u32;
+            for &entity in &selected {
+                if terrain_chunks.get(entity).is_ok() {
+                    continue;
+                }
+                if let Ok(gt) = global_transforms.get(entity) {
+                    avg_pos += gt.translation();
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                return;
+            }
+            avg_pos /= count as f32;
+
+            // Project to screen via camera
+            let Ok((camera, cam_transform)) = camera_query.single() else { return };
+            let Some(ndc) = camera.world_to_ndc(cam_transform, avg_pos) else { return };
+            // Entity is behind camera
+            if ndc.z < 0.0 || ndc.z > 1.0 {
+                return;
+            }
+
+            // Convert NDC to screen coordinates (same math as interaction.rs)
+            let screen_pos = Vec2::new(
+                viewport.position[0] + (ndc.x + 1.0) * 0.5 * viewport.size[0],
+                viewport.position[1] + (1.0 - ndc.y) * 0.5 * viewport.size[1],
+            );
+
+            window.set_cursor_position(Some(screen_pos));
+            modal.just_warped = true;
+            screen_pos
+        };
 
         // Hide cursor
         if let Ok(mut cursor) = cursor_options.single_mut() {

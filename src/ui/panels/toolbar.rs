@@ -66,7 +66,7 @@ pub fn render_toolbar(
                     for template in spawn::templates_by_category(Category::Mesh) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             ui.close();
                         }
                     }
@@ -77,7 +77,7 @@ pub fn render_toolbar(
                     for template in spawn::templates_by_category(Category::Light) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             ui.close();
                         }
                     }
@@ -88,7 +88,7 @@ pub fn render_toolbar(
                     for template in spawn::templates_by_category(Category::Camera) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             ui.close();
                         }
                     }
@@ -103,7 +103,7 @@ pub fn render_toolbar(
                     for template in spawn::templates_by_category(Category::Nodes3D) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             ui.close();
                         }
                     }
@@ -115,7 +115,7 @@ pub fn render_toolbar(
                     for template in spawn::templates_by_category(Category::Physics) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.selected_entity = Some(entity);
+                            selection.select(entity);
                             ui.close();
                         }
                     }

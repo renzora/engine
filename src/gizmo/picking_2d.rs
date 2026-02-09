@@ -154,9 +154,9 @@ pub fn handle_2d_picking(
 
     // Pick entity
     if let Some(entity) = pick_2d_entity(cursor_pos, &viewport, &camera2d_state, &entities) {
-        selection.selected_entity = Some(entity);
+        selection.select(entity);
     } else {
         // Clicked on empty space - deselect
-        selection.selected_entity = None;
+        selection.clear();
     }
 }
