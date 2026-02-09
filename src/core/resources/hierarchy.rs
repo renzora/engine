@@ -37,6 +37,8 @@ pub struct HierarchyState {
     pub add_entity_parent: Option<Entity>,
     /// Request focus on the search box next frame
     pub add_entity_focus_search: bool,
+    /// Entity that a script/blueprint asset drag is hovering over in the hierarchy
+    pub script_drop_target: Option<Entity>,
 }
 
 impl HierarchyState {

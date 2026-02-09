@@ -70,6 +70,8 @@ pub struct AssetBrowserState {
     pub pending_material_drop: Option<PendingMaterialDrop>,
     /// Pending HDR/EXR file to apply as skybox (from viewport drop)
     pub pending_skybox_drop: Option<PathBuf>,
+    /// Pending script/blueprint drops from hierarchy drag (script path, target entity)
+    pub pending_script_drops: Vec<(PathBuf, Entity)>,
     /// Search filter text
     pub search: String,
     /// Current view mode (grid or list)

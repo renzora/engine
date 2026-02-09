@@ -101,6 +101,14 @@ pub fn render_hierarchy(
         .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
         .unwrap_or(false);
 
+    // Check if a script/blueprint file is being dragged
+    let dragging_script = assets.dragging_asset.as_ref()
+        .map(|p| {
+            let s = p.to_string_lossy().to_lowercase();
+            s.ends_with(".rhai") || s.ends_with(".blueprint")
+        })
+        .unwrap_or(false);
+
     // Get plugin tabs for left panel
     let api = plugin_host.api();
     let plugin_tabs = api.get_tabs_for_location(TabLocation::Left);
@@ -159,7 +167,7 @@ pub fn render_hierarchy(
                 }
             } else {
                 // Render normal hierarchy
-                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history, theme);
+                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, dragging_script, default_camera, command_history, theme);
                 ui_events.extend(events);
                 scene_changed = changed;
             }
@@ -244,6 +252,7 @@ pub fn render_hierarchy_content(
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
     dragging_scene: bool,
+    dragging_script: bool,
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
     theme: &Theme,
@@ -357,6 +366,7 @@ pub fn render_hierarchy_content(
         } else {
             // Clear drop target at start of frame
             hierarchy.drop_target = None;
+            hierarchy.script_drop_target = None;
 
             // Clear the building order for this frame (we'll swap at the end)
             hierarchy.building_entity_order.clear();
@@ -387,6 +397,7 @@ pub fn render_hierarchy_content(
                     default_camera,
                     command_history,
                     theme,
+                    dragging_script,
                 );
                 ui_events.extend(events);
                 if changed {
@@ -446,6 +457,15 @@ pub fn render_hierarchy_content(
             if ctx.input(|i| i.pointer.any_released()) {
                 hierarchy.clear_drag();
             }
+
+            // Handle script/blueprint asset drop onto entity
+            if dragging_script && ctx.input(|i| i.pointer.any_released()) {
+                if let Some(target_entity) = hierarchy.script_drop_target.take() {
+                    if let Some(script_path) = assets.dragging_asset.take() {
+                        assets.pending_script_drops.push((script_path, target_entity));
+                    }
+                }
+            }
         }
     });
 
@@ -497,6 +517,7 @@ fn render_tree_node(
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
     theme: &Theme,
+    dragging_script: bool,
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -625,6 +646,30 @@ fn render_tree_node(
                 }
             }
         }
+    }
+
+    // Detect script/blueprint asset drag hover over this row
+    let is_script_drop_hover = if dragging_script && hierarchy.drag_entities.is_empty() {
+        if let Some(pointer_pos) = ctx.pointer_hover_pos() {
+            if rect.contains(pointer_pos) {
+                hierarchy.script_drop_target = Some(entity);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Draw script drop highlight
+    if is_script_drop_hover {
+        let fg_painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("hierarchy_script_drop")));
+        fg_painter.rect_stroke(rect, 2.0, Stroke::new(2.0, drop_line_color), egui::StrokeKind::Inside);
+        let [r, g, b, _] = drop_line_color.to_array();
+        fg_painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(r, g, b, 30));
     }
 
     // Draw drop indicators on foreground layer so they appear on top of content
@@ -1131,6 +1176,7 @@ fn render_tree_node(
                         default_camera,
                         command_history,
                         theme,
+                        dragging_script,
                     );
                     ui_events.extend(child_events);
                     if child_changed {

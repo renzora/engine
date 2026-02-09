@@ -432,6 +432,13 @@ fn main() {
                 .chain()
                 .run_if(in_state(AppState::Editor)),
         )
+        // Script/blueprint drop onto hierarchy entities
+        .add_systems(
+            Update,
+            input::handle_script_hierarchy_drop
+                .after(input::handle_scene_hierarchy_drop)
+                .run_if(in_state(AppState::Editor)),
+        )
         // Drag preview systems (show ghost mesh while dragging model over viewport)
         .add_systems(
             Update,

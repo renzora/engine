@@ -861,6 +861,38 @@ pub fn handle_scene_hierarchy_drop(
     }
 }
 
+/// System to handle script/blueprint files dropped onto entities in the hierarchy
+pub fn handle_script_hierarchy_drop(world: &mut World) {
+    let drops: Vec<(PathBuf, Entity)> = {
+        let mut assets = world.resource_mut::<AssetBrowserState>();
+        std::mem::take(&mut assets.pending_script_drops)
+    };
+
+    if drops.is_empty() {
+        return;
+    }
+
+    let project_path = world.get_resource::<CurrentProject>().map(|p| p.path.clone());
+
+    for (script_path, entity) in drops {
+        // Make path relative to project
+        let rel_path = if let Some(ref proj) = project_path {
+            script_path.strip_prefix(proj).unwrap_or(&script_path).to_path_buf()
+        } else {
+            script_path
+        };
+
+        if let Some(mut script) = world.get_mut::<crate::scripting::ScriptComponent>(entity) {
+            // Entity already has a ScriptComponent - add the new script entry
+            script.add_file_script(rel_path);
+        } else {
+            // Entity doesn't have a ScriptComponent - create one with this script
+            let comp = crate::scripting::ScriptComponent::from_file(rel_path);
+            world.entity_mut(entity).insert(comp);
+        }
+    }
+}
+
 /// Exclusive system to load scene instance contents using Bevy's DynamicScene format
 /// This runs as an exclusive system because it needs to spawn entities
 /// Also handles reloading scene instances when their source scene file is saved

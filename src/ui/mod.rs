@@ -670,6 +670,14 @@ pub fn editor_ui(
                             .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
                             .unwrap_or(false);
 
+                        // Check if a script/blueprint file is being dragged
+                        let dragging_script = editor.assets.dragging_asset.as_ref()
+                            .map(|p| {
+                                let s = p.to_string_lossy().to_lowercase();
+                                s.ends_with(".rhai") || s.ends_with(".blueprint")
+                            })
+                            .unwrap_or(false);
+
                         let active_tab = editor.scene_state.active_scene_tab;
                         let (events, changed) = render_hierarchy_content(
                             ui,
@@ -685,6 +693,7 @@ pub fn editor_ui(
                             &editor.plugin_host,
                             &mut editor.assets,
                             dragging_scene,
+                            dragging_script,
                             &editor.default_camera,
                             &mut editor.command_history,
                             &editor.theme_manager.active_theme,
