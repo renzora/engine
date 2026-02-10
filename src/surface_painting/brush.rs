@@ -450,13 +450,6 @@ pub fn surface_paint_sync_system(
 }
 
 fn update_material_from_layers(mat: &mut SplatmapMaterial, layers: &[super::data::MaterialLayer]) {
-    let get_color = |idx: usize| -> Vec4 {
-        if let Some(l) = layers.get(idx) {
-            Vec4::new(l.color.0, l.color.1, l.color.2, l.color.3)
-        } else {
-            Vec4::new(0.0, 0.0, 0.0, 1.0)
-        }
-    };
     let get_props = |idx: usize| -> Vec4 {
         if let Some(l) = layers.get(idx) {
             Vec4::new(l.metallic, l.roughness, l.uv_scale.x, l.uv_scale.y)
@@ -465,10 +458,11 @@ fn update_material_from_layers(mat: &mut SplatmapMaterial, layers: &[super::data
         }
     };
 
-    mat.layer_colors_0 = get_color(0);
-    mat.layer_colors_1 = get_color(1);
-    mat.layer_colors_2 = get_color(2);
-    mat.layer_colors_3 = get_color(3);
+    // Colors are no longer used (layers are shader-driven), zero them out
+    mat.layer_colors_0 = Vec4::ZERO;
+    mat.layer_colors_1 = Vec4::ZERO;
+    mat.layer_colors_2 = Vec4::ZERO;
+    mat.layer_colors_3 = Vec4::ZERO;
     mat.layer_props_0 = get_props(0);
     mat.layer_props_1 = get_props(1);
     mat.layer_props_2 = get_props(2);
@@ -558,7 +552,7 @@ pub fn surface_paint_command_system(
             }
             super::data::SurfacePaintCommand::ClearMaterial(idx) => {
                 if let Some(l) = surface.layers.get_mut(idx) {
-                    l.texture_path = None;
+                    l.texture_path = Some(super::data::DEFAULT_LAYER_SHADER.to_string());
                     l.cached_shader_source = None;
                     surface.dirty = true;
                     surface.shader_dirty = true;
@@ -600,14 +594,13 @@ pub fn surface_paint_layer_preview_system(
     // Only update if layer count changed or we need to refresh
     let needs_update = paint_state.layer_count != surface.layers.len()
         || paint_state.layers_preview.iter().zip(surface.layers.iter()).any(|(p, l)| {
-            p.name != l.name || p.color != l.color || p.material_source != l.texture_path
+            p.name != l.name || p.material_source != l.texture_path
         });
 
     if needs_update {
         paint_state.layers_preview = surface.layers.iter().map(|l| {
             super::data::LayerPreview {
                 name: l.name.clone(),
-                color: l.color,
                 material_source: l.texture_path.clone(),
             }
         }).collect();

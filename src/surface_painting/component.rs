@@ -74,10 +74,9 @@ pub(crate) fn init_splatmap_for_new_surfaces(
     }
 }
 
-fn layer_color(layers: &[MaterialLayer], idx: usize) -> Vec4 {
-    layers.get(idx).map_or(Vec4::new(0.0, 0.0, 0.0, 1.0), |l| {
-        Vec4::new(l.color.0, l.color.1, l.color.2, l.color.3)
-    })
+fn layer_color(_layers: &[MaterialLayer], _idx: usize) -> Vec4 {
+    // Colors are no longer used (layers are shader-driven)
+    Vec4::ZERO
 }
 
 fn layer_props(layers: &[MaterialLayer], idx: usize) -> Vec4 {
@@ -176,26 +175,7 @@ fn inspect_paintable_surface(
     for i in 0..data.layers.len() {
         let layer_label = format!("Layer {}", i);
         ui.push_id(i, |ui| {
-            changed |= inline_property(ui, row, &layer_label, |ui| {
-                let mut c = egui::Color32::from_rgba_unmultiplied(
-                    (data.layers[i].color.0 * 255.0) as u8,
-                    (data.layers[i].color.1 * 255.0) as u8,
-                    (data.layers[i].color.2 * 255.0) as u8,
-                    (data.layers[i].color.3 * 255.0) as u8,
-                );
-                let resp = ui.color_edit_button_srgba(&mut c).changed();
-                if resp {
-                    data.layers[i].color = (
-                        c.r() as f32 / 255.0,
-                        c.g() as f32 / 255.0,
-                        c.b() as f32 / 255.0,
-                        c.a() as f32 / 255.0,
-                    );
-                    mark_dirty = true;
-                }
-                resp
-            });
-            row += 1;
+            ui.label(egui::RichText::new(&layer_label).size(11.0).strong());
 
             let name_label = format!("  Name {}", i);
             changed |= inline_property(ui, row, &name_label, |ui| {

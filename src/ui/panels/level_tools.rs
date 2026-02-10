@@ -230,12 +230,6 @@ fn render_surface_paint_panel(
 
         for (i, layer) in layers.iter().enumerate() {
             let is_active = settings.active_layer == i;
-            let swatch_color = Color32::from_rgba_unmultiplied(
-                (layer.color.0 * 255.0) as u8,
-                (layer.color.1 * 255.0) as u8,
-                (layer.color.2 * 255.0) as u8,
-                (layer.color.3 * 255.0) as u8,
-            );
 
             let bg = if is_active {
                 accent.linear_multiply(0.25)
@@ -251,14 +245,6 @@ fn render_surface_paint_panel(
             let resp = frame.show(ui, |ui| {
                 ui.set_min_width(available_width - 16.0);
                 ui.horizontal(|ui| {
-                    // Color swatch
-                    let (swatch_rect, _) = ui.allocate_exact_size(
-                        egui::vec2(24.0, 24.0),
-                        egui::Sense::hover(),
-                    );
-                    ui.painter().rect_filled(swatch_rect, Rounding::same(3), swatch_color);
-                    ui.painter().rect_stroke(swatch_rect, Rounding::same(3), egui::Stroke::new(1.0, Color32::from_gray(80)), egui::StrokeKind::Outside);
-
                     // Layer name + material info
                     ui.vertical(|ui| {
                         let name_text = if is_active {

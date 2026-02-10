@@ -5,11 +5,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::terrain::{BrushFalloffType, BrushShape};
 
+/// Default layer shader path (light).
+pub const DEFAULT_LAYER_SHADER: &str = "assets/shaders/layers/default.wgsl";
+/// Default dark layer shader path.
+pub const DEFAULT_LAYER_SHADER_DARK: &str = "assets/shaders/layers/default_dark.wgsl";
+
 /// A single material layer for surface painting.
+/// Each layer is driven by a .wgsl or .material_bp shader file.
 #[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
 pub struct MaterialLayer {
     pub name: String,
-    pub color: (f32, f32, f32, f32),
+    /// Path to the .wgsl or .material_bp shader driving this layer.
     pub texture_path: Option<String>,
     pub uv_scale: Vec2,
     pub metallic: f32,
@@ -24,8 +30,7 @@ impl Default for MaterialLayer {
     fn default() -> Self {
         Self {
             name: "Layer".to_string(),
-            color: (0.8, 0.8, 0.8, 1.0),
-            texture_path: None,
+            texture_path: Some(DEFAULT_LAYER_SHADER.to_string()),
             uv_scale: Vec2::splat(1.0),
             metallic: 0.0,
             roughness: 0.5,
@@ -65,12 +70,11 @@ impl Default for PaintableSurfaceData {
             layers: vec![
                 MaterialLayer {
                     name: "Base".to_string(),
-                    color: (0.85, 0.85, 0.85, 1.0),
                     ..Default::default()
                 },
                 MaterialLayer {
                     name: "Layer 2".to_string(),
-                    color: (0.35, 0.35, 0.35, 1.0),
+                    texture_path: Some(DEFAULT_LAYER_SHADER_DARK.to_string()),
                     ..Default::default()
                 },
             ],
@@ -122,7 +126,6 @@ impl Default for SurfacePaintSettings {
 #[derive(Clone, Debug, Default)]
 pub struct LayerPreview {
     pub name: String,
-    pub color: (f32, f32, f32, f32),
     pub material_source: Option<String>,
 }
 
