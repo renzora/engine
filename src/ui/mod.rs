@@ -331,6 +331,7 @@ pub fn editor_ui(
             &mut editor.docking,
             &mut editor.viewport,
             &mut editor.gizmo,
+            &mut editor.play_mode,
             &editor.theme_manager.active_theme,
         );
         all_ui_events.extend(title_bar_events);
@@ -353,8 +354,6 @@ pub fn editor_ui(
             &mut materials,
             &mut editor.selection,
             &mut editor.hierarchy,
-            &mut editor.play_mode,
-            &mut editor.docking,
             &mut editor.brush_settings,
             &mut editor.terrain_settings,
             terrain_selected,

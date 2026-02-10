@@ -1,19 +1,18 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorSettings, SelectionState, HierarchyState, PlayModeState, PlayState, DockingState};
+use crate::core::{EditorSettings, SelectionState, HierarchyState};
 use crate::gizmo::{GizmoState, EditorTool};
 use crate::brushes::{BrushSettings, BrushType};
 use crate::terrain::{TerrainData, TerrainSettings, TerrainBrushType};
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
-use crate::ui::docking::PanelId;
 use crate::theming::Theme;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
-    PLAY, PAUSE, STOP, GEAR, CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN,
+    CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN,
     SQUARE, FRAME_CORNERS, STACK, ARROW_FAT_LINE_UP,
     ARROW_UP, ARROW_DOWN, WAVES, MINUS, CROSSHAIR,
 };
@@ -31,8 +30,6 @@ pub fn render_toolbar(
     materials: &mut Assets<StandardMaterial>,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
-    play_mode: &mut PlayModeState,
-    docking_state: &mut DockingState,
     brush_settings: &mut BrushSettings,
     terrain_settings: &mut TerrainSettings,
     terrain_selected: bool,
@@ -258,50 +255,6 @@ pub fn render_toolbar(
                     }
                 }
 
-                separator(ui, theme);
-
-                // === Play Controls ===
-                let play_color = theme.semantic.success.to_color32();
-                let is_playing = play_mode.state == PlayState::Playing;
-                let is_paused = play_mode.state == PlayState::Paused;
-                let is_scripts_only = play_mode.is_scripts_only();
-                let is_scripts_paused = play_mode.state == PlayState::ScriptsPaused;
-                let is_in_play_mode = play_mode.is_in_play_mode();
-
-                // Play dropdown button - green when playing
-                let scripts_color = theme.semantic.accent.to_color32();
-                let current_play_color = if is_scripts_only { scripts_color } else { play_color };
-                play_dropdown(
-                    ui,
-                    PLAY,
-                    button_size,
-                    is_playing || is_scripts_only,
-                    current_play_color,
-                    inactive_color,
-                    play_mode,
-                    theme,
-                );
-
-                // Pause button - active when paused
-                let any_paused = is_paused || is_scripts_paused;
-                let pause_resp = tool_button(ui, PAUSE, button_size, any_paused, active_color, inactive_color);
-                if pause_resp.clicked() {
-                    if is_playing {
-                        play_mode.state = PlayState::Paused;
-                    } else if play_mode.state == PlayState::ScriptsOnly {
-                        play_mode.state = PlayState::ScriptsPaused;
-                    }
-                }
-                pause_resp.on_hover_text("Pause (F6)");
-
-                // Stop button - only enabled during play mode
-                let stop_color = if is_in_play_mode { theme.semantic.error.to_color32() } else { theme.text.disabled.to_color32() };
-                let stop_resp = tool_button(ui, STOP, button_size, false, stop_color, inactive_color);
-                if stop_resp.clicked() && is_in_play_mode {
-                    play_mode.request_stop = true;
-                }
-                stop_resp.on_hover_text("Stop (Escape)");
-
                 // === Plugin Toolbar Items ===
                 if !api.toolbar_items.is_empty() {
                     separator(ui, theme);
@@ -314,21 +267,6 @@ pub fn render_toolbar(
                         resp.on_hover_text(&item.tooltip);
                     }
                 }
-
-                separator(ui, theme);
-
-                // === Settings ===
-                let settings_panel = PanelId::Settings;
-                let settings_visible = docking_state.is_panel_visible(&settings_panel);
-                let settings_resp = tool_button(ui, GEAR, button_size, settings_visible, active_color, inactive_color);
-                if settings_resp.clicked() {
-                    if settings_visible {
-                        docking_state.close_panel(&settings_panel);
-                    } else {
-                        docking_state.open_panel(settings_panel);
-                    }
-                }
-                settings_resp.on_hover_text("Settings");
 
                 // Store measured width for centering on next frame
                 let end_x = ui.cursor().left();
@@ -474,181 +412,3 @@ fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
     response.clicked()
 }
 
-fn play_dropdown(
-    ui: &mut egui::Ui,
-    icon: &str,
-    size: Vec2,
-    active: bool,
-    active_color: Color32,
-    inactive_color: Color32,
-    play_mode: &mut PlayModeState,
-    theme: &Theme,
-) {
-    let button_id = ui.make_persistent_id("play_dropdown");
-    let total_size = Vec2::new(size.x + 14.0, size.y); // Extra width for dropdown arrow
-    let (rect, response) = ui.allocate_exact_size(total_size, Sense::hover());
-
-    // Define sub-areas
-    let main_rect = egui::Rect::from_min_max(rect.min, Pos2::new(rect.right() - 14.0, rect.max.y));
-    let dropdown_rect = egui::Rect::from_min_max(Pos2::new(rect.right() - 14.0, rect.min.y), rect.max);
-
-    // Check hover on each area
-    let main_response = ui.interact(main_rect, button_id.with("main"), Sense::click());
-    let dropdown_response = ui.interact(dropdown_rect, button_id.with("dropdown"), Sense::click());
-
-    let is_hovered = response.hovered() || main_response.hovered() || dropdown_response.hovered();
-
-    if ui.is_rect_visible(rect) {
-        // Background color based on state
-        let bg_color = if active {
-            active_color
-        } else if is_hovered {
-            let [r, g, b, _] = inactive_color.to_array();
-            Color32::from_rgb(r.saturating_add(20), g.saturating_add(20), b.saturating_add(25))
-        } else {
-            inactive_color
-        };
-
-        ui.painter().rect_filled(rect, CornerRadius::same(4), bg_color);
-
-        // Highlight main area on hover
-        if main_response.hovered() && !active {
-            ui.painter().rect_filled(
-                main_rect.shrink(1.0),
-                CornerRadius::same(3),
-                Color32::from_white_alpha(15),
-            );
-        }
-
-        // Highlight dropdown area on hover
-        if dropdown_response.hovered() && !active {
-            ui.painter().rect_filled(
-                dropdown_rect.shrink(1.0),
-                CornerRadius::same(3),
-                Color32::from_white_alpha(15),
-            );
-        }
-
-        // Main icon
-        ui.painter().text(
-            Pos2::new(rect.left() + 14.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(14.0),
-            Color32::WHITE,
-        );
-
-        // Divider line
-        let divider_x = rect.right() - 14.0;
-        ui.painter().line_segment(
-            [
-                Pos2::new(divider_x, rect.top() + 4.0),
-                Pos2::new(divider_x, rect.bottom() - 4.0),
-            ],
-            egui::Stroke::new(1.0, Color32::from_white_alpha(40)),
-        );
-
-        // Dropdown arrow
-        ui.painter().text(
-            Pos2::new(rect.right() - 7.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            CARET_DOWN,
-            egui::FontId::proportional(9.0),
-            Color32::from_white_alpha(180),
-        );
-    }
-
-    // Handle main button click - quick play
-    if main_response.clicked() {
-        if play_mode.state == PlayState::Paused {
-            play_mode.state = PlayState::Playing;
-        } else if play_mode.state == PlayState::ScriptsPaused {
-            play_mode.state = PlayState::ScriptsOnly;
-        } else if play_mode.is_editing() {
-            play_mode.request_play = true;
-        }
-    }
-
-    // Handle dropdown click - show menu
-    if dropdown_response.clicked() {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(button_id));
-    }
-
-    #[allow(deprecated)]
-    egui::popup_below_widget(
-        ui,
-        button_id,
-        &response,
-        egui::PopupCloseBehavior::CloseOnClickOutside,
-        |ui| {
-            ui.set_min_width(160.0);
-            ui.style_mut().spacing.item_spacing.y = 2.0;
-
-            let play_icon_color = theme.semantic.success.to_color32();
-            let scripts_icon_color = theme.semantic.accent.to_color32();
-
-            // Play (Fullscreen)
-            if play_menu_item(ui, PLAY, "Play (Fullscreen)", "F5", play_icon_color) {
-                if play_mode.is_editing() {
-                    play_mode.request_play = true;
-                }
-                ui.close();
-            }
-
-            // Run Scripts Only
-            if play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_icon_color) {
-                if play_mode.is_editing() {
-                    play_mode.request_scripts_only = true;
-                }
-                ui.close();
-            }
-        },
-    );
-
-    // Tooltip
-    let tooltip = if play_mode.is_paused() || play_mode.state == PlayState::ScriptsPaused {
-        "Resume"
-    } else if play_mode.is_in_play_mode() {
-        "Playing..."
-    } else {
-        "Play (click arrow for options)"
-    };
-    response.on_hover_text(tooltip);
-}
-
-fn play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
-    let desired_size = Vec2::new(ui.available_width().max(160.0), 24.0);
-    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
-
-    if response.hovered() {
-        ui.painter().rect_filled(rect, CornerRadius::same(2), Color32::from_white_alpha(15));
-        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-    }
-
-    ui.painter().text(
-        Pos2::new(rect.left() + 16.0, rect.center().y),
-        egui::Align2::CENTER_CENTER,
-        icon,
-        egui::FontId::proportional(13.0),
-        icon_color,
-    );
-
-    ui.painter().text(
-        Pos2::new(rect.left() + 32.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(12.0),
-        Color32::WHITE,
-    );
-
-    ui.painter().text(
-        Pos2::new(rect.right() - 8.0, rect.center().y),
-        egui::Align2::RIGHT_CENTER,
-        shortcut,
-        egui::FontId::proportional(10.0),
-        Color32::from_white_alpha(100),
-    );
-
-    response.clicked()
-}
