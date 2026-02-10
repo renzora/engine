@@ -16,7 +16,7 @@ pub use api::{
     PanelDefinition, PanelLocation, PendingOperation, StatusBarAlign, StatusBarItem, ToolbarItem,
     TabLocation, PluginTab,
 };
-pub use host::PluginHost;
+pub use host::{PluginHost, PluginSource};
 pub use registry::PluginRegistry;
 pub use traits::*;
 
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use abi::{EntityIdExt, PluginTransformExt};
 use crate::commands::CommandHistory;
 use crate::core::{AppState, EditorEntity, SelectionState};
-use crate::project::CurrentProject;
+use crate::project::{AppConfig, CurrentProject};
 
 /// Plugin that manages the plugin host lifecycle
 pub struct PluginCorePlugin;
@@ -65,17 +65,25 @@ impl Plugin for PluginCorePlugin {
 fn check_project_plugins(
     mut plugin_host: ResMut<PluginHost>,
     current_project: Option<Res<CurrentProject>>,
+    app_config: Res<AppConfig>,
     mut last_project_path: Local<Option<PathBuf>>,
+    mut system_plugins_loaded: Local<bool>,
 ) {
+    // Load system plugins once on first run
+    if !*system_plugins_loaded {
+        *system_plugins_loaded = true;
+        plugin_host.set_user_disabled_ids(app_config.disabled_plugins.clone());
+        if let Err(e) = plugin_host.discover_and_load_system_plugins() {
+            error!("Failed to load system plugins: {}", e);
+        }
+    }
+
     let current_path = current_project.as_ref().map(|p| p.path.clone());
 
     // Check if project changed
     if *last_project_path != current_path {
-        // Unload existing plugins if any
-        if plugin_host.plugin_count() > 0 {
-            info!("Project changed, unloading plugins...");
-            plugin_host.unload_all_plugins();
-        }
+        // Unload only project plugins (keep system plugins)
+        plugin_host.unload_project_plugins();
 
         // Load plugins from new project if there is one
         if let Some(ref project_path) = current_path {

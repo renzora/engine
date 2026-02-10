@@ -12,6 +12,9 @@ pub struct AppConfig {
     /// Update configuration
     #[serde(default)]
     pub update_config: UpdateConfig,
+    /// Plugin IDs that the user has disabled
+    #[serde(default)]
+    pub disabled_plugins: Vec<String>,
 }
 
 impl AppConfig {

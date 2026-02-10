@@ -1,4 +1,7 @@
 fn main() {
+    // Copy plugins/ directory to the target output directory
+    copy_plugins_dir();
+
     #[cfg(windows)]
     {
         let mut res = winres::WindowsResource::new();
@@ -50,5 +53,46 @@ fn main() {
         }
 
         println!("cargo:rerun-if-env-changed=DLSS_SDK");
+    }
+}
+
+/// Copy the source `plugins/` directory next to the output binary
+fn copy_plugins_dir() {
+    // Always re-run when plugins/ changes
+    println!("cargo:rerun-if-changed=plugins");
+
+    let src_dir = std::path::Path::new("plugins");
+    if !src_dir.exists() {
+        return;
+    }
+
+    // Find the target profile directory (where the binary ends up)
+    // Use CARGO_TARGET_DIR or default to "target", then append the profile
+    let target_base = std::env::var("CARGO_TARGET_DIR")
+        .unwrap_or_else(|_| "target".to_string());
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    let target_dir = std::path::PathBuf::from(&target_base).join(&profile);
+
+    let dst_dir = target_dir.join("plugins");
+
+    // Create destination directory
+    if let Err(e) = std::fs::create_dir_all(&dst_dir) {
+        println!("cargo:warning=Failed to create plugins dir: {}", e);
+        return;
+    }
+
+    // Copy all plugin files
+    if let Ok(entries) = std::fs::read_dir(src_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_name().unwrap();
+                let dst_path = dst_dir.join(file_name);
+                match std::fs::copy(&path, &dst_path) {
+                    Ok(_) => println!("cargo:warning=Copied system plugin: {}", file_name.to_string_lossy()),
+                    Err(e) => println!("cargo:warning=Failed to copy {}: {}", file_name.to_string_lossy(), e),
+                }
+            }
+        }
     }
 }

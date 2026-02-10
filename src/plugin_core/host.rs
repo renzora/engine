@@ -1404,15 +1404,41 @@ impl Drop for FfiPluginWrapper {
 
 /// The plugin host manages the lifecycle of all loaded plugins.
 #[derive(Resource)]
+/// Whether a plugin was loaded from the system or project directory
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginSource {
+    /// Shipped with the editor (from the system plugins directory)
+    System,
+    /// Installed per-project (from the project's plugins directory)
+    Project,
+}
+
+/// Info about a plugin that has been disabled (unloaded) but can be re-enabled
+#[derive(Clone)]
+pub struct DisabledPlugin {
+    pub manifest: PluginManifest,
+    pub path: PathBuf,
+    pub source: PluginSource,
+}
+
+#[derive(Resource)]
 pub struct PluginHost {
-    /// Directory to scan for plugins
+    /// Directory to scan for project plugins
     plugin_dir: PathBuf,
+    /// Directory for system plugins (next to the editor executable)
+    system_plugin_dir: PathBuf,
     /// Loaded plugin libraries (kept alive to prevent unloading)
     libraries: Vec<Library>,
     /// Plugin instances (FFI-safe wrappers)
     plugins: HashMap<String, FfiPluginWrapper>,
     /// Map from plugin ID to the file path it was loaded from
     plugin_paths: HashMap<String, PathBuf>,
+    /// Map from plugin ID to its source (system or project)
+    plugin_sources: HashMap<String, PluginSource>,
+    /// Plugins that were disabled at runtime (unloaded but remembered for re-enabling)
+    disabled_plugins: HashMap<String, DisabledPlugin>,
+    /// Plugin IDs the user has persistently disabled (loaded from config)
+    user_disabled_ids: Vec<String>,
     /// API implementation shared with plugins
     api: EditorApiImpl,
     /// Pending events to dispatch
@@ -1436,11 +1462,21 @@ impl PluginHost {
             .unwrap_or_default()
             .join("plugins");
 
+        // System plugins live next to the editor executable
+        let system_plugin_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("plugins")))
+            .unwrap_or_else(|| PathBuf::from("plugins"));
+
         Self {
             plugin_dir,
+            system_plugin_dir,
             libraries: Vec::new(),
             plugins: HashMap::new(),
             plugin_paths: HashMap::new(),
+            plugin_sources: HashMap::new(),
+            disabled_plugins: HashMap::new(),
+            user_disabled_ids: Vec::new(),
             api: EditorApiImpl::new(),
             pending_events: Vec::new(),
             watcher: None,
@@ -1583,22 +1619,24 @@ impl PluginHost {
         self.plugin_dir = dir;
     }
 
-    /// Discover available plugins in the plugin directory
+    /// Get the system plugin directory
+    pub fn system_plugin_dir(&self) -> &PathBuf {
+        &self.system_plugin_dir
+    }
+
+    /// Set the list of plugin IDs the user has disabled (loaded from config)
+    pub fn set_user_disabled_ids(&mut self, ids: Vec<String>) {
+        self.user_disabled_ids = ids;
+    }
+
+    /// Get the source of a loaded plugin
+    pub fn plugin_source(&self, plugin_id: &str) -> Option<PluginSource> {
+        self.plugin_sources.get(plugin_id).copied()
+    }
+
+    /// Discover available plugins in the project plugin directory
     pub fn discover_plugins(&self) -> Vec<PathBuf> {
-        let mut plugin_paths = Vec::new();
-
-        let extension = if cfg!(windows) { "dll" } else if cfg!(target_os = "macos") { "dylib" } else { "so" };
-
-        if let Ok(entries) = std::fs::read_dir(&self.plugin_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension() == Some(OsStr::new(extension)) {
-                    plugin_paths.push(path);
-                }
-            }
-        }
-
-        plugin_paths
+        self.discover_plugins_in(&self.plugin_dir)
     }
 
     /// Probe a plugin library to get its manifest without fully loading it
@@ -1675,25 +1713,32 @@ impl PluginHost {
         }
     }
 
-    /// Discover and load all plugins in the plugin directory
-    pub fn discover_and_load_plugins(&mut self) -> Result<(), PluginError> {
-        console_log(LogLevel::Info, "Plugins", format!("Scanning: {}", self.plugin_dir.display()));
+    /// Discover and load all plugins from a directory with the given source tag
+    fn discover_and_load_from_dir(&mut self, dir: &PathBuf, source: PluginSource) -> Result<(), PluginError> {
+        let source_label = match source {
+            PluginSource::System => "system",
+            PluginSource::Project => "project",
+        };
+
+        console_log(LogLevel::Info, "Plugins", format!("Scanning {} plugins: {}", source_label, dir.display()));
 
         // Ensure plugin directory exists
-        if !self.plugin_dir.exists() {
-            console_log(LogLevel::Info, "Plugins", "Creating plugins directory");
-            std::fs::create_dir_all(&self.plugin_dir).ok();
+        if !dir.exists() {
+            if source == PluginSource::Project {
+                console_log(LogLevel::Info, "Plugins", "Creating project plugins directory");
+                std::fs::create_dir_all(dir).ok();
+            }
             return Ok(());
         }
 
         // Discover plugin files
-        let plugin_paths = self.discover_plugins();
+        let plugin_paths = self.discover_plugins_in(dir);
         if plugin_paths.is_empty() {
-            console_log(LogLevel::Info, "Plugins", "No plugins found");
+            console_log(LogLevel::Info, "Plugins", format!("No {} plugins found", source_label));
             return Ok(());
         }
 
-        console_log(LogLevel::Info, "Plugins", format!("Found {} DLL file(s)", plugin_paths.len()));
+        console_log(LogLevel::Info, "Plugins", format!("Found {} {} DLL file(s)", plugin_paths.len(), source_label));
 
         // Probe all plugins to get manifests
         let mut manifests = Vec::new();
@@ -1701,15 +1746,34 @@ impl PluginHost {
         let mut failed_count = 0;
 
         for path in &plugin_paths {
+            // Skip if this exact file is already loaded
+            if self.plugin_paths.values().any(|p| *p == *path) {
+                continue;
+            }
+
+            // Skip if a DLL with the same file name is already loaded from another dir
+            // (prevents crash from loading the same DLL twice on Windows)
+            let file_name = path.file_name().unwrap_or_default();
+            if self.plugin_paths.values().any(|p| p.file_name().unwrap_or_default() == file_name) {
+                console_log(LogLevel::Info, "Plugins",
+                    format!("Skipping {} {} (same file already loaded)", source_label, file_name.to_string_lossy()));
+                continue;
+            }
+
             match self.probe_plugin(path) {
                 Ok(manifest) => {
+                    // Skip if a plugin with this ID is already loaded
+                    if self.plugins.contains_key(&manifest.id) {
+                        console_log(LogLevel::Info, "Plugins",
+                            format!("Skipping {} plugin {} (already loaded)", source_label, manifest.name));
+                        continue;
+                    }
                     console_log(LogLevel::Info, "Plugins",
                         format!("Detected: {} v{} ({})", manifest.name, manifest.version, manifest.id));
                     path_map.insert(manifest.id.clone(), path.clone());
                     manifests.push(manifest);
                 }
                 Err(_) => {
-                    // Error already logged in probe_plugin
                     failed_count += 1;
                 }
             }
@@ -1718,7 +1782,7 @@ impl PluginHost {
         if manifests.is_empty() {
             if failed_count > 0 {
                 console_log(LogLevel::Warning, "Plugins",
-                    format!("All {} plugin(s) failed to load", failed_count));
+                    format!("All {} {} plugin(s) failed to load", failed_count, source_label));
             }
             return Ok(());
         }
@@ -1734,32 +1798,83 @@ impl PluginHost {
             }
         };
 
-        // Load plugins in dependency order
+        // Build manifest lookup for disabled plugin tracking
+        let manifest_map: HashMap<String, PluginManifest> = manifests.iter()
+            .map(|m| (m.id.clone(), m.clone()))
+            .collect();
+
+        // Load plugins in dependency order (skip user-disabled ones)
         let mut loaded_count = 0;
         for plugin_id in &load_order {
             if let Some(path) = path_map.get(plugin_id) {
-                match self.load_plugin(path) {
-                    Ok(_) => loaded_count += 1,
-                    Err(_) => {
-                        // Error already logged in load_plugin
+                // Skip plugins the user has disabled, but remember them
+                if self.user_disabled_ids.contains(plugin_id) {
+                    if let Some(manifest) = manifest_map.get(plugin_id) {
+                        console_log(LogLevel::Info, "Plugins",
+                            format!("Skipping disabled plugin: {}", manifest.name));
+                        self.disabled_plugins.insert(plugin_id.clone(), DisabledPlugin {
+                            manifest: manifest.clone(),
+                            path: path.clone(),
+                            source,
+                        });
                     }
+                    continue;
+                }
+
+                match self.load_plugin(path) {
+                    Ok(id) => {
+                        self.plugin_sources.insert(id, source);
+                        loaded_count += 1;
+                    }
+                    Err(_) => {}
                 }
             }
         }
 
         if loaded_count > 0 {
             console_log(LogLevel::Success, "Plugins",
-                format!("Successfully loaded {} plugin(s)", loaded_count));
+                format!("Successfully loaded {} {} plugin(s)", loaded_count, source_label));
         }
         if failed_count > 0 {
             console_log(LogLevel::Warning, "Plugins",
-                format!("{} plugin(s) failed to load", failed_count));
+                format!("{} {} plugin(s) failed to load", failed_count, source_label));
         }
+
+        Ok(())
+    }
+
+    /// Discover and load system plugins (shipped with the editor)
+    pub fn discover_and_load_system_plugins(&mut self) -> Result<(), PluginError> {
+        let dir = self.system_plugin_dir.clone();
+        self.discover_and_load_from_dir(&dir, PluginSource::System)
+    }
+
+    /// Discover and load all project plugins in the plugin directory
+    pub fn discover_and_load_plugins(&mut self) -> Result<(), PluginError> {
+        let dir = self.plugin_dir.clone();
+        let result = self.discover_and_load_from_dir(&dir, PluginSource::Project);
 
         // Start watching for hot reload
         self.start_watching();
 
-        Ok(())
+        result
+    }
+
+    /// Discover plugin files in a specific directory
+    fn discover_plugins_in(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        let mut plugin_paths = Vec::new();
+        let extension = if cfg!(windows) { "dll" } else if cfg!(target_os = "macos") { "dylib" } else { "so" };
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension() == Some(OsStr::new(extension)) {
+                    plugin_paths.push(path);
+                }
+            }
+        }
+
+        plugin_paths
     }
 
     /// Load a single plugin from a library path
@@ -1844,6 +1959,13 @@ impl PluginHost {
             let plugin_name = manifest.name.clone();
             let plugin_version = manifest.version.clone();
 
+            // Reject if a plugin with this ID is already loaded
+            if self.plugins.contains_key(&plugin_id) {
+                console_log(LogLevel::Warning, "Plugins",
+                    format!("[{}] Skipping duplicate plugin ID '{}'", plugin_name, plugin_id));
+                return Err(PluginError::LoadFailed(format!("Plugin '{}' is already loaded", plugin_id)));
+            }
+
             // Set current plugin for API tracking
             self.api.set_current_plugin(Some(plugin_id.clone()));
 
@@ -1895,6 +2017,7 @@ impl PluginHost {
             self.api.remove_plugin_elements(plugin_id);
 
             self.plugin_paths.remove(plugin_id);
+            self.plugin_sources.remove(plugin_id);
             // wrapper is dropped here, which calls destroy via FFI
             info!("Plugin unloaded: {}", plugin_id);
             Ok(())
@@ -1903,7 +2026,35 @@ impl PluginHost {
         }
     }
 
-    /// Unload all plugins (called when project changes)
+    /// Unload only project plugins (called when project changes, keeps system plugins)
+    pub fn unload_project_plugins(&mut self) {
+        // Stop watching project dir
+        self.stop_watching();
+
+        let project_ids: Vec<_> = self.plugin_sources.iter()
+            .filter(|(_, source)| **source == PluginSource::Project)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for plugin_id in project_ids {
+            if let Some(mut wrapper) = self.plugins.remove(&plugin_id) {
+                self.api.set_current_plugin(Some(plugin_id.clone()));
+                wrapper.on_unload(&mut self.api);
+                self.api.set_current_plugin(None);
+                self.api.remove_plugin_elements(&plugin_id);
+                info!("Project plugin unloaded: {}", plugin_id);
+            }
+            self.plugin_paths.remove(&plugin_id);
+            self.plugin_sources.remove(&plugin_id);
+        }
+
+        // Also clear disabled project plugins
+        self.disabled_plugins.retain(|_, d| d.source != PluginSource::Project);
+
+        info!("Project plugins unloaded");
+    }
+
+    /// Unload all plugins (system and project)
     pub fn unload_all_plugins(&mut self) {
         // Stop watching first
         self.stop_watching();
@@ -1918,8 +2069,10 @@ impl PluginHost {
         }
         // Clear libraries to unload the DLLs
         self.libraries.clear();
-        // Clear plugin paths
+        // Clear plugin paths, sources, and disabled list
         self.plugin_paths.clear();
+        self.plugin_sources.clear();
+        self.disabled_plugins.clear();
         // Clear API state
         self.api.clear();
         info!("All plugins unloaded");
@@ -2056,6 +2209,68 @@ impl PluginHost {
     /// Check if a plugin is loaded
     pub fn is_plugin_loaded(&self, plugin_id: &str) -> bool {
         self.plugins.contains_key(plugin_id)
+    }
+
+    /// Check if a plugin is enabled (loaded and active)
+    pub fn is_plugin_enabled(&self, plugin_id: &str) -> bool {
+        self.plugins.contains_key(plugin_id)
+    }
+
+    /// Disable a plugin: fully unloads it but remembers it so it can be re-enabled
+    pub fn disable_plugin(&mut self, plugin_id: &str) {
+        // Save info before unloading
+        let path = self.plugin_paths.get(plugin_id).cloned();
+        let source = self.plugin_sources.get(plugin_id).copied();
+        let manifest = self.plugins.get(plugin_id).map(|w| w.manifest().clone());
+
+        if let (Some(path), Some(source), Some(manifest)) = (path, source, manifest) {
+            self.disabled_plugins.insert(plugin_id.to_string(), DisabledPlugin {
+                manifest,
+                path,
+                source,
+            });
+        }
+
+        let _ = self.unload_plugin(plugin_id);
+    }
+
+    /// Re-enable a previously disabled plugin by reloading it
+    pub fn enable_plugin(&mut self, plugin_id: &str) {
+        if let Some(disabled) = self.disabled_plugins.remove(plugin_id) {
+            match self.load_plugin(&disabled.path) {
+                Ok(id) => {
+                    self.plugin_sources.insert(id, disabled.source);
+                }
+                Err(e) => {
+                    error!("Failed to re-enable plugin {}: {}", plugin_id, e);
+                    // Put it back in disabled list
+                    self.disabled_plugins.insert(plugin_id.to_string(), disabled);
+                }
+            }
+        }
+    }
+
+    /// Get all known plugins: loaded + disabled, with their info
+    pub fn all_plugins(&self) -> Vec<(PluginManifest, PluginSource, bool)> {
+        let mut result = Vec::new();
+
+        // Loaded plugins
+        for (id, wrapper) in &self.plugins {
+            let source = self.plugin_sources.get(id).copied().unwrap_or(PluginSource::Project);
+            result.push((wrapper.manifest().clone(), source, true));
+        }
+
+        // Disabled plugins
+        for (_id, disabled) in &self.disabled_plugins {
+            result.push((disabled.manifest.clone(), disabled.source, false));
+        }
+
+        result
+    }
+
+    /// Get the disabled plugins map
+    pub fn disabled_plugins(&self) -> &HashMap<String, DisabledPlugin> {
+        &self.disabled_plugins
     }
 
     /// Get the API implementation (for internal use)

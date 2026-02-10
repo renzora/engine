@@ -2,6 +2,7 @@ use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
 
 use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SettingsTab, SceneManagerState, UiFont, bindable_keys};
+use crate::plugin_core::{PluginHost, PluginSource};
 use crate::project::AppConfig;
 use crate::theming::{Theme, ThemeManager};
 use crate::update::{UpdateState, UpdateDialogState};
@@ -10,7 +11,7 @@ use crate::update::{UpdateState, UpdateDialogState};
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
     TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE, ARROW_CLOCKWISE,
-    DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK,
+    DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK, PUZZLE_PIECE,
 };
 
 /// Width reserved for property labels
@@ -27,6 +28,7 @@ pub fn render_settings_content(
     update_state: &mut UpdateState,
     update_dialog: &mut UpdateDialogState,
     scene_state: &mut SceneManagerState,
+    plugin_host: &mut PluginHost,
 ) {
     // Clone the theme to avoid borrow conflicts with theme editor tab
     let theme_clone = theme_manager.active_theme.clone();
@@ -51,6 +53,7 @@ pub fn render_settings_content(
             SettingsTab::Viewport => render_viewport_tab(ui, settings, theme),
             SettingsTab::Shortcuts => render_shortcuts_tab(ui, keybindings, theme),
             SettingsTab::Theme => render_theme_tab(ui, theme_manager),
+            SettingsTab::Plugins => render_plugins_tab(ui, plugin_host, app_config, theme),
             SettingsTab::Updates => render_updates_tab(ui, app_config, update_state, update_dialog, theme),
         }
     });
@@ -130,6 +133,13 @@ impl SettingsCategoryStyle {
         Self {
             accent_color: Color32::from_rgb(100, 200, 140),  // Green/teal
             header_bg: Color32::from_rgb(35, 50, 42),
+        }
+    }
+
+    fn plugins() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(180, 140, 220),  // Purple
+            header_bg: Color32::from_rgb(44, 38, 54),
         }
     }
 }
@@ -262,6 +272,7 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
         (SettingsTab::Viewport, CUBE, "Viewport"),
         (SettingsTab::Shortcuts, KEYBOARD, "Shortcuts"),
         (SettingsTab::Theme, PALETTE, "Theme"),
+        (SettingsTab::Plugins, PUZZLE_PIECE, "Plugins"),
         (SettingsTab::Updates, ARROW_CLOCKWISE, "Updates"),
     ];
 
@@ -970,6 +981,124 @@ fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut
         });
 
     changed
+}
+
+fn render_plugins_tab(ui: &mut egui::Ui, plugin_host: &mut PluginHost, app_config: &mut AppConfig, theme: &Theme) {
+    let text_muted = theme.text.muted.to_color32();
+
+    // Collect all plugins (loaded + disabled) grouped by source
+    let mut system_plugins: Vec<(String, String, String, bool)> = Vec::new();
+    let mut project_plugins: Vec<(String, String, String, bool)> = Vec::new();
+
+    for (manifest, source, enabled) in plugin_host.all_plugins() {
+        let entry = (manifest.id.clone(), manifest.name.clone(), manifest.version.clone(), enabled);
+        match source {
+            PluginSource::System => system_plugins.push(entry),
+            PluginSource::Project => project_plugins.push(entry),
+        }
+    }
+
+    system_plugins.sort_by(|a, b| a.1.cmp(&b.1));
+    project_plugins.sort_by(|a, b| a.1.cmp(&b.1));
+
+    // Collect toggle actions to apply after rendering (avoid borrow conflicts)
+    let mut toggle_actions: Vec<(String, bool)> = Vec::new();
+
+    // System Plugins
+    render_settings_category(
+        ui,
+        PUZZLE_PIECE,
+        "System Plugins",
+        SettingsCategoryStyle::plugins(),
+        "settings_system_plugins",
+        true,
+        theme,
+        |ui| {
+            if system_plugins.is_empty() {
+                ui.label(RichText::new("No system plugins installed").size(12.0).color(text_muted));
+            } else {
+                for (i, (id, name, version, enabled)) in system_plugins.iter().enumerate() {
+                    if let Some(action) = render_plugin_row(ui, i, id, name, version, *enabled, theme) {
+                        toggle_actions.push(action);
+                    }
+                }
+            }
+        },
+    );
+
+    // Project Plugins
+    render_settings_category(
+        ui,
+        PUZZLE_PIECE,
+        "Project Plugins",
+        SettingsCategoryStyle::plugins(),
+        "settings_project_plugins",
+        true,
+        theme,
+        |ui| {
+            if project_plugins.is_empty() {
+                ui.label(RichText::new("No project plugins installed").size(12.0).color(text_muted));
+            } else {
+                for (i, (id, name, version, enabled)) in project_plugins.iter().enumerate() {
+                    if let Some(action) = render_plugin_row(ui, i, id, name, version, *enabled, theme) {
+                        toggle_actions.push(action);
+                    }
+                }
+            }
+        },
+    );
+
+    // Apply toggle actions and persist
+    for (plugin_id, enable) in toggle_actions {
+        if enable {
+            plugin_host.enable_plugin(&plugin_id);
+            app_config.disabled_plugins.retain(|id| id != &plugin_id);
+        } else {
+            plugin_host.disable_plugin(&plugin_id);
+            if !app_config.disabled_plugins.contains(&plugin_id) {
+                app_config.disabled_plugins.push(plugin_id);
+            }
+        }
+        let _ = app_config.save();
+    }
+}
+
+/// Returns Some((plugin_id, new_enabled_state)) if the checkbox was toggled
+fn render_plugin_row(
+    ui: &mut egui::Ui,
+    row_index: usize,
+    plugin_id: &str,
+    name: &str,
+    version: &str,
+    enabled: bool,
+    theme: &Theme,
+) -> Option<(String, bool)> {
+    let text_muted = theme.text.muted.to_color32();
+
+    let bg_color = if row_index % 2 == 0 {
+        theme.panels.inspector_row_even.to_color32()
+    } else {
+        theme.panels.inspector_row_odd.to_color32()
+    };
+
+    let mut toggled = None;
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let mut is_enabled = enabled;
+                if ui.checkbox(&mut is_enabled, "").changed() {
+                    toggled = Some((plugin_id.to_string(), is_enabled));
+                }
+
+                ui.label(RichText::new(name).size(12.0));
+                ui.label(RichText::new(format!("v{}", version)).size(11.0).color(text_muted));
+            });
+        });
+
+    toggled
 }
 
 fn render_updates_tab(

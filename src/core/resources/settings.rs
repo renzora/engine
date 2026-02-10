@@ -76,6 +76,7 @@ pub enum SettingsTab {
     Viewport,
     Shortcuts,
     Theme,
+    Plugins,
     Updates,
 }
 
