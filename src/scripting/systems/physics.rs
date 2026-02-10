@@ -5,7 +5,6 @@
 use bevy::prelude::*;
 use bevy::ecs::system::ParamSet;
 
-#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 
 use crate::scripting::resources::{PhysicsCommand, PhysicsCommandQueue, RaycastHit, RaycastResults};
@@ -18,7 +17,6 @@ use crate::scripting::resources::{PhysicsCommand, PhysicsCommandQueue, RaycastHi
 ///
 /// We use ParamSet because Forces internally accesses LinearVelocity/AngularVelocity,
 /// which would conflict with our separate velocity queries.
-#[cfg(feature = "physics")]
 pub fn process_physics_commands(
     mut queue: ResMut<PhysicsCommandQueue>,
     mut raycast_results: ResMut<RaycastResults>,
@@ -129,18 +127,6 @@ pub fn process_physics_commands(
                 }
             }
         }
-    }
-}
-
-/// Stub system when physics is disabled
-#[cfg(not(feature = "physics"))]
-pub fn process_physics_commands(
-    mut queue: ResMut<PhysicsCommandQueue>,
-) {
-    // Just drain the queue - physics disabled
-    if !queue.is_empty() {
-        let _ = queue.drain();
-        warn!("Physics commands ignored - physics feature not enabled");
     }
 }
 

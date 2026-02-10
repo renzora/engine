@@ -61,68 +61,66 @@ pub fn start_update_check(state: &mut UpdateState) {
 fn perform_check() -> Result<UpdateCheckResult, String> {
     let current = super::current_version();
 
-    // Make request to GitHub API
-    let response = match ureq::get("https://api.github.com/repos/renzora/engine/releases/latest")
+    // Fetch all releases (includes pre-releases, unlike /releases/latest)
+    let response = ureq::get("https://api.github.com/repos/renzora/engine/releases")
         .set("User-Agent", "renzora-editor")
         .set("Accept", "application/vnd.github.v3+json")
         .call()
-    {
-        Ok(resp) => resp,
-        Err(ureq::Error::Status(404, _)) => {
-            // No releases yet - this is not an error, just means no updates available
-            return Ok(UpdateCheckResult {
-                update_available: false,
-                latest_version: None,
-                current_version: current.to_string(),
-                release_url: None,
-                release_notes: None,
-                download_url: None,
-                asset_name: None,
-            });
-        }
-        Err(e) => return Err(format!("Failed to check for updates: {}", e)),
-    };
+        .map_err(|e| format!("Failed to check for updates: {}", e))?;
 
-    let release: GitHubRelease = response
+    let releases: Vec<GitHubRelease> = response
         .into_json()
         .map_err(|e| format!("Failed to parse release info: {}", e))?;
 
-    // Parse version from tag (remove 'v' prefix if present)
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
+    // Find the newest release by version comparison
+    let newest = releases.iter()
+        .filter_map(|r| {
+            let parsed = ParsedVersion::parse(&r.tag_name)?;
+            Some((parsed, r))
+        })
+        .max_by(|(a, _), (b, _)| a.cmp(b));
 
-    // Compare versions using simple semver comparison
+    let Some((_, release)) = newest else {
+        return Ok(UpdateCheckResult {
+            update_available: false,
+            latest_version: None,
+            current_version: current.to_string(),
+            release_url: None,
+            release_notes: None,
+            download_url: None,
+            asset_name: None,
+        });
+    };
+
+    let latest_version = release.tag_name.clone();
     let update_available = is_newer_version(&latest_version, current);
-
-    // Find the appropriate asset (looking for renzora_rX.exe pattern)
-    let (download_url, asset_name) = find_windows_asset(&release.assets);
+    let (download_url, asset_name) = find_download_asset(&release.assets);
 
     Ok(UpdateCheckResult {
         update_available,
         latest_version: Some(latest_version),
         current_version: current.to_string(),
-        release_url: Some(release.html_url),
-        release_notes: release.body,
+        release_url: Some(release.html_url.clone()),
+        release_notes: release.body.clone(),
         download_url,
         asset_name,
     })
 }
 
-/// Find Windows executable asset from release assets
-fn find_windows_asset(assets: &[GitHubAsset]) -> (Option<String>, Option<String>) {
-    // Look for patterns: renzora_rX.exe, renzora_editor.exe, etc.
+/// Find downloadable asset from release assets (.exe preferred, .zip fallback)
+fn find_download_asset(assets: &[GitHubAsset]) -> (Option<String>, Option<String>) {
+    // Prefer .exe files (single-binary distribution)
     for asset in assets {
         let name_lower = asset.name.to_lowercase();
-        if name_lower.ends_with(".exe") &&
-           (name_lower.starts_with("renzora_r") ||
-            name_lower.starts_with("renzora_editor") ||
-            name_lower.contains("renzora")) {
+        if name_lower.ends_with(".exe") {
             return (Some(asset.browser_download_url.clone()), Some(asset.name.clone()));
         }
     }
 
-    // Fallback: any .exe file
+    // Fallback: .zip files
     for asset in assets {
-        if asset.name.to_lowercase().ends_with(".exe") {
+        let name_lower = asset.name.to_lowercase();
+        if name_lower.ends_with(".zip") {
             return (Some(asset.browser_download_url.clone()), Some(asset.name.clone()));
         }
     }
@@ -130,31 +128,88 @@ fn find_windows_asset(assets: &[GitHubAsset]) -> (Option<String>, Option<String>
     (None, None)
 }
 
-/// Compare two semver version strings
+/// Parsed version from tag format like "r1-alpha2", "r1-beta1", "r1", "r2-alpha1"
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedVersion {
+    release: u32,
+    /// None = stable, Some("alpha", N) or Some("beta", N) = pre-release
+    pre: Option<(String, u32)>,
+}
+
+impl PartialOrd for ParsedVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ParsedVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.release.cmp(&other.release) {
+            std::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match (&self.pre, &other.pre) {
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (Some((a_type, a_num)), Some((b_type, b_num))) => {
+                match a_type.cmp(b_type) {
+                    std::cmp::Ordering::Equal => a_num.cmp(b_num),
+                    ord => ord,
+                }
+            }
+        }
+    }
+}
+
+impl ParsedVersion {
+    /// Parse a version string like "r1-alpha2", "r1-beta1", "r1"
+    fn parse(s: &str) -> Option<Self> {
+        let s = s.trim_start_matches('v');
+        let s = s.strip_prefix('r')?;
+
+        if let Some((release_str, pre_str)) = s.split_once('-') {
+            let release = release_str.parse().ok()?;
+            // Split pre-release like "alpha2" into ("alpha", 2)
+            let split_pos = pre_str.find(|c: char| c.is_ascii_digit())?;
+            let (pre_type, pre_num_str) = pre_str.split_at(split_pos);
+            let pre_num = pre_num_str.parse().ok()?;
+            Some(Self { release, pre: Some((pre_type.to_string(), pre_num)) })
+        } else {
+            let release = s.parse().ok()?;
+            Some(Self { release, pre: None })
+        }
+    }
+
+    /// Returns true if self is newer than other
+    fn is_newer_than(&self, other: &Self) -> bool {
+        if self.release != other.release {
+            return self.release > other.release;
+        }
+        // Same release number — stable (None) is newer than any pre-release
+        match (&self.pre, &other.pre) {
+            (None, Some(_)) => true,
+            (Some(_), None) => false,
+            (None, None) => false,
+            (Some((a_type, a_num)), Some((b_type, b_num))) => {
+                if a_type != b_type {
+                    // alpha < beta
+                    a_type > b_type
+                } else {
+                    a_num > b_num
+                }
+            }
+        }
+    }
+}
+
+/// Compare two version strings in rX-alphaN format
 /// Returns true if `latest` is newer than `current`
 fn is_newer_version(latest: &str, current: &str) -> bool {
-    let parse_version = |s: &str| -> (u32, u32, u32) {
-        let parts: Vec<&str> = s.split('.').collect();
-        let major = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-        let minor = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-        let patch = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
-        (major, minor, patch)
-    };
-
-    let (l_major, l_minor, l_patch) = parse_version(latest);
-    let (c_major, c_minor, c_patch) = parse_version(current);
-
-    if l_major > c_major {
-        return true;
+    match (ParsedVersion::parse(latest), ParsedVersion::parse(current)) {
+        (Some(l), Some(c)) => l.is_newer_than(&c),
+        _ => false,
     }
-    if l_major == c_major && l_minor > c_minor {
-        return true;
-    }
-    if l_major == c_major && l_minor == c_minor && l_patch > c_patch {
-        return true;
-    }
-
-    false
 }
 
 #[cfg(test)]
@@ -163,10 +218,29 @@ mod tests {
 
     #[test]
     fn test_version_comparison() {
-        assert!(is_newer_version("1.0.0", "0.9.0"));
-        assert!(is_newer_version("0.2.0", "0.1.0"));
-        assert!(is_newer_version("0.1.1", "0.1.0"));
-        assert!(!is_newer_version("0.1.0", "0.1.0"));
-        assert!(!is_newer_version("0.0.9", "0.1.0"));
+        // Same release, higher alpha
+        assert!(is_newer_version("r1-alpha3", "r1-alpha2"));
+        assert!(!is_newer_version("r1-alpha2", "r1-alpha3"));
+        // Same version
+        assert!(!is_newer_version("r1-alpha2", "r1-alpha2"));
+        // Higher release
+        assert!(is_newer_version("r2-alpha1", "r1-alpha3"));
+        // Stable is newer than pre-release
+        assert!(is_newer_version("r1", "r1-alpha3"));
+        assert!(!is_newer_version("r1-alpha3", "r1"));
+        // Beta is newer than alpha
+        assert!(is_newer_version("r1-beta1", "r1-alpha3"));
+        assert!(!is_newer_version("r1-alpha3", "r1-beta1"));
+    }
+
+    #[test]
+    fn test_version_parsing() {
+        assert!(ParsedVersion::parse("r1-alpha2").is_some());
+        assert!(ParsedVersion::parse("r1-beta1").is_some());
+        assert!(ParsedVersion::parse("r1").is_some());
+        assert!(ParsedVersion::parse("r10-alpha15").is_some());
+        // Invalid formats
+        assert!(ParsedVersion::parse("0.1.0").is_none());
+        assert!(ParsedVersion::parse("invalid").is_none());
     }
 }

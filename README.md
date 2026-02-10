@@ -377,6 +377,14 @@ cargo release-runtime
 
 Output at `app/release/renzora_runtime.exe` (~50MB, statically linked).
 
+### Release build fails with "Application Control policy has blocked this file"
+
+If `cargo build --release` fails with OS error 4551, **Windows Smart App Control** is blocking build script executables generated during compilation. Debug builds may work because the build scripts get approved on first run and are reused by subsequent release builds.
+
+**Fix:** Open **Windows Security → App & Browser Control → Smart App Control** and turn it off. Note that once disabled, Smart App Control cannot be re-enabled without reinstalling Windows.
+
+**Workaround:** Run `cargo build` (debug) first, then `cargo build --release`. The debug build compiles and approves the build scripts, which are then reused by the release build.
+
 ### Export shows "Runtime not found"
 
 Ensure the runtime binary exists at `runtimes/windows/renzora_runtime.exe`. Build it with `cargo release-runtime` and copy it there.

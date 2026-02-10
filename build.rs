@@ -1,6 +1,11 @@
 fn main() {
-    // Copy plugins/ directory to the target output directory
-    copy_plugins_dir();
+    let profile = std::env::var("PROFILE").unwrap_or_default();
+
+    // In release builds, build the updater and stage it for embedding.
+    // In debug builds, nothing to do — assets and plugins load from source.
+    if profile == "release" {
+        build_and_stage_updater();
+    }
 
     #[cfg(windows)]
     {
@@ -56,43 +61,38 @@ fn main() {
     }
 }
 
-/// Copy the source `plugins/` directory next to the output binary
-fn copy_plugins_dir() {
-    // Always re-run when plugins/ changes
-    println!("cargo:rerun-if-changed=plugins");
+/// Build the updater as a separate crate and stage the binary into OUT_DIR
+/// for `include_bytes!`. The updater has its own Cargo.toml so this doesn't
+/// deadlock — it's a different workspace from the one cargo is already building.
+fn build_and_stage_updater() {
+    println!("cargo:rerun-if-changed=updater/src/main.rs");
+    println!("cargo:rerun-if-changed=updater/Cargo.toml");
 
-    let src_dir = std::path::Path::new("plugins");
-    if !src_dir.exists() {
-        return;
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let updater_manifest = format!("{}/updater/Cargo.toml", manifest_dir);
+
+    // Build the updater in release mode using its own independent workspace
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "--release",
+            "--manifest-path", &updater_manifest,
+        ])
+        .status()
+        .expect("Failed to run cargo build for updater");
+
+    if !status.success() {
+        panic!("Failed to build updater binary");
     }
 
-    // Find the target profile directory (where the binary ends up)
-    // Use CARGO_TARGET_DIR or default to "target", then append the profile
-    let target_base = std::env::var("CARGO_TARGET_DIR")
-        .unwrap_or_else(|_| "target".to_string());
-    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
-    let target_dir = std::path::PathBuf::from(&target_base).join(&profile);
+    // The updater builds into its own target directory: updater/target/release/
+    let updater_exe = format!("{}/updater/target/release/renzora_updater.exe", manifest_dir);
+    let updater_src = std::path::PathBuf::from(&updater_exe);
+    let updater_dst = std::path::PathBuf::from(&out_dir).join("renzora_updater.exe");
 
-    let dst_dir = target_dir.join("plugins");
-
-    // Create destination directory
-    if let Err(e) = std::fs::create_dir_all(&dst_dir) {
-        println!("cargo:warning=Failed to create plugins dir: {}", e);
-        return;
-    }
-
-    // Copy all plugin files
-    if let Ok(entries) = std::fs::read_dir(src_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                let file_name = path.file_name().unwrap();
-                let dst_path = dst_dir.join(file_name);
-                match std::fs::copy(&path, &dst_path) {
-                    Ok(_) => println!("cargo:warning=Copied system plugin: {}", file_name.to_string_lossy()),
-                    Err(e) => println!("cargo:warning=Failed to copy {}: {}", file_name.to_string_lossy(), e),
-                }
-            }
-        }
-    }
+    std::fs::copy(&updater_src, &updater_dst)
+        .unwrap_or_else(|e| panic!(
+            "Failed to copy updater from {} to OUT_DIR: {}", updater_src.display(), e
+        ));
 }

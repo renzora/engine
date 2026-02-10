@@ -1,25 +1,23 @@
 # cargo-features = ["codegen-backend"]
 
 [package]
-name = "bevy_imgui_editor"
-version = "0.1.0"
+name = "renzora"
+version = "0.2.0"
 edition = "2021"
-default-run = "renzora_editor"
+default-run = "renzora"
 
 [features]
-default = ["editor", "physics", "memory-profiling"]
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "dep:image", "dep:arboard", "dep:ureq", "dep:open", "dep:bevy_hanabi"]
-runtime = ["physics"]
-physics = ["dep:avian3d"]
+default = ["editor"]
+editor = ["dep:libloading", "dep:image", "dep:egui-phosphor", "dep:ureq"]
+runtime = []
 dynamic = ["bevy/dynamic_linking"]
-memory-profiling = ["dep:memory-stats"]
 # Raytraced global illumination, DLSS, and virtual geometry (meshlets).
 # Requires Vulkan SDK and DLSS SDK installed for compilation.
 # Build without this feature if you don't have the SDKs: cargo run --features editor
 solari = ["bevy/bevy_solari", "bevy/dlss", "bevy/meshlet", "bevy/meshlet_processor"]
 
 [[bin]]
-name = "renzora_editor"
+name = "renzora"
 path = "src/main.rs"
 required-features = ["editor"]
 
@@ -27,10 +25,6 @@ required-features = ["editor"]
 name = "renzora_runtime"
 path = "src/runtime/main.rs"
 required-features = ["runtime"]
-
-[[bin]]
-name = "renzora_updater"
-path = "updater/src/main.rs"
 
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
@@ -42,31 +36,33 @@ dirs = "5.0"
 zstd = "0.13"
 gltf = "1.4"
 image = { version = "0.25", optional = true }
-memory-stats = { version = "1.2", optional = true }
+memory-stats = "1.2"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 # Physics engine (Avian - ECS-native physics for Bevy)
-avian3d = { version = "0.5", optional = true }
+avian3d = "0.5"
 
 # GPU particle system (Hanabi)
-bevy_hanabi = { version = "0.18", default-features = false, features = ["3d", "serde"], optional = true }
+bevy_hanabi = { version = "0.18", default-features = false, features = ["3d", "serde"] }
 
 # Mesh outline rendering
 bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false, features = ["reflect"] }
 
 # Editor-only dependencies
-bevy_egui = { version = "0.39", optional = true }
+bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular", "fill"], optional = true }
-rfd = { version = "0.15", optional = true }
-rhai = { version = "1.21", features = ["sync"], optional = true }
-arboard = { version = "3.4", optional = true }
+rfd = "0.15"
+rhai = { version = "1.21", features = ["sync"] }
+arboard = "3.4"
 ureq = { version = "2.9", features = ["json"], optional = true }
-open = { version = "5.0", optional = true }
+open = "5.0"
+include_dir = "0.7"
+futures-lite = "2"
 
 # Plugin system dependencies (editor-only)
 libloading = { version = "0.8", optional = true }
-notify = { version = "6.0", optional = true }
-editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"], optional = true }
+notify = "6.0"
+editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading"] }

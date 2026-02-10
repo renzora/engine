@@ -446,10 +446,7 @@ impl Default for MemoryProfilerState {
             prev_memory: 0,
             update_interval: 0.5,
             time_since_update: 0.0,
-            #[cfg(feature = "memory-profiling")]
             available: true,
-            #[cfg(not(feature = "memory-profiling"))]
-            available: false,
         }
     }
 }
@@ -627,29 +624,26 @@ pub fn update_memory_profiler(
     let dt = state.time_since_update;
     state.time_since_update = 0.0;
 
-    // Get process memory (if available)
-    #[cfg(feature = "memory-profiling")]
-    {
-        if let Some(stats) = memory_stats::memory_stats() {
-            let prev = state.process_memory;
-            state.process_memory = stats.physical_mem as u64;
+    // Get process memory
+    if let Some(stats) = memory_stats::memory_stats() {
+        let prev = state.process_memory;
+        state.process_memory = stats.physical_mem as u64;
 
-            // Update peak
-            if state.process_memory > state.peak_memory {
-                state.peak_memory = state.process_memory;
-            }
-
-            // Calculate allocation rate
-            if prev > 0 && dt > 0.0 {
-                let diff = state.process_memory as i64 - prev as i64;
-                state.allocation_rate = diff as f64 / dt as f64;
-            }
-
-            // Push to history (in MB for graphing)
-            let memory_mb = state.process_memory as f32 / (1024.0 * 1024.0);
-            state.push_sample(memory_mb);
-            state.calculate_trend();
+        // Update peak
+        if state.process_memory > state.peak_memory {
+            state.peak_memory = state.process_memory;
         }
+
+        // Calculate allocation rate
+        if prev > 0 && dt > 0.0 {
+            let diff = state.process_memory as i64 - prev as i64;
+            state.allocation_rate = diff as f64 / dt as f64;
+        }
+
+        // Push to history (in MB for graphing)
+        let memory_mb = state.process_memory as f32 / (1024.0 * 1024.0);
+        state.push_sample(memory_mb);
+        state.calculate_trend();
     }
 
     // Estimate asset memory

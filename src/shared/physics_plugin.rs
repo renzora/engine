@@ -4,7 +4,6 @@
 //! In the editor, physics starts paused and is activated during play mode.
 //! In the runtime, physics runs normally from the start.
 
-#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
@@ -37,7 +36,6 @@ impl RenzoraPhysicsPlugin {
 }
 
 impl Plugin for RenzoraPhysicsPlugin {
-    #[cfg(feature = "physics")]
     fn build(&self, app: &mut App) {
         // Add the Avian physics plugins
         app.add_plugins(PhysicsPlugins::default());
@@ -52,45 +50,24 @@ impl Plugin for RenzoraPhysicsPlugin {
             app.add_systems(Startup, pause_physics);
         }
     }
-
-    #[cfg(not(feature = "physics"))]
-    fn build(&self, _app: &mut App) {
-        // Physics feature not enabled - no-op
-    }
 }
 
 /// System to pause physics on startup (used in editor)
-#[cfg(feature = "physics")]
 fn pause_physics(mut time: ResMut<Time<Physics>>) {
     time.pause();
 }
 
 /// Pause the physics simulation
-#[cfg(feature = "physics")]
 pub fn physics_pause(time: &mut ResMut<Time<Physics>>) {
     time.pause();
 }
 
 /// Resume the physics simulation
-#[cfg(feature = "physics")]
 pub fn physics_unpause(time: &mut ResMut<Time<Physics>>) {
     time.unpause();
 }
 
 /// Check if physics is paused
-#[cfg(feature = "physics")]
 pub fn physics_is_paused(time: &Res<Time<Physics>>) -> bool {
     time.is_paused()
-}
-
-// Stub implementations when physics is disabled
-#[cfg(not(feature = "physics"))]
-pub fn physics_pause(_: &mut ()) {}
-
-#[cfg(not(feature = "physics"))]
-pub fn physics_unpause(_: &mut ()) {}
-
-#[cfg(not(feature = "physics"))]
-pub fn physics_is_paused(_: &()) -> bool {
-    true
 }

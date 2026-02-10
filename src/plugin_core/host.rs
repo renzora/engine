@@ -1462,11 +1462,14 @@ impl PluginHost {
             .unwrap_or_default()
             .join("plugins");
 
-        // System plugins live next to the editor executable
-        let system_plugin_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("plugins")))
-            .unwrap_or_else(|| PathBuf::from("plugins"));
+        // System plugins: in release builds they're extracted to %LOCALAPPDATA%;
+        // in debug builds just use the source plugins/ directory
+        let system_plugin_dir = crate::embedded::packed_system_plugin_dir()
+            .unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("plugins")
+            });
 
         Self {
             plugin_dir,

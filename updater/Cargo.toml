@@ -1,0 +1,11 @@
+[package]
+name = "renzora_updater"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading"] }

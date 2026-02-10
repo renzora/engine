@@ -6,7 +6,6 @@
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 
-#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
@@ -26,7 +25,6 @@ impl Plugin for PlayModePlugin {
             (
                 handle_play_mode_input,
                 handle_play_mode_transitions,
-                #[cfg(feature = "physics")]
                 handle_physics_transitions,
             )
                 .chain()
@@ -107,7 +105,6 @@ fn handle_play_mode_transitions(
 }
 
 /// Handle physics pause/unpause based on play state
-#[cfg(feature = "physics")]
 fn handle_physics_transitions(
     play_mode: Res<PlayModeState>,
     mut physics_time: ResMut<Time<Physics>>,

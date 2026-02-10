@@ -7,6 +7,7 @@ mod commands;
 mod component_system;
 mod core;
 mod crash;
+mod embedded;
 mod export;
 mod gizmo;
 mod gltf_animation;
@@ -104,7 +105,14 @@ fn main() {
         return;
     }
 
+    // When packed, extract embedded updater and plugins to disk
+    embedded::extract_embedded_updater();
+    embedded::extract_embedded_plugins();
+
     let mut app = App::new();
+
+    // When packed, register embedded asset source before DefaultPlugins
+    embedded::setup_embedded_assets(&mut app);
 
     // DLSS requires a project ID before plugin initialization
     // Use a fixed UUID for Renzora Engine (generated once, kept consistent)

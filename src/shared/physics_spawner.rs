@@ -3,7 +3,6 @@
 //! Converts PhysicsBodyData and CollisionShapeData to Avian 3D components.
 //! Used by both editor play mode and runtime.
 
-#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
@@ -12,7 +11,6 @@ use super::components::{CollisionShapeData, CollisionShapeType, PhysicsBodyData,
 /// Spawn physics components on an entity based on PhysicsBodyData
 ///
 /// This converts our serializable PhysicsBodyData to Avian's RigidBody and related components.
-#[cfg(feature = "physics")]
 pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &PhysicsBodyData) {
     let rigid_body = match body_data.body_type {
         PhysicsBodyType::RigidBody => RigidBody::Dynamic,
@@ -54,7 +52,6 @@ pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &P
 /// Spawn collider components on an entity based on CollisionShapeData
 ///
 /// This converts our serializable CollisionShapeData to Avian's Collider and related components.
-#[cfg(feature = "physics")]
 pub fn spawn_collision_shape(
     commands: &mut Commands,
     entity: Entity,
@@ -106,7 +103,6 @@ pub fn spawn_collision_shape(
 }
 
 /// Remove physics components from an entity
-#[cfg(feature = "physics")]
 pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
     commands
         .entity(entity)
@@ -127,26 +123,6 @@ pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
         // One-time forces are applied via the Forces QueryData helper
         .remove::<ConstantForce>()
         .remove::<ConstantTorque>();
-}
-
-// Stub implementations when physics is disabled
-#[cfg(not(feature = "physics"))]
-pub fn spawn_physics_body(_commands: &mut Commands, _entity: Entity, _body_data: &PhysicsBodyData) {
-    // Physics disabled - no-op
-}
-
-#[cfg(not(feature = "physics"))]
-pub fn spawn_collision_shape(
-    _commands: &mut Commands,
-    _entity: Entity,
-    _shape_data: &CollisionShapeData,
-) {
-    // Physics disabled - no-op
-}
-
-#[cfg(not(feature = "physics"))]
-pub fn despawn_physics_components(_commands: &mut Commands, _entity: Entity) {
-    // Physics disabled - no-op
 }
 
 /// Marker component to track entities that have physics components spawned

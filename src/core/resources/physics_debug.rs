@@ -130,10 +130,7 @@ impl Default for PhysicsDebugState {
             show_collision_pairs: false,
             update_interval: 0.1,
             time_since_update: 0.0,
-            #[cfg(feature = "physics")]
             physics_available: true,
-            #[cfg(not(feature = "physics"))]
-            physics_available: false,
         }
     }
 }
@@ -160,7 +157,6 @@ impl PhysicsDebugState {
 }
 
 /// System to update physics debug state
-#[cfg(feature = "physics")]
 pub fn update_physics_debug_state(
     mut state: ResMut<PhysicsDebugState>,
     time: Res<Time>,
@@ -217,7 +213,6 @@ pub fn update_physics_debug_state(
 }
 
 /// Classify a collider's shape type
-#[cfg(feature = "physics")]
 fn classify_collider_shape(collider: &avian3d::prelude::Collider) -> ColliderShapeType {
     // Try to determine shape type based on collider properties
     // This is a simplified classification - Avian's API may vary
@@ -246,26 +241,3 @@ fn classify_collider_shape(collider: &avian3d::prelude::Collider) -> ColliderSha
     }
 }
 
-/// Stub system when physics feature is disabled
-#[cfg(not(feature = "physics"))]
-pub fn update_physics_debug_state(
-    mut state: ResMut<PhysicsDebugState>,
-    time: Res<Time>,
-) {
-    state.time_since_update += time.delta_secs();
-
-    if state.time_since_update < state.update_interval {
-        return;
-    }
-    state.time_since_update = 0.0;
-
-    // Reset all counts when physics is disabled
-    state.simulation_running = false;
-    state.dynamic_body_count = 0;
-    state.kinematic_body_count = 0;
-    state.static_body_count = 0;
-    state.collider_count = 0;
-    state.colliders_by_type.clear();
-    state.collision_pair_count = 0;
-    state.collision_pairs.clear();
-}

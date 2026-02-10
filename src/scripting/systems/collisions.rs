@@ -5,14 +5,12 @@
 use bevy::prelude::*;
 use bevy::ecs::message::MessageReader;
 
-#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 
 use crate::core::PlayModeState;
 use crate::scripting::resources::collisions::{CollisionEvent, ScriptCollisionEvents};
 
 /// System to collect collision events from Avian physics
-#[cfg(feature = "physics")]
 pub fn collect_collision_events(
     play_mode: Res<PlayModeState>,
     mut collision_events: ResMut<ScriptCollisionEvents>,
@@ -78,16 +76,6 @@ pub fn collect_collision_events(
             collisions.retain(|e| *e != entity1);
         }
     }
-}
-
-/// Stub system when physics is disabled
-#[cfg(not(feature = "physics"))]
-pub fn collect_collision_events(
-    _play_mode: Res<PlayModeState>,
-    mut collision_events: ResMut<ScriptCollisionEvents>,
-) {
-    // Just clear events when physics is disabled
-    collision_events.clear_frame_events();
 }
 
 /// System to clear collision data when play mode stops

@@ -125,9 +125,12 @@ impl Default for UpdateState {
     }
 }
 
-/// Get the current editor version from Cargo.toml
+/// The current editor version — update this before each release to match the git tag
+pub const EDITOR_VERSION: &str = "r1-alpha2";
+
+/// Get the current editor version
 pub fn current_version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    EDITOR_VERSION
 }
 
 /// System to trigger update check on startup (if auto_check is enabled)
