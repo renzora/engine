@@ -78,11 +78,26 @@ impl EmbeddedAssetReader {
         let s = s.strip_prefix("assets/").unwrap_or(&s);
         s.replace('\\', "/")
     }
+
+    /// Try reading a file from the real filesystem (for user project assets).
+    fn read_from_filesystem(path: &Path) -> Result<Vec<u8>, AssetReaderError> {
+        // Absolute paths are used for project assets (drag-and-drop, scene loads, etc.)
+        if path.is_absolute() {
+            return std::fs::read(path)
+                .map_err(|_| AssetReaderError::NotFound(path.to_path_buf()));
+        }
+        Err(AssetReaderError::NotFound(path.to_path_buf()))
+    }
 }
 
 #[cfg(not(debug_assertions))]
 impl AssetReader for EmbeddedAssetReader {
     async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+        // Filesystem first — most loads are user project assets
+        if let Ok(bytes) = Self::read_from_filesystem(path) {
+            return Ok(VecReader::new(bytes));
+        }
+        // Fall back to embedded data (engine built-in assets)
         let normalized = Self::normalize(path);
         if let Some(file) = EMBEDDED_ASSETS.get_file(&normalized) {
             Ok(VecReader::new(file.contents().to_vec()))
