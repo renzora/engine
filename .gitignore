@@ -2,6 +2,7 @@
 /target/
 /app/
 /target-runtime/
+updater/target/
 Cargo.lock
 
 # IDE
