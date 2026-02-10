@@ -4038,7 +4038,7 @@ fn is_blueprint_material_file(filename: &str) -> bool {
 
 fn is_draggable_asset(filename: &str) -> bool {
     let lower = filename.to_lowercase();
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint")
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint") || lower.ends_with(".wgsl")
 }
 
 fn is_video_file(filename: &str) -> bool {

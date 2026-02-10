@@ -14,6 +14,7 @@ pub mod ui;
 pub mod environment;
 pub mod scenes;
 pub mod terrain;
+pub mod layouts;
 
 use bevy::prelude::*;
 
@@ -40,6 +41,8 @@ pub enum Category {
     Environment,
     /// Terrain entities
     Terrain,
+    /// Pre-built scene layouts
+    Layout,
 }
 
 impl Category {
@@ -55,6 +58,7 @@ impl Category {
             Category::UI => "UI",
             Category::Environment => "Environment",
             Category::Terrain => "Terrain",
+            Category::Layout => "Layouts",
         }
     }
 
@@ -70,6 +74,7 @@ impl Category {
             Category::UI,
             Category::Environment,
             Category::Terrain,
+            Category::Layout,
         ]
     }
 }
@@ -103,6 +108,7 @@ pub fn all_templates() -> Vec<&'static EntityTemplate> {
     templates.extend(ui::TEMPLATES.iter());
     templates.extend(environment::TEMPLATES.iter());
     templates.extend(terrain::TEMPLATES.iter());
+    templates.extend(layouts::TEMPLATES.iter());
     templates
 }
 

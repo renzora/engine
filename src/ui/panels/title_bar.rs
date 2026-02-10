@@ -4,12 +4,13 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Id, Pos2, Sense, 
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{AssetBrowserState, DockingState, ExportState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
+use crate::gizmo::{GizmoState, EditorTool};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::theming::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 
-use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR};
+use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER};
 
 /// Height of the custom title bar
 pub const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -26,6 +27,7 @@ pub fn render_title_bar(
     command_history: &mut CommandHistory,
     docking_state: &mut DockingState,
     viewport_state: &mut ViewportState,
+    gizmo: &mut GizmoState,
     theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
@@ -41,19 +43,6 @@ pub fn render_title_bar(
             // Window button dimensions
             let button_width = 40.0;
             let window_buttons_width = button_width * 3.0;
-
-            // Draw centered title with icon
-            let title_text = "Renzora Engine r1".to_string();
-            let title_galley = painter.layout_no_wrap(
-                title_text.clone(),
-                egui::FontId::proportional(13.0),
-                theme.text.muted.to_color32(),
-            );
-            let title_pos = Pos2::new(
-                panel_rect.center().x - title_galley.size().x / 2.0,
-                panel_rect.center().y - title_galley.size().y / 2.0,
-            );
-            painter.galley(title_pos, title_galley, theme.text.muted.to_color32());
 
             // Draw bottom border
             painter.line_segment(
@@ -100,8 +89,65 @@ pub fn render_title_bar(
                 // Menu bar items
                 ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, plugin_host, command_history, docking_state, viewport_state, theme);
 
-                // Fill remaining space
-                ui.add_space(ui.available_width() - window_buttons_width);
+                // Center layout tabs in the title bar
+                let tabs_width_id = ui.id().with("layout_tabs_width");
+                let last_tabs_width: f32 = ui.ctx().data_mut(|d| d.get_temp(tabs_width_id).unwrap_or(0.0));
+                let panel_center_x = panel_rect.center().x;
+                let cursor_x = ui.cursor().left();
+                let desired_start = panel_center_x - last_tabs_width / 2.0;
+                let leading = (desired_start - cursor_x).max(12.0);
+                ui.add_space(leading);
+
+                let tabs_start_x = ui.cursor().left();
+                render_layout_tabs(ui, docking_state, gizmo, theme);
+                let tabs_end_x = ui.cursor().left();
+                ui.ctx().data_mut(|d| d.insert_temp(tabs_width_id, tabs_end_x - tabs_start_x));
+
+                // Sign In button (right-aligned, before window buttons)
+                let sign_in_width = 80.0;
+                ui.add_space(ui.available_width() - window_buttons_width - sign_in_width - 8.0);
+
+                let auth_open_id = Id::new("auth_window_open");
+                let auth_open: bool = ui.ctx().data_mut(|d| d.get_temp(auth_open_id).unwrap_or(false));
+
+                let sign_in_size = Vec2::new(sign_in_width, 20.0);
+                let (sign_in_rect, sign_in_resp) = ui.allocate_exact_size(sign_in_size, Sense::click());
+                if sign_in_resp.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if ui.is_rect_visible(sign_in_rect) {
+                    let bg = if auth_open {
+                        theme.widgets.active_bg.to_color32()
+                    } else if sign_in_resp.hovered() {
+                        theme.widgets.hovered_bg.to_color32()
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(sign_in_rect, CornerRadius::same(3), bg);
+
+                    // Person icon
+                    ui.painter().text(
+                        Pos2::new(sign_in_rect.left() + 14.0, sign_in_rect.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        USER,
+                        egui::FontId::proportional(12.0),
+                        theme.text.secondary.to_color32(),
+                    );
+
+                    // "Sign In" text
+                    ui.painter().text(
+                        Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        "Sign In",
+                        egui::FontId::proportional(11.0),
+                        theme.text.secondary.to_color32(),
+                    );
+                }
+                if sign_in_resp.clicked() {
+                    ui.ctx().data_mut(|d| d.insert_temp(auth_open_id, !auth_open));
+                }
+
+                ui.add_space(8.0);
 
                 // Window buttons on the right
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -126,6 +172,9 @@ pub fn render_title_bar(
                 }
             });
         });
+
+    // Render auth window (outside the title bar panel)
+    render_auth_window(ctx, theme);
 
     ui_events
 }
@@ -290,6 +339,329 @@ fn get_screen_cursor_pos(window: &Window) -> Option<(i32, i32)> {
         };
         Some((win_pos.x + cursor.x as i32, win_pos.y + cursor.y as i32))
     }
+}
+
+fn render_layout_tabs(
+    ui: &mut egui::Ui,
+    docking_state: &mut DockingState,
+    gizmo: &mut GizmoState,
+    theme: &Theme,
+) {
+    let layouts = builtin_layouts();
+    let active_layout = docking_state.active_layout.clone();
+
+    ui.spacing_mut().item_spacing.x = 2.0;
+
+    for layout in &layouts {
+        let is_active = active_layout == layout.name;
+        let tab_id = ui.make_persistent_id(format!("layout_tab_{}", layout.name));
+
+        let text = &layout.name;
+        let font = egui::FontId::proportional(11.5);
+        let text_galley = ui.painter().layout_no_wrap(
+            text.to_string(),
+            font.clone(),
+            Color32::WHITE, // color doesn't matter for measuring
+        );
+        let text_width = text_galley.size().x;
+        let tab_width = text_width + 16.0; // padding
+        let tab_height = ui.available_height();
+
+        let size = Vec2::new(tab_width, tab_height);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+
+        if ui.is_rect_visible(rect) {
+            let accent = theme.semantic.accent.to_color32();
+
+            // Background
+            let bg = if is_active {
+                // Active tab: subtle highlight
+                let [r, g, b, _] = theme.surfaces.window.to_color32().to_array();
+                Color32::from_rgb(r.saturating_add(18), g.saturating_add(18), b.saturating_add(22))
+            } else if response.hovered() {
+                let [r, g, b, _] = theme.surfaces.window.to_color32().to_array();
+                Color32::from_rgb(r.saturating_add(10), g.saturating_add(10), b.saturating_add(14))
+            } else {
+                Color32::TRANSPARENT
+            };
+
+            ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+
+            // Active underline
+            if is_active {
+                let underline_rect = egui::Rect::from_min_size(
+                    Pos2::new(rect.left() + 3.0, rect.bottom() - 2.0),
+                    Vec2::new(rect.width() - 6.0, 2.0),
+                );
+                ui.painter().rect_filled(underline_rect, CornerRadius::same(1), accent);
+            }
+
+            // Text
+            let text_color = if is_active {
+                Color32::WHITE
+            } else if response.hovered() {
+                theme.text.secondary.to_color32()
+            } else {
+                theme.text.muted.to_color32()
+            };
+
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                font,
+                text_color,
+            );
+        }
+
+        if response.clicked() {
+            docking_state.switch_layout(&layout.name);
+            // Switch tool based on layout
+            if layout.name == "Terrain" {
+                gizmo.tool = EditorTool::TerrainSculpt;
+            } else if gizmo.tool == EditorTool::TerrainSculpt {
+                gizmo.tool = EditorTool::Select;
+            }
+        }
+
+        let _ = tab_id; // suppress unused warning
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Default)]
+enum AuthView {
+    #[default]
+    SignIn,
+    Register,
+    ForgotPassword,
+}
+
+fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
+    let open_id = Id::new("auth_window_open");
+    let view_id = Id::new("auth_view");
+    let email_id = Id::new("auth_email");
+    let password_id = Id::new("auth_password");
+    let confirm_pw_id = Id::new("auth_confirm_pw");
+    let username_id = Id::new("auth_username");
+
+    let mut open: bool = ctx.data_mut(|d| d.get_temp(open_id).unwrap_or(false));
+    if !open {
+        return;
+    }
+
+    let mut view: AuthView = ctx.data_mut(|d| d.get_temp(view_id).unwrap_or_default());
+
+    let mut email: String = ctx.data_mut(|d| d.get_temp::<String>(email_id).unwrap_or_default());
+    let mut password: String = ctx.data_mut(|d| d.get_temp::<String>(password_id).unwrap_or_default());
+    let mut confirm_pw: String = ctx.data_mut(|d| d.get_temp::<String>(confirm_pw_id).unwrap_or_default());
+    let mut username: String = ctx.data_mut(|d| d.get_temp::<String>(username_id).unwrap_or_default());
+
+    let title = match view {
+        AuthView::SignIn => "Sign In",
+        AuthView::Register => "Create Account",
+        AuthView::ForgotPassword => "Reset Password",
+    };
+
+    let accent = theme.semantic.accent.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+
+    egui::Window::new(title)
+        .id(Id::new("auth_window"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .fixed_size([320.0, 0.0])
+        .frame(egui::Frame::window(&ctx.style())
+            .fill(theme.surfaces.panel.to_color32())
+            .stroke(Stroke::new(1.0, theme.widgets.border.to_color32()))
+            .corner_radius(CornerRadius::same(8)))
+        .show(ctx, |ui| {
+            ui.add_space(8.0);
+
+            match view {
+                AuthView::SignIn => {
+                    // Email
+                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut email)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("you@example.com"));
+                    ui.add_space(8.0);
+
+                    // Password
+                    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut password)
+                        .desired_width(f32::INFINITY)
+                        .password(true)
+                        .hint_text("Password"));
+                    ui.add_space(4.0);
+
+                    // Forgot password link
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                        let forgot = ui.add(egui::Label::new(
+                            egui::RichText::new("Forgot password?").size(11.0).color(accent)
+                        ).sense(Sense::click()));
+                        if forgot.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if forgot.clicked() {
+                            view = AuthView::ForgotPassword;
+                        }
+                    });
+
+                    ui.add_space(12.0);
+
+                    // Sign In button
+                    let btn = ui.add_sized(
+                        [ui.available_width(), 32.0],
+                        egui::Button::new(egui::RichText::new("Sign In").color(Color32::WHITE).size(13.0))
+                            .fill(accent)
+                            .corner_radius(CornerRadius::same(4)),
+                    );
+                    if btn.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+
+                    ui.add_space(12.0);
+
+                    // Register link
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Don't have an account?").size(11.0).color(text_secondary));
+                        let reg = ui.add(egui::Label::new(
+                            egui::RichText::new("Register").size(11.0).color(accent)
+                        ).sense(Sense::click()));
+                        if reg.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if reg.clicked() {
+                            view = AuthView::Register;
+                        }
+                    });
+                }
+
+                AuthView::Register => {
+                    // Username
+                    ui.label(egui::RichText::new("Username").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut username)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Username"));
+                    ui.add_space(8.0);
+
+                    // Email
+                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut email)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("you@example.com"));
+                    ui.add_space(8.0);
+
+                    // Password
+                    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut password)
+                        .desired_width(f32::INFINITY)
+                        .password(true)
+                        .hint_text("Password"));
+                    ui.add_space(8.0);
+
+                    // Confirm password
+                    ui.label(egui::RichText::new("Confirm Password").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut confirm_pw)
+                        .desired_width(f32::INFINITY)
+                        .password(true)
+                        .hint_text("Confirm password"));
+
+                    ui.add_space(16.0);
+
+                    // Create Account button
+                    let btn = ui.add_sized(
+                        [ui.available_width(), 32.0],
+                        egui::Button::new(egui::RichText::new("Create Account").color(Color32::WHITE).size(13.0))
+                            .fill(accent)
+                            .corner_radius(CornerRadius::same(4)),
+                    );
+                    if btn.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+
+                    ui.add_space(12.0);
+
+                    // Back to sign in
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Already have an account?").size(11.0).color(text_secondary));
+                        let back = ui.add(egui::Label::new(
+                            egui::RichText::new("Sign In").size(11.0).color(accent)
+                        ).sense(Sense::click()));
+                        if back.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if back.clicked() {
+                            view = AuthView::SignIn;
+                        }
+                    });
+                }
+
+                AuthView::ForgotPassword => {
+                    ui.label(egui::RichText::new("Enter your email and we'll send you a link to reset your password.").size(11.0).color(text_secondary).weak());
+                    ui.add_space(12.0);
+
+                    // Email
+                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.add_space(2.0);
+                    ui.add(egui::TextEdit::singleline(&mut email)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("you@example.com"));
+
+                    ui.add_space(16.0);
+
+                    // Send Reset Link button
+                    let btn = ui.add_sized(
+                        [ui.available_width(), 32.0],
+                        egui::Button::new(egui::RichText::new("Send Reset Link").color(Color32::WHITE).size(13.0))
+                            .fill(accent)
+                            .corner_radius(CornerRadius::same(4)),
+                    );
+                    if btn.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+
+                    ui.add_space(12.0);
+
+                    // Back to sign in
+                    ui.horizontal(|ui| {
+                        let back = ui.add(egui::Label::new(
+                            egui::RichText::new("Back to Sign In").size(11.0).color(accent)
+                        ).sense(Sense::click()));
+                        if back.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if back.clicked() {
+                            view = AuthView::SignIn;
+                        }
+                    });
+                }
+            }
+
+            ui.add_space(4.0);
+        });
+
+    // Persist state
+    ctx.data_mut(|d| {
+        d.insert_temp(open_id, open);
+        d.insert_temp(view_id, view);
+        d.insert_temp(email_id, email);
+        d.insert_temp(password_id, password);
+        d.insert_temp(confirm_pw_id, confirm_pw);
+        d.insert_temp(username_id, username);
+    });
 }
 
 fn render_menu_items(
@@ -505,76 +877,8 @@ fn render_menu_items(
         }
     };
 
-    // Window menu for layout management
+    // Window menu
     submenu(ui, "Window", |ui| {
-        // Layouts submenu
-        submenu(ui, "Layouts", |ui| {
-            // Built-in layouts
-            for layout in builtin_layouts() {
-                let is_active = docking_state.active_layout == layout.name;
-                let label = if is_active {
-                    format!("\u{f00c} {}", layout.name) // checkmark
-                } else {
-                    format!("   {}", layout.name)
-                };
-
-                if menu_item(ui, &label) {
-                    apply_layout(&layout.name, docking_state, viewport_state);
-                    ui.close();
-                }
-            }
-
-            // Custom layouts
-            let custom_layouts: Vec<String> = docking_state.config.custom_layouts
-                .iter()
-                .map(|l| l.name.clone())
-                .collect();
-
-            if !custom_layouts.is_empty() {
-                ui.separator();
-                for name in custom_layouts {
-                    let is_active = docking_state.active_layout == name;
-                    let label = if is_active {
-                        format!("\u{f00c} {}", name)
-                    } else {
-                        format!("   {}", name)
-                    };
-
-                    if menu_item(ui, &label) {
-                        apply_layout(&name, docking_state, viewport_state);
-                        ui.close();
-                    }
-                }
-            }
-        });
-
-        ui.separator();
-
-        // Quick layout shortcuts
-        ui.label(egui::RichText::new("Quick Switch").color(Color32::GRAY).small());
-        if menu_item(ui, "Default             Ctrl+1") {
-            apply_layout("Default", docking_state, viewport_state);
-            ui.close();
-        }
-        if menu_item(ui, "Scripting           Ctrl+2") {
-            apply_layout("Scripting", docking_state, viewport_state);
-            ui.close();
-        }
-        if menu_item(ui, "Animation           Ctrl+3") {
-            apply_layout("Animation", docking_state, viewport_state);
-            ui.close();
-        }
-        if menu_item(ui, "Debug               Ctrl+4") {
-            apply_layout("Debug", docking_state, viewport_state);
-            ui.close();
-        }
-        if menu_item(ui, "Particles           Ctrl+5") {
-            apply_layout("Particles", docking_state, viewport_state);
-            ui.close();
-        }
-
-        ui.separator();
-
         // Save layout
         if menu_item(ui, "Save Layout As...") {
             // TODO: Show save layout dialog
@@ -585,49 +889,6 @@ fn render_menu_items(
             apply_layout("Default", docking_state, viewport_state);
             ui.close();
         }
-
-        ui.separator();
-
-        // Panel visibility toggles
-        submenu(ui, "Panels", |ui| {
-            let all_panels = vec![
-                PanelId::Hierarchy,
-                PanelId::Inspector,
-                PanelId::Assets,
-                PanelId::Console,
-                PanelId::Animation,
-                PanelId::Timeline,
-                PanelId::History,
-                PanelId::Settings,
-                PanelId::StudioPreview,
-                PanelId::NodeExplorer,
-                PanelId::Gamepad,
-                PanelId::Performance,
-                PanelId::RenderStats,
-                PanelId::ParticleEditor,
-                PanelId::VideoEditor,
-                PanelId::DAW,
-                PanelId::TextureEditor,
-            ];
-
-            for panel in all_panels {
-                let is_visible = docking_state.is_panel_visible(&panel);
-                let label = format!("{} {}", panel.icon(), panel.title());
-
-                let mut visible = is_visible;
-                let checkbox = ui.checkbox(&mut visible, label);
-                if checkbox.hovered() {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                }
-                if checkbox.changed() {
-                    if visible {
-                        docking_state.open_panel(panel);
-                    } else {
-                        docking_state.close_panel(&panel);
-                    }
-                }
-            }
-        });
     });
 
     // Dev menu (only visible when dev_mode is enabled)

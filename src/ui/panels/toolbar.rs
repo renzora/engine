@@ -8,12 +8,12 @@ use crate::terrain::{TerrainData, TerrainSettings, TerrainBrushType};
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
-use crate::ui::docking::{builtin_layouts, PanelId};
+use crate::ui::docking::PanelId;
 use crate::theming::Theme;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
-    PLAY, PAUSE, STOP, GEAR, CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, LAYOUT,
+    PLAY, PAUSE, STOP, GEAR, CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN,
     SQUARE, FRAME_CORNERS, STACK, ARROW_FAT_LINE_UP,
     ARROW_UP, ARROW_DOWN, WAVES, MINUS, CROSSHAIR,
 };
@@ -101,51 +101,32 @@ pub fn render_toolbar(
                     }
                 });
 
-                // More objects dropdown
+                // More objects dropdown — dynamically shows all categories
+                // that don't have their own dedicated toolbar button
                 let more_color = theme.text.muted.to_color32();
                 let section_label_color = theme.text.muted.to_color32();
+                let dedicated_categories = &[Category::Mesh, Category::Light, Category::Camera];
                 dropdown_button(ui, PLUS, "More", more_color, inactive_color, |ui| {
-                    // 3D Nodes
-                    ui.label(RichText::new("Nodes").small().color(section_label_color));
-                    for template in spawn::templates_by_category(Category::Nodes3D) {
-                        if menu_item(ui, template.name) {
-                            let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.select(entity);
-                            ui.close();
+                    let mut first = true;
+                    for &category in Category::all() {
+                        if dedicated_categories.contains(&category) {
+                            continue;
                         }
-                    }
-
-                    ui.separator();
-
-                    // Physics
-                    ui.label(RichText::new("Physics").small().color(section_label_color));
-                    for template in spawn::templates_by_category(Category::Physics) {
-                        if menu_item(ui, template.name) {
-                            let entity = (template.spawn)(commands, meshes, materials, None);
-                            selection.select(entity);
-                            ui.close();
+                        let templates = spawn::templates_by_category(category);
+                        if templates.is_empty() {
+                            continue;
                         }
-                    }
-
-                    ui.separator();
-
-                    // Environment
-                    ui.label(RichText::new("Environment").small().color(section_label_color));
-                    for template in spawn::templates_by_category(Category::Environment) {
-                        if menu_item(ui, template.name) {
-                            let _entity = (template.spawn)(commands, meshes, materials, None);
-                            ui.close();
+                        if !first {
+                            ui.separator();
                         }
-                    }
-
-                    ui.separator();
-
-                    // Terrain
-                    ui.label(RichText::new("Terrain").small().color(section_label_color));
-                    for template in spawn::templates_by_category(Category::Terrain) {
-                        if menu_item(ui, template.name) {
-                            let _entity = (template.spawn)(commands, meshes, materials, None);
-                            ui.close();
+                        first = false;
+                        ui.label(RichText::new(category.display_name()).small().color(section_label_color));
+                        for template in templates {
+                            if menu_item(ui, template.name) {
+                                let entity = (template.spawn)(commands, meshes, materials, None);
+                                selection.select(entity);
+                                ui.close();
+                            }
                         }
                     }
                 });
@@ -349,13 +330,6 @@ pub fn render_toolbar(
                 }
                 settings_resp.on_hover_text("Settings");
 
-                ui.add_space(4.0);
-
-                // === Layout Dropdown ===
-                let layout_color = theme.text.secondary.to_color32();
-                let current_layout = docking_state.active_layout.clone();
-                layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state, gizmo);
-
                 // Store measured width for centering on next frame
                 let end_x = ui.cursor().left();
                 let measured_width = end_x - start_x;
@@ -498,120 +472,6 @@ fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
     response.clicked()
-}
-
-fn layout_dropdown(
-    ui: &mut egui::Ui,
-    icon: &str,
-    current_layout: &str,
-    icon_color: Color32,
-    bg_color: Color32,
-    docking_state: &mut DockingState,
-    gizmo: &mut GizmoState,
-) {
-    let button_id = ui.make_persistent_id("layout_dropdown");
-    let size = Vec2::new(90.0, 24.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-
-    if response.hovered() {
-        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-    }
-
-    if ui.is_rect_visible(rect) {
-        let hovered = response.hovered();
-        let fill = if hovered {
-            // Use a slightly lighter inactive color for hover
-            let [r, g, b, _] = bg_color.to_array();
-            Color32::from_rgb(r.saturating_add(15), g.saturating_add(15), b.saturating_add(18))
-        } else {
-            bg_color
-        };
-
-        ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-
-        // Icon
-        ui.painter().text(
-            Pos2::new(rect.left() + 12.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(13.0),
-            icon_color,
-        );
-
-        // Layout name (truncated if needed)
-        let text = if current_layout.len() > 8 {
-            format!("{}...", &current_layout[..6])
-        } else {
-            current_layout.to_string()
-        };
-        // Text color - lighter than background
-        let [r, g, b, _] = bg_color.to_array();
-        let text_color = Color32::from_rgb(r.saturating_add(155), g.saturating_add(155), b.saturating_add(155));
-        ui.painter().text(
-            Pos2::new(rect.left() + 26.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            text,
-            egui::FontId::proportional(11.0),
-            text_color,
-        );
-
-        // Caret - use muted text color
-        let caret_color = Color32::from_rgb(r.saturating_add(90), g.saturating_add(90), b.saturating_add(95));
-        ui.painter().text(
-            Pos2::new(rect.right() - 10.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            CARET_DOWN,
-            egui::FontId::proportional(10.0),
-            caret_color,
-        );
-    }
-
-    if response.clicked() {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(button_id));
-    }
-
-    #[allow(deprecated)]
-    egui::popup_below_widget(
-        ui,
-        button_id,
-        &response,
-        egui::PopupCloseBehavior::CloseOnClickOutside,
-        |ui| {
-            ui.set_min_width(140.0);
-            ui.style_mut().spacing.item_spacing.y = 2.0;
-
-            for layout in builtin_layouts() {
-                let is_selected = docking_state.active_layout == layout.name;
-                let label = if is_selected {
-                    format!("• {}", layout.name)
-                } else {
-                    format!("  {}", layout.name)
-                };
-
-                if ui.add(
-                    egui::Button::new(&label)
-                        .fill(Color32::TRANSPARENT)
-                        .corner_radius(CornerRadius::same(2))
-                        .min_size(Vec2::new(ui.available_width(), 0.0))
-                ).clicked() {
-                    docking_state.switch_layout(&layout.name);
-                    // Switch tool based on layout
-                    if layout.name == "Terrain" {
-                        gizmo.tool = EditorTool::TerrainSculpt;
-                    } else {
-                        // Reset to Select tool when leaving terrain layout
-                        if gizmo.tool == EditorTool::TerrainSculpt {
-                            gizmo.tool = EditorTool::Select;
-                        }
-                    }
-                    ui.close();
-                }
-            }
-        },
-    );
-
-    response.on_hover_text("Layout");
 }
 
 fn play_dropdown(

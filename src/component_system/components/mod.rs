@@ -21,6 +21,7 @@ mod sprite_2d;
 pub(crate) mod sun;
 pub mod terrain;
 pub(crate) mod clouds;
+pub(crate) mod surface_painting;
 mod ui_button;
 mod ui_image;
 mod ui_label;
@@ -95,6 +96,9 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
 
     // Clouds
     clouds::register(registry);
+
+    // Surface painting
+    surface_painting::register(registry);
 
     // Post-processing
     fog::register(registry);

@@ -16,6 +16,8 @@ pub enum EditorTool {
     BlockEdit,
     /// Terrain sculpt mode - paint on terrain to modify height
     TerrainSculpt,
+    /// Surface paint mode - paint material layers onto meshes
+    SurfacePaint,
 }
 
 /// Current gizmo transformation mode

@@ -51,6 +51,8 @@ pub struct DockRenderResult {
     pub tab_positions: Vec<(PanelId, Vec<(Rect, PanelId)>)>,
     /// Whether a resize handle is being hovered or dragged
     pub resize_handle_active: bool,
+    /// Panel to add as a tab in a specific leaf (leaf_first_panel, new_panel)
+    pub panel_to_add: Option<(PanelId, PanelId)>,
 }
 
 /// Context passed to panel render functions
@@ -559,6 +561,136 @@ fn render_leaf(
 
         tab_x += tab_width + 1.0;
     }
+
+    // "+" button to add a panel as a new tab
+    let plus_size = Vec2::new(22.0, tab_height);
+    let plus_rect = Rect::from_min_size(
+        Pos2::new(tab_x + 2.0, rect.min.y + 2.0),
+        plus_size,
+    );
+    let plus_id = base_id.with(("plus_tab", path));
+    let plus_resp = ui.interact(plus_rect, plus_id, Sense::click());
+
+    if plus_resp.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
+    // Draw "+" button
+    if ui.is_rect_visible(plus_rect) {
+        let bg = if plus_resp.hovered() {
+            theme.panels.tab_hover.to_color32()
+        } else {
+            Color32::TRANSPARENT
+        };
+        ui.painter().rect_filled(plus_rect, egui::CornerRadius::ZERO, bg);
+        ui.painter().text(
+            plus_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "+",
+            egui::FontId::proportional(14.0),
+            theme.text.muted.to_color32(),
+        );
+    }
+
+    if plus_resp.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(plus_id.with("popup")));
+    }
+
+    // Panel picker popup
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        plus_id.with("popup"),
+        &plus_resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(180.0);
+            ui.set_max_height(400.0);
+            ui.style_mut().spacing.item_spacing.y = 1.0;
+
+            let categories: &[(&str, &[PanelId])] = &[
+                ("General", &[
+                    PanelId::Hierarchy,
+                    PanelId::Inspector,
+                    PanelId::Assets,
+                    PanelId::Console,
+                    PanelId::Viewport,
+                    PanelId::Settings,
+                    PanelId::History,
+                ]),
+                ("Content", &[
+                    PanelId::CodeEditor,
+                    PanelId::Blueprint,
+                    PanelId::NodeLibrary,
+                    PanelId::ScriptVariables,
+                    PanelId::Animation,
+                    PanelId::Timeline,
+                ]),
+                ("Preview", &[
+                    PanelId::StudioPreview,
+                    PanelId::MaterialPreview,
+                    PanelId::ShaderPreview,
+                    PanelId::ImagePreview,
+                    PanelId::NodeExplorer,
+                ]),
+                ("Tools", &[
+                    PanelId::LevelTools,
+                    PanelId::TextureEditor,
+                    PanelId::ParticleEditor,
+                    PanelId::ParticlePreview,
+                    PanelId::VideoEditor,
+                    PanelId::DAW,
+                ]),
+                ("Debug", &[
+                    PanelId::Performance,
+                    PanelId::RenderStats,
+                    PanelId::EcsStats,
+                    PanelId::MemoryProfiler,
+                    PanelId::PhysicsDebug,
+                    PanelId::CameraDebug,
+                    PanelId::SystemProfiler,
+                    PanelId::Gamepad,
+                ]),
+            ];
+
+            let already_here: Vec<_> = tabs.to_vec();
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (i, (category, panels)) in categories.iter().enumerate() {
+                    if i > 0 {
+                        ui.add_space(4.0);
+                    }
+                    ui.label(
+                        egui::RichText::new(*category)
+                            .size(10.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
+                    ui.add_space(1.0);
+
+                    for panel in *panels {
+                        let is_here = already_here.contains(panel);
+                        let label = format!("{} {}", panel.icon(), panel.title());
+
+                        let btn = ui.add_enabled(
+                            !is_here,
+                            egui::Button::new(&label)
+                                .fill(Color32::TRANSPARENT)
+                                .corner_radius(egui::CornerRadius::same(2))
+                                .min_size(Vec2::new(ui.available_width(), 0.0)),
+                        );
+                        if btn.hovered() && !is_here {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if btn.clicked() {
+                            result.panel_to_add = Some((leaf_id.clone(), panel.clone()));
+                            ui.close();
+                        }
+                    }
+                }
+            });
+        },
+    );
 
     // Store tab positions for insertion indicator
     result.tab_positions.push((leaf_id, tab_positions));

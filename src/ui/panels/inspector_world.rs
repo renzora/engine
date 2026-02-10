@@ -193,13 +193,9 @@ pub fn render_inspector_content_world(
                         };
 
                         // Add Component dropdown button
-                        egui::Frame::default()
-                            .fill(theme.widgets.inactive_bg.to_color32())
-                            .corner_radius(CornerRadius::same(4))
-                            .show(ui, |ui| {
-                                ui.set_min_width(ui.available_width() - 12.0);
-                                ui.menu_button(
-                                    RichText::new(format!("{} Add Component", PLUS)).color(theme.text.hyperlink.to_color32()),
+                        ui.vertical_centered(|ui| {
+                            ui.menu_button(
+                                RichText::new(format!("{} Add Component", PLUS)).color(theme.text.hyperlink.to_color32()),
                                     |ui| {
                                         ui.set_min_width(220.0);
 

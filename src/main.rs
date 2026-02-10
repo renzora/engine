@@ -24,6 +24,7 @@ mod shader_preview;
 mod shader_thumbnail;
 mod shared;
 mod spawn;
+mod surface_painting;
 mod terrain;
 mod theming;
 mod thumbnail_cli;
@@ -167,6 +168,7 @@ fn main() {
         // Terrain components
         .register_type::<terrain::TerrainData>()
         .register_type::<terrain::TerrainChunkData>()
+        .register_type::<surface_painting::PaintableSurfaceData>()
         .register_type::<shared::CameraNodeData>()
         .register_type::<shared::CameraRigData>()
         .register_type::<shared::MeshInstanceData>()
@@ -252,6 +254,7 @@ fn main() {
             blueprint::MaterialPreviewPlugin,
             brushes::BrushPlugin,
             terrain::TerrainPlugin,
+            surface_painting::SurfacePaintingPlugin,
             // Physics plugin (starts paused in editor, activated during play mode)
             shared::RenzoraPhysicsPlugin::new(true),
             // Auto-update system

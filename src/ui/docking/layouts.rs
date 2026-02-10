@@ -49,6 +49,7 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Particles", particles_layout()),
         WorkspaceLayout::builtin("Pixels", pixels_layout()),
         WorkspaceLayout::builtin("Shaders", shaders_layout()),
+        WorkspaceLayout::builtin("Physics", physics_layout()),
     ]
 }
 
@@ -161,48 +162,61 @@ pub fn animation_layout() -> DockTree {
     )
 }
 
-/// Debug layout: Hierarchy+Console | Viewport | Inspector/Debug panels
+/// Debug layout: Hierarchy+Performance | Viewport+Debug tabs | Inspector/Gamepad+EcsStats
 ///
 /// ```text
-/// ┌──────────────────┬─────────────┬─────────────┐
-/// │                  │             │  Inspector  │
-/// │    Hierarchy     │   Viewport  │   Gamepad   │
-/// │                  │             ├─────────────┤
-/// ├──────────────────┤             │ Performance │
-/// │     Console      │             │ ECS Stats   │
-/// │                  │             │ Memory, etc │
-/// └──────────────────┴─────────────┴─────────────┘
+/// ┌──────────┬─────┬───────┬──────┬────────┬────────┬──────────────────┐
+/// │          │                                      │ Inspector|Gamepad │
+/// │Hierarchy │              Viewport                │                  │
+/// │          │                                      ├──────────────────┤
+/// ├──────────┼─────┬───────┬──────┬────────┬────────┤                  │
+/// │          │ Sys │Render │      │Physics │Camera  │    ECS Stats     │
+/// │Performanc│Prof │Stats  │Memory│ Debug  │ Debug  │                  │
+/// └──────────┴─────┴───────┴──────┴────────┴────────┴──────────────────┘
 /// ```
 pub fn debug_layout() -> DockTree {
     DockTree::horizontal(
+        // Left column: Hierarchy on top, Performance on bottom
         DockTree::vertical(
             DockTree::leaf(PanelId::Hierarchy),
-            DockTree::leaf(PanelId::Console),
+            DockTree::leaf(PanelId::Performance),
             0.6,
         ),
         DockTree::horizontal(
-            DockTree::leaf(PanelId::Viewport),
+            // Center column: Viewport on top, 5 debug panels side-by-side on bottom
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::horizontal(
+                    DockTree::horizontal(
+                        DockTree::leaf(PanelId::SystemProfiler),
+                        DockTree::leaf(PanelId::RenderStats),
+                        0.5,
+                    ),
+                    DockTree::horizontal(
+                        DockTree::leaf(PanelId::MemoryProfiler),
+                        DockTree::horizontal(
+                            DockTree::leaf(PanelId::PhysicsDebug),
+                            DockTree::leaf(PanelId::CameraDebug),
+                            0.5,
+                        ),
+                        0.33,
+                    ),
+                    0.4,
+                ),
+                0.65,
+            ),
+            // Right column: Inspector/Gamepad on top, ECS Stats on bottom
             DockTree::vertical(
                 DockTree::Leaf {
-                    tabs: vec![PanelId::Inspector, PanelId::Gamepad, PanelId::CameraDebug],
+                    tabs: vec![PanelId::Inspector, PanelId::Gamepad],
                     active_tab: 0,
                 },
-                DockTree::Leaf {
-                    tabs: vec![
-                        PanelId::Performance,
-                        PanelId::RenderStats,
-                        PanelId::EcsStats,
-                        PanelId::MemoryProfiler,
-                        PanelId::PhysicsDebug,
-                        PanelId::SystemProfiler,
-                    ],
-                    active_tab: 0,
-                },
+                DockTree::leaf(PanelId::EcsStats),
                 0.5,
             ),
-            0.72,
+            0.75,
         ),
-        0.18,
+        0.15,
     )
 }
 
@@ -400,6 +414,40 @@ pub fn shaders_layout() -> DockTree {
     )
 }
 
+/// Physics layout: Viewport with physics debug, hierarchy, inspector, and console
+///
+/// ```text
+/// ┌──────────┬──────────────────────┬──────────────┐
+/// │          │                      │  Inspector   │
+/// │          │      Viewport        │              │
+/// │Hierarchy │                      ├──────────────┤
+/// │          ├──────────────────────┤ PhysicsDebug │
+/// │          │  Console | Assets    │              │
+/// └──────────┴──────────────────────┴──────────────┘
+/// ```
+pub fn physics_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Console, PanelId::Assets],
+                    active_tab: 0,
+                },
+                0.72,
+            ),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Inspector),
+                DockTree::leaf(PanelId::PhysicsDebug),
+                0.5,
+            ),
+            0.72,
+        ),
+        0.18,
+    )
+}
+
 /// Minimal layout: Just viewport
 #[allow(dead_code)]
 pub fn minimal_layout() -> DockTree {
@@ -497,7 +545,7 @@ mod tests {
     #[test]
     fn test_builtin_layouts_count() {
         let layouts = builtin_layouts();
-        assert_eq!(layouts.len(), 11, "Expected 11 built-in layouts");
+        assert_eq!(layouts.len(), 12, "Expected 12 built-in layouts");
     }
 
     #[test]

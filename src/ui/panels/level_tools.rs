@@ -11,8 +11,10 @@ use egui_phosphor::regular::{
 };
 
 use crate::brushes::{BrushSettings, BrushType, BlockEditState};
+use crate::core::AssetBrowserState;
 use crate::gizmo::{EditorTool, GizmoState};
 use crate::terrain::{TerrainBrushType, TerrainSettings, TerrainTab, BrushShape, BrushFalloffType, FlattenMode};
+use crate::surface_painting::{SurfacePaintSettings, SurfacePaintState, SurfacePaintCommand, PaintBrushType};
 use crate::theming::Theme;
 
 /// Render the Level Tools panel content
@@ -22,12 +24,21 @@ pub fn render_level_tools_content(
     brush_settings: &mut BrushSettings,
     _block_edit: &BlockEditState,
     terrain_settings: &mut TerrainSettings,
+    paint_settings: &mut SurfacePaintSettings,
+    paint_state: &mut SurfacePaintState,
+    asset_browser: &mut AssetBrowserState,
     theme: &Theme,
 ) {
     let terrain_active = gizmo_state.tool == EditorTool::TerrainSculpt;
+    let surface_paint_active = gizmo_state.tool == EditorTool::SurfacePaint;
 
-    if terrain_active {
-        render_terrain_panel(ui, terrain_settings, theme);
+    // Auto-sync terrain tab with active tool
+    if surface_paint_active && terrain_settings.tab != TerrainTab::Paint {
+        terrain_settings.tab = TerrainTab::Paint;
+    }
+
+    if terrain_active || surface_paint_active {
+        render_terrain_panel(ui, gizmo_state, terrain_settings, paint_settings, paint_state, asset_browser, theme);
     } else {
         render_standard_tools(ui, gizmo_state, brush_settings, theme);
     }
@@ -36,7 +47,11 @@ pub fn render_level_tools_content(
 /// Render Unreal Engine style terrain panel
 fn render_terrain_panel(
     ui: &mut egui::Ui,
+    gizmo_state: &mut GizmoState,
     settings: &mut TerrainSettings,
+    paint_settings: &mut SurfacePaintSettings,
+    paint_state: &mut SurfacePaintState,
+    asset_browser: &mut AssetBrowserState,
     theme: &Theme,
 ) {
     let accent = theme.semantic.accent.to_color32();
@@ -54,52 +69,55 @@ fn render_terrain_panel(
         let sculpt_selected = settings.tab == TerrainTab::Sculpt;
         if tab_button(ui, "Sculpt", sculpt_selected, tab_width, accent, theme).clicked() {
             settings.tab = TerrainTab::Sculpt;
+            gizmo_state.tool = EditorTool::TerrainSculpt;
         }
 
         // Paint tab
         let paint_selected = settings.tab == TerrainTab::Paint;
         if tab_button(ui, "Paint", paint_selected, tab_width, accent, theme).clicked() {
             settings.tab = TerrainTab::Paint;
+            gizmo_state.tool = EditorTool::SurfacePaint;
         }
     });
 
     ui.add_space(8.0);
 
-    // === Tool Grid ===
+    // === Content ===
     egui::ScrollArea::vertical().show(ui, |ui| {
         if settings.tab == TerrainTab::Sculpt {
             render_sculpt_tools(ui, settings, accent, theme);
+
+            ui.add_space(8.0);
+
+            // === Tool Settings Section ===
+            if collapsible_header(ui, "Tool Settings", &mut settings.section_tool_settings, theme) {
+                ui.add_space(4.0);
+                ui.indent("tool_settings", |ui| {
+                    render_tool_settings(ui, settings, text_primary, text_secondary, bg_dark, theme);
+                });
+                ui.add_space(4.0);
+            }
+
+            // === Brush Settings Section ===
+            if collapsible_header(ui, "Brush Settings", &mut settings.section_brush_settings, theme) {
+                ui.add_space(4.0);
+                ui.indent("brush_settings", |ui| {
+                    render_brush_settings(ui, settings, text_primary, text_secondary, bg_dark, theme);
+                });
+                ui.add_space(4.0);
+            }
+
+            // === Layers Section ===
+            if collapsible_header(ui, "Layers", &mut settings.section_layers, theme) {
+                ui.add_space(4.0);
+                ui.indent("layers", |ui| {
+                    render_layers(ui, settings, text_secondary, bg_dark, theme);
+                });
+                ui.add_space(4.0);
+            }
         } else {
-            render_paint_tools(ui, settings, text_secondary, theme);
-        }
-
-        ui.add_space(8.0);
-
-        // === Tool Settings Section ===
-        if collapsible_header(ui, "Tool Settings", &mut settings.section_tool_settings, theme) {
-            ui.add_space(4.0);
-            ui.indent("tool_settings", |ui| {
-                render_tool_settings(ui, settings, text_primary, text_secondary, bg_dark, theme);
-            });
-            ui.add_space(4.0);
-        }
-
-        // === Brush Settings Section ===
-        if collapsible_header(ui, "Brush Settings", &mut settings.section_brush_settings, theme) {
-            ui.add_space(4.0);
-            ui.indent("brush_settings", |ui| {
-                render_brush_settings(ui, settings, text_primary, text_secondary, bg_dark, theme);
-            });
-            ui.add_space(4.0);
-        }
-
-        // === Layers Section ===
-        if collapsible_header(ui, "Layers", &mut settings.section_layers, theme) {
-            ui.add_space(4.0);
-            ui.indent("layers", |ui| {
-                render_layers(ui, settings, text_secondary, bg_dark, theme);
-            });
-            ui.add_space(4.0);
+            // Paint tab shows the surface paint panel
+            render_surface_paint_panel(ui, paint_settings, paint_state, asset_browser, theme);
         }
     });
 }
@@ -129,18 +147,297 @@ fn render_sculpt_tools(
     render_tool_grid(ui, tools, &mut settings.brush_type, accent, theme);
 }
 
-/// Render paint tool grid
-fn render_paint_tools(
+/// Render the Surface Paint tool panel
+fn render_surface_paint_panel(
     ui: &mut egui::Ui,
-    _settings: &mut TerrainSettings,
-    text_secondary: Color32,
-    _theme: &Theme,
+    settings: &mut SurfacePaintSettings,
+    paint_state: &mut SurfacePaintState,
+    asset_browser: &mut AssetBrowserState,
+    theme: &Theme,
 ) {
-    ui.vertical_centered(|ui| {
-        ui.add_space(20.0);
-        ui.label(RichText::new("Paint tools").color(text_secondary).size(12.0));
-        ui.label(RichText::new("Coming soon...").color(text_secondary).size(10.0).weak());
-        ui.add_space(20.0);
+    let text_secondary = theme.text.secondary.to_color32();
+    let text_primary = theme.text.primary.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+
+    ui.add_space(4.0);
+    ui.label(RichText::new("Surface Paint").color(text_primary).size(13.0));
+    ui.add_space(4.0);
+
+    // Brush type buttons
+    ui.horizontal(|ui| {
+        let types = [
+            (PaintBrushType::Paint, "Paint"),
+            (PaintBrushType::Erase, "Erase"),
+            (PaintBrushType::Smooth, "Smooth"),
+            (PaintBrushType::Fill, "Fill"),
+        ];
+        for (bt, label) in types {
+            let active = settings.brush_type == bt;
+            let (bg, fg) = if active {
+                (accent, Color32::WHITE)
+            } else {
+                (theme.widgets.inactive_bg.to_color32(), theme.text.primary.to_color32())
+            };
+            if ui.add(egui::Button::new(RichText::new(label).size(11.0).color(fg)).fill(bg).min_size(Vec2::new(50.0, 24.0))).clicked() {
+                settings.brush_type = bt;
+            }
+        }
+    });
+
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    // --- Layer selector ---
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Layers").color(text_primary).size(12.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if paint_state.layer_count < 4 && paint_state.layer_count > 0 {
+                if ui.small_button("+ Add").clicked() {
+                    paint_state.pending_commands.push(SurfacePaintCommand::AddLayer);
+                }
+            }
+        });
+    });
+    ui.add_space(4.0);
+
+    if paint_state.layers_preview.is_empty() {
+        ui.label(RichText::new("No paintable surface selected.\nSelect a mesh with Paintable Surface.").color(text_secondary).size(10.0));
+    } else {
+        let available_width = ui.available_width();
+
+        // Update cached drag path from current frame's drag state
+        let current_drag: Option<String> = asset_browser.dragging_asset.as_ref().and_then(|p| {
+            let s = p.to_string_lossy();
+            if s.ends_with(".wgsl") || s.ends_with(".material_bp") {
+                Some(s.to_string())
+            } else {
+                None
+            }
+        });
+        if current_drag.is_some() {
+            paint_state.last_dragging_material = current_drag;
+        }
+
+        // Use cached path for visuals and drop detection (survives cross-panel clearing)
+        let is_material_dragging = paint_state.last_dragging_material.is_some();
+
+        let mut drop_target_layer: Option<usize> = None;
+        let mut remove_layer: Option<usize> = None;
+
+        // Snapshot layers to avoid borrow issues
+        let layers: Vec<_> = paint_state.layers_preview.clone();
+
+        for (i, layer) in layers.iter().enumerate() {
+            let is_active = settings.active_layer == i;
+            let swatch_color = Color32::from_rgba_unmultiplied(
+                (layer.color.0 * 255.0) as u8,
+                (layer.color.1 * 255.0) as u8,
+                (layer.color.2 * 255.0) as u8,
+                (layer.color.3 * 255.0) as u8,
+            );
+
+            let bg = if is_active {
+                accent.linear_multiply(0.25)
+            } else {
+                theme.widgets.inactive_bg.to_color32()
+            };
+
+            let frame = egui::Frame::new()
+                .fill(bg)
+                .rounding(Rounding::same(4))
+                .inner_margin(egui::Margin::same(6));
+
+            let resp = frame.show(ui, |ui| {
+                ui.set_min_width(available_width - 16.0);
+                ui.horizontal(|ui| {
+                    // Color swatch
+                    let (swatch_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(24.0, 24.0),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().rect_filled(swatch_rect, Rounding::same(3), swatch_color);
+                    ui.painter().rect_stroke(swatch_rect, Rounding::same(3), egui::Stroke::new(1.0, Color32::from_gray(80)), egui::StrokeKind::Outside);
+
+                    // Layer name + material info
+                    ui.vertical(|ui| {
+                        let name_text = if is_active {
+                            RichText::new(format!("{} {}", PAINT_BRUSH, &layer.name)).color(Color32::WHITE).size(11.0).strong()
+                        } else {
+                            RichText::new(&layer.name).color(text_primary).size(11.0)
+                        };
+                        ui.label(name_text);
+
+                        // Show material source or drop hint
+                        if let Some(src) = &layer.material_source {
+                            ui.horizontal(|ui| {
+                                // Show filename only
+                                let filename = src.rsplit(['/', '\\']).next().unwrap_or(src);
+                                ui.label(RichText::new(filename).color(accent).size(9.0));
+                                if ui.small_button("\u{00d7}").clicked() {
+                                    paint_state.pending_commands.push(SurfacePaintCommand::ClearMaterial(i));
+                                }
+                            });
+                        } else if is_material_dragging {
+                            ui.label(RichText::new("Drop material here").color(accent).size(9.0));
+                        } else {
+                            ui.label(RichText::new("Drag .wgsl / .material_bp here").color(text_secondary).size(9.0));
+                        }
+                    });
+
+                    // Remove button (right side)
+                    if paint_state.layer_count > 1 {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("\u{00d7}").clicked() {
+                                remove_layer = Some(i);
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Click to select layer
+            if resp.response.interact(egui::Sense::click()).clicked() {
+                settings.active_layer = i;
+            }
+
+            // Drag-drop: use pointer position for reliable cross-panel detection
+            let card_rect = resp.response.rect;
+            let pointer_pos = ui.input(|inp| inp.pointer.hover_pos());
+            let pointer_in_card = pointer_pos.map_or(false, |pos| card_rect.contains(pos));
+
+            if is_material_dragging && pointer_in_card {
+                ui.painter().rect_stroke(
+                    card_rect,
+                    Rounding::same(4),
+                    egui::Stroke::new(2.0, accent),
+                    egui::StrokeKind::Outside,
+                );
+                drop_target_layer = Some(i);
+            }
+
+            ui.add_space(2.0);
+        }
+
+        // Handle drag-drop: if mouse released while pointer was in a layer card
+        let pointer_released = ui.input(|i| i.pointer.any_released());
+        if let Some(target_layer) = drop_target_layer {
+            if pointer_released {
+                if let Some(path) = paint_state.last_dragging_material.take() {
+                    // Also clear the source so other panels don't double-process
+                    asset_browser.dragging_asset = None;
+                    paint_state.pending_commands.push(SurfacePaintCommand::AssignMaterial {
+                        layer: target_layer,
+                        path,
+                    });
+                }
+            }
+        }
+        // Clear cached drag path when pointer released (no drop or drop already handled)
+        if pointer_released {
+            paint_state.last_dragging_material = None;
+        }
+
+        // Handle remove
+        if let Some(idx) = remove_layer {
+            paint_state.pending_commands.push(SurfacePaintCommand::RemoveLayer(idx));
+            if settings.active_layer >= paint_state.layer_count.saturating_sub(1) {
+                settings.active_layer = paint_state.layer_count.saturating_sub(2);
+            }
+        }
+
+        // Clamp active layer
+        if settings.active_layer >= paint_state.layer_count {
+            settings.active_layer = paint_state.layer_count.saturating_sub(1);
+        }
+    }
+
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    // --- Brush settings ---
+    ui.label(RichText::new("Brush").color(text_primary).size(12.0));
+    ui.add_space(4.0);
+
+    let label_width = 100.0;
+
+    // Brush radius
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_width, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| { ui.label(RichText::new("Radius").color(text_secondary).size(11.0)); }
+        );
+        ui.add(egui::Slider::new(&mut settings.brush_radius, 0.005..=0.5)
+            .show_value(true)
+            .custom_formatter(|v, _| format!("{:.3}", v)));
+    });
+
+    // Brush strength
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_width, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| { ui.label(RichText::new("Strength").color(text_secondary).size(11.0)); }
+        );
+        ui.add(egui::Slider::new(&mut settings.brush_strength, 0.01..=1.0)
+            .show_value(true)
+            .custom_formatter(|v, _| format!("{:.2}", v)));
+    });
+
+    // Brush falloff
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_width, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| { ui.label(RichText::new("Falloff").color(text_secondary).size(11.0)); }
+        );
+        ui.add(egui::Slider::new(&mut settings.brush_falloff, 0.0..=1.0)
+            .show_value(true)
+            .custom_formatter(|v, _| format!("{:.2}", v)));
+    });
+
+    // Brush shape
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_width, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| { ui.label(RichText::new("Shape").color(text_secondary).size(11.0)); }
+        );
+        let shapes = [
+            (BrushShape::Circle, CIRCLE),
+            (BrushShape::Square, SQUARE),
+            (BrushShape::Diamond, DIAMOND),
+        ];
+        for (shape, icon) in shapes {
+            let active = settings.brush_shape == shape;
+            if shape_button(ui, icon, active, theme).clicked() {
+                settings.brush_shape = shape;
+            }
+        }
+    });
+
+    // Falloff type
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_width, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| { ui.label(RichText::new("Falloff Type").color(text_secondary).size(11.0)); }
+        );
+        let falloffs = [
+            (BrushFalloffType::Smooth, "S"),
+            (BrushFalloffType::Linear, "L"),
+            (BrushFalloffType::Spherical, "O"),
+            (BrushFalloffType::Tip, "T"),
+            (BrushFalloffType::Flat, "F"),
+        ];
+        for (falloff, label) in falloffs {
+            let active = settings.falloff_type == falloff;
+            if falloff_button(ui, label, active, theme).clicked() {
+                settings.falloff_type = falloff;
+            }
+        }
     });
 }
 
@@ -614,6 +911,7 @@ fn render_standard_tools(
     let brush_active = gizmo_state.tool == EditorTool::Brush;
     let edit_active = gizmo_state.tool == EditorTool::BlockEdit;
     let terrain_active = gizmo_state.tool == EditorTool::TerrainSculpt;
+    let surface_paint_active = gizmo_state.tool == EditorTool::SurfacePaint;
 
     ui.add_space(4.0);
 
@@ -638,6 +936,10 @@ fn render_standard_tools(
 
         if large_tool_button(ui, MOUNTAINS, "Terrain (T)", terrain_active, accent_color, theme).clicked() {
             gizmo_state.tool = EditorTool::TerrainSculpt;
+        }
+
+        if large_tool_button(ui, DROP, "Surface Paint (P)", surface_paint_active, accent_color, theme).clicked() {
+            gizmo_state.tool = EditorTool::SurfacePaint;
         }
     });
 

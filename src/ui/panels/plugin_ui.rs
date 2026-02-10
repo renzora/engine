@@ -8,12 +8,12 @@
 #![allow(dead_code)]
 
 use bevy_egui::egui::{self, Color32, RichText, CornerRadius};
-use egui_phosphor::regular::{DOWNLOAD_SIMPLE, WARNING};
+use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, PALETTE, WARNING};
 
 use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
-use crate::theming::Theme;
+use crate::theming::ThemeManager;
 use crate::update::{UpdateState, UpdateDialogState};
 
 /// Convert from editor_plugin_api UiId to internal UiId
@@ -243,10 +243,15 @@ pub fn render_status_bar(
     ctx: &egui::Context,
     plugin_host: &PluginHost,
     loading_progress: &AssetLoadingProgress,
-    theme: &Theme,
+    theme_manager: &mut ThemeManager,
     update_state: &UpdateState,
     update_dialog: &mut UpdateDialogState,
 ) {
+    // Clone theme data needed for the dropup before borrowing theme immutably
+    let active_theme_name = theme_manager.active_theme_name.clone();
+    let available_themes = theme_manager.available_themes.clone();
+
+    let theme = &theme_manager.active_theme;
     use crate::plugin_core::StatusBarAlign;
 
     let api = plugin_host.api();
@@ -267,12 +272,27 @@ pub fn render_status_bar(
 
     let text_color = theme.text.secondary.to_color32();
     let accent_color = theme.semantic.accent.to_color32();
+    let panel_fill = theme.surfaces.panel.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let inactive_bg = theme.widgets.inactive_bg.to_color32();
+    let hover_bg = theme.widgets.hovered_bg.to_color32();
+    let muted_color = theme.text.muted.to_color32();
+    let success_color = theme.semantic.success.to_color32();
+    let error_color = theme.semantic.error.to_color32();
+
+    // Check if a theme was selected last frame (via egui temp data)
+    let theme_selection_id = egui::Id::new("status_bar_theme_selection");
+    let pending: Option<String> = ctx.data(|d| d.get_temp::<String>(theme_selection_id));
+    if let Some(name) = pending {
+        ctx.data_mut(|d| d.remove_temp::<String>(theme_selection_id));
+        theme_manager.load_theme(&name);
+    }
 
     egui::TopBottomPanel::bottom("status_bar")
         .exact_height(22.0)
         .frame(egui::Frame::NONE
-            .fill(theme.surfaces.panel.to_color32())
-            .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
+            .fill(panel_fill)
+            .stroke(egui::Stroke::new(1.0, border_color)))
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
@@ -319,7 +339,7 @@ pub fn render_status_bar(
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
 
                     // Background with rounded corners
-                    ui.painter().rect_filled(rect, 3.0, theme.widgets.inactive_bg.to_color32());
+                    ui.painter().rect_filled(rect, 3.0, inactive_bg);
 
                     // Fill with rounded corners
                     if progress > 0.0 {
@@ -348,11 +368,90 @@ pub fn render_status_bar(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 16.0;
 
-                    // Update available indicator (rightmost)
+                    // Version text (rightmost)
+                    ui.label(RichText::new("Renzora r1-alpha2").size(11.0).color(text_color));
+
+                    // Theme picker dropup
+                    let theme_popup_id = ui.id().with("theme_picker_popup");
+                    let is_open: bool = ui.data(|d| d.get_temp::<bool>(theme_popup_id).unwrap_or(false));
+                    let theme_btn = ui.add(
+                        egui::Button::new(
+                            RichText::new(format!("{} {} {}", PALETTE, &active_theme_name, CARET_UP))
+                                .size(11.0)
+                                .color(text_color),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(3))
+                        .min_size(egui::vec2(0.0, 18.0)),
+                    );
+                    // Draw border on left, bottom, right only (no top)
+                    let r = theme_btn.rect;
+                    let stroke = egui::Stroke::new(1.0, border_color);
+                    ui.painter().line_segment([r.left_top(), r.left_bottom()], stroke);
+                    ui.painter().line_segment([r.left_bottom(), r.right_bottom()], stroke);
+                    ui.painter().line_segment([r.right_top(), r.right_bottom()], stroke);
+                    if theme_btn.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if theme_btn.clicked() {
+                        ui.data_mut(|d| d.insert_temp(theme_popup_id, !is_open));
+                    }
+
+                    // Render popup above the button
+                    if is_open {
+                        let btn_rect = theme_btn.rect;
+                        let popup_area_id = theme_popup_id.with("area");
+                        let area_resp = egui::Area::new(popup_area_id)
+                            .order(egui::Order::Foreground)
+                            .fixed_pos(egui::pos2(btn_rect.max.x, btn_rect.min.y))
+                            .pivot(egui::Align2::RIGHT_BOTTOM)
+                            .show(ui.ctx(), |ui| {
+                                let mut frame = egui::Frame::popup(ui.style());
+                                frame.stroke = egui::Stroke::NONE;
+                                frame.show(ui, |ui| {
+                                    ui.set_max_height(200.0);
+                                    ui.set_max_width(160.0);
+                                    ui.style_mut().spacing.item_spacing.y = 2.0;
+
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        for name in &available_themes {
+                                            let is_active = *name == active_theme_name;
+                                            let label = format!("{} {}", PALETTE, name);
+
+                                            let btn = ui.add_enabled(
+                                                !is_active,
+                                                egui::Button::new(&label)
+                                                    .fill(Color32::TRANSPARENT)
+                                                    .corner_radius(CornerRadius::same(2))
+                                                    .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                            );
+                                            if btn.hovered() && !is_active {
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
+                                            if btn.clicked() {
+                                                ui.ctx().data_mut(|d| d.insert_temp::<String>(theme_selection_id, name.clone()));
+                                                ui.data_mut(|d| d.insert_temp(theme_popup_id, false));
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+
+                        // Close if clicked outside (but not on the toggle button)
+                        let popup_rect = area_resp.response.rect;
+                        if ui.input(|i| i.pointer.any_pressed()) {
+                            let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+                            if let Some(pos) = pointer_pos {
+                                if !popup_rect.contains(pos) && !btn_rect.contains(pos) {
+                                    ui.data_mut(|d| d.insert_temp(theme_popup_id, false));
+                                }
+                            }
+                        }
+                    }
+
+                    // Update available indicator
                     if let Some(ref result) = update_state.check_result {
                         if result.update_available {
-                            let success_color = theme.semantic.success.to_color32();
-
                             let btn = egui::Button::new(
                                 RichText::new(format!("{} Update Available", DOWNLOAD_SIMPLE))
                                     .size(11.0)
@@ -376,7 +475,6 @@ pub fn render_status_bar(
                         ctx.request_repaint();
                     } else if let Some(ref err) = update_state.error {
                         // Show error indicator
-                        let error_color = theme.semantic.error.to_color32();
                         ui.label(RichText::new(WARNING).size(11.0).color(error_color))
                             .on_hover_text(format!("Update check failed: {}", err));
                         ui.separator();
@@ -389,6 +487,7 @@ pub fn render_status_bar(
                 });
             });
         });
+
 
     fn render_status_item(ui: &mut egui::Ui, item: &crate::plugin_core::StatusBarItem, text_color: Color32) {
         // Build display text with icon if present

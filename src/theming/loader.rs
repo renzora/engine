@@ -109,8 +109,12 @@ impl ThemeManager {
 
     /// Load a theme from a TOML file
     pub fn load_theme_from_file(path: &Path) -> Option<Theme> {
-        let content = std::fs::read_to_string(path).ok()?;
-        toml::from_str(&content).ok()
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| eprintln!("Failed to read theme file {:?}: {}", path, e))
+            .ok()?;
+        toml::from_str(&content)
+            .map_err(|e| eprintln!("Failed to parse theme file {:?}: {}", path, e))
+            .ok()
     }
 
     /// Save the current theme to a file

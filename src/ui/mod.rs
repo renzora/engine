@@ -23,6 +23,7 @@ use crate::viewport::{Camera2DState, ModelPreviewCache, ParticlePreviewImage};
 use crate::shader_thumbnail::ShaderThumbnailCache;
 use crate::brushes::{BrushSettings, BrushState, BlockEditState};
 use crate::terrain::{TerrainSettings, TerrainSculptState};
+use crate::surface_painting::{SurfacePaintSettings, SurfacePaintState};
 use crate::update::{UpdateState, UpdateDialogState};
 
 /// Bundled editor state resources for system parameter limits
@@ -74,6 +75,8 @@ pub struct EditorResources<'w> {
     pub block_edit: Res<'w, BlockEditState>,
     pub terrain_settings: ResMut<'w, TerrainSettings>,
     pub terrain_sculpt_state: Res<'w, TerrainSculptState>,
+    pub surface_paint_settings: ResMut<'w, SurfacePaintSettings>,
+    pub surface_paint_state: ResMut<'w, SurfacePaintState>,
     pub update_state: ResMut<'w, UpdateState>,
     pub update_dialog: ResMut<'w, UpdateDialogState>,
     pub app_config: ResMut<'w, AppConfig>,
@@ -297,7 +300,7 @@ pub fn editor_ui(
             ctx,
             &editor.plugin_host,
             &editor.loading_progress,
-            &editor.theme_manager.active_theme,
+            &mut editor.theme_manager,
             &editor.update_state,
             &mut editor.update_dialog,
         );
@@ -327,6 +330,7 @@ pub fn editor_ui(
             &mut editor.command_history,
             &mut editor.docking,
             &mut editor.viewport,
+            &mut editor.gizmo,
             &editor.theme_manager.active_theme,
         );
         all_ui_events.extend(title_bar_events);
@@ -491,6 +495,12 @@ pub fn editor_ui(
         // Handle tab close
         if let Some(panel) = dock_result.panel_to_close {
             editor.docking.close_panel(&panel);
+        }
+
+        // Handle panel add (from "+" button in tab bar)
+        if let Some((leaf_panel, new_panel)) = dock_result.panel_to_add {
+            editor.docking.panel_availability.open_panel(&new_panel);
+            editor.docking.dock_tree.add_tab(&leaf_panel, new_panel);
         }
 
         // Handle active tab change
@@ -969,6 +979,9 @@ pub fn editor_ui(
                             &mut editor.brush_settings,
                             &editor.block_edit,
                             &mut editor.terrain_settings,
+                            &mut editor.surface_paint_settings,
+                            &mut editor.surface_paint_state,
+                            &mut editor.assets,
                             &editor.theme_manager.active_theme,
                         );
                     });
