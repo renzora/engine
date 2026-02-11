@@ -815,6 +815,8 @@ pub fn render_asset_inspector(
                     "gltf" => "glTF Model",
                     "obj" => "OBJ Model",
                     "fbx" => "FBX Model",
+                    "usd" => "USD Model",
+                    "usdz" => "USDZ Model",
                     "wav" => "WAV Audio",
                     "ogg" => "OGG Audio",
                     "mp3" => "MP3 Audio",

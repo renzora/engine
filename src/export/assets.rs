@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// Known asset file extensions (lowercase)
 const ASSET_EXTENSIONS: &[&str] = &[
     // 3D models
-    "gltf", "glb", "obj", "fbx",
+    "gltf", "glb", "obj", "fbx", "usd", "usdz",
     // Images/textures
     "png", "jpg", "jpeg", "webp", "ktx2", "dds", "tga", "bmp", "hdr", "exr",
     // Audio

@@ -790,7 +790,7 @@ fn render_menu_items(
             if menu_item(ui, "Import 3D Model...") {
                 // Open file dialog specifically for 3D models
                 if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("3D Models", &["glb", "gltf", "obj", "fbx"])
+                    .add_filter("3D Models", &["glb", "gltf", "obj", "fbx", "usd", "usdz"])
                     .pick_files()
                 {
                     if !paths.is_empty() {

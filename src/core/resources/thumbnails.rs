@@ -109,7 +109,7 @@ pub fn supports_model_preview(filename: &str) -> bool {
 /// Identifies model files that could have generated previews (future)
 pub fn is_model_file_for_preview(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-    matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx")
+    matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx" | "usd" | "usdz")
 }
 
 /// Identifies WGSL shader files that support rendered shader thumbnails

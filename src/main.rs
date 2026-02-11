@@ -10,6 +10,7 @@ mod crash;
 mod embedded;
 mod export;
 mod gizmo;
+mod import;
 mod gltf_animation;
 mod input;
 #[cfg(feature = "solari")]

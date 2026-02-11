@@ -15,7 +15,7 @@ pub use resources::{
     DockingState, EditorSettings, MonoFont, RenderStats, CameraSettings, UiFont,
     ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, InspectorPanelRenderState, LogEntry, LogLevel, MeshHandling,
-    NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
+    ModelImportSettings, NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
     ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview, supports_shader_thumbnail,

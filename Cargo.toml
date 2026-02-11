@@ -35,6 +35,11 @@ toml = "0.8"
 dirs = "5.0"
 zstd = "0.13"
 gltf = "1.4"
+gltf-json = "1.4"
+tobj = "4"
+fbxcel = "0.9"
+fbxcel-dom = "0.0"
+zip = "2"
 image = { version = "0.25", optional = true }
 memory-stats = "1.2"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }

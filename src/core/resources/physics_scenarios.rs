@@ -23,6 +23,7 @@ pub enum ScenarioType {
     ProjectileLaunch,
     Gauntlet,
     Avalanche,
+    WedgeStress,
 }
 
 impl ScenarioType {
@@ -38,6 +39,7 @@ impl ScenarioType {
             ScenarioType::ProjectileLaunch => "Projectile",
             ScenarioType::Gauntlet => "Gauntlet",
             ScenarioType::Avalanche => "Avalanche",
+            ScenarioType::WedgeStress => "Wedge Stress",
         }
     }
 
@@ -53,6 +55,7 @@ impl ScenarioType {
             ScenarioType::ProjectileLaunch => "Projectile launched at angle — ballistic trajectory",
             ScenarioType::Gauntlet => "Obstacle course: ramps, pendulums, rotating platforms",
             ScenarioType::Avalanche => "Steep slope with pile of mixed shapes",
+            ScenarioType::WedgeStress => "V-wedges, tight corners, and funnels — tests collision stability in tight geometry",
         }
     }
 
@@ -67,6 +70,7 @@ impl ScenarioType {
         ScenarioType::ProjectileLaunch,
         ScenarioType::Gauntlet,
         ScenarioType::Avalanche,
+        ScenarioType::WedgeStress,
     ];
 }
 
@@ -134,6 +138,7 @@ pub fn process_scenario_commands(
                     ScenarioType::ProjectileLaunch => spawn_projectile_launch(&mut commands, scene_root, &mut meshes, &mut materials, scale),
                     ScenarioType::Gauntlet => spawn_gauntlet(&mut commands, scene_root, &mut meshes, &mut materials, scale),
                     ScenarioType::Avalanche => spawn_avalanche(&mut commands, scene_root, &mut meshes, &mut materials, scale),
+                    ScenarioType::WedgeStress => spawn_wedge_stress(&mut commands, scene_root, &mut meshes, &mut materials, scale),
                 }
             }
             ScenarioCommand::ClearScenario => {
@@ -672,6 +677,217 @@ fn spawn_avalanche(
                 1.5, 0.2, 0.5,
             );
         }
+    }
+
+    spawn_ground(commands, scene_root, meshes, materials, s);
+}
+
+fn spawn_wedge_stress(
+    commands: &mut Commands,
+    scene_root: Option<Entity>,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    s: f32,
+) {
+    let wall_mat = make_material(materials, Color::srgb(0.5, 0.5, 0.55));
+
+    // ---- Zone 1: V-Wedge trough ----
+    // Two long walls angled inward to form a V shape
+    let wedge_wall = meshes.add(Cuboid::new(0.2 * s, 3.0 * s, 8.0 * s));
+    let wedge_angle = 0.55; // ~31 degrees from vertical — creates a tight V
+
+    // Left wall of V
+    spawn_entity(
+        commands, scene_root,
+        wedge_wall.clone(), wall_mat.clone(),
+        "V-Wedge Left".to_string(),
+        Transform::from_translation(Vec3::new(-6.0 * s, 1.5 * s, 0.0))
+            .with_rotation(Quat::from_rotation_z(wedge_angle)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(0.2 * s, 3.0 * s, 8.0 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Right wall of V
+    spawn_entity(
+        commands, scene_root,
+        wedge_wall.clone(), wall_mat.clone(),
+        "V-Wedge Right".to_string(),
+        Transform::from_translation(Vec3::new(-4.0 * s, 1.5 * s, 0.0))
+            .with_rotation(Quat::from_rotation_z(-wedge_angle)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(0.2 * s, 3.0 * s, 8.0 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Drop mixed shapes into the V
+    let sphere_mesh = meshes.add(Sphere::new(0.35 * s));
+    let box_mesh = meshes.add(Cuboid::new(0.6 * s, 0.6 * s, 0.6 * s));
+    let capsule_mesh = meshes.add(Capsule3d::new(0.25 * s, 0.8 * s));
+
+    for i in 0..6 {
+        let z = (i as f32 - 2.5) * 1.2 * s;
+        let y = 5.0 * s + i as f32 * 0.5 * s;
+        let hue = i as f32 * 50.0;
+        let mat = make_material(materials, Color::hsl(hue, 0.75, 0.55));
+
+        match i % 3 {
+            0 => {
+                spawn_entity(
+                    commands, scene_root,
+                    sphere_mesh.clone(), mat,
+                    format!("V-Wedge Sphere {}", i),
+                    Transform::from_translation(Vec3::new(-5.0 * s, y, z)),
+                    avian3d::prelude::RigidBody::Dynamic,
+                    avian3d::prelude::Collider::sphere(0.35 * s),
+                    1.0, 0.1, 0.6,
+                );
+            }
+            1 => {
+                spawn_entity(
+                    commands, scene_root,
+                    box_mesh.clone(), mat,
+                    format!("V-Wedge Box {}", i),
+                    Transform::from_translation(Vec3::new(-5.0 * s, y, z)),
+                    avian3d::prelude::RigidBody::Dynamic,
+                    avian3d::prelude::Collider::cuboid(0.6 * s, 0.6 * s, 0.6 * s),
+                    1.5, 0.1, 0.7,
+                );
+            }
+            _ => {
+                spawn_entity(
+                    commands, scene_root,
+                    capsule_mesh.clone(), mat,
+                    format!("V-Wedge Capsule {}", i),
+                    Transform::from_translation(Vec3::new(-5.0 * s, y, z)),
+                    avian3d::prelude::RigidBody::Dynamic,
+                    avian3d::prelude::Collider::capsule(0.25 * s, 0.8 * s),
+                    1.2, 0.1, 0.6,
+                );
+            }
+        }
+    }
+
+    // ---- Zone 2: 90-degree corner trap ----
+    // Two walls meeting at a right angle with objects pushed into the corner
+    let corner_wall = meshes.add(Cuboid::new(6.0 * s, 3.0 * s, 0.2 * s));
+    let side_wall = meshes.add(Cuboid::new(0.2 * s, 3.0 * s, 6.0 * s));
+
+    // Back wall
+    spawn_entity(
+        commands, scene_root,
+        corner_wall, wall_mat.clone(),
+        "Corner Back Wall".to_string(),
+        Transform::from_translation(Vec3::new(3.0 * s, 1.5 * s, -3.0 * s)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(6.0 * s, 3.0 * s, 0.2 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Side wall
+    spawn_entity(
+        commands, scene_root,
+        side_wall, wall_mat.clone(),
+        "Corner Side Wall".to_string(),
+        Transform::from_translation(Vec3::new(0.0 * s, 1.5 * s, 0.0)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(0.2 * s, 3.0 * s, 6.0 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Objects in the corner with initial velocity pushing them into it
+    for i in 0..4 {
+        let x = 1.5 * s + i as f32 * 1.0 * s;
+        let mat = make_material(materials, Color::hsl(200.0 + i as f32 * 30.0, 0.7, 0.55));
+
+        let id = spawn_entity(
+            commands, scene_root,
+            box_mesh.clone(), mat,
+            format!("Corner Box {}", i),
+            Transform::from_translation(Vec3::new(x, 0.5 * s, -1.0 * s)),
+            avian3d::prelude::RigidBody::Dynamic,
+            avian3d::prelude::Collider::cuboid(0.6 * s, 0.6 * s, 0.6 * s),
+            2.0, 0.05, 0.8,
+        );
+        // Push toward the corner
+        commands.entity(id).insert(avian3d::prelude::LinearVelocity(
+            Vec3::new(-3.0 * s, 0.0, -3.0 * s),
+        ));
+    }
+
+    // ---- Zone 3: Narrowing funnel ----
+    // Two walls that converge, forcing objects into an increasingly tight space
+    let funnel_wall = meshes.add(Cuboid::new(0.2 * s, 2.0 * s, 10.0 * s));
+
+    // Left funnel wall (angled inward)
+    spawn_entity(
+        commands, scene_root,
+        funnel_wall.clone(), wall_mat.clone(),
+        "Funnel Left Wall".to_string(),
+        Transform::from_translation(Vec3::new(11.0 * s, 1.0 * s, 0.0))
+            .with_rotation(Quat::from_rotation_y(0.2)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(0.2 * s, 2.0 * s, 10.0 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Right funnel wall (angled inward)
+    spawn_entity(
+        commands, scene_root,
+        funnel_wall, wall_mat.clone(),
+        "Funnel Right Wall".to_string(),
+        Transform::from_translation(Vec3::new(15.0 * s, 1.0 * s, 0.0))
+            .with_rotation(Quat::from_rotation_y(-0.2)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(0.2 * s, 2.0 * s, 10.0 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Cap at the narrow end so objects can't escape
+    let cap_mesh = meshes.add(Cuboid::new(4.0 * s, 2.0 * s, 0.2 * s));
+    spawn_entity(
+        commands, scene_root,
+        cap_mesh, wall_mat,
+        "Funnel Cap".to_string(),
+        Transform::from_translation(Vec3::new(13.0 * s, 1.0 * s, 5.0 * s)),
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(4.0 * s, 2.0 * s, 0.2 * s),
+        1.0, 0.2, 0.5,
+    );
+
+    // Spheres and capsules pushed into the funnel's narrow end
+    for i in 0..8 {
+        let x = 12.0 * s + (i as f32 % 3.0) * 0.8 * s;
+        let z = -4.0 * s + (i as f32 / 3.0).floor() * 0.9 * s;
+        let y = 0.5 * s + (i as f32 % 2.0) * 0.6 * s;
+        let hue = (i as f32 * 40.0 + 120.0) % 360.0;
+        let mat = make_material(materials, Color::hsl(hue, 0.8, 0.55));
+
+        let id = if i % 2 == 0 {
+            spawn_entity(
+                commands, scene_root,
+                sphere_mesh.clone(), mat,
+                format!("Funnel Sphere {}", i),
+                Transform::from_translation(Vec3::new(x, y, z)),
+                avian3d::prelude::RigidBody::Dynamic,
+                avian3d::prelude::Collider::sphere(0.35 * s),
+                1.0, 0.05, 0.7,
+            )
+        } else {
+            spawn_entity(
+                commands, scene_root,
+                capsule_mesh.clone(), mat,
+                format!("Funnel Capsule {}", i),
+                Transform::from_translation(Vec3::new(x, y, z)),
+                avian3d::prelude::RigidBody::Dynamic,
+                avian3d::prelude::Collider::capsule(0.25 * s, 0.8 * s),
+                1.2, 0.05, 0.7,
+            )
+        };
+        // Push toward the narrow end
+        commands.entity(id).insert(avian3d::prelude::LinearVelocity(
+            Vec3::new(0.0, 0.0, 5.0 * s),
+        ));
     }
 
     spawn_ground(commands, scene_root, meshes, materials, s);
