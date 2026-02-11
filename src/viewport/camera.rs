@@ -98,7 +98,7 @@ pub fn camera_controller(
     // Don't start camera drag if gizmo is being dragged or hovered (for left click)
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some();
-    let left_click_drag_disabled = viewport.disable_left_click_drag;
+    let left_click_drag_disabled = viewport.disable_left_click_drag || !cam_settings.left_click_pan;
     if let Ok((mut cursor, window)) = window_query.single_mut() {
         // Capture cursor position on right-click press for click-vs-drag detection
         if right_just_pressed && viewport.hovered && !alt_held {

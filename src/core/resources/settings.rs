@@ -167,6 +167,8 @@ pub struct CameraSettings {
     pub invert_y: bool,
     /// Scale movement speed based on camera distance from focus
     pub distance_relative_speed: bool,
+    /// Enable left-click drag camera panning
+    pub left_click_pan: bool,
 }
 
 impl Default for CameraSettings {
@@ -179,6 +181,7 @@ impl Default for CameraSettings {
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
+            left_click_pan: true,
         }
     }
 }

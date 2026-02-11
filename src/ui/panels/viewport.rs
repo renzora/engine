@@ -963,6 +963,14 @@ fn viewport_camera_dropdown(
                 });
             });
 
+            // Left Click Pan
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Left Click Pan").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.camera_settings.left_click_pan, "");
+                });
+            });
+
             ui.add_space(4.0);
             ui.separator();
             ui.add_space(4.0);
@@ -981,7 +989,9 @@ fn viewport_camera_dropdown(
             ui.label(RichText::new("Controls:").small().color(label_color));
             ui.label(RichText::new("• RMB Drag: Look around").small().color(label_color));
             ui.label(RichText::new("• RMB + WASD: Fly mode").small().color(label_color));
-            ui.label(RichText::new("• LMB Drag: Move camera").small().color(label_color));
+            if settings.camera_settings.left_click_pan {
+                ui.label(RichText::new("• LMB Drag: Move camera").small().color(label_color));
+            }
             ui.label(RichText::new("• MMB Drag: Orbit").small().color(label_color));
             ui.label(RichText::new("• Alt + LMB: Orbit").small().color(label_color));
             ui.label(RichText::new("• Scroll: Zoom").small().color(label_color));
