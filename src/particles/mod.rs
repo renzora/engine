@@ -4,7 +4,7 @@
 //! - Data structures for effect definitions
 //! - Effect builder to convert definitions to bevy_hanabi assets
 //! - Runtime sync systems
-//! - Asset loader for .effect files
+//! - Asset loader for .particle files
 //!
 //! **Note:** Particles render in the transparent pass, which runs after Solari's lighting
 //! pass thanks to a patched render graph edge in `crates/bevy_solari/`. Particles will

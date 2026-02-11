@@ -91,8 +91,27 @@ pub fn handle_file_drop(
             .unwrap_or("")
             .to_lowercase();
 
-        if extension == "glb" || extension == "gltf" {
-            info!("Loading dropped file: {:?}", path_buf);
+        // Convert non-glTF model formats to GLB first
+        let load_path = if crate::import::is_convertible_model(&extension) {
+            match crate::import::convert_to_glb(&path_buf, &Default::default()) {
+                Ok(glb_path) => glb_path,
+                Err(e) => {
+                    error!("Failed to convert {}: {}", path_buf.display(), e);
+                    continue;
+                }
+            }
+        } else {
+            path_buf.clone()
+        };
+
+        let load_ext = load_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        if load_ext == "glb" || load_ext == "gltf" {
+            info!("Loading dropped file: {:?}", load_path);
 
             // Get the file name for the entity name
             let name = path_buf
@@ -102,12 +121,12 @@ pub fn handle_file_drop(
                 .to_string();
 
             // Get file size
-            let file_size = std::fs::metadata(&path_buf)
+            let file_size = std::fs::metadata(&load_path)
                 .map(|m| m.len())
                 .unwrap_or(0);
 
             // Load the GLTF asset
-            let handle: Handle<Gltf> = asset_server.load(path_buf.clone());
+            let handle: Handle<Gltf> = asset_server.load(load_path.clone());
 
             // Track for progress bar
             loading_progress.track(&handle, file_size);
@@ -115,7 +134,7 @@ pub fn handle_file_drop(
             pending_loads.loads.push(PendingLoad {
                 handle,
                 name,
-                path: path_buf.clone(),
+                path: load_path,
                 spawn_position: None, // Regular file drop spawns at origin
             });
         }
@@ -136,8 +155,27 @@ pub fn handle_asset_panel_drop(
             .unwrap_or("")
             .to_lowercase();
 
-        if extension == "glb" || extension == "gltf" {
-            info!("Loading dropped asset: {:?} at position {:?}", path, position);
+        // Convert non-glTF model formats to GLB first
+        let load_path = if crate::import::is_convertible_model(&extension) {
+            match crate::import::convert_to_glb(&path, &Default::default()) {
+                Ok(glb_path) => glb_path,
+                Err(e) => {
+                    error!("Failed to convert {}: {}", path.display(), e);
+                    return;
+                }
+            }
+        } else {
+            path.clone()
+        };
+
+        let load_ext = load_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        if load_ext == "glb" || load_ext == "gltf" {
+            info!("Loading dropped asset: {:?} at position {:?}", load_path, position);
 
             // Get the file name for the entity name
             let name = path
@@ -147,15 +185,12 @@ pub fn handle_asset_panel_drop(
                 .to_string();
 
             // Get file size
-            let file_size = std::fs::metadata(&path)
+            let file_size = std::fs::metadata(&load_path)
                 .map(|m| m.len())
                 .unwrap_or(0);
 
-            // Use absolute path for loading - asset server can handle absolute paths
-            let load_path = path.clone();
-
             // Load the GLTF asset
-            let handle: Handle<Gltf> = asset_server.load(load_path);
+            let handle: Handle<Gltf> = asset_server.load(load_path.clone());
 
             // Track for progress bar
             loading_progress.track(&handle, file_size);
@@ -163,14 +198,14 @@ pub fn handle_asset_panel_drop(
             pending_loads.loads.push(PendingLoad {
                 handle,
                 name,
-                path,
+                path: load_path,
                 spawn_position: Some(position),
             });
         }
     }
 }
 
-/// System to handle .effect file drops from the assets panel to viewport
+/// System to handle .particle file drops from the assets panel to viewport
 /// Creates an entity with HanabiEffectData at the drop position
 pub fn handle_effect_panel_drop(
     mut commands: Commands,
@@ -437,6 +472,9 @@ fn copy_to_project_assets(source_path: &PathBuf, project: Option<&CurrentProject
             return None;
         }
         info!("Copied asset to project: {:?}", dest_path);
+
+        // Copy sidecar files (MTL, textures) for non-glTF formats
+        crate::import::copy_sidecar_files(source_path, &models_dir);
     }
 
     // Return relative path from project root (using forward slashes for cross-platform)
@@ -1509,13 +1547,23 @@ pub fn start_drag_preview(
         .unwrap_or("")
         .to_lowercase();
 
-    if ext == "glb" || ext == "gltf" {
-        let handle: Handle<Gltf> = asset_server.load(dragging_path.clone());
-        preview.phase = DragPreviewPhase::Loading {
-            handle,
-            path: dragging_path.clone(),
-        };
-    }
+    // For non-glTF formats, use the cached GLB sibling if it exists
+    let load_path = if crate::import::is_convertible_model(&ext) {
+        match crate::import::find_glb_sibling(dragging_path) {
+            Some(glb_path) => glb_path,
+            None => return, // No cached GLB yet - skip preview
+        }
+    } else if ext == "glb" || ext == "gltf" {
+        dragging_path.clone()
+    } else {
+        return;
+    };
+
+    let handle: Handle<Gltf> = asset_server.load(load_path.clone());
+    preview.phase = DragPreviewPhase::Loading {
+        handle,
+        path: load_path,
+    };
 }
 
 /// Spawn and position the preview ghost mesh

@@ -125,11 +125,11 @@ pub fn render_particle_editor_content(
     let available = ui.available_rect_before_wrap();
     ui.painter().rect_filled(available, 0.0, bg_color);
 
-    // --- Drop target: accept .effect files dragged from assets panel ---
+    // --- Drop target: accept .particle files dragged from assets panel ---
     let is_dragging_effect = assets.dragging_asset.as_ref()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .map(|n| n.to_lowercase().ends_with(".effect"))
+        .map(|n| n.to_lowercase().ends_with(".particle"))
         .unwrap_or(false);
 
     if is_dragging_effect {
@@ -209,10 +209,10 @@ pub fn render_particle_editor_content(
             let target_dir = assets.current_folder.clone().unwrap_or_else(|| PathBuf::from("."));
             let sanitized_name = effect.name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ', "");
             let base_name = if sanitized_name.is_empty() { "effect".to_string() } else { sanitized_name };
-            let mut filename = format!("{}.effect", base_name);
+            let mut filename = format!("{}.particle", base_name);
             let mut counter = 1;
             while target_dir.join(&filename).exists() {
-                filename = format!("{}_{}.effect", base_name, counter);
+                filename = format!("{}_{}.particle", base_name, counter);
                 counter += 1;
             }
             let save_path = target_dir.join(&filename);
@@ -281,7 +281,7 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
     let is_dragging_effect = assets.dragging_asset.as_ref()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .map(|n| n.to_lowercase().ends_with(".effect"))
+        .map(|n| n.to_lowercase().ends_with(".particle"))
         .unwrap_or(false);
 
     if is_dragging_effect {
@@ -304,7 +304,7 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
             ui.add_space(16.0);
 
             let hint = if is_dragging_effect {
-                "Drop .effect file here to open"
+                "Drop .particle file here to open"
             } else {
                 "Create or load a particle effect to begin"
             };

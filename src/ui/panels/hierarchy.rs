@@ -14,6 +14,7 @@ use crate::shared::{
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::shared::components::animation::{AnimationData, GltfAnimations};
+use crate::particles::HanabiEffectData;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use crate::theming::Theme;
 
@@ -25,7 +26,7 @@ use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CUBE_TRANSPARENT, FRAME_CORNERS, BROWSERS, FOLDER_SIMPLE,
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
-    GLOBE, PACKAGE, MAGNIFYING_GLASS,
+    GLOBE, PACKAGE, MAGNIFYING_GLASS, SPARKLE, CIRCLE,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -48,6 +49,7 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub ui_buttons: Query<'w, 's, Entity, With<UIButtonData>>,
     pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
     pub terrains: Query<'w, 's, Entity, With<crate::terrain::TerrainData>>,
+    pub particles: Query<'w, 's, Entity, With<HanabiEffectData>>,
     pub animations: Query<'w, 's, &'static AnimationData>,
     pub gltf_animations: Query<'w, 's, &'static mut GltfAnimations>,
     // Node explorer queries (read-only to avoid conflicts)
@@ -1364,6 +1366,11 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
         return (IMAGE, Color32::from_rgb(242, 140, 191));
     }
 
+    // Particle Effects
+    if queries.particles.get(entity).is_ok() {
+        return (SPARKLE, Color32::from_rgb(255, 180, 50));
+    }
+
     // UI Elements
     if queries.ui_panels.get(entity).is_ok() {
         return (STACK, Color32::from_rgb(191, 166, 242));
@@ -1395,8 +1402,13 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
         return (FOLDER_SIMPLE, Color32::from_rgb(180, 180, 190));
     }
 
-    // Default - empty entity
-    (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190))
+    // Group entity (has children but no specific component)
+    if queries.children.get(entity).is_ok() {
+        return (FOLDER_SIMPLE, Color32::from_rgb(180, 180, 190));
+    }
+
+    // Empty entity
+    (CIRCLE, Color32::from_rgb(140, 140, 150))
 }
 
 /// Render the Godot-style "Add Entity" popup overlay

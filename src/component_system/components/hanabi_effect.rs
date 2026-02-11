@@ -485,11 +485,11 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
 fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _meshes: &mut Assets<Mesh>, _materials: &mut Assets<StandardMaterial>) -> bool {
     let mut changed = false;
 
-    // Check for drag-and-drop of .effect files
+    // Check for drag-and-drop of .particle files
     let dragging_effect_path = {
         if let Some(assets) = world.get_resource::<AssetBrowserState>() {
             assets.dragging_asset.as_ref()
-                .filter(|p| p.to_string_lossy().to_lowercase().ends_with(".effect"))
+                .filter(|p| p.to_string_lossy().to_lowercase().ends_with(".particle"))
                 .cloned()
         } else {
             None
@@ -569,7 +569,7 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
                     }
                 });
 
-                // Drop zone for .effect files
+                // Drop zone for .particle files
                 let drop_rect = ui.allocate_space(egui::vec2(ui.available_width(), 28.0)).1;
                 let is_hovering = dragging_effect_path.is_some() && ui.input(|i| {
                     i.pointer.interact_pos().is_some_and(|pos| drop_rect.contains(pos))
@@ -587,7 +587,7 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
                 ui.painter().text(
                     drop_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    "Drop .effect file here",
+                    "Drop .particle file here",
                     egui::FontId::proportional(11.0),
                     drop_color,
                 );

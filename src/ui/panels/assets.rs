@@ -3016,10 +3016,10 @@ fn render_create_particle_dialog(ctx: &egui::Context, assets: &mut AssetBrowserS
             ui.horizontal(|ui| {
                 if ui.button("Create").clicked() {
                     if let Some(ref current_folder) = assets.current_folder {
-                        let name = if assets.new_particle_name.ends_with(".effect") {
+                        let name = if assets.new_particle_name.ends_with(".particle") {
                             assets.new_particle_name.clone()
                         } else {
-                            format!("{}.effect", assets.new_particle_name)
+                            format!("{}.particle", assets.new_particle_name)
                         };
 
                         let path = current_folder.join(&name);
@@ -3323,8 +3323,8 @@ fn render_create_shader_dialog(ctx: &egui::Context, assets: &mut AssetBrowserSta
 /// Opens the file dialog to select files for import
 fn open_import_file_dialog(assets: &mut AssetBrowserState) {
     if let Some(paths) = rfd::FileDialog::new()
-        .add_filter("All Assets", &["glb", "gltf", "obj", "fbx", "png", "jpg", "jpeg", "wav", "ogg", "mp3", "rhai"])
-        .add_filter("3D Models", &["glb", "gltf", "obj", "fbx"])
+        .add_filter("All Assets", &["glb", "gltf", "obj", "fbx", "usd", "usdz", "png", "jpg", "jpeg", "wav", "ogg", "mp3", "rhai"])
+        .add_filter("3D Models", &["glb", "gltf", "obj", "fbx", "usd", "usdz"])
         .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga"])
         .add_filter("Audio", &["wav", "ogg", "mp3"])
         .add_filter("Scripts", &["rhai"])
@@ -3755,10 +3755,6 @@ fn perform_model_import(assets: &AssetBrowserState, target_folder: &PathBuf) {
         if let Some(file_name) = source_path.file_name() {
             let dest_path = target_folder.join(file_name);
 
-            // For now, just copy the file
-            // In a full implementation, you would apply the import settings here
-            // (e.g., scale, coordinate flip, etc. would be stored as metadata
-            // or applied during scene loading)
             if let Err(e) = std::fs::copy(source_path, &dest_path) {
                 error!("Failed to import {}: {}", source_path.display(), e);
             } else {
@@ -3768,8 +3764,25 @@ fn perform_model_import(assets: &AssetBrowserState, target_folder: &PathBuf) {
                     assets.import_settings.generate_colliders
                 );
 
-                // TODO: Save import settings as a .meta file alongside the asset
-                // This would allow the settings to be reapplied when the asset is loaded
+                // Copy sidecar files (MTL, textures) for non-glTF formats
+                crate::import::copy_sidecar_files(source_path, target_folder);
+
+                // Convert non-glTF formats to GLB
+                let ext = dest_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if crate::import::is_convertible_model(&ext) {
+                    match crate::import::convert_to_glb(&dest_path, &assets.import_settings) {
+                        Ok(glb_path) => {
+                            info!("Converted to GLB: {}", glb_path.display());
+                        }
+                        Err(e) => {
+                            error!("Failed to convert {} to GLB: {}", dest_path.display(), e);
+                        }
+                    }
+                }
             }
         }
     }
@@ -3807,6 +3820,25 @@ fn process_pending_file_imports(assets: &mut AssetBrowserState) {
         match std::fs::copy(&source_path, &dest_path) {
             Ok(_) => {
                 info!("Imported to assets: {}", dest_path.display());
+
+                // Copy sidecar files and convert non-glTF formats
+                crate::import::copy_sidecar_files(&source_path, &target_folder);
+
+                let ext = dest_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if crate::import::is_convertible_model(&ext) {
+                    match crate::import::convert_to_glb(&dest_path, &Default::default()) {
+                        Ok(glb_path) => {
+                            info!("Converted to GLB: {}", glb_path.display());
+                        }
+                        Err(e) => {
+                            error!("Failed to convert {} to GLB: {}", dest_path.display(), e);
+                        }
+                    }
+                }
             }
             Err(e) => {
                 error!("Failed to import {}: {}", source_path.display(), e);
@@ -3966,7 +3998,7 @@ fn create_texture_template(name: &str) -> String {
 fn create_particle_template(name: &str) -> String {
     use crate::particles::HanabiEffectDefinition;
     let mut effect = HanabiEffectDefinition::default();
-    effect.name = name.trim_end_matches(".effect").to_string();
+    effect.name = name.trim_end_matches(".particle").to_string();
 
     let pretty = ron::ser::PrettyConfig::new()
         .depth_limit(4)
@@ -3975,7 +4007,7 @@ fn create_particle_template(name: &str) -> String {
     ron::ser::to_string_pretty(&effect, pretty).unwrap_or_else(|_| {
         // Fallback to a minimal valid RON
         format!("(name:\"{}\",capacity:1000,spawn_mode:Rate,spawn_rate:50.0,spawn_count:10,spawn_duration:0.0,spawn_cycle_count:0,spawn_starts_active:true,lifetime_min:1.0,lifetime_max:2.0,emit_shape:Point,velocity_mode:Directional,velocity_magnitude:2.0,velocity_spread:0.3,velocity_direction:(0.0,1.0,0.0),velocity_speed_min:0.0,velocity_speed_max:0.0,velocity_axis:(0.0,1.0,0.0),acceleration:(0.0,-2.0,0.0),linear_drag:0.0,radial_acceleration:0.0,tangent_acceleration:0.0,tangent_accel_axis:(0.0,1.0,0.0),conform_to_sphere:None,size_start:0.1,size_end:0.0,size_curve:[],size_start_min:0.0,size_start_max:0.0,size_non_uniform:false,size_start_x:0.1,size_start_y:0.1,size_end_x:0.0,size_end_y:0.0,screen_space_size:false,roundness:0.0,color_gradient:[(position:0.0,color:(1.0,1.0,1.0,1.0)),(position:1.0,color:(1.0,1.0,1.0,0.0))],use_flat_color:false,flat_color:(1.0,1.0,1.0,1.0),use_hdr_color:false,hdr_intensity:1.0,color_blend_mode:Modulate,blend_mode:Blend,texture_path:None,billboard_mode:FaceCamera,render_layer:0,alpha_mode:Blend,alpha_mask_threshold:0.5,orient_mode:ParallelCameraDepthPlane,rotation_speed:0.0,flipbook:None,simulation_space:Local,simulation_condition:Always,motion_integration:PostUpdate,kill_zones:[],variables:{{}})",
-            name.trim_end_matches(".effect"))
+            name.trim_end_matches(".particle"))
     })
 }
 
@@ -4022,7 +4054,7 @@ fn truncate_name(name: &str, max_len: usize) -> String {
 
 fn is_model_file(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-    matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx")
+    matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx" | "usd" | "usdz")
 }
 
 fn is_scene_file(filename: &str) -> bool {
@@ -4282,7 +4314,7 @@ fn is_texture_project_file(filename: &str) -> bool {
 }
 
 fn is_particle_file(filename: &str) -> bool {
-    filename.to_lowercase().ends_with(".effect")
+    filename.to_lowercase().ends_with(".particle")
 }
 
 fn is_level_file(filename: &str) -> bool {
@@ -4404,7 +4436,7 @@ fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
         "hdr" | "exr" => (SUN, Color32::from_rgb(255, 220, 100)),  // Golden for HDR
 
         // 3D Models
-        "gltf" | "glb" | "obj" | "fbx" => (CUBE, Color32::from_rgb(255, 170, 100)),  // Orange
+        "gltf" | "glb" | "obj" | "fbx" | "usd" | "usdz" => (CUBE, Color32::from_rgb(255, 170, 100)),  // Orange
 
         // Audio
         "wav" | "ogg" | "mp3" | "flac" => (MUSIC_NOTES, Color32::from_rgb(200, 130, 230)),  // Purple

@@ -384,7 +384,7 @@ impl Default for EffectVariable {
 
 /// Complete definition of a particle effect
 ///
-/// This can be stored in .effect asset files or embedded inline in components.
+/// This can be stored in .particle asset files or embedded inline in components.
 #[derive(Clone, Serialize, Deserialize, Reflect, Debug)]
 #[reflect(Serialize, Deserialize)]
 pub struct HanabiEffectDefinition {
@@ -653,7 +653,7 @@ impl Default for HanabiEffectDefinition {
 #[derive(Clone, Serialize, Deserialize, Reflect, Debug)]
 #[reflect(Serialize, Deserialize)]
 pub enum EffectSource {
-    /// Load from an external .effect asset file
+    /// Load from an external .particle asset file
     Asset { path: String },
     /// Embedded inline definition
     Inline { definition: HanabiEffectDefinition },
@@ -722,7 +722,7 @@ impl Default for HanabiEffectData {
 pub struct ParticleEditorState {
     /// Currently edited effect definition (working copy)
     pub current_effect: Option<HanabiEffectDefinition>,
-    /// Path to the current .effect file (if editing an asset)
+    /// Path to the current .particle file (if editing an asset)
     pub current_file_path: Option<String>,
     /// Whether the current effect has unsaved changes
     pub is_modified: bool,
@@ -732,7 +732,7 @@ pub struct ParticleEditorState {
     pub selected_curve_point: Option<usize>,
     /// Whether the preview is playing
     pub preview_playing: bool,
-    /// Paths of .effect files that were recently saved (consumed by hot reload system)
+    /// Paths of .particle files that were recently saved (consumed by hot reload system)
     pub recently_saved_paths: Vec<String>,
 }
 

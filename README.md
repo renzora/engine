@@ -354,7 +354,7 @@ The engine covers the majority of Bevy 0.18's core rendering, physics, and scrip
 | `.rhai` | Script files |
 | `.blueprint` | Visual script graphs |
 | `.material_bp` | Material blueprint graphs |
-| `.effect` | Particle effect definitions |
+| `.particle` | Particle effect definitions |
 | `.png` / `.jpg` / `.jpeg` | Textures |
 | `.hdr` / `.exr` | HDR environment maps |
 

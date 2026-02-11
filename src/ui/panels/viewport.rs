@@ -1260,14 +1260,14 @@ pub fn render_viewport_content(
                     let is_hdr = is_hdr_file(&asset_path);
                     let is_image = is_image_file(&asset_path);
                     let is_material = is_blueprint_material(&asset_path);
-                    let is_effect = asset_path.to_string_lossy().to_lowercase().ends_with(".effect");
+                    let is_effect = asset_path.to_string_lossy().to_lowercase().ends_with(".particle");
                     let is_2d_mode = viewport.viewport_mode == ViewportMode::Mode2D;
 
                     // Handle HDR/EXR drops → create/update skybox
                     if is_hdr {
                         assets.pending_skybox_drop = Some(asset_path);
                     }
-                    // Handle .effect drops → create particle entity at ground point
+                    // Handle .particle drops → create particle entity at ground point
                     else if is_effect {
                         let ground_point = if is_2d_mode {
                             Vec3::new(

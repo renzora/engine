@@ -228,7 +228,7 @@ pub fn process_particle_commands(
     }
 }
 
-/// Hot reload system: when .effect files are saved, update all entities referencing them
+/// Hot reload system: when .particle files are saved, update all entities referencing them
 pub fn hot_reload_saved_effects(
     mut editor_state: ResMut<ParticleEditorState>,
     mut effects: ResMut<Assets<EffectAsset>>,
