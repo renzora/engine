@@ -11,7 +11,7 @@ use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
 };
-use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE, SCREEN_PICK_RADIUS};
 
 pub fn gizmo_hover_system(
     mut gizmo: ResMut<GizmoState>,
@@ -422,6 +422,50 @@ pub fn gizmo_interaction_system(
             if hit.distance < closest_distance {
                 closest_distance = hit.distance;
                 closest_entity = Some(editor_entity);
+            }
+        }
+    }
+
+    // Screen-space picking for entities without meshes (e.g. particle effects)
+    // This runs always and competes with mesh raycast — closer-to-camera wins.
+    if let Ok((camera, cam_transform)) = camera_query.single() {
+        let vp_x = viewport.position[0];
+        let vp_y = viewport.position[1];
+        let cam_pos = cam_transform.translation();
+
+        if let Some(window) = windows.iter().next() {
+            if let Some(cursor_pos) = window.cursor_position() {
+                let mut best_screen_dist = SCREEN_PICK_RADIUS;
+
+                for (entity, global_transform, editor_entity) in editor_entities.iter() {
+                    if editor_entity.locked {
+                        continue;
+                    }
+
+                    let world_pos = global_transform.translation();
+                    if let Some(ndc) = camera.world_to_ndc(cam_transform, world_pos) {
+                        if ndc.z <= 0.0 || ndc.z >= 1.0 {
+                            continue;
+                        }
+
+                        let screen_x = vp_x + (ndc.x + 1.0) * 0.5 * viewport.size[0];
+                        let screen_y = vp_y + (1.0 - ndc.y) * 0.5 * viewport.size[1];
+
+                        let dx = screen_x - cursor_pos.x;
+                        let dy = screen_y - cursor_pos.y;
+                        let screen_dist = (dx * dx + dy * dy).sqrt();
+
+                        if screen_dist < best_screen_dist {
+                            let cam_dist = (world_pos - cam_pos).length();
+                            // Pick this entity if it's closer to camera than any mesh hit
+                            if cam_dist < closest_distance {
+                                best_screen_dist = screen_dist;
+                                closest_distance = cam_dist;
+                                closest_entity = Some(entity);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -46,6 +46,7 @@ pub const GIZMO_PICK_THRESHOLD: f32 = 0.25;
 pub const GIZMO_PLANE_SIZE: f32 = 0.5;
 pub const GIZMO_PLANE_OFFSET: f32 = 0.6;
 pub const GIZMO_CENTER_SIZE: f32 = 0.2;
+pub const SCREEN_PICK_RADIUS: f32 = 30.0;
 
 /// Render layer for editor gizmos (grid, selection gizmo, etc.)
 /// Layer 0 is the default scene layer, layer 1 is for editor-only visuals

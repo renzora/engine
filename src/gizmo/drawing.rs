@@ -3,6 +3,7 @@ use bevy::math::Isometry3d;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 
 use crate::core::{EditorEntity, SelectionState, PlayModeState, PlayState};
+use crate::particles::HanabiEffectData;
 use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 use crate::terrain::TerrainChunkData;
@@ -26,6 +27,7 @@ pub fn update_selection_outlines(
     outlined_entities: Query<Entity, With<SelectionOutline>>,
     cameras: Query<(), With<CameraNodeData>>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
+    particle_effects: Query<(), With<HanabiEffectData>>,
 ) {
     // Primary and secondary outline colors
     let primary_color = Color::srgb(1.0, 0.5, 0.0); // Orange
@@ -58,6 +60,11 @@ pub fn update_selection_outlines(
 
         // Skip terrain chunks - they use border highlight instead
         if terrain_chunks.get(entity).is_ok() {
+            continue;
+        }
+
+        // Skip particle effects - they use wireframe diamond instead
+        if particle_effects.get(entity).is_ok() {
             continue;
         }
 
@@ -131,6 +138,7 @@ pub fn draw_selection_gizmo(
     cameras: Query<&CameraNodeData>,
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
+    particle_effects: Query<(), With<HanabiEffectData>>,
 ) {
     // Don't draw gizmo during modal transform (G/R/S mode)
     if modal.active {
@@ -165,6 +173,16 @@ pub fn draw_selection_gizmo(
                     .unwrap_or(Vec3::ZERO);
                 draw_camera_rig_gizmo(&mut gizmos, transform, rig_data, parent_pos);
             }
+        }
+
+        // Draw wireframe diamond for selected particle effects
+        if particle_effects.get(*entity).is_ok() {
+            let color = if is_primary {
+                Color::srgb(1.0, 0.5, 0.0)
+            } else {
+                Color::srgba(1.0, 0.5, 0.0, 0.6)
+            };
+            draw_particle_selection_gizmo(&mut gizmos, transform, color);
         }
     }
 
@@ -600,4 +618,40 @@ fn draw_camera_rig_gizmo(
     let look_dir = (target_pos - camera_pos).normalize_or_zero();
     let look_end = camera_pos + look_dir * 1.0;
     gizmos.line(camera_pos, look_end, Color::srgb(1.0, 0.8, 0.2));
+}
+
+/// Draw a wireframe octahedron (diamond) around a particle effect
+fn draw_particle_selection_gizmo(
+    gizmos: &mut Gizmos<SelectionGizmoGroup>,
+    transform: &Transform,
+    color: Color,
+) {
+    let pos = transform.translation;
+    let size = 0.5;
+
+    // Octahedron vertices: 6 points along each axis
+    let top = pos + Vec3::Y * size;
+    let bottom = pos - Vec3::Y * size;
+    let right = pos + Vec3::X * size;
+    let left = pos - Vec3::X * size;
+    let front = pos + Vec3::Z * size;
+    let back = pos - Vec3::Z * size;
+
+    // Top edges
+    gizmos.line(top, right, color);
+    gizmos.line(top, left, color);
+    gizmos.line(top, front, color);
+    gizmos.line(top, back, color);
+
+    // Bottom edges
+    gizmos.line(bottom, right, color);
+    gizmos.line(bottom, left, color);
+    gizmos.line(bottom, front, color);
+    gizmos.line(bottom, back, color);
+
+    // Equator edges
+    gizmos.line(right, front, color);
+    gizmos.line(front, left, color);
+    gizmos.line(left, back, color);
+    gizmos.line(back, right, color);
 }
