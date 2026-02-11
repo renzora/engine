@@ -40,6 +40,16 @@ mod pixel_palette;
 mod pixel_tools;
 mod pixel_timeline;
 mod pixel_brush_settings;
+mod physics_playground;
+mod physics_properties;
+mod physics_forces;
+mod physics_metrics;
+mod physics_scenarios;
+mod collision_viz;
+mod movement_trails;
+mod stress_test;
+mod state_recorder;
+mod arena_presets;
 
 pub use animation::{render_animation_content, AnimationPanelState};
 pub use node_explorer::{render_node_explorer_content, NodeExplorerState, collect_node_infos};
@@ -88,6 +98,16 @@ pub use pixel_palette::render_pixel_palette_content;
 pub use pixel_tools::render_pixel_tools_content;
 pub use pixel_timeline::render_pixel_timeline_content;
 pub use pixel_brush_settings::render_pixel_brush_settings_content;
+pub use physics_playground::render_physics_playground_content;
+pub use physics_properties::render_physics_properties_content;
+pub use physics_forces::render_physics_forces_content;
+pub use physics_metrics::render_physics_metrics_content;
+pub use physics_scenarios::render_physics_scenarios_content;
+pub use collision_viz::render_collision_viz_content;
+pub use movement_trails::render_movement_trails_content;
+pub use stress_test::render_stress_test_content;
+pub use state_recorder::render_state_recorder_content;
+pub use arena_presets::render_arena_presets_content;
 
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 

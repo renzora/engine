@@ -25,6 +25,9 @@ pub use resources::{
     SystemTimingState,
     PhysicsDebugState, ColliderShapeType,
     CameraDebugState, CameraProjectionType,
+    PhysicsPropertiesState, PlaygroundState, PlaygroundEntity, PhysicsForcesState,
+    PhysicsMetricsState, PhysicsScenariosState, CollisionVizState,
+    MovementTrailsState, StressTestState, StateRecorderState, ArenaPresetsState,
     // Document types for various editors
     OpenVideo, OpenAudio, OpenAnimation, OpenTexture, OpenParticleFX, OpenLevel, OpenTerrain,
 };

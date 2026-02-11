@@ -4,6 +4,7 @@ mod interaction;
 pub mod meshes;
 pub mod modal_transform;
 mod physics;
+pub mod physics_viz;
 pub mod picking;
 pub mod state;
 pub mod camera_gizmos;
@@ -34,6 +35,7 @@ pub use picking_2d::handle_2d_picking;
 
 // Camera gizmo exports
 pub use camera_gizmos::draw_camera_gizmos;
+pub use physics_viz::{PhysicsVizGizmoGroup, render_physics_debug_gizmos};
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
@@ -81,6 +83,7 @@ impl Plugin for GizmoPlugin {
         app.init_gizmo_group::<GridGizmoGroup>();
         app.init_gizmo_group::<SelectionGizmoGroup>();
         app.init_gizmo_group::<TerrainSelectionGizmoGroup>();
+        app.init_gizmo_group::<PhysicsVizGizmoGroup>();
         // Configure gizmos to render on the gizmo layer
         app.add_systems(Startup, (configure_gizmo_render_layers, meshes::setup_gizmo_meshes));
         // Update mesh-based gizmos
@@ -112,4 +115,10 @@ fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
     terrain_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
     terrain_config.line.width = 3.0;
     // No depth bias - uses normal depth testing
+
+    // Physics debug visualization gizmos - renders slightly on top
+    let (physics_viz_config, _) = config_store.config_mut::<PhysicsVizGizmoGroup>();
+    physics_viz_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    physics_viz_config.depth_bias = -0.5;
+    physics_viz_config.line.width = 2.0;
 }

@@ -258,6 +258,34 @@ pub static PRESETS: &[EntityPreset] = &[
         components: &["ui_image"],
         priority: 3,
     },
+    // Physics
+    EntityPreset {
+        id: "rigid_body_cube",
+        display_name: "Rigid Cube",
+        category: PresetCategory::Physics,
+        icon: CUBE,
+        default_name: "Rigid Cube",
+        components: &["mesh_renderer", "rigid_body", "box_collider"],
+        priority: 0,
+    },
+    EntityPreset {
+        id: "rigid_body_sphere",
+        display_name: "Rigid Sphere",
+        category: PresetCategory::Physics,
+        icon: SPHERE,
+        default_name: "Rigid Sphere",
+        components: &["mesh_renderer", "rigid_body", "sphere_collider"],
+        priority: 1,
+    },
+    EntityPreset {
+        id: "static_floor",
+        display_name: "Static Floor",
+        category: PresetCategory::Physics,
+        icon: SQUARE,
+        default_name: "Static Floor",
+        components: &["mesh_renderer", "rigid_body", "box_collider"],
+        priority: 2,
+    },
     // Environment
     EntityPreset {
         id: "world_environment",
@@ -380,33 +408,46 @@ pub fn spawn_preset(
         // Handle mesh_renderer specially based on preset ID to create correct mesh type
         if *component_id == "mesh_renderer" {
             let mesh_type = match preset.id {
-                "cube" => MeshPrimitiveType::Cube,
-                "sphere" => MeshPrimitiveType::Sphere,
+                "cube" | "rigid_body_cube" => MeshPrimitiveType::Cube,
+                "sphere" | "rigid_body_sphere" => MeshPrimitiveType::Sphere,
                 "cylinder" => MeshPrimitiveType::Cylinder,
-                "plane" => MeshPrimitiveType::Plane,
+                "plane" | "static_floor" => MeshPrimitiveType::Plane,
                 _ => MeshPrimitiveType::Cube,
             };
 
-            let mesh = match mesh_type {
-                MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                MeshPrimitiveType::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
-                MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 2.0)),
-                MeshPrimitiveType::Plane => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
+            let mesh = match (mesh_type, preset.id) {
+                (MeshPrimitiveType::Plane, "static_floor") => {
+                    meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0)))
+                }
+                (MeshPrimitiveType::Cube, _) => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                (MeshPrimitiveType::Sphere, _) => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+                (MeshPrimitiveType::Cylinder, _) => meshes.add(Cylinder::new(0.5, 2.0)),
+                (MeshPrimitiveType::Plane, _) => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
             };
 
             // Offset Y so the mesh bottom sits on the ground (Y=0)
-            let ground_offset = match mesh_type {
-                MeshPrimitiveType::Cube => 0.5,       // half of 1.0 height
-                MeshPrimitiveType::Sphere => 0.5,     // radius 0.5
-                MeshPrimitiveType::Cylinder => 1.0,   // half of 2.0 height
-                MeshPrimitiveType::Plane => 0.001,    // slight offset to avoid z-fighting with ground
+            let ground_offset = match (mesh_type, preset.id) {
+                (_, "static_floor") => 0.0,              // floor sits at origin
+                (MeshPrimitiveType::Cube, _) => 0.5,     // half of 1.0 height
+                (MeshPrimitiveType::Sphere, _) => 0.5,   // radius 0.5
+                (MeshPrimitiveType::Cylinder, _) => 1.0, // half of 2.0 height
+                (MeshPrimitiveType::Plane, _) => 0.001,  // slight offset to avoid z-fighting
+            };
+
+            // Physics presets: position dynamic objects above the ground for drop testing
+            let y_offset = match preset.id {
+                "rigid_body_cube" | "rigid_body_sphere" => 5.0,
+                _ => ground_offset,
             };
             commands.entity(entity).insert(
-                Transform::from_xyz(0.0, ground_offset, 0.0),
+                Transform::from_xyz(0.0, y_offset, 0.0),
             );
 
             let material = materials.add(StandardMaterial {
-                base_color: Color::srgb(0.8, 0.7, 0.6),
+                base_color: match preset.id {
+                    "static_floor" => Color::srgb(0.45, 0.55, 0.42),
+                    _ => Color::srgb(0.8, 0.7, 0.6),
+                },
                 ..default()
             });
 
@@ -416,6 +457,19 @@ pub fn spawn_preset(
                 MeshMaterial3d(material),
                 MeshNodeData { mesh_type },
             ));
+        } else if *component_id == "rigid_body" && preset.id == "static_floor" {
+            // Static floor gets a static body instead of the default dynamic body
+            use crate::shared::PhysicsBodyData;
+            commands.entity(entity).insert(PhysicsBodyData::static_body());
+        } else if *component_id == "box_collider" && preset.id == "static_floor" {
+            // Static floor gets a large flat collider
+            use crate::shared::{CollisionShapeData, CollisionShapeType};
+            commands.entity(entity).insert(CollisionShapeData {
+                shape_type: CollisionShapeType::Box,
+                half_extents: Vec3::new(10.0, 0.05, 10.0),
+                friction: 0.8,
+                ..Default::default()
+            });
         } else if let Some(def) = registry.get(component_id) {
             (def.add_fn)(commands, entity, meshes, materials);
         }

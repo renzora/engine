@@ -750,6 +750,16 @@ impl Plugin for DiagnosticsPlugin {
         .init_resource::<SystemTimingState>()
         .init_resource::<super::physics_debug::PhysicsDebugState>()
         .init_resource::<super::camera_debug::CameraDebugState>()
+        .init_resource::<super::physics_properties::PhysicsPropertiesState>()
+        .init_resource::<super::physics_playground::PlaygroundState>()
+        .init_resource::<super::physics_forces::PhysicsForcesState>()
+        .init_resource::<super::physics_metrics::PhysicsMetricsState>()
+        .init_resource::<super::physics_scenarios::PhysicsScenariosState>()
+        .init_resource::<super::collision_viz::CollisionVizState>()
+        .init_resource::<super::movement_trails::MovementTrailsState>()
+        .init_resource::<super::stress_test::StressTestState>()
+        .init_resource::<super::state_recorder::StateRecorderState>()
+        .init_resource::<super::arena_presets::ArenaPresetsState>()
         .add_systems(Update, (
             update_diagnostics_state,
             update_render_stats,
@@ -760,6 +770,25 @@ impl Plugin for DiagnosticsPlugin {
         .add_systems(Update, (
             super::physics_debug::update_physics_debug_state,
             super::camera_debug::update_camera_debug_state,
+            super::physics_properties::sync_physics_properties,
+            super::physics_playground::process_playground_commands,
+            super::physics_forces::update_forces_panel_state,
+            super::physics_forces::process_force_commands,
+        ))
+        .add_systems(Update, (
+            super::physics_metrics::update_physics_metrics,
+            super::physics_scenarios::process_scenario_commands,
+            super::collision_viz::update_collision_viz,
+            super::collision_viz::render_collision_viz_gizmos,
+            super::movement_trails::update_movement_trails,
+            super::movement_trails::render_trail_gizmos,
+            super::movement_trails::process_trail_commands,
+            super::stress_test::process_stress_test,
+            super::state_recorder::process_recorder_commands,
+            super::state_recorder::render_recorder_ghosts,
+            super::arena_presets::process_arena_commands,
+            super::arena_presets::animate_arena_kinematic,
+            crate::gizmo::render_physics_debug_gizmos,
         ));
     }
 }

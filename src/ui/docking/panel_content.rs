@@ -219,6 +219,16 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::PixelTools => Vec2::new(100.0, 200.0),
         PanelId::PixelTimeline => Vec2::new(400.0, 80.0),
         PanelId::PixelBrushSettings => Vec2::new(100.0, 150.0),
+        PanelId::PhysicsPlayground => Vec2::new(250.0, 300.0),
+        PanelId::PhysicsProperties => Vec2::new(250.0, 280.0),
+        PanelId::PhysicsForces => Vec2::new(250.0, 300.0),
+        PanelId::PhysicsMetrics => Vec2::new(250.0, 280.0),
+        PanelId::PhysicsScenarios => Vec2::new(250.0, 300.0),
+        PanelId::CollisionViz => Vec2::new(250.0, 300.0),
+        PanelId::MovementTrails => Vec2::new(250.0, 250.0),
+        PanelId::StressTest => Vec2::new(280.0, 350.0),
+        PanelId::StateRecorder => Vec2::new(250.0, 300.0),
+        PanelId::ArenaPresets => Vec2::new(250.0, 300.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

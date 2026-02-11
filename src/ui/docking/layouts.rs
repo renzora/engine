@@ -414,16 +414,19 @@ pub fn shaders_layout() -> DockTree {
     )
 }
 
-/// Physics layout: Viewport with physics debug, hierarchy, inspector, and console
+/// Physics layout: Comprehensive physics testing workspace
 ///
 /// ```text
-/// ┌──────────┬──────────────────────┬──────────────┐
-/// │          │                      │  Inspector   │
-/// │          │      Viewport        │              │
-/// │Hierarchy │                      ├──────────────┤
-/// │          ├──────────────────────┤ PhysicsDebug │
-/// │          │  Console | Assets    │              │
-/// └──────────┴──────────────────────┴──────────────┘
+/// ┌──────────┬──────────────────────┬──────────────────────────┐
+/// │          │                      │ Hierarchy|Scenarios      │
+/// │          │      Viewport        │                          │
+/// │          │                      ├──────────────────────────┤
+/// │          │                      │ PhyDebug|PhyProps|Metrics│
+/// │          ├──────────────────────┤                          │
+/// │          │Console|Playground    ├──────────────────────────┤
+/// │          │      |StressTest     │Forces|CollViz|Trails     │
+/// │          │                      │      |Recorder           │
+/// └──────────┴──────────────────────┴──────────────────────────┘
 /// ```
 pub fn physics_layout() -> DockTree {
     DockTree::horizontal(
@@ -432,19 +435,32 @@ pub fn physics_layout() -> DockTree {
             DockTree::vertical(
                 DockTree::leaf(PanelId::Viewport),
                 DockTree::Leaf {
-                    tabs: vec![PanelId::Console, PanelId::Assets],
+                    tabs: vec![PanelId::Console, PanelId::PhysicsPlayground, PanelId::StressTest, PanelId::ArenaPresets],
                     active_tab: 0,
                 },
                 0.72,
             ),
             DockTree::vertical(
-                DockTree::leaf(PanelId::Inspector),
-                DockTree::leaf(PanelId::PhysicsDebug),
-                0.5,
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::PhysicsScenarios],
+                    active_tab: 0,
+                },
+                DockTree::vertical(
+                    DockTree::Leaf {
+                        tabs: vec![PanelId::PhysicsDebug, PanelId::PhysicsProperties, PanelId::PhysicsMetrics],
+                        active_tab: 0,
+                    },
+                    DockTree::Leaf {
+                        tabs: vec![PanelId::PhysicsForces, PanelId::CollisionViz, PanelId::MovementTrails, PanelId::StateRecorder],
+                        active_tab: 0,
+                    },
+                    0.5,
+                ),
+                0.4,
             ),
-            0.72,
+            0.68,
         ),
-        0.18,
+        0.15,
     )
 }
 

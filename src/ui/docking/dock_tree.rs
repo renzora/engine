@@ -77,6 +77,26 @@ pub enum PanelId {
     PixelTimeline,
     /// Pixel art brush settings
     PixelBrushSettings,
+    /// Physics playground — stress-test spawner
+    PhysicsPlayground,
+    /// Physics properties — global simulation settings
+    PhysicsProperties,
+    /// Forces & impulses — interactive force application
+    PhysicsForces,
+    /// Physics metrics — energy, velocity, momentum monitoring
+    PhysicsMetrics,
+    /// Physics scenario presets — one-click test scene spawning
+    PhysicsScenarios,
+    /// Collision visualizer — contact points and normals
+    CollisionViz,
+    /// Movement trails — trajectory visualization
+    MovementTrails,
+    /// Stress test — automated scaling tests
+    StressTest,
+    /// State recorder — record/replay physics state
+    StateRecorder,
+    /// Arena presets — spawn pre-built arena environments
+    ArenaPresets,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -123,6 +143,16 @@ impl PanelId {
             PanelId::PixelTools => "Tools",
             PanelId::PixelTimeline => "Timeline",
             PanelId::PixelBrushSettings => "Brush",
+            PanelId::PhysicsPlayground => "Physics Playground",
+            PanelId::PhysicsProperties => "Physics Properties",
+            PanelId::PhysicsForces => "Forces",
+            PanelId::PhysicsMetrics => "Physics Metrics",
+            PanelId::PhysicsScenarios => "Scenarios",
+            PanelId::CollisionViz => "Collisions",
+            PanelId::MovementTrails => "Trails",
+            PanelId::StressTest => "Stress Test",
+            PanelId::StateRecorder => "Recorder",
+            PanelId::ArenaPresets => "Arena Presets",
             PanelId::Plugin(name) => name,
         }
     }
@@ -168,6 +198,16 @@ impl PanelId {
             PanelId::PixelTools => PENCIL_SIMPLE,
             PanelId::PixelTimeline => FILM_STRIP,
             PanelId::PixelBrushSettings => PAINT_BRUSH,
+            PanelId::PhysicsPlayground => CUBE,
+            PanelId::PhysicsProperties => GEAR,
+            PanelId::PhysicsForces => ATOM,
+            PanelId::PhysicsMetrics => CHART_LINE,
+            PanelId::PhysicsScenarios => CUBE,
+            PanelId::CollisionViz => ATOM,
+            PanelId::MovementTrails => CHART_LINE,
+            PanelId::StressTest => CPU,
+            PanelId::StateRecorder => TIMER,
+            PanelId::ArenaPresets => CUBE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

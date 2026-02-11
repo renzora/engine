@@ -113,6 +113,16 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::PixelTools => PanelConstraints::default().with_min_width(100.0).with_min_height(200.0),
         PanelId::PixelTimeline => PanelConstraints::default().with_min_width(400.0).with_min_height(80.0),
         PanelId::PixelBrushSettings => PanelConstraints::default().with_min_width(100.0).with_min_height(150.0),
+        PanelId::PhysicsPlayground => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::PhysicsProperties => PanelConstraints::default().with_min_width(250.0).with_min_height(280.0),
+        PanelId::PhysicsForces => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::PhysicsMetrics => PanelConstraints::default().with_min_width(250.0).with_min_height(280.0),
+        PanelId::PhysicsScenarios => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::CollisionViz => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::MovementTrails => PanelConstraints::default().with_min_width(250.0).with_min_height(250.0),
+        PanelId::StressTest => PanelConstraints::default().with_min_width(280.0).with_min_height(350.0),
+        PanelId::StateRecorder => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
+        PanelId::ArenaPresets => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -159,6 +169,16 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::PixelTools,
         PanelId::PixelTimeline,
         PanelId::PixelBrushSettings,
+        PanelId::PhysicsPlayground,
+        PanelId::PhysicsProperties,
+        PanelId::PhysicsForces,
+        PanelId::PhysicsMetrics,
+        PanelId::PhysicsScenarios,
+        PanelId::CollisionViz,
+        PanelId::MovementTrails,
+        PanelId::StressTest,
+        PanelId::StateRecorder,
+        PanelId::ArenaPresets,
     ]
 }
 

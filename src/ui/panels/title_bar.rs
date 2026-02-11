@@ -940,7 +940,8 @@ fn render_menu_items(
         }
 
         if menu_item(ui, "Reset Layout") {
-            apply_layout("Default", docking_state, viewport_state);
+            let current = docking_state.active_layout.clone();
+            apply_layout(&current, docking_state, viewport_state);
             ui.close();
         }
     });

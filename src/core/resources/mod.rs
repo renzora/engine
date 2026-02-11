@@ -19,6 +19,16 @@ mod viewport;
 mod window;
 pub mod physics_debug;
 pub mod camera_debug;
+pub mod physics_properties;
+pub mod physics_playground;
+pub mod physics_forces;
+pub mod physics_metrics;
+pub mod physics_scenarios;
+pub mod collision_viz;
+pub mod movement_trails;
+pub mod stress_test;
+pub mod state_recorder;
+pub mod arena_presets;
 
 pub use animation_timeline::{AnimationTimelineState, TimelinePlayState};
 pub use assets::{
@@ -55,4 +65,14 @@ pub use physics_debug::{
 pub use camera_debug::{
     CameraDebugState, CameraProjectionType,
 };
+pub use physics_properties::PhysicsPropertiesState;
+pub use physics_playground::{PlaygroundState, PlaygroundEntity};
+pub use physics_forces::PhysicsForcesState;
+pub use physics_metrics::PhysicsMetricsState;
+pub use physics_scenarios::PhysicsScenariosState;
+pub use collision_viz::CollisionVizState;
+pub use movement_trails::MovementTrailsState;
+pub use stress_test::StressTestState;
+pub use state_recorder::StateRecorderState;
+pub use arena_presets::ArenaPresetsState;
 pub use inspector_render::InspectorPanelRenderState;

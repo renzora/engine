@@ -17,6 +17,9 @@ use crate::core::{
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
     AnimationTimelineState, TabKind,
+    PhysicsPropertiesState, PlaygroundState, PhysicsForcesState,
+    PhysicsMetricsState, PhysicsScenariosState, CollisionVizState,
+    MovementTrailsState, StressTestState, StateRecorderState, ArenaPresetsState,
 };
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::{Camera2DState, ModelPreviewCache, ParticlePreviewImage};
@@ -88,6 +91,16 @@ pub struct EditorResources<'w> {
     pub shader_preview: ResMut<'w, ShaderPreviewState>,
     pub shader_preview_render: Res<'w, ShaderPreviewRender>,
     pub shader_thumbnail_cache: ResMut<'w, ShaderThumbnailCache>,
+    pub physics_properties: ResMut<'w, PhysicsPropertiesState>,
+    pub physics_playground: ResMut<'w, PlaygroundState>,
+    pub physics_forces: ResMut<'w, PhysicsForcesState>,
+    pub physics_metrics: ResMut<'w, PhysicsMetricsState>,
+    pub physics_scenarios: ResMut<'w, PhysicsScenariosState>,
+    pub collision_viz: ResMut<'w, CollisionVizState>,
+    pub movement_trails: ResMut<'w, MovementTrailsState>,
+    pub stress_test: ResMut<'w, StressTestState>,
+    pub state_recorder: ResMut<'w, StateRecorderState>,
+    pub arena_presets: ResMut<'w, ArenaPresetsState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -122,6 +135,16 @@ use panels::{
     render_pixel_tools_content,
     render_pixel_timeline_content,
     render_pixel_brush_settings_content,
+    render_physics_playground_content,
+    render_physics_properties_content,
+    render_physics_forces_content,
+    render_physics_metrics_content,
+    render_physics_scenarios_content,
+    render_collision_viz_content,
+    render_movement_trails_content,
+    render_stress_test_content,
+    render_state_recorder_content,
+    render_arena_presets_content,
 };
 use crate::particles::ParticleEditorState;
 use crate::pixel_editor::PixelEditorState;
@@ -956,6 +979,66 @@ pub fn editor_ui(
                 PanelId::PhysicsDebug => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_physics_debug_content(ui, &mut editor.physics_debug, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsPlayground => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_playground_content(ui, &mut editor.physics_playground, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsProperties => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_properties_content(ui, &mut editor.physics_properties, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsForces => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_forces_content(ui, &mut editor.physics_forces, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsMetrics => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_metrics_content(ui, &mut editor.physics_metrics, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::PhysicsScenarios => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_physics_scenarios_content(ui, &mut editor.physics_scenarios, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::CollisionViz => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_collision_viz_content(ui, &mut editor.collision_viz, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::MovementTrails => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_movement_trails_content(ui, &mut editor.movement_trails, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::StressTest => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_stress_test_content(ui, &mut editor.stress_test, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::StateRecorder => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_state_recorder_content(ui, &mut editor.state_recorder, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::ArenaPresets => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_arena_presets_content(ui, &mut editor.arena_presets, &editor.theme_manager.active_theme);
                     });
                 }
 
