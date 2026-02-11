@@ -119,7 +119,7 @@ use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
     render_document_tabs, render_code_editor_content, render_image_preview_content,
-    render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
+    render_splash, render_status_bar, render_title_bar, render_viewport,
     TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_assets_content, render_assets_dialogs,
     render_console_content, render_history_content, render_gamepad_content, render_performance_content,
@@ -335,8 +335,7 @@ pub fn editor_ui(
     // Check if we're in fullscreen play mode (not scripts-only)
     let in_fullscreen_play = matches!(editor.play_mode.state, PlayState::Playing | PlayState::Paused);
 
-    // In fullscreen play mode, skip title bar and toolbar entirely
-    let toolbar_height = 36.0;
+    // In fullscreen play mode, skip title bar entirely
     let content_start_y;
 
     if !in_fullscreen_play {
@@ -359,32 +358,7 @@ pub fn editor_ui(
         );
         all_ui_events.extend(title_bar_events);
 
-        // Check if selected entity is a terrain
-        let terrain_selected = editor.selection.selected_entity
-            .map(|e| hierarchy_queries.components.terrains.get(e).is_ok())
-            .unwrap_or(false);
-
-        let toolbar_events = render_toolbar(
-            ctx,
-            &mut editor.gizmo,
-            &mut editor.settings,
-            TITLE_BAR_HEIGHT,
-            toolbar_height,
-            1600.0, // Default width, will be constrained by panel
-            &editor.plugin_host,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut editor.selection,
-            &mut editor.hierarchy,
-            &mut editor.brush_settings,
-            &mut editor.terrain_settings,
-            terrain_selected,
-            &editor.theme_manager.active_theme,
-        );
-        all_ui_events.extend(toolbar_events);
-
-        content_start_y = TITLE_BAR_HEIGHT + toolbar_height;
+        content_start_y = TITLE_BAR_HEIGHT;
     } else {
         content_start_y = 0.0;
     }
@@ -1153,8 +1127,6 @@ pub fn editor_ui(
                             ui,
                             &mut particle_state,
                             &mut editor.scene_state,
-                            particle_preview_texture_id,
-                            particle_preview_size,
                             &editor.theme_manager.active_theme,
                         );
                     });

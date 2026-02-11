@@ -800,8 +800,9 @@ fn sync_camera_activity(
         }
     }
 
-    // Particle preview camera - only active if ParticlePreview panel is visible
-    let particle_visible = docking.is_panel_visible(&PanelId::ParticlePreview);
+    // Particle preview camera - active if ParticlePreview or ParticleEditor panel is visible
+    let particle_visible = docking.is_panel_visible(&PanelId::ParticlePreview)
+        || docking.is_panel_visible(&PanelId::ParticleEditor);
     for mut camera in particle_cameras.iter_mut() {
         if camera.is_active != particle_visible {
             camera.is_active = particle_visible;

@@ -16,10 +16,10 @@ use bevy_hanabi::prelude::*;
 use crate::scene::EditorOnly;
 use crate::core::{AppState, DockingState};
 use crate::ui::docking::PanelId;
-use crate::particles::{ParticleEditorState, build_complete_effect, HanabiEffectDefinition};
+use crate::particles::{ParticleEditorState, build_complete_effect, HanabiEffectDefinition, HanabiEmitShape};
 
-/// Render layer for particle preview (isolated from main scene and studio preview)
-pub const PARTICLE_PREVIEW_LAYER: usize = 6;
+/// Render layer for particle preview (isolated from main scene, studio preview, and shader preview)
+pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 
 /// Resource holding the particle preview render texture
 #[derive(Resource)]
@@ -125,7 +125,7 @@ pub fn setup_particle_preview(
         Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),
-            order: -3, // Render before main camera and studio preview
+            order: -4, // Render before main camera, studio preview, and shader preview
             is_active: false,
             ..default()
         },
@@ -155,10 +155,11 @@ pub fn setup_particle_preview(
     info!("Particle preview system initialized");
 }
 
-/// Spawn initial preview effect
+/// Spawn initial preview effect (only if none exists and no editor effect is active)
 pub fn spawn_preview_effect(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
+    editor_state: Res<ParticleEditorState>,
     existing: Query<Entity, With<ParticlePreviewEffect>>,
 ) {
     // Don't spawn if already exists
@@ -166,13 +167,13 @@ pub fn spawn_preview_effect(
         return;
     }
 
-    // Create a default effect for preview
-    let def = HanabiEffectDefinition::default();
+    // Use the editor's current effect if available, otherwise use default
+    let def = editor_state.current_effect.as_ref()
+        .cloned()
+        .unwrap_or_default();
     let effect_asset = build_complete_effect(&def);
     let effect_handle = effects.add(effect_asset);
 
-    // Spawn effect entity on the preview render layer
-    // In bevy_hanabi 0.18+, just add ParticleEffect directly
     commands.spawn((
         ParticleEffect::new(effect_handle),
         Transform::from_xyz(0.0, 0.0, 0.0),
@@ -184,16 +185,15 @@ pub fn spawn_preview_effect(
         EditorOnly,
         Name::new("Particle Preview Effect"),
     ));
-
-    info!("Spawned particle preview effect");
 }
 
 /// Update the preview effect when the editor state changes
 pub fn update_preview_effect(
+    mut commands: Commands,
     editor_state: Res<ParticleEditorState>,
     mut tracker: ResMut<ParticlePreviewTracker>,
     mut effects: ResMut<Assets<EffectAsset>>,
-    mut effect_query: Query<&mut ParticleEffect, With<ParticlePreviewEffect>>,
+    existing: Query<Entity, With<ParticlePreviewEffect>>,
 ) {
     // Only update if we have an effect being edited
     let Some(ref def) = editor_state.current_effect else {
@@ -218,39 +218,154 @@ pub fn update_preview_effect(
     tracker.last_file_path = current_path.clone();
     tracker.last_effect_hash = Some(effect_hash);
 
-    let effect_count = effect_query.iter().count();
-    info!("[ParticlePreview] Rebuilding effect '{}' (path_changed={}, hash_changed={}, entities={})",
-        def.name, path_changed, hash_changed, effect_count);
-    info!("[ParticlePreview] Effect params: capacity={}, spawn_rate={}, size={}->{}, colors={}",
-        def.capacity, def.spawn_rate, def.size_start, def.size_end, def.color_gradient.len());
+    // Despawn old effect entity completely so bevy_hanabi's CompiledParticleEffect
+    // doesn't get out of sync with a replaced ParticleEffect handle
+    for entity in existing.iter() {
+        commands.entity(entity).despawn();
+    }
 
-    // Build new effect asset
+    // Build new effect asset and spawn fresh entity
     let effect_asset = build_complete_effect(def);
     let effect_handle = effects.add(effect_asset);
 
-    // Update the effect component
-    for mut effect in effect_query.iter_mut() {
-        info!("[ParticlePreview] Updating effect entity with new handle");
-        *effect = ParticleEffect::new(effect_handle.clone());
-    }
+    commands.spawn((
+        ParticleEffect::new(effect_handle),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::Visible,
+        InheritedVisibility::VISIBLE,
+        ViewVisibility::default(),
+        RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
+        ParticlePreviewEffect,
+        EditorOnly,
+        Name::new("Particle Preview Effect"),
+    ));
 }
 
-/// Compute a simple hash of key effect parameters to detect changes
+/// Compute a hash of all effect parameters to detect changes
 fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
     use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
 
     let mut hasher = DefaultHasher::new();
+
+    // Basic
     def.name.hash(&mut hasher);
     def.capacity.hash(&mut hasher);
+
+    // Spawning
     ((def.spawn_rate * 100.0) as u32).hash(&mut hasher);
     def.spawn_count.hash(&mut hasher);
+    ((def.spawn_duration * 100.0) as u32).hash(&mut hasher);
+    def.spawn_cycle_count.hash(&mut hasher);
+    def.spawn_starts_active.hash(&mut hasher);
+
+    // Lifetime
     ((def.lifetime_min * 1000.0) as u32).hash(&mut hasher);
     ((def.lifetime_max * 1000.0) as u32).hash(&mut hasher);
+
+    // Shape (hash discriminant + key fields)
+    std::mem::discriminant(&def.emit_shape).hash(&mut hasher);
+    match &def.emit_shape {
+        HanabiEmitShape::Point => {}
+        HanabiEmitShape::Circle { radius, .. } |
+        HanabiEmitShape::Sphere { radius, .. } => {
+            ((radius * 1000.0) as u32).hash(&mut hasher);
+        }
+        HanabiEmitShape::Cone { base_radius, top_radius, height, .. } => {
+            ((base_radius * 1000.0) as u32).hash(&mut hasher);
+            ((top_radius * 1000.0) as u32).hash(&mut hasher);
+            ((height * 1000.0) as u32).hash(&mut hasher);
+        }
+        HanabiEmitShape::Rect { half_extents, .. } => {
+            for v in half_extents { ((v * 1000.0) as u32).hash(&mut hasher); }
+        }
+        HanabiEmitShape::Box { half_extents } => {
+            for v in half_extents { ((v * 1000.0) as u32).hash(&mut hasher); }
+        }
+    }
+
+    // Velocity
+    std::mem::discriminant(&def.velocity_mode).hash(&mut hasher);
+    ((def.velocity_magnitude * 1000.0) as u32).hash(&mut hasher);
+    ((def.velocity_spread * 1000.0) as u32).hash(&mut hasher);
+    for v in &def.velocity_direction { ((v * 1000.0) as i32).hash(&mut hasher); }
+    ((def.velocity_speed_min * 1000.0) as u32).hash(&mut hasher);
+    ((def.velocity_speed_max * 1000.0) as u32).hash(&mut hasher);
+    for v in &def.velocity_axis { ((v * 1000.0) as i32).hash(&mut hasher); }
+
+    // Forces
+    for v in &def.acceleration { ((v * 1000.0) as i32).hash(&mut hasher); }
+    ((def.linear_drag * 1000.0) as u32).hash(&mut hasher);
+    ((def.radial_acceleration * 1000.0) as i32).hash(&mut hasher);
+    ((def.tangent_acceleration * 1000.0) as i32).hash(&mut hasher);
+    for v in &def.tangent_accel_axis { ((v * 1000.0) as i32).hash(&mut hasher); }
+    def.conform_to_sphere.is_some().hash(&mut hasher);
+    if let Some(ref c) = def.conform_to_sphere {
+        ((c.radius * 1000.0) as u32).hash(&mut hasher);
+        ((c.attraction_accel * 1000.0) as u32).hash(&mut hasher);
+    }
+
+    // Size
     ((def.size_start * 1000.0) as u32).hash(&mut hasher);
     ((def.size_end * 1000.0) as u32).hash(&mut hasher);
-    ((def.velocity_magnitude * 1000.0) as u32).hash(&mut hasher);
+    ((def.size_start_min * 1000.0) as u32).hash(&mut hasher);
+    ((def.size_start_max * 1000.0) as u32).hash(&mut hasher);
+    def.size_non_uniform.hash(&mut hasher);
+    ((def.size_start_x * 1000.0) as u32).hash(&mut hasher);
+    ((def.size_start_y * 1000.0) as u32).hash(&mut hasher);
+    ((def.size_end_x * 1000.0) as u32).hash(&mut hasher);
+    ((def.size_end_y * 1000.0) as u32).hash(&mut hasher);
+    def.screen_space_size.hash(&mut hasher);
+    ((def.roundness * 1000.0) as u32).hash(&mut hasher);
+
+    // Color
     def.color_gradient.len().hash(&mut hasher);
+    for stop in &def.color_gradient {
+        ((stop.position * 1000.0) as u32).hash(&mut hasher);
+        for v in &stop.color { ((v * 1000.0) as u32).hash(&mut hasher); }
+    }
+    def.use_flat_color.hash(&mut hasher);
+    for v in &def.flat_color { ((v * 1000.0) as u32).hash(&mut hasher); }
+    def.use_hdr_color.hash(&mut hasher);
+    ((def.hdr_intensity * 100.0) as u32).hash(&mut hasher);
+    std::mem::discriminant(&def.color_blend_mode).hash(&mut hasher);
+
+    // Rendering
+    std::mem::discriminant(&def.alpha_mode).hash(&mut hasher);
+    ((def.alpha_mask_threshold * 1000.0) as u32).hash(&mut hasher);
+    std::mem::discriminant(&def.orient_mode).hash(&mut hasher);
+    ((def.rotation_speed * 1000.0) as i32).hash(&mut hasher);
+    def.flipbook.is_some().hash(&mut hasher);
+    if let Some(ref fb) = def.flipbook {
+        fb.grid_columns.hash(&mut hasher);
+        fb.grid_rows.hash(&mut hasher);
+    }
+    def.texture_path.hash(&mut hasher);
+
+    // Simulation
+    std::mem::discriminant(&def.simulation_space).hash(&mut hasher);
+    std::mem::discriminant(&def.simulation_condition).hash(&mut hasher);
+    std::mem::discriminant(&def.motion_integration).hash(&mut hasher);
+
+    // Kill zones
+    def.kill_zones.len().hash(&mut hasher);
+    for zone in &def.kill_zones {
+        match zone {
+            crate::particles::KillZone::Sphere { center, radius, kill_inside } => {
+                0u8.hash(&mut hasher);
+                for v in center { ((v * 1000.0) as i32).hash(&mut hasher); }
+                ((radius * 1000.0) as u32).hash(&mut hasher);
+                kill_inside.hash(&mut hasher);
+            }
+            crate::particles::KillZone::Aabb { center, half_size, kill_inside } => {
+                1u8.hash(&mut hasher);
+                for v in center { ((v * 1000.0) as i32).hash(&mut hasher); }
+                for v in half_size { ((v * 1000.0) as u32).hash(&mut hasher); }
+                kill_inside.hash(&mut hasher);
+            }
+        }
+    }
+
     hasher.finish()
 }
 
@@ -304,12 +419,16 @@ impl Plugin for ParticlePreviewPlugin {
         app.add_systems(Update,
             register_particle_preview_texture.run_if(in_state(AppState::Editor))
         );
-        // Only run expensive update systems when panel is visible
+        // Only run expensive update systems when a particle panel is visible
         app.add_systems(Update, (
             update_particle_preview_camera,
-            spawn_preview_effect,
+            // spawn must run before update so a despawn+respawn cycle works correctly
+            spawn_preview_effect.before(update_preview_effect),
             update_preview_effect,
         ).run_if(in_state(AppState::Editor))
-         .run_if(|docking: Res<DockingState>| docking.is_panel_visible(&PanelId::ParticlePreview)));
+         .run_if(|docking: Res<DockingState>| {
+             docking.is_panel_visible(&PanelId::ParticlePreview)
+                 || docking.is_panel_visible(&PanelId::ParticleEditor)
+         }));
     }
 }

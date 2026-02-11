@@ -14,7 +14,9 @@ pub use crate::particles::{
     HanabiEffectData, HanabiEffectDefinition, EffectSource,
     HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
     BlendMode, BillboardMode, SimulationSpace, SimulationCondition,
-    GradientStop, CurvePoint, EffectVariable,
+    GradientStop,
+    ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
+    MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings,
 };
 
 // ============================================================================
@@ -76,64 +78,147 @@ fn serialize_hanabi_effect(world: &World, entity: Entity) -> Option<serde_json::
                 }),
             };
 
+            // Serialize kill zones
+            let kill_zones_value: Vec<serde_json::Value> = definition.kill_zones.iter().map(|zone| {
+                match zone {
+                    KillZone::Sphere { center, radius, kill_inside } => json!({
+                        "type": "sphere",
+                        "center": center,
+                        "radius": radius,
+                        "kill_inside": kill_inside,
+                    }),
+                    KillZone::Aabb { center, half_size, kill_inside } => json!({
+                        "type": "aabb",
+                        "center": center,
+                        "half_size": half_size,
+                        "kill_inside": kill_inside,
+                    }),
+                }
+            }).collect();
+
+            // Serialize conform-to-sphere
+            let conform_value = definition.conform_to_sphere.as_ref().map(|c| json!({
+                "origin": c.origin,
+                "radius": c.radius,
+                "influence_dist": c.influence_dist,
+                "attraction_accel": c.attraction_accel,
+                "max_attraction_speed": c.max_attraction_speed,
+                "shell_half_thickness": c.shell_half_thickness,
+                "sticky_factor": c.sticky_factor,
+            }));
+
+            // Serialize flipbook
+            let flipbook_value = definition.flipbook.as_ref().map(|fb| json!({
+                "grid_columns": fb.grid_columns,
+                "grid_rows": fb.grid_rows,
+            }));
+
+            // Build definition map in pieces to avoid json! recursion limit
+            let mut def_map = serde_json::Map::new();
+            def_map.insert("name".into(), json!(definition.name));
+            def_map.insert("capacity".into(), json!(definition.capacity));
+            def_map.insert("spawn_mode".into(), json!(match definition.spawn_mode {
+                SpawnMode::Rate => "rate",
+                SpawnMode::Burst => "burst",
+                SpawnMode::BurstRate => "burst_rate",
+            }));
+            def_map.insert("spawn_rate".into(), json!(definition.spawn_rate));
+            def_map.insert("spawn_count".into(), json!(definition.spawn_count));
+            def_map.insert("spawn_duration".into(), json!(definition.spawn_duration));
+            def_map.insert("spawn_cycle_count".into(), json!(definition.spawn_cycle_count));
+            def_map.insert("spawn_starts_active".into(), json!(definition.spawn_starts_active));
+            def_map.insert("lifetime_min".into(), json!(definition.lifetime_min));
+            def_map.insert("lifetime_max".into(), json!(definition.lifetime_max));
+            def_map.insert("emit_shape".into(), shape_value);
+            def_map.insert("velocity_mode".into(), json!(match definition.velocity_mode {
+                VelocityMode::Directional => "directional",
+                VelocityMode::Radial => "radial",
+                VelocityMode::Tangent => "tangent",
+                VelocityMode::Random => "random",
+            }));
+            def_map.insert("velocity_magnitude".into(), json!(definition.velocity_magnitude));
+            def_map.insert("velocity_spread".into(), json!(definition.velocity_spread));
+            def_map.insert("velocity_direction".into(), json!(definition.velocity_direction));
+            def_map.insert("velocity_speed_min".into(), json!(definition.velocity_speed_min));
+            def_map.insert("velocity_speed_max".into(), json!(definition.velocity_speed_max));
+            def_map.insert("velocity_axis".into(), json!(definition.velocity_axis));
+            def_map.insert("acceleration".into(), json!(definition.acceleration));
+            def_map.insert("linear_drag".into(), json!(definition.linear_drag));
+            def_map.insert("radial_acceleration".into(), json!(definition.radial_acceleration));
+            def_map.insert("tangent_acceleration".into(), json!(definition.tangent_acceleration));
+            def_map.insert("tangent_accel_axis".into(), json!(definition.tangent_accel_axis));
+            def_map.insert("conform_to_sphere".into(), json!(conform_value));
+            def_map.insert("size_start".into(), json!(definition.size_start));
+            def_map.insert("size_end".into(), json!(definition.size_end));
+            def_map.insert("size_start_min".into(), json!(definition.size_start_min));
+            def_map.insert("size_start_max".into(), json!(definition.size_start_max));
+            def_map.insert("size_non_uniform".into(), json!(definition.size_non_uniform));
+            def_map.insert("size_start_x".into(), json!(definition.size_start_x));
+            def_map.insert("size_start_y".into(), json!(definition.size_start_y));
+            def_map.insert("size_end_x".into(), json!(definition.size_end_x));
+            def_map.insert("size_end_y".into(), json!(definition.size_end_y));
+            def_map.insert("screen_space_size".into(), json!(definition.screen_space_size));
+            def_map.insert("roundness".into(), json!(definition.roundness));
+            let gradient_value: Vec<serde_json::Value> = definition.color_gradient.iter().map(|stop| {
+                json!({ "position": stop.position, "color": stop.color })
+            }).collect();
+            def_map.insert("color_gradient".into(), json!(gradient_value));
+            def_map.insert("use_flat_color".into(), json!(definition.use_flat_color));
+            def_map.insert("flat_color".into(), json!(definition.flat_color));
+            def_map.insert("use_hdr_color".into(), json!(definition.use_hdr_color));
+            def_map.insert("hdr_intensity".into(), json!(definition.hdr_intensity));
+            def_map.insert("color_blend_mode".into(), json!(match definition.color_blend_mode {
+                ParticleColorBlendMode::Modulate => "modulate",
+                ParticleColorBlendMode::Overwrite => "overwrite",
+                ParticleColorBlendMode::Add => "add",
+            }));
+            def_map.insert("blend_mode".into(), json!(match definition.blend_mode {
+                BlendMode::Blend => "blend",
+                BlendMode::Additive => "additive",
+                BlendMode::Multiply => "multiply",
+            }));
+            def_map.insert("texture_path".into(), json!(definition.texture_path));
+            def_map.insert("billboard_mode".into(), json!(match definition.billboard_mode {
+                BillboardMode::FaceCamera => "face_camera",
+                BillboardMode::FaceCameraY => "face_camera_y",
+                BillboardMode::Velocity => "velocity",
+                BillboardMode::Fixed => "fixed",
+            }));
+            def_map.insert("render_layer".into(), json!(definition.render_layer));
+            def_map.insert("alpha_mode".into(), json!(match definition.alpha_mode {
+                ParticleAlphaMode::Blend => "blend",
+                ParticleAlphaMode::Premultiply => "premultiply",
+                ParticleAlphaMode::Add => "add",
+                ParticleAlphaMode::Multiply => "multiply",
+                ParticleAlphaMode::Mask => "mask",
+                ParticleAlphaMode::Opaque => "opaque",
+            }));
+            def_map.insert("alpha_mask_threshold".into(), json!(definition.alpha_mask_threshold));
+            def_map.insert("orient_mode".into(), json!(match definition.orient_mode {
+                ParticleOrientMode::ParallelCameraDepthPlane => "parallel_camera",
+                ParticleOrientMode::FaceCameraPosition => "face_camera",
+                ParticleOrientMode::AlongVelocity => "along_velocity",
+            }));
+            def_map.insert("rotation_speed".into(), json!(definition.rotation_speed));
+            def_map.insert("flipbook".into(), json!(flipbook_value));
+            def_map.insert("simulation_space".into(), json!(match definition.simulation_space {
+                SimulationSpace::Local => "local",
+                SimulationSpace::World => "world",
+            }));
+            def_map.insert("simulation_condition".into(), json!(match definition.simulation_condition {
+                SimulationCondition::Always => "always",
+                SimulationCondition::WhenVisible => "when_visible",
+            }));
+            def_map.insert("motion_integration".into(), json!(match definition.motion_integration {
+                MotionIntegrationMode::PostUpdate => "post_update",
+                MotionIntegrationMode::PreUpdate => "pre_update",
+                MotionIntegrationMode::None => "none",
+            }));
+            def_map.insert("kill_zones".into(), json!(kill_zones_value));
+
             json!({
                 "type": "inline",
-                "definition": {
-                    "name": definition.name,
-                    "capacity": definition.capacity,
-                    "spawn_mode": match definition.spawn_mode {
-                        SpawnMode::Rate => "rate",
-                        SpawnMode::Burst => "burst",
-                        SpawnMode::BurstRate => "burst_rate",
-                    },
-                    "spawn_rate": definition.spawn_rate,
-                    "spawn_count": definition.spawn_count,
-                    "lifetime_min": definition.lifetime_min,
-                    "lifetime_max": definition.lifetime_max,
-                    "emit_shape": shape_value,
-                    "velocity_mode": match definition.velocity_mode {
-                        VelocityMode::Directional => "directional",
-                        VelocityMode::Radial => "radial",
-                        VelocityMode::Tangent => "tangent",
-                        VelocityMode::Random => "random",
-                    },
-                    "velocity_magnitude": definition.velocity_magnitude,
-                    "velocity_spread": definition.velocity_spread,
-                    "velocity_direction": definition.velocity_direction,
-                    "acceleration": definition.acceleration,
-                    "linear_drag": definition.linear_drag,
-                    "radial_acceleration": definition.radial_acceleration,
-                    "tangent_acceleration": definition.tangent_acceleration,
-                    "size_start": definition.size_start,
-                    "size_end": definition.size_end,
-                    "color_gradient": definition.color_gradient.iter().map(|stop| {
-                        json!({
-                            "position": stop.position,
-                            "color": stop.color,
-                        })
-                    }).collect::<Vec<_>>(),
-                    "blend_mode": match definition.blend_mode {
-                        BlendMode::Blend => "blend",
-                        BlendMode::Additive => "additive",
-                        BlendMode::Multiply => "multiply",
-                    },
-                    "texture_path": definition.texture_path,
-                    "billboard_mode": match definition.billboard_mode {
-                        BillboardMode::FaceCamera => "face_camera",
-                        BillboardMode::FaceCameraY => "face_camera_y",
-                        BillboardMode::Velocity => "velocity",
-                        BillboardMode::Fixed => "fixed",
-                    },
-                    "render_layer": definition.render_layer,
-                    "simulation_space": match definition.simulation_space {
-                        SimulationSpace::Local => "local",
-                        SimulationSpace::World => "world",
-                    },
-                    "simulation_condition": match definition.simulation_condition {
-                        SimulationCondition::Always => "always",
-                        SimulationCondition::WhenVisible => "when_visible",
-                    },
-                }
+                "definition": serde_json::Value::Object(def_map),
             })
         }
     };
@@ -219,6 +304,53 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
                         ]
                     };
 
+                    // Deserialize kill zones
+                    let kill_zones = if let Some(zones_data) = def_data.get("kill_zones") {
+                        zones_data.as_array().map(|arr| {
+                            arr.iter().filter_map(|zone| {
+                                let zone_type = zone.get("type").and_then(|v| v.as_str())?;
+                                match zone_type {
+                                    "sphere" => Some(KillZone::Sphere {
+                                        center: zone.get("center").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 0.0, 0.0]),
+                                        radius: zone.get("radius").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32,
+                                        kill_inside: zone.get("kill_inside").and_then(|v| v.as_bool()).unwrap_or(false),
+                                    }),
+                                    "aabb" => Some(KillZone::Aabb {
+                                        center: zone.get("center").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 0.0, 0.0]),
+                                        half_size: zone.get("half_size").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([5.0, 5.0, 5.0]),
+                                        kill_inside: zone.get("kill_inside").and_then(|v| v.as_bool()).unwrap_or(false),
+                                    }),
+                                    _ => None,
+                                }
+                            }).collect()
+                        }).unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    };
+
+                    // Deserialize conform-to-sphere
+                    let conform_to_sphere = def_data.get("conform_to_sphere").and_then(|v| {
+                        if v.is_null() { return None; }
+                        Some(ConformToSphere {
+                            origin: v.get("origin").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 0.0, 0.0]),
+                            radius: v.get("radius").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                            influence_dist: v.get("influence_dist").and_then(|v| v.as_f64()).unwrap_or(3.0) as f32,
+                            attraction_accel: v.get("attraction_accel").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32,
+                            max_attraction_speed: v.get("max_attraction_speed").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32,
+                            shell_half_thickness: v.get("shell_half_thickness").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32,
+                            sticky_factor: v.get("sticky_factor").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32,
+                        })
+                    });
+
+                    // Deserialize flipbook
+                    let flipbook = def_data.get("flipbook").and_then(|v| {
+                        if v.is_null() { return None; }
+                        Some(FlipbookSettings {
+                            grid_columns: v.get("grid_columns").and_then(|v| v.as_u64()).unwrap_or(4) as u32,
+                            grid_rows: v.get("grid_rows").and_then(|v| v.as_u64()).unwrap_or(4) as u32,
+                        })
+                    });
+
                     let definition = HanabiEffectDefinition {
                         name: def_data.get("name").and_then(|v| v.as_str()).unwrap_or("Effect").to_string(),
                         capacity: def_data.get("capacity").and_then(|v| v.as_u64()).unwrap_or(1000) as u32,
@@ -229,6 +361,9 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
                         },
                         spawn_rate: def_data.get("spawn_rate").and_then(|v| v.as_f64()).unwrap_or(50.0) as f32,
                         spawn_count: def_data.get("spawn_count").and_then(|v| v.as_u64()).unwrap_or(10) as u32,
+                        spawn_duration: def_data.get("spawn_duration").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        spawn_cycle_count: def_data.get("spawn_cycle_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                        spawn_starts_active: def_data.get("spawn_starts_active").and_then(|v| v.as_bool()).unwrap_or(true),
                         lifetime_min: def_data.get("lifetime_min").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
                         lifetime_max: def_data.get("lifetime_max").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32,
                         emit_shape,
@@ -241,14 +376,37 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
                         velocity_magnitude: def_data.get("velocity_magnitude").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32,
                         velocity_spread: def_data.get("velocity_spread").and_then(|v| v.as_f64()).unwrap_or(0.3) as f32,
                         velocity_direction: def_data.get("velocity_direction").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 1.0, 0.0]),
+                        velocity_speed_min: def_data.get("velocity_speed_min").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        velocity_speed_max: def_data.get("velocity_speed_max").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        velocity_axis: def_data.get("velocity_axis").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 1.0, 0.0]),
                         acceleration: def_data.get("acceleration").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, -2.0, 0.0]),
                         linear_drag: def_data.get("linear_drag").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
                         radial_acceleration: def_data.get("radial_acceleration").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
                         tangent_acceleration: def_data.get("tangent_acceleration").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        tangent_accel_axis: def_data.get("tangent_accel_axis").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([0.0, 1.0, 0.0]),
+                        conform_to_sphere,
                         size_start: def_data.get("size_start").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32,
                         size_end: def_data.get("size_end").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
                         size_curve: Vec::new(),
+                        size_start_min: def_data.get("size_start_min").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        size_start_max: def_data.get("size_start_max").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        size_non_uniform: def_data.get("size_non_uniform").and_then(|v| v.as_bool()).unwrap_or(false),
+                        size_start_x: def_data.get("size_start_x").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32,
+                        size_start_y: def_data.get("size_start_y").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32,
+                        size_end_x: def_data.get("size_end_x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        size_end_y: def_data.get("size_end_y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        screen_space_size: def_data.get("screen_space_size").and_then(|v| v.as_bool()).unwrap_or(false),
+                        roundness: def_data.get("roundness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
                         color_gradient,
+                        use_flat_color: def_data.get("use_flat_color").and_then(|v| v.as_bool()).unwrap_or(false),
+                        flat_color: def_data.get("flat_color").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or([1.0, 1.0, 1.0, 1.0]),
+                        use_hdr_color: def_data.get("use_hdr_color").and_then(|v| v.as_bool()).unwrap_or(false),
+                        hdr_intensity: def_data.get("hdr_intensity").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                        color_blend_mode: match def_data.get("color_blend_mode").and_then(|v| v.as_str()).unwrap_or("modulate") {
+                            "overwrite" => ParticleColorBlendMode::Overwrite,
+                            "add" => ParticleColorBlendMode::Add,
+                            _ => ParticleColorBlendMode::Modulate,
+                        },
                         blend_mode: match def_data.get("blend_mode").and_then(|v| v.as_str()).unwrap_or("blend") {
                             "additive" => BlendMode::Additive,
                             "multiply" => BlendMode::Multiply,
@@ -262,6 +420,22 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
                             _ => BillboardMode::FaceCamera,
                         },
                         render_layer: def_data.get("render_layer").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+                        alpha_mode: match def_data.get("alpha_mode").and_then(|v| v.as_str()).unwrap_or("blend") {
+                            "premultiply" => ParticleAlphaMode::Premultiply,
+                            "add" => ParticleAlphaMode::Add,
+                            "multiply" => ParticleAlphaMode::Multiply,
+                            "mask" => ParticleAlphaMode::Mask,
+                            "opaque" => ParticleAlphaMode::Opaque,
+                            _ => ParticleAlphaMode::Blend,
+                        },
+                        alpha_mask_threshold: def_data.get("alpha_mask_threshold").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32,
+                        orient_mode: match def_data.get("orient_mode").and_then(|v| v.as_str()).unwrap_or("parallel_camera") {
+                            "face_camera" => ParticleOrientMode::FaceCameraPosition,
+                            "along_velocity" => ParticleOrientMode::AlongVelocity,
+                            _ => ParticleOrientMode::ParallelCameraDepthPlane,
+                        },
+                        rotation_speed: def_data.get("rotation_speed").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        flipbook,
                         simulation_space: match def_data.get("simulation_space").and_then(|v| v.as_str()).unwrap_or("local") {
                             "world" => SimulationSpace::World,
                             _ => SimulationSpace::Local,
@@ -270,6 +444,12 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
                             "when_visible" => SimulationCondition::WhenVisible,
                             _ => SimulationCondition::Always,
                         },
+                        motion_integration: match def_data.get("motion_integration").and_then(|v| v.as_str()).unwrap_or("post_update") {
+                            "pre_update" => MotionIntegrationMode::PreUpdate,
+                            "none" => MotionIntegrationMode::None,
+                            _ => MotionIntegrationMode::PostUpdate,
+                        },
+                        kill_zones,
                         variables: std::collections::HashMap::new(),
                     };
                     EffectSource::Inline { definition }
@@ -386,238 +566,7 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
                     }
                 });
 
-                // Spawning section
-                ui.collapsing("Spawning", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Mode:");
-                        egui::ComboBox::from_id_salt("spawn_mode")
-                            .selected_text(match definition.spawn_mode {
-                                SpawnMode::Rate => "Rate",
-                                SpawnMode::Burst => "Burst",
-                                SpawnMode::BurstRate => "Burst Rate",
-                            })
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(definition.spawn_mode == SpawnMode::Rate, "Rate").clicked() {
-                                    definition.spawn_mode = SpawnMode::Rate;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.spawn_mode == SpawnMode::Burst, "Burst").clicked() {
-                                    definition.spawn_mode = SpawnMode::Burst;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.spawn_mode == SpawnMode::BurstRate, "Burst Rate").clicked() {
-                                    definition.spawn_mode = SpawnMode::BurstRate;
-                                    changed = true;
-                                }
-                            });
-                    });
-
-                    if definition.spawn_mode == SpawnMode::Rate || definition.spawn_mode == SpawnMode::BurstRate {
-                        ui.horizontal(|ui| {
-                            ui.label("Rate (per sec):");
-                            if ui.add(egui::DragValue::new(&mut definition.spawn_rate).speed(1.0).range(0.1..=10000.0)).changed() {
-                                changed = true;
-                            }
-                        });
-                    }
-
-                    if definition.spawn_mode == SpawnMode::Burst || definition.spawn_mode == SpawnMode::BurstRate {
-                        ui.horizontal(|ui| {
-                            ui.label("Count:");
-                            if ui.add(egui::DragValue::new(&mut definition.spawn_count).speed(1.0).range(1..=10000)).changed() {
-                                changed = true;
-                            }
-                        });
-                    }
-                });
-
-                // Lifetime section
-                ui.collapsing("Lifetime", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Min:");
-                        if ui.add(egui::DragValue::new(&mut definition.lifetime_min).speed(0.1).range(0.01..=60.0).suffix("s")).changed() {
-                            changed = true;
-                        }
-                        ui.label("Max:");
-                        if ui.add(egui::DragValue::new(&mut definition.lifetime_max).speed(0.1).range(0.01..=60.0).suffix("s")).changed() {
-                            changed = true;
-                        }
-                    });
-                });
-
-                // Size section
-                ui.collapsing("Size", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Start:");
-                        if ui.add(egui::DragValue::new(&mut definition.size_start).speed(0.01).range(0.001..=10.0)).changed() {
-                            changed = true;
-                        }
-                        ui.label("End:");
-                        if ui.add(egui::DragValue::new(&mut definition.size_end).speed(0.01).range(0.0..=10.0)).changed() {
-                            changed = true;
-                        }
-                    });
-                });
-
-                // Velocity section
-                ui.collapsing("Velocity", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Mode:");
-                        egui::ComboBox::from_id_salt("velocity_mode")
-                            .selected_text(match definition.velocity_mode {
-                                VelocityMode::Directional => "Directional",
-                                VelocityMode::Radial => "Radial",
-                                VelocityMode::Tangent => "Tangent",
-                                VelocityMode::Random => "Random",
-                            })
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(definition.velocity_mode == VelocityMode::Directional, "Directional").clicked() {
-                                    definition.velocity_mode = VelocityMode::Directional;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.velocity_mode == VelocityMode::Radial, "Radial").clicked() {
-                                    definition.velocity_mode = VelocityMode::Radial;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.velocity_mode == VelocityMode::Tangent, "Tangent").clicked() {
-                                    definition.velocity_mode = VelocityMode::Tangent;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.velocity_mode == VelocityMode::Random, "Random").clicked() {
-                                    definition.velocity_mode = VelocityMode::Random;
-                                    changed = true;
-                                }
-                            });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Magnitude:");
-                        if ui.add(egui::DragValue::new(&mut definition.velocity_magnitude).speed(0.1).range(0.0..=100.0)).changed() {
-                            changed = true;
-                        }
-                    });
-
-                    if definition.velocity_mode == VelocityMode::Directional {
-                        ui.horizontal(|ui| {
-                            ui.label("Spread:");
-                            if ui.add(egui::DragValue::new(&mut definition.velocity_spread).speed(0.05).range(0.0..=std::f32::consts::PI)).changed() {
-                                changed = true;
-                            }
-                        });
-
-                        ui.label("Direction:");
-                        ui.horizontal(|ui| {
-                            ui.label("X:");
-                            if ui.add(egui::DragValue::new(&mut definition.velocity_direction[0]).speed(0.1).range(-1.0..=1.0)).changed() {
-                                changed = true;
-                            }
-                            ui.label("Y:");
-                            if ui.add(egui::DragValue::new(&mut definition.velocity_direction[1]).speed(0.1).range(-1.0..=1.0)).changed() {
-                                changed = true;
-                            }
-                            ui.label("Z:");
-                            if ui.add(egui::DragValue::new(&mut definition.velocity_direction[2]).speed(0.1).range(-1.0..=1.0)).changed() {
-                                changed = true;
-                            }
-                        });
-                    }
-                });
-
-                // Forces section
-                ui.collapsing("Forces", |ui| {
-                    ui.label("Acceleration:");
-                    ui.horizontal(|ui| {
-                        ui.label("X:");
-                        if ui.add(egui::DragValue::new(&mut definition.acceleration[0]).speed(0.1)).changed() {
-                            changed = true;
-                        }
-                        ui.label("Y:");
-                        if ui.add(egui::DragValue::new(&mut definition.acceleration[1]).speed(0.1)).changed() {
-                            changed = true;
-                        }
-                        ui.label("Z:");
-                        if ui.add(egui::DragValue::new(&mut definition.acceleration[2]).speed(0.1)).changed() {
-                            changed = true;
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Linear Drag:");
-                        if ui.add(egui::DragValue::new(&mut definition.linear_drag).speed(0.05).range(0.0..=10.0)).changed() {
-                            changed = true;
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Radial Accel:");
-                        if ui.add(egui::DragValue::new(&mut definition.radial_acceleration).speed(0.1).range(-100.0..=100.0)).changed() {
-                            changed = true;
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Tangent Accel:");
-                        if ui.add(egui::DragValue::new(&mut definition.tangent_acceleration).speed(0.1).range(-100.0..=100.0)).changed() {
-                            changed = true;
-                        }
-                    });
-                });
-
-                // Rendering section
-                ui.collapsing("Rendering", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Blend Mode:");
-                        egui::ComboBox::from_id_salt("blend_mode")
-                            .selected_text(match definition.blend_mode {
-                                BlendMode::Blend => "Blend",
-                                BlendMode::Additive => "Additive",
-                                BlendMode::Multiply => "Multiply",
-                            })
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(definition.blend_mode == BlendMode::Blend, "Blend").clicked() {
-                                    definition.blend_mode = BlendMode::Blend;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.blend_mode == BlendMode::Additive, "Additive").clicked() {
-                                    definition.blend_mode = BlendMode::Additive;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.blend_mode == BlendMode::Multiply, "Multiply").clicked() {
-                                    definition.blend_mode = BlendMode::Multiply;
-                                    changed = true;
-                                }
-                            });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Billboard:");
-                        egui::ComboBox::from_id_salt("billboard_mode")
-                            .selected_text(match definition.billboard_mode {
-                                BillboardMode::FaceCamera => "Face Camera",
-                                BillboardMode::FaceCameraY => "Face Camera (Y Lock)",
-                                BillboardMode::Velocity => "Velocity",
-                                BillboardMode::Fixed => "Fixed",
-                            })
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(definition.billboard_mode == BillboardMode::FaceCamera, "Face Camera").clicked() {
-                                    definition.billboard_mode = BillboardMode::FaceCamera;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.billboard_mode == BillboardMode::FaceCameraY, "Face Camera (Y Lock)").clicked() {
-                                    definition.billboard_mode = BillboardMode::FaceCameraY;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.billboard_mode == BillboardMode::Velocity, "Velocity").clicked() {
-                                    definition.billboard_mode = BillboardMode::Velocity;
-                                    changed = true;
-                                }
-                                if ui.selectable_label(definition.billboard_mode == BillboardMode::Fixed, "Fixed").clicked() {
-                                    definition.billboard_mode = BillboardMode::Fixed;
-                                    changed = true;
-                                }
-                            });
-                    });
-                });
+                ui.small("Use the Particle Editor panel for full editing");
             }
         }
     });

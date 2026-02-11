@@ -4,16 +4,24 @@
 //! Supports both asset-based and inline effect definitions.
 
 use std::path::PathBuf;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
-use egui_phosphor::regular::{PLAY, PAUSE, STOP, ARROW_CLOCKWISE, PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use egui_phosphor::regular::{
+    PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN,
+    SPARKLE, TIMER, SHAPES, ARROWS_OUT, WIND, RESIZE, PALETTE, CUBE, GEAR, CODE,
+    PROHIBIT, ATOM,
+};
 
 use crate::particles::{
     HanabiEffectDefinition, HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
-    BlendMode, BillboardMode, SimulationSpace, SimulationCondition, GradientStop,
+    SimulationSpace, SimulationCondition, GradientStop,
     EffectVariable, ParticleEditorState,
+    ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
+    MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings,
 };
 use crate::core::{SceneManagerState, TabKind};
 use crate::theming::Theme;
+
+use super::inspector::{render_category, inline_property_themed};
 
 /// Load a particle effect definition from a file
 fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
@@ -29,7 +37,6 @@ fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
                 }
                 Err(e) => {
                     bevy::log::error!("[ParticleEditor] Failed to parse particle effect {:?}: {}", path, e);
-                    // Return default effect with the file name
                     let mut effect = HanabiEffectDefinition::default();
                     effect.name = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -41,7 +48,6 @@ fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
         }
         Err(e) => {
             bevy::log::error!("[ParticleEditor] Failed to read particle effect {:?}: {}", path, e);
-            // Return default effect for new files
             let mut effect = HanabiEffectDefinition::default();
             effect.name = path.file_stem()
                 .and_then(|s| s.to_str())
@@ -80,7 +86,6 @@ fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool 
 
 /// Sync the particle editor state with the active document tab
 fn sync_with_active_document(state: &mut ParticleEditorState, scene_state: &SceneManagerState) {
-    // Check if a particle document is active
     let active_particle_path = match &scene_state.active_document {
         Some(TabKind::ParticleFX(idx)) => {
             scene_state.open_particles.get(*idx).map(|p| p.path.clone())
@@ -88,13 +93,11 @@ fn sync_with_active_document(state: &mut ParticleEditorState, scene_state: &Scen
         _ => None,
     };
 
-    // If the active document changed, load the new effect
     let current_path = state.current_file_path.as_ref().map(|s| PathBuf::from(s));
 
     if active_particle_path != current_path {
         bevy::log::info!("[ParticleEditor] Document changed: {:?} -> {:?}", current_path, active_particle_path);
         if let Some(path) = active_particle_path {
-            // Load the effect from file
             if let Some(effect) = load_effect_from_file(&path) {
                 bevy::log::info!("[ParticleEditor] Loaded effect into state: '{}'", effect.name);
                 state.current_effect = Some(effect);
@@ -102,8 +105,6 @@ fn sync_with_active_document(state: &mut ParticleEditorState, scene_state: &Scen
                 state.is_modified = false;
             }
         } else if current_path.is_some() {
-            // No particle document active, but we had one - keep the editor state
-            // (don't clear it when switching to other document types)
             bevy::log::info!("[ParticleEditor] Keeping existing effect state");
         }
     }
@@ -114,67 +115,41 @@ pub fn render_particle_editor_content(
     ui: &mut egui::Ui,
     state: &mut ParticleEditorState,
     scene_state: &mut SceneManagerState,
-    preview_texture_id: Option<TextureId>,
-    preview_size: (u32, u32),
     theme: &Theme,
 ) {
-    // Sync with active document tab
     sync_with_active_document(state, scene_state);
-    let available = ui.available_rect_before_wrap();
     let bg_color = theme.surfaces.panel.to_color32();
 
-    // Draw background
+    let available = ui.available_rect_before_wrap();
     ui.painter().rect_filled(available, 0.0, bg_color);
 
-    // If no effect is being edited, show welcome screen
     if state.current_effect.is_none() {
         render_welcome_screen(ui, state, scene_state, theme);
         return;
     }
 
-    // Split into preview area and editor controls
-    let preview_height = 200.0f32.min(available.height() * 0.3);
-    let preview_rect = Rect::from_min_size(
-        available.min,
-        Vec2::new(available.width(), preview_height),
-    );
-    let editor_rect = Rect::from_min_max(
-        Pos2::new(available.min.x, available.min.y + preview_height + 8.0),
-        available.max,
-    );
-
-    // Render preview area
-    render_preview_area(ui, preview_rect, preview_texture_id, preview_size, state, theme);
-
-    // Track if save was requested
     let mut save_requested = false;
 
-    // Render editor controls in scrollable area
-    ui.allocate_ui_at_rect(editor_rect, |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("particle_editor_scroll")
-            .show(ui, |ui| {
-                // Take out the effect temporarily to avoid borrowing issues
-                if let Some(mut effect) = state.current_effect.take() {
-                    let (modified, save) = render_effect_editor(ui, &mut effect, state.current_file_path.as_ref(), theme);
-                    if modified {
-                        state.is_modified = true;
-                    }
-                    if save {
-                        save_requested = true;
-                    }
-                    state.current_effect = Some(effect);
+    egui::ScrollArea::vertical()
+        .id_salt("particle_editor_scroll")
+        .show(ui, |ui| {
+            if let Some(mut effect) = state.current_effect.take() {
+                let (modified, save) = render_effect_editor(ui, &mut effect, state.current_file_path.as_ref(), theme);
+                if modified {
+                    state.is_modified = true;
                 }
-            });
-    });
+                if save {
+                    save_requested = true;
+                }
+                state.current_effect = Some(effect);
+            }
+        });
 
-    // Handle save
     if save_requested {
         if let (Some(effect), Some(path_str)) = (&state.current_effect, &state.current_file_path) {
             let path = PathBuf::from(path_str);
             if save_effect_to_file(&path, effect) {
                 state.is_modified = false;
-                // Update the document tab's modified state
                 if let Some(TabKind::ParticleFX(idx)) = &scene_state.active_document {
                     if let Some(doc) = scene_state.open_particles.get_mut(*idx) {
                         doc.is_modified = false;
@@ -184,7 +159,6 @@ pub fn render_particle_editor_content(
         }
     }
 
-    // Sync modified state to document tab
     if state.is_modified {
         if let Some(TabKind::ParticleFX(idx)) = &scene_state.active_document {
             if let Some(doc) = scene_state.open_particles.get_mut(*idx) {
@@ -199,20 +173,18 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
     let text_muted = theme.text.muted.to_color32();
     let accent = theme.semantic.accent.to_color32();
 
-    // Check if there's an active particle document we should load
     if let Some(TabKind::ParticleFX(idx)) = &scene_state.active_document {
         if let Some(doc) = scene_state.open_particles.get(*idx) {
-            // Auto-load the active document
             if let Some(effect) = load_effect_from_file(&doc.path) {
                 state.current_effect = Some(effect);
                 state.current_file_path = Some(doc.path.to_string_lossy().to_string());
                 state.is_modified = doc.is_modified;
-                return; // Will re-render with the loaded effect
+                return;
             }
         }
     }
 
-    ui.allocate_ui_at_rect(available, |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(available), |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(available.height() * 0.3);
 
@@ -251,94 +223,6 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
     });
 }
 
-fn render_preview_area(
-    ui: &mut egui::Ui,
-    rect: Rect,
-    texture_id: Option<TextureId>,
-    size: (u32, u32),
-    state: &mut ParticleEditorState,
-    theme: &Theme,
-) {
-    let text_muted = theme.text.muted.to_color32();
-    let border_color = theme.widgets.border.to_color32();
-    let bg_dark = theme.surfaces.faint.to_color32();
-
-    // Background
-    ui.painter().rect_filled(rect, 4.0, bg_dark);
-    ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0, border_color), egui::StrokeKind::Inside);
-
-    // Preview image or placeholder
-    if let Some(tex_id) = texture_id {
-        let texture_aspect = size.0 as f32 / size.1.max(1) as f32;
-        let panel_aspect = rect.width() / rect.height();
-
-        let (display_width, display_height) = if texture_aspect > panel_aspect {
-            (rect.width() - 16.0, (rect.width() - 16.0) / texture_aspect)
-        } else {
-            ((rect.height() - 40.0) * texture_aspect, rect.height() - 40.0)
-        };
-
-        let display_rect = Rect::from_center_size(
-            Pos2::new(rect.center().x, rect.min.y + 20.0 + display_height / 2.0),
-            Vec2::new(display_width, display_height),
-        );
-
-        ui.painter().image(
-            tex_id,
-            display_rect,
-            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-            Color32::WHITE,
-        );
-    } else {
-        // Placeholder text
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "Preview",
-            egui::FontId::proportional(14.0),
-            text_muted,
-        );
-    }
-
-    // Playback controls at bottom of preview
-    let controls_rect = Rect::from_min_size(
-        Pos2::new(rect.min.x + 8.0, rect.max.y - 32.0),
-        Vec2::new(rect.width() - 16.0, 24.0),
-    );
-
-    ui.allocate_ui_at_rect(controls_rect, |ui| {
-        ui.horizontal(|ui| {
-            // Play/Pause button
-            let play_icon = if state.preview_playing { PAUSE } else { PLAY };
-            if ui.small_button(play_icon).clicked() {
-                state.preview_playing = !state.preview_playing;
-            }
-
-            // Stop button
-            if ui.small_button(STOP).clicked() {
-                state.preview_playing = false;
-            }
-
-            // Reset button
-            if ui.small_button(ARROW_CLOCKWISE).clicked() {
-                // TODO: Reset effect
-            }
-
-            ui.separator();
-
-            // Effect name
-            if let Some(ref effect) = state.current_effect {
-                ui.label(RichText::new(&effect.name).size(11.0).color(text_muted));
-            }
-
-            // Modified indicator
-            if state.is_modified {
-                ui.label(RichText::new("*").color(theme.semantic.warning.to_color32()));
-            }
-        });
-    });
-}
-
 /// Render the effect editor, returns (modified, save_requested)
 fn render_effect_editor(
     ui: &mut egui::Ui,
@@ -361,63 +245,43 @@ fn render_effect_editor(
         });
     });
 
-    ui.separator();
+    ui.add_space(4.0);
 
     // Basic settings
-    ui.horizontal(|ui| {
-        ui.label("Name:");
-        if ui.text_edit_singleline(&mut effect.name).changed() {
-            modified = true;
-        }
+    let mut row = 0;
+    modified |= inline_property_themed(ui, row, "Name", theme, |ui| {
+        ui.text_edit_singleline(&mut effect.name).changed()
+    });
+    row += 1;
+    modified |= inline_property_themed(ui, row, "Capacity", theme, |ui| {
+        ui.add(egui::DragValue::new(&mut effect.capacity).range(10..=100000)).changed()
     });
 
-    ui.horizontal(|ui| {
-        ui.label("Capacity:");
-        if ui.add(egui::DragValue::new(&mut effect.capacity).range(10..=100000)).changed() {
-            modified = true;
-        }
-    });
+    ui.add_space(6.0);
 
-    ui.add_space(8.0);
-
-    // Spawning section
-    modified |= render_spawning_section(ui, effect);
-
-    // Lifetime section
-    modified |= render_lifetime_section(ui, effect);
-
-    // Emission shape section
-    modified |= render_shape_section(ui, effect);
-
-    // Velocity section
-    modified |= render_velocity_section(ui, effect);
-
-    // Forces section
-    modified |= render_forces_section(ui, effect);
-
-    // Size section
-    modified |= render_size_section(ui, effect);
-
-    // Color section
+    // Sections
+    modified |= render_spawning_section(ui, effect, theme);
+    modified |= render_lifetime_section(ui, effect, theme);
+    modified |= render_shape_section(ui, effect, theme);
+    modified |= render_velocity_section(ui, effect, theme);
+    modified |= render_forces_section(ui, effect, theme);
+    modified |= render_size_section(ui, effect, theme);
     modified |= render_color_section(ui, effect, theme);
-
-    // Rendering section
-    modified |= render_rendering_section(ui, effect);
-
-    // Simulation section
-    modified |= render_simulation_section(ui, effect);
-
-    // Variables section
+    modified |= render_rendering_section(ui, effect, theme);
+    modified |= render_simulation_section(ui, effect, theme);
+    modified |= render_kill_zones_section(ui, effect, theme);
+    modified |= render_conform_section(ui, effect, theme);
     modified |= render_variables_section(ui, effect, theme);
 
     (modified, save_requested)
 }
 
-fn render_spawning_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
+fn render_spawning_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Spawning", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Mode:");
+    render_category(ui, SPARKLE, "Spawning", "effects", theme, "particle_spawning", true, |ui| {
+        let mut row = 0;
+        modified |= inline_property_themed(ui, row, "Mode", theme, |ui| {
+            let mut changed = false;
             egui::ComboBox::from_id_salt("spawn_mode_editor")
                 .selected_text(match effect.spawn_mode {
                     SpawnMode::Rate => "Continuous",
@@ -426,103 +290,81 @@ fn render_spawning_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinitio
                 })
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(effect.spawn_mode == SpawnMode::Rate, "Continuous").clicked() {
-                        effect.spawn_mode = SpawnMode::Rate;
-                        modified = true;
+                        effect.spawn_mode = SpawnMode::Rate; changed = true;
                     }
                     if ui.selectable_label(effect.spawn_mode == SpawnMode::Burst, "Single Burst").clicked() {
-                        effect.spawn_mode = SpawnMode::Burst;
-                        modified = true;
+                        effect.spawn_mode = SpawnMode::Burst; changed = true;
                     }
                     if ui.selectable_label(effect.spawn_mode == SpawnMode::BurstRate, "Repeated Bursts").clicked() {
-                        effect.spawn_mode = SpawnMode::BurstRate;
-                        modified = true;
+                        effect.spawn_mode = SpawnMode::BurstRate; changed = true;
                     }
                 });
+            changed
         });
+        row += 1;
 
         match effect.spawn_mode {
             SpawnMode::Rate => {
-                ui.horizontal(|ui| {
-                    ui.label("Rate (per sec):");
-                    if ui.add(egui::DragValue::new(&mut effect.spawn_rate)
-                        .speed(1.0)
-                        .range(0.1..=10000.0)).changed()
-                    {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Rate/sec", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut effect.spawn_rate).speed(1.0).range(0.1..=10000.0)).changed()
                 });
             }
             SpawnMode::Burst => {
-                ui.horizontal(|ui| {
-                    ui.label("Count:");
-                    if ui.add(egui::DragValue::new(&mut effect.spawn_count)
-                        .range(1..=10000)).changed()
-                    {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Count", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut effect.spawn_count).range(1..=10000)).changed()
                 });
             }
             SpawnMode::BurstRate => {
-                ui.horizontal(|ui| {
-                    ui.label("Count:");
-                    if ui.add(egui::DragValue::new(&mut effect.spawn_count)
-                        .range(1..=10000)).changed()
-                    {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Count", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut effect.spawn_count).range(1..=10000)).changed()
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Bursts/sec:");
-                    if ui.add(egui::DragValue::new(&mut effect.spawn_rate)
-                        .speed(0.1)
-                        .range(0.1..=100.0)).changed()
-                    {
-                        modified = true;
-                    }
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Bursts/sec", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut effect.spawn_rate).speed(0.1).range(0.1..=100.0)).changed()
                 });
             }
         }
-    });
-    modified
-}
+        row += 1;
 
-fn render_lifetime_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
-    let mut modified = false;
-    ui.collapsing("Lifetime", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Min:");
-            if ui.add(egui::DragValue::new(&mut effect.lifetime_min)
-                .speed(0.1)
-                .range(0.01..=60.0)
-                .suffix("s")).changed()
-            {
-                modified = true;
-                if effect.lifetime_min > effect.lifetime_max {
-                    effect.lifetime_max = effect.lifetime_min;
-                }
-            }
+        modified |= inline_property_themed(ui, row, "Duration", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.spawn_duration).speed(0.1).range(0.0..=600.0).suffix("s")).changed()
         });
-
-        ui.horizontal(|ui| {
-            ui.label("Max:");
-            if ui.add(egui::DragValue::new(&mut effect.lifetime_max)
-                .speed(0.1)
-                .range(0.01..=60.0)
-                .suffix("s")).changed()
-            {
-                modified = true;
-                if effect.lifetime_max < effect.lifetime_min {
-                    effect.lifetime_min = effect.lifetime_max;
-                }
-            }
+        row += 1;
+        modified |= inline_property_themed(ui, row, "Cycles", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.spawn_cycle_count).range(0..=1000)).changed()
+        });
+        row += 1;
+        modified |= inline_property_themed(ui, row, "Starts Active", theme, |ui| {
+            ui.checkbox(&mut effect.spawn_starts_active, "").changed()
         });
     });
     modified
 }
 
-fn render_shape_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
+fn render_lifetime_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Emission Shape", |ui| {
+    render_category(ui, TIMER, "Lifetime", "effects", theme, "particle_lifetime", true, |ui| {
+        modified |= inline_property_themed(ui, 0, "Min", theme, |ui| {
+            let changed = ui.add(egui::DragValue::new(&mut effect.lifetime_min).speed(0.1).range(0.01..=60.0).suffix("s")).changed();
+            if changed && effect.lifetime_min > effect.lifetime_max {
+                effect.lifetime_max = effect.lifetime_min;
+            }
+            changed
+        });
+        modified |= inline_property_themed(ui, 1, "Max", theme, |ui| {
+            let changed = ui.add(egui::DragValue::new(&mut effect.lifetime_max).speed(0.1).range(0.01..=60.0).suffix("s")).changed();
+            if changed && effect.lifetime_max < effect.lifetime_min {
+                effect.lifetime_min = effect.lifetime_max;
+            }
+            changed
+        });
+    });
+    modified
+}
+
+fn render_shape_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    render_category(ui, SHAPES, "Emission Shape", "effects", theme, "particle_shape", true, |ui| {
         let shape_name = match &effect.emit_shape {
             HanabiEmitShape::Point => "Point",
             HanabiEmitShape::Circle { .. } => "Circle",
@@ -532,99 +374,109 @@ fn render_shape_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) 
             HanabiEmitShape::Box { .. } => "Box",
         };
 
-        ui.horizontal(|ui| {
-            ui.label("Shape:");
+        let mut row = 0;
+        modified |= inline_property_themed(ui, row, "Shape", theme, |ui| {
+            let mut changed = false;
             egui::ComboBox::from_id_salt("emit_shape_editor")
                 .selected_text(shape_name)
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Point), "Point").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Point;
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Point; changed = true;
                     }
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Circle { .. }), "Circle").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Circle { radius: 1.0, dimension: ShapeDimension::Volume };
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Circle { radius: 1.0, dimension: ShapeDimension::Volume }; changed = true;
                     }
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Sphere { .. }), "Sphere").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Sphere { radius: 1.0, dimension: ShapeDimension::Volume };
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Sphere { radius: 1.0, dimension: ShapeDimension::Volume }; changed = true;
                     }
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Cone { .. }), "Cone").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Cone { base_radius: 0.5, top_radius: 0.0, height: 1.0, dimension: ShapeDimension::Volume };
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Cone { base_radius: 0.5, top_radius: 0.0, height: 1.0, dimension: ShapeDimension::Volume }; changed = true;
                     }
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Rect { .. }), "Rectangle").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Rect { half_extents: [1.0, 1.0], dimension: ShapeDimension::Volume };
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Rect { half_extents: [1.0, 1.0], dimension: ShapeDimension::Volume }; changed = true;
                     }
                     if ui.selectable_label(matches!(&effect.emit_shape, HanabiEmitShape::Box { .. }), "Box").clicked() {
-                        effect.emit_shape = HanabiEmitShape::Box { half_extents: [1.0, 1.0, 1.0] };
-                        modified = true;
+                        effect.emit_shape = HanabiEmitShape::Box { half_extents: [1.0, 1.0, 1.0] }; changed = true;
                     }
                 });
+            changed
         });
+        row += 1;
 
-        // Shape-specific parameters
         match &mut effect.emit_shape {
             HanabiEmitShape::Point => {}
             HanabiEmitShape::Circle { radius, dimension } |
             HanabiEmitShape::Sphere { radius, dimension } => {
-                ui.horizontal(|ui| {
-                    ui.label("Radius:");
-                    if ui.add(egui::DragValue::new(radius).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Radius", theme, |ui| {
+                    ui.add(egui::DragValue::new(radius).speed(0.1).range(0.001..=100.0)).changed()
                 });
-                modified |= render_dimension_selector(ui, dimension);
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Emit from", theme, |ui| {
+                    let mut changed = false;
+                    if ui.radio(*dimension == ShapeDimension::Volume, "Volume").clicked() {
+                        *dimension = ShapeDimension::Volume; changed = true;
+                    }
+                    if ui.radio(*dimension == ShapeDimension::Surface, "Surface").clicked() {
+                        *dimension = ShapeDimension::Surface; changed = true;
+                    }
+                    changed
+                });
             }
             HanabiEmitShape::Cone { base_radius, top_radius, height, dimension } => {
-                ui.horizontal(|ui| {
-                    ui.label("Base Radius:");
-                    if ui.add(egui::DragValue::new(base_radius).speed(0.1).range(0.0..=100.0)).changed() {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Base Radius", theme, |ui| {
+                    ui.add(egui::DragValue::new(base_radius).speed(0.1).range(0.0..=100.0)).changed()
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Top Radius:");
-                    if ui.add(egui::DragValue::new(top_radius).speed(0.1).range(0.0..=100.0)).changed() {
-                        modified = true;
-                    }
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Top Radius", theme, |ui| {
+                    ui.add(egui::DragValue::new(top_radius).speed(0.1).range(0.0..=100.0)).changed()
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Height:");
-                    if ui.add(egui::DragValue::new(height).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Height", theme, |ui| {
+                    ui.add(egui::DragValue::new(height).speed(0.1).range(0.001..=100.0)).changed()
                 });
-                modified |= render_dimension_selector(ui, dimension);
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Emit from", theme, |ui| {
+                    let mut changed = false;
+                    if ui.radio(*dimension == ShapeDimension::Volume, "Volume").clicked() {
+                        *dimension = ShapeDimension::Volume; changed = true;
+                    }
+                    if ui.radio(*dimension == ShapeDimension::Surface, "Surface").clicked() {
+                        *dimension = ShapeDimension::Surface; changed = true;
+                    }
+                    changed
+                });
             }
             HanabiEmitShape::Rect { half_extents, dimension } => {
-                ui.horizontal(|ui| {
-                    ui.label("Half Extents X:");
-                    if ui.add(egui::DragValue::new(&mut half_extents[0]).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
-                    ui.label("Y:");
-                    if ui.add(egui::DragValue::new(&mut half_extents[1]).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Extents X", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut half_extents[0]).speed(0.1).range(0.001..=100.0)).changed()
                 });
-                modified |= render_dimension_selector(ui, dimension);
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Extents Y", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut half_extents[1]).speed(0.1).range(0.001..=100.0)).changed()
+                });
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Emit from", theme, |ui| {
+                    let mut changed = false;
+                    if ui.radio(*dimension == ShapeDimension::Volume, "Volume").clicked() {
+                        *dimension = ShapeDimension::Volume; changed = true;
+                    }
+                    if ui.radio(*dimension == ShapeDimension::Surface, "Surface").clicked() {
+                        *dimension = ShapeDimension::Surface; changed = true;
+                    }
+                    changed
+                });
             }
             HanabiEmitShape::Box { half_extents } => {
-                ui.horizontal(|ui| {
-                    ui.label("X:");
-                    if ui.add(egui::DragValue::new(&mut half_extents[0]).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
-                    ui.label("Y:");
-                    if ui.add(egui::DragValue::new(&mut half_extents[1]).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
-                    ui.label("Z:");
-                    if ui.add(egui::DragValue::new(&mut half_extents[2]).speed(0.1).range(0.001..=100.0)).changed() {
-                        modified = true;
-                    }
+                modified |= inline_property_themed(ui, row, "Extents X", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut half_extents[0]).speed(0.1).range(0.001..=100.0)).changed()
+                });
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Extents Y", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut half_extents[1]).speed(0.1).range(0.001..=100.0)).changed()
+                });
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Extents Z", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut half_extents[2]).speed(0.1).range(0.001..=100.0)).changed()
                 });
             }
         }
@@ -632,27 +484,12 @@ fn render_shape_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) 
     modified
 }
 
-fn render_dimension_selector(ui: &mut egui::Ui, dimension: &mut ShapeDimension) -> bool {
+fn render_velocity_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.horizontal(|ui| {
-        ui.label("Emit from:");
-        if ui.radio(*dimension == ShapeDimension::Volume, "Volume").clicked() {
-            *dimension = ShapeDimension::Volume;
-            modified = true;
-        }
-        if ui.radio(*dimension == ShapeDimension::Surface, "Surface").clicked() {
-            *dimension = ShapeDimension::Surface;
-            modified = true;
-        }
-    });
-    modified
-}
-
-fn render_velocity_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
-    let mut modified = false;
-    ui.collapsing("Velocity", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Mode:");
+    render_category(ui, ARROWS_OUT, "Velocity", "effects", theme, "particle_velocity", true, |ui| {
+        let mut row = 0;
+        modified |= inline_property_themed(ui, row, "Mode", theme, |ui| {
+            let mut changed = false;
             egui::ComboBox::from_id_salt("velocity_mode_editor")
                 .selected_text(match effect.velocity_mode {
                     VelocityMode::Directional => "Directional",
@@ -662,128 +499,192 @@ fn render_velocity_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinitio
                 })
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(effect.velocity_mode == VelocityMode::Directional, "Directional").clicked() {
-                        effect.velocity_mode = VelocityMode::Directional;
-                        modified = true;
+                        effect.velocity_mode = VelocityMode::Directional; changed = true;
                     }
                     if ui.selectable_label(effect.velocity_mode == VelocityMode::Radial, "Radial").clicked() {
-                        effect.velocity_mode = VelocityMode::Radial;
-                        modified = true;
+                        effect.velocity_mode = VelocityMode::Radial; changed = true;
                     }
                     if ui.selectable_label(effect.velocity_mode == VelocityMode::Tangent, "Tangent").clicked() {
-                        effect.velocity_mode = VelocityMode::Tangent;
-                        modified = true;
+                        effect.velocity_mode = VelocityMode::Tangent; changed = true;
                     }
                     if ui.selectable_label(effect.velocity_mode == VelocityMode::Random, "Random").clicked() {
-                        effect.velocity_mode = VelocityMode::Random;
-                        modified = true;
+                        effect.velocity_mode = VelocityMode::Random; changed = true;
                     }
                 });
+            changed
         });
+        row += 1;
 
-        ui.horizontal(|ui| {
-            ui.label("Speed:");
-            if ui.add(egui::DragValue::new(&mut effect.velocity_magnitude).speed(0.1).range(0.0..=100.0)).changed() {
-                modified = true;
-            }
+        modified |= inline_property_themed(ui, row, "Speed", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.velocity_magnitude).speed(0.1).range(0.0..=100.0)).changed()
         });
+        row += 1;
+
+        modified |= inline_property_themed(ui, row, "Speed Min", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.velocity_speed_min).speed(0.1).range(0.0..=100.0)).changed()
+        });
+        row += 1;
+        modified |= inline_property_themed(ui, row, "Speed Max", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.velocity_speed_max).speed(0.1).range(0.0..=100.0)).changed()
+        });
+        row += 1;
 
         if effect.velocity_mode == VelocityMode::Directional {
-            ui.horizontal(|ui| {
-                ui.label("Spread:");
-                if ui.add(egui::DragValue::new(&mut effect.velocity_spread).speed(0.05).range(0.0..=std::f32::consts::PI)).changed() {
-                    modified = true;
-                }
+            modified |= inline_property_themed(ui, row, "Spread", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.velocity_spread).speed(0.05).range(0.0..=std::f32::consts::PI)).changed()
             });
-            ui.horizontal(|ui| {
-                ui.label("Dir X:");
-                if ui.add(egui::DragValue::new(&mut effect.velocity_direction[0]).speed(0.1)).changed() {
-                    modified = true;
-                }
-                ui.label("Y:");
-                if ui.add(egui::DragValue::new(&mut effect.velocity_direction[1]).speed(0.1)).changed() {
-                    modified = true;
-                }
-                ui.label("Z:");
-                if ui.add(egui::DragValue::new(&mut effect.velocity_direction[2]).speed(0.1)).changed() {
-                    modified = true;
-                }
+            row += 1;
+            modified |= inline_property_themed(ui, row, "Direction", theme, |ui| {
+                let mut changed = false;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.label(RichText::new("X").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_direction[0]).speed(0.1)).changed();
+                ui.label(RichText::new("Y").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_direction[1]).speed(0.1)).changed();
+                ui.label(RichText::new("Z").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_direction[2]).speed(0.1)).changed();
+                changed
+            });
+        }
+
+        if effect.velocity_mode == VelocityMode::Tangent {
+            modified |= inline_property_themed(ui, row, "Axis", theme, |ui| {
+                let mut changed = false;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.label(RichText::new("X").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_axis[0]).speed(0.1)).changed();
+                ui.label(RichText::new("Y").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_axis[1]).speed(0.1)).changed();
+                ui.label(RichText::new("Z").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.velocity_axis[2]).speed(0.1)).changed();
+                changed
             });
         }
     });
     modified
 }
 
-fn render_forces_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
+fn render_forces_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Forces", |ui| {
-        ui.label("Acceleration:");
-        ui.horizontal(|ui| {
-            ui.label("X:");
-            if ui.add(egui::DragValue::new(&mut effect.acceleration[0]).speed(0.1)).changed() {
-                modified = true;
-            }
-            ui.label("Y:");
-            if ui.add(egui::DragValue::new(&mut effect.acceleration[1]).speed(0.1)).changed() {
-                modified = true;
-            }
-            ui.label("Z:");
-            if ui.add(egui::DragValue::new(&mut effect.acceleration[2]).speed(0.1)).changed() {
-                modified = true;
-            }
+    render_category(ui, WIND, "Forces", "effects", theme, "particle_forces", true, |ui| {
+        modified |= inline_property_themed(ui, 0, "Accel", theme, |ui| {
+            let mut changed = false;
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.label(RichText::new("X").size(10.0));
+            changed |= ui.add(egui::DragValue::new(&mut effect.acceleration[0]).speed(0.1)).changed();
+            ui.label(RichText::new("Y").size(10.0));
+            changed |= ui.add(egui::DragValue::new(&mut effect.acceleration[1]).speed(0.1)).changed();
+            ui.label(RichText::new("Z").size(10.0));
+            changed |= ui.add(egui::DragValue::new(&mut effect.acceleration[2]).speed(0.1)).changed();
+            changed
         });
 
-        ui.horizontal(|ui| {
-            if ui.small_button("No Gravity").clicked() {
-                effect.acceleration = [0.0, 0.0, 0.0];
-                modified = true;
+        inline_property_themed(ui, 1, "Presets", theme, |ui| {
+            if ui.small_button("None").clicked() {
+                effect.acceleration = [0.0, 0.0, 0.0]; modified = true;
             }
             if ui.small_button("Light").clicked() {
-                effect.acceleration = [0.0, -2.0, 0.0];
-                modified = true;
+                effect.acceleration = [0.0, -2.0, 0.0]; modified = true;
             }
             if ui.small_button("Normal").clicked() {
-                effect.acceleration = [0.0, -9.8, 0.0];
-                modified = true;
+                effect.acceleration = [0.0, -9.8, 0.0]; modified = true;
             }
         });
 
-        ui.horizontal(|ui| {
-            ui.label("Drag:");
-            if ui.add(egui::DragValue::new(&mut effect.linear_drag).speed(0.05).range(0.0..=10.0)).changed() {
-                modified = true;
-            }
+        modified |= inline_property_themed(ui, 2, "Drag", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.linear_drag).speed(0.05).range(0.0..=10.0)).changed()
         });
+
+        modified |= inline_property_themed(ui, 3, "Radial Accel", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.radial_acceleration).speed(0.1).range(-100.0..=100.0)).changed()
+        });
+
+        modified |= inline_property_themed(ui, 4, "Tangent Accel", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.tangent_acceleration).speed(0.1).range(-100.0..=100.0)).changed()
+        });
+
+        if effect.tangent_acceleration.abs() > 0.001 {
+            modified |= inline_property_themed(ui, 5, "Tangent Axis", theme, |ui| {
+                let mut changed = false;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.label(RichText::new("X").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.tangent_accel_axis[0]).speed(0.1)).changed();
+                ui.label(RichText::new("Y").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.tangent_accel_axis[1]).speed(0.1)).changed();
+                ui.label(RichText::new("Z").size(10.0));
+                changed |= ui.add(egui::DragValue::new(&mut effect.tangent_accel_axis[2]).speed(0.1)).changed();
+                changed
+            });
+        }
     });
     modified
 }
 
-fn render_size_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
+fn render_size_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Size Over Lifetime", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Start:");
-            if ui.add(egui::DragValue::new(&mut effect.size_start).speed(0.01).range(0.001..=10.0)).changed() {
-                modified = true;
-            }
-            ui.label("End:");
-            if ui.add(egui::DragValue::new(&mut effect.size_end).speed(0.01).range(0.0..=10.0)).changed() {
-                modified = true;
-            }
-        });
+    render_category(ui, RESIZE, "Size Over Lifetime", "effects", theme, "particle_size", true, |ui| {
+        let mut row = 0;
 
-        ui.horizontal(|ui| {
-            if ui.small_button("Constant").clicked() {
-                effect.size_end = effect.size_start;
-                modified = true;
-            }
-            if ui.small_button("Shrink").clicked() {
-                effect.size_end = 0.0;
-                modified = true;
-            }
-            if ui.small_button("Grow").clicked() {
-                effect.size_end = effect.size_start * 2.0;
-                modified = true;
-            }
+        modified |= inline_property_themed(ui, row, "Non-Uniform", theme, |ui| {
+            ui.checkbox(&mut effect.size_non_uniform, "").changed()
+        });
+        row += 1;
+
+        if effect.size_non_uniform {
+            modified |= inline_property_themed(ui, row, "Start X", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_start_x).speed(0.01).range(0.001..=10.0)).changed()
+            });
+            row += 1;
+            modified |= inline_property_themed(ui, row, "Start Y", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_start_y).speed(0.01).range(0.001..=10.0)).changed()
+            });
+            row += 1;
+            modified |= inline_property_themed(ui, row, "End X", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_end_x).speed(0.01).range(0.0..=10.0)).changed()
+            });
+            row += 1;
+            modified |= inline_property_themed(ui, row, "End Y", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_end_y).speed(0.01).range(0.0..=10.0)).changed()
+            });
+        } else {
+            modified |= inline_property_themed(ui, row, "Start", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_start).speed(0.01).range(0.001..=10.0)).changed()
+            });
+            row += 1;
+            modified |= inline_property_themed(ui, row, "End", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.size_end).speed(0.01).range(0.0..=10.0)).changed()
+            });
+            row += 1;
+            inline_property_themed(ui, row, "Presets", theme, |ui| {
+                if ui.small_button("Constant").clicked() {
+                    effect.size_end = effect.size_start; modified = true;
+                }
+                if ui.small_button("Shrink").clicked() {
+                    effect.size_end = 0.0; modified = true;
+                }
+                if ui.small_button("Grow").clicked() {
+                    effect.size_end = effect.size_start * 2.0; modified = true;
+                }
+            });
+        }
+        row += 1;
+
+        modified |= inline_property_themed(ui, row, "Random Min", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.size_start_min).speed(0.01).range(0.0..=10.0)).changed()
+        });
+        row += 1;
+        modified |= inline_property_themed(ui, row, "Random Max", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.size_start_max).speed(0.01).range(0.0..=10.0)).changed()
+        });
+        row += 1;
+
+        modified |= inline_property_themed(ui, row, "Screen Space", theme, |ui| {
+            ui.checkbox(&mut effect.screen_space_size, "").changed()
+        });
+        row += 1;
+
+        modified |= inline_property_themed(ui, row, "Roundness", theme, |ui| {
+            ui.add(egui::Slider::new(&mut effect.roundness, 0.0..=1.0)).changed()
         });
     });
     modified
@@ -791,78 +692,402 @@ fn render_size_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -
 
 fn render_color_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Color Over Lifetime", |ui| {
-        let gradient_height = 24.0;
-        let gradient_width = ui.available_width() - 40.0;
+    render_category(ui, PALETTE, "Color Over Lifetime", "effects", theme, "particle_color", true, |ui| {
+        let mut row = 0;
 
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(gradient_width, gradient_height), Sense::hover());
+        // Flat color toggle
+        modified |= inline_property_themed(ui, row, "Flat Color", theme, |ui| {
+            ui.checkbox(&mut effect.use_flat_color, "").changed()
+        });
+        row += 1;
 
-        // Draw gradient preview
-        let stops = &effect.color_gradient;
-        if stops.len() >= 2 {
-            for i in 0..stops.len() - 1 {
-                let start = &stops[i];
-                let end = &stops[i + 1];
-                let x0 = rect.min.x + rect.width() * start.position;
-                let x1 = rect.min.x + rect.width() * end.position;
-                let color = Color32::from_rgba_unmultiplied(
-                    (start.color[0] * 255.0) as u8,
-                    (start.color[1] * 255.0) as u8,
-                    (start.color[2] * 255.0) as u8,
-                    (start.color[3] * 255.0) as u8,
+        if effect.use_flat_color {
+            modified |= inline_property_themed(ui, row, "Color", theme, |ui| {
+                let mut color = egui::Rgba::from_rgba_unmultiplied(
+                    effect.flat_color[0], effect.flat_color[1],
+                    effect.flat_color[2], effect.flat_color[3],
                 );
-                let seg = Rect::from_min_max(Pos2::new(x0, rect.min.y), Pos2::new(x1, rect.max.y));
-                ui.painter().rect_filled(seg, 0.0, color);
-            }
-        }
-        ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
+                if egui::color_picker::color_edit_button_rgba(ui, &mut color, egui::color_picker::Alpha::OnlyBlend).changed() {
+                    effect.flat_color = [color.r(), color.g(), color.b(), color.a()];
+                    true
+                } else {
+                    false
+                }
+            });
+        } else {
+            // Gradient preview bar
+            let gradient_width = ui.available_width() - 8.0;
+            let gradient_height = 20.0;
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(gradient_width, gradient_height), Sense::hover());
 
-        ui.horizontal(|ui| {
-            ui.label("Stops:");
-            if ui.small_button(format!("{}", PLUS)).clicked() && effect.color_gradient.len() < 8 {
-                effect.color_gradient.push(GradientStop { position: 0.5, color: [1.0, 1.0, 1.0, 1.0] });
-                effect.color_gradient.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap());
+            let stops = &effect.color_gradient;
+            if stops.len() >= 2 {
+                for i in 0..stops.len() - 1 {
+                    let start = &stops[i];
+                    let end = &stops[i + 1];
+                    let x0 = rect.min.x + rect.width() * start.position;
+                    let x1 = rect.min.x + rect.width() * end.position;
+                    let color = Color32::from_rgba_unmultiplied(
+                        (start.color[0] * 255.0) as u8,
+                        (start.color[1] * 255.0) as u8,
+                        (start.color[2] * 255.0) as u8,
+                        (start.color[3] * 255.0) as u8,
+                    );
+                    let seg = Rect::from_min_max(Pos2::new(x0, rect.min.y), Pos2::new(x1, rect.max.y));
+                    ui.painter().rect_filled(seg, 0.0, color);
+                }
+            }
+            ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
+
+            ui.add_space(4.0);
+
+            // Color stops
+            let mut to_remove = None;
+            let len = effect.color_gradient.len();
+            for (i, stop) in effect.color_gradient.iter_mut().enumerate() {
+                modified |= inline_property_themed(ui, row + i, &format!("Stop {}", i + 1), theme, |ui| {
+                    let mut changed = false;
+                    changed |= ui.add(egui::DragValue::new(&mut stop.position).speed(0.01).range(0.0..=1.0)).changed();
+                    let mut color = egui::Rgba::from_rgba_unmultiplied(stop.color[0], stop.color[1], stop.color[2], stop.color[3]);
+                    if egui::color_picker::color_edit_button_rgba(ui, &mut color, egui::color_picker::Alpha::OnlyBlend).changed() {
+                        stop.color = [color.r(), color.g(), color.b(), color.a()];
+                        changed = true;
+                    }
+                    if len > 2 && ui.small_button(format!("{}", MINUS)).clicked() {
+                        to_remove = Some(i);
+                    }
+                    changed
+                });
+            }
+            if let Some(idx) = to_remove {
+                effect.color_gradient.remove(idx);
                 modified = true;
             }
-        });
+            row += len;
 
-        let mut to_remove = None;
-        let len = effect.color_gradient.len();
-        for (i, stop) in effect.color_gradient.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                ui.label(format!("{}:", i + 1));
-                if ui.add(egui::DragValue::new(&mut stop.position).speed(0.01).range(0.0..=1.0)).changed() {
+            // Add stop + presets
+            inline_property_themed(ui, row, "Actions", theme, |ui| {
+                if ui.small_button(format!("{} Add", PLUS)).clicked() && effect.color_gradient.len() < 8 {
+                    effect.color_gradient.push(GradientStop { position: 0.5, color: [1.0, 1.0, 1.0, 1.0] });
+                    effect.color_gradient.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap());
                     modified = true;
                 }
-                let mut color = egui::Rgba::from_rgba_unmultiplied(stop.color[0], stop.color[1], stop.color[2], stop.color[3]);
-                if egui::color_picker::color_edit_button_rgba(ui, &mut color, egui::color_picker::Alpha::OnlyBlend).changed() {
-                    stop.color = [color.r(), color.g(), color.b(), color.a()];
+                if ui.small_button("Fire").clicked() {
+                    effect.color_gradient = vec![
+                        GradientStop { position: 0.0, color: [1.0, 1.0, 0.3, 1.0] },
+                        GradientStop { position: 0.3, color: [1.0, 0.5, 0.0, 1.0] },
+                        GradientStop { position: 1.0, color: [0.3, 0.1, 0.1, 0.0] },
+                    ];
                     modified = true;
                 }
-                if len > 2 && ui.small_button(format!("{}", MINUS)).clicked() {
-                    to_remove = Some(i);
+                if ui.small_button("Smoke").clicked() {
+                    effect.color_gradient = vec![
+                        GradientStop { position: 0.0, color: [0.3, 0.3, 0.3, 0.8] },
+                        GradientStop { position: 1.0, color: [0.5, 0.5, 0.5, 0.0] },
+                    ];
+                    modified = true;
                 }
             });
         }
+        row += 1;
+
+        // HDR toggle
+        modified |= inline_property_themed(ui, row, "HDR Color", theme, |ui| {
+            ui.checkbox(&mut effect.use_hdr_color, "").changed()
+        });
+        row += 1;
+
+        if effect.use_hdr_color {
+            modified |= inline_property_themed(ui, row, "HDR Intensity", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut effect.hdr_intensity).speed(0.1).range(1.0..=100.0)).changed()
+            });
+            row += 1;
+        }
+
+        // Color blend mode
+        modified |= inline_property_themed(ui, row, "Blend Mode", theme, |ui| {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("color_blend_mode_editor")
+                .selected_text(match effect.color_blend_mode {
+                    ParticleColorBlendMode::Modulate => "Modulate",
+                    ParticleColorBlendMode::Overwrite => "Overwrite",
+                    ParticleColorBlendMode::Add => "Add",
+                })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(effect.color_blend_mode == ParticleColorBlendMode::Modulate, "Modulate").clicked() {
+                        effect.color_blend_mode = ParticleColorBlendMode::Modulate; changed = true;
+                    }
+                    if ui.selectable_label(effect.color_blend_mode == ParticleColorBlendMode::Overwrite, "Overwrite").clicked() {
+                        effect.color_blend_mode = ParticleColorBlendMode::Overwrite; changed = true;
+                    }
+                    if ui.selectable_label(effect.color_blend_mode == ParticleColorBlendMode::Add, "Add").clicked() {
+                        effect.color_blend_mode = ParticleColorBlendMode::Add; changed = true;
+                    }
+                });
+            changed
+        });
+    });
+    modified
+}
+
+fn render_rendering_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    render_category(ui, CUBE, "Rendering", "effects", theme, "particle_rendering", false, |ui| {
+        let mut row = 0;
+
+        // Alpha mode
+        modified |= inline_property_themed(ui, row, "Alpha Mode", theme, |ui| {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("alpha_mode_editor")
+                .selected_text(match effect.alpha_mode {
+                    ParticleAlphaMode::Blend => "Blend",
+                    ParticleAlphaMode::Premultiply => "Premultiply",
+                    ParticleAlphaMode::Add => "Additive",
+                    ParticleAlphaMode::Multiply => "Multiply",
+                    ParticleAlphaMode::Mask => "Mask",
+                    ParticleAlphaMode::Opaque => "Opaque",
+                })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Blend, "Blend").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Blend; changed = true;
+                    }
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Premultiply, "Premultiply").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Premultiply; changed = true;
+                    }
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Add, "Additive").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Add; changed = true;
+                    }
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Multiply, "Multiply").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Multiply; changed = true;
+                    }
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Mask, "Mask").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Mask; changed = true;
+                    }
+                    if ui.selectable_label(effect.alpha_mode == ParticleAlphaMode::Opaque, "Opaque").clicked() {
+                        effect.alpha_mode = ParticleAlphaMode::Opaque; changed = true;
+                    }
+                });
+            changed
+        });
+        row += 1;
+
+        if effect.alpha_mode == ParticleAlphaMode::Mask {
+            modified |= inline_property_themed(ui, row, "Mask Threshold", theme, |ui| {
+                ui.add(egui::Slider::new(&mut effect.alpha_mask_threshold, 0.0..=1.0)).changed()
+            });
+            row += 1;
+        }
+
+        // Orient mode
+        modified |= inline_property_themed(ui, row, "Orient Mode", theme, |ui| {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("orient_mode_editor")
+                .selected_text(match effect.orient_mode {
+                    ParticleOrientMode::ParallelCameraDepthPlane => "Camera Plane",
+                    ParticleOrientMode::FaceCameraPosition => "Face Camera",
+                    ParticleOrientMode::AlongVelocity => "Along Velocity",
+                })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(effect.orient_mode == ParticleOrientMode::ParallelCameraDepthPlane, "Camera Plane").clicked() {
+                        effect.orient_mode = ParticleOrientMode::ParallelCameraDepthPlane; changed = true;
+                    }
+                    if ui.selectable_label(effect.orient_mode == ParticleOrientMode::FaceCameraPosition, "Face Camera").clicked() {
+                        effect.orient_mode = ParticleOrientMode::FaceCameraPosition; changed = true;
+                    }
+                    if ui.selectable_label(effect.orient_mode == ParticleOrientMode::AlongVelocity, "Along Velocity").clicked() {
+                        effect.orient_mode = ParticleOrientMode::AlongVelocity; changed = true;
+                    }
+                });
+            changed
+        });
+        row += 1;
+
+        // Rotation speed
+        modified |= inline_property_themed(ui, row, "Rotation Speed", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.rotation_speed).speed(0.1).range(-20.0..=20.0).suffix(" rad/s")).changed()
+        });
+        row += 1;
+
+        // Texture
+        modified |= inline_property_themed(ui, row, "Texture", theme, |ui| {
+            let mut tex = effect.texture_path.clone().unwrap_or_default();
+            let changed = ui.text_edit_singleline(&mut tex).changed();
+            if changed {
+                effect.texture_path = if tex.is_empty() { None } else { Some(tex) };
+            }
+            changed
+        });
+        row += 1;
+
+        // Flipbook (only when texture is set)
+        if effect.texture_path.is_some() {
+            let has_flipbook = effect.flipbook.is_some();
+            modified |= inline_property_themed(ui, row, "Flipbook", theme, |ui| {
+                let mut enabled = has_flipbook;
+                let changed = ui.checkbox(&mut enabled, "").changed();
+                if changed {
+                    if enabled {
+                        effect.flipbook = Some(FlipbookSettings::default());
+                    } else {
+                        effect.flipbook = None;
+                    }
+                }
+                changed
+            });
+            row += 1;
+
+            if let Some(ref mut fb) = effect.flipbook {
+                modified |= inline_property_themed(ui, row, "Grid Cols", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut fb.grid_columns).range(1..=16)).changed()
+                });
+                row += 1;
+                modified |= inline_property_themed(ui, row, "Grid Rows", theme, |ui| {
+                    ui.add(egui::DragValue::new(&mut fb.grid_rows).range(1..=16)).changed()
+                });
+                row += 1;
+            }
+        }
+
+        // Render layer
+        modified |= inline_property_themed(ui, row, "Layer", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.render_layer).range(0..=31)).changed()
+        });
+    });
+    modified
+}
+
+fn render_simulation_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    render_category(ui, GEAR, "Simulation", "effects", theme, "particle_simulation", false, |ui| {
+        modified |= inline_property_themed(ui, 0, "Space", theme, |ui| {
+            let mut changed = false;
+            if ui.radio(effect.simulation_space == SimulationSpace::Local, "Local").clicked() {
+                effect.simulation_space = SimulationSpace::Local; changed = true;
+            }
+            if ui.radio(effect.simulation_space == SimulationSpace::World, "World").clicked() {
+                effect.simulation_space = SimulationSpace::World; changed = true;
+            }
+            changed
+        });
+        modified |= inline_property_themed(ui, 1, "Update", theme, |ui| {
+            let mut changed = false;
+            if ui.radio(effect.simulation_condition == SimulationCondition::Always, "Always").clicked() {
+                effect.simulation_condition = SimulationCondition::Always; changed = true;
+            }
+            if ui.radio(effect.simulation_condition == SimulationCondition::WhenVisible, "Visible").clicked() {
+                effect.simulation_condition = SimulationCondition::WhenVisible; changed = true;
+            }
+            changed
+        });
+        modified |= inline_property_themed(ui, 2, "Integration", theme, |ui| {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("motion_integration_editor")
+                .selected_text(match effect.motion_integration {
+                    MotionIntegrationMode::PostUpdate => "Post-Update",
+                    MotionIntegrationMode::PreUpdate => "Pre-Update",
+                    MotionIntegrationMode::None => "None",
+                })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(effect.motion_integration == MotionIntegrationMode::PostUpdate, "Post-Update").clicked() {
+                        effect.motion_integration = MotionIntegrationMode::PostUpdate; changed = true;
+                    }
+                    if ui.selectable_label(effect.motion_integration == MotionIntegrationMode::PreUpdate, "Pre-Update").clicked() {
+                        effect.motion_integration = MotionIntegrationMode::PreUpdate; changed = true;
+                    }
+                    if ui.selectable_label(effect.motion_integration == MotionIntegrationMode::None, "None").clicked() {
+                        effect.motion_integration = MotionIntegrationMode::None; changed = true;
+                    }
+                });
+            changed
+        });
+    });
+    modified
+}
+
+fn render_kill_zones_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    render_category(ui, PROHIBIT, "Kill Zones", "effects", theme, "particle_kill_zones", false, |ui| {
+        let mut to_remove = None;
+
+        for (i, zone) in effect.kill_zones.iter_mut().enumerate() {
+            let zone_label = match zone {
+                KillZone::Sphere { .. } => format!("Sphere {}", i + 1),
+                KillZone::Aabb { .. } => format!("AABB {}", i + 1),
+            };
+
+            ui.label(RichText::new(&zone_label).strong().size(11.0));
+
+            let base_row = i * 5;
+            match zone {
+                KillZone::Sphere { center, radius, kill_inside } => {
+                    modified |= inline_property_themed(ui, base_row, "Center", theme, |ui| {
+                        let mut changed = false;
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        changed |= ui.add(egui::DragValue::new(&mut center[0]).speed(0.1)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut center[1]).speed(0.1)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut center[2]).speed(0.1)).changed();
+                        changed
+                    });
+                    modified |= inline_property_themed(ui, base_row + 1, "Radius", theme, |ui| {
+                        ui.add(egui::DragValue::new(radius).speed(0.1).range(0.1..=100.0)).changed()
+                    });
+                    modified |= inline_property_themed(ui, base_row + 2, "Kill Inside", theme, |ui| {
+                        ui.checkbox(kill_inside, "").changed()
+                    });
+                }
+                KillZone::Aabb { center, half_size, kill_inside } => {
+                    modified |= inline_property_themed(ui, base_row, "Center", theme, |ui| {
+                        let mut changed = false;
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        changed |= ui.add(egui::DragValue::new(&mut center[0]).speed(0.1)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut center[1]).speed(0.1)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut center[2]).speed(0.1)).changed();
+                        changed
+                    });
+                    modified |= inline_property_themed(ui, base_row + 1, "Half Size", theme, |ui| {
+                        let mut changed = false;
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        changed |= ui.add(egui::DragValue::new(&mut half_size[0]).speed(0.1).range(0.1..=100.0)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut half_size[1]).speed(0.1).range(0.1..=100.0)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut half_size[2]).speed(0.1).range(0.1..=100.0)).changed();
+                        changed
+                    });
+                    modified |= inline_property_themed(ui, base_row + 2, "Kill Inside", theme, |ui| {
+                        ui.checkbox(kill_inside, "").changed()
+                    });
+                }
+            }
+
+            inline_property_themed(ui, base_row + 3, "Remove", theme, |ui| {
+                if ui.small_button(format!("{} Remove", MINUS)).clicked() {
+                    to_remove = Some(i);
+                }
+            });
+
+            ui.add_space(4.0);
+        }
+
         if let Some(idx) = to_remove {
-            effect.color_gradient.remove(idx);
+            effect.kill_zones.remove(idx);
             modified = true;
         }
 
+        // Add zone buttons
         ui.horizontal(|ui| {
-            if ui.small_button("Fire").clicked() {
-                effect.color_gradient = vec![
-                    GradientStop { position: 0.0, color: [1.0, 1.0, 0.3, 1.0] },
-                    GradientStop { position: 0.3, color: [1.0, 0.5, 0.0, 1.0] },
-                    GradientStop { position: 1.0, color: [0.3, 0.1, 0.1, 0.0] },
-                ];
+            if ui.small_button(format!("{} Sphere Zone", PLUS)).clicked() {
+                effect.kill_zones.push(KillZone::Sphere {
+                    center: [0.0, 0.0, 0.0],
+                    radius: 5.0,
+                    kill_inside: false,
+                });
                 modified = true;
             }
-            if ui.small_button("Smoke").clicked() {
-                effect.color_gradient = vec![
-                    GradientStop { position: 0.0, color: [0.3, 0.3, 0.3, 0.8] },
-                    GradientStop { position: 1.0, color: [0.5, 0.5, 0.5, 0.0] },
-                ];
+            if ui.small_button(format!("{} AABB Zone", PLUS)).clicked() {
+                effect.kill_zones.push(KillZone::Aabb {
+                    center: [0.0, 0.0, 0.0],
+                    half_size: [5.0, 5.0, 5.0],
+                    kill_inside: false,
+                });
                 modified = true;
             }
         });
@@ -870,145 +1095,88 @@ fn render_color_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, 
     modified
 }
 
-fn render_rendering_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
+fn render_conform_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Rendering", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Blend:");
-            egui::ComboBox::from_id_salt("blend_mode_editor")
-                .selected_text(match effect.blend_mode {
-                    BlendMode::Blend => "Alpha",
-                    BlendMode::Additive => "Additive",
-                    BlendMode::Multiply => "Multiply",
-                })
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(effect.blend_mode == BlendMode::Blend, "Alpha").clicked() {
-                        effect.blend_mode = BlendMode::Blend;
-                        modified = true;
-                    }
-                    if ui.selectable_label(effect.blend_mode == BlendMode::Additive, "Additive").clicked() {
-                        effect.blend_mode = BlendMode::Additive;
-                        modified = true;
-                    }
-                    if ui.selectable_label(effect.blend_mode == BlendMode::Multiply, "Multiply").clicked() {
-                        effect.blend_mode = BlendMode::Multiply;
-                        modified = true;
-                    }
-                });
+    render_category(ui, ATOM, "Conform to Sphere", "effects", theme, "particle_conform", false, |ui| {
+        let has_conform = effect.conform_to_sphere.is_some();
+        modified |= inline_property_themed(ui, 0, "Enabled", theme, |ui| {
+            let mut enabled = has_conform;
+            let changed = ui.checkbox(&mut enabled, "").changed();
+            if changed {
+                if enabled {
+                    effect.conform_to_sphere = Some(ConformToSphere::default());
+                } else {
+                    effect.conform_to_sphere = None;
+                }
+            }
+            changed
         });
 
-        ui.horizontal(|ui| {
-            ui.label("Billboard:");
-            egui::ComboBox::from_id_salt("billboard_mode_editor")
-                .selected_text(match effect.billboard_mode {
-                    BillboardMode::FaceCamera => "Face Camera",
-                    BillboardMode::FaceCameraY => "Y Lock",
-                    BillboardMode::Velocity => "Velocity",
-                    BillboardMode::Fixed => "Fixed",
-                })
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(effect.billboard_mode == BillboardMode::FaceCamera, "Face Camera").clicked() {
-                        effect.billboard_mode = BillboardMode::FaceCamera;
-                        modified = true;
-                    }
-                    if ui.selectable_label(effect.billboard_mode == BillboardMode::FaceCameraY, "Y Lock").clicked() {
-                        effect.billboard_mode = BillboardMode::FaceCameraY;
-                        modified = true;
-                    }
-                    if ui.selectable_label(effect.billboard_mode == BillboardMode::Velocity, "Velocity").clicked() {
-                        effect.billboard_mode = BillboardMode::Velocity;
-                        modified = true;
-                    }
-                    if ui.selectable_label(effect.billboard_mode == BillboardMode::Fixed, "Fixed").clicked() {
-                        effect.billboard_mode = BillboardMode::Fixed;
-                        modified = true;
-                    }
-                });
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Texture:");
-            let mut tex = effect.texture_path.clone().unwrap_or_default();
-            if ui.text_edit_singleline(&mut tex).changed() {
-                effect.texture_path = if tex.is_empty() { None } else { Some(tex) };
-                modified = true;
-            }
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Layer:");
-            if ui.add(egui::DragValue::new(&mut effect.render_layer).range(0..=31)).changed() {
-                modified = true;
-            }
-        });
-    });
-    modified
-}
-
-fn render_simulation_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition) -> bool {
-    let mut modified = false;
-    ui.collapsing("Simulation", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Space:");
-            if ui.radio(effect.simulation_space == SimulationSpace::Local, "Local").clicked() {
-                effect.simulation_space = SimulationSpace::Local;
-                modified = true;
-            }
-            if ui.radio(effect.simulation_space == SimulationSpace::World, "World").clicked() {
-                effect.simulation_space = SimulationSpace::World;
-                modified = true;
-            }
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Update:");
-            if ui.radio(effect.simulation_condition == SimulationCondition::Always, "Always").clicked() {
-                effect.simulation_condition = SimulationCondition::Always;
-                modified = true;
-            }
-            if ui.radio(effect.simulation_condition == SimulationCondition::WhenVisible, "Visible").clicked() {
-                effect.simulation_condition = SimulationCondition::WhenVisible;
-                modified = true;
-            }
-        });
+        if let Some(ref mut conform) = effect.conform_to_sphere {
+            modified |= inline_property_themed(ui, 1, "Origin", theme, |ui| {
+                let mut changed = false;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                changed |= ui.add(egui::DragValue::new(&mut conform.origin[0]).speed(0.1)).changed();
+                changed |= ui.add(egui::DragValue::new(&mut conform.origin[1]).speed(0.1)).changed();
+                changed |= ui.add(egui::DragValue::new(&mut conform.origin[2]).speed(0.1)).changed();
+                changed
+            });
+            modified |= inline_property_themed(ui, 2, "Radius", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.radius).speed(0.1).range(0.1..=100.0)).changed()
+            });
+            modified |= inline_property_themed(ui, 3, "Influence Dist", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.influence_dist).speed(0.1).range(0.0..=100.0)).changed()
+            });
+            modified |= inline_property_themed(ui, 4, "Accel", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.attraction_accel).speed(0.1).range(0.0..=100.0)).changed()
+            });
+            modified |= inline_property_themed(ui, 5, "Max Speed", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.max_attraction_speed).speed(0.1).range(0.0..=100.0)).changed()
+            });
+            modified |= inline_property_themed(ui, 6, "Shell Thick.", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.shell_half_thickness).speed(0.01).range(0.0..=10.0)).changed()
+            });
+            modified |= inline_property_themed(ui, 7, "Sticky Factor", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut conform.sticky_factor).speed(0.01).range(0.0..=10.0)).changed()
+            });
+        }
     });
     modified
 }
 
 fn render_variables_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
     let mut modified = false;
-    ui.collapsing("Variables", |ui| {
+    render_category(ui, CODE, "Variables", "effects", theme, "particle_variables", false, |ui| {
         ui.label(egui::RichText::new("Exposed to scripts").size(10.0).color(theme.text.muted.to_color32()));
 
         let var_names: Vec<String> = effect.variables.keys().cloned().collect();
         let mut to_remove = None;
 
-        for name in &var_names {
+        for (i, name) in var_names.iter().enumerate() {
             if let Some(var) = effect.variables.get_mut(name) {
-                ui.horizontal(|ui| {
-                    ui.label(name);
+                modified |= inline_property_themed(ui, i, name, theme, |ui| {
+                    let mut changed = false;
                     match var {
                         EffectVariable::Float { value, min, max } => {
-                            if ui.add(egui::DragValue::new(value).range(*min..=*max)).changed() {
-                                modified = true;
-                            }
+                            changed |= ui.add(egui::DragValue::new(value).range(*min..=*max)).changed();
                         }
                         EffectVariable::Color { value } => {
                             let mut color = egui::Rgba::from_rgba_unmultiplied(value[0], value[1], value[2], value[3]);
                             if egui::color_picker::color_edit_button_rgba(ui, &mut color, egui::color_picker::Alpha::OnlyBlend).changed() {
                                 *value = [color.r(), color.g(), color.b(), color.a()];
-                                modified = true;
+                                changed = true;
                             }
                         }
                         EffectVariable::Vec3 { value } => {
-                            if ui.add(egui::DragValue::new(&mut value[0]).speed(0.1)).changed() { modified = true; }
-                            if ui.add(egui::DragValue::new(&mut value[1]).speed(0.1)).changed() { modified = true; }
-                            if ui.add(egui::DragValue::new(&mut value[2]).speed(0.1)).changed() { modified = true; }
+                            changed |= ui.add(egui::DragValue::new(&mut value[0]).speed(0.1)).changed();
+                            changed |= ui.add(egui::DragValue::new(&mut value[1]).speed(0.1)).changed();
+                            changed |= ui.add(egui::DragValue::new(&mut value[2]).speed(0.1)).changed();
                         }
                     }
                     if ui.small_button(format!("{}", MINUS)).clicked() {
                         to_remove = Some(name.clone());
                     }
+                    changed
                 });
             }
         }
@@ -1018,7 +1186,7 @@ fn render_variables_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefiniti
             modified = true;
         }
 
-        ui.horizontal(|ui| {
+        inline_property_themed(ui, var_names.len(), "Add", theme, |ui| {
             if ui.small_button(format!("{} Float", PLUS)).clicked() {
                 effect.variables.insert(format!("var_{}", effect.variables.len()), EffectVariable::Float { value: 1.0, min: 0.0, max: 10.0 });
                 modified = true;

@@ -45,7 +45,14 @@ impl Plugin for ParticlesPlugin {
             .register_type::<SimulationCondition>()
             .register_type::<GradientStop>()
             .register_type::<CurvePoint>()
-            .register_type::<EffectVariable>();
+            .register_type::<EffectVariable>()
+            .register_type::<ParticleAlphaMode>()
+            .register_type::<ParticleOrientMode>()
+            .register_type::<MotionIntegrationMode>()
+            .register_type::<ParticleColorBlendMode>()
+            .register_type::<KillZone>()
+            .register_type::<ConformToSphere>()
+            .register_type::<FlipbookSettings>();
 
         // Systems that run in editor state
         app.add_systems(

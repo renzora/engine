@@ -216,6 +216,7 @@ fn get_category_colors(theme: &Theme, category: &str) -> (Color32, Color32) {
         "nodes2d" | "nodes_2d" => &theme.categories.nodes_2d,
         "ui" => &theme.categories.ui,
         "rendering" => &theme.categories.rendering,
+        "effects" | "particles" => &theme.categories.effects,
         _ => &theme.categories.transform, // fallback
     };
     (style.accent.to_color32(), style.header_bg.to_color32())
