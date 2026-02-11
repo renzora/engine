@@ -1,0 +1,89 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build
+        run: cargo build --verbose
+
+  build_features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: all features
+        run: cargo build --verbose --all-features
+      - name: no default features
+        run: cargo build --verbose --no-default-features
+
+  build_examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build baloon example
+        run: cargo clippy --example balloon
+      - name: build flag example
+        run: cargo clippy --example flag
+      - name: build moving example
+        run: cargo clippy --example moving
+      - name: build rapier example
+        run: cargo clippy --features avian_collisions --example avian_collision
+      - name: build rapier example
+        run: cargo clippy --features rapier_collisions --example rapier_collision
+      - name: build anchors example
+        run: cargo clippy --example anchors
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: tests
+        run: cargo test --tests
+      - name: doc tests
+        run: cargo test --all-features --doc
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: "rustfmt"
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo clippy installation
+        run: rustup component add clippy
+      - name: Default clippy check
+        run: cargo clippy --all --tests -- -D warnings
+      - name: Full clippy check
+        run: cargo clippy --all-features --all --tests -- -D warnings
+      - name: Minimal clippy check
+        run: cargo clippy --no-default-features --all --tests -- -D warnings
+
+  rustdoc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: rustdoc
+        run: cargo rustdoc --all-features -- -D warnings

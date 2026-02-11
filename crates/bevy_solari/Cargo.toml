@@ -1,0 +1,50 @@
+[package]
+name = "bevy_solari"
+version = "0.18.0"
+edition = "2024"
+description = "Provides raytraced lighting for Bevy Engine (patched for transparent pass ordering)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bevyengine/bevy"
+
+[lib]
+name = "bevy_solari"
+path = "src/lib.rs"
+
+[features]
+dlss = ["bevy_anti_alias/dlss"]
+force_disable_dlss = ["bevy_anti_alias/force_disable_dlss"]
+
+[dependencies]
+bevy_anti_alias = "0.18.0"
+bevy_app = "0.18.0"
+bevy_asset = "0.18.0"
+bevy_camera = "0.18.0"
+bevy_color = "0.18.0"
+bevy_core_pipeline = "0.18.0"
+bevy_derive = "0.18.0"
+bevy_diagnostic = "0.18.0"
+bevy_ecs = "0.18.0"
+bevy_image = "0.18.0"
+bevy_math = "0.18.0"
+bevy_mesh = "0.18.0"
+bevy_pbr = "0.18.0"
+bevy_platform = { version = "0.18.0", default-features = false, features = ["std"] }
+bevy_reflect = "0.18.0"
+bevy_render = "0.18.0"
+bevy_shader = "0.18.0"
+bevy_transform = "0.18.0"
+bevy_utils = "0.18.0"
+bytemuck = "1"
+derive_more = { version = "2", default-features = false, features = ["from"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[lints.clippy]
+doc_markdown = "warn"
+too_many_arguments = "allow"
+type_complexity = "allow"
+too_long_first_doc_paragraph = "allow"
+needless_lifetimes = "allow"
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "deny"
