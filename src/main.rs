@@ -265,6 +265,8 @@ fn main() {
             surface_painting::SurfacePaintingPlugin,
             // Physics plugin (starts paused in editor, activated during play mode)
             shared::RenzoraPhysicsPlugin::new(true),
+            // Cloth physics (bevy_silk)
+            bevy_silk::ClothPlugin,
             // Auto-update system
             update::UpdatePlugin,
             // GLTF animation playback

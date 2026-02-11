@@ -645,6 +645,7 @@ fn render_leaf(
                 ("Debug", &[
                     PanelId::Performance,
                     PanelId::RenderStats,
+                    PanelId::RenderPipeline,
                     PanelId::EcsStats,
                     PanelId::MemoryProfiler,
                     PanelId::PhysicsDebug,

@@ -142,6 +142,9 @@ impl Plugin for ComponentSystemPlugin {
             components::lighting::sync_light_data_to_bevy,
         ));
 
+        // Cloth sync system
+        app.add_systems(Update, components::cloth::sync_cloth_data);
+
         // Post-processing and lighting sync systems
         app.add_systems(Update, (
             components::ambient_light::sync_ambient_light,

@@ -760,12 +760,14 @@ impl Plugin for DiagnosticsPlugin {
         .init_resource::<super::stress_test::StressTestState>()
         .init_resource::<super::state_recorder::StateRecorderState>()
         .init_resource::<super::arena_presets::ArenaPresetsState>()
+        .init_resource::<super::render_pipeline::RenderPipelineGraphData>()
         .add_systems(Update, (
             update_diagnostics_state,
             update_render_stats,
             update_ecs_stats,
             update_memory_profiler,
             update_system_timing,
+            super::render_pipeline::update_render_pipeline_timing,
         ))
         .add_systems(Update, (
             super::physics_debug::update_physics_debug_state,
@@ -790,5 +792,10 @@ impl Plugin for DiagnosticsPlugin {
             super::arena_presets::animate_arena_kinematic,
             crate::gizmo::render_physics_debug_gizmos,
         ));
+    }
+
+    fn finish(&self, app: &mut App) {
+        // Extract the actual render graph from Bevy's RenderApp sub-app
+        super::render_pipeline::extract_render_graph(app);
     }
 }

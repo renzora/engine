@@ -97,6 +97,8 @@ pub enum PanelId {
     StateRecorder,
     /// Arena presets — spawn pre-built arena environments
     ArenaPresets,
+    /// Render pipeline — node graph visualization of render passes
+    RenderPipeline,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -153,6 +155,7 @@ impl PanelId {
             PanelId::StressTest => "Stress Test",
             PanelId::StateRecorder => "Recorder",
             PanelId::ArenaPresets => "Arena Presets",
+            PanelId::RenderPipeline => "Render Pipeline",
             PanelId::Plugin(name) => name,
         }
     }
@@ -208,6 +211,7 @@ impl PanelId {
             PanelId::StressTest => CPU,
             PanelId::StateRecorder => TIMER,
             PanelId::ArenaPresets => CUBE,
+            PanelId::RenderPipeline => STACK,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

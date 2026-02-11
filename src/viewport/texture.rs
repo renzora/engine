@@ -8,6 +8,32 @@ use crate::core::{MainCamera, ViewportState};
 
 use super::ViewportImage;
 
+/// Returns the texture format and usages for the viewport texture.
+/// When compiled with the `solari` feature, uses HDR format (Rgba16Float + STORAGE_BINDING)
+/// so the Solari-modified render pipeline works from startup without needing a texture swap.
+/// Standard PBR rendering also works fine with HDR (tone mapping handles conversion).
+fn viewport_texture_config() -> (TextureFormat, TextureUsages) {
+    #[cfg(feature = "solari")]
+    {
+        (
+            TextureFormat::Rgba16Float,
+            TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_DST
+                | TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::STORAGE_BINDING,
+        )
+    }
+    #[cfg(not(feature = "solari"))]
+    {
+        (
+            TextureFormat::Bgra8UnormSrgb,
+            TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_DST
+                | TextureUsages::RENDER_ATTACHMENT,
+        )
+    }
+}
+
 /// Tracks the last known viewport size to detect changes
 #[derive(Resource, Default)]
 pub struct ViewportTextureSize {
@@ -24,26 +50,21 @@ pub fn setup_viewport_texture(mut commands: Commands, mut images: ResMut<Assets<
         depth_or_array_layers: 1,
     };
 
-    console_info!("Viewport", "Initial size: {}x{}", size.width, size.height);
-    console_info!("Viewport", "Format: Bgra8UnormSrgb (standard sRGB for non-Solari)");
-    console_info!("Viewport", "Usage: TEXTURE_BINDING | COPY_DST | RENDER_ATTACHMENT");
-    console_info!("Viewport", "NOTE: Solari will switch to Rgba16Float + STORAGE_BINDING when enabled");
+    let (format, usage) = viewport_texture_config();
 
-    // Use standard sRGB format for normal rendering
-    // Solari requires Rgba16Float + STORAGE_BINDING, but that breaks standard rendering
-    // when Solari isn't active. Start with standard format - Solari will work but
-    // may need the viewport texture recreated if HDR is needed.
+    console_info!("Viewport", "Initial size: {}x{}", size.width, size.height);
+    console_info!("Viewport", "Format: {:?}", format);
+    console_info!("Viewport", "Usage: {:?}", usage);
+
     let mut image = Image {
         texture_descriptor: TextureDescriptor {
             label: Some("viewport_texture"),
             size,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8UnormSrgb, // Standard sRGB format
+            format,
             mip_level_count: 1,
             sample_count: 1,
-            usage: TextureUsages::TEXTURE_BINDING
-                | TextureUsages::COPY_DST
-                | TextureUsages::RENDER_ATTACHMENT,
+            usage,
             view_formats: &[],
         },
         ..default()

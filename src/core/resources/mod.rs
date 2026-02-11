@@ -29,6 +29,7 @@ pub mod movement_trails;
 pub mod stress_test;
 pub mod state_recorder;
 pub mod arena_presets;
+pub mod render_pipeline;
 
 pub use animation_timeline::{AnimationTimelineState, TimelinePlayState};
 pub use assets::{
@@ -75,4 +76,5 @@ pub use movement_trails::MovementTrailsState;
 pub use stress_test::StressTestState;
 pub use state_recorder::StateRecorderState;
 pub use arena_presets::ArenaPresetsState;
+pub use render_pipeline::RenderPipelineGraphData;
 pub use inspector_render::InspectorPanelRenderState;

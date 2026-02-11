@@ -189,7 +189,10 @@ pub fn debug_layout() -> DockTree {
                 DockTree::horizontal(
                     DockTree::horizontal(
                         DockTree::leaf(PanelId::SystemProfiler),
-                        DockTree::leaf(PanelId::RenderStats),
+                        DockTree::Leaf {
+                            tabs: vec![PanelId::RenderStats, PanelId::RenderPipeline],
+                            active_tab: 0,
+                        },
                         0.5,
                     ),
                     DockTree::horizontal(

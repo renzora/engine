@@ -16,7 +16,7 @@ use crate::core::{
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
     EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
-    AnimationTimelineState, TabKind,
+    AnimationTimelineState, TabKind, RenderPipelineGraphData,
     PhysicsPropertiesState, PlaygroundState, PhysicsForcesState,
     PhysicsMetricsState, PhysicsScenariosState, CollisionVizState,
     MovementTrailsState, StressTestState, StateRecorderState, ArenaPresetsState,
@@ -101,6 +101,7 @@ pub struct EditorResources<'w> {
     pub stress_test: ResMut<'w, StressTestState>,
     pub state_recorder: ResMut<'w, StateRecorderState>,
     pub arena_presets: ResMut<'w, ArenaPresetsState>,
+    pub render_pipeline_data: ResMut<'w, RenderPipelineGraphData>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -935,6 +936,17 @@ pub fn editor_ui(
                 PanelId::RenderStats => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_render_stats_content(ui, &editor.render_stats, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::RenderPipeline => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        panels::render_render_pipeline_content(
+                            ui,
+                            &mut editor.render_pipeline_data,
+                            &editor.render_stats,
+                            &editor.theme_manager.active_theme,
+                        );
                     });
                 }
 

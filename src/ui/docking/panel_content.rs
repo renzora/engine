@@ -229,6 +229,7 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::StressTest => Vec2::new(280.0, 350.0),
         PanelId::StateRecorder => Vec2::new(250.0, 300.0),
         PanelId::ArenaPresets => Vec2::new(250.0, 300.0),
+        PanelId::RenderPipeline => Vec2::new(400.0, 300.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

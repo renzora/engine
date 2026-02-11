@@ -48,14 +48,12 @@ pub fn setup_editor_camera(
     };
 
     console_info!("Camera", "Viewport size: {}x{}, aspect: {:.3}", viewport.size[0], viewport.size[1], aspect);
-    console_info!("Camera", "Render target: viewport texture (Bgra8UnormSrgb initially)");
+    console_info!("Camera", "Render target: viewport texture");
     console_info!("Camera", "MSAA: Off (required for MeshletPlugin)");
     console_info!("Camera", "Clear color: sRGB(0.15, 0.15, 0.18)");
-    console_info!("Camera", "NOTE: No Solari components - added dynamically by sync_rendering_settings");
 
-    // Standard camera setup - no Solari-specific settings
-    // Solari components are added dynamically by sync_rendering_settings when enabled
-    commands.spawn((
+    // Standard camera setup - Solari-specific HDR components added below when feature is compiled
+    let camera_entity = commands.spawn((
         Camera3d::default(),
         Msaa::Off, // MeshletPlugin requires explicit Msaa::Off
         Camera {
@@ -74,7 +72,27 @@ pub fn setup_editor_camera(
         // Render both scene (layer 0) and gizmos (layer 1)
         editor_camera_layers(),
         Name::new("Main Viewport Camera"),
-    ));
+    )).id();
+
+    // When compiled with solari, always use HDR + STORAGE_BINDING on the camera.
+    // This matches the HDR viewport texture format and ensures the Solari-modified
+    // render pipeline works from startup without needing a runtime format switch.
+    #[cfg(feature = "solari")]
+    {
+        use bevy::render::render_resource::TextureUsages;
+        use bevy::render::view::Hdr;
+        use bevy::camera::CameraMainTextureUsages;
+
+        commands.entity(camera_entity).insert((
+            Hdr,
+            CameraMainTextureUsages(
+                TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::TEXTURE_BINDING
+                | TextureUsages::STORAGE_BINDING
+            ),
+        ));
+        console_info!("Camera", "HDR + CameraMainTextureUsages(STORAGE_BINDING) added (solari feature compiled)");
+    }
 
     console_info!("Camera", "=== CAMERA SETUP COMPLETE ===");
 }

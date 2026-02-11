@@ -3,6 +3,7 @@
 mod audio_listener;
 mod camera_2d;
 mod camera_3d;
+pub(crate) mod cloth;
 mod camera_rig;
 mod colliders;
 mod directional_light;
@@ -62,6 +63,7 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     // Physics
     rigid_body::register(registry);
     colliders::register(registry);
+    cloth::register(registry);
 
     // Rendering
     mesh_renderer::register(registry);
