@@ -199,8 +199,8 @@ pub fn update_diagnostics_state(
     // Frame time
     if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
         if let Some(value) = frame_time.smoothed() {
-            state.frame_time_ms = value * 1000.0; // Convert to milliseconds
-            DiagnosticsState::push_sample(&mut state.frame_time_history, (value * 1000.0) as f32);
+            state.frame_time_ms = value; // Already in milliseconds
+            DiagnosticsState::push_sample(&mut state.frame_time_history, value as f32);
         }
     }
 
@@ -289,7 +289,7 @@ pub fn update_render_stats(
     if !found_gpu_timing {
         if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
             if let Some(value) = frame_time.smoothed() {
-                let gpu_time = (value * 1000.0 * 0.6) as f32;
+                let gpu_time = (value * 0.6) as f32;
                 stats.gpu_time_ms = gpu_time;
                 stats.push_gpu_time(gpu_time);
             }
@@ -698,7 +698,7 @@ pub fn update_system_timing(
 
     // Get frame time
     let frame_time_ms = if let Some(ft) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
-        ft.smoothed().unwrap_or(0.0) as f32 * 1000.0
+        ft.smoothed().unwrap_or(0.0) as f32
     } else {
         16.67
     };
