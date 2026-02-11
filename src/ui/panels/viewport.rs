@@ -12,7 +12,7 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
     IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA,
     COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
-    CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD,
+    CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD, SPARKLE,
 };
 
 /// Height of the viewport mode tabs bar
@@ -1250,11 +1250,25 @@ pub fn render_viewport_content(
                     let is_hdr = is_hdr_file(&asset_path);
                     let is_image = is_image_file(&asset_path);
                     let is_material = is_blueprint_material(&asset_path);
+                    let is_effect = asset_path.to_string_lossy().to_lowercase().ends_with(".effect");
                     let is_2d_mode = viewport.viewport_mode == ViewportMode::Mode2D;
 
                     // Handle HDR/EXR drops → create/update skybox
                     if is_hdr {
                         assets.pending_skybox_drop = Some(asset_path);
+                    }
+                    // Handle .effect drops → create particle entity at ground point
+                    else if is_effect {
+                        let ground_point = if is_2d_mode {
+                            Vec3::new(
+                                (norm_x - 0.5) * content_rect.width(),
+                                (0.5 - norm_y) * content_rect.height(),
+                                0.0,
+                            )
+                        } else {
+                            ground_plane_intersection(orbit, content_rect, mouse_pos)
+                        };
+                        assets.pending_effect_drop = Some((asset_path, ground_point));
                     }
                     // Handle material blueprint drops (only in 3D mode)
                     else if is_material && !is_2d_mode {
@@ -1897,6 +1911,14 @@ fn render_viewport_context_menu_items(
     if menu_item(ui, GRAPHICS_CARD, "Shader", shader_color, true) {
         assets.show_create_shader_dialog = true;
         assets.new_shader_name = "new_shader".to_string();
+        viewport.context_menu_pos = None;
+        viewport.context_submenu = None;
+    }
+
+    let particle_color = Color32::from_rgb(255, 180, 50);
+    if menu_item(ui, SPARKLE, "Particle FX", particle_color, true) {
+        assets.show_create_particle_dialog = true;
+        assets.new_particle_name = "NewParticle".to_string();
         viewport.context_menu_pos = None;
         viewport.context_submenu = None;
     }

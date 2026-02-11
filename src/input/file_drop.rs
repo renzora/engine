@@ -170,6 +170,74 @@ pub fn handle_asset_panel_drop(
     }
 }
 
+/// System to handle .effect file drops from the assets panel to viewport
+/// Creates an entity with HanabiEffectData at the drop position
+pub fn handle_effect_panel_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
+    current_project: Option<Res<CurrentProject>>,
+) {
+    let Some((path, position)) = assets.pending_effect_drop.take() else {
+        return;
+    };
+
+    let name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("ParticleEffect")
+        .to_string();
+
+    // Compute the relative asset path from the project assets folder
+    let relative_path = if let Some(ref project) = current_project {
+        let assets_base = project.path.join("assets");
+        path.strip_prefix(&assets_base)
+            .map(|r| r.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string_lossy().to_string())
+    } else {
+        path.to_string_lossy().to_string()
+    };
+
+    // Find the scene root to parent new entities to
+    let scene_root_entity = scene_roots.iter().next().map(|(e, _)| e);
+
+    use crate::particles::{HanabiEffectData, EffectSource};
+
+    let mut entity_commands = commands.spawn((
+        Transform::from_translation(position),
+        Visibility::default(),
+        EditorEntity {
+            name: name.clone(),
+            tag: String::new(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+        HanabiEffectData {
+            source: EffectSource::Asset { path: relative_path },
+            playing: true,
+            ..Default::default()
+        },
+    ));
+
+    // Parent to scene root if one exists
+    if let Some(root) = scene_root_entity {
+        entity_commands.insert(ChildOf(root));
+    }
+
+    let entity = entity_commands.id();
+
+    // Auto-select the new entity
+    selection.select(entity);
+    if let Some(root) = scene_root_entity {
+        hierarchy.expanded_entities.insert(root);
+    }
+
+    info!("Spawned particle effect '{}' at {:?}", name, position);
+}
+
 /// System to handle image drops from the assets panel to viewport
 /// Creates a Sprite2D in 2D mode or a textured plane in 3D mode
 pub fn handle_image_panel_drop(

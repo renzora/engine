@@ -58,6 +58,7 @@ impl Plugin for ParticlesPlugin {
         app.add_systems(
             Update,
             (
+                hot_reload_saved_effects,
                 sync_hanabi_effects,
                 apply_runtime_overrides,
             )

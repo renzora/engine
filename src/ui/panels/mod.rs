@@ -84,6 +84,8 @@ pub use shader_preview::render_shader_preview_content;
 pub use image_preview::render_image_preview_content;
 pub use image_preview::open_image;
 pub use particle_editor::render_particle_editor_content;
+pub use particle_editor::load_effect_from_file;
+pub use particle_editor::save_effect_to_file;
 pub use particle_preview::render_particle_preview_content;
 pub use script_variables::render_script_variables_content;
 pub use settings::render_settings_content;

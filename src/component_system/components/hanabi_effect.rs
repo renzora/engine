@@ -3,9 +3,13 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use serde_json::json;
+use std::path::PathBuf;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
+use crate::core::{AssetBrowserState, SceneManagerState, OpenParticleFX, TabKind};
+use crate::project::CurrentProject;
+use crate::ui::load_effect_from_file;
 
 use egui_phosphor::regular::SPARKLE;
 
@@ -481,6 +485,21 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
 fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _meshes: &mut Assets<Mesh>, _materials: &mut Assets<StandardMaterial>) -> bool {
     let mut changed = false;
 
+    // Check for drag-and-drop of .effect files
+    let dragging_effect_path = {
+        if let Some(assets) = world.get_resource::<AssetBrowserState>() {
+            assets.dragging_asset.as_ref()
+                .filter(|p| p.to_string_lossy().to_lowercase().ends_with(".effect"))
+                .cloned()
+        } else {
+            None
+        }
+    };
+
+    // Get project path for resolving asset paths
+    let project_assets_path = world.get_resource::<CurrentProject>()
+        .map(|p| p.path.join("assets"));
+
     let Some(mut data) = world.get_mut::<HanabiEffectData>(entity) else {
         return false;
     };
@@ -549,7 +568,45 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
                         changed = true;
                     }
                 });
-                ui.small("Drop an .effect file here or enter path");
+
+                // Drop zone for .effect files
+                let drop_rect = ui.allocate_space(egui::vec2(ui.available_width(), 28.0)).1;
+                let is_hovering = dragging_effect_path.is_some() && ui.input(|i| {
+                    i.pointer.interact_pos().is_some_and(|pos| drop_rect.contains(pos))
+                });
+
+                let drop_color = if is_hovering {
+                    egui::Color32::from_rgb(80, 140, 200)
+                } else if dragging_effect_path.is_some() {
+                    egui::Color32::from_rgb(60, 100, 140)
+                } else {
+                    egui::Color32::from_rgb(50, 52, 58)
+                };
+
+                ui.painter().rect_stroke(drop_rect, 4.0, egui::Stroke::new(1.0, drop_color), egui::StrokeKind::Inside);
+                ui.painter().text(
+                    drop_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Drop .effect file here",
+                    egui::FontId::proportional(11.0),
+                    drop_color,
+                );
+
+                // Handle drop
+                if is_hovering && ui.input(|i| i.pointer.any_released()) {
+                    if let Some(ref dragged_path) = dragging_effect_path {
+                        // Compute relative path from project assets folder
+                        let relative = if let Some(ref assets_base) = project_assets_path {
+                            dragged_path.strip_prefix(assets_base)
+                                .map(|r| r.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| dragged_path.to_string_lossy().to_string())
+                        } else {
+                            dragged_path.to_string_lossy().to_string()
+                        };
+                        *path = relative;
+                        changed = true;
+                    }
+                }
             }
             EffectSource::Inline { definition } => {
                 ui.horizontal(|ui| {
@@ -570,6 +627,130 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
             }
         }
     });
+
+    // For asset sources, show read-only settings and "Open in Particle Editor" button
+    let asset_path_for_display = match &data.source {
+        EffectSource::Asset { path } if !path.is_empty() => Some(path.clone()),
+        _ => None,
+    };
+
+    // Need to drop the mutable borrow on data before accessing world resources
+    drop(data);
+
+    if let Some(asset_path) = asset_path_for_display {
+        // Resolve the full path and load the definition for display
+        let full_path = if let Some(ref assets_base) = project_assets_path {
+            assets_base.join(&asset_path)
+        } else {
+            PathBuf::from(&asset_path)
+        };
+
+        // "Open in Particle Editor" button
+        if ui.button("Open in Particle Editor").clicked() {
+            if let Some(mut scene_state) = world.get_resource_mut::<SceneManagerState>() {
+                // Check if already open
+                let mut found = false;
+                for (idx, particle) in scene_state.open_particles.iter().enumerate() {
+                    if particle.path == full_path {
+                        scene_state.set_active_document(TabKind::ParticleFX(idx));
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    let name = full_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let new_idx = scene_state.open_particles.len();
+                    scene_state.open_particles.push(OpenParticleFX {
+                        path: full_path.clone(),
+                        name,
+                        is_modified: false,
+                    });
+                    scene_state.tab_order.push(TabKind::ParticleFX(new_idx));
+                    scene_state.set_active_document(TabKind::ParticleFX(new_idx));
+                }
+            }
+        }
+
+        // Load and display read-only settings
+        if let Some(def) = load_effect_from_file(&full_path) {
+            ui.separator();
+            ui.collapsing("Effect Settings (read-only)", |ui| {
+                ui.label(format!("Name: {}", def.name));
+                ui.label(format!("Capacity: {}", def.capacity));
+
+                ui.collapsing("Spawning", |ui| {
+                    ui.label(format!("Mode: {:?}", def.spawn_mode));
+                    ui.label(format!("Rate: {:.1}/s", def.spawn_rate));
+                    ui.label(format!("Count: {}", def.spawn_count));
+                    ui.label(format!("Duration: {:.1}s", def.spawn_duration));
+                    ui.label(format!("Lifetime: {:.2} - {:.2}s", def.lifetime_min, def.lifetime_max));
+                });
+
+                ui.collapsing("Velocity", |ui| {
+                    ui.label(format!("Mode: {:?}", def.velocity_mode));
+                    ui.label(format!("Magnitude: {:.2}", def.velocity_magnitude));
+                    ui.label(format!("Spread: {:.2}", def.velocity_spread));
+                    ui.label(format!("Direction: [{:.2}, {:.2}, {:.2}]",
+                        def.velocity_direction[0], def.velocity_direction[1], def.velocity_direction[2]));
+                });
+
+                ui.collapsing("Forces", |ui| {
+                    ui.label(format!("Acceleration: [{:.2}, {:.2}, {:.2}]",
+                        def.acceleration[0], def.acceleration[1], def.acceleration[2]));
+                    ui.label(format!("Linear Drag: {:.2}", def.linear_drag));
+                    ui.label(format!("Radial Accel: {:.2}", def.radial_acceleration));
+                    ui.label(format!("Tangent Accel: {:.2}", def.tangent_acceleration));
+                });
+
+                ui.collapsing("Size", |ui| {
+                    ui.label(format!("Start: {:.3}", def.size_start));
+                    ui.label(format!("End: {:.3}", def.size_end));
+                    if def.size_non_uniform {
+                        ui.label(format!("Non-uniform: X={:.3}/{:.3}, Y={:.3}/{:.3}",
+                            def.size_start_x, def.size_end_x, def.size_start_y, def.size_end_y));
+                    }
+                });
+
+                ui.collapsing("Color", |ui| {
+                    if def.use_flat_color {
+                        ui.label(format!("Flat: [{:.2}, {:.2}, {:.2}, {:.2}]",
+                            def.flat_color[0], def.flat_color[1], def.flat_color[2], def.flat_color[3]));
+                    } else {
+                        ui.label(format!("Gradient stops: {}", def.color_gradient.len()));
+                    }
+                    ui.label(format!("Blend mode: {:?}", def.color_blend_mode));
+                });
+
+                ui.collapsing("Rendering", |ui| {
+                    ui.label(format!("Alpha mode: {:?}", def.alpha_mode));
+                    ui.label(format!("Orient mode: {:?}", def.orient_mode));
+                    ui.label(format!("Render layer: {}", def.render_layer));
+                    if let Some(ref tex) = def.texture_path {
+                        ui.label(format!("Texture: {}", tex));
+                    }
+                });
+
+                ui.collapsing("Simulation", |ui| {
+                    ui.label(format!("Space: {:?}", def.simulation_space));
+                    ui.label(format!("Condition: {:?}", def.simulation_condition));
+                    ui.label(format!("Integration: {:?}", def.motion_integration));
+                    ui.label(format!("Emit shape: {:?}", def.emit_shape));
+                });
+            });
+        }
+    }
+
+    // Clear dragging_asset if we accepted a drop
+    if changed {
+        if let Some(ref _dragged) = dragging_effect_path {
+            if let Some(mut assets) = world.get_resource_mut::<AssetBrowserState>() {
+                assets.dragging_asset = None;
+            }
+        }
+    }
 
     changed
 }

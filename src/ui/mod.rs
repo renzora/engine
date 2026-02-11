@@ -150,7 +150,7 @@ use crate::particles::ParticleEditorState;
 use crate::pixel_editor::PixelEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
-pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors};
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
 
@@ -1127,6 +1127,7 @@ pub fn editor_ui(
                             ui,
                             &mut particle_state,
                             &mut editor.scene_state,
+                            &mut editor.assets,
                             &editor.theme_manager.active_theme,
                         );
                     });

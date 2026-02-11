@@ -732,6 +732,8 @@ pub struct ParticleEditorState {
     pub selected_curve_point: Option<usize>,
     /// Whether the preview is playing
     pub preview_playing: bool,
+    /// Paths of .effect files that were recently saved (consumed by hot reload system)
+    pub recently_saved_paths: Vec<String>,
 }
 
 /// State for the particle preview system

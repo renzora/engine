@@ -3016,10 +3016,10 @@ fn render_create_particle_dialog(ctx: &egui::Context, assets: &mut AssetBrowserS
             ui.horizontal(|ui| {
                 if ui.button("Create").clicked() {
                     if let Some(ref current_folder) = assets.current_folder {
-                        let name = if assets.new_particle_name.ends_with(".particle") {
+                        let name = if assets.new_particle_name.ends_with(".effect") {
                             assets.new_particle_name.clone()
                         } else {
-                            format!("{}.particle", assets.new_particle_name)
+                            format!("{}.effect", assets.new_particle_name)
                         };
 
                         let path = current_folder.join(&name);
@@ -3964,21 +3964,19 @@ fn create_texture_template(name: &str) -> String {
 }
 
 fn create_particle_template(name: &str) -> String {
-    format!(r#"{{
-    "name": "{}",
-    "version": "1.0",
-    "type": "particle_fx",
-    "emitters": [
-        {{
-            "name": "default",
-            "rate": 10.0,
-            "lifetime": 1.0,
-            "velocity": [0.0, 1.0, 0.0],
-            "color": [1.0, 1.0, 1.0, 1.0],
-            "size": 0.1
-        }}
-    ]
-}}"#, name.trim_end_matches(".particle"))
+    use crate::particles::HanabiEffectDefinition;
+    let mut effect = HanabiEffectDefinition::default();
+    effect.name = name.trim_end_matches(".effect").to_string();
+
+    let pretty = ron::ser::PrettyConfig::new()
+        .depth_limit(4)
+        .separate_tuple_members(true);
+
+    ron::ser::to_string_pretty(&effect, pretty).unwrap_or_else(|_| {
+        // Fallback to a minimal valid RON
+        format!("(name:\"{}\",capacity:1000,spawn_mode:Rate,spawn_rate:50.0,spawn_count:10,spawn_duration:0.0,spawn_cycle_count:0,spawn_starts_active:true,lifetime_min:1.0,lifetime_max:2.0,emit_shape:Point,velocity_mode:Directional,velocity_magnitude:2.0,velocity_spread:0.3,velocity_direction:(0.0,1.0,0.0),velocity_speed_min:0.0,velocity_speed_max:0.0,velocity_axis:(0.0,1.0,0.0),acceleration:(0.0,-2.0,0.0),linear_drag:0.0,radial_acceleration:0.0,tangent_acceleration:0.0,tangent_accel_axis:(0.0,1.0,0.0),conform_to_sphere:None,size_start:0.1,size_end:0.0,size_curve:[],size_start_min:0.0,size_start_max:0.0,size_non_uniform:false,size_start_x:0.1,size_start_y:0.1,size_end_x:0.0,size_end_y:0.0,screen_space_size:false,roundness:0.0,color_gradient:[(position:0.0,color:(1.0,1.0,1.0,1.0)),(position:1.0,color:(1.0,1.0,1.0,0.0))],use_flat_color:false,flat_color:(1.0,1.0,1.0,1.0),use_hdr_color:false,hdr_intensity:1.0,color_blend_mode:Modulate,blend_mode:Blend,texture_path:None,billboard_mode:FaceCamera,render_layer:0,alpha_mode:Blend,alpha_mask_threshold:0.5,orient_mode:ParallelCameraDepthPlane,rotation_speed:0.0,flipbook:None,simulation_space:Local,simulation_condition:Always,motion_integration:PostUpdate,kill_zones:[],variables:{{}})",
+            name.trim_end_matches(".effect"))
+    })
 }
 
 fn create_level_template(name: &str) -> String {
@@ -4038,7 +4036,7 @@ fn is_blueprint_material_file(filename: &str) -> bool {
 
 fn is_draggable_asset(filename: &str) -> bool {
     let lower = filename.to_lowercase();
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint") || lower.ends_with(".wgsl")
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || is_particle_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint") || lower.ends_with(".wgsl")
 }
 
 fn is_video_file(filename: &str) -> bool {
@@ -4284,7 +4282,7 @@ fn is_texture_project_file(filename: &str) -> bool {
 }
 
 fn is_particle_file(filename: &str) -> bool {
-    filename.to_lowercase().ends_with(".particle")
+    filename.to_lowercase().ends_with(".effect")
 }
 
 fn is_level_file(filename: &str) -> bool {

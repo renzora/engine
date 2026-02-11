@@ -4,7 +4,7 @@
 //! Supports both asset-based and inline effect definitions.
 
 use std::path::PathBuf;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 use egui_phosphor::regular::{
     PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN,
     SPARKLE, TIMER, SHAPES, ARROWS_OUT, WIND, RESIZE, PALETTE, CUBE, GEAR, CODE,
@@ -18,13 +18,13 @@ use crate::particles::{
     ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
     MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings,
 };
-use crate::core::{SceneManagerState, TabKind};
+use crate::core::{SceneManagerState, TabKind, AssetBrowserState, OpenParticleFX};
 use crate::theming::Theme;
 
 use super::inspector::{render_category, inline_property_themed};
 
 /// Load a particle effect definition from a file
-fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
+pub fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
     bevy::log::info!("[ParticleEditor] Loading effect from: {:?}", path);
     match std::fs::read_to_string(path) {
         Ok(contents) => {
@@ -59,7 +59,7 @@ fn load_effect_from_file(path: &PathBuf) -> Option<HanabiEffectDefinition> {
 }
 
 /// Save a particle effect definition to a file
-fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool {
+pub fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool {
     let pretty = ron::ser::PrettyConfig::new()
         .depth_limit(4)
         .separate_tuple_members(true);
@@ -115,46 +115,113 @@ pub fn render_particle_editor_content(
     ui: &mut egui::Ui,
     state: &mut ParticleEditorState,
     scene_state: &mut SceneManagerState,
+    assets: &mut AssetBrowserState,
     theme: &Theme,
 ) {
     sync_with_active_document(state, scene_state);
     let bg_color = theme.surfaces.panel.to_color32();
+    let accent = theme.semantic.accent.to_color32();
 
     let available = ui.available_rect_before_wrap();
     ui.painter().rect_filled(available, 0.0, bg_color);
 
+    // --- Drop target: accept .effect files dragged from assets panel ---
+    let is_dragging_effect = assets.dragging_asset.as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_lowercase().ends_with(".effect"))
+        .unwrap_or(false);
+
+    if is_dragging_effect {
+        // Draw accent border to indicate drop target
+        ui.painter().rect_stroke(
+            available.shrink(2.0),
+            4.0,
+            Stroke::new(2.0, accent),
+            StrokeKind::Inside,
+        );
+
+        // Check if pointer released inside panel
+        let pointer_released = ui.input(|i| i.pointer.any_released());
+        let pointer_in_panel = ui.input(|i| {
+            i.pointer.interact_pos().is_some_and(|pos| available.contains(pos))
+        });
+
+        if pointer_released && pointer_in_panel {
+            if let Some(dragged_path) = assets.dragging_asset.take() {
+                if let Some(effect) = load_effect_from_file(&dragged_path) {
+                    state.current_effect = Some(effect);
+                    state.current_file_path = Some(dragged_path.to_string_lossy().to_string());
+                    state.is_modified = false;
+
+                    // Open as tab
+                    open_effect_as_tab(scene_state, dragged_path);
+                }
+            }
+        }
+    }
+
     if state.current_effect.is_none() {
-        render_welcome_screen(ui, state, scene_state, theme);
+        render_welcome_screen(ui, state, scene_state, assets, theme);
         return;
     }
 
     let mut save_requested = false;
+    let mut save_as_requested = false;
 
     egui::ScrollArea::vertical()
         .id_salt("particle_editor_scroll")
         .show(ui, |ui| {
             if let Some(mut effect) = state.current_effect.take() {
-                let (modified, save) = render_effect_editor(ui, &mut effect, state.current_file_path.as_ref(), theme);
+                let (modified, save, save_as) = render_effect_editor(ui, &mut effect, state.current_file_path.as_ref(), assets, theme);
                 if modified {
                     state.is_modified = true;
                 }
                 if save {
                     save_requested = true;
                 }
+                if save_as {
+                    save_as_requested = true;
+                }
                 state.current_effect = Some(effect);
             }
         });
 
+    // Handle Save
     if save_requested {
         if let (Some(effect), Some(path_str)) = (&state.current_effect, &state.current_file_path) {
             let path = PathBuf::from(path_str);
             if save_effect_to_file(&path, effect) {
                 state.is_modified = false;
+                state.recently_saved_paths.push(path_str.clone());
                 if let Some(TabKind::ParticleFX(idx)) = &scene_state.active_document {
                     if let Some(doc) = scene_state.open_particles.get_mut(*idx) {
                         doc.is_modified = false;
                     }
                 }
+            }
+        }
+    }
+
+    // Handle Save As
+    if save_as_requested {
+        if let Some(effect) = &state.current_effect {
+            let target_dir = assets.current_folder.clone().unwrap_or_else(|| PathBuf::from("."));
+            let sanitized_name = effect.name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ', "");
+            let base_name = if sanitized_name.is_empty() { "effect".to_string() } else { sanitized_name };
+            let mut filename = format!("{}.effect", base_name);
+            let mut counter = 1;
+            while target_dir.join(&filename).exists() {
+                filename = format!("{}_{}.effect", base_name, counter);
+                counter += 1;
+            }
+            let save_path = target_dir.join(&filename);
+            if save_effect_to_file(&save_path, effect) {
+                let path_str = save_path.to_string_lossy().to_string();
+                state.current_file_path = Some(path_str.clone());
+                state.is_modified = false;
+                state.recently_saved_paths.push(path_str);
+                open_effect_as_tab(scene_state, save_path);
             }
         }
     }
@@ -168,7 +235,33 @@ pub fn render_particle_editor_content(
     }
 }
 
-fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, scene_state: &mut SceneManagerState, theme: &Theme) {
+/// Open an effect file as a tab (or switch to existing tab)
+fn open_effect_as_tab(scene_state: &mut SceneManagerState, path: PathBuf) {
+    // Check if already open
+    for (idx, particle) in scene_state.open_particles.iter().enumerate() {
+        if particle.path == path {
+            scene_state.set_active_document(TabKind::ParticleFX(idx));
+            return;
+        }
+    }
+
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let new_idx = scene_state.open_particles.len();
+    scene_state.open_particles.push(OpenParticleFX {
+        path,
+        name,
+        is_modified: false,
+    });
+
+    scene_state.tab_order.push(TabKind::ParticleFX(new_idx));
+    scene_state.set_active_document(TabKind::ParticleFX(new_idx));
+}
+
+fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, scene_state: &mut SceneManagerState, assets: &mut AssetBrowserState, theme: &Theme) {
     let available = ui.available_rect_before_wrap();
     let text_muted = theme.text.muted.to_color32();
     let accent = theme.semantic.accent.to_color32();
@@ -184,6 +277,22 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
         }
     }
 
+    // Drop target hint on welcome screen too
+    let is_dragging_effect = assets.dragging_asset.as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_lowercase().ends_with(".effect"))
+        .unwrap_or(false);
+
+    if is_dragging_effect {
+        ui.painter().rect_stroke(
+            available.shrink(2.0),
+            4.0,
+            Stroke::new(2.0, accent),
+            StrokeKind::Inside,
+        );
+    }
+
     ui.scope_builder(egui::UiBuilder::new().max_rect(available), |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(available.height() * 0.3);
@@ -194,9 +303,14 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
 
             ui.add_space(16.0);
 
-            ui.label(RichText::new("Create or load a particle effect to begin")
+            let hint = if is_dragging_effect {
+                "Drop .effect file here to open"
+            } else {
+                "Create or load a particle effect to begin"
+            };
+            ui.label(RichText::new(hint)
                 .size(12.0)
-                .color(text_muted));
+                .color(if is_dragging_effect { accent } else { text_muted }));
 
             ui.add_space(24.0);
 
@@ -216,7 +330,17 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
                 if ui.add(egui::Button::new(RichText::new(format!("{} Open", FOLDER_OPEN))
                     .color(text_muted))).clicked()
                 {
-                    // TODO: Open file dialog
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Effect files", &["effect"])
+                        .pick_file()
+                    {
+                        if let Some(effect) = load_effect_from_file(&path) {
+                            state.current_effect = Some(effect);
+                            state.current_file_path = Some(path.to_string_lossy().to_string());
+                            state.is_modified = false;
+                            open_effect_as_tab(scene_state, path);
+                        }
+                    }
                 }
             });
         });
@@ -224,20 +348,28 @@ fn render_welcome_screen(ui: &mut egui::Ui, state: &mut ParticleEditorState, sce
 }
 
 /// Render the effect editor, returns (modified, save_requested)
+/// Returns (modified, save_requested, save_as_requested)
 fn render_effect_editor(
     ui: &mut egui::Ui,
     effect: &mut HanabiEffectDefinition,
     file_path: Option<&String>,
+    _assets: &mut AssetBrowserState,
     theme: &Theme,
-) -> (bool, bool) {
+) -> (bool, bool, bool) {
     let mut modified = false;
     let mut save_requested = false;
+    let mut save_as_requested = false;
     let text_color = theme.text.primary.to_color32();
 
-    // Header with save button
+    // Header with save buttons
     ui.horizontal(|ui| {
         ui.label(RichText::new("Effect Settings").strong().color(text_color));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Save As button (always enabled)
+            if ui.add(egui::Button::new("Save As").small()).clicked() {
+                save_as_requested = true;
+            }
+            // Save button (only enabled when file path exists)
             let save_enabled = file_path.is_some();
             if ui.add_enabled(save_enabled, egui::Button::new(format!("{} Save", FLOPPY_DISK)).small()).clicked() {
                 save_requested = true;
@@ -273,7 +405,7 @@ fn render_effect_editor(
     modified |= render_conform_section(ui, effect, theme);
     modified |= render_variables_section(ui, effect, theme);
 
-    (modified, save_requested)
+    (modified, save_requested, save_as_requested)
 }
 
 fn render_spawning_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {

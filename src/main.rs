@@ -450,6 +450,12 @@ fn main() {
                 .after(input::handle_scene_hierarchy_drop)
                 .run_if(in_state(AppState::Editor)),
         )
+        // Effect file drop onto viewport
+        .add_systems(
+            Update,
+            input::handle_effect_panel_drop
+                .run_if(in_state(AppState::Editor)),
+        )
         // Drag preview systems (show ghost mesh while dragging model over viewport)
         .add_systems(
             Update,
