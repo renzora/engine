@@ -74,6 +74,10 @@ pub struct SceneManagerState {
     pub new_scene_requested: bool,
     /// Request to open a scene file
     pub open_scene_requested: bool,
+    /// Request to create a new project (return to splash)
+    pub new_project_requested: bool,
+    /// Request to open a different project
+    pub open_project_requested: bool,
     /// Open scene tabs
     pub scene_tabs: Vec<SceneTab>,
     /// Index of the active scene tab
@@ -142,6 +146,8 @@ impl Default for SceneManagerState {
             save_scene_as_requested: false,
             new_scene_requested: false,
             open_scene_requested: false,
+            new_project_requested: false,
+            open_project_requested: false,
             scene_tabs: vec![SceneTab {
                 name: "Untitled".to_string(),
                 ..Default::default()

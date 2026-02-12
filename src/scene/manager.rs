@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use rfd::FileDialog;
 use std::path::PathBuf;
 
-use crate::core::{SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity};
+use crate::core::{AppState, MainCamera, SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity, ViewportCamera};
 use crate::shared::{CameraNodeData, CameraRigData};
-use crate::project::CurrentProject;
+use crate::project::{CurrentProject, AppConfig, open_project};
 use crate::{console_success, console_error, console_info};
 
 use super::loader::load_scene_bevy;
@@ -15,7 +15,7 @@ use super::saver::save_scene_bevy;
 /// Must be exclusive because save_scene requires &mut World
 pub fn handle_scene_requests(world: &mut World) {
     // Check for pending requests
-    let (save_requested, save_as_requested, new_scene_requested, open_scene_requested, current_path, pending_tab_switch, pending_tab_close) = {
+    let (save_requested, save_as_requested, new_scene_requested, open_scene_requested, current_path, pending_tab_switch, pending_tab_close, new_project_requested, open_project_requested) = {
         let scene_state = world.resource::<SceneManagerState>();
         (
             scene_state.save_scene_requested,
@@ -25,6 +25,8 @@ pub fn handle_scene_requests(world: &mut World) {
             scene_state.current_scene_path.clone(),
             scene_state.pending_tab_switch,
             scene_state.pending_tab_close,
+            scene_state.new_project_requested,
+            scene_state.open_project_requested,
         )
     };
 
@@ -37,6 +39,8 @@ pub fn handle_scene_requests(world: &mut World) {
         scene_state.open_scene_requested = false;
         scene_state.pending_tab_switch = None;
         scene_state.pending_tab_close = None;
+        scene_state.new_project_requested = false;
+        scene_state.open_project_requested = false;
     }
 
     // Handle tab closing first (before switching)
@@ -69,6 +73,15 @@ pub fn handle_scene_requests(world: &mut World) {
 
     if open_scene_requested {
         do_open_scene(world);
+    }
+
+    // Handle project-level requests
+    if new_project_requested {
+        do_new_project(world);
+    }
+
+    if open_project_requested {
+        do_open_project(world);
     }
 }
 
@@ -603,6 +616,160 @@ pub fn handle_make_default_camera(
         }
     }
 }
+
+/// Check if any scene tab has unsaved changes
+fn has_unsaved_changes(world: &World) -> bool {
+    let scene_state = world.resource::<SceneManagerState>();
+    scene_state.scene_tabs.iter().any(|tab| tab.is_modified)
+}
+
+/// Prompt the user to save unsaved changes before a project switch.
+/// Returns true if the operation should proceed, false if cancelled.
+fn prompt_save_before_project_switch(world: &mut World) -> bool {
+    if !has_unsaved_changes(world) {
+        return true;
+    }
+
+    let result = rfd::MessageDialog::new()
+        .set_title("Unsaved Changes")
+        .set_description("You have unsaved changes. Would you like to save before continuing?")
+        .set_buttons(rfd::MessageButtons::YesNoCancel)
+        .show();
+
+    match result {
+        rfd::MessageDialogResult::Yes => {
+            // Save all modified tabs
+            let tabs_to_save: Vec<(usize, Option<PathBuf>)> = {
+                let scene_state = world.resource::<SceneManagerState>();
+                scene_state.scene_tabs.iter().enumerate()
+                    .filter(|(_, tab)| tab.is_modified)
+                    .map(|(i, tab)| (i, tab.path.clone()))
+                    .collect()
+            };
+
+            for (_idx, path) in tabs_to_save {
+                if let Some(path) = path {
+                    do_save_scene(world, &path);
+                } else {
+                    // No path - need Save As
+                    do_save_scene_as(world);
+                }
+            }
+            true
+        }
+        rfd::MessageDialogResult::No => {
+            // Discard changes, proceed
+            true
+        }
+        rfd::MessageDialogResult::Cancel | _ => {
+            // User cancelled
+            false
+        }
+    }
+}
+
+/// Clean up all editor entities to prepare for project switch
+fn cleanup_editor_for_project_switch(world: &mut World) {
+    // Despawn all scene entities
+    let scene_entities: Vec<Entity> = world
+        .query_filtered::<Entity, With<SceneNode>>()
+        .iter(world)
+        .collect();
+
+    for entity in scene_entities {
+        world.despawn(entity);
+    }
+
+    // Despawn editor cameras (MainCamera, ViewportCamera)
+    let camera_entities: Vec<Entity> = world
+        .query_filtered::<Entity, Or<(With<MainCamera>, With<ViewportCamera>)>>()
+        .iter(world)
+        .collect();
+
+    for entity in camera_entities {
+        world.despawn(entity);
+    }
+
+    // Reset SceneManagerState to defaults
+    let default_state = SceneManagerState::default();
+    *world.resource_mut::<SceneManagerState>() = default_state;
+
+    // Clear selection
+    world.resource_mut::<SelectionState>().selected_entity = None;
+}
+
+/// Handle "New Project" - save prompt, cleanup, return to splash
+fn do_new_project(world: &mut World) {
+    if !prompt_save_before_project_switch(world) {
+        return;
+    }
+
+    cleanup_editor_for_project_switch(world);
+
+    // Remove CurrentProject resource
+    world.remove_resource::<CurrentProject>();
+
+    // Transition to splash screen
+    world.resource_mut::<NextState<AppState>>().set(AppState::Splash);
+
+    info!("Returning to splash screen");
+    console_info!("Project", "Closed project");
+}
+
+/// Handle "Open Project" - save prompt, file dialog, validate, switch
+fn do_open_project(world: &mut World) {
+    if !prompt_save_before_project_switch(world) {
+        return;
+    }
+
+    // Show file dialog for project.toml
+    let file = FileDialog::new()
+        .set_title("Open Project")
+        .add_filter("Project File", &["toml"])
+        .pick_file();
+
+    let Some(file) = file else {
+        return;
+    };
+
+    // Validate the project
+    let project = match open_project(&file) {
+        Ok(project) => project,
+        Err(e) => {
+            console_error!("Project", "Failed to open project: {}", e);
+            rfd::MessageDialog::new()
+                .set_title("Invalid Project")
+                .set_description(&format!("Failed to open project: {}", e))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
+    };
+
+    // Add to recent projects
+    if let Some(mut app_config) = world.get_resource_mut::<AppConfig>() {
+        app_config.add_recent_project(project.path.clone());
+        let _ = app_config.save();
+    }
+
+    cleanup_editor_for_project_switch(world);
+
+    // Insert new project
+    world.insert_resource(project);
+
+    // Transition: go to Splash briefly then back to Editor so OnEnter(Editor) re-runs
+    world.resource_mut::<NextState<AppState>>().set(AppState::Splash);
+    // We set a flag so splash knows to immediately transition to editor
+    world.insert_resource(PendingProjectReopen);
+
+    info!("Opening new project");
+    console_info!("Project", "Opening project...");
+}
+
+/// Marker resource indicating that the splash screen should immediately transition to Editor
+/// because a project was opened via the File menu (not from the splash screen UI)
+#[derive(Resource)]
+pub struct PendingProjectReopen;
 
 /// System to automatically save the scene when it's modified.
 /// Saves periodically (based on auto_save_interval) if the scene has a path and is modified.

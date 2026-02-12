@@ -566,6 +566,9 @@ fn main() {
         )
         // When entering Editor state: maximize window, despawn splash camera, load scene, and load editor state
         .add_systems(OnEnter(AppState::Editor), (maximize_window, despawn_splash_camera, load_project_scene, load_editor_state).chain())
+        // When returning to Splash with a project already selected (Open Project from File menu),
+        // immediately transition back to Editor so OnEnter(Editor) re-initializes everything
+        .add_systems(Update, handle_pending_project_reopen.run_if(in_state(AppState::Splash)))
         // Save editor state periodically (every 5 seconds if dirty)
         .add_systems(Update, save_editor_state_periodic.run_if(in_state(AppState::Editor)))
         // Initialize editor state tracking resources
@@ -589,6 +592,20 @@ fn setup_splash_camera(mut commands: Commands) {
         SplashCamera,
         Name::new("UI Camera"),
     ));
+}
+
+/// When a project was opened via File > Open Project, we transition to Splash first
+/// so that OnEnter(Editor) can re-run. This system detects the pending reopen marker
+/// and immediately transitions back to Editor.
+fn handle_pending_project_reopen(
+    mut commands: Commands,
+    pending: Option<Res<scene::PendingProjectReopen>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    if pending.is_some() {
+        commands.remove_resource::<scene::PendingProjectReopen>();
+        next_state.set(AppState::Editor);
+    }
 }
 
 /// Keep the splash camera for egui UI rendering in editor mode

@@ -768,6 +768,16 @@ fn render_menu_items(
             ui.close();
         }
 
+        ui.separator();
+        if menu_item(ui, "New Project") {
+            scene_state.new_project_requested = true;
+            ui.close();
+        }
+        if menu_item(ui, "Open Project...") {
+            scene_state.open_project_requested = true;
+            ui.close();
+        }
+
         // Plugin File menu items
         if !file_items.is_empty() {
             ui.separator();
