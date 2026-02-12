@@ -142,11 +142,17 @@ pub fn camera_controller(
     }
 
     // Scroll wheel - zoom (works when hovering, doesn't require drag)
+    // Skip zoom when brush tools are active (scroll adjusts brush size instead)
+    let brush_tool_active = matches!(gizmo.tool, crate::gizmo::EditorTool::TerrainSculpt | crate::gizmo::EditorTool::SurfacePaint);
     let mut scroll_changed = false;
-    for ev in scroll_events.read() {
-        orbit.distance -= ev.y * zoom_speed;
-        orbit.distance = orbit.distance.clamp(0.5, 100.0);
-        scroll_changed = true;
+    if !brush_tool_active {
+        for ev in scroll_events.read() {
+            orbit.distance -= ev.y * zoom_speed;
+            orbit.distance = orbit.distance.clamp(0.5, 100.0);
+            scroll_changed = true;
+        }
+    } else {
+        scroll_events.clear();
     }
 
     // If scroll changed but no drag, just update camera position and return

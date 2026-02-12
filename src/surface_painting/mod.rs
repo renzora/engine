@@ -43,6 +43,7 @@ impl Plugin for SurfacePaintingPlugin {
                 Update,
                 (
                     brush::surface_paint_shortcut_system,
+                    brush::surface_paint_brush_scroll_system,
                     component::init_splatmap_for_new_surfaces,
                     component::enforce_splatmap_material,
                     brush::surface_paint_hover_system,

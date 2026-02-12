@@ -91,7 +91,7 @@ pub fn render_viewport(
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
-            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode, shape_library);
+            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode, shape_library, settings);
         });
 
     // Skip editor overlays in play mode
@@ -973,6 +973,14 @@ fn viewport_camera_dropdown(
                 });
             });
 
+            // Show Camera Height
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Show Camera Height").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.camera_settings.show_camera_height, "");
+                });
+            });
+
             ui.add_space(4.0);
             ui.separator();
             ui.add_space(4.0);
@@ -1185,6 +1193,7 @@ pub fn render_viewport_content(
     content_rect: Rect,
     in_play_mode: bool,
     shape_library: &ShapeLibraryState,
+    settings: &EditorSettings,
 ) {
     let ctx = ui.ctx().clone();
 
@@ -1228,6 +1237,11 @@ pub fn render_viewport_content(
     // Render axis orientation gizmo in 3D mode (skip in play mode)
     if !in_play_mode && viewport.viewport_mode == ViewportMode::Mode3D {
         render_axis_gizmo(&ctx, orbit, content_rect);
+    }
+
+    // Render camera height gizmo (skip in play mode)
+    if !in_play_mode && settings.camera_settings.show_camera_height {
+        render_camera_height_gizmo(&ctx, orbit, content_rect);
     }
 
     // Skip drag-drop in play mode
@@ -1348,14 +1362,16 @@ pub fn render_viewport_content(
                             Vec3::ZERO
                         };
 
+                        // Use surface raycast position if available, otherwise ground plane
+                        let effective_point = assets.drag_surface_position.unwrap_or(ground_point);
                         if is_image {
                             assets.pending_image_drop = Some(PendingImageDrop {
                                 path: asset_path,
-                                position: ground_point,
+                                position: effective_point,
                                 is_2d_mode: false,
                             });
                         } else {
-                            assets.pending_asset_drop = Some((asset_path, ground_point));
+                            assets.pending_asset_drop = Some((asset_path, effective_point));
                         }
                     }
                 }
@@ -1557,6 +1573,51 @@ fn render_axis_gizmo(ctx: &egui::Context, orbit: &mut OrbitCameraState, content_
 
             // Draw center dot
             painter.circle_filled(center, 3.0, Color32::from_rgb(180, 180, 180));
+        });
+}
+
+/// Render a small camera height indicator in the bottom-left corner of the viewport
+fn render_camera_height_gizmo(ctx: &egui::Context, orbit: &OrbitCameraState, content_rect: Rect) {
+    let camera_pos = orbit.calculate_position();
+    let height = camera_pos.y;
+
+    let text = format!("H: {:.1}", height);
+    let font = FontId::proportional(12.0);
+    let margin = 10.0;
+    let box_size = Vec2::new(80.0, 22.0);
+
+    // Position in bottom-left corner
+    let box_pos = Pos2::new(
+        content_rect.min.x + margin,
+        content_rect.max.y - margin - box_size.y,
+    );
+
+    egui::Area::new(egui::Id::new("camera_height_gizmo"))
+        .fixed_pos(box_pos)
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let rect = Rect::from_min_size(box_pos, box_size);
+            let painter = ui.painter();
+
+            // Semi-transparent background
+            painter.rect_filled(rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(30, 30, 35, 200));
+            painter.rect_stroke(rect, CornerRadius::same(4), Stroke::new(1.0, Color32::from_rgba_unmultiplied(80, 80, 90, 150)), egui::StrokeKind::Outside);
+
+            // Height text - green when above ground, red when below
+            let text_color = if height >= 0.0 {
+                Color32::from_rgb(139, 201, 63) // Green (matches Y axis color)
+            } else {
+                Color32::from_rgb(237, 76, 92) // Red (matches X axis color)
+            };
+
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                font,
+                text_color,
+            );
         });
 }
 

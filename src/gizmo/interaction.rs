@@ -877,14 +877,14 @@ pub fn object_drag_system(
     }
 }
 
-/// System to draw yellow border around selected terrain chunks
+/// System to draw yellow border around selected terrain chunks or entire terrain
 pub fn terrain_chunk_selection_system(
     selection: Res<SelectionState>,
     modal: Res<super::modal_transform::ModalTransformState>,
     play_mode: Res<PlayModeState>,
     gizmo_state: Res<super::GizmoState>,
     terrain_chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_query: Query<&crate::terrain::TerrainData>,
+    terrain_query: Query<(Entity, &crate::terrain::TerrainData, &GlobalTransform)>,
     mut gizmos: Gizmos<super::TerrainSelectionGizmoGroup>,
 ) {
     // Don't show during modal transform, collider edit mode, or fullscreen play mode
@@ -894,20 +894,54 @@ pub fn terrain_chunk_selection_system(
 
     let all_selected = selection.get_all_selected();
 
+    // Check if any terrain parent entity is selected - draw outer border for the whole terrain
+    for (terrain_entity, terrain_data, terrain_transform) in terrain_query.iter() {
+        if !all_selected.contains(&terrain_entity) {
+            continue;
+        }
+
+        let is_primary = selection.selected_entity == Some(terrain_entity);
+        let color = if is_primary {
+            Color::srgb(1.0, 1.0, 0.0)
+        } else {
+            Color::srgba(1.0, 1.0, 0.0, 0.8)
+        };
+
+        // Collect chunks belonging to this terrain
+        let chunks: Vec<_> = terrain_chunks
+            .iter()
+            .filter(|(_, _, chunk_of, _)| chunk_of.0 == terrain_entity)
+            .collect();
+
+        draw_terrain_outer_border(
+            &mut gizmos,
+            terrain_data,
+            terrain_transform,
+            &chunks,
+            color,
+        );
+    }
+
+    // Draw per-chunk borders for individually selected chunks
     for (entity, chunk_data, chunk_of, global_transform) in terrain_chunks.iter() {
         if !all_selected.contains(&entity) {
             continue;
         }
 
-        let Ok(terrain_data) = terrain_query.get(chunk_of.0) else {
+        // Skip if the parent terrain is already selected (we drew the full border above)
+        if all_selected.contains(&chunk_of.0) {
+            continue;
+        }
+
+        let Ok((_, terrain_data, _)) = terrain_query.get(chunk_of.0) else {
             continue;
         };
 
         let is_primary = selection.selected_entity == Some(entity);
         let color = if is_primary {
-            Color::srgb(1.0, 1.0, 0.0) // Yellow for primary
+            Color::srgb(1.0, 1.0, 0.0)
         } else {
-            Color::srgba(1.0, 1.0, 0.0, 0.8) // Lighter yellow for secondary
+            Color::srgba(1.0, 1.0, 0.0, 0.8)
         };
 
         draw_terrain_chunk_border(
@@ -917,6 +951,74 @@ pub fn terrain_chunk_selection_system(
             global_transform,
             color,
         );
+    }
+}
+
+/// Draw the outer border of the entire terrain (only exterior edges of boundary chunks)
+fn draw_terrain_outer_border(
+    gizmos: &mut Gizmos<super::TerrainSelectionGizmoGroup>,
+    terrain_data: &crate::terrain::TerrainData,
+    terrain_transform: &GlobalTransform,
+    chunks: &[(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)],
+    color: Color,
+) {
+    let resolution = terrain_data.chunk_resolution;
+    let spacing = terrain_data.vertex_spacing();
+    let height_range = terrain_data.max_height - terrain_data.min_height;
+    let min_height = terrain_data.min_height;
+    let y_offset = 0.15;
+
+    // Helper: get world position for a vertex within a chunk
+    let get_vertex_pos = |chunk: &TerrainChunkData, chunk_transform: &GlobalTransform, vx: u32, vz: u32| -> Vec3 {
+        let height_normalized = chunk.get_height(vx, vz, resolution);
+        let height = min_height + height_normalized * height_range;
+        let pos = chunk_transform.translation();
+        Vec3::new(
+            pos.x + vx as f32 * spacing,
+            pos.y + height + y_offset,
+            pos.z + vz as f32 * spacing,
+        )
+    };
+
+    for &(_, chunk_data, _, chunk_transform) in chunks {
+        let cx = chunk_data.chunk_x;
+        let cz = chunk_data.chunk_z;
+
+        // Front edge of terrain (chunk_z == 0, draw z=0 edge)
+        if cz == 0 {
+            for vx in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, vx, 0);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, vx + 1, 0);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Back edge of terrain (chunk_z == chunks_z-1, draw z=max edge)
+        if cz == terrain_data.chunks_z - 1 {
+            for vx in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, vx, resolution - 1);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, vx + 1, resolution - 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Left edge of terrain (chunk_x == 0, draw x=0 edge)
+        if cx == 0 {
+            for vz in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, 0, vz);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, 0, vz + 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Right edge of terrain (chunk_x == chunks_x-1, draw x=max edge)
+        if cx == terrain_data.chunks_x - 1 {
+            for vz in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, resolution - 1, vz);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, resolution - 1, vz + 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
     }
 }
 

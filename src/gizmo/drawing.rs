@@ -6,7 +6,7 @@ use crate::core::{EditorEntity, SelectionState, PlayModeState, PlayState};
 use crate::particles::HanabiEffectData;
 use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
-use crate::terrain::TerrainChunkData;
+use crate::terrain::{TerrainChunkData, TerrainData};
 
 use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, SnapTarget, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
@@ -27,6 +27,7 @@ pub fn update_selection_outlines(
     outlined_entities: Query<Entity, With<SelectionOutline>>,
     cameras: Query<(), With<CameraNodeData>>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
+    terrain_parents: Query<(), With<TerrainData>>,
     particle_effects: Query<(), With<HanabiEffectData>>,
 ) {
     // Primary and secondary outline colors
@@ -58,8 +59,11 @@ pub fn update_selection_outlines(
             continue;
         }
 
-        // Skip terrain chunks - they use border highlight instead
+        // Skip terrain chunks and terrain parents - they use border highlight instead
         if terrain_chunks.get(entity).is_ok() {
+            continue;
+        }
+        if terrain_parents.get(entity).is_ok() {
             continue;
         }
 

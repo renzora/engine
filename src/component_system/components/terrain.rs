@@ -7,16 +7,13 @@ use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use crate::core::{EditorEntity, SceneNode};
+use crate::shared::MaterialData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::MOUNTAINS;
 
-/// Default terrain material path
-pub const DEFAULT_TERRAIN_MATERIAL: &str = "materials/terrain_default.mat";
-
-/// Marker component for entities that need their terrain material loaded
-#[derive(Component, Default)]
-pub struct NeedsTerrainMaterial;
+/// Default terrain material blueprint path
+pub const DEFAULT_TERRAIN_MATERIAL: &str = "assets/materials/checkerboard_default.material_bp";
 
 // ============================================================================
 // Custom Add/Remove (terrain needs to spawn chunk children)
@@ -38,10 +35,10 @@ fn add_terrain(
         min_height: -10.0,
     };
 
-    // Create terrain material
+    // Create placeholder material (blueprint overrides via MaterialData)
     let material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.45, 0.25),
-        perceptual_roughness: 0.95,
+        base_color: Color::srgb(0.7, 0.7, 0.7),
+        perceptual_roughness: 0.9,
         ..default()
     });
 
@@ -82,7 +79,9 @@ fn add_terrain(
                 chunk_data,
                 TerrainChunkOf(entity),
                 ChildOf(entity),
-                NeedsTerrainMaterial,
+                MaterialData {
+                    material_path: Some(DEFAULT_TERRAIN_MATERIAL.to_string()),
+                },
             ));
         }
     }

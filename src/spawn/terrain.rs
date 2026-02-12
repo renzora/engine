@@ -5,7 +5,6 @@ use bevy::prelude::*;
 use crate::core::{EditorEntity, SceneNode};
 use crate::shared::MaterialData;
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
-use crate::component_system::components::terrain::NeedsTerrainMaterial;
 use super::{Category, EntityTemplate};
 
 /// Path to the default checkerboard material blueprint (relative to engine root)
@@ -19,8 +18,8 @@ pub static TEMPLATES: &[EntityTemplate] = &[
 
 fn create_terrain_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.45, 0.25), // Grass green-brown
-        perceptual_roughness: 0.95,
+        base_color: Color::srgb(0.7, 0.7, 0.7), // Neutral gray placeholder (blueprint overrides)
+        perceptual_roughness: 0.9,
         ..default()
     })
 }
@@ -130,7 +129,6 @@ fn spawn_terrain_with_size(
                 chunk_data,
                 TerrainChunkOf(terrain_entity),
                 ChildOf(terrain_entity),
-                NeedsTerrainMaterial,
                 MaterialData {
                     material_path: Some(DEFAULT_MATERIAL_PATH.to_string()),
                 },

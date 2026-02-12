@@ -169,6 +169,8 @@ pub struct CameraSettings {
     pub distance_relative_speed: bool,
     /// Enable left-click drag camera panning
     pub left_click_pan: bool,
+    /// Show camera height gizmo in viewport
+    pub show_camera_height: bool,
 }
 
 impl Default for CameraSettings {
@@ -182,6 +184,7 @@ impl Default for CameraSettings {
             invert_y: false,
             distance_relative_speed: true,
             left_click_pan: true,
+            show_camera_height: false,
         }
     }
 }

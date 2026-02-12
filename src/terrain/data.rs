@@ -308,6 +308,26 @@ impl Default for TerrainSettings {
     }
 }
 
+/// Compute brush falloff value for a normalized distance `t` (0=center, 1=edge).
+///
+/// `falloff` is the falloff width (0=no falloff, 1=full falloff).
+/// Returns a multiplier in `[0, 1]`.
+pub fn compute_brush_falloff(t: f32, falloff: f32, falloff_type: BrushFalloffType) -> f32 {
+    let inner_t = 1.0 - falloff;
+    if t <= inner_t {
+        1.0
+    } else {
+        let outer_t = (t - inner_t) / (1.0 - inner_t).max(0.001);
+        match falloff_type {
+            BrushFalloffType::Smooth => (1.0 + (outer_t * std::f32::consts::PI).cos()) * 0.5,
+            BrushFalloffType::Linear => 1.0 - outer_t,
+            BrushFalloffType::Spherical => (1.0 - outer_t * outer_t).sqrt().max(0.0),
+            BrushFalloffType::Tip => (1.0 - outer_t).powi(3),
+            BrushFalloffType::Flat => 1.0,
+        }
+    }
+}
+
 /// State for terrain sculpting operations
 #[derive(Resource, Default)]
 pub struct TerrainSculptState {

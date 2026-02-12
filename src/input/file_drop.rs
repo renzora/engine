@@ -2,7 +2,9 @@
 
 use bevy::prelude::*;
 use bevy::camera::primitives::Aabb;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::scene::DynamicSceneRoot;
+use bevy::window::PrimaryWindow;
 use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
@@ -1501,7 +1503,6 @@ pub enum DragPreviewPhase {
     Active {
         preview_root: Entity,
         path: PathBuf,
-        preview_material: Handle<StandardMaterial>,
     },
 }
 
@@ -1522,10 +1523,6 @@ pub fn drag_preview_active(
 ) -> bool {
     assets.dragging_asset.is_some() || !matches!(preview.phase, DragPreviewPhase::None)
 }
-
-/// Tracks which child meshes already got the unlit override material
-#[derive(Component)]
-pub struct DragPreviewMaterialApplied;
 
 /// Start loading the GLTF when a model drag begins
 pub fn start_drag_preview(
@@ -1566,16 +1563,13 @@ pub fn start_drag_preview(
     };
 }
 
-/// Spawn and position the preview ghost mesh
+/// Spawn and position the preview mesh (shows actual model with its own materials)
 pub fn update_drag_preview(
     mut commands: Commands,
     assets: Res<AssetBrowserState>,
     gltf_assets: Res<Assets<Gltf>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut preview: ResMut<DragPreviewState>,
     mut transform_query: Query<&mut Transform, With<DragPreviewEntity>>,
-    children_query: Query<&Children>,
-    mesh3d_query: Query<Entity, (With<Mesh3d>, Without<DragPreviewMaterialApplied>)>,
 ) {
     match &preview.phase {
         DragPreviewPhase::Loading { handle, path } => {
@@ -1593,14 +1587,6 @@ pub fn update_drag_preview(
                 return;
             };
 
-            // Create shared unlit semi-transparent preview material
-            let preview_material = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.6, 0.65, 0.7, 0.5),
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
-
             // Spawn preview root at drag position or origin
             let position = assets.drag_ground_position.unwrap_or(Vec3::ZERO);
             let preview_root = commands
@@ -1611,7 +1597,7 @@ pub fn update_drag_preview(
                 ))
                 .id();
 
-            // Spawn scene as child
+            // Spawn scene as child — keeps original GLTF materials
             commands.spawn((
                 bevy::scene::SceneRoot(scene_handle),
                 Transform::default(),
@@ -1620,40 +1606,21 @@ pub fn update_drag_preview(
             ));
 
             let path = path.clone();
-            let mat = preview_material.clone();
             preview.phase = DragPreviewPhase::Active {
                 preview_root,
                 path,
-                preview_material: mat,
             };
         }
         DragPreviewPhase::Active {
             preview_root,
-            preview_material,
             ..
         } => {
             let root = *preview_root;
-            let mat = preview_material.clone();
 
-            // Update position from drag_ground_position
+            // Update position from surface raycast or ground plane
             if let Some(pos) = assets.drag_ground_position {
                 if let Ok(mut tf) = transform_query.get_mut(root) {
-                    tf.translation = pos;
-                }
-            }
-
-            // Walk children and apply preview material to any new Mesh3d entities
-            let mut stack: Vec<Entity> = vec![root];
-            while let Some(entity) = stack.pop() {
-                // Check if this entity has a Mesh3d but no DragPreviewMaterialApplied
-                if mesh3d_query.get(entity).is_ok() {
-                    commands.entity(entity).insert((
-                        MeshMaterial3d(mat.clone()),
-                        DragPreviewMaterialApplied,
-                    ));
-                }
-                if let Ok(children) = children_query.get(entity) {
-                    stack.extend(children.iter());
+                    tf.translation = assets.drag_surface_position.unwrap_or(pos);
                 }
             }
         }
@@ -1769,7 +1736,13 @@ pub fn handle_shape_library_spawn(
     let mesh_type = if let Some(t) = shape_library.pending_spawn.take() {
         Some((t, Vec3::new(0.0, 0.5, 0.0)))
     } else if let Some((t, pos)) = assets.pending_shape_drop.take() {
-        Some((t, Vec3::new(pos.x, 0.5, pos.z)))
+        // Use surface normal for proper placement on angled surfaces
+        let normal = if assets.pending_shape_drop_normal != Vec3::ZERO {
+            assets.pending_shape_drop_normal
+        } else {
+            Vec3::Y
+        };
+        Some((t, pos + normal * 0.5))
     } else {
         None
     };
@@ -1798,6 +1771,9 @@ pub fn handle_shape_library_spawn(
             },
             SceneNode,
             MeshNodeData { mesh_type },
+            MaterialData {
+                material_path: Some("assets/materials/checkerboard_default.material_bp".to_string()),
+            },
         ));
 
         if let Some(parent_entity) = parent {
@@ -1844,21 +1820,28 @@ pub fn update_shape_drag_preview(
     match (shape_library.dragging_shape, preview_state.preview_entity) {
         // Drag started or shape changed — spawn preview only when cursor is over viewport
         (Some(mesh_type), None) => {
-            // Only spawn the ghost once the cursor reaches the viewport
+            // Only spawn the preview once the cursor reaches the viewport
             let Some(pos) = assets.drag_ground_position else { return; };
 
             let mesh = create_mesh_for_type(&mut meshes, mesh_type);
             let material = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.6, 0.65, 0.7, 0.45),
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
+                base_color: Color::srgb(0.8, 0.7, 0.6),
                 ..default()
             });
+
+            // Use surface hit position if available, otherwise offset from ground
+            let effective_pos = assets.drag_surface_position.unwrap_or(pos);
+            let normal = if assets.drag_surface_normal != Vec3::ZERO {
+                assets.drag_surface_normal
+            } else {
+                Vec3::Y
+            };
+            let spawn_pos = effective_pos + normal * 0.5;
 
             let entity = commands.spawn((
                 Mesh3d(mesh),
                 MeshMaterial3d(material),
-                Transform::from_translation(Vec3::new(pos.x, 0.5, pos.z)),
+                Transform::from_translation(spawn_pos),
                 Visibility::default(),
                 ShapeDragPreview,
             )).id();
@@ -1872,17 +1855,22 @@ pub fn update_shape_drag_preview(
 
             let mesh = create_mesh_for_type(&mut meshes, mesh_type);
             let material = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.6, 0.65, 0.7, 0.45),
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
+                base_color: Color::srgb(0.8, 0.7, 0.6),
                 ..default()
             });
 
             let position = assets.drag_ground_position.unwrap_or(Vec3::ZERO);
+            let effective_pos = assets.drag_surface_position.unwrap_or(position);
+            let normal = if assets.drag_surface_normal != Vec3::ZERO {
+                assets.drag_surface_normal
+            } else {
+                Vec3::Y
+            };
+            let spawn_pos = effective_pos + normal * 0.5;
             let new_entity = commands.spawn((
                 Mesh3d(mesh),
                 MeshMaterial3d(material),
-                Transform::from_translation(Vec3::new(position.x, 0.5, position.z)),
+                Transform::from_translation(spawn_pos),
                 Visibility::default(),
                 ShapeDragPreview,
             )).id();
@@ -1894,7 +1882,14 @@ pub fn update_shape_drag_preview(
         (Some(_), Some(entity)) => {
             if let Some(pos) = assets.drag_ground_position {
                 if let Ok(mut tf) = transform_query.get_mut(entity) {
-                    tf.translation = Vec3::new(pos.x, 0.5, pos.z);
+                    // Use surface hit position if available, otherwise offset from ground
+                    let effective_pos = assets.drag_surface_position.unwrap_or(pos);
+                    let normal = if assets.drag_surface_normal != Vec3::ZERO {
+                        assets.drag_surface_normal
+                    } else {
+                        Vec3::Y
+                    };
+                    tf.translation = effective_pos + normal * 0.5;
                 }
                 // Ensure visible when over viewport
                 if let Ok(vis) = visibility_query.get(entity) {
@@ -1916,4 +1911,107 @@ pub fn update_shape_drag_preview(
         // Idle
         (None, None) => {}
     }
+}
+
+// === Drag surface raycast system ===
+
+/// System that raycasts against scene meshes during drag operations to enable
+/// placing objects on top of existing meshes (including sides/angled surfaces).
+/// Overrides the ground-plane-based `drag_ground_position` with a surface hit
+/// when one is found, and stores the surface normal for proper orientation.
+pub fn drag_surface_raycast_system(
+    mut assets: ResMut<AssetBrowserState>,
+    viewport: Res<ViewportState>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
+    mut mesh_ray_cast: MeshRayCast,
+    // Exclude preview entities from raycast hits
+    preview_entity_query: Query<Entity, With<ShapeDragPreview>>,
+    drag_preview_root_query: Query<Entity, With<DragPreviewEntity>>,
+    parent_query: Query<&ChildOf>,
+) {
+    // Only run when something is being dragged and we have a ground position
+    if assets.drag_ground_position.is_none() {
+        assets.drag_surface_position = None;
+        assets.drag_surface_normal = Vec3::ZERO;
+        return;
+    }
+
+    let Ok(window) = window_query.single() else {
+        return;
+    };
+
+    let Some(cursor_pos) = window.cursor_position() else {
+        assets.drag_surface_position = None;
+        return;
+    };
+
+    if !viewport.contains_point(cursor_pos.x, cursor_pos.y) {
+        assets.drag_surface_position = None;
+        return;
+    }
+
+    let Some((camera, camera_transform)) = camera_query.iter().next() else {
+        assets.drag_surface_position = None;
+        return;
+    };
+
+    let viewport_pos = Vec2::new(
+        cursor_pos.x - viewport.position[0],
+        cursor_pos.y - viewport.position[1],
+    );
+
+    let Ok(ray) = camera.viewport_to_world(camera_transform, viewport_pos) else {
+        assets.drag_surface_position = None;
+        return;
+    };
+
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+
+    // Find closest hit that isn't a preview entity
+    for (hit_entity, hit) in hits.iter() {
+        // Skip shape drag preview entities
+        if preview_entity_query.contains(*hit_entity) {
+            continue;
+        }
+
+        // Skip entities that are children of a DragPreviewEntity root (model previews)
+        if is_descendant_of_preview(*hit_entity, &parent_query, &drag_preview_root_query) {
+            continue;
+        }
+
+        // Use the hit point and normal
+        let normal = hit.normal.normalize_or_zero();
+        let surface_normal = if normal == Vec3::ZERO { Vec3::Y } else { normal };
+
+        assets.drag_surface_position = Some(hit.point);
+        assets.drag_surface_normal = surface_normal;
+        return;
+    }
+
+    // No mesh hit — clear surface position, fall back to ground plane
+    assets.drag_surface_position = None;
+    assets.drag_surface_normal = Vec3::ZERO;
+}
+
+/// Check if an entity is a descendant of any DragPreviewEntity root.
+fn is_descendant_of_preview(
+    entity: Entity,
+    parent_query: &Query<&ChildOf>,
+    drag_preview_roots: &Query<Entity, With<DragPreviewEntity>>,
+) -> bool {
+    let mut current = entity;
+    for _ in 0..16 {
+        // depth limit
+        if let Ok(child_of) = parent_query.get(current) {
+            let parent = child_of.0;
+            if drag_preview_roots.contains(parent) {
+                return true;
+            }
+            current = parent;
+        } else {
+            break;
+        }
+    }
+    false
 }

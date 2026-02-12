@@ -17,7 +17,7 @@ use crate::shared::{
     CameraNodeData, CameraRigData, Camera2DData,
 };
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
-use crate::component_system::components::terrain::{NeedsTerrainMaterial, DEFAULT_TERRAIN_MATERIAL};
+use crate::component_system::components::terrain::DEFAULT_TERRAIN_MATERIAL;
 use crate::shared::MaterialData;
 use crate::{console_info, console_warn};
 
@@ -394,7 +394,9 @@ pub fn rehydrate_terrain_chunks(
             MeshMaterial3d(material),
             Visibility::default(),
             TerrainChunkOf(parent_entity),
-            NeedsTerrainMaterial,
+            MaterialData {
+                material_path: Some(DEFAULT_TERRAIN_MATERIAL.to_string()),
+            },
         ));
     }
 
@@ -464,7 +466,6 @@ pub fn rehydrate_terrain_chunks(
                     MaterialData {
                         material_path: Some(DEFAULT_TERRAIN_MATERIAL.to_string()),
                     },
-                    NeedsTerrainMaterial,
                 ));
             }
         }
@@ -474,83 +475,10 @@ pub fn rehydrate_terrain_chunks(
     }
 }
 
-/// System to apply the default checkerboard material to terrain chunks.
-/// Processes entities with NeedsTerrainMaterial marker and removes the marker after applying.
-pub fn apply_terrain_materials(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
-    chunks_needing_material: Query<(Entity, &Transform, &TerrainChunkData), With<NeedsTerrainMaterial>>,
-) {
-    if chunks_needing_material.is_empty() {
-        return;
-    }
-
-    // Create a procedural checkerboard texture
-    let checkerboard = create_checkerboard_texture(&mut images);
-
-    // Create the terrain material with checkerboard
-    let terrain_material = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        base_color_texture: Some(checkerboard),
-        perceptual_roughness: 0.9,
-        metallic: 0.0,
-        ..default()
-    });
-
-    let mut count = 0;
-    for (entity, transform, chunk_data) in chunks_needing_material.iter() {
-        // Debug: verify transform was set correctly
-        console_info!("Scene", "Chunk ({}, {}) actual transform: ({:.1}, {:.1}, {:.1})",
-            chunk_data.chunk_x, chunk_data.chunk_z,
-            transform.translation.x, transform.translation.y, transform.translation.z);
-
-        commands.entity(entity)
-            .insert(MeshMaterial3d(terrain_material.clone()))
-            .remove::<NeedsTerrainMaterial>();
-        count += 1;
-    }
-
-    console_info!("Scene", "Applied terrain material to {} chunks", count);
-}
-
-/// Create a procedural checkerboard texture for terrain
-fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
-    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-
-    let size = 256u32;
-    let checker_size = 32u32;
-
-    let mut data = Vec::with_capacity((size * size * 4) as usize);
-
-    // Colors: grass green and slightly darker green
-    let color1 = [34u8, 139, 34, 255];   // Forest green
-    let color2 = [50u8, 160, 50, 255];   // Lighter green
-
-    for y in 0..size {
-        for x in 0..size {
-            let checker_x = (x / checker_size) % 2;
-            let checker_y = (y / checker_size) % 2;
-            let is_light = (checker_x + checker_y) % 2 == 0;
-
-            let color = if is_light { color1 } else { color2 };
-            data.extend_from_slice(&color);
-        }
-    }
-
-    let image = Image::new(
-        Extent3d {
-            width: size,
-            height: size,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        bevy::asset::RenderAssetUsages::RENDER_WORLD,
-    );
-
-    images.add(image)
+/// Legacy terrain material system — now a no-op.
+/// Terrain chunks use MaterialData + apply_material_data for blueprint-based materials.
+pub fn apply_terrain_materials() {
+    // Material application is now handled by the MaterialData system
 }
 
 /// System to add RaytracingMesh3d to any Mesh3d entity that doesn't have it.

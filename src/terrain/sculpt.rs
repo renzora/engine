@@ -1,6 +1,7 @@
 //! Terrain sculpting tools
 
 use bevy::prelude::*;
+use bevy::input::mouse::MouseWheel;
 use bevy::window::{PrimaryWindow, CursorOptions};
 
 use crate::core::{InputFocusState, ViewportCamera, ViewportState};
@@ -10,6 +11,7 @@ use super::{
     BrushFalloffType, BrushShape, FlattenMode, TerrainBrushType, TerrainChunkData, TerrainChunkOf,
     TerrainData, TerrainSculptState, TerrainSettings,
 };
+use crate::mesh_sculpt::MeshSculptState;
 
 /// System to handle T key shortcut for terrain sculpt tool
 pub fn terrain_tool_shortcut_system(
@@ -27,6 +29,24 @@ pub fn terrain_tool_shortcut_system(
     }
 }
 
+/// System to adjust terrain brush size with scroll wheel
+pub fn terrain_brush_scroll_system(
+    gizmo_state: Res<GizmoState>,
+    viewport: Res<ViewportState>,
+    mut settings: ResMut<TerrainSettings>,
+    mut scroll_events: MessageReader<MouseWheel>,
+) {
+    if gizmo_state.tool != EditorTool::TerrainSculpt || !viewport.hovered {
+        return;
+    }
+
+    for ev in scroll_events.read() {
+        // Scale adjustment relative to current size for smooth feel
+        let factor = if ev.y > 0.0 { 1.1 } else { 0.9 };
+        settings.brush_radius = (settings.brush_radius * factor).clamp(1.0, 200.0);
+    }
+}
+
 /// System to detect hover position on terrain
 pub fn terrain_sculpt_hover_system(
     gizmo_state: Res<GizmoState>,
@@ -37,6 +57,7 @@ pub fn terrain_sculpt_hover_system(
     chunk_query: Query<(&TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut sculpt_state: ResMut<TerrainSculptState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    mesh_sculpt_state: Option<Res<MeshSculptState>>,
 ) {
     // Only process in terrain sculpt mode
     if gizmo_state.tool != EditorTool::TerrainSculpt {
@@ -45,6 +66,15 @@ pub fn terrain_sculpt_hover_system(
         sculpt_state.brush_visible = false;
         sculpt_state.cursor_hidden_by_us = false;
         return;
+    }
+
+    // If mesh sculpt is actively hovering a mesh, skip terrain hover
+    if let Some(ref ms) = mesh_sculpt_state {
+        if ms.hover_position.is_some() {
+            sculpt_state.hover_position = None;
+            sculpt_state.active_terrain = None;
+            return;
+        }
     }
 
     let Ok(window) = window_query.single() else {
@@ -799,6 +829,7 @@ pub fn terrain_brush_cursor_system(
     mut sculpt_state: ResMut<TerrainSculptState>,
     viewport: Res<ViewportState>,
     mut cursor_query: Query<&mut CursorOptions>,
+    mesh_sculpt_state: Option<Res<MeshSculptState>>,
 ) {
     let Ok(mut cursor) = cursor_query.single_mut() else {
         return;
@@ -811,8 +842,13 @@ pub fn terrain_brush_cursor_system(
         return;
     }
 
+    // Check if mesh sculpt brush is also visible
+    let mesh_brush_visible = mesh_sculpt_state
+        .as_ref()
+        .is_some_and(|ms| ms.brush_visible);
+
     // Hide cursor when brush is visible and viewport is hovered
-    if sculpt_state.brush_visible && viewport.hovered {
+    if (sculpt_state.brush_visible || mesh_brush_visible) && viewport.hovered {
         cursor.visible = false;
         sculpt_state.cursor_hidden_by_us = true;
     } else if sculpt_state.cursor_hidden_by_us {

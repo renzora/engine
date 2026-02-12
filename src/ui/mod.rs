@@ -1286,13 +1286,12 @@ pub fn editor_ui(
             let in_viewport = pointer_pos.map_or(false, |p| vp_rect.contains(p));
             if in_viewport {
                 if let Some(mesh_type) = editor.shape_library.dragging_shape.take() {
-                    // Calculate ground plane intersection
-                    let ground_pos = if let Some(pos) = editor.assets.drag_ground_position {
-                        pos
-                    } else {
-                        Vec3::new(0.0, 0.0, 0.0)
-                    };
-                    editor.assets.pending_shape_drop = Some((mesh_type, ground_pos));
+                    // Use surface hit position if available, otherwise ground plane
+                    let drop_pos = editor.assets.drag_surface_position
+                        .or(editor.assets.drag_ground_position)
+                        .unwrap_or(Vec3::ZERO);
+                    editor.assets.pending_shape_drop = Some((mesh_type, drop_pos));
+                    editor.assets.pending_shape_drop_normal = editor.assets.drag_surface_normal;
                 }
             } else {
                 editor.shape_library.dragging_shape = None;

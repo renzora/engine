@@ -160,8 +160,14 @@ pub struct AssetBrowserState {
     pub tree_panel_width: f32,
     /// Ground position under cursor during model drag (updated every frame by viewport)
     pub drag_ground_position: Option<Vec3>,
+    /// Surface hit position during drag (set by raycast system, overrides ground plane)
+    pub drag_surface_position: Option<Vec3>,
+    /// Surface normal at drag hit point (Y-up when on ground plane)
+    pub drag_surface_normal: Vec3,
     /// Pending shape drop from Shape Library panel (mesh type, 3D position)
     pub pending_shape_drop: Option<(crate::shared::MeshPrimitiveType, Vec3)>,
+    /// Surface normal at shape drop point (for proper placement on angled surfaces)
+    pub pending_shape_drop_normal: Vec3,
 }
 
 /// Pending image drop information

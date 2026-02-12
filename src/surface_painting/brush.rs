@@ -1,6 +1,7 @@
 //! Surface paint brush systems — hover, paint, and GPU sync.
 
 use bevy::prelude::*;
+use bevy::input::mouse::MouseWheel;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::window::PrimaryWindow;
@@ -25,6 +26,23 @@ pub fn surface_paint_shortcut_system(
     }
     if keyboard.just_pressed(KeyCode::KeyP) {
         gizmo_state.tool = EditorTool::SurfacePaint;
+    }
+}
+
+/// System to adjust surface paint brush size with scroll wheel.
+pub fn surface_paint_brush_scroll_system(
+    gizmo_state: Res<GizmoState>,
+    viewport: Res<ViewportState>,
+    mut settings: ResMut<SurfacePaintSettings>,
+    mut scroll_events: MessageReader<MouseWheel>,
+) {
+    if gizmo_state.tool != EditorTool::SurfacePaint || !viewport.hovered {
+        return;
+    }
+
+    for ev in scroll_events.read() {
+        let factor = if ev.y > 0.0 { 1.1 } else { 0.9 };
+        settings.brush_radius = (settings.brush_radius * factor).clamp(0.005, 0.5);
     }
 }
 

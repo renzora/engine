@@ -13,6 +13,7 @@ mod gizmo;
 mod import;
 mod gltf_animation;
 mod input;
+mod mesh_sculpt;
 #[cfg(feature = "solari")]
 mod meshlet;
 mod particles;
@@ -285,6 +286,7 @@ fn main() {
             blueprint::MaterialPreviewPlugin,
             brushes::BrushPlugin,
             terrain::TerrainPlugin,
+            mesh_sculpt::MeshSculptPlugin,
             surface_painting::SurfacePaintingPlugin,
             // Physics plugin (starts paused in editor, activated during play mode)
             shared::RenzoraPhysicsPlugin::new(true),
@@ -468,6 +470,14 @@ fn main() {
                 scene::assign_scene_tab_ids,
             )
                 .chain()
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Surface raycast for placing dragged objects on existing meshes
+        .add_systems(
+            Update,
+            input::drag_surface_raycast_system
+                .before(input::update_shape_drag_preview)
+                .before(input::update_drag_preview)
                 .run_if(in_state(AppState::Editor)),
         )
         // Shape library spawn + drag preview (separated to stay within tuple size limit)

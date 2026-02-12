@@ -28,6 +28,7 @@ impl Plugin for TerrainPlugin {
                 Update,
                 (
                     terrain_tool_shortcut_system,
+                    terrain_brush_scroll_system,
                     terrain_sculpt_hover_system,
                     terrain_sculpt_system,
                     terrain_brush_cursor_system,
