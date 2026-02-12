@@ -45,9 +45,7 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Blueprints", blueprints_layout()),
         WorkspaceLayout::builtin("Level Design", level_design_layout()),
         WorkspaceLayout::builtin("Terrain", terrain_layout()),
-        WorkspaceLayout::builtin("Image Preview", image_preview_layout()),
         WorkspaceLayout::builtin("Particles", particles_layout()),
-        WorkspaceLayout::builtin("Pixels", pixels_layout()),
         WorkspaceLayout::builtin("Shaders", shaders_layout()),
         WorkspaceLayout::builtin("Physics", physics_layout()),
     ]
@@ -308,36 +306,6 @@ pub fn terrain_layout() -> DockTree {
     )
 }
 
-/// Image Preview layout: Image viewer with assets for browsing
-///
-/// ```text
-/// ┌───────────┬──────────────────────┬───────────┐
-/// │           │                      │           │
-/// │ Hierarchy │    Image Preview     │ Inspector │
-/// │           │                      │           │
-/// ├───────────┴──────────────────────┴───────────┤
-/// │              Assets | Console                │
-/// └──────────────────────────────────────────────┘
-/// ```
-pub fn image_preview_layout() -> DockTree {
-    DockTree::vertical(
-        DockTree::horizontal(
-            DockTree::leaf(PanelId::Hierarchy),
-            DockTree::horizontal(
-                DockTree::leaf(PanelId::ImagePreview),
-                DockTree::leaf(PanelId::Inspector),
-                0.78,
-            ),
-            0.18,
-        ),
-        DockTree::Leaf {
-            tabs: vec![PanelId::Assets, PanelId::Console],
-            active_tab: 0,
-        },
-        0.72,
-    )
-}
-
 /// Particles layout: Particle Preview on left, Particle Editor on right
 ///
 /// ```text
@@ -353,39 +321,6 @@ pub fn particles_layout() -> DockTree {
         DockTree::leaf(PanelId::ParticlePreview),
         DockTree::leaf(PanelId::ParticleEditor),
         0.8,
-    )
-}
-
-/// Pixels layout: Pixel art editor workspace
-///
-/// ```text
-/// ┌──────────┬──────────────────────┬──────────┐
-/// │PixelTools│                      │PixelLayer│
-/// │          │                      │          │
-/// ├──────────┤    PixelCanvas       ├──────────┤
-/// │PixelBrush│                      │PixelPalet│
-/// │ Settings │                      │          │
-/// ├──────────┴──────────────────────┴──────────┤
-/// │              PixelTimeline                  │
-/// └─────────────────────────────────────────────┘
-/// ```
-pub fn pixels_layout() -> DockTree {
-    DockTree::vertical(
-        DockTree::horizontal(
-            DockTree::leaf(PanelId::PixelCanvas),
-            DockTree::vertical(
-                DockTree::leaf(PanelId::PixelLayers),
-                DockTree::vertical(
-                    DockTree::leaf(PanelId::PixelBrushSettings),
-                    DockTree::leaf(PanelId::PixelPalette),
-                    0.45,
-                ),
-                0.35,
-            ),
-            0.78,
-        ),
-        DockTree::leaf(PanelId::PixelTimeline),
-        0.78,
     )
 }
 
