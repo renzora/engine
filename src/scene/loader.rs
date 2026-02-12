@@ -216,12 +216,7 @@ pub fn rehydrate_mesh_components(
 ) {
     for (entity, mesh_data) in query.iter() {
         // Create mesh based on type
-        let mesh = match mesh_data.mesh_type {
-            MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            MeshPrimitiveType::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
-            MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 1.0)),
-            MeshPrimitiveType::Plane => meshes.add(Plane3d::default().mesh().size(2.0, 2.0)),
-        };
+        let mesh = crate::spawn::meshes::create_mesh_for_type(&mut meshes, mesh_data.mesh_type);
 
         // Create standard material
         let material = materials.add(StandardMaterial {

@@ -7,6 +7,7 @@ use serde_json::json;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
 use crate::shared::{MeshNodeData, MeshPrimitiveType};
+use crate::spawn::meshes::create_mesh_for_type;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::CUBE;
@@ -21,7 +22,7 @@ fn add_mesh_renderer(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    let mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+    let mesh = create_mesh_for_type(meshes, MeshPrimitiveType::Cube);
     let material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.8, 0.7, 0.6),
         ..default()
@@ -83,20 +84,13 @@ fn deserialize_mesh_renderer(
         .and_then(|v| v.as_str())
         .unwrap_or("Cube");
 
-    let mesh_type = match mesh_type_str {
-        "Cube" => MeshPrimitiveType::Cube,
-        "Sphere" => MeshPrimitiveType::Sphere,
-        "Cylinder" => MeshPrimitiveType::Cylinder,
-        "Plane" => MeshPrimitiveType::Plane,
-        _ => MeshPrimitiveType::Cube,
-    };
+    let mesh_type = MeshPrimitiveType::all()
+        .iter()
+        .find(|t| format!("{:?}", t) == mesh_type_str)
+        .copied()
+        .unwrap_or(MeshPrimitiveType::Cube);
 
-    let mesh = match mesh_type {
-        MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-        MeshPrimitiveType::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
-        MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 2.0)),
-        MeshPrimitiveType::Plane => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
-    };
+    let mesh = create_mesh_for_type(meshes, mesh_type);
 
     let color = data
         .get("color")
@@ -159,39 +153,21 @@ fn inspect_mesh_renderer(
         ui.horizontal(|ui| {
             ui.label("Mesh Type");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mesh_types = [
-                    (MeshPrimitiveType::Cube, "Cube"),
-                    (MeshPrimitiveType::Sphere, "Sphere"),
-                    (MeshPrimitiveType::Cylinder, "Cylinder"),
-                    (MeshPrimitiveType::Plane, "Plane"),
-                ];
+                let all_types = MeshPrimitiveType::all();
 
-                let current_name = mesh_types
-                    .iter()
-                    .find(|(t, _)| *t == current_mesh_type)
-                    .map(|(_, n)| *n)
-                    .unwrap_or("Cube");
+                let current_name = current_mesh_type.display_name();
 
                 egui::ComboBox::from_id_salt("mesh_type")
                     .selected_text(current_name)
                     .show_ui(ui, |ui| {
-                        for (mesh_type, name) in mesh_types.iter() {
+                        for mesh_type in all_types {
                             if ui
-                                .selectable_value(&mut current_mesh_type.clone(), *mesh_type, *name)
+                                .selectable_value(&mut current_mesh_type.clone(), *mesh_type, mesh_type.display_name())
                                 .clicked()
                                 && *mesh_type != current_mesh_type
                             {
                                 // Update mesh
-                                let new_mesh = match mesh_type {
-                                    MeshPrimitiveType::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                                    MeshPrimitiveType::Sphere => {
-                                        meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap())
-                                    }
-                                    MeshPrimitiveType::Cylinder => meshes.add(Cylinder::new(0.5, 2.0)),
-                                    MeshPrimitiveType::Plane => {
-                                        meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0)))
-                                    }
-                                };
+                                let new_mesh = create_mesh_for_type(meshes, *mesh_type);
                                 if let Some(mut mesh_handle) = world.get_mut::<Mesh3d>(entity) {
                                     mesh_handle.0 = new_mesh;
                                 }

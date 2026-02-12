@@ -99,6 +99,8 @@ pub enum PanelId {
     ArenaPresets,
     /// Render pipeline — node graph visualization of render passes
     RenderPipeline,
+    /// Shape Library — visual grid of mesh primitives for quick spawning
+    ShapeLibrary,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -156,6 +158,7 @@ impl PanelId {
             PanelId::StateRecorder => "Recorder",
             PanelId::ArenaPresets => "Arena Presets",
             PanelId::RenderPipeline => "Render Pipeline",
+            PanelId::ShapeLibrary => "Shape Library",
             PanelId::Plugin(name) => name,
         }
     }
@@ -212,6 +215,7 @@ impl PanelId {
             PanelId::StateRecorder => TIMER,
             PanelId::ArenaPresets => CUBE,
             PanelId::RenderPipeline => STACK,
+            PanelId::ShapeLibrary => CUBE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

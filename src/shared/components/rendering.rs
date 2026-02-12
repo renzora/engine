@@ -18,6 +18,32 @@ pub enum MeshPrimitiveType {
     Sphere,
     Cylinder,
     Plane,
+    Cone,
+    Torus,
+    Capsule,
+    Wedge,
+    Stairs,
+    Arch,
+    HalfCylinder,
+    QuarterPipe,
+    Corner,
+    Prism,
+    Pyramid,
+    Pipe,
+    Ring,
+    Wall,
+    Ramp,
+    Hemisphere,
+    CurvedWall,
+    Doorway,
+    WindowWall,
+    LShape,
+    TShape,
+    CrossShape,
+    Funnel,
+    Gutter,
+    SpiralStairs,
+    Pillar,
 }
 
 #[allow(dead_code)]
@@ -29,6 +55,32 @@ impl MeshPrimitiveType {
             MeshPrimitiveType::Sphere => "mesh.sphere",
             MeshPrimitiveType::Cylinder => "mesh.cylinder",
             MeshPrimitiveType::Plane => "mesh.plane",
+            MeshPrimitiveType::Cone => "mesh.cone",
+            MeshPrimitiveType::Torus => "mesh.torus",
+            MeshPrimitiveType::Capsule => "mesh.capsule",
+            MeshPrimitiveType::Wedge => "mesh.wedge",
+            MeshPrimitiveType::Stairs => "mesh.stairs",
+            MeshPrimitiveType::Arch => "mesh.arch",
+            MeshPrimitiveType::HalfCylinder => "mesh.half_cylinder",
+            MeshPrimitiveType::QuarterPipe => "mesh.quarter_pipe",
+            MeshPrimitiveType::Corner => "mesh.corner",
+            MeshPrimitiveType::Prism => "mesh.prism",
+            MeshPrimitiveType::Pyramid => "mesh.pyramid",
+            MeshPrimitiveType::Pipe => "mesh.pipe",
+            MeshPrimitiveType::Ring => "mesh.ring",
+            MeshPrimitiveType::Wall => "mesh.wall",
+            MeshPrimitiveType::Ramp => "mesh.ramp",
+            MeshPrimitiveType::Hemisphere => "mesh.hemisphere",
+            MeshPrimitiveType::CurvedWall => "mesh.curved_wall",
+            MeshPrimitiveType::Doorway => "mesh.doorway",
+            MeshPrimitiveType::WindowWall => "mesh.window_wall",
+            MeshPrimitiveType::LShape => "mesh.l_shape",
+            MeshPrimitiveType::TShape => "mesh.t_shape",
+            MeshPrimitiveType::CrossShape => "mesh.cross_shape",
+            MeshPrimitiveType::Funnel => "mesh.funnel",
+            MeshPrimitiveType::Gutter => "mesh.gutter",
+            MeshPrimitiveType::SpiralStairs => "mesh.spiral_stairs",
+            MeshPrimitiveType::Pillar => "mesh.pillar",
         }
     }
 
@@ -39,8 +91,164 @@ impl MeshPrimitiveType {
             "mesh.sphere" => Some(MeshPrimitiveType::Sphere),
             "mesh.cylinder" => Some(MeshPrimitiveType::Cylinder),
             "mesh.plane" => Some(MeshPrimitiveType::Plane),
+            "mesh.cone" => Some(MeshPrimitiveType::Cone),
+            "mesh.torus" => Some(MeshPrimitiveType::Torus),
+            "mesh.capsule" => Some(MeshPrimitiveType::Capsule),
+            "mesh.wedge" => Some(MeshPrimitiveType::Wedge),
+            "mesh.stairs" => Some(MeshPrimitiveType::Stairs),
+            "mesh.arch" => Some(MeshPrimitiveType::Arch),
+            "mesh.half_cylinder" => Some(MeshPrimitiveType::HalfCylinder),
+            "mesh.quarter_pipe" => Some(MeshPrimitiveType::QuarterPipe),
+            "mesh.corner" => Some(MeshPrimitiveType::Corner),
+            "mesh.prism" => Some(MeshPrimitiveType::Prism),
+            "mesh.pyramid" => Some(MeshPrimitiveType::Pyramid),
+            "mesh.pipe" => Some(MeshPrimitiveType::Pipe),
+            "mesh.ring" => Some(MeshPrimitiveType::Ring),
+            "mesh.wall" => Some(MeshPrimitiveType::Wall),
+            "mesh.ramp" => Some(MeshPrimitiveType::Ramp),
+            "mesh.hemisphere" => Some(MeshPrimitiveType::Hemisphere),
+            "mesh.curved_wall" => Some(MeshPrimitiveType::CurvedWall),
+            "mesh.doorway" => Some(MeshPrimitiveType::Doorway),
+            "mesh.window_wall" => Some(MeshPrimitiveType::WindowWall),
+            "mesh.l_shape" => Some(MeshPrimitiveType::LShape),
+            "mesh.t_shape" => Some(MeshPrimitiveType::TShape),
+            "mesh.cross_shape" => Some(MeshPrimitiveType::CrossShape),
+            "mesh.funnel" => Some(MeshPrimitiveType::Funnel),
+            "mesh.gutter" => Some(MeshPrimitiveType::Gutter),
+            "mesh.spiral_stairs" => Some(MeshPrimitiveType::SpiralStairs),
+            "mesh.pillar" => Some(MeshPrimitiveType::Pillar),
             _ => None,
         }
+    }
+
+    /// Display name for the mesh type
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            MeshPrimitiveType::Cube => "Cube",
+            MeshPrimitiveType::Sphere => "Sphere",
+            MeshPrimitiveType::Cylinder => "Cylinder",
+            MeshPrimitiveType::Plane => "Plane",
+            MeshPrimitiveType::Cone => "Cone",
+            MeshPrimitiveType::Torus => "Torus",
+            MeshPrimitiveType::Capsule => "Capsule",
+            MeshPrimitiveType::Wedge => "Wedge",
+            MeshPrimitiveType::Stairs => "Stairs",
+            MeshPrimitiveType::Arch => "Arch",
+            MeshPrimitiveType::HalfCylinder => "Half Cylinder",
+            MeshPrimitiveType::QuarterPipe => "Quarter Pipe",
+            MeshPrimitiveType::Corner => "Corner",
+            MeshPrimitiveType::Prism => "Prism",
+            MeshPrimitiveType::Pyramid => "Pyramid",
+            MeshPrimitiveType::Pipe => "Pipe",
+            MeshPrimitiveType::Ring => "Ring",
+            MeshPrimitiveType::Wall => "Wall",
+            MeshPrimitiveType::Ramp => "Ramp",
+            MeshPrimitiveType::Hemisphere => "Hemisphere",
+            MeshPrimitiveType::CurvedWall => "Curved Wall",
+            MeshPrimitiveType::Doorway => "Doorway",
+            MeshPrimitiveType::WindowWall => "Window Wall",
+            MeshPrimitiveType::LShape => "L-Shape",
+            MeshPrimitiveType::TShape => "T-Shape",
+            MeshPrimitiveType::CrossShape => "Cross",
+            MeshPrimitiveType::Funnel => "Funnel",
+            MeshPrimitiveType::Gutter => "Gutter",
+            MeshPrimitiveType::SpiralStairs => "Spiral Stairs",
+            MeshPrimitiveType::Pillar => "Pillar",
+        }
+    }
+
+    /// All mesh primitive types
+    pub fn all() -> &'static [MeshPrimitiveType] {
+        &[
+            MeshPrimitiveType::Cube,
+            MeshPrimitiveType::Sphere,
+            MeshPrimitiveType::Cylinder,
+            MeshPrimitiveType::Plane,
+            MeshPrimitiveType::Cone,
+            MeshPrimitiveType::Torus,
+            MeshPrimitiveType::Capsule,
+            MeshPrimitiveType::Wedge,
+            MeshPrimitiveType::Stairs,
+            MeshPrimitiveType::Arch,
+            MeshPrimitiveType::HalfCylinder,
+            MeshPrimitiveType::QuarterPipe,
+            MeshPrimitiveType::Corner,
+            MeshPrimitiveType::Prism,
+            MeshPrimitiveType::Pyramid,
+            MeshPrimitiveType::Pipe,
+            MeshPrimitiveType::Ring,
+            MeshPrimitiveType::Wall,
+            MeshPrimitiveType::Ramp,
+            MeshPrimitiveType::Hemisphere,
+            MeshPrimitiveType::CurvedWall,
+            MeshPrimitiveType::Doorway,
+            MeshPrimitiveType::WindowWall,
+            MeshPrimitiveType::LShape,
+            MeshPrimitiveType::TShape,
+            MeshPrimitiveType::CrossShape,
+            MeshPrimitiveType::Funnel,
+            MeshPrimitiveType::Gutter,
+            MeshPrimitiveType::SpiralStairs,
+            MeshPrimitiveType::Pillar,
+        ]
+    }
+
+    /// Category for organizing in the shape library
+    pub fn category(&self) -> ShapeCategory {
+        match self {
+            MeshPrimitiveType::Cube | MeshPrimitiveType::Sphere |
+            MeshPrimitiveType::Cylinder | MeshPrimitiveType::Plane |
+            MeshPrimitiveType::Cone | MeshPrimitiveType::Capsule |
+            MeshPrimitiveType::Hemisphere => ShapeCategory::Basic,
+
+            MeshPrimitiveType::Wedge | MeshPrimitiveType::Stairs |
+            MeshPrimitiveType::Wall | MeshPrimitiveType::Corner |
+            MeshPrimitiveType::Arch | MeshPrimitiveType::QuarterPipe |
+            MeshPrimitiveType::HalfCylinder | MeshPrimitiveType::Ramp |
+            MeshPrimitiveType::Doorway | MeshPrimitiveType::WindowWall |
+            MeshPrimitiveType::LShape | MeshPrimitiveType::TShape |
+            MeshPrimitiveType::CrossShape | MeshPrimitiveType::SpiralStairs |
+            MeshPrimitiveType::CurvedWall | MeshPrimitiveType::Pillar => ShapeCategory::LevelBuilding,
+
+            MeshPrimitiveType::Torus | MeshPrimitiveType::Pipe |
+            MeshPrimitiveType::Ring | MeshPrimitiveType::Funnel |
+            MeshPrimitiveType::Gutter => ShapeCategory::Curved,
+
+            MeshPrimitiveType::Prism | MeshPrimitiveType::Pyramid => ShapeCategory::Advanced,
+        }
+    }
+}
+
+/// Categories for organizing shapes in the Shape Library panel
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ShapeCategory {
+    #[default]
+    All,
+    Basic,
+    LevelBuilding,
+    Curved,
+    Advanced,
+}
+
+impl ShapeCategory {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ShapeCategory::All => "All",
+            ShapeCategory::Basic => "Basic",
+            ShapeCategory::LevelBuilding => "Level",
+            ShapeCategory::Curved => "Curved",
+            ShapeCategory::Advanced => "Advanced",
+        }
+    }
+
+    pub fn all_categories() -> &'static [ShapeCategory] {
+        &[
+            ShapeCategory::All,
+            ShapeCategory::Basic,
+            ShapeCategory::LevelBuilding,
+            ShapeCategory::Curved,
+            ShapeCategory::Advanced,
+        ]
     }
 }
 

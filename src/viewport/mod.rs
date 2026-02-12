@@ -48,6 +48,7 @@ use crate::component_system::components::clouds::CloudDomeMarker;
 use crate::console_info;
 use crate::core::{AppState, DockingState, EditorSettings, MainCamera, RenderToggles, SelectionState, ViewportState, VisualizationMode};
 use crate::gizmo::meshes::GizmoMesh;
+use crate::gizmo::GizmoOverlayCamera;
 #[cfg(feature = "solari")]
 use crate::shared::{DlssQualityMode, SolariLightingData};
 use crate::spawn::{EditorSceneRoot, SceneType};
@@ -142,6 +143,10 @@ impl Plugin for ViewportPlugin {
             .add_systems(
                 Update,
                 (auto_switch_viewport_mode, sync_layout_camera_settings, sync_camera_activity).run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                PostUpdate,
+                sync_gizmo_overlay_camera.run_if(in_state(AppState::Editor)),
             )
             // Model preview systems for asset browser thumbnails
             .add_systems(
@@ -712,16 +717,24 @@ fn debug_solari_particles(
 fn sync_camera_activity(
     docking: Res<DockingState>,
     mut main_cameras: Query<&mut Camera, With<MainCamera>>,
+    mut gizmo_overlay_cameras: Query<&mut Camera, (With<GizmoOverlayCamera>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
     mut studio_cameras: Query<&mut Camera, (With<StudioPreviewCamera>, Without<MainCamera>, Without<ParticlePreviewCamera>)>,
     mut particle_cameras: Query<&mut Camera, (With<ParticlePreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>)>,
     mut material_cameras: Query<&mut Camera, (With<MaterialPreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>)>,
-    mut scene_cameras_3d: Query<&mut Camera, (With<CameraNodeData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
-    mut scene_rigs: Query<&mut Camera, (With<CameraRigData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>)>,
-    mut scene_cameras_2d: Query<&mut Camera, (With<Camera2DData>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<CameraRigData>)>,
+    mut scene_cameras_3d: Query<&mut Camera, (With<CameraNodeData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
+    mut scene_rigs: Query<&mut Camera, (With<CameraRigData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>)>,
+    mut scene_cameras_2d: Query<&mut Camera, (With<Camera2DData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<CameraRigData>)>,
 ) {
     // Main viewport camera - always active if Viewport panel is visible
     let viewport_visible = docking.is_panel_visible(&PanelId::Viewport);
     for mut camera in main_cameras.iter_mut() {
+        if camera.is_active != viewport_visible {
+            camera.is_active = viewport_visible;
+        }
+    }
+
+    // Gizmo overlay camera - synced with main viewport camera
+    for mut camera in gizmo_overlay_cameras.iter_mut() {
         if camera.is_active != viewport_visible {
             camera.is_active = viewport_visible;
         }
@@ -769,4 +782,17 @@ fn sync_camera_activity(
             camera.is_active = false;
         }
     }
+}
+
+/// Sync gizmo overlay camera transform and projection with the main camera.
+/// Runs in PostUpdate to ensure it picks up all camera changes from Update.
+fn sync_gizmo_overlay_camera(
+    main_camera: Query<(&Transform, &Projection), With<MainCamera>>,
+    mut gizmo_camera: Query<(&mut Transform, &mut Projection), (With<GizmoOverlayCamera>, Without<MainCamera>)>,
+) {
+    let Ok((main_transform, main_projection)) = main_camera.single() else { return };
+    let Ok((mut gizmo_transform, mut gizmo_projection)) = gizmo_camera.single_mut() else { return };
+
+    *gizmo_transform = *main_transform;
+    *gizmo_projection = main_projection.clone();
 }

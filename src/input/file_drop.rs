@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress, ViewportCamera, ViewportState};
-use crate::shared::{MaterialData, MeshInstanceData, SceneInstanceData, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage};
+use crate::shared::{MaterialData, MeshInstanceData, MeshPrimitiveType, SceneInstanceData, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage};
 use crate::spawn::EditorSceneRoot;
 use crate::project::CurrentProject;
 use crate::shared::Sprite2DData;
@@ -1750,4 +1750,170 @@ pub fn handle_pending_skybox_drop(
     selection.select(entity);
 
     info!("Applied skybox from dropped HDR/EXR: {:?}", path);
+}
+
+/// System to handle shape library spawns (both click-to-spawn and drag-to-viewport)
+pub fn handle_shape_library_spawn(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut assets: ResMut<AssetBrowserState>,
+    mut shape_library: ResMut<crate::ui::ShapeLibraryState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+) {
+    use crate::shared::MeshNodeData;
+    use crate::spawn::meshes::create_mesh_for_type;
+
+    // Handle click-to-spawn from shape library panel
+    let mesh_type = if let Some(t) = shape_library.pending_spawn.take() {
+        Some((t, Vec3::new(0.0, 0.5, 0.0)))
+    } else if let Some((t, pos)) = assets.pending_shape_drop.take() {
+        Some((t, Vec3::new(pos.x, 0.5, pos.z)))
+    } else {
+        None
+    };
+
+    if let Some((mesh_type, position)) = mesh_type {
+        let mesh = create_mesh_for_type(&mut meshes, mesh_type);
+        let material = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.8, 0.7, 0.6),
+            ..default()
+        });
+
+        let name = mesh_type.display_name().to_string();
+
+        let parent = hierarchy.add_entity_parent;
+
+        let mut entity_commands = commands.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+            Transform::from_translation(position),
+            Visibility::default(),
+            EditorEntity {
+                name: name.clone(),
+                tag: String::new(),
+                visible: true,
+                locked: false,
+            },
+            SceneNode,
+            MeshNodeData { mesh_type },
+        ));
+
+        if let Some(parent_entity) = parent {
+            entity_commands.insert(ChildOf(parent_entity));
+        }
+
+        let entity = entity_commands.id();
+        selection.select(entity);
+
+        if let Some(parent_entity) = parent {
+            hierarchy.expanded_entities.insert(parent_entity);
+        }
+    }
+}
+
+// === Shape drag preview (ghost mesh while dragging from Shape Library) ===
+
+/// Marker component for the shape drag preview entity
+#[derive(Component)]
+pub struct ShapeDragPreview;
+
+/// Resource tracking the shape drag-preview lifecycle
+#[derive(Resource, Default)]
+pub struct ShapeDragPreviewState {
+    /// The preview entity, if active
+    pub preview_entity: Option<Entity>,
+    /// Which shape type the preview is showing
+    pub preview_type: Option<MeshPrimitiveType>,
+}
+
+/// Spawn/despawn/update shape drag preview based on ShapeLibraryState.dragging_shape
+pub fn update_shape_drag_preview(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    assets: Res<AssetBrowserState>,
+    shape_library: Res<crate::ui::ShapeLibraryState>,
+    mut preview_state: ResMut<ShapeDragPreviewState>,
+    mut transform_query: Query<&mut Transform, With<ShapeDragPreview>>,
+    visibility_query: Query<&Visibility, With<ShapeDragPreview>>,
+) {
+    use crate::spawn::meshes::create_mesh_for_type;
+
+    match (shape_library.dragging_shape, preview_state.preview_entity) {
+        // Drag started or shape changed — spawn preview only when cursor is over viewport
+        (Some(mesh_type), None) => {
+            // Only spawn the ghost once the cursor reaches the viewport
+            let Some(pos) = assets.drag_ground_position else { return; };
+
+            let mesh = create_mesh_for_type(&mut meshes, mesh_type);
+            let material = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.6, 0.65, 0.7, 0.45),
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            let entity = commands.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_translation(Vec3::new(pos.x, 0.5, pos.z)),
+                Visibility::default(),
+                ShapeDragPreview,
+            )).id();
+
+            preview_state.preview_entity = Some(entity);
+            preview_state.preview_type = Some(mesh_type);
+        }
+        // Shape type changed mid-drag — respawn with new mesh
+        (Some(mesh_type), Some(entity)) if preview_state.preview_type != Some(mesh_type) => {
+            commands.entity(entity).despawn();
+
+            let mesh = create_mesh_for_type(&mut meshes, mesh_type);
+            let material = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.6, 0.65, 0.7, 0.45),
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            let position = assets.drag_ground_position.unwrap_or(Vec3::ZERO);
+            let new_entity = commands.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_translation(Vec3::new(position.x, 0.5, position.z)),
+                Visibility::default(),
+                ShapeDragPreview,
+            )).id();
+
+            preview_state.preview_entity = Some(new_entity);
+            preview_state.preview_type = Some(mesh_type);
+        }
+        // Still dragging same shape — update position or hide if cursor left viewport
+        (Some(_), Some(entity)) => {
+            if let Some(pos) = assets.drag_ground_position {
+                if let Ok(mut tf) = transform_query.get_mut(entity) {
+                    tf.translation = Vec3::new(pos.x, 0.5, pos.z);
+                }
+                // Ensure visible when over viewport
+                if let Ok(vis) = visibility_query.get(entity) {
+                    if *vis == Visibility::Hidden {
+                        commands.entity(entity).insert(Visibility::default());
+                    }
+                }
+            } else {
+                // Cursor left viewport — hide the ghost
+                commands.entity(entity).insert(Visibility::Hidden);
+            }
+        }
+        // Drag ended — cleanup
+        (None, Some(entity)) => {
+            commands.entity(entity).despawn();
+            preview_state.preview_entity = None;
+            preview_state.preview_type = None;
+        }
+        // Idle
+        (None, None) => {}
+    }
 }

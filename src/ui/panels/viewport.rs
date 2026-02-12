@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings, SelectionState, HierarchyState};
+use crate::ui::ShapeLibraryState;
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::terrain::TerrainSculptState;
@@ -45,6 +46,7 @@ pub fn render_viewport(
     hierarchy: &mut HierarchyState,
     command_history: &mut CommandHistory,
     in_play_mode: bool,
+    shape_library: &ShapeLibraryState,
 ) {
     let screen_rect = ctx.content_rect();
 
@@ -89,7 +91,7 @@ pub fn render_viewport(
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
-            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode);
+            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode, shape_library);
         });
 
     // Skip editor overlays in play mode
@@ -1182,6 +1184,7 @@ pub fn render_viewport_content(
     viewport_texture_id: Option<TextureId>,
     content_rect: Rect,
     in_play_mode: bool,
+    shape_library: &ShapeLibraryState,
 ) {
     let ctx = ui.ctx().clone();
 
@@ -1236,13 +1239,14 @@ pub fn render_viewport_content(
     let pointer_pos = ctx.pointer_hover_pos();
     let in_viewport = pointer_pos.map_or(false, |p| content_rect.contains(p));
 
-    // Update drag_ground_position every frame while dragging a model over the 3D viewport
-    if assets.dragging_asset.is_some() && in_viewport && viewport.viewport_mode == ViewportMode::Mode3D {
+    // Update drag_ground_position every frame while dragging a model or shape over the 3D viewport
+    let any_drag = assets.dragging_asset.is_some() || shape_library.dragging_shape.is_some();
+    if any_drag && in_viewport && viewport.viewport_mode == ViewportMode::Mode3D {
         if let Some(mouse_pos) = pointer_pos {
             let ground_pos = ground_plane_intersection(orbit, content_rect, mouse_pos);
             assets.drag_ground_position = Some(ground_pos);
         }
-    } else {
+    } else if !any_drag {
         assets.drag_ground_position = None;
     }
 

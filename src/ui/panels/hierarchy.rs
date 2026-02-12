@@ -1348,6 +1348,7 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
                 MeshPrimitiveType::Sphere => (SPHERE, Color32::from_rgb(242, 166, 115)),
                 MeshPrimitiveType::Cylinder => (CYLINDER, Color32::from_rgb(242, 166, 115)),
                 MeshPrimitiveType::Plane => (SQUARE, Color32::from_rgb(242, 166, 115)),
+                _ => (CUBE, Color32::from_rgb(242, 166, 115)),
             };
         }
         return (CUBE, Color32::from_rgb(242, 166, 115));

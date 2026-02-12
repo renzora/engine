@@ -65,7 +65,11 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
 /// ```
 pub fn default_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::ShapeLibrary),
+            0.65,
+        ),
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::Leaf {
@@ -84,7 +88,7 @@ pub fn default_layout() -> DockTree {
             },
             0.78,
         ),
-        0.18,
+        0.14,
     )
 }
 

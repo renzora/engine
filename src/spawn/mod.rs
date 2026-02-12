@@ -15,6 +15,7 @@ pub mod environment;
 pub mod scenes;
 pub mod terrain;
 pub mod layouts;
+pub mod procedural_meshes;
 
 use bevy::prelude::*;
 

@@ -52,15 +52,24 @@ pub const SCREEN_PICK_RADIUS: f32 = 30.0;
 /// Layer 0 is the default scene layer, layer 1 is for editor-only visuals
 pub const GIZMO_RENDER_LAYER: usize = 1;
 
-/// Get the render layers for the main editor camera (sees everything including gizmos)
+/// Get the render layers for the main editor camera (scene only — gizmos are on a separate overlay camera)
 pub fn editor_camera_layers() -> RenderLayers {
-    RenderLayers::layer(0).with(GIZMO_RENDER_LAYER)
+    RenderLayers::layer(0)
+}
+
+/// Get the render layers for the gizmo overlay camera (gizmos only, no scene/Solari)
+pub fn gizmo_overlay_layers() -> RenderLayers {
+    RenderLayers::layer(GIZMO_RENDER_LAYER)
 }
 
 /// Get the render layers for the camera preview (scene only, no gizmos)
 pub fn preview_camera_layers() -> RenderLayers {
     RenderLayers::layer(0)
 }
+
+/// Marker component for the gizmo overlay camera
+#[derive(Component)]
+pub struct GizmoOverlayCamera;
 
 /// Custom gizmo config group for the grid (normal depth testing)
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -100,9 +109,9 @@ fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
     default_config.depth_bias = -1.0;
     default_config.line.width = 2.0;
 
-    // Grid gizmos - normal depth, thinner lines (occluded by objects)
+    // Grid gizmos - render on scene layer (layer 0) so they're properly occluded by objects
     let (grid_config, _) = config_store.config_mut::<GridGizmoGroup>();
-    grid_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    grid_config.render_layers = RenderLayers::layer(0);
     grid_config.line.width = 1.0;
 
     // Selection gizmos - render on top of everything

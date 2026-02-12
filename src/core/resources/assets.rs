@@ -160,6 +160,8 @@ pub struct AssetBrowserState {
     pub tree_panel_width: f32,
     /// Ground position under cursor during model drag (updated every frame by viewport)
     pub drag_ground_position: Option<Vec3>,
+    /// Pending shape drop from Shape Library panel (mesh type, 3D position)
+    pub pending_shape_drop: Option<(crate::shared::MeshPrimitiveType, Vec3)>,
 }
 
 /// Pending image drop information

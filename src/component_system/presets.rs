@@ -14,6 +14,7 @@ use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
     VIDEO_CAMERA, ATOM, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
     GLOBE, SPEAKER_HIGH, CIRCLE, MOUNTAINS, SPARKLE,
+    TRIANGLE, POLYGON, DIAMOND,
 };
 
 /// Categories for the Create menu
@@ -145,6 +146,240 @@ pub static PRESETS: &[EntityPreset] = &[
         default_name: "Plane",
         components: &["mesh_renderer"], // Will add with Plane mesh type
         priority: 3,
+    },
+    EntityPreset {
+        id: "cone",
+        display_name: "Cone",
+        category: PresetCategory::Objects3D,
+        icon: TRIANGLE,
+        default_name: "Cone",
+        components: &["mesh_renderer"],
+        priority: 4,
+    },
+    EntityPreset {
+        id: "torus",
+        display_name: "Torus",
+        category: PresetCategory::Objects3D,
+        icon: CIRCLE,
+        default_name: "Torus",
+        components: &["mesh_renderer"],
+        priority: 5,
+    },
+    EntityPreset {
+        id: "capsule",
+        display_name: "Capsule",
+        category: PresetCategory::Objects3D,
+        icon: CYLINDER,
+        default_name: "Capsule",
+        components: &["mesh_renderer"],
+        priority: 6,
+    },
+    EntityPreset {
+        id: "wedge",
+        display_name: "Wedge",
+        category: PresetCategory::Objects3D,
+        icon: TRIANGLE,
+        default_name: "Wedge",
+        components: &["mesh_renderer"],
+        priority: 7,
+    },
+    EntityPreset {
+        id: "stairs",
+        display_name: "Stairs",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Stairs",
+        components: &["mesh_renderer"],
+        priority: 8,
+    },
+    EntityPreset {
+        id: "arch",
+        display_name: "Arch",
+        category: PresetCategory::Objects3D,
+        icon: CIRCLE,
+        default_name: "Arch",
+        components: &["mesh_renderer"],
+        priority: 9,
+    },
+    EntityPreset {
+        id: "half_cylinder",
+        display_name: "Half Cylinder",
+        category: PresetCategory::Objects3D,
+        icon: CYLINDER,
+        default_name: "Half Cylinder",
+        components: &["mesh_renderer"],
+        priority: 10,
+    },
+    EntityPreset {
+        id: "quarter_pipe",
+        display_name: "Quarter Pipe",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Quarter Pipe",
+        components: &["mesh_renderer"],
+        priority: 11,
+    },
+    EntityPreset {
+        id: "corner",
+        display_name: "Corner",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Corner",
+        components: &["mesh_renderer"],
+        priority: 12,
+    },
+    EntityPreset {
+        id: "prism",
+        display_name: "Prism",
+        category: PresetCategory::Objects3D,
+        icon: TRIANGLE,
+        default_name: "Prism",
+        components: &["mesh_renderer"],
+        priority: 13,
+    },
+    EntityPreset {
+        id: "pyramid",
+        display_name: "Pyramid",
+        category: PresetCategory::Objects3D,
+        icon: DIAMOND,
+        default_name: "Pyramid",
+        components: &["mesh_renderer"],
+        priority: 14,
+    },
+    EntityPreset {
+        id: "pipe",
+        display_name: "Pipe",
+        category: PresetCategory::Objects3D,
+        icon: CIRCLE,
+        default_name: "Pipe",
+        components: &["mesh_renderer"],
+        priority: 15,
+    },
+    EntityPreset {
+        id: "ring",
+        display_name: "Ring",
+        category: PresetCategory::Objects3D,
+        icon: CIRCLE,
+        default_name: "Ring",
+        components: &["mesh_renderer"],
+        priority: 16,
+    },
+    EntityPreset {
+        id: "wall",
+        display_name: "Wall",
+        category: PresetCategory::Objects3D,
+        icon: SQUARE,
+        default_name: "Wall",
+        components: &["mesh_renderer"],
+        priority: 17,
+    },
+    EntityPreset {
+        id: "ramp",
+        display_name: "Ramp",
+        category: PresetCategory::Objects3D,
+        icon: TRIANGLE,
+        default_name: "Ramp",
+        components: &["mesh_renderer"],
+        priority: 18,
+    },
+    EntityPreset {
+        id: "hemisphere",
+        display_name: "Hemisphere",
+        category: PresetCategory::Objects3D,
+        icon: SPHERE,
+        default_name: "Hemisphere",
+        components: &["mesh_renderer"],
+        priority: 19,
+    },
+    EntityPreset {
+        id: "curved_wall",
+        display_name: "Curved Wall",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Curved Wall",
+        components: &["mesh_renderer"],
+        priority: 20,
+    },
+    EntityPreset {
+        id: "doorway",
+        display_name: "Doorway",
+        category: PresetCategory::Objects3D,
+        icon: SQUARE,
+        default_name: "Doorway",
+        components: &["mesh_renderer"],
+        priority: 21,
+    },
+    EntityPreset {
+        id: "window_wall",
+        display_name: "Window Wall",
+        category: PresetCategory::Objects3D,
+        icon: SQUARE,
+        default_name: "Window Wall",
+        components: &["mesh_renderer"],
+        priority: 22,
+    },
+    EntityPreset {
+        id: "l_shape",
+        display_name: "L-Shape",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "L-Shape",
+        components: &["mesh_renderer"],
+        priority: 23,
+    },
+    EntityPreset {
+        id: "t_shape",
+        display_name: "T-Shape",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "T-Shape",
+        components: &["mesh_renderer"],
+        priority: 24,
+    },
+    EntityPreset {
+        id: "cross_shape",
+        display_name: "Cross",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Cross",
+        components: &["mesh_renderer"],
+        priority: 25,
+    },
+    EntityPreset {
+        id: "funnel",
+        display_name: "Funnel",
+        category: PresetCategory::Objects3D,
+        icon: TRIANGLE,
+        default_name: "Funnel",
+        components: &["mesh_renderer"],
+        priority: 26,
+    },
+    EntityPreset {
+        id: "gutter",
+        display_name: "Gutter",
+        category: PresetCategory::Objects3D,
+        icon: CYLINDER,
+        default_name: "Gutter",
+        components: &["mesh_renderer"],
+        priority: 27,
+    },
+    EntityPreset {
+        id: "spiral_stairs",
+        display_name: "Spiral Stairs",
+        category: PresetCategory::Objects3D,
+        icon: POLYGON,
+        default_name: "Spiral Stairs",
+        components: &["mesh_renderer"],
+        priority: 28,
+    },
+    EntityPreset {
+        id: "pillar",
+        display_name: "Pillar",
+        category: PresetCategory::Objects3D,
+        icon: CYLINDER,
+        default_name: "Pillar",
+        components: &["mesh_renderer"],
+        priority: 29,
     },
     // Lights
     EntityPreset {
@@ -382,6 +617,7 @@ pub fn spawn_preset(
 ) -> Entity {
     use crate::core::{EditorEntity, SceneNode};
     use crate::shared::{MeshNodeData, MeshPrimitiveType};
+    use crate::spawn::meshes::create_mesh_for_type;
 
     // Spawn base entity
     let mut entity_commands = commands.spawn((
@@ -412,26 +648,44 @@ pub fn spawn_preset(
                 "sphere" | "rigid_body_sphere" => MeshPrimitiveType::Sphere,
                 "cylinder" => MeshPrimitiveType::Cylinder,
                 "plane" | "static_floor" => MeshPrimitiveType::Plane,
+                "cone" => MeshPrimitiveType::Cone,
+                "torus" => MeshPrimitiveType::Torus,
+                "capsule" => MeshPrimitiveType::Capsule,
+                "wedge" => MeshPrimitiveType::Wedge,
+                "stairs" => MeshPrimitiveType::Stairs,
+                "arch" => MeshPrimitiveType::Arch,
+                "half_cylinder" => MeshPrimitiveType::HalfCylinder,
+                "quarter_pipe" => MeshPrimitiveType::QuarterPipe,
+                "corner" => MeshPrimitiveType::Corner,
+                "prism" => MeshPrimitiveType::Prism,
+                "pyramid" => MeshPrimitiveType::Pyramid,
+                "pipe" => MeshPrimitiveType::Pipe,
+                "ring" => MeshPrimitiveType::Ring,
+                "wall" => MeshPrimitiveType::Wall,
+                "ramp" => MeshPrimitiveType::Ramp,
+                "hemisphere" => MeshPrimitiveType::Hemisphere,
+                "curved_wall" => MeshPrimitiveType::CurvedWall,
+                "doorway" => MeshPrimitiveType::Doorway,
+                "window_wall" => MeshPrimitiveType::WindowWall,
+                "l_shape" => MeshPrimitiveType::LShape,
+                "t_shape" => MeshPrimitiveType::TShape,
+                "cross_shape" => MeshPrimitiveType::CrossShape,
+                "funnel" => MeshPrimitiveType::Funnel,
+                "gutter" => MeshPrimitiveType::Gutter,
+                "spiral_stairs" => MeshPrimitiveType::SpiralStairs,
+                "pillar" => MeshPrimitiveType::Pillar,
                 _ => MeshPrimitiveType::Cube,
             };
 
-            let mesh = match (mesh_type, preset.id) {
-                (MeshPrimitiveType::Plane, "static_floor") => {
-                    meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0)))
-                }
-                (MeshPrimitiveType::Cube, _) => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                (MeshPrimitiveType::Sphere, _) => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
-                (MeshPrimitiveType::Cylinder, _) => meshes.add(Cylinder::new(0.5, 2.0)),
-                (MeshPrimitiveType::Plane, _) => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.0))),
+            let mesh = match preset.id {
+                "static_floor" => meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0))),
+                _ => create_mesh_for_type(meshes, mesh_type),
             };
 
             // Offset Y so the mesh bottom sits on the ground (Y=0)
-            let ground_offset = match (mesh_type, preset.id) {
-                (_, "static_floor") => 0.0,              // floor sits at origin
-                (MeshPrimitiveType::Cube, _) => 0.5,     // half of 1.0 height
-                (MeshPrimitiveType::Sphere, _) => 0.5,   // radius 0.5
-                (MeshPrimitiveType::Cylinder, _) => 1.0, // half of 2.0 height
-                (MeshPrimitiveType::Plane, _) => 0.001,  // slight offset to avoid z-fighting
+            let ground_offset = match preset.id {
+                "static_floor" => 0.0,
+                _ => 0.5, // default half-unit offset
             };
 
             // Physics presets: position dynamic objects above the ground for drop testing

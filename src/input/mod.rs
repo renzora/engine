@@ -7,7 +7,8 @@ pub use file_drop::{
     spawn_loaded_gltfs, spawn_mesh_instance_models, align_models_to_ground,
     handle_scene_hierarchy_drop, handle_script_hierarchy_drop, load_scene_instances, handle_pending_skybox_drop,
     start_drag_preview, update_drag_preview, cleanup_drag_preview, drag_preview_active,
-    PendingGltfLoads, PendingMeshInstanceLoads, MaterialApplied, DragPreviewState,
+    handle_shape_library_spawn, update_shape_drag_preview,
+    PendingGltfLoads, PendingMeshInstanceLoads, MaterialApplied, DragPreviewState, ShapeDragPreviewState,
 };
 pub use shortcuts::{handle_selection, handle_view_angles, handle_view_toggles, handle_play_mode};
 
@@ -19,6 +20,7 @@ impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PendingGltfLoads>()
             .init_resource::<PendingMeshInstanceLoads>()
-            .init_resource::<DragPreviewState>();
+            .init_resource::<DragPreviewState>()
+            .init_resource::<ShapeDragPreviewState>();
     }
 }

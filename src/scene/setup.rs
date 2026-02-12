@@ -5,7 +5,7 @@ use bevy::camera::RenderTarget;
 
 use crate::console_info;
 use crate::core::{MainCamera, ViewportCamera, OrbitCameraState, ViewportState};
-use crate::gizmo::editor_camera_layers;
+use crate::gizmo::{editor_camera_layers, gizmo_overlay_layers, GizmoOverlayCamera};
 use crate::viewport::ViewportImage;
 
 /// Marker for editor-only entities (not saved to scene)
@@ -52,7 +52,7 @@ pub fn setup_editor_camera(
     console_info!("Camera", "MSAA: Off (required for MeshletPlugin)");
     console_info!("Camera", "Clear color: sRGB(0.15, 0.15, 0.18)");
 
-    // Standard camera setup - Solari-specific HDR components added below when feature is compiled
+    // Scene camera — renders layer 0 (scene objects, grid) with Solari when active
     let camera_entity = commands.spawn((
         Camera3d::default(),
         Msaa::Off, // MeshletPlugin requires explicit Msaa::Off
@@ -69,7 +69,7 @@ pub fn setup_editor_camera(
         MainCamera,
         ViewportCamera,
         EditorOnly,
-        // Render both scene (layer 0) and gizmos (layer 1)
+        // Scene only (layer 0) — gizmos are on a separate overlay camera
         editor_camera_layers(),
         Name::new("Main Viewport Camera"),
     )).id();
@@ -93,6 +93,28 @@ pub fn setup_editor_camera(
         ));
         console_info!("Camera", "HDR + CameraMainTextureUsages(STORAGE_BINDING) added (solari feature compiled)");
     }
+
+    // Gizmo overlay camera — renders layer 1 (gizmos) on top of scene, no Solari lighting
+    commands.spawn((
+        Camera3d::default(),
+        Msaa::Off,
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        RenderTarget::Image(viewport_image.0.clone().into()),
+        Projection::Perspective(PerspectiveProjection {
+            aspect_ratio: aspect,
+            ..default()
+        }),
+        Transform::from_translation(cam_pos).looking_at(orbit.focus, Vec3::Y),
+        GizmoOverlayCamera,
+        EditorOnly,
+        gizmo_overlay_layers(),
+        Name::new("Gizmo Overlay Camera"),
+    ));
+    console_info!("Camera", "Gizmo overlay camera spawned (layer 1, order 1, no Solari)");
 
     console_info!("Camera", "=== CAMERA SETUP COMPLETE ===");
 }

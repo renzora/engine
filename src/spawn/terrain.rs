@@ -3,9 +3,13 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
+use crate::shared::MaterialData;
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use crate::component_system::components::terrain::NeedsTerrainMaterial;
 use super::{Category, EntityTemplate};
+
+/// Path to the default checkerboard material blueprint (relative to engine root)
+const DEFAULT_MATERIAL_PATH: &str = "assets/materials/checkerboard_default.material_bp";
 
 pub static TEMPLATES: &[EntityTemplate] = &[
     EntityTemplate { name: "Terrain (4x4)", category: Category::Terrain, spawn: spawn_terrain_4x4 },
@@ -127,6 +131,9 @@ fn spawn_terrain_with_size(
                 TerrainChunkOf(terrain_entity),
                 ChildOf(terrain_entity),
                 NeedsTerrainMaterial,
+                MaterialData {
+                    material_path: Some(DEFAULT_MATERIAL_PATH.to_string()),
+                },
             ));
         }
     }

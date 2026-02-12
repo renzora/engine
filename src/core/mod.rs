@@ -65,6 +65,7 @@ impl Plugin for CorePlugin {
             // ShaderPreviewState is registered by ShaderPreviewPlugin
             .init_resource::<GamepadDebugState>()
             .init_resource::<crate::theming::ThemeManager>()
+            .init_resource::<crate::ui::ShapeLibraryState>()
             .init_resource::<resources::InspectorPanelRenderState>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (

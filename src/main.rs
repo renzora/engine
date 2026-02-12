@@ -452,6 +452,12 @@ fn main() {
                 .chain()
                 .run_if(in_state(AppState::Editor)),
         )
+        // Shape library spawn + drag preview (separated to stay within tuple size limit)
+        .add_systems(
+            Update,
+            (input::handle_shape_library_spawn, input::update_shape_drag_preview)
+                .run_if(in_state(AppState::Editor)),
+        )
         // Script/blueprint drop onto hierarchy entities
         .add_systems(
             Update,

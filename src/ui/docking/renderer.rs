@@ -636,6 +636,7 @@ fn render_leaf(
                 ]),
                 ("Tools", &[
                     PanelId::LevelTools,
+                    PanelId::ShapeLibrary,
                     PanelId::TextureEditor,
                     PanelId::ParticleEditor,
                     PanelId::ParticlePreview,

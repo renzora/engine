@@ -29,7 +29,7 @@ pub use physics::{
 };
 pub use rendering::{
     DirectionalLightData, DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType,
-    MeshletMeshData, PointLightData, SolariLightingData, SpotLightData, Sprite2DData,
+    MeshletMeshData, PointLightData, ShapeCategory, SolariLightingData, SpotLightData, Sprite2DData,
     SpriteAnimation, SpriteSheetData, SunData,
 };
 pub use ui::{UIButtonData, UIImageData, UILabelData, UIPanelData};
