@@ -53,40 +53,39 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
     ]
 }
 
-/// Scene layout: Hierarchy | Viewport/NodeExplorer | Inspector with Assets/Console/Animation at bottom
+/// Scene layout: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
 ///
 /// ```text
-/// ┌─────────┬──────────────────────┬──────────┐
-/// │         │ Viewport|NodeExplorer│          │
-/// │         │                      │Inspector │
-/// │Hierarchy├──────────────────────┤          │
-/// │         │ Assets|Console|Anim  │          │
-/// └─────────┴──────────────────────┴──────────┘
+/// ┌──────────┬──────────────────────┬───────────┐
+/// │          │                      │  Shape    │
+/// │Hierarchy │      Viewport        │  Library  │
+/// │          │                      │           │
+/// ├──────────┤                      ├───────────┤
+/// │          │                      │           │
+/// │ Assets   │                      │ Inspector │
+/// └──────────┴──────────────────────┴───────────┘
 /// ```
 pub fn default_layout() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf(PanelId::Hierarchy),
-            DockTree::leaf(PanelId::ShapeLibrary),
-            0.65,
+            DockTree::leaf(PanelId::Assets),
+            0.55,
         ),
         DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec![PanelId::Viewport, PanelId::NodeExplorer],
-                    active_tab: 0,
-                },
-                DockTree::Leaf {
-                    tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation],
-                    active_tab: 0,
-                },
-                0.72,
-            ),
             DockTree::Leaf {
-                tabs: vec![PanelId::Inspector, PanelId::History],
+                tabs: vec![PanelId::Viewport, PanelId::NodeExplorer],
                 active_tab: 0,
             },
-            0.78,
+            DockTree::vertical(
+                DockTree::leaf(PanelId::ShapeLibrary),
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::History],
+                    active_tab: 0,
+                },
+                0.4,
+            ),
+            0.82,
         ),
         0.14,
     )
@@ -273,26 +272,22 @@ pub fn blueprints_layout() -> DockTree {
 /// └─────────────────────────────────┴──────────┘
 /// ```
 pub fn level_design_layout() -> DockTree {
-    DockTree::vertical(
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Assets),
+            0.55,
+        ),
         DockTree::horizontal(
             DockTree::leaf(PanelId::Viewport),
             DockTree::vertical(
-                DockTree::leaf(PanelId::LevelTools),
-                DockTree::vertical(
-                    DockTree::leaf(PanelId::Hierarchy),
-                    DockTree::leaf(PanelId::Assets),
-                    0.5,
-                ),
+                DockTree::leaf(PanelId::ShapeLibrary),
+                DockTree::leaf(PanelId::Inspector),
                 0.4,
             ),
-            0.8,
+            0.82,
         ),
-        DockTree::horizontal(
-            DockTree::leaf(PanelId::Console),
-            DockTree::leaf(PanelId::Inspector),
-            0.75,
-        ),
-        0.75,
+        0.14,
     )
 }
 
