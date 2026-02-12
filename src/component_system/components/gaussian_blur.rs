@@ -57,8 +57,17 @@ pub(crate) fn sync_gaussian_blur(
         Or<(Changed<GaussianBlurData>, Changed<DisabledComponents>, Changed<EditorEntity>)>,
     >,
     cameras: Query<Entity, With<ViewportCamera>>,
+    has_data: Query<(), With<GaussianBlurData>>,
+    mut removed: RemovedComponents<GaussianBlurData>,
 ) {
-    if query.is_empty() {
+    let had_removals = removed.read().count() > 0;
+    if query.is_empty() && !had_removals {
+        return;
+    }
+    if had_removals && has_data.is_empty() {
+        for cam in cameras.iter() {
+            commands.entity(cam).remove::<GaussianBlurSettings>();
+        }
         return;
     }
 

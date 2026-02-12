@@ -58,8 +58,17 @@ pub(crate) fn sync_ambient_occlusion(
         Or<(Changed<AmbientOcclusionData>, Changed<DisabledComponents>, Changed<EditorEntity>)>,
     >,
     cameras: Query<Entity, With<ViewportCamera>>,
+    has_data: Query<(), With<AmbientOcclusionData>>,
+    mut removed: RemovedComponents<AmbientOcclusionData>,
 ) {
-    if ao_query.is_empty() {
+    let had_removals = removed.read().count() > 0;
+    if ao_query.is_empty() && !had_removals {
+        return;
+    }
+    if had_removals && has_data.is_empty() {
+        for cam in cameras.iter() {
+            commands.entity(cam).remove::<ScreenSpaceAmbientOcclusion>();
+        }
         return;
     }
 

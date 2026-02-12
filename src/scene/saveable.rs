@@ -136,6 +136,21 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<crate::shared::MotionBlurData>();
     registry.register::<crate::shared::AmbientLightData>();
     registry.register::<crate::shared::CloudsData>();
+    registry.register::<crate::shared::TaaData>();
+    registry.register::<crate::shared::SmaaData>();
+    registry.register::<crate::shared::CasData>();
+    registry.register::<crate::shared::ChromaticAberrationData>();
+    registry.register::<crate::shared::AutoExposureData>();
+    registry.register::<crate::shared::VolumetricFogData>();
+    registry.register::<crate::shared::VignetteData>();
+    registry.register::<crate::shared::FilmGrainData>();
+    registry.register::<crate::shared::PixelationData>();
+    registry.register::<crate::shared::CrtData>();
+    registry.register::<crate::shared::GodRaysData>();
+    registry.register::<crate::shared::GaussianBlurData>();
+    registry.register::<crate::shared::PaletteQuantizationData>();
+    registry.register::<crate::shared::DistortionData>();
+    registry.register::<crate::shared::UnderwaterData>();
 
     // Advanced rendering
     registry.register::<SolariLightingData>();  // Raytraced lighting settings

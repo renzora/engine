@@ -81,8 +81,20 @@ pub(crate) fn sync_volumetric_fog(
     >,
     cameras: Query<Entity, With<ViewportCamera>>,
     dir_lights: Query<Entity, With<DirectionalLight>>,
+    has_data: Query<(), With<VolumetricFogData>>,
+    mut removed: RemovedComponents<VolumetricFogData>,
 ) {
-    if query.is_empty() {
+    let had_removals = removed.read().count() > 0;
+    if query.is_empty() && !had_removals {
+        return;
+    }
+    if had_removals && has_data.is_empty() {
+        for cam in cameras.iter() {
+            commands.entity(cam).remove::<VolumetricFog>();
+        }
+        for light in dir_lights.iter() {
+            commands.entity(light).remove::<VolumetricLight>();
+        }
         return;
     }
 

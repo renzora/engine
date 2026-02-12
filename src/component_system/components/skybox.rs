@@ -516,7 +516,23 @@ pub(crate) fn sync_skybox(
     mut skybox_state: ResMut<SkyboxState>,
     current_project: Option<Res<CurrentProject>>,
     mut images: ResMut<Assets<Image>>,
+    has_data: Query<(), With<SkyboxData>>,
+    mut removed: RemovedComponents<SkyboxData>,
 ) {
+    let had_removals = removed.read().count() > 0;
+    if had_removals && has_data.is_empty() {
+        for cam in cameras.iter() {
+            commands.entity(cam).remove::<Skybox>();
+        }
+        skybox_state.current_path = None;
+        skybox_state.equirect_handle = None;
+        skybox_state.cubemap_handle = None;
+        skybox_state.conversion_pending = false;
+        skybox_state.procedural_cubemap_handle = None;
+        skybox_state.procedural_params_hash = 0;
+        return;
+    }
+
     // Always check for pending cubemap conversion (even without changes to data)
     if skybox_state.conversion_pending {
         if let Some(ref equirect_handle) = skybox_state.equirect_handle {

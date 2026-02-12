@@ -91,8 +91,20 @@ pub(crate) fn sync_tonemapping(
         Or<(Changed<TonemappingData>, Changed<DisabledComponents>, Changed<EditorEntity>)>,
     >,
     cameras: Query<Entity, With<ViewportCamera>>,
+    has_data: Query<(), With<TonemappingData>>,
+    mut removed: RemovedComponents<TonemappingData>,
 ) {
-    if tm_query.is_empty() {
+    let had_removals = removed.read().count() > 0;
+    if tm_query.is_empty() && !had_removals {
+        return;
+    }
+    if had_removals && has_data.is_empty() {
+        // Re-insert defaults since cameras need tonemapping
+        let defaults = TonemappingData::default();
+        for cam in cameras.iter() {
+            commands.entity(cam).insert(BevyTonemapping::Reinhard);
+            commands.entity(cam).insert(Exposure { ev100: defaults.ev100 });
+        }
         return;
     }
 
