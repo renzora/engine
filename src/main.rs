@@ -34,6 +34,7 @@ mod ui;
 mod ui_api;
 mod update;
 mod viewport;
+mod voxel_world;
 
 use bevy::asset::UnapprovedPathMode;
 use bevy::prelude::*;
@@ -219,6 +220,9 @@ fn main() {
         .register_type::<shared::MotionBlurData>()
         .register_type::<shared::AmbientLightData>()
         .register_type::<shared::CloudsData>()
+        // Voxel world
+        .register_type::<component_system::components::voxel_world::VoxelWorldData>()
+        .register_type::<component_system::components::voxel_world::VoxelNoiseType>()
         // Core components
         .register_type::<core::EditorEntity>()
         .register_type::<core::SceneNode>()
@@ -268,6 +272,8 @@ fn main() {
             shared::RenzoraPhysicsPlugin::new(true),
             // Cloth physics (bevy_silk)
             bevy_silk::ClothPlugin,
+            // Voxel world generation
+            voxel_world::RenzoraVoxelWorldPlugin,
             // Auto-update system
             update::UpdatePlugin,
             // GLTF animation playback

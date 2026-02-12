@@ -10,7 +10,7 @@ use crate::theming::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 
-use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER, PLAY, PAUSE, STOP, GEAR, CARET_DOWN};
+use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER, PLAY, PAUSE, STOP, GEAR, CARET_DOWN, CUBE, IMAGE, MUSIC_NOTES, DOWNLOAD};
 
 /// Height of the custom title bar
 pub const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -781,26 +781,40 @@ fn render_menu_items(
         ui.separator();
 
         // Import submenu
+        let accent_blue = Color32::from_rgb(80, 140, 255);
+        let green = Color32::from_rgb(80, 200, 120);
+        let orange = Color32::from_rgb(230, 160, 60);
+
         submenu(ui, "Import", |ui| {
-            if menu_item(ui, "Import Assets...") {
+            ui.set_min_width(260.0);
+            if menu_item_rich(ui, DOWNLOAD, accent_blue, "Import Assets...", "All supported types") {
                 assets.import_asset_requested = true;
                 ui.close();
             }
             ui.separator();
-            if menu_item(ui, "Import 3D Model...") {
+            ui.label(egui::RichText::new("  By Type").color(Color32::GRAY).small());
+            ui.add_space(2.0);
+            if menu_item_rich(ui, CUBE, accent_blue, "3D Model...", "OBJ, FBX, glTF, USD") {
                 // Open file dialog specifically for 3D models
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("3D Models", &["glb", "gltf", "obj", "fbx", "usd", "usdz"])
                     .pick_files()
                 {
                     if !paths.is_empty() {
+                        // Auto-detect format and apply defaults
+                        if let Some(ext) = paths.iter()
+                            .filter_map(|p| p.extension().and_then(|e| e.to_str()))
+                            .next()
+                        {
+                            assets.import_settings.apply_format_defaults(ext);
+                        }
                         assets.pending_import_files = paths;
                         assets.show_import_dialog = true;
                     }
                 }
                 ui.close();
             }
-            if menu_item(ui, "Import Image...") {
+            if menu_item_rich(ui, IMAGE, green, "Image...", "PNG, JPG, BMP, TGA, HDR, EXR") {
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga", "hdr", "exr"])
                     .pick_files()
@@ -816,7 +830,7 @@ fn render_menu_items(
                 }
                 ui.close();
             }
-            if menu_item(ui, "Import Audio...") {
+            if menu_item_rich(ui, MUSIC_NOTES, orange, "Audio...", "WAV, OGG, MP3, FLAC") {
                 if let Some(paths) = rfd::FileDialog::new()
                     .add_filter("Audio", &["wav", "ogg", "mp3", "flac"])
                     .pick_files()
@@ -1068,6 +1082,48 @@ fn menu_item_enabled(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
     btn.clicked()
 }
 
+
+/// Rich menu item with colored icon, label, and subtitle
+fn menu_item_rich(ui: &mut egui::Ui, icon: &str, icon_color: Color32, label: &str, subtitle: &str) -> bool {
+    let desired_size = Vec2::new(ui.available_width().max(240.0), 24.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+    if response.hovered() {
+        ui.painter().rect_filled(rect, CornerRadius::same(2), Color32::from_white_alpha(15));
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
+    // Icon
+    ui.painter().text(
+        egui::Pos2::new(rect.left() + 14.0, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        egui::FontId::proportional(13.0),
+        icon_color,
+    );
+
+    // Label
+    ui.painter().text(
+        egui::Pos2::new(rect.left() + 30.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(12.0),
+        Color32::WHITE,
+    );
+
+    // Subtitle (right-aligned, gray)
+    if !subtitle.is_empty() {
+        ui.painter().text(
+            egui::Pos2::new(rect.right() - 8.0, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            subtitle,
+            egui::FontId::proportional(10.0),
+            Color32::from_white_alpha(100),
+        );
+    }
+
+    response.clicked()
+}
 
 /// Helper for nested submenus - shows pointer cursor on hover
 fn submenu(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {

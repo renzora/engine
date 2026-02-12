@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use crate::core::{
     AssetBrowserState, AssetViewMode, BottomPanelTab, ColliderImportType, ConsoleState,
-    ConvertAxes, LogLevel, MeshHandling, NormalImportMethod, TangentImportMethod,
-    ViewportState, SceneManagerState, ThumbnailCache, supports_thumbnail, supports_model_preview,
-    supports_shader_thumbnail,
+    ConvertAxes, ImportFileResult, LogLevel, MeshHandling, ModelImportSettings,
+    NormalImportMethod, TangentImportMethod, ViewportState, SceneManagerState,
+    ThumbnailCache, supports_thumbnail, supports_model_preview, supports_shader_thumbnail,
 };
 use crate::viewport::ModelPreviewCache;
 use crate::shader_thumbnail::ShaderThumbnailCache;
@@ -25,8 +25,10 @@ use egui_phosphor::regular::{
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
     PLUS, X, CHECK, CARET_UP, CARET_DOWN, SUN, PALETTE, CODE, ATOM, PAINT_BRUSH,
     STACK, NOTE, MUSIC_NOTES, VIDEO, BLUEPRINT, SPARKLE, MOUNTAINS, GAME_CONTROLLER,
-    GRAPHICS_CARD,
+    GRAPHICS_CARD, INFO, WARNING, CHECK_CIRCLE, X_CIRCLE,
+    ARROWS_OUT_CARDINAL,
 };
+use super::inspector::render_category;
 
 const MIN_TILE_SIZE: f32 = 64.0;
 const MAX_TILE_SIZE: f32 = 128.0;
@@ -373,6 +375,7 @@ pub fn render_assets(
     render_create_script_blueprint_dialog(ctx, assets);
     render_create_shader_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
+    render_import_results(ctx, assets, theme);
     handle_import_request(assets);
 
     // Process any pending file imports (files dropped into assets panel)
@@ -399,6 +402,7 @@ pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState
     render_create_script_blueprint_dialog(ctx, assets);
     render_create_shader_dialog(ctx, assets);
     render_import_dialog(ctx, assets, theme);
+    render_import_results(ctx, assets, theme);
     handle_import_request(assets);
     process_pending_file_imports(assets);
 }
@@ -3334,6 +3338,13 @@ fn open_import_file_dialog(assets: &mut AssetBrowserState) {
         let has_models = paths.iter().any(|p| is_model_file(p.file_name().and_then(|n| n.to_str()).unwrap_or("")));
 
         if has_models {
+            // Auto-detect format and apply defaults
+            if let Some(ext) = paths.iter()
+                .filter_map(|p| p.extension().and_then(|e| e.to_str()))
+                .find(|e| is_model_file(&format!("x.{}", e)))
+            {
+                assets.import_settings.apply_format_defaults(ext);
+            }
             assets.pending_import_files = paths;
             assets.show_import_dialog = true;
         } else {
@@ -3370,9 +3381,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState, the
     let mut open = true;
     let mut should_import = false;
 
-    // Theme colors for dialog
     let hint_color = theme.text.muted.to_color32();
-    let frame_bg = theme.surfaces.faint.to_color32();
     let model_icon_color = theme.categories.rendering.accent.to_color32();
     let file_icon_color = theme.text.muted.to_color32();
 
@@ -3380,343 +3389,284 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState, the
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
-        .default_width(500.0)
+        .default_width(460.0)
         .default_height(600.0)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .frame(egui::Frame::window(&ctx.style())
+            .fill(theme.surfaces.panel.to_color32())
+            .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
+            .corner_radius(egui::CornerRadius::same(8)))
         .show(ctx, |ui| {
-            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.spacing_mut().item_spacing.y = 2.0;
 
-            // Show files being imported
-            egui::CollapsingHeader::new(RichText::new("Files to Import").strong())
-                .default_open(true)
+            // File list header
+            let file_count = assets.pending_import_files.len();
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{} files selected", file_count))
+                    .color(theme.text.secondary.to_color32()).small());
+            });
+
+            // File list in dark frame
+            egui::Frame::new()
+                .fill(Color32::from_rgb(35, 37, 42))
+                .stroke(egui::Stroke::new(1.0, Color32::from_rgb(55, 57, 62)))
+                .corner_radius(egui::CornerRadius::same(6))
+                .inner_margin(egui::Margin::same(6))
                 .show(ui, |ui| {
-                    egui::Frame::new()
-                        .fill(frame_bg)
-                        .corner_radius(4.0)
-                        .inner_margin(8.0)
+                    egui::ScrollArea::vertical()
+                        .max_height(60.0)
                         .show(ui, |ui| {
-                            egui::ScrollArea::vertical()
-                                .max_height(60.0)
-                                .show(ui, |ui| {
-                                    for path in &assets.pending_import_files {
-                                        let filename = path.file_name()
-                                            .and_then(|n| n.to_str())
-                                            .unwrap_or("Unknown");
-                                        let is_model = is_model_file(filename);
-                                        let icon = if is_model { CUBE } else { FILE };
-                                        let color = if is_model {
-                                            model_icon_color
-                                        } else {
-                                            file_icon_color
-                                        };
-                                        ui.horizontal(|ui| {
-                                            ui.label(RichText::new(icon).color(color));
-                                            ui.label(filename);
-                                        });
-                                    }
+                            for path in &assets.pending_import_files {
+                                let filename = path.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown");
+                                let is_model = is_model_file(filename);
+                                let icon = if is_model { CUBE } else { FILE };
+                                let color = if is_model { model_icon_color } else { file_icon_color };
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(icon).color(color));
+                                    ui.label(RichText::new(filename).color(Color32::from_rgb(200, 200, 210)));
                                 });
+                            }
                         });
                 });
+
+            // Format info banner
+            {
+                let first_model_ext = assets.pending_import_files.iter()
+                    .filter_map(|p| p.extension().and_then(|e| e.to_str()))
+                    .find(|e| is_model_file(&format!("x.{}", e)))
+                    .unwrap_or("");
+                if !first_model_ext.is_empty() {
+                    let desc = ModelImportSettings::format_description(first_model_ext);
+                    ui.add_space(2.0);
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(35, 45, 55))
+                        .corner_radius(egui::CornerRadius::same(4))
+                        .inner_margin(egui::Margin::same(6))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(INFO).color(theme.semantic.accent.to_color32()));
+                                ui.label(RichText::new(desc).color(theme.text.secondary.to_color32()).small());
+                            });
+                        });
+                }
+            }
 
             ui.add_space(4.0);
 
             egui::ScrollArea::vertical()
                 .max_height(450.0)
                 .show(ui, |ui| {
-                    // === TRANSFORM SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Transform").strong())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Scale:");
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.scale)
-                                    .range(0.001..=1000.0)
-                                    .speed(0.01)
-                                    .prefix("x"));
-                                if ui.small_button("Reset").clicked() {
-                                    assets.import_settings.scale = 1.0;
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Rotation:");
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.0)
-                                    .range(-360.0..=360.0).speed(1.0).prefix("X: ").suffix("°"));
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.1)
-                                    .range(-360.0..=360.0).speed(1.0).prefix("Y: ").suffix("°"));
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.2)
-                                    .range(-360.0..=360.0).speed(1.0).prefix("Z: ").suffix("°"));
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Translation:");
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.0)
-                                    .speed(0.1).prefix("X: "));
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.1)
-                                    .speed(0.1).prefix("Y: "));
-                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.2)
-                                    .speed(0.1).prefix("Z: "));
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Convert Axes:");
-                                egui::ComboBox::from_id_salt("convert_axes")
-                                    .selected_text(match assets.import_settings.convert_axes {
-                                        ConvertAxes::None => "None",
-                                        ConvertAxes::ZUpToYUp => "Z-Up to Y-Up (Blender)",
-                                        ConvertAxes::YUpToZUp => "Y-Up to Z-Up",
-                                        ConvertAxes::FlipX => "Flip X",
-                                        ConvertAxes::FlipZ => "Flip Z",
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::None, "None");
-                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::ZUpToYUp, "Z-Up to Y-Up (Blender)");
-                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::YUpToZUp, "Y-Up to Z-Up");
-                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipX, "Flip X");
-                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipZ, "Flip Z");
-                                    });
-                            });
-                        });
-
-                    // === MESH SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Mesh").strong())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Mesh Handling:");
-                                egui::ComboBox::from_id_salt("mesh_handling")
-                                    .selected_text(match assets.import_settings.mesh_handling {
-                                        MeshHandling::KeepHierarchy => "Keep Hierarchy",
-                                        MeshHandling::ExtractMeshes => "Extract Meshes",
-                                        MeshHandling::FlattenHierarchy => "Flatten Hierarchy",
-                                        MeshHandling::CombineAll => "Combine All",
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::KeepHierarchy, "Keep Hierarchy");
-                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::ExtractMeshes, "Extract Meshes");
-                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::FlattenHierarchy, "Flatten Hierarchy");
-                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::CombineAll, "Combine All");
-                                    });
-                            });
-
-                            if assets.import_settings.mesh_handling == MeshHandling::ExtractMeshes {
-                                ui.label(RichText::new("  Each mesh will be saved as a separate .glb file").color(hint_color).small());
+                    // === TRANSFORM ===
+                    render_category(ui, ARROWS_OUT_CARDINAL, "Transform", "transform", theme, "import_transform", true, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Scale:");
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.scale)
+                                .range(0.001..=1000.0)
+                                .speed(0.01)
+                                .prefix("x"));
+                            if ui.small_button("Reset").clicked() {
+                                assets.import_settings.scale = 1.0;
                             }
+                        });
 
-                            ui.checkbox(&mut assets.import_settings.combine_meshes, "Combine meshes with same material");
+                        ui.horizontal(|ui| {
+                            ui.label("Rotation:");
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.0)
+                                .range(-360.0..=360.0).speed(1.0).prefix("X: ").suffix("°"));
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.1)
+                                .range(-360.0..=360.0).speed(1.0).prefix("Y: ").suffix("°"));
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.2)
+                                .range(-360.0..=360.0).speed(1.0).prefix("Z: ").suffix("°"));
+                        });
 
-                            ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Translation:");
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.0)
+                                .speed(0.1).prefix("X: "));
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.1)
+                                .speed(0.1).prefix("Y: "));
+                            ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.2)
+                                .speed(0.1).prefix("Z: "));
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("Convert Axes:");
+                            egui::ComboBox::from_id_salt("convert_axes")
+                                .selected_text(match assets.import_settings.convert_axes {
+                                    ConvertAxes::None => "None",
+                                    ConvertAxes::ZUpToYUp => "Z-Up to Y-Up (Blender)",
+                                    ConvertAxes::YUpToZUp => "Y-Up to Z-Up",
+                                    ConvertAxes::FlipX => "Flip X",
+                                    ConvertAxes::FlipZ => "Flip Z",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::None, "None");
+                                    ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::ZUpToYUp, "Z-Up to Y-Up (Blender)");
+                                    ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::YUpToZUp, "Y-Up to Z-Up");
+                                    ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipX, "Flip X");
+                                    ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipZ, "Flip Z");
+                                });
+                        });
+                    });
+
+                    // === MESH ===
+                    render_category(ui, CUBE, "Mesh", "rendering", theme, "import_mesh", true, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Mesh Handling:");
+                            egui::ComboBox::from_id_salt("mesh_handling")
+                                .selected_text(match assets.import_settings.mesh_handling {
+                                    MeshHandling::KeepHierarchy => "Keep Hierarchy",
+                                    MeshHandling::ExtractMeshes => "Extract Meshes",
+                                    MeshHandling::FlattenHierarchy => "Flatten Hierarchy",
+                                    MeshHandling::CombineAll => "Combine All",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::KeepHierarchy, "Keep Hierarchy");
+                                    ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::ExtractMeshes, "Extract Meshes");
+                                    ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::FlattenHierarchy, "Flatten Hierarchy");
+                                    ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::CombineAll, "Combine All");
+                                });
+                        });
+
+                        if assets.import_settings.mesh_handling == MeshHandling::ExtractMeshes {
+                            ui.label(RichText::new("  Each mesh will be saved as a separate .glb file").color(hint_color).small());
+                        }
+
+                        ui.checkbox(&mut assets.import_settings.combine_meshes, "Combine meshes with same material");
+
+                        ui.add_space(4.0);
+                        ui.add_enabled_ui(false, |ui| {
                             ui.checkbox(&mut assets.import_settings.generate_lods, "Generate LODs");
-                            ui.add_enabled_ui(assets.import_settings.generate_lods, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("LOD Levels:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.lod_count, 1..=6));
+                        });
+                        ui.label(RichText::new(format!("  {} LOD generation not yet implemented", WARNING)).color(hint_color).small());
+                    });
+
+                    // === NORMALS & TANGENTS ===
+                    render_category(ui, ATOM, "Normals & Tangents", "rendering", theme, "import_normals", false, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Normals:");
+                            egui::ComboBox::from_id_salt("normal_import")
+                                .selected_text(match assets.import_settings.normal_import {
+                                    NormalImportMethod::Import => "Import from File",
+                                    NormalImportMethod::ComputeSmooth => "Compute (Smooth)",
+                                    NormalImportMethod::ComputeFlat => "Compute (Flat)",
+                                    NormalImportMethod::ImportAndRecompute => "Import & Recompute Tangents",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::Import, "Import from File");
+                                    ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeSmooth, "Compute (Smooth)");
+                                    ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeFlat, "Compute (Flat)");
+                                    ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ImportAndRecompute, "Import & Recompute Tangents");
                                 });
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("Reduction %:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.lod_reduction, 10.0..=90.0).suffix("%"));
-                                });
-                            });
                         });
 
-                    // === NORMALS & TANGENTS SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Normals & Tangents").strong())
-                        .default_open(false)
-                        .show(ui, |ui| {
+                        let show_smoothing = matches!(assets.import_settings.normal_import,
+                            NormalImportMethod::ComputeSmooth | NormalImportMethod::ImportAndRecompute);
+                        ui.add_enabled_ui(show_smoothing, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label("Normals:");
-                                egui::ComboBox::from_id_salt("normal_import")
-                                    .selected_text(match assets.import_settings.normal_import {
-                                        NormalImportMethod::Import => "Import from File",
-                                        NormalImportMethod::ComputeSmooth => "Compute (Smooth)",
-                                        NormalImportMethod::ComputeFlat => "Compute (Flat)",
-                                        NormalImportMethod::ImportAndRecompute => "Import & Recompute Tangents",
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::Import, "Import from File");
-                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeSmooth, "Compute (Smooth)");
-                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeFlat, "Compute (Flat)");
-                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ImportAndRecompute, "Import & Recompute Tangents");
-                                    });
+                                ui.add_space(20.0);
+                                ui.label("Smoothing Angle:");
+                                ui.add(egui::Slider::new(&mut assets.import_settings.smoothing_angle, 0.0..=180.0).suffix("°"));
                             });
+                        });
 
-                            let show_smoothing = matches!(assets.import_settings.normal_import,
-                                NormalImportMethod::ComputeSmooth | NormalImportMethod::ImportAndRecompute);
-                            ui.add_enabled_ui(show_smoothing, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("Smoothing Angle:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.smoothing_angle, 0.0..=180.0).suffix("°"));
+                        ui.horizontal(|ui| {
+                            ui.label("Tangents:");
+                            egui::ComboBox::from_id_salt("tangent_import")
+                                .selected_text(match assets.import_settings.tangent_import {
+                                    TangentImportMethod::Import => "Import from File",
+                                    TangentImportMethod::ComputeMikkTSpace => "Compute (MikkTSpace)",
+                                    TangentImportMethod::None => "Don't Import",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::Import, "Import from File");
+                                    ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::ComputeMikkTSpace, "Compute (MikkTSpace)");
+                                    ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::None, "Don't Import");
                                 });
-                            });
+                        });
+                    });
 
+                    // === MATERIALS & TEXTURES ===
+                    render_category(ui, PALETTE, "Materials & Textures", "rendering", theme, "import_materials", true, |ui| {
+                        ui.checkbox(&mut assets.import_settings.import_materials, "Import Materials");
+                        ui.checkbox(&mut assets.import_settings.import_vertex_colors, "Import Vertex Colors");
+
+                        ui.add_space(4.0);
+                        ui.checkbox(&mut assets.import_settings.extract_textures, "Extract Textures");
+                        ui.add_enabled_ui(assets.import_settings.extract_textures, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label("Tangents:");
-                                egui::ComboBox::from_id_salt("tangent_import")
-                                    .selected_text(match assets.import_settings.tangent_import {
-                                        TangentImportMethod::Import => "Import from File",
-                                        TangentImportMethod::ComputeMikkTSpace => "Compute (MikkTSpace)",
-                                        TangentImportMethod::None => "Don't Import",
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::Import, "Import from File");
-                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::ComputeMikkTSpace, "Compute (MikkTSpace)");
-                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::None, "Don't Import");
-                                    });
+                                ui.add_space(20.0);
+                                ui.label("Subfolder:");
+                                ui.text_edit_singleline(&mut assets.import_settings.texture_subfolder);
                             });
+                            ui.label(RichText::new("  Embedded textures will be extracted to this subfolder").color(hint_color).small());
                         });
+                    });
 
-                    // === MATERIALS & TEXTURES SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Materials & Textures").strong())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.checkbox(&mut assets.import_settings.import_materials, "Import Materials");
-                            ui.checkbox(&mut assets.import_settings.import_vertex_colors, "Import Vertex Colors");
-
-                            ui.add_space(4.0);
-                            ui.checkbox(&mut assets.import_settings.extract_textures, "Extract Textures");
-                            ui.add_enabled_ui(assets.import_settings.extract_textures, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("Subfolder:");
-                                    ui.text_edit_singleline(&mut assets.import_settings.texture_subfolder);
-                                });
-                                ui.label(RichText::new("  Embedded textures will be extracted to this subfolder").color(hint_color).small());
-                            });
-                        });
-
-                    // === ANIMATION SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Animation & Skeleton").strong())
-                        .default_open(false)
-                        .show(ui, |ui| {
+                    // === ANIMATION (not yet implemented) ===
+                    render_category(ui, SPARKLE, "Animation & Skeleton", "rendering", theme, "import_animation", false, |ui| {
+                        ui.label(RichText::new(format!("{} Not yet implemented", WARNING)).color(hint_color).small());
+                        ui.add_enabled_ui(false, |ui| {
                             ui.checkbox(&mut assets.import_settings.import_animations, "Import Animations");
                             ui.checkbox(&mut assets.import_settings.import_skeleton, "Import Skeleton/Bones");
                             ui.checkbox(&mut assets.import_settings.import_as_skeletal, "Import as Skeletal Mesh");
-
-                            if assets.import_settings.import_as_skeletal {
-                                ui.label(RichText::new("  Mesh will be set up for skeletal animation").color(hint_color).small());
-                            }
                         });
+                    });
 
-                    // === COMPRESSION SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Compression (Draco)").strong())
-                        .default_open(false)
-                        .show(ui, |ui| {
+                    // === COMPRESSION (not yet implemented) ===
+                    render_category(ui, STACK, "Compression (Draco)", "rendering", theme, "import_compression", false, |ui| {
+                        ui.label(RichText::new(format!("{} Not yet implemented", WARNING)).color(hint_color).small());
+                        ui.add_enabled_ui(false, |ui| {
                             ui.checkbox(&mut assets.import_settings.draco_compression, "Enable Draco Compression");
-                            ui.label(RichText::new("Draco compresses mesh geometry for smaller file sizes (glTF/glb)").color(hint_color).small());
-
-                            ui.add_enabled_ui(assets.import_settings.draco_compression, |ui| {
-                                ui.add_space(4.0);
-                                ui.horizontal(|ui| {
-                                    ui.label("Compression Level:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_compression_level, 0..=10));
-                                });
-                                ui.label(RichText::new("  Higher = smaller file, slower encoding").color(hint_color).small());
-
-                                ui.add_space(4.0);
-                                ui.label("Quantization Bits (higher = better quality):");
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("Positions:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_position_bits, 8..=16));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("Normals:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_normal_bits, 8..=16));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    ui.label("UVs:");
-                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_uv_bits, 8..=16));
-                                });
-                            });
                         });
+                    });
 
-                    // === PHYSICS / COLLISION SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Physics & Collision").strong())
-                        .default_open(false)
-                        .show(ui, |ui| {
+                    // === PHYSICS (not yet implemented) ===
+                    render_category(ui, GAME_CONTROLLER, "Physics & Collision", "physics", theme, "import_physics", false, |ui| {
+                        ui.label(RichText::new(format!("{} Not yet implemented", WARNING)).color(hint_color).small());
+                        ui.add_enabled_ui(false, |ui| {
                             ui.checkbox(&mut assets.import_settings.generate_colliders, "Generate Collision Shapes");
-
-                            ui.add_enabled_ui(assets.import_settings.generate_colliders, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label("Collider Type:");
-                                    egui::ComboBox::from_id_salt("collider_type")
-                                        .selected_text(match assets.import_settings.collider_type {
-                                            ColliderImportType::ConvexHull => "Convex Hull",
-                                            ColliderImportType::Trimesh => "Triangle Mesh",
-                                            ColliderImportType::AABB => "Bounding Box (AABB)",
-                                            ColliderImportType::OBB => "Oriented Box (OBB)",
-                                            ColliderImportType::Capsule => "Capsule (Auto-fit)",
-                                            ColliderImportType::Sphere => "Sphere (Auto-fit)",
-                                            ColliderImportType::Decomposed => "Decomposed (V-HACD)",
-                                            ColliderImportType::SimplifiedMesh => "Simplified Mesh",
-                                        })
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::ConvexHull, "Convex Hull");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Trimesh, "Triangle Mesh");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::AABB, "Bounding Box (AABB)");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::OBB, "Oriented Box (OBB)");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Capsule, "Capsule (Auto-fit)");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Sphere, "Sphere (Auto-fit)");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Decomposed, "Decomposed (V-HACD)");
-                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::SimplifiedMesh, "Simplified Mesh");
-                                        });
-                                });
-
-                                ui.checkbox(&mut assets.import_settings.simplify_collision, "Simplify Collision Mesh");
-                                ui.add_enabled_ui(assets.import_settings.simplify_collision, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(20.0);
-                                        ui.label("Simplification:");
-                                        ui.add(egui::Slider::new(&mut assets.import_settings.collision_simplification, 0.1..=1.0)
-                                            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
-                                    });
-                                });
-                            });
                         });
+                    });
 
-                    // === LIGHTMAPPING SECTION ===
-                    egui::CollapsingHeader::new(RichText::new("Lightmapping").strong())
-                        .default_open(false)
-                        .show(ui, |ui| {
+                    // === LIGHTMAPPING (not yet implemented) ===
+                    render_category(ui, SUN, "Lightmapping", "environment", theme, "import_lightmap", false, |ui| {
+                        ui.label(RichText::new(format!("{} Not yet implemented", WARNING)).color(hint_color).small());
+                        ui.add_enabled_ui(false, |ui| {
                             ui.checkbox(&mut assets.import_settings.generate_lightmap_uvs, "Generate Lightmap UVs");
-
-                            ui.add_enabled_ui(assets.import_settings.generate_lightmap_uvs, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label("UV Channel:");
-                                    ui.add(egui::DragValue::new(&mut assets.import_settings.lightmap_uv_channel)
-                                        .range(0..=7));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("Min Resolution:");
-                                    egui::ComboBox::from_id_salt("lightmap_res")
-                                        .selected_text(format!("{}", assets.import_settings.lightmap_resolution))
-                                        .show_ui(ui, |ui| {
-                                            for res in [32, 64, 128, 256, 512, 1024] {
-                                                ui.selectable_value(&mut assets.import_settings.lightmap_resolution, res, format!("{}", res));
-                                            }
-                                        });
-                                });
-                            });
                         });
+                    });
                 });
 
             ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(4.0);
 
-            // Buttons
+            // Action buttons
+            let model_count = assets.pending_import_files.iter()
+                .filter(|p| is_model_file(p.file_name().and_then(|n| n.to_str()).unwrap_or("")))
+                .count();
+            let total_count = assets.pending_import_files.len();
+
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(format!("{} Import", CHECK)).strong()).clicked() {
+                // Import button (accent filled)
+                let import_label = if model_count < total_count {
+                    format!("{} Import Models ({})", CHECK, model_count)
+                } else {
+                    format!("{} Import ({})", CHECK, total_count)
+                };
+                let accent = theme.semantic.accent.to_color32();
+                if ui.add(egui::Button::new(RichText::new(import_label).color(Color32::WHITE).strong())
+                    .fill(accent)
+                    .corner_radius(egui::CornerRadius::same(4))).clicked()
+                {
                     should_import = true;
                 }
 
-                if ui.button(RichText::new(format!("{} Import All", CHECK))).clicked() {
-                    should_import = true;
+                if model_count < total_count {
+                    if ui.button(RichText::new(format!("{} Import All ({})", CHECK, total_count))).clicked() {
+                        should_import = true;
+                    }
                 }
 
                 if ui.button(RichText::new(format!("{} Cancel", X))).clicked() {
@@ -3738,7 +3688,6 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState, the
     }
 
     if should_import {
-        // Perform the import
         if let Some(target_folder) = assets.current_folder.clone() {
             perform_model_import(assets, &target_folder);
         }
@@ -3748,24 +3697,49 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState, the
 }
 
 /// Perform the actual import with the configured settings
-fn perform_model_import(assets: &AssetBrowserState, target_folder: &PathBuf) {
+fn perform_model_import(assets: &mut AssetBrowserState, target_folder: &PathBuf) {
     let _ = std::fs::create_dir_all(target_folder);
 
-    for source_path in &assets.pending_import_files {
-        if let Some(file_name) = source_path.file_name() {
-            let dest_path = target_folder.join(file_name);
+    let pending_files = assets.pending_import_files.clone();
+    let settings = assets.import_settings.clone();
+    let mut results = Vec::new();
 
-            if let Err(e) = std::fs::copy(source_path, &dest_path) {
+    for source_path in &pending_files {
+        let filename = source_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let file_name = match source_path.file_name() {
+            Some(n) => n,
+            None => {
+                results.push(ImportFileResult {
+                    filename,
+                    success: false,
+                    message: "Invalid file path".to_string(),
+                    output_size: None,
+                });
+                continue;
+            }
+        };
+
+        let dest_path = target_folder.join(file_name);
+
+        match std::fs::copy(source_path, &dest_path) {
+            Err(e) => {
                 error!("Failed to import {}: {}", source_path.display(), e);
-            } else {
-                info!("Imported: {} (scale: {}, colliders: {})",
-                    dest_path.display(),
-                    assets.import_settings.scale,
-                    assets.import_settings.generate_colliders
-                );
-
+                results.push(ImportFileResult {
+                    filename,
+                    success: false,
+                    message: format!("Copy failed: {}", e),
+                    output_size: None,
+                });
+            }
+            Ok(_) => {
                 // Copy sidecar files (MTL, textures) for non-glTF formats
-                crate::import::copy_sidecar_files(source_path, target_folder);
+                let sidecars = crate::import::copy_sidecar_files(source_path, target_folder);
+                let sidecar_count = sidecars.len();
 
                 // Convert non-glTF formats to GLB
                 let ext = dest_path
@@ -3773,18 +3747,133 @@ fn perform_model_import(assets: &AssetBrowserState, target_folder: &PathBuf) {
                     .and_then(|e| e.to_str())
                     .unwrap_or("")
                     .to_lowercase();
+
                 if crate::import::is_convertible_model(&ext) {
-                    match crate::import::convert_to_glb(&dest_path, &assets.import_settings) {
+                    match crate::import::convert_to_glb(&dest_path, &settings) {
                         Ok(glb_path) => {
+                            let output_size = std::fs::metadata(&glb_path).ok().map(|m| m.len());
+                            let mut msg = format!("Converted to GLB");
+                            if let Some(size) = output_size {
+                                msg.push_str(&format!(" ({:.1} KB)", size as f64 / 1024.0));
+                            }
+                            if sidecar_count > 0 {
+                                msg.push_str(&format!(", {} sidecar file(s)", sidecar_count));
+                            }
                             info!("Converted to GLB: {}", glb_path.display());
+                            results.push(ImportFileResult {
+                                filename,
+                                success: true,
+                                message: msg,
+                                output_size,
+                            });
                         }
                         Err(e) => {
                             error!("Failed to convert {} to GLB: {}", dest_path.display(), e);
+                            results.push(ImportFileResult {
+                                filename,
+                                success: false,
+                                message: format!("Conversion failed: {}", e),
+                                output_size: None,
+                            });
                         }
                     }
+                } else {
+                    // glTF/GLB files are copied directly
+                    let output_size = std::fs::metadata(&dest_path).ok().map(|m| m.len());
+                    let mut msg = "Imported directly".to_string();
+                    if let Some(size) = output_size {
+                        msg.push_str(&format!(" ({:.1} KB)", size as f64 / 1024.0));
+                    }
+                    if sidecar_count > 0 {
+                        msg.push_str(&format!(", {} sidecar file(s)", sidecar_count));
+                    }
+                    info!("Imported: {}", dest_path.display());
+                    results.push(ImportFileResult {
+                        filename,
+                        success: true,
+                        message: msg,
+                        output_size,
+                    });
                 }
             }
         }
+    }
+
+    assets.import_status.results = results;
+    assets.import_status.completed = true;
+    assets.import_status.show_results = true;
+}
+
+/// Render import results overlay after import completes
+fn render_import_results(ctx: &egui::Context, assets: &mut AssetBrowserState, theme: &Theme) {
+    if !assets.import_status.show_results {
+        return;
+    }
+
+    let mut open = true;
+    let success_count = assets.import_status.results.iter().filter(|r| r.success).count();
+    let fail_count = assets.import_status.results.iter().filter(|r| !r.success).count();
+    let total = assets.import_status.results.len();
+
+    let title = if fail_count == 0 {
+        format!("{} Import Complete", CHECK_CIRCLE)
+    } else if success_count == 0 {
+        format!("{} Import Failed", X_CIRCLE)
+    } else {
+        format!("{} Import Complete ({} warnings)", WARNING, fail_count)
+    };
+
+    egui::Window::new(title)
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(400.0)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            // Summary
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{} of {} files imported successfully", success_count, total)));
+            });
+
+            ui.add_space(4.0);
+
+            // Per-file results
+            egui::Frame::new()
+                .fill(theme.surfaces.faint.to_color32())
+                .corner_radius(4.0)
+                .inner_margin(8.0)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for result in &assets.import_status.results {
+                                ui.horizontal(|ui| {
+                                    if result.success {
+                                        ui.label(RichText::new(CHECK_CIRCLE).color(theme.semantic.success.to_color32()));
+                                    } else {
+                                        ui.label(RichText::new(X_CIRCLE).color(theme.semantic.error.to_color32()));
+                                    }
+                                    ui.label(RichText::new(&result.filename).strong());
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add_space(22.0);
+                                    ui.label(RichText::new(&result.message).color(theme.text.muted.to_color32()).small());
+                                });
+                                ui.add_space(2.0);
+                            }
+                        });
+                });
+
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Close").clicked() {
+                    assets.import_status.show_results = false;
+                }
+            });
+        });
+
+    if !open {
+        assets.import_status.show_results = false;
     }
 }
 

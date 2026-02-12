@@ -56,6 +56,10 @@ bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false,
 # Cloth physics simulation
 bevy_silk = { path = "crates/bevy_silk", features = ["avian_collisions"] }
 
+# Voxel world generation
+bevy_voxel_world = { path = "crates/bevy_voxel_world" }
+noise = "0.9"
+
 # Editor-only dependencies
 bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular", "fill"], optional = true }
@@ -77,7 +81,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari"]
+members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/bevy_voxel_world"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

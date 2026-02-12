@@ -94,16 +94,16 @@ impl Plugin for GizmoPlugin {
 
 /// Configure the gizmo system with separate config groups for grid and selection
 fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
-    // Default gizmos - normal depth (used for misc gizmos)
+    // Default gizmos - render on top of scene objects
     let (default_config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
     default_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    default_config.depth_bias = -1.0;
     default_config.line.width = 2.0;
 
-    // Grid gizmos - normal depth, thinner lines
+    // Grid gizmos - normal depth, thinner lines (occluded by objects)
     let (grid_config, _) = config_store.config_mut::<GridGizmoGroup>();
     grid_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
     grid_config.line.width = 1.0;
-    // No depth bias - grid renders normally behind objects
 
     // Selection gizmos - render on top of everything
     let (selection_config, _) = config_store.config_mut::<SelectionGizmoGroup>();
@@ -111,15 +111,15 @@ fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
     selection_config.depth_bias = -1.0;
     selection_config.line.width = 3.0;
 
-    // Terrain selection gizmos - normal depth testing (occluded by other meshes)
+    // Terrain selection gizmos - render on top of scene objects
     let (terrain_config, _) = config_store.config_mut::<TerrainSelectionGizmoGroup>();
     terrain_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    terrain_config.depth_bias = -1.0;
     terrain_config.line.width = 3.0;
-    // No depth bias - uses normal depth testing
 
-    // Physics debug visualization gizmos - renders slightly on top
+    // Physics debug visualization gizmos - render on top of scene objects
     let (physics_viz_config, _) = config_store.config_mut::<PhysicsVizGizmoGroup>();
     physics_viz_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
-    physics_viz_config.depth_bias = -0.5;
+    physics_viz_config.depth_bias = -1.0;
     physics_viz_config.line.width = 2.0;
 }

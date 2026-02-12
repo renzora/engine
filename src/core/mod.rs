@@ -11,7 +11,7 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 pub use resources::{
     AnimationTimelineState, TimelinePlayState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
-    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState,
+    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState, ImportFileResult, ImportStatus,
     DockingState, EditorSettings, MonoFont, RenderStats, CameraSettings, UiFont,
     ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, InspectorPanelRenderState, LogEntry, LogLevel, MeshHandling,

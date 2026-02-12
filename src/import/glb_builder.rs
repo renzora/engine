@@ -49,6 +49,7 @@ pub struct GlbBuilder {
     nodes: Vec<NodeData>,
     root_scale: Option<f32>,
     root_rotation: Option<[f32; 4]>,
+    root_translation: Option<[f32; 3]>,
 }
 
 impl GlbBuilder {
@@ -60,6 +61,7 @@ impl GlbBuilder {
             nodes: Vec::new(),
             root_scale: None,
             root_rotation: None,
+            root_translation: None,
         }
     }
 
@@ -95,6 +97,11 @@ impl GlbBuilder {
     /// Set a rotation on the root transform (quaternion [x, y, z, w])
     pub fn set_root_rotation(&mut self, rotation: [f32; 4]) {
         self.root_rotation = Some(rotation);
+    }
+
+    /// Set a translation on the root transform
+    pub fn set_root_translation(&mut self, translation: [f32; 3]) {
+        self.root_translation = Some(translation);
     }
 
     /// Build a valid GLB binary from accumulated data
@@ -242,9 +249,9 @@ impl GlbBuilder {
             }
         }
 
-        // Wrap everything in a root node if we need scale/rotation
+        // Wrap everything in a root node if we need scale/rotation/translation
         let scene_nodes: Vec<json::Index<json::Node>>;
-        if self.root_scale.is_some() || self.root_rotation.is_some() {
+        if self.root_scale.is_some() || self.root_rotation.is_some() || self.root_translation.is_some() {
             let child_indices: Vec<usize> = (0..json_nodes.len()).collect();
             let root_idx = json_nodes.len();
             json_nodes.push(json::Node {
@@ -257,7 +264,7 @@ impl GlbBuilder {
                 matrix: None,
                 rotation: self.root_rotation.map(json::scene::UnitQuaternion),
                 scale: self.root_scale.map(|s| [s, s, s]),
-                translation: None,
+                translation: self.root_translation,
                 skin: None,
                 weights: None,
             });

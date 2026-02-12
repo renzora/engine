@@ -54,33 +54,61 @@ pub fn convert_to_glb(source: &Path, settings: &ModelImportSettings) -> Result<P
         builder.set_root_scale(settings.scale);
     }
 
-    match settings.convert_axes {
+    // Build root rotation: compose axis conversion with user rotation offset
+    let axes_quat = match settings.convert_axes {
         ConvertAxes::ZUpToYUp => {
-            // Rotate -90° around X: quat = [-sin(45°), 0, 0, cos(45°)]
-            builder.set_root_rotation([
+            // Rotate -90° around X
+            Some([
                 -std::f32::consts::FRAC_1_SQRT_2,
                 0.0,
                 0.0,
                 std::f32::consts::FRAC_1_SQRT_2,
-            ]);
+            ])
         }
         ConvertAxes::YUpToZUp => {
             // Rotate +90° around X
-            builder.set_root_rotation([
+            Some([
                 std::f32::consts::FRAC_1_SQRT_2,
                 0.0,
                 0.0,
                 std::f32::consts::FRAC_1_SQRT_2,
-            ]);
+            ])
         }
         ConvertAxes::FlipX => {
             builder.set_root_scale(-1.0); // This is a hack; proper flip would need per-vertex
+            None
         }
         ConvertAxes::FlipZ => {
             // Rotate 180° around Y
-            builder.set_root_rotation([0.0, 1.0, 0.0, 0.0]);
+            Some([0.0, 1.0, 0.0, 0.0])
         }
-        ConvertAxes::None => {}
+        ConvertAxes::None => None,
+    };
+
+    let (rx, ry, rz) = settings.rotation_offset;
+    let has_rotation_offset = rx.abs() > f32::EPSILON || ry.abs() > f32::EPSILON || rz.abs() > f32::EPSILON;
+    let offset_quat = if has_rotation_offset {
+        Some(euler_to_quat(rx, ry, rz))
+    } else {
+        None
+    };
+
+    // Compose: axes_quat * offset_quat (axes applied first, then user offset)
+    let final_rotation = match (axes_quat, offset_quat) {
+        (Some(a), Some(b)) => Some(quat_mul(a, b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    };
+
+    if let Some(rot) = final_rotation {
+        builder.set_root_rotation(rot);
+    }
+
+    // Apply translation offset
+    let (tx, ty, tz) = settings.translation_offset;
+    if tx.abs() > f32::EPSILON || ty.abs() > f32::EPSILON || tz.abs() > f32::EPSILON {
+        builder.set_root_translation([tx, ty, tz]);
     }
 
     // Dispatch to format-specific converter
@@ -179,6 +207,39 @@ pub fn copy_sidecar_files(source: &Path, dest_dir: &Path) -> Vec<PathBuf> {
     }
 
     copied
+}
+
+/// Convert Euler angles (degrees, XYZ order) to quaternion [x, y, z, w].
+fn euler_to_quat(x_deg: f32, y_deg: f32, z_deg: f32) -> [f32; 4] {
+    let (hx, hy, hz) = (
+        x_deg.to_radians() * 0.5,
+        y_deg.to_radians() * 0.5,
+        z_deg.to_radians() * 0.5,
+    );
+    let (sx, cx) = hx.sin_cos();
+    let (sy, cy) = hy.sin_cos();
+    let (sz, cz) = hz.sin_cos();
+
+    // XYZ rotation order
+    [
+        sx * cy * cz + cx * sy * sz,
+        cx * sy * cz - sx * cy * sz,
+        cx * cy * sz + sx * sy * cz,
+        cx * cy * cz - sx * sy * sz,
+    ]
+}
+
+/// Multiply two quaternions: result = a * b (apply b then a).
+/// Quaternions are [x, y, z, w].
+fn quat_mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    let [ax, ay, az, aw] = a;
+    let [bx, by, bz, bw] = b;
+    [
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    ]
 }
 
 /// Copy image files from source_dir to dest_dir (for formats that reference external textures).

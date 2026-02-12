@@ -23,6 +23,7 @@ pub(crate) mod sun;
 pub mod terrain;
 pub(crate) mod clouds;
 pub(crate) mod surface_painting;
+pub(crate) mod voxel_world;
 mod ui_button;
 mod ui_image;
 mod ui_label;
@@ -101,6 +102,9 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
 
     // Surface painting
     surface_painting::register(registry);
+
+    // Voxel world
+    voxel_world::register(registry);
 
     // Post-processing
     fog::register(registry);

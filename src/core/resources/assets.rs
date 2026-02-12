@@ -152,6 +152,8 @@ pub struct AssetBrowserState {
     pub import_settings: ModelImportSettings,
     /// Files pending import (selected via file dialog)
     pub pending_import_files: Vec<PathBuf>,
+    /// Import status tracking
+    pub import_status: ImportStatus,
     /// Expanded folders in tree view
     pub expanded_folders: HashSet<PathBuf>,
     /// Width of the tree panel in split view
@@ -315,6 +317,38 @@ impl Default for ModelImportSettings {
     }
 }
 
+impl ModelImportSettings {
+    /// Auto-configure defaults based on source file extension.
+    pub fn apply_format_defaults(&mut self, ext: &str) {
+        match ext {
+            "fbx" => {
+                // FBX files typically use Z-Up (Blender, Maya, 3ds Max)
+                self.convert_axes = ConvertAxes::ZUpToYUp;
+            }
+            "obj" => {
+                // OBJ is ambiguous but many exporters use Y-Up already
+                self.convert_axes = ConvertAxes::None;
+            }
+            "usd" | "usdz" => {
+                // USD uses Y-Up by default
+                self.convert_axes = ConvertAxes::None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Return a human-readable description for the format.
+    pub fn format_description(ext: &str) -> &'static str {
+        match ext {
+            "fbx" => "FBX (Autodesk) — typically Z-Up. Axis conversion auto-enabled.",
+            "obj" => "OBJ (Wavefront) — Y-Up by convention. Sidecar .mtl + textures will be copied.",
+            "usd" | "usdz" => "USD (Universal Scene Description) — Y-Up by default.",
+            "glb" | "gltf" => "glTF/GLB — native engine format. No conversion needed.",
+            _ => "Unknown format",
+        }
+    }
+}
+
 /// How to handle coordinate system conversion
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ConvertAxes {
@@ -445,6 +479,23 @@ impl AssetBrowserState {
         }
         filename.to_lowercase().contains(&self.search.to_lowercase())
     }
+}
+
+/// Result of importing a single file
+#[derive(Clone, Debug)]
+pub struct ImportFileResult {
+    pub filename: String,
+    pub success: bool,
+    pub message: String,
+    pub output_size: Option<u64>,
+}
+
+/// Status tracker for batch imports
+#[derive(Clone, Debug, Default)]
+pub struct ImportStatus {
+    pub results: Vec<ImportFileResult>,
+    pub completed: bool,
+    pub show_results: bool,
 }
 
 /// View mode for asset browser

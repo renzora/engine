@@ -33,8 +33,9 @@ pub mod render_pipeline;
 
 pub use animation_timeline::{AnimationTimelineState, TimelinePlayState};
 pub use assets::{
-    AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
-    ModelImportSettings, NormalImportMethod, PendingImageDrop, PendingMaterialDrop, TangentImportMethod,
+    AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, ImportFileResult,
+    ImportStatus, MeshHandling, ModelImportSettings, NormalImportMethod, PendingImageDrop,
+    PendingMaterialDrop, TangentImportMethod,
 };
 pub use camera::{OrbitCameraState, ProjectionMode, TabCameraState};
 pub use console::{ConsoleState, LogEntry, LogLevel};
