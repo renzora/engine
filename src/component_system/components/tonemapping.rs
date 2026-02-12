@@ -40,13 +40,19 @@ fn inspect_tonemapping(
     let mut row = 0;
 
     inline_property(ui, row, "Mode", |ui| {
-        let tonemap_options = ["None", "Reinhard", "ACES", "AgX", "Filmic"];
+        let tonemap_options = [
+            "None", "Reinhard", "Reinhard Luminance", "ACES Fitted",
+            "AgX", "SomewhatBoring", "TonyMcMapface", "Blender Filmic",
+        ];
         let mut tonemap_index = match tm.mode {
             TonemappingMode::None => 0,
-            TonemappingMode::Reinhard | TonemappingMode::ReinhardLuminance => 1,
-            TonemappingMode::AcesFitted => 2,
-            TonemappingMode::AgX => 3,
-            TonemappingMode::BlenderFilmic | TonemappingMode::SomewhatBoringDisplayTransform | TonemappingMode::TonyMcMapface => 4,
+            TonemappingMode::Reinhard => 1,
+            TonemappingMode::ReinhardLuminance => 2,
+            TonemappingMode::AcesFitted => 3,
+            TonemappingMode::AgX => 4,
+            TonemappingMode::SomewhatBoringDisplayTransform => 5,
+            TonemappingMode::TonyMcMapface => 6,
+            TonemappingMode::BlenderFilmic => 7,
         };
         egui::ComboBox::from_id_salt("tm_tonemap_combo")
             .selected_text(tonemap_options[tonemap_index])
@@ -56,9 +62,12 @@ fn inspect_tonemapping(
                         tm.mode = match tonemap_index {
                             0 => TonemappingMode::None,
                             1 => TonemappingMode::Reinhard,
-                            2 => TonemappingMode::AcesFitted,
-                            3 => TonemappingMode::AgX,
-                            4 => TonemappingMode::BlenderFilmic,
+                            2 => TonemappingMode::ReinhardLuminance,
+                            3 => TonemappingMode::AcesFitted,
+                            4 => TonemappingMode::AgX,
+                            5 => TonemappingMode::SomewhatBoringDisplayTransform,
+                            6 => TonemappingMode::TonyMcMapface,
+                            7 => TonemappingMode::BlenderFilmic,
                             _ => TonemappingMode::Reinhard,
                         };
                         changed = true;

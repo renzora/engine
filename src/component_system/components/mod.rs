@@ -42,6 +42,23 @@ pub(crate) mod reflections;
 pub mod skybox;
 pub(crate) mod tonemapping;
 
+// New post-processing components
+pub(crate) mod taa;
+pub(crate) mod smaa;
+pub(crate) mod cas;
+pub(crate) mod chromatic_aberration;
+pub(crate) mod auto_exposure;
+pub(crate) mod volumetric_fog;
+pub(crate) mod vignette;
+pub(crate) mod film_grain;
+pub(crate) mod pixelation;
+pub(crate) mod crt;
+pub(crate) mod god_rays;
+pub(crate) mod gaussian_blur;
+pub(crate) mod palette_quantization;
+pub(crate) mod distortion;
+pub(crate) mod underwater;
+
 // Re-export commonly used gameplay components
 pub use health::HealthData;
 
@@ -116,4 +133,21 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     depth_of_field::register(registry);
     motion_blur::register(registry);
     skybox::register(registry);
+
+    // New post-processing effects
+    taa::register(registry);
+    smaa::register(registry);
+    cas::register(registry);
+    chromatic_aberration::register(registry);
+    auto_exposure::register(registry);
+    volumetric_fog::register(registry);
+    vignette::register(registry);
+    film_grain::register(registry);
+    pixelation::register(registry);
+    crt::register(registry);
+    god_rays::register(registry);
+    gaussian_blur::register(registry);
+    palette_quantization::register(registry);
+    distortion::register(registry);
+    underwater::register(registry);
 }

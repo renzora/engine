@@ -24,6 +24,10 @@ pub use components::{
     // Post-processing
     TonemappingMode, SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
     ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData, AmbientLightData,
+    TaaData, SmaaData, SmaaPresetMode, CasData, ChromaticAberrationData,
+    AutoExposureData, VolumetricFogData,
+    VignetteData, FilmGrainData, PixelationData, CrtData, GodRaysData,
+    GaussianBlurData, PaletteQuantizationData, DistortionData, UnderwaterData,
     // Instances
     MeshInstanceData, SceneInstanceData,
     // Lights

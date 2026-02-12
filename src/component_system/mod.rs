@@ -136,6 +136,23 @@ impl Plugin for ComponentSystemPlugin {
         app.init_resource::<components::clouds::CloudsState>();
         app.add_plugins(bevy::pbr::MaterialPlugin::<components::clouds::CloudMaterial>::default());
 
+        // Register FullscreenMaterial plugins for custom post-processing effects
+        {
+            use bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin;
+            use crate::post_process::*;
+            app.add_plugins((
+                FullscreenMaterialPlugin::<VignetteSettings>::default(),
+                FullscreenMaterialPlugin::<FilmGrainSettings>::default(),
+                FullscreenMaterialPlugin::<PixelationSettings>::default(),
+                FullscreenMaterialPlugin::<CrtSettings>::default(),
+                FullscreenMaterialPlugin::<GodRaysSettings>::default(),
+                FullscreenMaterialPlugin::<GaussianBlurSettings>::default(),
+                FullscreenMaterialPlugin::<PaletteQuantizationSettings>::default(),
+                FullscreenMaterialPlugin::<DistortionSettings>::default(),
+                FullscreenMaterialPlugin::<UnderwaterSettings>::default(),
+            ));
+        }
+
         // Add system to process pending component operations
         app.add_systems(Update, (
             process_pending_component_operations,
@@ -159,6 +176,28 @@ impl Plugin for ComponentSystemPlugin {
             components::skybox::sync_skybox,
             components::sun::sync_sun_disc,
             components::clouds::sync_clouds,
+        ).run_if(in_state(crate::core::AppState::Editor)));
+
+        // New post-processing sync systems (split into groups of <=12 for tuple size limit)
+        app.add_systems(Update, (
+            components::taa::sync_taa,
+            components::smaa::sync_smaa,
+            components::cas::sync_cas,
+            components::chromatic_aberration::sync_chromatic_aberration,
+            components::auto_exposure::sync_auto_exposure,
+            components::volumetric_fog::sync_volumetric_fog,
+            components::vignette::sync_vignette,
+            components::film_grain::sync_film_grain,
+            components::pixelation::sync_pixelation,
+            components::crt::sync_crt,
+            components::god_rays::sync_god_rays,
+            components::gaussian_blur::sync_gaussian_blur,
+        ).run_if(in_state(crate::core::AppState::Editor)));
+
+        app.add_systems(Update, (
+            components::palette_quantization::sync_palette_quantization,
+            components::distortion::sync_distortion,
+            components::underwater::sync_underwater,
         ).run_if(in_state(crate::core::AppState::Editor)));
     }
 }

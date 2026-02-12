@@ -18,6 +18,7 @@ mod meshlet;
 mod particles;
 mod pixel_editor;
 mod play_mode;
+mod post_process;
 mod plugin_core;
 mod project;
 mod scene;
@@ -220,6 +221,23 @@ fn main() {
         .register_type::<shared::MotionBlurData>()
         .register_type::<shared::AmbientLightData>()
         .register_type::<shared::CloudsData>()
+        // New post-processing components
+        .register_type::<shared::TaaData>()
+        .register_type::<shared::SmaaData>()
+        .register_type::<shared::SmaaPresetMode>()
+        .register_type::<shared::CasData>()
+        .register_type::<shared::ChromaticAberrationData>()
+        .register_type::<shared::AutoExposureData>()
+        .register_type::<shared::VolumetricFogData>()
+        .register_type::<shared::VignetteData>()
+        .register_type::<shared::FilmGrainData>()
+        .register_type::<shared::PixelationData>()
+        .register_type::<shared::CrtData>()
+        .register_type::<shared::GodRaysData>()
+        .register_type::<shared::GaussianBlurData>()
+        .register_type::<shared::PaletteQuantizationData>()
+        .register_type::<shared::DistortionData>()
+        .register_type::<shared::UnderwaterData>()
         // Voxel world
         .register_type::<component_system::components::voxel_world::VoxelWorldData>()
         .register_type::<component_system::components::voxel_world::VoxelNoiseType>()

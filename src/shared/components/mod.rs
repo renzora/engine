@@ -22,6 +22,11 @@ pub use post_process::{
     TonemappingMode, SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
     ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData,
     AmbientLightData,
+    // New post-processing types
+    TaaData, SmaaData, SmaaPresetMode, CasData, ChromaticAberrationData,
+    AutoExposureData, VolumetricFogData,
+    VignetteData, FilmGrainData, PixelationData, CrtData, GodRaysData,
+    GaussianBlurData, PaletteQuantizationData, DistortionData, UnderwaterData,
 };
 pub use instances::{MeshInstanceData, SceneInstanceData};
 pub use physics::{
