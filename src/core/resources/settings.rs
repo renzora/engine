@@ -200,6 +200,8 @@ pub struct EditorSettings {
     pub camera_settings: CameraSettings,
     /// Whether to show the grid
     pub show_grid: bool,
+    /// Whether to show the axis orientation gizmo
+    pub show_axis_gizmo: bool,
     /// Size of the grid
     pub grid_size: f32,
     /// Number of grid divisions
@@ -236,6 +238,7 @@ impl Default for EditorSettings {
             camera_move_speed: 10.0,
             camera_settings: CameraSettings::default(),
             show_grid: true,
+            show_axis_gizmo: true,
             grid_size: 10.0,
             grid_divisions: 10,
             grid_color: [0.3, 0.3, 0.3],

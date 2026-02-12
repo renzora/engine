@@ -11,7 +11,7 @@ use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
-    IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA,
+    IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA, STACK,
     COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
     CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD, SPARKLE,
 };
@@ -145,8 +145,8 @@ fn render_viewport_tabs(
     // Center section: Select + Transform tools (4 buttons) + Snap dropdown
     let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown
 
-    // Right section: 4 render toggles + viz dropdown + view angles dropdown + camera settings dropdown
-    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + viz dropdown + view dropdown + camera dropdown
+    // Right section: 4 render toggles + gizmo dropdown + viz dropdown + view angles dropdown + camera settings dropdown
+    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + gizmo dropdown + viz dropdown + view dropdown + camera dropdown
 
     // Calculate positions
     let left_start = tabs_rect.min.x + 4.0;
@@ -303,6 +303,12 @@ fn render_viewport_tabs(
             }
             shadow_resp.on_hover_text(if settings.render_toggles.shadows { "Shadows: ON" } else { "Shadows: OFF" });
             x_pos += button_size.x + 4.0;
+
+            // Gizmo/Overlays Dropdown
+            let gizmo_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
+            let gizmo_color = theme.text.secondary.to_color32();
+            viewport_gizmo_dropdown(ui, ctx, gizmo_rect, STACK, gizmo_color, inactive_color, hovered_color, text_muted, settings, theme);
+            x_pos += 36.0 + 4.0;
 
             // Visualization Mode Dropdown
             let viz_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
@@ -811,6 +817,120 @@ fn viewport_view_dropdown(
     response.on_hover_text("View Angle");
 }
 
+/// Gizmo/Overlays dropdown for viewport header
+fn viewport_gizmo_dropdown(
+    ui: &mut egui::Ui,
+    _ctx: &egui::Context,
+    rect: Rect,
+    icon: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
+    settings: &mut EditorSettings,
+    theme: &Theme,
+) {
+    let button_id = ui.make_persistent_id("viewport_gizmo_dropdown");
+    let response = ui.allocate_rect(rect, Sense::click());
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            hovered_color
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(3), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(11.0),
+            icon_color,
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(8.0),
+            caret_color,
+        );
+    }
+
+    if response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    let label_color = theme.text.muted.to_color32();
+
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(180.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
+
+            ui.label(RichText::new("Overlays").small().color(label_color));
+            ui.add_space(4.0);
+
+            // Grid toggle
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Grid").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.show_grid, "");
+                });
+            });
+
+            // Axis Gizmo toggle
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Axis Gizmo").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.show_axis_gizmo, "");
+                });
+            });
+
+            // Camera Height toggle
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Camera Height").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut settings.camera_settings.show_camera_height, "");
+                });
+            });
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            ui.label(RichText::new("Collision Gizmos").small().color(label_color));
+            ui.add_space(2.0);
+
+            // Collision gizmo visibility
+            let mut selected_only = settings.collision_gizmo_visibility == crate::core::CollisionGizmoVisibility::SelectedOnly;
+            if ui.radio_value(&mut selected_only, true, RichText::new("Selected Only").size(12.0)).clicked() {
+                settings.collision_gizmo_visibility = crate::core::CollisionGizmoVisibility::SelectedOnly;
+            }
+            if ui.radio_value(&mut selected_only, false, RichText::new("Always").size(12.0)).clicked() {
+                settings.collision_gizmo_visibility = crate::core::CollisionGizmoVisibility::Always;
+            }
+        },
+    );
+
+    response.on_hover_text("Overlays");
+}
+
 /// Camera settings dropdown for viewport header
 fn viewport_camera_dropdown(
     ui: &mut egui::Ui,
@@ -1235,7 +1355,7 @@ pub fn render_viewport_content(
     }
 
     // Render axis orientation gizmo in 3D mode (skip in play mode)
-    if !in_play_mode && viewport.viewport_mode == ViewportMode::Mode3D {
+    if !in_play_mode && settings.show_axis_gizmo && viewport.viewport_mode == ViewportMode::Mode3D {
         render_axis_gizmo(&ctx, orbit, content_rect);
     }
 
