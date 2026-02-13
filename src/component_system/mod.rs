@@ -162,6 +162,9 @@ impl Plugin for ComponentSystemPlugin {
         // Cloth sync system
         app.add_systems(Update, components::cloth::sync_cloth_data);
 
+        // Navigation agent pathfinding + movement
+        app.add_systems(Update, components::navigation_agent::navigation_agent_system);
+
         // Post-processing and lighting sync systems
         app.add_systems(Update, (
             components::ambient_light::sync_ambient_light,

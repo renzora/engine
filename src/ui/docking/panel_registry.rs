@@ -125,6 +125,7 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::ArenaPresets => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::RenderPipeline => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
         PanelId::ShapeLibrary => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
+        PanelId::GeoMapStyle => PanelConstraints::default().with_min_width(280.0).with_min_height(350.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -183,6 +184,7 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::ArenaPresets,
         PanelId::RenderPipeline,
         PanelId::ShapeLibrary,
+        PanelId::GeoMapStyle,
     ]
 }
 

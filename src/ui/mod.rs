@@ -103,6 +103,7 @@ pub struct EditorResources<'w> {
     pub arena_presets: ResMut<'w, ArenaPresetsState>,
     pub render_pipeline_data: ResMut<'w, RenderPipelineGraphData>,
     pub shape_library: ResMut<'w, ShapeLibraryState>,
+    pub geo_map_panel: ResMut<'w, GeoMapPanelState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -148,12 +149,13 @@ use panels::{
     render_state_recorder_content,
     render_arena_presets_content,
     render_shape_library_content,
+    render_geo_map_panel_content,
 };
 use crate::particles::ParticleEditorState;
 use crate::pixel_editor::PixelEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
-pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState};
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState, GeoMapPanelState};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
 
@@ -251,7 +253,6 @@ pub fn editor_ui(
     mut editor: EditorResources,
     mut commands: Commands,
     mut hierarchy_queries: HierarchyQueries,
-    _entities_for_inspector: Query<(Entity, &EditorEntity)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     current_project: Option<Res<CurrentProject>>,
@@ -262,6 +263,7 @@ pub fn editor_ui(
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     material_preview_image: Option<Res<MaterialPreviewImage>>,
     time: Res<Time>,
+    geo_tile_cache: Option<Res<crate::geo_map::tile_cache::GeoTileCache>>,
     mut local_state: Local<(UiRenderer, AnimationPanelState, panels::NodeExplorerState)>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
@@ -959,6 +961,18 @@ pub fn editor_ui(
                         render_shape_library_content(
                             ui,
                             &mut editor.shape_library,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::GeoMapStyle => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        let cache = geo_tile_cache.as_ref().map(|r| r.as_ref());
+                        render_geo_map_panel_content(
+                            ui,
+                            &mut editor.geo_map_panel,
+                            cache,
                             &editor.theme_manager.active_theme,
                         );
                     });

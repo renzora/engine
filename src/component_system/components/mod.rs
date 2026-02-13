@@ -59,6 +59,14 @@ pub(crate) mod palette_quantization;
 pub(crate) mod distortion;
 pub(crate) mod underwater;
 
+// Geo map components
+pub(crate) mod geo_map;
+pub(crate) mod geo_position;
+pub(crate) mod geo_marker;
+
+// Navigation
+pub(crate) mod navigation_agent;
+
 // Re-export commonly used gameplay components
 pub use health::HealthData;
 
@@ -107,6 +115,7 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
 
     // Gameplay
     health::register(registry);
+    navigation_agent::register(registry);
 
     // Terrain
     terrain::register(registry);
@@ -150,4 +159,9 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     palette_quantization::register(registry);
     distortion::register(registry);
     underwater::register(registry);
+
+    // Geo map
+    geo_map::register(registry);
+    geo_position::register(registry);
+    geo_marker::register(registry);
 }

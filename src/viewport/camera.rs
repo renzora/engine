@@ -3,10 +3,32 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
+use crate::brushes::BlockEditState;
 use crate::gizmo::{ModalTransformState, GizmoState};
 
-pub fn camera_controller(
+/// Focus camera on the selected entity when the keybinding is pressed.
+pub fn camera_focus_selected(
     selection: Res<SelectionState>,
+    mut orbit: ResMut<OrbitCameraState>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    entity_query: Query<&Transform, With<EditorEntity>>,
+) {
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
+        if let Some(selected) = selection.selected_entity {
+            if let Ok(target_transform) = entity_query.get(selected) {
+                orbit.focus = target_transform.translation;
+                orbit.distance = 5.0;
+            }
+        }
+    }
+}
+
+pub fn camera_controller(
     mut viewport: ResMut<ViewportState>,
     mut orbit: ResMut<OrbitCameraState>,
     settings: Res<EditorSettings>,
@@ -17,11 +39,11 @@ pub fn camera_controller(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
-    entity_query: Query<&Transform, (With<EditorEntity>, Without<ViewportCamera>)>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
     mut window_query: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
     gizmo: Res<GizmoState>,
+    block_edit: Res<BlockEditState>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
@@ -37,17 +59,6 @@ pub fn camera_controller(
     // Don't process keyboard shortcuts when a text input is focused
     // (mouse controls still work)
     let keyboard_enabled = !input_focus.egui_wants_keyboard;
-
-    // Focus on selected entity (works even when not hovering viewport)
-    if keyboard_enabled && keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
-        if let Some(selected) = selection.selected_entity {
-            if let Ok(target_transform) = entity_query.get(selected) {
-                orbit.focus = target_transform.translation;
-                // Optionally adjust distance based on object bounds (simplified to fixed distance)
-                orbit.distance = 5.0;
-            }
-        }
-    }
 
     if !viewport.hovered {
         mouse_motion.clear();
@@ -97,7 +108,7 @@ pub fn camera_controller(
     // Only start camera drag when click ORIGINATES inside the viewport
     // Don't start camera drag if gizmo is being dragged or hovered (for left click)
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
-    let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some();
+    let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some() || block_edit.is_dragging || block_edit.hovered_handle.is_some();
     let left_click_drag_disabled = viewport.disable_left_click_drag || !cam_settings.left_click_pan;
     if let Ok((mut cursor, window)) = window_query.single_mut() {
         // Capture cursor position on right-click press for click-vs-drag detection

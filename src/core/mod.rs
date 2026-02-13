@@ -66,6 +66,7 @@ impl Plugin for CorePlugin {
             .init_resource::<GamepadDebugState>()
             .init_resource::<crate::theming::ThemeManager>()
             .init_resource::<crate::ui::ShapeLibraryState>()
+            .init_resource::<crate::ui::GeoMapPanelState>()
             .init_resource::<resources::InspectorPanelRenderState>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (

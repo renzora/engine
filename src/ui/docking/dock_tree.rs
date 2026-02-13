@@ -11,6 +11,7 @@ use egui_phosphor::regular::{
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
     SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
     PENCIL_SIMPLE, PALETTE, PAINT_BRUSH,
+    GLOBE,
 };
 
 /// Direction of a split in the dock tree
@@ -101,6 +102,8 @@ pub enum PanelId {
     RenderPipeline,
     /// Shape Library — visual grid of mesh primitives for quick spawning
     ShapeLibrary,
+    /// Geo Map customization panel
+    GeoMapStyle,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -159,6 +162,7 @@ impl PanelId {
             PanelId::ArenaPresets => "Arena Presets",
             PanelId::RenderPipeline => "Render Pipeline",
             PanelId::ShapeLibrary => "Shape Library",
+            PanelId::GeoMapStyle => "Geo Map",
             PanelId::Plugin(name) => name,
         }
     }
@@ -216,6 +220,7 @@ impl PanelId {
             PanelId::ArenaPresets => CUBE,
             PanelId::RenderPipeline => STACK,
             PanelId::ShapeLibrary => CUBE,
+            PanelId::GeoMapStyle => GLOBE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

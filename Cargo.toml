@@ -50,6 +50,9 @@ avian3d = "0.5"
 # GPU particle system (Hanabi)
 bevy_hanabi = { version = "0.18", default-features = false, features = ["3d", "serde"] }
 
+# Navigation mesh pathfinding
+vleue_navigator = { path = "crates/vleue_navigator", features = ["avian3d", "avoidance"] }
+
 # Mesh outline rendering
 bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false, features = ["reflect"] }
 
@@ -81,7 +84,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/bevy_voxel_world"]
+members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/bevy_voxel_world", "crates/vleue_navigator"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

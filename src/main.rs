@@ -9,6 +9,7 @@ mod core;
 mod crash;
 mod embedded;
 mod export;
+mod geo_map;
 mod gizmo;
 mod import;
 mod gltf_animation;
@@ -170,14 +171,10 @@ fn main() {
 
     app.add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
         .add_plugins(bevy_mod_outline::OutlinePlugin)
-        // Register types for Bevy's scene system
-        // Shared components
         .register_type::<shared::MeshNodeData>()
         .register_type::<shared::MeshPrimitiveType>()
-        // Brush components
         .register_type::<brushes::BrushData>()
         .register_type::<brushes::BrushType>()
-        // Terrain components
         .register_type::<terrain::TerrainData>()
         .register_type::<terrain::TerrainChunkData>()
         .register_type::<surface_painting::PaintableSurfaceData>()
@@ -195,22 +192,18 @@ fn main() {
         .register_type::<shared::UILabelData>()
         .register_type::<shared::UIButtonData>()
         .register_type::<shared::UIImageData>()
-        // Animation components
         .register_type::<shared::GltfAnimations>()
-        // Light components
         .register_type::<shared::PointLightData>()
         .register_type::<shared::DirectionalLightData>()
         .register_type::<shared::SpotLightData>()
         .register_type::<shared::SolariLightingData>()
         .register_type::<shared::DlssQualityMode>()
         .register_type::<shared::SunData>()
-        // Environment components
         .register_type::<shared::WorldEnvironmentData>()
         .register_type::<shared::SkyMode>()
         .register_type::<shared::ProceduralSkyData>()
         .register_type::<shared::PanoramaSkyData>()
         .register_type::<shared::TonemappingMode>()
-        // Post-processing components
         .register_type::<shared::SkyboxData>()
         .register_type::<shared::FogData>()
         .register_type::<shared::AntiAliasingData>()
@@ -222,7 +215,6 @@ fn main() {
         .register_type::<shared::MotionBlurData>()
         .register_type::<shared::AmbientLightData>()
         .register_type::<shared::CloudsData>()
-        // New post-processing components
         .register_type::<shared::TaaData>()
         .register_type::<shared::SmaaData>()
         .register_type::<shared::SmaaPresetMode>()
@@ -239,68 +231,57 @@ fn main() {
         .register_type::<shared::PaletteQuantizationData>()
         .register_type::<shared::DistortionData>()
         .register_type::<shared::UnderwaterData>()
-        // Voxel world
         .register_type::<component_system::components::voxel_world::VoxelWorldData>()
         .register_type::<component_system::components::voxel_world::VoxelNoiseType>()
-        // Core components
         .register_type::<core::EditorEntity>()
         .register_type::<core::SceneNode>()
         .register_type::<core::SceneTabId>()
         .register_type::<core::WorldEnvironmentMarker>()
-        // Scene roots
         .register_type::<spawn::EditorSceneRoot>()
         .register_type::<spawn::SceneType>()
-        // Scripting components
         .register_type::<scripting::ScriptComponent>()
         .register_type::<scripting::ScriptVariables>()
         .register_type::<scripting::ScriptValue>()
-        // Scene metadata (editor-only, stripped during export)
         .register_type::<scene::EditorSceneMetadata>()
-        // Meshlet components
         .register_type::<shared::MeshletMeshData>()
-        // Generic types used by components
         .register_type::<Option<String>>()
         .register_type::<std::path::PathBuf>()
         .register_type::<Option<std::path::PathBuf>>()
         .register_type::<std::collections::HashMap<String, scripting::ScriptValue>>()
-        .add_plugins((
-            core::CorePlugin,
-            core::DiagnosticsPlugin,
-            commands::CommandPlugin,
-            project::ProjectPlugin,
-            component_system::ComponentSystemPlugin,
-            viewport::ViewportPlugin,
-            viewport::StudioPreviewPlugin,
-            viewport::ParticlePreviewPlugin,
-            shader_preview::ShaderPreviewPlugin,
-            gizmo::GizmoPlugin,
-            input::InputPlugin,
-            ui::UiPlugin,
-            scripting::ScriptingPlugin,
-            plugin_core::PluginCorePlugin,
-            play_mode::PlayModePlugin,
-        ))
-        .add_plugins((
-            shader_thumbnail::ShaderThumbnailPlugin,
-            blueprint::BlueprintPlugin,
-            blueprint::MaterialPreviewPlugin,
-            brushes::BrushPlugin,
-            terrain::TerrainPlugin,
-            mesh_sculpt::MeshSculptPlugin,
-            surface_painting::SurfacePaintingPlugin,
-            // Physics plugin (starts paused in editor, activated during play mode)
-            shared::RenzoraPhysicsPlugin::new(true),
-            // Cloth physics (bevy_silk)
-            bevy_silk::ClothPlugin,
-            // Voxel world generation
-            voxel_world::RenzoraVoxelWorldPlugin,
-            // Auto-update system
-            update::UpdatePlugin,
-            // GLTF animation playback
-            gltf_animation::GltfAnimationPlugin,
-            // GPU particle effects (Hanabi)
-            particles::ParticlesPlugin,
-        ));
+        .add_plugins(core::CorePlugin)
+        .add_plugins(core::DiagnosticsPlugin)
+        .add_plugins(commands::CommandPlugin)
+        .add_plugins(project::ProjectPlugin)
+        .add_plugins(component_system::ComponentSystemPlugin)
+        .add_plugins(viewport::ViewportPlugin)
+        .add_plugins(viewport::StudioPreviewPlugin)
+        .add_plugins(viewport::ParticlePreviewPlugin)
+        .add_plugins(shader_preview::ShaderPreviewPlugin)
+        .add_plugins(gizmo::GizmoPlugin)
+        .add_plugins(input::InputPlugin)
+        .add_plugins(ui::UiPlugin)
+        .add_plugins(scripting::ScriptingPlugin)
+        .add_plugins(plugin_core::PluginCorePlugin)
+        .add_plugins(play_mode::PlayModePlugin)
+        .add_plugins(shader_thumbnail::ShaderThumbnailPlugin)
+        .add_plugins(blueprint::BlueprintPlugin)
+        .add_plugins(blueprint::MaterialPreviewPlugin)
+        .add_plugins(brushes::BrushPlugin)
+        .add_plugins(terrain::TerrainPlugin)
+        .add_plugins(mesh_sculpt::MeshSculptPlugin)
+        .add_plugins(surface_painting::SurfacePaintingPlugin)
+        .add_plugins(shared::RenzoraPhysicsPlugin::new(true))
+        .add_plugins(vleue_navigator::prelude::VleueNavigatorPlugin)
+        .add_plugins(vleue_navigator::prelude::NavmeshUpdaterPlugin::<
+            avian3d::prelude::Collider, avian3d::prelude::Collider
+        >::default())
+        .add_plugins(vleue_navigator::prelude::AvoidancePlugin)
+        .add_plugins(bevy_silk::ClothPlugin)
+        .add_plugins(voxel_world::RenzoraVoxelWorldPlugin)
+        .add_plugins(update::UpdatePlugin)
+        .add_plugins(gltf_animation::GltfAnimationPlugin)
+        .add_plugins(particles::ParticlesPlugin)
+        .add_plugins(geo_map::GeoMapPlugin);
 
     // Meshlet/Virtual Geometry integration (requires solari feature)
     #[cfg(feature = "solari")]
@@ -395,6 +376,10 @@ fn main() {
             )
                 .chain()
                 .run_if(in_state(AppState::Editor)),
+        )
+        .add_systems(
+            Update,
+            viewport::camera_focus_selected.run_if(in_state(AppState::Editor)),
         )
         // Modal transform systems (Blender-style G/R/S shortcuts)
         .add_systems(

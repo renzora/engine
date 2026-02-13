@@ -231,7 +231,7 @@ impl Plugin for BrushPlugin {
             .init_resource::<DefaultBrushMaterial>()
             .add_systems(
                 Startup,
-                (setup_default_brush_material, setup_resize_handle_meshes),
+                setup_default_brush_material,
             )
             .add_systems(
                 Update,
@@ -243,7 +243,6 @@ impl Plugin for BrushPlugin {
                     brush_creation_drag_system,
                     block_edit_drag_system,
                     brush_creation_end_system,
-                    update_resize_handle_meshes,
                     draw_block_edit_bounds,
                 )
                     .chain()

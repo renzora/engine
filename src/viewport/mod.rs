@@ -10,7 +10,7 @@ pub mod render_2d;
 pub mod studio_preview;
 mod texture;
 
-pub use camera::{apply_orbit_to_camera, camera_controller, update_camera_projection};
+pub use camera::{apply_orbit_to_camera, camera_controller, camera_focus_selected, update_camera_projection};
 pub use camera_preview::{
     setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
 };

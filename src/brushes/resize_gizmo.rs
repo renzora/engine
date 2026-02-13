@@ -1,82 +1,83 @@
 //! Block resize handles for editing brush/mesh dimensions
 //!
-//! Provides face-based resize handles that appear when a block-like mesh is selected
+//! Provides corner-based resize handles that appear when a block-like mesh is selected
 //! in Transform mode. Works with BrushData entities and regular Cube/Plane meshes.
 
 use bevy::prelude::*;
-use bevy::camera::visibility::RenderLayers;
 
 use crate::core::{SelectionState, ViewportState};
-use crate::gizmo::{EditorTool, GizmoState, GIZMO_RENDER_LAYER};
+use crate::gizmo::{EditorTool, GizmoState};
 use crate::shared::{MeshNodeData, MeshPrimitiveType};
 
 use super::{BrushData, BrushSettings};
 
-/// Which face handle is being interacted with
+/// Which corner handle is being interacted with
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlockEditHandle {
-    /// +X face (right)
-    PosX,
-    /// -X face (left)
-    NegX,
-    /// +Y face (top)
-    PosY,
-    /// -Y face (bottom)
-    NegY,
-    /// +Z face (front)
-    PosZ,
-    /// -Z face (back)
-    NegZ,
+    /// (+X, +Y, +Z)
+    PosXPosYPosZ,
+    /// (-X, +Y, +Z)
+    NegXPosYPosZ,
+    /// (+X, -Y, +Z)
+    PosXNegYPosZ,
+    /// (-X, -Y, +Z)
+    NegXNegYPosZ,
+    /// (+X, +Y, -Z)
+    PosXPosYNegZ,
+    /// (-X, +Y, -Z)
+    NegXPosYNegZ,
+    /// (+X, -Y, -Z)
+    PosXNegYNegZ,
+    /// (-X, -Y, -Z)
+    NegXNegYNegZ,
 }
 
 impl BlockEditHandle {
-    /// Get the direction vector for this handle
-    pub fn direction(&self) -> Vec3 {
+    /// Get the sign vector for this corner: each component is +1 or -1
+    pub fn signs(&self) -> Vec3 {
         match self {
-            BlockEditHandle::PosX => Vec3::X,
-            BlockEditHandle::NegX => Vec3::NEG_X,
-            BlockEditHandle::PosY => Vec3::Y,
-            BlockEditHandle::NegY => Vec3::NEG_Y,
-            BlockEditHandle::PosZ => Vec3::Z,
-            BlockEditHandle::NegZ => Vec3::NEG_Z,
+            BlockEditHandle::PosXPosYPosZ => Vec3::new(1.0, 1.0, 1.0),
+            BlockEditHandle::NegXPosYPosZ => Vec3::new(-1.0, 1.0, 1.0),
+            BlockEditHandle::PosXNegYPosZ => Vec3::new(1.0, -1.0, 1.0),
+            BlockEditHandle::NegXNegYPosZ => Vec3::new(-1.0, -1.0, 1.0),
+            BlockEditHandle::PosXPosYNegZ => Vec3::new(1.0, 1.0, -1.0),
+            BlockEditHandle::NegXPosYNegZ => Vec3::new(-1.0, 1.0, -1.0),
+            BlockEditHandle::PosXNegYNegZ => Vec3::new(1.0, -1.0, -1.0),
+            BlockEditHandle::NegXNegYNegZ => Vec3::new(-1.0, -1.0, -1.0),
         }
     }
 
-    /// Get the opposite handle
-    #[allow(dead_code)]
+    /// Get the opposite corner (all signs flipped)
     pub fn opposite(&self) -> BlockEditHandle {
         match self {
-            BlockEditHandle::PosX => BlockEditHandle::NegX,
-            BlockEditHandle::NegX => BlockEditHandle::PosX,
-            BlockEditHandle::PosY => BlockEditHandle::NegY,
-            BlockEditHandle::NegY => BlockEditHandle::PosY,
-            BlockEditHandle::PosZ => BlockEditHandle::NegZ,
-            BlockEditHandle::NegZ => BlockEditHandle::PosZ,
+            BlockEditHandle::PosXPosYPosZ => BlockEditHandle::NegXNegYNegZ,
+            BlockEditHandle::NegXPosYPosZ => BlockEditHandle::PosXNegYNegZ,
+            BlockEditHandle::PosXNegYPosZ => BlockEditHandle::NegXPosYNegZ,
+            BlockEditHandle::NegXNegYPosZ => BlockEditHandle::PosXPosYNegZ,
+            BlockEditHandle::PosXPosYNegZ => BlockEditHandle::NegXNegYPosZ,
+            BlockEditHandle::NegXPosYNegZ => BlockEditHandle::PosXNegYPosZ,
+            BlockEditHandle::PosXNegYNegZ => BlockEditHandle::NegXPosYPosZ,
+            BlockEditHandle::NegXNegYNegZ => BlockEditHandle::PosXPosYPosZ,
         }
     }
 
-    /// All handles
+    /// All 8 corner handles
     pub fn all() -> &'static [BlockEditHandle] {
         &[
-            BlockEditHandle::PosX,
-            BlockEditHandle::NegX,
-            BlockEditHandle::PosY,
-            BlockEditHandle::NegY,
-            BlockEditHandle::PosZ,
-            BlockEditHandle::NegZ,
+            BlockEditHandle::PosXPosYPosZ,
+            BlockEditHandle::NegXPosYPosZ,
+            BlockEditHandle::PosXNegYPosZ,
+            BlockEditHandle::NegXNegYPosZ,
+            BlockEditHandle::PosXPosYNegZ,
+            BlockEditHandle::NegXPosYNegZ,
+            BlockEditHandle::PosXNegYNegZ,
+            BlockEditHandle::NegXNegYNegZ,
         ]
     }
 
-    /// Get index for this handle (0-5)
-    fn index(&self) -> usize {
-        match self {
-            BlockEditHandle::PosX => 0,
-            BlockEditHandle::NegX => 1,
-            BlockEditHandle::PosY => 2,
-            BlockEditHandle::NegY => 3,
-            BlockEditHandle::PosZ => 4,
-            BlockEditHandle::NegZ => 5,
-        }
+    /// Get the world position of this corner
+    fn position(&self, center: Vec3, half_dims: Vec3) -> Vec3 {
+        center + self.signs() * half_dims
     }
 }
 
@@ -95,10 +96,12 @@ pub struct BlockEditState {
     pub drag_handle: Option<BlockEditHandle>,
     /// Starting dimensions when drag began
     pub drag_start_dimensions: Vec3,
-    /// Starting position when drag began
+    /// Starting box center when drag began
     pub drag_start_position: Vec3,
     /// Starting mouse position when drag began
     pub drag_start_mouse: Vec2,
+    /// The fixed opposite corner position at drag start
+    pub drag_anchor_corner: Vec3,
     /// Whether symmetric resize is active (Shift held)
     pub symmetric: bool,
     /// Whether using BrushData or scale-based resize
@@ -125,13 +128,16 @@ impl BlockEditState {
         self.drag_handle = None;
     }
 
-    /// Start dragging a handle
-    pub fn start_drag(&mut self, handle: BlockEditHandle, dimensions: Vec3, position: Vec3, mouse: Vec2) {
+    /// Start dragging a corner handle
+    pub fn start_drag(&mut self, handle: BlockEditHandle, dimensions: Vec3, center: Vec3, mouse: Vec2) {
         self.is_dragging = true;
         self.drag_handle = Some(handle);
         self.drag_start_dimensions = dimensions;
-        self.drag_start_position = position;
+        self.drag_start_position = center;
         self.drag_start_mouse = mouse;
+        // The opposite corner stays fixed during single-side resize
+        let half = dimensions / 2.0;
+        self.drag_anchor_corner = handle.opposite().position(center, half);
     }
 
     /// End the drag operation
@@ -141,88 +147,8 @@ impl BlockEditState {
     }
 }
 
-/// Marker component for resize handle mesh entities
-#[derive(Component)]
-pub struct ResizeHandleMesh;
-
-/// Component to identify which handle a mesh represents
-#[derive(Component)]
-pub struct ResizeHandleId(pub BlockEditHandle);
-
-/// Resource storing the handle mesh entities and materials
-#[derive(Resource)]
-pub struct ResizeHandleMeshes {
-    pub handles: [Entity; 6],
-    pub normal_material: Handle<StandardMaterial>,
-    pub hovered_material: Handle<StandardMaterial>,
-    pub dragging_material: Handle<StandardMaterial>,
-}
-
-/// Setup system to create the resize handle meshes
-pub fn setup_resize_handle_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let depth_bias = -1.0;
-
-    // Create materials - solid red spheres that render on top
-    let normal_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.2, 0.2),
-        emissive: LinearRgba::new(0.9, 0.2, 0.2, 1.0),
-        unlit: true,
-        depth_bias,
-        ..default()
-    });
-
-    let hovered_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 0.5, 0.3),
-        emissive: LinearRgba::new(1.0, 0.5, 0.3, 1.0),
-        unlit: true,
-        depth_bias,
-        ..default()
-    });
-
-    let dragging_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 0.3),
-        emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
-        unlit: true,
-        depth_bias,
-        ..default()
-    });
-
-    // Create sphere mesh for handles
-    let sphere_mesh = meshes.add(Sphere::new(0.1).mesh().uv(16, 8));
-
-    let render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
-
-    // Spawn 6 handle entities (initially hidden)
-    let mut handles = [Entity::PLACEHOLDER; 6];
-
-    for handle in BlockEditHandle::all() {
-        let entity = commands.spawn((
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(normal_material.clone()),
-            Transform::default(),
-            GlobalTransform::default(),
-            Visibility::Hidden,
-            InheritedVisibility::default(),
-            ViewVisibility::default(),
-            ResizeHandleMesh,
-            ResizeHandleId(*handle),
-            render_layers.clone(),
-        )).id();
-
-        handles[handle.index()] = entity;
-    }
-
-    commands.insert_resource(ResizeHandleMeshes {
-        handles,
-        normal_material,
-        hovered_material,
-        dragging_material,
-    });
-}
+/// Fraction of each edge length used for corner bracket arms
+const BRACKET_ARM_FRACTION: f32 = 0.22;
 
 /// Check if an entity is a block-like mesh that should show resize handles
 fn is_block_like_mesh(mesh_data: Option<&MeshNodeData>) -> bool {
@@ -242,10 +168,8 @@ fn get_entity_dimensions(
         return Some(brush.dimensions);
     }
 
-    // For regular meshes, use scale as dimensions (default mesh size is 1x1x1 for cubes)
     if is_block_like_mesh(mesh_data) {
         let scale = transform.scale;
-        // Plane is flat, so Y dimension is very small
         if let Some(data) = mesh_data {
             if data.mesh_type == MeshPrimitiveType::Plane {
                 return Some(Vec3::new(scale.x, 0.1, scale.z));
@@ -345,30 +269,20 @@ pub fn block_edit_hover_system(
     let ray = camera.viewport_to_world(camera_transform, viewport_pos);
     let Ok(ray) = ray else { return };
 
-    // Test each handle for intersection
-    let handle_radius = 0.1;
+    // Test each corner handle for intersection
+    // Hit radius scales with the shortest bracket arm for consistent feel
+    let arm_lengths = dimensions * BRACKET_ARM_FRACTION;
+    let handle_radius = arm_lengths.min_element().max(0.15);
     let half_dims = dimensions / 2.0;
     let entity_pos = transform.translation;
-
-    // Inset distance - handles are inside the shape
-    let inset = 0.25;
 
     let mut closest_handle = None;
     let mut closest_dist = f32::MAX;
 
     for handle in BlockEditHandle::all() {
-        // Calculate handle position inside the face (not at the edge)
-        let handle_center = match handle {
-            BlockEditHandle::PosX => entity_pos + Vec3::new((half_dims.x - inset).max(0.0), 0.0, 0.0),
-            BlockEditHandle::NegX => entity_pos + Vec3::new(-(half_dims.x - inset).max(0.0), 0.0, 0.0),
-            BlockEditHandle::PosY => entity_pos + Vec3::new(0.0, (half_dims.y - inset).max(0.0), 0.0),
-            BlockEditHandle::NegY => entity_pos + Vec3::new(0.0, -(half_dims.y - inset).max(0.0), 0.0),
-            BlockEditHandle::PosZ => entity_pos + Vec3::new(0.0, 0.0, (half_dims.z - inset).max(0.0)),
-            BlockEditHandle::NegZ => entity_pos + Vec3::new(0.0, 0.0, -(half_dims.z - inset).max(0.0)),
-        };
+        let corner_pos = handle.position(entity_pos, half_dims);
 
-        // Ray-sphere intersection for handle
-        if let Some(t) = ray_sphere_intersection(ray.origin, *ray.direction, handle_center, handle_radius) {
+        if let Some(t) = ray_sphere_intersection(ray.origin, *ray.direction, corner_pos, handle_radius) {
             if t < closest_dist {
                 closest_dist = t;
                 closest_handle = Some(*handle);
@@ -384,13 +298,13 @@ pub fn block_edit_hover_system(
         block_edit.start_drag(
             handle,
             dimensions,
-            transform.translation,
+            entity_pos,
             cursor_pos,
         );
     }
 }
 
-/// System to handle block edit handle dragging
+/// System to handle block edit corner dragging
 pub fn block_edit_drag_system(
     mouse: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -445,28 +359,17 @@ pub fn block_edit_drag_system(
     // Get the entity's transform
     let Ok(mut transform) = transform_query.get_mut(entity) else { return };
 
-    // Calculate drag plane based on handle direction
-    let drag_dir = handle.direction();
-    let plane_normal = if drag_dir.y.abs() > 0.9 {
-        // Vertical drag - use camera-facing plane
-        let cam_forward = camera_transform.forward();
-        Vec3::new(cam_forward.x, 0.0, cam_forward.z).normalize_or_zero()
-    } else {
-        // Horizontal drag - use vertical plane perpendicular to drag direction
-        Vec3::Y.cross(drag_dir).normalize_or_zero()
-    };
+    // Use a camera-facing plane through the dragged corner's original position
+    let half = block_edit.drag_start_dimensions / 2.0;
+    let drag_corner_start = handle.position(block_edit.drag_start_position, half);
+    let plane_normal = Vec3::from(camera_transform.forward());
+    let plane_point = drag_corner_start;
 
-    if plane_normal.length_squared() < 0.0001 {
-        return;
-    }
-
-    // Intersect ray with drag plane
     let denom = plane_normal.dot(*ray.direction);
     if denom.abs() < 0.0001 {
         return;
     }
 
-    let plane_point = block_edit.drag_start_position;
     let t = (plane_point - ray.origin).dot(plane_normal) / denom;
     if t < 0.0 {
         return;
@@ -474,64 +377,38 @@ pub fn block_edit_drag_system(
 
     let hit_point = ray.origin + *ray.direction * t;
 
-    // Which axis are we dragging along
-    let axis_index = if drag_dir.x.abs() > 0.5 { 0 }
-        else if drag_dir.y.abs() > 0.5 { 1 }
-        else { 2 };
+    // New corner position is where the ray hits the plane
+    let mut new_corner = hit_point;
 
-    // Is this a positive or negative face handle
-    let is_positive_face = drag_dir[axis_index] > 0.0;
-
-    // Calculate where the face currently is (at drag start)
-    let half_dim = block_edit.drag_start_dimensions[axis_index] / 2.0;
-    let start_face_pos = if is_positive_face {
-        block_edit.drag_start_position[axis_index] + half_dim
-    } else {
-        block_edit.drag_start_position[axis_index] - half_dim
-    };
-
-    // Where the face should move to based on hit point
-    let mut new_face_pos = hit_point[axis_index];
-
-    // Apply snapping to the face position
+    // Snap each axis of the corner if enabled
     if brush_settings.snap_enabled {
-        new_face_pos = brush_settings.snap(new_face_pos);
+        new_corner.x = brush_settings.snap(new_corner.x);
+        new_corner.y = brush_settings.snap(new_corner.y);
+        new_corner.z = brush_settings.snap(new_corner.z);
     }
 
-    // Calculate how much the face moved
-    let face_delta = new_face_pos - start_face_pos;
-
-    // Calculate new dimensions and position
-    let mut new_dims = block_edit.drag_start_dimensions;
-    let mut new_pos = block_edit.drag_start_position;
+    let (new_dims, new_pos);
 
     if block_edit.symmetric {
-        // Symmetric resize - both faces move equally
-        // For positive face: moving outward = positive delta = increase size
-        // For negative face: moving outward = negative delta = increase size
-        let size_delta = if is_positive_face { face_delta * 2.0 } else { -face_delta * 2.0 };
-        new_dims[axis_index] = (block_edit.drag_start_dimensions[axis_index] + size_delta).max(0.1);
-        // Position stays centered
+        // Symmetric: center stays fixed, corner moves freely
+        let center = block_edit.drag_start_position;
+        let delta = new_corner - center;
+        // Dimensions = 2 * abs(delta from center), minimum 0.1 per axis
+        new_dims = Vec3::new(
+            (delta.x.abs() * 2.0).max(0.1),
+            (delta.y.abs() * 2.0).max(0.1),
+            (delta.z.abs() * 2.0).max(0.1),
+        );
+        new_pos = center;
     } else {
-        // Single-side resize - one face moves, opposite stays fixed
-        // The opposite face position
-        let opposite_face_pos = if is_positive_face {
-            block_edit.drag_start_position[axis_index] - half_dim
-        } else {
-            block_edit.drag_start_position[axis_index] + half_dim
-        };
-
-        // New dimension is distance between faces
-        let new_dim = (new_face_pos - opposite_face_pos).abs();
-        new_dims[axis_index] = new_dim.max(0.1);
-
-        // New center is midpoint between faces
-        new_pos[axis_index] = (new_face_pos + opposite_face_pos) / 2.0;
-    }
-
-    // Apply snapping to final dimensions if enabled
-    if brush_settings.snap_enabled {
-        new_dims[axis_index] = brush_settings.snap(new_dims[axis_index]).max(brush_settings.snap_size);
+        // Single-side: opposite corner stays fixed
+        let anchor = block_edit.drag_anchor_corner;
+        new_dims = Vec3::new(
+            (new_corner.x - anchor.x).abs().max(0.1),
+            (new_corner.y - anchor.y).abs().max(0.1),
+            (new_corner.z - anchor.z).abs().max(0.1),
+        );
+        new_pos = (new_corner + anchor) / 2.0;
     }
 
     // Update transform position
@@ -554,82 +431,7 @@ pub fn block_edit_drag_system(
     }
 }
 
-/// System to update resize handle mesh positions, visibility, and materials
-pub fn update_resize_handle_meshes(
-    block_edit: Res<BlockEditState>,
-    gizmo_state: Res<GizmoState>,
-    handle_meshes: Option<Res<ResizeHandleMeshes>>,
-    entity_query: Query<(&Transform, Option<&BrushData>, Option<&MeshNodeData>), Without<ResizeHandleMesh>>,
-    mut handle_query: Query<(&ResizeHandleId, &mut Transform, &mut Visibility, &mut MeshMaterial3d<StandardMaterial>), With<ResizeHandleMesh>>,
-) {
-    let Some(meshes) = handle_meshes else { return };
-
-    // Active in Transform mode or BlockEdit mode
-    let valid_mode = gizmo_state.tool == EditorTool::Transform || gizmo_state.tool == EditorTool::BlockEdit;
-
-    // Check if we should show handles
-    let show_handles = valid_mode && block_edit.active && block_edit.entity.is_some();
-
-    if !show_handles {
-        // Hide all handles
-        for (_, _, mut visibility, _) in handle_query.iter_mut() {
-            *visibility = Visibility::Hidden;
-        }
-        return;
-    }
-
-    let Some(entity) = block_edit.entity else { return };
-    let Ok((transform, brush_data, mesh_data)) = entity_query.get(entity) else {
-        // Hide all handles if entity not found
-        for (_, _, mut visibility, _) in handle_query.iter_mut() {
-            *visibility = Visibility::Hidden;
-        }
-        return;
-    };
-
-    // Get dimensions
-    let Some(dimensions) = get_entity_dimensions(brush_data, transform, mesh_data) else {
-        for (_, _, mut visibility, _) in handle_query.iter_mut() {
-            *visibility = Visibility::Hidden;
-        }
-        return;
-    };
-
-    let half_dims = dimensions / 2.0;
-    let entity_pos = transform.translation;
-    let inset = 0.25;
-
-    // Update each handle
-    for (handle_id, mut handle_transform, mut visibility, mut material) in handle_query.iter_mut() {
-        let handle = handle_id.0;
-
-        // Calculate handle position inside the face
-        let handle_center = match handle {
-            BlockEditHandle::PosX => entity_pos + Vec3::new((half_dims.x - inset).max(0.0), 0.0, 0.0),
-            BlockEditHandle::NegX => entity_pos + Vec3::new(-(half_dims.x - inset).max(0.0), 0.0, 0.0),
-            BlockEditHandle::PosY => entity_pos + Vec3::new(0.0, (half_dims.y - inset).max(0.0), 0.0),
-            BlockEditHandle::NegY => entity_pos + Vec3::new(0.0, -(half_dims.y - inset).max(0.0), 0.0),
-            BlockEditHandle::PosZ => entity_pos + Vec3::new(0.0, 0.0, (half_dims.z - inset).max(0.0)),
-            BlockEditHandle::NegZ => entity_pos + Vec3::new(0.0, 0.0, -(half_dims.z - inset).max(0.0)),
-        };
-
-        handle_transform.translation = handle_center;
-        *visibility = Visibility::Visible;
-
-        // Update material based on state
-        let new_material = if block_edit.drag_handle == Some(handle) {
-            meshes.dragging_material.clone()
-        } else if block_edit.hovered_handle == Some(handle) {
-            meshes.hovered_material.clone()
-        } else {
-            meshes.normal_material.clone()
-        };
-
-        material.0 = new_material;
-    }
-}
-
-/// Draw wireframe bounds using gizmos (these will also render on top via SelectionGizmoGroup)
+/// Draw wireframe bounds and corner bracket resize handles using gizmos
 pub fn draw_block_edit_bounds(
     mut gizmos: Gizmos,
     block_edit: Res<BlockEditState>,
@@ -662,7 +464,7 @@ pub fn draw_block_edit_bounds(
         entity_pos + Vec3::new(-half_dims.x, half_dims.y, half_dims.z),
     ];
 
-    let wire_color = Color::srgba(0.9, 0.3, 0.3, 0.6);
+    let wire_color = Color::srgba(1.0, 0.5, 0.0, 0.4);
 
     // Bottom edges
     gizmos.line(corners[0], corners[1], wire_color);
@@ -681,9 +483,36 @@ pub fn draw_block_edit_bounds(
     gizmos.line(corners[1], corners[5], wire_color);
     gizmos.line(corners[2], corners[6], wire_color);
     gizmos.line(corners[3], corners[7], wire_color);
+
+    // Draw inner corner bracket handles at each corner
+    let normal_color = Color::srgb(0.95, 0.95, 0.95);
+    let hovered_color = Color::srgb(1.0, 0.5, 0.3);
+    let dragging_color = Color::srgb(1.0, 1.0, 0.3);
+
+    for handle in BlockEditHandle::all() {
+        let signs = handle.signs();
+        let corner = entity_pos + signs * half_dims;
+
+        let color = if block_edit.drag_handle == Some(*handle) {
+            dragging_color
+        } else if block_edit.hovered_handle == Some(*handle) {
+            hovered_color
+        } else {
+            normal_color
+        };
+
+        // Arm lengths proportional to each edge, arms extend inward from corner
+        let arm_x = dimensions.x * BRACKET_ARM_FRACTION;
+        let arm_y = dimensions.y * BRACKET_ARM_FRACTION;
+        let arm_z = dimensions.z * BRACKET_ARM_FRACTION;
+
+        gizmos.line(corner, corner + Vec3::new(-signs.x * arm_x, 0.0, 0.0), color);
+        gizmos.line(corner, corner + Vec3::new(0.0, -signs.y * arm_y, 0.0), color);
+        gizmos.line(corner, corner + Vec3::new(0.0, 0.0, -signs.z * arm_z), color);
+    }
 }
 
-/// Ray-sphere intersection test
+/// Ray-sphere intersection test (used for corner handle hit detection)
 fn ray_sphere_intersection(ray_origin: Vec3, ray_dir: Vec3, sphere_center: Vec3, sphere_radius: f32) -> Option<f32> {
     let oc = ray_origin - sphere_center;
     let a = ray_dir.dot(ray_dir);
