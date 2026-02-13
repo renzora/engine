@@ -825,7 +825,7 @@ There is no compile-time check to warn when a script uses editor-only APIs.
 
 ---
 
-## 23. Gotchas & Limitations
+## 23. Gotchas & Limitations During Alpha Phase
 
 1. **Cross-entity `set()` is deferred one frame.** If you write a property on another entity, the change won't be visible until next frame.
 
