@@ -6,9 +6,30 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 > **Warning:** This engine is in early alpha. You will encounter bugs, incomplete features, and unexpected behavior. APIs and file formats may change without notice between versions.
 
-## Status
+## Table of Contents
+
+1. [Project Status](#project-status)
+2. [Documentation](#documentation)
+3. [Prerequisites](#prerequisites)
+4. [Building](#building)
+5. [Testing](#testing)
+6. [Cargo Features](#cargo-features)
+7. [Supported File Formats](#supported-file-formats)
+8. [Troubleshooting](#troubleshooting)
+9. [License](#license)
+
+## Project Status
 
 **Alpha** — Core systems are functional and the editor is usable for scene composition, scripting, and game export. Not yet recommended for production use.
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| **[Engine User Guide](docs/ENGINE_USER_GUIDE.md)** | Viewport controls, keyboard shortcuts, transform gizmos, terrain editing, scene management, components, and more |
+| **[Physics Guide](docs/PHYSICS_GUIDE.md)** | Rigid bodies, colliders, cloth simulation, debug panels, stress testing, and scripting integration |
+| **[Scripting API Reference](docs/scripting-api.md)** | Full reference for the Rhai scripting API: transforms, input, physics, audio, timers, ECS queries |
+| **[Contributing Guide](CONTRIBUTING.md)** | Guidelines for submitting issues and pull requests |
 
 ## Prerequisites
 
@@ -207,10 +228,6 @@ If `cargo build --release` fails with OS error 4551, **Windows Smart App Control
 ### Export shows "Runtime not found"
 
 Ensure the runtime binary exists at `runtimes/windows/renzora_runtime.exe`. Build it with `cargo release-runtime` and copy it there.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting issues and pull requests.
 
 ## License
 
