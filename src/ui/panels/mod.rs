@@ -52,6 +52,7 @@ mod arena_presets;
 mod render_pipeline;
 mod shape_library;
 mod geo_map_panel;
+mod culling_debug;
 
 pub use animation::{render_animation_content, AnimationPanelState};
 pub use node_explorer::{render_node_explorer_content, NodeExplorerState, collect_node_infos};
@@ -114,6 +115,7 @@ pub use arena_presets::render_arena_presets_content;
 pub use render_pipeline::render_render_pipeline_content;
 pub use shape_library::{render_shape_library_content, ShapeLibraryState};
 pub use geo_map_panel::{render_geo_map_panel_content, GeoMapPanelState};
+pub use culling_debug::render_culling_debug_content;
 
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 

@@ -651,6 +651,7 @@ fn render_leaf(
                     PanelId::MemoryProfiler,
                     PanelId::PhysicsDebug,
                     PanelId::CameraDebug,
+                    PanelId::CullingDebug,
                     PanelId::SystemProfiler,
                     PanelId::Gamepad,
                 ]),

@@ -15,7 +15,7 @@ use crate::core::{
     KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
-    EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, SystemTimingState,
+    EcsStatsState, MemoryProfilerState, PhysicsDebugState, CameraDebugState, CullingDebugState, SystemTimingState,
     AnimationTimelineState, TabKind, RenderPipelineGraphData,
     PhysicsPropertiesState, PlaygroundState, PhysicsForcesState,
     PhysicsMetricsState, PhysicsScenariosState, CollisionVizState,
@@ -104,6 +104,7 @@ pub struct EditorResources<'w> {
     pub render_pipeline_data: ResMut<'w, RenderPipelineGraphData>,
     pub shape_library: ResMut<'w, ShapeLibraryState>,
     pub geo_map_panel: ResMut<'w, GeoMapPanelState>,
+    pub culling_debug: ResMut<'w, CullingDebugState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -150,6 +151,7 @@ use panels::{
     render_arena_presets_content,
     render_shape_library_content,
     render_geo_map_panel_content,
+    render_culling_debug_content,
 };
 use crate::particles::ParticleEditorState;
 use crate::pixel_editor::PixelEditorState;
@@ -1059,6 +1061,12 @@ pub fn editor_ui(
                 PanelId::CameraDebug => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_camera_debug_content(ui, &mut editor.camera_debug, &editor.theme_manager.active_theme);
+                    });
+                }
+
+                PanelId::CullingDebug => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_culling_debug_content(ui, &mut editor.culling_debug, &editor.theme_manager.active_theme);
                     });
                 }
 

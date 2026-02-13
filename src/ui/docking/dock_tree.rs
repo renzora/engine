@@ -11,7 +11,7 @@ use egui_phosphor::regular::{
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
     SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
     PENCIL_SIMPLE, PALETTE, PAINT_BRUSH,
-    GLOBE,
+    GLOBE, EYE,
 };
 
 /// Direction of a split in the dock tree
@@ -46,6 +46,8 @@ pub enum PanelId {
     MemoryProfiler,
     PhysicsDebug,
     CameraDebug,
+    /// Culling debug — frustum/distance culling stats
+    CullingDebug,
     SystemProfiler,
     LevelTools,
     /// Isolated 3D preview with studio lighting
@@ -133,6 +135,7 @@ impl PanelId {
             PanelId::MemoryProfiler => "Memory",
             PanelId::PhysicsDebug => "Physics Debug",
             PanelId::CameraDebug => "Camera Debug",
+            PanelId::CullingDebug => "Culling Debug",
             PanelId::SystemProfiler => "System Profiler",
             PanelId::LevelTools => "Level Tools",
             PanelId::StudioPreview => "Studio Preview",
@@ -191,6 +194,7 @@ impl PanelId {
             PanelId::MemoryProfiler => CHART_BAR,
             PanelId::PhysicsDebug => ATOM,
             PanelId::CameraDebug => VIDEO_CAMERA,
+            PanelId::CullingDebug => EYE,
             PanelId::SystemProfiler => TIMER,
             PanelId::LevelTools => CUBE,
             PanelId::StudioPreview => VIDEO_CAMERA,

@@ -28,6 +28,7 @@ pub use resources::{
     PhysicsPropertiesState, PlaygroundState, PlaygroundEntity, PhysicsForcesState,
     PhysicsMetricsState, PhysicsScenariosState, CollisionVizState,
     MovementTrailsState, StressTestState, StateRecorderState, ArenaPresetsState, RenderPipelineGraphData,
+    CullingDebugState, DistanceCulled, update_culling_debug_state, distance_culling_system,
     // Document types for various editors
     OpenVideo, OpenAudio, OpenAnimation, OpenTexture, OpenParticleFX, OpenLevel, OpenTerrain,
 };
@@ -68,11 +69,14 @@ impl Plugin for CorePlugin {
             .init_resource::<crate::ui::ShapeLibraryState>()
             .init_resource::<crate::ui::GeoMapPanelState>()
             .init_resource::<resources::InspectorPanelRenderState>()
+            .init_resource::<CullingDebugState>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
                 track_asset_loading,
                 drain_console_buffer,
                 update_gamepad_debug_state,
+                update_culling_debug_state,
+                distance_culling_system,
             ).run_if(in_state(AppState::Editor)));
     }
 }

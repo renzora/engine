@@ -30,6 +30,7 @@ pub mod stress_test;
 pub mod state_recorder;
 pub mod arena_presets;
 pub mod render_pipeline;
+pub mod culling_debug;
 
 pub use animation_timeline::{AnimationTimelineState, TimelinePlayState};
 pub use assets::{
@@ -78,4 +79,5 @@ pub use stress_test::StressTestState;
 pub use state_recorder::StateRecorderState;
 pub use arena_presets::ArenaPresetsState;
 pub use render_pipeline::RenderPipelineGraphData;
+pub use culling_debug::{CullingDebugState, DistanceCulled, update_culling_debug_state, distance_culling_system};
 pub use inspector_render::InspectorPanelRenderState;
