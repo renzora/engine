@@ -29,6 +29,7 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 | **[Engine User Guide](docs/ENGINE_USER_GUIDE.md)** | Viewport controls, keyboard shortcuts, transform gizmos, terrain editing, scene management, components, and more |
 | **[Physics Guide](docs/PHYSICS_GUIDE.md)** | Rigid bodies, colliders, cloth simulation, debug panels, stress testing, and scripting integration |
 | **[Scripting API Reference](docs/scripting-api.md)** | Full reference for the Rhai scripting API: transforms, input, physics, audio, timers, ECS queries |
+| **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** | Architecture, API reference, UI creation, hot reload, testing, and complete examples |
 | **[Contributing Guide](CONTRIBUTING.md)** | Guidelines for submitting issues and pull requests |
 
 ## Prerequisites
