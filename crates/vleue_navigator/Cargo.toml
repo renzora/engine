@@ -1,0 +1,89 @@
+[package]
+name = "vleue_navigator"
+version = "0.15.0"
+authors = ["François Mockers <francois.mockers@vleue.com>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+keywords = ["pathfinding", "bevy", "navmesh", "navigation"]
+readme = "README.md"
+description = "Navmesh plugin for Bevy"
+repository = "https://github.com/vleue/vleue_navigator"
+homepage = "https://github.com/vleue/vleue_navigator"
+documentation = "https://docs.rs/vleue_navigator"
+categories = ["game-development"]
+
+[dependencies]
+itertools = "0.14"
+tracing = { version = "0.1", optional = true }
+log = "0.4.27"
+
+[dependencies.avian2d]
+version = "0.5"
+features = ["2d", "f32", "parry-f32"]
+default-features = false
+optional = true
+
+[dependencies.avian3d]
+version = "0.5"
+features = ["3d", "f32", "parry-f32"]
+default-features = false
+optional = true
+
+[dependencies.polyanya]
+version = "0.16.0"
+
+[dependencies.bevy]
+version = "0.18.0"
+features = ["bevy_render", "bevy_asset", "bevy_log"]
+default-features = false
+
+[dev-dependencies]
+rand = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies.polyanya]
+version = "0.16.0"
+features = ["serde"]
+
+[dev-dependencies.bevy]
+version = "0.18.0"
+
+[features]
+default = ["debug-with-gizmos"]
+debug-with-gizmos = ["bevy/bevy_gizmos"]
+detailed-layers = ["polyanya/detailed-layers"]
+avian2d = ["dep:avian2d"]
+avian3d = ["dep:avian3d"]
+avoidance = []
+
+[[example]]
+name = "auto_navmesh_avian2d"
+required-features = ["avian2d"]
+
+[[example]]
+name = "auto_navmesh_avian3d"
+required-features = ["avian3d"]
+
+[[example]]
+name = "auto_navmesh_avian3d_inclined"
+required-features = ["avian3d"]
+
+[[example]]
+name = "gltf_avian3d"
+required-features = ["avian3d", "avian3d/collider-from-mesh"]
+
+[[example]]
+name = "layers"
+required-features = ["avian3d", "detailed-layers"]
+
+[[example]]
+name = "layers_basic"
+required-features = ["avian3d"]
+
+[[example]]
+name = "layers_inclined"
+required-features = ["avian3d", "detailed-layers"]
+
+[package.metadata.docs.rs]
+features = ["detailed-layers"]

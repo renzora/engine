@@ -1,0 +1,101 @@
+name: Deploy wasm demo to Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: install tools
+        run: |
+          cargo install wasm-bindgen-cli
+          brew install binaryen
+
+      - name: Build
+        run: |
+          for example in "auto_navmesh_aabb" "auto_navmesh_primitive" "primitive_3d" "demo" "many" "lines" "moving" "gltf" "random_obstacles"
+          do
+            echo "Building $example"
+            cargo build --target wasm32-unknown-unknown --release --example $example --features "bevy/webgl2"
+            wasm-bindgen --no-typescript --out-dir wasm --target web target/wasm32-unknown-unknown/release/examples/$example.wasm
+            wasm-opt -Oz wasm/${example}_bg.wasm --output wasm/${example}-opt.wasm
+            rm wasm/${example}_bg.wasm
+            mv wasm/${example}-opt.wasm wasm/${example}_bg.wasm
+            cp wasm/example.html wasm/${example}.html
+            sed -i '' "s/name-of-example/${example}/g" wasm/${example}.html
+          done
+          for example in "auto_navmesh_avian2d"
+          do
+            echo "Building $example"
+            cargo build --target wasm32-unknown-unknown --release --example $example --features "bevy/webgl2,avian2d"
+            wasm-bindgen --no-typescript --out-dir wasm --target web target/wasm32-unknown-unknown/release/examples/$example.wasm
+            wasm-opt -Oz wasm/${example}_bg.wasm --output wasm/${example}-opt.wasm
+            rm wasm/${example}_bg.wasm
+            mv wasm/${example}-opt.wasm wasm/${example}_bg.wasm
+            cp wasm/example.html wasm/${example}.html
+            sed -i '' "s/name-of-example/${example}/g" wasm/${example}.html
+          done
+          for example in "auto_navmesh_avian3d"
+          do
+            echo "Building $example"
+            cargo build --target wasm32-unknown-unknown --release --example $example --features "bevy/webgl2,avian3d"
+            wasm-bindgen --no-typescript --out-dir wasm --target web target/wasm32-unknown-unknown/release/examples/$example.wasm
+            wasm-opt -Oz wasm/${example}_bg.wasm --output wasm/${example}-opt.wasm
+            rm wasm/${example}_bg.wasm
+            mv wasm/${example}-opt.wasm wasm/${example}_bg.wasm
+            cp wasm/example.html wasm/${example}.html
+            sed -i '' "s/name-of-example/${example}/g" wasm/${example}.html
+          done
+          for example in "layers"
+          do
+            echo "Building $example"
+            cargo build --target wasm32-unknown-unknown --release --example $example --features "bevy/webgl2,avian3d,detailed-layers"
+            wasm-bindgen --no-typescript --out-dir wasm --target web target/wasm32-unknown-unknown/release/examples/$example.wasm
+            wasm-opt -Oz wasm/${example}_bg.wasm --output wasm/${example}-opt.wasm
+            rm wasm/${example}_bg.wasm
+            mv wasm/${example}-opt.wasm wasm/${example}_bg.wasm
+            cp wasm/example.html wasm/${example}.html
+            sed -i '' "s/name-of-example/${example}/g" wasm/${example}.html
+          done
+
+      - name: Copy Assets
+        run: cp -r assets wasm/
+
+      - name: Copy Screenshots
+        run: cp -r screenshots wasm/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: "wasm"
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

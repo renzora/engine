@@ -1,0 +1,178 @@
+use avian2d::{
+    parry::{
+        na::{Const, OPoint},
+        shape::TypedShape,
+    },
+    prelude::{Collider, Sleeping},
+};
+use bevy::{
+    math::{Vec3Swizzles, vec3},
+    prelude::*,
+};
+
+use crate::{updater::CachableObstacle, world_to_mesh};
+
+use super::{ObstacleSource, RESOLUTION};
+
+impl ObstacleSource for Collider {
+    fn get_polygons(
+        &self,
+        obstacle_transform: &GlobalTransform,
+        navmesh_transform: &Transform,
+        up: (Dir3, f32),
+    ) -> Vec<Vec<Vec2>> {
+        vec![self.shape_scaled().as_typed_shape().get_polygon(
+            obstacle_transform,
+            navmesh_transform,
+            up,
+        )]
+    }
+}
+
+trait InnerObstacleSource {
+    fn get_polygon(
+        &self,
+        obstacle_transform: &GlobalTransform,
+        navmesh_transform: &Transform,
+        up: (Dir3, f32),
+    ) -> Vec<Vec2>;
+}
+
+impl InnerObstacleSource for TypedShape<'_> {
+    fn get_polygon(
+        &self,
+        obstacle_transform: &GlobalTransform,
+        navmesh_transform: &Transform,
+        (up, _shift): (Dir3, f32),
+    ) -> Vec<Vec2> {
+        let mut transform = obstacle_transform.compute_transform();
+        transform.scale = Vec3::ONE;
+        let world_to_mesh = world_to_mesh(navmesh_transform);
+
+        let ref_to_world = |p: &OPoint<f32, Const<2>>| {
+            let mut v = vec3(p.x, 0.0, p.y);
+            v = if up.is_negative_bitmask().count_ones() % 2 == 1 {
+                Quat::from_rotation_arc(Vec3::Y, up.into()).mul_vec3(v)
+            } else {
+                Quat::from_rotation_arc(-Vec3::Y, up.into()).mul_vec3(v)
+            };
+            transform.transform_point(v)
+        };
+        let to_world = |p: OPoint<f32, Const<2>>| ref_to_world(&p);
+
+        let to_navmesh = |v: Vec3| world_to_mesh.transform_point3(v).xy();
+
+        match self {
+            TypedShape::Ball(collider) => collider
+                .to_polyline(RESOLUTION)
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Cuboid(collider) => collider
+                .to_polyline()
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Capsule(collider) => collider
+                .to_polyline(RESOLUTION)
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Triangle(collider) => [collider.a, collider.b, collider.c]
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::TriMesh(collider) => collider
+                .vertices()
+                .iter()
+                .map(ref_to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Polyline(collider) => collider
+                .vertices()
+                .iter()
+                .map(ref_to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Compound(collider) => collider
+                .shapes()
+                .iter()
+                .flat_map(|(iso, shape)| {
+                    let angle = iso.rotation.angle();
+                    let translation = Vec3::new(iso.translation.x, 0.0, iso.translation.y);
+                    let shape_transform = Transform::from_translation(translation)
+                        .with_rotation(Quat::from_rotation_y(angle));
+                    let composed = GlobalTransform::from(
+                        obstacle_transform.compute_transform() * shape_transform,
+                    );
+                    shape
+                        .as_typed_shape()
+                        .get_polygon(&composed, navmesh_transform, (up, _shift))
+                })
+                .collect(),
+            TypedShape::ConvexPolygon(collider) => collider
+                .points()
+                .iter()
+                .map(ref_to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::RoundCuboid(collider) => collider
+                .to_polyline(RESOLUTION)
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::RoundTriangle(collider) => [
+                collider.inner_shape.a,
+                collider.inner_shape.b,
+                collider.inner_shape.c,
+            ]
+            .into_iter()
+            .map(to_world)
+            .map(to_navmesh)
+            .collect(),
+            TypedShape::RoundConvexPolygon(collider) => collider
+                .to_polyline(RESOLUTION)
+                .into_iter()
+                .map(to_world)
+                .map(to_navmesh)
+                .collect(),
+            TypedShape::Segment(_) => {
+                warn!("Segment collider not supported for NavMesh obstacle generation");
+                vec![]
+            }
+            TypedShape::HalfSpace(_) => {
+                warn!("HalfSpace collider not supported for NavMesh obstacle generation");
+                vec![]
+            }
+            TypedShape::HeightField(_) => {
+                warn!("HeightField collider not supported for NavMesh obstacle generation");
+                vec![]
+            }
+            TypedShape::Custom(_) => {
+                warn!("Custom collider not supported for NavMesh obstacle generation");
+                vec![]
+            }
+            TypedShape::Voxels(_) => {
+                warn!("Voxels collider not supported for NavMesh obstacle generation");
+                vec![]
+            }
+        }
+    }
+}
+
+pub fn on_sleeping_inserted(trigger: On<Insert, Sleeping>, mut commands: Commands) {
+    commands
+        .entity(trigger.event().entity)
+        .try_insert(CachableObstacle);
+}
+
+pub fn on_sleeping_removed(trigger: On<Remove, Sleeping>, mut commands: Commands) {
+    commands
+        .entity(trigger.event().entity)
+        .try_remove::<CachableObstacle>();
+}
