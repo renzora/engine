@@ -46,7 +46,7 @@ use std::marker::PhantomData;
 
 use crate::component_system::components::clouds::CloudDomeMarker;
 use crate::console_info;
-use crate::core::{AppState, DockingState, EditorSettings, MainCamera, RenderToggles, SelectionState, ViewportState, VisualizationMode};
+use crate::core::{AppState, DockingState, EditorSettings, MainCamera, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SelectionState, ViewportState, VisualizationMode};
 use crate::gizmo::meshes::GizmoMesh;
 use crate::gizmo::GizmoOverlayCamera;
 #[cfg(feature = "solari")]
@@ -716,27 +716,34 @@ fn debug_solari_particles(
 /// This prevents rendering to textures that aren't being displayed, improving performance.
 fn sync_camera_activity(
     docking: Res<DockingState>,
+    play_mode: Res<PlayModeState>,
     mut main_cameras: Query<&mut Camera, With<MainCamera>>,
     mut gizmo_overlay_cameras: Query<&mut Camera, (With<GizmoOverlayCamera>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
     mut studio_cameras: Query<&mut Camera, (With<StudioPreviewCamera>, Without<MainCamera>, Without<ParticlePreviewCamera>)>,
     mut particle_cameras: Query<&mut Camera, (With<ParticlePreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>)>,
     mut material_cameras: Query<&mut Camera, (With<MaterialPreviewCamera>, Without<MainCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>)>,
-    mut scene_cameras_3d: Query<&mut Camera, (With<CameraNodeData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>)>,
-    mut scene_rigs: Query<&mut Camera, (With<CameraRigData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>)>,
-    mut scene_cameras_2d: Query<&mut Camera, (With<Camera2DData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<CameraRigData>)>,
+    mut scene_cameras_3d: Query<&mut Camera, (With<CameraNodeData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<PlayModeCamera>)>,
+    mut scene_rigs: Query<&mut Camera, (With<CameraRigData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<PlayModeCamera>)>,
+    mut scene_cameras_2d: Query<&mut Camera, (With<Camera2DData>, Without<MainCamera>, Without<GizmoOverlayCamera>, Without<StudioPreviewCamera>, Without<ParticlePreviewCamera>, Without<MaterialPreviewCamera>, Without<CameraNodeData>, Without<CameraRigData>, Without<PlayModeCamera>)>,
 ) {
-    // Main viewport camera - always active if Viewport panel is visible
     let viewport_visible = docking.is_panel_visible(&PanelId::Viewport);
+
+    // During play mode, the game camera renders instead of the editor camera
+    let in_play_mode = matches!(play_mode.state, PlayState::Playing | PlayState::Paused);
+
+    // Main viewport camera - disabled during play mode so the game camera renders
+    let main_active = viewport_visible && !in_play_mode;
     for mut camera in main_cameras.iter_mut() {
-        if camera.is_active != viewport_visible {
-            camera.is_active = viewport_visible;
+        if camera.is_active != main_active {
+            camera.is_active = main_active;
         }
     }
 
-    // Gizmo overlay camera - synced with main viewport camera
+    // Gizmo overlay camera - also disabled during play mode
+    let gizmo_active = viewport_visible && !in_play_mode;
     for mut camera in gizmo_overlay_cameras.iter_mut() {
-        if camera.is_active != viewport_visible {
-            camera.is_active = viewport_visible;
+        if camera.is_active != gizmo_active {
+            camera.is_active = gizmo_active;
         }
     }
 

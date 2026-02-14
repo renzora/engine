@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
-use crate::core::{ViewportMode, ViewportState};
+use crate::core::{PlayModeState, PlayState, ViewportMode, ViewportState};
 use crate::gizmo::editor_camera_layers;
 use crate::scene::EditorOnly;
 use super::{Camera2DState, ViewportImage};
@@ -119,10 +119,17 @@ pub fn camera2d_controller(
 /// System to toggle camera activation based on viewport mode
 pub fn toggle_viewport_cameras(
     viewport: Res<ViewportState>,
+    play_mode: Res<PlayModeState>,
     mut camera_3d_query: Query<&mut Camera, (With<crate::core::ViewportCamera>, Without<Editor2DCamera>)>,
     mut camera_2d_query: Query<&mut Camera, (With<Editor2DCamera>, Without<crate::core::ViewportCamera>)>,
 ) {
     if !viewport.is_changed() {
+        return;
+    }
+
+    // Don't override camera state during play mode - the game camera is active instead
+    let in_play_mode = matches!(play_mode.state, PlayState::Playing | PlayState::Paused);
+    if in_play_mode {
         return;
     }
 
