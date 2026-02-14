@@ -82,7 +82,7 @@ pub(crate) fn sync_clouds(
     mut commands: Commands,
     mut clouds_state: ResMut<CloudsState>,
     clouds_query: Query<(&CloudsData, &EditorEntity, Option<&DisabledComponents>)>,
-    camera_query: Query<&Transform, With<ViewportCamera>>,
+    camera_query: Query<(&Transform, &Camera), With<ViewportCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
@@ -101,7 +101,9 @@ pub(crate) fn sync_clouds(
         return;
     };
 
-    let Ok(camera_transform) = camera_query.single() else {
+    let Some((camera_transform, _)) = camera_query.iter()
+        .find(|(_, cam)| cam.is_active)
+        .or_else(|| camera_query.iter().next()) else {
         return;
     };
 

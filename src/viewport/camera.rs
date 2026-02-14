@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
+use crate::core::{EditorEntity, InputFocusState, PlayModeCamera, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
 use crate::brushes::BlockEditState;
 use crate::gizmo::{ModalTransformState, GizmoState};
 
@@ -38,7 +38,7 @@ pub fn camera_controller(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
-    mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
+    mut camera_query: Query<&mut Transform, (With<ViewportCamera>, Without<PlayModeCamera>)>,
     modal: Res<ModalTransformState>,
     input_focus: Res<InputFocusState>,
     mut window_query: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
@@ -351,7 +351,7 @@ pub fn camera_controller(
 /// reflected in the camera transform for the current frame's render.
 pub fn apply_orbit_to_camera(
     orbit: Res<OrbitCameraState>,
-    mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
+    mut camera_query: Query<&mut Transform, (With<ViewportCamera>, Without<PlayModeCamera>)>,
 ) {
     // Only run when orbit state has changed
     if !orbit.is_changed() {

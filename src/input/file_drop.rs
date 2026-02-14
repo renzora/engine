@@ -1201,11 +1201,27 @@ pub fn apply_material_data(
         };
 
         // Load and compile the blueprint
-        let path = PathBuf::from(material_path);
+        // Try project-relative path first, then fall back to CWD-relative (for engine default assets)
+        let raw_path = PathBuf::from(material_path);
+        let path = if raw_path.is_relative() {
+            if let Some(ref project) = current_project {
+                let project_relative = project.path.join(&raw_path);
+                if project_relative.exists() {
+                    project_relative
+                } else {
+                    raw_path // Fall back to CWD-relative (engine default assets)
+                }
+            } else {
+                raw_path
+            }
+        } else {
+            raw_path
+        };
         let blueprint_file = match BlueprintFile::load(&path) {
             Ok(file) => file,
             Err(e) => {
                 console_error!("Material", "Failed to load blueprint: {}", e);
+                error!("Failed to load material blueprint '{}' (resolved: '{}'): {}", material_path, path.display(), e);
                 // Mark as applied (with error) to prevent repeated attempts
                 commands.entity(entity).insert(MaterialApplied {
                     applied_path: Some(material_path.clone()),

@@ -34,7 +34,7 @@ pub(crate) fn sync_sun_disc(
     mut commands: Commands,
     mut disc_state: ResMut<SunDiscState>,
     sun_query: Query<(&SunData, &EditorEntity, Option<&DisabledComponents>)>,
-    camera_query: Query<&Transform, With<ViewportCamera>>,
+    camera_query: Query<(&Transform, &Camera), With<ViewportCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -54,7 +54,9 @@ pub(crate) fn sync_sun_disc(
         return;
     };
 
-    let Ok(camera_transform) = camera_query.single() else {
+    let Some((camera_transform, _)) = camera_query.iter()
+        .find(|(_, cam)| cam.is_active)
+        .or_else(|| camera_query.iter().next()) else {
         return;
     };
 

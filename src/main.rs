@@ -56,7 +56,7 @@ use bevy::window::{WindowMode, WindowResizeConstraints};
 use bevy::winit::{WinitSettings, WinitWindows};
 use bevy_egui::EguiPrimaryContextPass;
 
-use crate::core::AppState;
+use crate::core::{AppState, RuntimeConfig};
 
 /// Marker component for the splash screen camera
 #[derive(Component)]
@@ -108,6 +108,26 @@ fn main() {
         return;
     }
 
+    // Check for --play mode: launches editor, auto-opens project, auto-triggers play mode (F5)
+    let play_project = if args.len() >= 3 && args[1] == "--play" {
+        // Attach a console window so logs are visible
+        #[cfg(windows)]
+        unsafe { windows_sys::Win32::System::Console::AllocConsole(); }
+
+        let project_path = std::path::PathBuf::from(&args[2]);
+        let toml_path = project_path.join("project.toml");
+        match project::open_project(&toml_path) {
+            Ok(proj) => Some(proj),
+            Err(e) => {
+                eprintln!("Error: Could not open project at {}: {}", project_path.display(), e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+    let is_play_mode = play_project.is_some();
+
     // When packed, extract embedded updater and plugins to disk
     embedded::extract_embedded_updater();
     embedded::extract_embedded_plugins();
@@ -122,22 +142,41 @@ fn main() {
     #[cfg(feature = "solari")]
     app.insert_resource(DlssProjectId(Uuid::from_u128(0x52454e5a4f52415f454e47494e455f31)));
 
+    // Window config differs for --play mode (decorated, project-titled)
+    let window = if let Some(ref proj) = play_project {
+        Window {
+            title: proj.config.name.clone(),
+            resolution: (1280u32, 720u32).into(),
+            position: WindowPosition::Centered(MonitorSelection::Primary),
+            decorations: true,
+            resizable: true,
+            resize_constraints: WindowResizeConstraints {
+                min_width: 640.0,
+                min_height: 360.0,
+                ..default()
+            },
+            ..default()
+        }
+    } else {
+        Window {
+            title: "Renzora Engine r4".to_string(),
+            resolution: (800u32, 600u32).into(),
+            position: WindowPosition::Centered(MonitorSelection::Primary),
+            decorations: false,
+            resizable: true,
+            resize_constraints: WindowResizeConstraints {
+                min_width: 800.0,
+                min_height: 600.0,
+                ..default()
+            },
+            ..default()
+        }
+    };
+
     app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Renzora Engine r4".to_string(),
-                        resolution: (800u32, 600u32).into(),
-                        position: WindowPosition::Centered(MonitorSelection::Primary),
-                        decorations: false,
-                        resizable: true,
-                        resize_constraints: WindowResizeConstraints {
-                            min_width: 800.0,
-                            min_height: 600.0,
-                            ..default()
-                        },
-                        ..default()
-                    }),
+                    primary_window: Some(window),
                     ..default()
                 })
                 .set(AssetPlugin {
@@ -246,11 +285,23 @@ fn main() {
         .register_type::<std::path::PathBuf>()
         .register_type::<Option<std::path::PathBuf>>()
         .register_type::<std::collections::HashMap<String, scripting::ScriptValue>>()
+        // All plugins (no conditional loading — play mode uses the full editor)
         .add_plugins(core::CorePlugin)
-        .add_plugins(core::DiagnosticsPlugin)
         .add_plugins(commands::CommandPlugin)
         .add_plugins(project::ProjectPlugin)
         .add_plugins(component_system::ComponentSystemPlugin)
+        .add_plugins(plugin_core::PluginCorePlugin)
+        .add_plugins(component_system::RenzoraPhysicsPlugin::new(true)) // Always start paused; play mode unpauses
+        .add_plugins(vleue_navigator::prelude::VleueNavigatorPlugin)
+        .add_plugins(vleue_navigator::prelude::NavmeshUpdaterPlugin::<
+            avian3d::prelude::Collider, avian3d::prelude::Collider
+        >::default())
+        .add_plugins(vleue_navigator::prelude::AvoidancePlugin)
+        .add_plugins(bevy_silk::ClothPlugin)
+        .add_plugins(voxel_world::RenzoraVoxelWorldPlugin)
+        .add_plugins(gltf_animation::GltfAnimationPlugin)
+        .add_plugins(particles::ParticlesPlugin)
+        .add_plugins(core::DiagnosticsPlugin)
         .add_plugins(viewport::ViewportPlugin)
         .add_plugins(viewport::StudioPreviewPlugin)
         .add_plugins(viewport::ParticlePreviewPlugin)
@@ -259,7 +310,6 @@ fn main() {
         .add_plugins(input::InputPlugin)
         .add_plugins(ui::UiPlugin)
         .add_plugins(scripting::ScriptingPlugin)
-        .add_plugins(plugin_core::PluginCorePlugin)
         .add_plugins(play_mode::PlayModePlugin)
         .add_plugins(shader_thumbnail::ShaderThumbnailPlugin)
         .add_plugins(blueprint::BlueprintPlugin)
@@ -268,297 +318,263 @@ fn main() {
         .add_plugins(terrain::TerrainPlugin)
         .add_plugins(mesh_sculpt::MeshSculptPlugin)
         .add_plugins(surface_painting::SurfacePaintingPlugin)
-        .add_plugins(component_system::RenzoraPhysicsPlugin::new(true))
-        .add_plugins(vleue_navigator::prelude::VleueNavigatorPlugin)
-        .add_plugins(vleue_navigator::prelude::NavmeshUpdaterPlugin::<
-            avian3d::prelude::Collider, avian3d::prelude::Collider
-        >::default())
-        .add_plugins(vleue_navigator::prelude::AvoidancePlugin)
-        .add_plugins(bevy_silk::ClothPlugin)
-        .add_plugins(voxel_world::RenzoraVoxelWorldPlugin)
         .add_plugins(update::UpdatePlugin)
-        .add_plugins(gltf_animation::GltfAnimationPlugin)
-        .add_plugins(particles::ParticlesPlugin)
         .add_plugins(geo_map::GeoMapPlugin);
 
     // Meshlet/Virtual Geometry integration (requires solari feature)
     #[cfg(feature = "solari")]
     app.add_plugins(meshlet::MeshletIntegrationPlugin);
 
-    app
-        // Observer for Bevy scene loading completion
-        .add_observer(scene::on_bevy_scene_ready)
-        // Initialize app state
-        .init_state::<AppState>()
-        // Scene saveable registry (required for scene saving)
-        .insert_resource(scene::create_default_registry())
-        // Crash report window state
-        .init_resource::<crash::CrashReportWindowState>()
-        // Check for previous crash on startup
-        .add_systems(Startup, crash::check_for_previous_crash)
-        // Crash report window UI
-        .add_systems(
-            EguiPrimaryContextPass,
-            crash::render_crash_report_window.run_if(in_state(AppState::Editor)),
+    // Shared setup: observer, state, scene registry
+    app.add_observer(scene::on_bevy_scene_ready)
+        .insert_resource(scene::create_default_registry());
+
+    // State initialization
+    app.init_state::<AppState>(); // Always starts at Splash
+    if let Some(proj) = play_project {
+        app.insert_resource(RuntimeConfig { project_path: proj.path.clone() });
+        app.insert_resource(proj);
+        // Transition to Editor on first frame (after Startup commands flush, so ViewportImage exists)
+        app.add_systems(Startup, |mut next_state: ResMut<NextState<AppState>>| {
+            next_state.set(AppState::Editor);
+        });
+    }
+
+    // Scene component rehydration systems
+    app.add_systems(
+        Update,
+        (
+            scene::rehydrate_mesh_components,
+            scene::rehydrate_point_lights,
+            scene::rehydrate_directional_lights,
+            scene::rehydrate_spot_lights,
+            scene::rehydrate_sun_lights,
+            scene::rehydrate_terrain_chunks,
+            scene::apply_terrain_materials,
+            scene::rebuild_children_from_child_of,
+            scene::rehydrate_cameras_3d,
+            scene::rehydrate_camera_rigs,
+            scene::rehydrate_cameras_2d,
+            scene::prepare_meshes_for_solari,
         )
-        // Setup splash camera and window icon on startup
-        .add_systems(Startup, (set_window_icon, setup_splash_camera))
-        // Splash screen systems (run when in Splash state)
-        .add_systems(
-            EguiPrimaryContextPass,
-            ui::splash_ui.run_if(in_state(AppState::Splash)),
-        )
-        // Editor UI system (in EguiPrimaryContextPass)
-        // Note: run_if(in_state) doesn't work with EguiPrimaryContextPass, so state is checked inside the system
-        .add_systems(
-            EguiPrimaryContextPass,
-            ui::editor_ui,
-        )
-        // Inspector content exclusive system (renders inspector panel content with World access)
-        // Must run after editor_ui to get the panel rect
-        .add_systems(
-            EguiPrimaryContextPass,
-            ui::inspector_content_exclusive.after(ui::editor_ui),
-        )
-        // Thumbnail loading system - loads and registers asset preview thumbnails
-        .add_systems(
-            EguiPrimaryContextPass,
-            ui::thumbnail_loading_system
-                .after(ui::editor_ui)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Model preview texture registration (for 3D model thumbnails)
-        .add_systems(
-            EguiPrimaryContextPass,
-            viewport::register_model_preview_textures
-                .after(ui::editor_ui)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Shader preview texture registration
-        .add_systems(
-            EguiPrimaryContextPass,
-            shader_preview::register_shader_preview_texture
-                .after(ui::editor_ui)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Shader thumbnail texture registration (for asset browser thumbnails)
-        .add_systems(
-            EguiPrimaryContextPass,
-            shader_thumbnail::register_shader_thumbnail_textures
-                .after(ui::editor_ui)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Window actions system - runs in same schedule as egui to handle drag immediately
-        .add_systems(EguiPrimaryContextPass, ui::handle_window_actions.after(ui::editor_ui))
-        // Apply orbit camera changes from UI immediately (view angle buttons, axis gizmo clicks, etc.)
-        .add_systems(
-            EguiPrimaryContextPass,
-            viewport::apply_orbit_to_camera
-                .after(ui::editor_ui)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Editor non-UI systems (run when in Editor state) - split into multiple groups
-        .add_systems(
-            Update,
-            (
-                viewport::resize_viewport_texture,
-                viewport::update_camera_preview,
-                input::handle_selection,
-                input::handle_view_angles,
-                input::handle_view_toggles,
-                input::handle_play_mode,
-                viewport::update_camera_projection,
-                viewport::camera_controller,
-                viewport::camera2d_controller,
-                viewport::toggle_viewport_cameras,
+            .run_if(in_state(AppState::Editor).or(in_state(AppState::Runtime))),
+    );
+
+    {
+        // Editor mode systems
+        app.init_resource::<crash::CrashReportWindowState>()
+            .add_systems(Startup, crash::check_for_previous_crash)
+            .add_systems(
+                EguiPrimaryContextPass,
+                crash::render_crash_report_window.run_if(in_state(AppState::Editor)),
             )
-                .chain()
-                .run_if(in_state(AppState::Editor)),
-        )
-        .add_systems(
-            Update,
-            viewport::camera_focus_selected.run_if(in_state(AppState::Editor)),
-        )
-        // Modal transform systems (Blender-style G/R/S shortcuts)
-        .add_systems(
-            Update,
-            (
-                gizmo::modal_transform_input_system,
-                gizmo::modal_transform_keyboard_system,
-                gizmo::modal_transform_apply_system,
-                gizmo::modal_transform_overlay_system,
+            .add_systems(Startup, (set_window_icon, setup_splash_camera))
+            .add_systems(
+                EguiPrimaryContextPass,
+                ui::splash_ui.run_if(in_state(AppState::Splash).and(not(resource_exists::<RuntimeConfig>))),
             )
-                .chain()
-                .before(gizmo::gizmo_hover_system)
-                .run_if(in_state(AppState::Editor)),
-        )
-        .add_systems(
-            Update,
-            (
-                // 3D gizmo systems
-                gizmo::gizmo_hover_system,
-                gizmo::gizmo_interaction_system,
-                gizmo::object_drag_system,
-                gizmo::draw_selection_gizmo,
-                gizmo::update_selection_outlines,
-                // Terrain chunk selection highlight (yellow border on click)
-                gizmo::terrain_chunk_selection_system,
-                // 2D gizmo systems
-                gizmo::gizmo_2d_hover_system,
-                gizmo::gizmo_2d_interaction_system,
-                gizmo::gizmo_2d_drag_system,
-                gizmo::draw_selection_gizmo_2d,
-                gizmo::handle_2d_picking,
+            .add_systems(
+                EguiPrimaryContextPass,
+                ui::editor_ui.run_if(not(resource_exists::<RuntimeConfig>)),
             )
-                .chain()
-                .run_if(in_state(AppState::Editor)),
-        )
-        .add_systems(
-            Update,
-            (
-                // Collider edit systems
-                gizmo::collider_edit_selection_sync,
-                gizmo::collider_edit_hover_system,
-                gizmo::collider_edit_interaction_system,
-                gizmo::collider_edit_drag_system,
+            .add_systems(
+                EguiPrimaryContextPass,
+                ui::inspector_content_exclusive
+                    .after(ui::editor_ui)
+                    .run_if(not(resource_exists::<RuntimeConfig>)),
             )
-                .chain()
-                .after(gizmo::handle_2d_picking)
-                .run_if(in_state(AppState::Editor)),
-        )
-        .add_systems(
-            Update,
-            (
-                gizmo::draw_physics_gizmos,
-                gizmo::draw_collider_edit_handles,
-                gizmo::draw_grid,
-                gizmo::draw_camera_gizmos,
-                viewport::draw_grid_2d,
-                // 2D/UI visual rendering
-                viewport::update_2d_visuals,
-                viewport::cleanup_2d_visuals,
-                // Input handling
-                input::handle_file_drop,
-                input::handle_asset_panel_drop,
-                input::handle_image_panel_drop,
-                input::handle_material_panel_drop,
-                input::handle_pending_skybox_drop,
-                input::apply_material_data,
-                input::handle_scene_hierarchy_drop,
-                input::spawn_loaded_gltfs,
-                input::check_mesh_instance_models,
-                input::spawn_mesh_instance_models,
-                scene::handle_save_shortcut,
-                scene::handle_make_default_camera,
-                scene::assign_scene_tab_ids,
+            .add_systems(
+                EguiPrimaryContextPass,
+                ui::thumbnail_loading_system
+                    .after(ui::editor_ui)
+                    .run_if(in_state(AppState::Editor)),
             )
-                .chain()
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Surface raycast for placing dragged objects on existing meshes
-        .add_systems(
-            Update,
-            input::drag_surface_raycast_system
-                .before(input::update_shape_drag_preview)
-                .before(input::update_drag_preview)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Shape library spawn + drag preview (separated to stay within tuple size limit)
-        .add_systems(
-            Update,
-            (input::handle_shape_library_spawn, input::update_shape_drag_preview)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Script/blueprint drop onto hierarchy entities
-        .add_systems(
-            Update,
-            input::handle_script_hierarchy_drop
-                .after(input::handle_scene_hierarchy_drop)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Effect file drop onto viewport
-        .add_systems(
-            Update,
-            input::handle_effect_panel_drop
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Drag preview systems (show ghost mesh while dragging model over viewport)
-        .add_systems(
-            Update,
-            (
-                input::start_drag_preview,
-                input::update_drag_preview,
-                input::cleanup_drag_preview,
+            .add_systems(
+                EguiPrimaryContextPass,
+                viewport::register_model_preview_textures
+                    .after(ui::editor_ui)
+                    .run_if(in_state(AppState::Editor)),
             )
-                .chain()
-                .before(input::handle_asset_panel_drop)
-                .run_if(in_state(AppState::Editor).and(input::drag_preview_active)),
-        )
-        // Ground alignment for dropped models (runs after spawn, needs Aabb computed)
-        .add_systems(
-            Update,
-            input::align_models_to_ground
-                .after(input::spawn_loaded_gltfs)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Scene component rehydration systems (recreate rendering components from data components after scene load)
-        .add_systems(
-            Update,
-            (
-                scene::rehydrate_mesh_components,
-                scene::rehydrate_point_lights,
-                scene::rehydrate_directional_lights,
-                scene::rehydrate_spot_lights,
-                scene::rehydrate_sun_lights,
-                scene::rehydrate_terrain_chunks,
-                scene::apply_terrain_materials,
-                scene::rebuild_children_from_child_of,
-                scene::rehydrate_cameras_3d,
-                scene::rehydrate_camera_rigs,
-                scene::rehydrate_cameras_2d,
-                // RaytracingMesh3d is now managed by sync_rendering_settings in viewport/mod.rs
-                // based on whether Solari lighting is enabled in the scene
-                // Ensure meshes have UVs and tangents for Solari (when enabled)
-                scene::prepare_meshes_for_solari,
+            .add_systems(
+                EguiPrimaryContextPass,
+                shader_preview::register_shader_preview_texture
+                    .after(ui::editor_ui)
+                    .run_if(in_state(AppState::Editor)),
             )
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Scene management exclusive system (needs &mut World for saving)
-        // Must run before camera_controller to avoid 1-frame camera delay on tab switch
-        // Must run before assign_scene_tab_ids so newly loaded entities get tab IDs assigned
-        .add_systems(
-            Update,
-            scene::handle_scene_requests
-                .before(viewport::camera_controller)
-                .before(scene::assign_scene_tab_ids)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Auto-save system (checks periodically if scene needs saving)
-        .add_systems(
-            Update,
-            scene::auto_save_scene
-                .before(scene::handle_scene_requests)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // Scene instance loading exclusive system (needs &mut World for spawning)
-        .add_systems(
-            Update,
-            input::load_scene_instances
-                .after(input::handle_scene_hierarchy_drop)
-                .run_if(in_state(AppState::Editor)),
-        )
-        // When entering Editor state: maximize window, despawn splash camera, load scene, and load editor state
-        .add_systems(OnEnter(AppState::Editor), (maximize_window, despawn_splash_camera, load_project_scene, load_editor_state).chain())
-        // When returning to Splash with a project already selected (Open Project from File menu),
-        // immediately transition back to Editor so OnEnter(Editor) re-initializes everything
-        .add_systems(Update, handle_pending_project_reopen.run_if(in_state(AppState::Splash)))
-        // Save editor state periodically (every 5 seconds if dirty)
-        .add_systems(Update, save_editor_state_periodic.run_if(in_state(AppState::Editor)))
-        // Initialize editor state tracking resources
-        .init_resource::<project::EditorStateDirty>()
-        .init_resource::<project::LoadedEditorState>()
-        // Initialize modal transform state
-        .init_resource::<gizmo::ModalTransformState>();
+            .add_systems(
+                EguiPrimaryContextPass,
+                shader_thumbnail::register_shader_thumbnail_textures
+                    .after(ui::editor_ui)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(EguiPrimaryContextPass, ui::handle_window_actions.after(ui::editor_ui).run_if(not(resource_exists::<RuntimeConfig>)))
+            .add_systems(
+                EguiPrimaryContextPass,
+                viewport::apply_orbit_to_camera
+                    .after(ui::editor_ui)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    viewport::resize_viewport_texture,
+                    viewport::update_camera_preview,
+                    input::handle_selection,
+                    input::handle_view_angles,
+                    input::handle_view_toggles,
+                    input::handle_play_mode,
+                    viewport::update_camera_projection,
+                    viewport::camera_controller,
+                    viewport::camera2d_controller,
+                    viewport::toggle_viewport_cameras,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                viewport::camera_focus_selected.run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    gizmo::modal_transform_input_system,
+                    gizmo::modal_transform_keyboard_system,
+                    gizmo::modal_transform_apply_system,
+                    gizmo::modal_transform_overlay_system,
+                )
+                    .chain()
+                    .before(gizmo::gizmo_hover_system)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    gizmo::gizmo_hover_system,
+                    gizmo::gizmo_interaction_system,
+                    gizmo::object_drag_system,
+                    gizmo::draw_selection_gizmo,
+                    gizmo::update_selection_outlines,
+                    gizmo::terrain_chunk_selection_system,
+                    gizmo::gizmo_2d_hover_system,
+                    gizmo::gizmo_2d_interaction_system,
+                    gizmo::gizmo_2d_drag_system,
+                    gizmo::draw_selection_gizmo_2d,
+                    gizmo::handle_2d_picking,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    gizmo::collider_edit_selection_sync,
+                    gizmo::collider_edit_hover_system,
+                    gizmo::collider_edit_interaction_system,
+                    gizmo::collider_edit_drag_system,
+                )
+                    .chain()
+                    .after(gizmo::handle_2d_picking)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    gizmo::draw_physics_gizmos,
+                    gizmo::draw_collider_edit_handles,
+                    gizmo::draw_grid,
+                    gizmo::draw_camera_gizmos,
+                    viewport::draw_grid_2d,
+                    viewport::update_2d_visuals,
+                    viewport::cleanup_2d_visuals,
+                    input::handle_file_drop,
+                    input::handle_asset_panel_drop,
+                    input::handle_image_panel_drop,
+                    input::handle_material_panel_drop,
+                    input::handle_pending_skybox_drop,
+                    input::apply_material_data,
+                    input::handle_scene_hierarchy_drop,
+                    input::spawn_loaded_gltfs,
+                    input::check_mesh_instance_models,
+                    input::spawn_mesh_instance_models,
+                    scene::handle_save_shortcut,
+                    scene::handle_make_default_camera,
+                    scene::assign_scene_tab_ids,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::drag_surface_raycast_system
+                    .before(input::update_shape_drag_preview)
+                    .before(input::update_drag_preview)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (input::handle_shape_library_spawn, input::update_shape_drag_preview)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::handle_script_hierarchy_drop
+                    .after(input::handle_scene_hierarchy_drop)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::handle_effect_panel_drop
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                (
+                    input::start_drag_preview,
+                    input::update_drag_preview,
+                    input::cleanup_drag_preview,
+                )
+                    .chain()
+                    .before(input::handle_asset_panel_drop)
+                    .run_if(in_state(AppState::Editor).and(input::drag_preview_active)),
+            )
+            .add_systems(
+                Update,
+                input::align_models_to_ground
+                    .after(input::spawn_loaded_gltfs)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                scene::handle_scene_requests
+                    .before(viewport::camera_controller)
+                    .before(scene::assign_scene_tab_ids)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                scene::auto_save_scene
+                    .before(scene::handle_scene_requests)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::load_scene_instances
+                    .after(input::handle_scene_hierarchy_drop)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(OnEnter(AppState::Editor), (maximize_window, despawn_splash_camera, load_project_scene, load_editor_state).chain())
+            .add_systems(Update, handle_pending_project_reopen.run_if(in_state(AppState::Splash)))
+            .add_systems(Update, save_editor_state_periodic.run_if(in_state(AppState::Editor)))
+            .init_resource::<project::EditorStateDirty>()
+            .init_resource::<project::LoadedEditorState>()
+            .init_resource::<gizmo::ModalTransformState>();
+    }
+
+    // Auto-trigger play mode when launched with --play flag
+    if is_play_mode {
+        app.add_systems(Update, auto_play_after_scene_load.run_if(in_state(AppState::Editor)));
+    }
 
     app.run();
 }
@@ -591,16 +607,31 @@ fn handle_pending_project_reopen(
     }
 }
 
-/// Keep the splash camera for egui UI rendering in editor mode
-fn despawn_splash_camera(mut query: Query<&mut Camera, With<SplashCamera>>) {
+/// Keep the splash camera for egui UI rendering in editor mode.
+/// In --play mode, deactivate it entirely (no editor UI).
+fn despawn_splash_camera(
+    mut query: Query<&mut Camera, With<SplashCamera>>,
+    runtime_config: Option<Res<RuntimeConfig>>,
+) {
     for mut camera in query.iter_mut() {
-        // Just update the order to render after 3D viewport, keep everything else
-        camera.order = 100;
+        if runtime_config.is_some() {
+            // --play mode: deactivate so no editor UI renders over the game
+            camera.is_active = false;
+        } else {
+            // Editor mode: repurpose as UI camera with high order
+            camera.order = 100;
+        }
     }
 }
 
-/// Maximize the window when entering the editor
-fn maximize_window(mut windows: Query<&mut Window>) {
+/// Maximize the window when entering the editor (skip in --play mode)
+fn maximize_window(
+    mut windows: Query<&mut Window>,
+    runtime_config: Option<Res<RuntimeConfig>>,
+) {
+    // In --play mode, keep the configured window size (1280x720)
+    if runtime_config.is_some() { return; }
+
     for mut window in windows.iter_mut() {
         window.set_maximized(true);
         window.mode = WindowMode::Windowed;
@@ -817,4 +848,35 @@ fn save_editor_state_periodic(
 
     // Clear dirty flag
     dirty.0 = false;
+}
+
+// ---- Auto-play system for --play flag ----
+
+/// Waits for the scene to finish loading, then auto-triggers play mode (same as F5).
+/// Only runs when launched with --play flag (RuntimeConfig resource present).
+fn auto_play_after_scene_load(
+    mut play_mode: ResMut<core::PlayModeState>,
+    pending: Query<(), With<scene::loader::PendingSceneLoad>>,
+    mut seen_pending: Local<bool>,
+    mut frames_ready: Local<u32>,
+    mut done: Local<bool>,
+) {
+    if *done { return; }
+
+    // Phase 1: Wait for scene load to start
+    if !pending.is_empty() {
+        *seen_pending = true;
+        *frames_ready = 0;
+        return;
+    }
+
+    // Phase 2: Scene loaded (or no scene). Wait for rehydration.
+    *frames_ready += 1;
+    let min_frames = if *seen_pending { 10 } else { 60 };
+
+    if *frames_ready >= min_frames {
+        play_mode.request_play = true;
+        *done = true;
+        info!("Auto-play: Triggering play mode");
+    }
 }

@@ -3,7 +3,7 @@ mod components;
 mod keybindings;
 pub mod resources;
 
-pub use app_state::{AppState, AssetLoadingProgress, format_bytes};
+pub use app_state::{AppState, AssetLoadingProgress, RuntimeConfig, format_bytes};
 pub use components::{AudioListenerMarker, DisabledComponents, EditorEntity, MainCamera, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
 pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 

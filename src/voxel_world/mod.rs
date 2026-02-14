@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_voxel_world::prelude::*;
 
 use crate::component_system::components::voxel_world::VoxelWorldData;
-use crate::core::{AppState, ViewportCamera};
+use crate::core::{AppState, PlayModeCamera, ViewportCamera};
 use config::RenzoraVoxelConfig;
 
 pub struct RenzoraVoxelWorldPlugin;
@@ -38,7 +38,7 @@ fn sync_voxel_config(
 fn sync_voxel_camera(
     mut commands: Commands,
     voxel_data: Query<&VoxelWorldData>,
-    camera: Query<(Entity, Has<VoxelWorldCamera<RenzoraVoxelConfig>>), With<ViewportCamera>>,
+    camera: Query<(Entity, Has<VoxelWorldCamera<RenzoraVoxelConfig>>), (With<ViewportCamera>, Without<PlayModeCamera>)>,
 ) {
     let needs_marker = voxel_data.iter().any(|d| d.enabled);
     let Ok((cam_entity, has_marker)) = camera.single() else {

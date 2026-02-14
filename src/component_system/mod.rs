@@ -183,7 +183,7 @@ impl Plugin for ComponentSystemPlugin {
             components::skybox::sync_skybox,
             components::sun::sync_sun_disc,
             components::clouds::sync_clouds,
-        ).run_if(in_state(crate::core::AppState::Editor)));
+        ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
 
         // New post-processing sync systems (split into groups of <=12 for tuple size limit)
         app.add_systems(Update, (
@@ -199,13 +199,13 @@ impl Plugin for ComponentSystemPlugin {
             components::crt::sync_crt,
             components::god_rays::sync_god_rays,
             components::gaussian_blur::sync_gaussian_blur,
-        ).run_if(in_state(crate::core::AppState::Editor)));
+        ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
 
         app.add_systems(Update, (
             components::palette_quantization::sync_palette_quantization,
             components::distortion::sync_distortion,
             components::underwater::sync_underwater,
-        ).run_if(in_state(crate::core::AppState::Editor)));
+        ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
     }
 }
 

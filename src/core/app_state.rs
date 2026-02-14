@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::asset::UntypedAssetId;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Application state for managing splash screen vs editor
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -8,6 +9,13 @@ pub enum AppState {
     #[default]
     Splash,
     Editor,
+    Runtime,
+}
+
+/// Configuration for runtime (--play) mode
+#[derive(Resource)]
+pub struct RuntimeConfig {
+    pub project_path: PathBuf,
 }
 
 /// Information about an asset being tracked

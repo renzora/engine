@@ -8,7 +8,7 @@ use bevy::camera::RenderTarget;
 
 use avian3d::prelude::*;
 
-use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
+use crate::core::{AppState, EditorEntity, PlayModeCamera, PlayModeState, PlayState, RuntimeConfig, ViewportCamera};
 use crate::viewport::ViewportImage;
 use crate::component_system::{
     CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData, RuntimePhysics,
@@ -28,6 +28,12 @@ impl Plugin for PlayModePlugin {
                 handle_physics_transitions,
             )
                 .chain()
+                .run_if(in_state(AppState::Editor)),
+        );
+        // Resync post-processing effects to the play mode camera after it's spawned
+        app.add_systems(
+            Update,
+            resync_effects_on_play_mode
                 .run_if(in_state(AppState::Editor)),
         );
     }
@@ -67,6 +73,7 @@ fn handle_play_mode_transitions(
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
     mut editor_camera: Query<&mut Camera, With<ViewportCamera>>,
     viewport_image: Res<ViewportImage>,
+    runtime_config: Option<Res<RuntimeConfig>>,
     // Physics queries
     physics_entities: Query<
         (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
@@ -74,10 +81,12 @@ fn handle_play_mode_transitions(
     >,
     runtime_physics_entities: Query<Entity, With<RuntimePhysics>>,
 ) {
+    let render_to_window = runtime_config.is_some();
+
     // Handle request to enter play mode (fullscreen)
     if play_mode.request_play {
         play_mode.request_play = false;
-        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera, &viewport_image);
+        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera, &viewport_image, render_to_window);
 
         // Spawn physics components for all entities with physics data
         spawn_play_mode_physics(&mut commands, &physics_entities);
@@ -204,6 +213,8 @@ fn despawn_play_mode_physics(
 }
 
 /// Enter play mode: activate game camera, hide editor camera
+/// When `render_to_window` is true (--play flag), the game camera renders directly
+/// to the window instead of the viewport texture, and the editor UI is not needed.
 fn enter_play_mode(
     commands: &mut Commands,
     play_mode: &mut PlayModeState,
@@ -211,9 +222,17 @@ fn enter_play_mode(
     camera_rigs: &Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     editor_camera: &mut Query<&mut Camera, With<ViewportCamera>>,
     viewport_image: &ViewportImage,
+    render_to_window: bool,
 ) {
-    info!("Entering play mode");
+    info!("Entering play mode (render_to_window: {})", render_to_window);
     console_info!("Play Mode", "Starting play mode...");
+
+    // Camera config: render to viewport texture (editor) or directly to window (--play)
+    let (camera_order, render_target) = if render_to_window {
+        (0, None)
+    } else {
+        (1, Some(RenderTarget::Image(viewport_image.0.clone().into())))
+    };
 
     // Find the default camera (is_default_camera=true) - check both cameras and rigs
     // First check regular cameras
@@ -234,21 +253,25 @@ fn enter_play_mode(
         );
 
         // Add Camera3d component to the game camera entity
-        commands.entity(entity).insert((
+        let mut ecmds = commands.entity(entity);
+        ecmds.insert((
             Camera3d::default(),
             Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
-                order: 1, // Render on top of editor camera
+                order: camera_order,
                 ..default()
             },
-            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: data.fov.to_radians(),
                 ..default()
             }),
             PlayModeCamera,
+            ViewportCamera,
         ));
+        if let Some(ref target) = render_target {
+            ecmds.insert(target.clone());
+        }
 
         play_mode.active_game_camera = Some(entity);
         console_success!("Play Mode", "Game camera activated (FOV: {:.0}°)", data.fov);
@@ -264,21 +287,25 @@ fn enter_play_mode(
         );
 
         // Add Camera3d component to the camera rig entity
-        commands.entity(entity).insert((
+        let mut ecmds = commands.entity(entity);
+        ecmds.insert((
             Camera3d::default(),
             Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
-                order: 1, // Render on top of editor camera
+                order: camera_order,
                 ..default()
             },
-            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: rig_data.fov.to_radians(),
                 ..default()
             }),
             PlayModeCamera,
+            ViewportCamera,
         ));
+        if let Some(ref target) = render_target {
+            ecmds.insert(target.clone());
+        }
 
         play_mode.active_game_camera = Some(entity);
         console_success!("Play Mode", "Camera rig activated (FOV: {:.0}°)", rig_data.fov);
@@ -294,21 +321,25 @@ fn enter_play_mode(
             entity, transform.translation, data.fov
         );
 
-        commands.entity(entity).insert((
+        let mut ecmds = commands.entity(entity);
+        ecmds.insert((
             Camera3d::default(),
             Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
-                order: 1,
+                order: camera_order,
                 ..default()
             },
-            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: data.fov.to_radians(),
                 ..default()
             }),
             PlayModeCamera,
+            ViewportCamera,
         ));
+        if let Some(ref target) = render_target {
+            ecmds.insert(target.clone());
+        }
 
         play_mode.active_game_camera = Some(entity);
         console_success!("Play Mode", "Game camera activated (FOV: {:.0}°)", data.fov);
@@ -323,21 +354,25 @@ fn enter_play_mode(
             entity, transform.translation, rig_data.fov
         );
 
-        commands.entity(entity).insert((
+        let mut ecmds = commands.entity(entity);
+        ecmds.insert((
             Camera3d::default(),
             Msaa::Off,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
-                order: 1,
+                order: camera_order,
                 ..default()
             },
-            RenderTarget::Image(viewport_image.0.clone().into()),
             Projection::Perspective(PerspectiveProjection {
                 fov: rig_data.fov.to_radians(),
                 ..default()
             }),
             PlayModeCamera,
+            ViewportCamera,
         ));
+        if let Some(ref target) = render_target {
+            ecmds.insert(target.clone());
+        }
 
         play_mode.active_game_camera = Some(entity);
         console_success!("Play Mode", "Camera rig activated (FOV: {:.0}°)", rig_data.fov);
@@ -371,7 +406,8 @@ fn exit_play_mode(
             .remove::<Camera>()
             .remove::<Projection>()
             .remove::<RenderTarget>()
-            .remove::<PlayModeCamera>();
+            .remove::<PlayModeCamera>()
+            .remove::<ViewportCamera>();
     }
 
     play_mode.active_game_camera = None;
@@ -383,4 +419,30 @@ fn exit_play_mode(
 
     play_mode.state = PlayState::Editing;
     console_info!("Play Mode", "Stopped - returned to editor");
+}
+
+/// Force all post-processing sync systems to re-apply effects when play mode starts.
+///
+/// The sync systems (skybox, bloom, fog, etc.) only run on `Changed<EditorEntity>`.
+/// When play mode adds a new camera with `ViewportCamera`, the data hasn't changed,
+/// so the effects never get applied to the new camera. This system waits one frame
+/// (for deferred commands to flush) then touches `EditorEntity` to trigger re-sync.
+fn resync_effects_on_play_mode(
+    play_mode: Res<PlayModeState>,
+    mut pending_resync: Local<bool>,
+    mut editor_entities: Query<&mut EditorEntity>,
+) {
+    // Process pending resync (one frame after play mode started, so commands have flushed)
+    if *pending_resync {
+        *pending_resync = false;
+        for mut ee in editor_entities.iter_mut() {
+            ee.set_changed();
+        }
+        return;
+    }
+
+    // Schedule resync for next frame when play mode just started
+    if play_mode.is_changed() && play_mode.is_playing() {
+        *pending_resync = true;
+    }
 }
