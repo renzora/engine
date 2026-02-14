@@ -97,7 +97,8 @@ impl Plugin for GizmoPlugin {
         // Configure gizmos to render on the gizmo layer
         app.add_systems(Startup, (configure_gizmo_render_layers, meshes::setup_gizmo_meshes));
         // Update mesh-based gizmos
-        app.add_systems(Update, (meshes::update_gizmo_mesh_transforms, meshes::update_gizmo_materials));
+        app.add_systems(Update, (meshes::update_gizmo_mesh_transforms, meshes::update_gizmo_materials)
+            .run_if(in_state(crate::core::AppState::Editor)));
     }
 }
 

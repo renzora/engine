@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin, EntityCountDiagnosticsPlugin, SystemInformationDiagnosticsPlugin};
 use std::collections::{VecDeque, HashMap};
+use crate::core::AppState;
 
 /// Maximum number of samples to keep for graphs
 const MAX_SAMPLES: usize = 120;
@@ -768,7 +769,7 @@ impl Plugin for DiagnosticsPlugin {
             update_memory_profiler,
             update_system_timing,
             super::render_pipeline::update_render_pipeline_timing,
-        ))
+        ).run_if(in_state(AppState::Editor)))
         .add_systems(Update, (
             super::physics_debug::update_physics_debug_state,
             super::camera_debug::update_camera_debug_state,
@@ -776,7 +777,7 @@ impl Plugin for DiagnosticsPlugin {
             super::physics_playground::process_playground_commands,
             super::physics_forces::update_forces_panel_state,
             super::physics_forces::process_force_commands,
-        ))
+        ).run_if(in_state(AppState::Editor)))
         .add_systems(Update, (
             super::physics_metrics::update_physics_metrics,
             super::physics_scenarios::process_scenario_commands,
@@ -791,7 +792,7 @@ impl Plugin for DiagnosticsPlugin {
             super::arena_presets::process_arena_commands,
             super::arena_presets::animate_arena_kinematic,
             crate::gizmo::render_physics_debug_gizmos,
-        ));
+        ).run_if(in_state(AppState::Editor)));
     }
 
     fn finish(&self, app: &mut App) {
