@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
-use crate::shared::{PhysicsBodyData, PhysicsBodyType};
+use crate::component_system::{PhysicsBodyData, PhysicsBodyType};
 use crate::ui::property_row;
 
 use egui_phosphor::regular::ATOM;

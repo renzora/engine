@@ -8,9 +8,9 @@ use bevy::render::render_resource::{
 
 use crate::core::SelectionState;
 use crate::gizmo::preview_camera_layers;
-use crate::shared::CameraNodeData;
+use crate::component_system::CameraNodeData;
 use crate::scene::EditorOnly;
-use crate::shared::CameraRigData;
+use crate::component_system::CameraRigData;
 
 /// Resource holding the camera preview render texture
 #[derive(Resource)]

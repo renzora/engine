@@ -10,7 +10,7 @@ use bevy::prelude::*;
 
 use crate::core::{EditorEntity, InputFocusState, SceneNode, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
-use crate::shared::MeshNodeData;
+use crate::component_system::MeshNodeData;
 
 use super::{
     BrushCreationPhase, BrushData, BrushSettings, BrushState, BrushType,
@@ -334,7 +334,7 @@ pub fn brush_creation_end_system(
         },
         SceneNode,
         MeshNodeData {
-            mesh_type: crate::shared::MeshPrimitiveType::Cube,
+            mesh_type: crate::component_system::MeshPrimitiveType::Cube,
         },
         BrushData {
             brush_type: brush_state.creating_brush_type,
@@ -419,7 +419,7 @@ pub fn spawn_brush(
         },
         SceneNode,
         MeshNodeData {
-            mesh_type: crate::shared::MeshPrimitiveType::Cube,
+            mesh_type: crate::component_system::MeshPrimitiveType::Cube,
         },
         BrushData {
             brush_type,

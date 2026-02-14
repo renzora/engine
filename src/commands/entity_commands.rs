@@ -737,7 +737,7 @@ impl Command for SetLockedCommand {
 // Spawn Mesh Instance Command (for undo of asset drops)
 // ============================================================================
 
-use crate::shared::{
+use crate::component_system::{
     MeshInstanceData, SceneInstanceData,
     MeshNodeData, Sprite2DData,
     CameraNodeData, CameraRigData, Camera2DData,

@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use std::collections::HashSet;
 
-use crate::shared::components::animation::AnimatableProperty;
+use crate::component_system::data::components::animation::AnimatableProperty;
 
 /// Playback state for the animation timeline
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -9,7 +9,7 @@ use egui_phosphor::regular::PALETTE;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::{TonemappingData, TonemappingMode};
+use crate::component_system::{TonemappingData, TonemappingMode};
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

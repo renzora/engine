@@ -7,7 +7,7 @@ use bevy::prelude::*;
 
 use crate::core::{SelectionState, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
-use crate::shared::{MeshNodeData, MeshPrimitiveType};
+use crate::component_system::{MeshNodeData, MeshPrimitiveType};
 
 use super::{BrushData, BrushSettings};
 

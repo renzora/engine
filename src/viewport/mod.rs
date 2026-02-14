@@ -50,11 +50,11 @@ use crate::core::{AppState, DockingState, EditorSettings, MainCamera, PlayModeCa
 use crate::gizmo::meshes::GizmoMesh;
 use crate::gizmo::GizmoOverlayCamera;
 #[cfg(feature = "solari")]
-use crate::shared::{DlssQualityMode, SolariLightingData};
+use crate::component_system::{DlssQualityMode, SolariLightingData};
 use crate::spawn::{EditorSceneRoot, SceneType};
 use crate::blueprint::preview::MaterialPreviewCamera;
 use crate::ui::docking::PanelId;
-use crate::shared::{
+use crate::component_system::{
     Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
     MeshNodeData, PhysicsBodyData, Sprite2DData, UIButtonData, UIImageData, UILabelData,
     UIPanelData,

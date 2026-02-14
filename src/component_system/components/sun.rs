@@ -6,7 +6,7 @@ use bevy_egui::egui;
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::SunData;
+use crate::component_system::SunData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::SUN_HORIZON;

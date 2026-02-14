@@ -11,14 +11,14 @@ use std::path::Path;
 use crate::component_system::components::clouds::CloudDomeMarker;
 use crate::core::{EditorEntity, SceneNode, SceneTabId, HierarchyState, OrbitCameraState};
 use crate::gizmo::meshes::GizmoMesh;
-use crate::shared::{
+use crate::component_system::{
     MeshNodeData, MeshPrimitiveType,
     PointLightData, DirectionalLightData, SpotLightData, SunData,
     CameraNodeData, CameraRigData, Camera2DData,
 };
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use crate::component_system::components::terrain::DEFAULT_TERRAIN_MATERIAL;
-use crate::shared::MaterialData;
+use crate::component_system::MaterialData;
 use crate::{console_info, console_warn};
 
 use super::saver::EditorSceneMetadata;

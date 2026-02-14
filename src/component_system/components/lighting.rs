@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use crate::shared::{DirectionalLightData, PointLightData, SpotLightData, SunData};
+use crate::component_system::{DirectionalLightData, PointLightData, SpotLightData, SunData};
 
 /// Syncs wrapper data types to Bevy's built-in light components.
 /// Should be registered as a Bevy system so that inspector edits to the

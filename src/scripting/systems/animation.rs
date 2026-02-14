@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{PlayModeState, PlayState};
-use crate::shared::components::animation::{AnimationData, AnimatableProperty, KeyframeValue};
+use crate::component_system::data::components::animation::{AnimationData, AnimatableProperty, KeyframeValue};
 use crate::scripting::resources::{
     ActiveTween, ActiveTweens, AnimationCommand, AnimationCommandQueue, AnimationPlayer,
     AnimationState, TweenProperty, TweenValue,
@@ -357,7 +357,7 @@ pub fn clear_animation_on_stop(
 // Sprite Animation Systems
 // =============================================================================
 
-use crate::shared::components::SpriteSheetData;
+use crate::component_system::data::components::SpriteSheetData;
 use crate::scripting::resources::{
     SpriteAnimationCommand, SpriteAnimationCommandQueue, SpriteAnimationPlayer,
 };

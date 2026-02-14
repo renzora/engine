@@ -8,7 +8,7 @@ use egui_phosphor::regular::SHIELD_CHECK;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::TaaData;
+use crate::component_system::TaaData;
 use crate::ui::inline_property;
 
 pub fn register(registry: &mut ComponentRegistry) {

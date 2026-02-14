@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::MaterialData;
+use crate::component_system::MaterialData;
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use super::{Category, EntityTemplate};
 

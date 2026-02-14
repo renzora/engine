@@ -9,7 +9,6 @@ default-run = "renzora"
 [features]
 default = ["editor"]
 editor = ["dep:libloading", "dep:image", "dep:egui-phosphor", "dep:ureq"]
-runtime = []
 dynamic = ["bevy/dynamic_linking"]
 # Raytraced global illumination, DLSS, and virtual geometry (meshlets).
 # Requires Vulkan SDK and DLSS SDK installed for compilation.
@@ -20,11 +19,6 @@ solari = ["bevy/bevy_solari", "bevy/dlss", "bevy/meshlet", "bevy/meshlet_process
 name = "renzora"
 path = "src/main.rs"
 required-features = ["editor"]
-
-[[bin]]
-name = "renzora_runtime"
-path = "src/runtime/main.rs"
-required-features = ["runtime"]
 
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }

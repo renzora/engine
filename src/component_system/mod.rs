@@ -42,6 +42,7 @@ pub mod presets;
 pub mod register_macro;
 
 pub mod components;
+pub mod data;
 
 #[cfg(test)]
 mod tests;
@@ -49,6 +50,9 @@ mod tests;
 pub use definition::*;
 pub use registry::*;
 pub use inspector_integration::*;
+
+// Re-export data module items so crate::component_system::X works
+pub use data::*;
 pub use presets::{PresetCategory, get_presets_by_category, spawn_preset, spawn_component_as_node, preset_component_ids};
 pub use register_macro::{ComponentDefBuilder, create_component_definition};
 

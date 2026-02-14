@@ -10,7 +10,7 @@ use avian3d::prelude::*;
 
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
 use crate::viewport::ViewportImage;
-use crate::shared::{
+use crate::component_system::{
     CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData, RuntimePhysics,
     spawn_entity_physics, despawn_physics_components,
 };

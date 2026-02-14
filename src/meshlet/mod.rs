@@ -16,7 +16,7 @@ use bevy::pbr::experimental::meshlet::MeshletMesh;
 use bevy::asset::LoadState;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::MeshletMeshData;
+use crate::component_system::MeshletMeshData;
 use crate::{console_info, console_error};
 
 /// Plugin for meshlet/virtual geometry integration

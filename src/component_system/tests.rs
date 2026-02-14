@@ -27,6 +27,9 @@ fn test_def(type_id: &'static str, category: ComponentCategory, priority: i32) -
         inspector_fn: |_, _, _, _, _| false,
         conflicts_with: &[],
         requires: &[],
+        get_script_properties_fn: None,
+        set_script_property_fn: None,
+        script_property_meta_fn: None,
     }
 }
 
@@ -51,6 +54,9 @@ fn test_def_with_conflicts(
         inspector_fn: |_, _, _, _, _| false,
         conflicts_with: conflicts,
         requires,
+        get_script_properties_fn: None,
+        set_script_property_fn: None,
+        script_property_meta_fn: None,
     }
 }
 

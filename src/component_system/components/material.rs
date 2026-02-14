@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::MaterialData;
+use crate::component_system::MaterialData;
 use crate::input::MaterialApplied;
 use crate::ui::property_row;
 

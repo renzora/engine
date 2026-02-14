@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::{CollisionShapeData, CollisionShapeType};
+use crate::component_system::{CollisionShapeData, CollisionShapeType};
 use crate::ui::property_row;
 
 use egui_phosphor::regular::{CUBE, GLOBE, PILL};

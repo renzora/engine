@@ -10,7 +10,7 @@ use serde_json::json;
 
 use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentRegistry};
 use crate::core::WorldEnvironmentMarker;
-use crate::shared::{
+use crate::component_system::{
     AmbientLightData,
     SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
     ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData,

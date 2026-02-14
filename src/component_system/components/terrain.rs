@@ -7,7 +7,7 @@ use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::MaterialData;
+use crate::component_system::MaterialData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::MOUNTAINS;

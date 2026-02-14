@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::UIPanelData;
+use crate::component_system::UIPanelData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::SQUARES_FOUR;

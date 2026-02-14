@@ -80,7 +80,7 @@ macro_rules! register_saveable {
 /// Initialize the scene saveable registry with all default components
 pub fn create_default_registry() -> SceneSaveableRegistry {
     use crate::core::{EditorEntity, SceneNode, WorldEnvironmentMarker};
-    use crate::shared::{
+    use crate::component_system::{
         MeshNodeData, CameraNodeData, CameraRigData, MeshInstanceData, SceneInstanceData,
         PhysicsBodyData, CollisionShapeData, Sprite2DData, Camera2DData,
         UIPanelData, UILabelData, UIButtonData, UIImageData, MaterialData,
@@ -125,32 +125,32 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<WorldEnvironmentMarker>();
 
     // Post-processing components
-    registry.register::<crate::shared::SkyboxData>();
-    registry.register::<crate::shared::FogData>();
-    registry.register::<crate::shared::AntiAliasingData>();
-    registry.register::<crate::shared::AmbientOcclusionData>();
-    registry.register::<crate::shared::ReflectionsData>();
-    registry.register::<crate::shared::BloomData>();
-    registry.register::<crate::shared::TonemappingData>();
-    registry.register::<crate::shared::DepthOfFieldData>();
-    registry.register::<crate::shared::MotionBlurData>();
-    registry.register::<crate::shared::AmbientLightData>();
-    registry.register::<crate::shared::CloudsData>();
-    registry.register::<crate::shared::TaaData>();
-    registry.register::<crate::shared::SmaaData>();
-    registry.register::<crate::shared::CasData>();
-    registry.register::<crate::shared::ChromaticAberrationData>();
-    registry.register::<crate::shared::AutoExposureData>();
-    registry.register::<crate::shared::VolumetricFogData>();
-    registry.register::<crate::shared::VignetteData>();
-    registry.register::<crate::shared::FilmGrainData>();
-    registry.register::<crate::shared::PixelationData>();
-    registry.register::<crate::shared::CrtData>();
-    registry.register::<crate::shared::GodRaysData>();
-    registry.register::<crate::shared::GaussianBlurData>();
-    registry.register::<crate::shared::PaletteQuantizationData>();
-    registry.register::<crate::shared::DistortionData>();
-    registry.register::<crate::shared::UnderwaterData>();
+    registry.register::<crate::component_system::SkyboxData>();
+    registry.register::<crate::component_system::FogData>();
+    registry.register::<crate::component_system::AntiAliasingData>();
+    registry.register::<crate::component_system::AmbientOcclusionData>();
+    registry.register::<crate::component_system::ReflectionsData>();
+    registry.register::<crate::component_system::BloomData>();
+    registry.register::<crate::component_system::TonemappingData>();
+    registry.register::<crate::component_system::DepthOfFieldData>();
+    registry.register::<crate::component_system::MotionBlurData>();
+    registry.register::<crate::component_system::AmbientLightData>();
+    registry.register::<crate::component_system::CloudsData>();
+    registry.register::<crate::component_system::TaaData>();
+    registry.register::<crate::component_system::SmaaData>();
+    registry.register::<crate::component_system::CasData>();
+    registry.register::<crate::component_system::ChromaticAberrationData>();
+    registry.register::<crate::component_system::AutoExposureData>();
+    registry.register::<crate::component_system::VolumetricFogData>();
+    registry.register::<crate::component_system::VignetteData>();
+    registry.register::<crate::component_system::FilmGrainData>();
+    registry.register::<crate::component_system::PixelationData>();
+    registry.register::<crate::component_system::CrtData>();
+    registry.register::<crate::component_system::GodRaysData>();
+    registry.register::<crate::component_system::GaussianBlurData>();
+    registry.register::<crate::component_system::PaletteQuantizationData>();
+    registry.register::<crate::component_system::DistortionData>();
+    registry.register::<crate::component_system::UnderwaterData>();
 
     // Advanced rendering
     registry.register::<SolariLightingData>();  // Raytraced lighting settings
@@ -167,7 +167,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<PointLight>();
     registry.register::<DirectionalLight>();
     registry.register::<SpotLight>();
-    registry.register::<crate::shared::SunData>();
+    registry.register::<crate::component_system::SunData>();
 
     registry
 }

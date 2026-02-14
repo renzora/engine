@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::{MeshNodeData, MeshPrimitiveType};
+use crate::component_system::{MeshNodeData, MeshPrimitiveType};
 use crate::spawn::meshes::create_mesh_for_type;
 use crate::ui::property_row;
 

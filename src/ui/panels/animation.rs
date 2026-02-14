@@ -15,7 +15,7 @@ use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding, Sense, Stro
 use egui_phosphor::regular::{PLAY, PAUSE, STOP, PLUS, TRASH, PENCIL_SIMPLE, ARROWS_CLOCKWISE, COPY};
 
 use crate::core::SelectionState;
-use crate::shared::components::animation::{AnimationData, GltfAnimations};
+use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
 use crate::theming::Theme;
 
 /// State for the animation panel (local UI state only)

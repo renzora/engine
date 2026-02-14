@@ -8,7 +8,7 @@ use egui_phosphor::regular::SPARKLE;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::ReflectionsData;
+use crate::component_system::ReflectionsData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

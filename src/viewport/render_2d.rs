@@ -10,7 +10,7 @@ use bevy::camera::visibility::RenderLayers;
 
 use crate::core::{ViewportMode, ViewportState};
 use crate::gizmo::GIZMO_RENDER_LAYER;
-use crate::shared::{
+use crate::component_system::{
     Camera2DData, Sprite2DData, UIButtonData, UIImageData, UILabelData, UIPanelData,
 };
 

@@ -11,7 +11,7 @@ use egui_phosphor::regular::{PLAY, PAUSE, STOP};
 use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DiagnosticsState, DockingState,
-    EditorEntity, ExportState, GamepadDebugState, ImagePreviewTextures, InputFocusState, InspectorPanelRenderState,
+    EditorEntity, GamepadDebugState, ImagePreviewTextures, InputFocusState, InspectorPanelRenderState,
     KeyBindings, RenderStats, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
@@ -38,7 +38,6 @@ pub struct EditorResources<'w> {
     pub scene_state: ResMut<'w, SceneManagerState>,
     pub assets: ResMut<'w, AssetBrowserState>,
     pub settings: ResMut<'w, EditorSettings>,
-    pub export_state: ResMut<'w, ExportState>,
     pub window_state: ResMut<'w, WindowState>,
     pub gizmo: ResMut<'w, GizmoState>,
     pub modal_transform: Res<'w, ModalTransformState>,
@@ -121,7 +120,7 @@ use docking::{
 };
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
-    render_export_dialog, render_plugin_panels,
+    render_plugin_panels,
     render_document_tabs, render_code_editor_content, render_image_preview_content,
     render_splash, render_status_bar, render_title_bar, render_viewport,
     TITLE_BAR_HEIGHT,
@@ -353,7 +352,6 @@ pub fn editor_ui(
             &mut editor.selection,
             &mut editor.scene_state,
             &mut editor.settings,
-            &mut editor.export_state,
             &mut editor.assets,
             &editor.plugin_host,
             &mut editor.command_history,
@@ -1444,14 +1442,6 @@ pub fn editor_ui(
                 }
             }
         }
-
-        // Render export dialog (floating)
-        render_export_dialog(
-            ctx,
-            &mut editor.export_state,
-            &editor.scene_state,
-            current_project.as_deref(),
-        );
 
         // Render plugin-registered panels (skip those already docked in the tree)
         let docked_plugin_ids: std::collections::HashSet<String> = {

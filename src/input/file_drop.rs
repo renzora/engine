@@ -9,10 +9,10 @@ use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress, ViewportCamera, ViewportState};
-use crate::shared::{MaterialData, MeshInstanceData, MeshPrimitiveType, SceneInstanceData, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage};
+use crate::component_system::{MaterialData, MeshInstanceData, MeshPrimitiveType, SceneInstanceData, GltfAnimations, GltfAnimationHandles, GltfAnimationStorage};
 use crate::spawn::EditorSceneRoot;
 use crate::project::CurrentProject;
-use crate::shared::Sprite2DData;
+use crate::component_system::Sprite2DData;
 use crate::blueprint::{
     BlueprintFile, compile_material_blueprint, create_material_from_blueprint,
     preview::{chain_has_procedural_pattern, generate_procedural_texture},
@@ -1703,7 +1703,7 @@ pub fn handle_pending_skybox_drop(
     };
 
     // Apply SkyboxData with panorama mode
-    use crate::shared::{SkyboxData, SkyMode, PanoramaSkyData};
+    use crate::component_system::{SkyboxData, SkyMode, PanoramaSkyData};
     commands.entity(entity).insert(SkyboxData {
         sky_mode: SkyMode::Panorama,
         panorama_sky: PanoramaSkyData {
@@ -1729,7 +1729,7 @@ pub fn handle_shape_library_spawn(
     mut selection: ResMut<SelectionState>,
     mut hierarchy: ResMut<HierarchyState>,
 ) {
-    use crate::shared::MeshNodeData;
+    use crate::component_system::MeshNodeData;
     use crate::spawn::meshes::create_mesh_for_type;
 
     // Handle click-to-spawn from shape library panel

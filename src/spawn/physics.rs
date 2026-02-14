@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{PhysicsBodyData, CollisionShapeData};
+use crate::component_system::{PhysicsBodyData, CollisionShapeData};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[

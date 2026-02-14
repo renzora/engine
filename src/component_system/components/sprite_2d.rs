@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::Sprite2DData;
+use crate::component_system::Sprite2DData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::IMAGE;

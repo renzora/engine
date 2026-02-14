@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 
-use crate::shared::MeshPrimitiveType;
+use crate::component_system::MeshPrimitiveType;
 use crate::theming::Theme;
 
 use egui_phosphor::regular::{

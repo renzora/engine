@@ -616,7 +616,7 @@ pub fn spawn_preset(
     parent: Option<Entity>,
 ) -> Entity {
     use crate::core::{EditorEntity, SceneNode};
-    use crate::shared::{MeshNodeData, MeshPrimitiveType};
+    use crate::component_system::{MeshNodeData, MeshPrimitiveType};
     use crate::spawn::meshes::create_mesh_for_type;
 
     // Spawn base entity
@@ -713,11 +713,11 @@ pub fn spawn_preset(
             ));
         } else if *component_id == "rigid_body" && preset.id == "static_floor" {
             // Static floor gets a static body instead of the default dynamic body
-            use crate::shared::PhysicsBodyData;
+            use crate::component_system::PhysicsBodyData;
             commands.entity(entity).insert(PhysicsBodyData::static_body());
         } else if *component_id == "box_collider" && preset.id == "static_floor" {
             // Static floor gets a large flat collider
-            use crate::shared::{CollisionShapeData, CollisionShapeType};
+            use crate::component_system::{CollisionShapeData, CollisionShapeType};
             commands.entity(entity).insert(CollisionShapeData {
                 shape_type: CollisionShapeType::Box,
                 half_extents: Vec3::new(10.0, 0.05, 10.0),

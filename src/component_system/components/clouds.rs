@@ -13,7 +13,7 @@ use egui_phosphor::regular::CLOUD_SUN;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::CloudsData;
+use crate::component_system::CloudsData;
 use crate::ui::inline_property;
 
 // ============================================================================

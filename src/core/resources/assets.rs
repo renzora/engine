@@ -165,7 +165,7 @@ pub struct AssetBrowserState {
     /// Surface normal at drag hit point (Y-up when on ground plane)
     pub drag_surface_normal: Vec3,
     /// Pending shape drop from Shape Library panel (mesh type, 3D position)
-    pub pending_shape_drop: Option<(crate::shared::MeshPrimitiveType, Vec3)>,
+    pub pending_shape_drop: Option<(crate::component_system::MeshPrimitiveType, Vec3)>,
     /// Surface normal at shape drop point (for proper placement on angled surfaces)
     pub pending_shape_drop_normal: Vec3,
 }

@@ -16,7 +16,7 @@ use egui_phosphor::regular::{
 };
 
 use crate::core::{AnimationTimelineState, SelectionState, TimelinePlayState};
-use crate::shared::components::animation::{GltfAnimations, GltfAnimationStorage, AnimationData};
+use crate::component_system::data::components::animation::{GltfAnimations, GltfAnimationStorage, AnimationData};
 use crate::theming::Theme;
 
 /// Height of the toolbar area

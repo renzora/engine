@@ -12,13 +12,13 @@ use std::collections::hash_map::DefaultHasher;
 use std::path::PathBuf;
 use egui_phosphor::regular::{SUN, FILE, FOLDER_OPEN, IMAGE, X_CIRCLE};
 
-use crate::shared::ProceduralSkyData;
+use crate::component_system::ProceduralSkyData;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, InspectorPanelRenderState, ViewportCamera};
 use crate::project::CurrentProject;
 use crate::register_component;
-use crate::shared::{SkyMode, SkyboxData};
+use crate::component_system::{SkyMode, SkyboxData};
 use crate::ui::{inline_property, get_inspector_theme};
 use crate::ui::inspectors::sanitize_f32;
 

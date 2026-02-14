@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::{DlssQualityMode, SolariLightingData};
+use crate::component_system::{DlssQualityMode, SolariLightingData};
 use crate::ui::{inline_property, property_row};
 
 use egui_phosphor::regular::SPARKLE;

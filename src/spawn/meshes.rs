@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{MaterialData, MeshNodeData, MeshPrimitiveType, MeshInstanceData, MeshletMeshData};
+use crate::component_system::{MaterialData, MeshNodeData, MeshPrimitiveType, MeshInstanceData, MeshletMeshData};
 use super::{Category, EntityTemplate};
 use super::procedural_meshes;
 

@@ -8,7 +8,7 @@ use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::post_process::CrtSettings;
 use crate::register_component;
-use crate::shared::CrtData;
+use crate::component_system::CrtData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

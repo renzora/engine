@@ -6,7 +6,7 @@ use bevy_egui::egui::{self, RichText, Vec2};
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::InspectorPanelRenderState;
 use crate::register_component;
-use crate::shared::CameraNodeData;
+use crate::component_system::CameraNodeData;
 use crate::ui::{property_row, get_inspector_theme};
 
 use egui_phosphor::regular::VIDEO_CAMERA;

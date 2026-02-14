@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::UIButtonData;
+use crate::component_system::UIButtonData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::CURSOR_CLICK;

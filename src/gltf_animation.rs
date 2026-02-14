@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use crate::shared::components::animation::{GltfAnimations, GltfAnimationStorage};
+use crate::component_system::data::components::animation::{GltfAnimations, GltfAnimationStorage};
 
 /// System to initialize animation graphs for entities with GltfAnimations
 pub fn setup_gltf_animation_graphs(

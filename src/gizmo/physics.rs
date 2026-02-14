@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::math::Isometry3d;
 
 use crate::core::{CollisionGizmoVisibility, EditorSettings, SceneManagerState, SelectionState, ViewportCamera, ViewportState};
-use crate::shared::{CollisionShapeData, CollisionShapeType, PhysicsBodyData};
+use crate::component_system::{CollisionShapeData, CollisionShapeType, PhysicsBodyData};
 use super::picking::{get_cursor_ray, ray_plane_intersection};
 use super::{ColliderEditHandle, GizmoState, SelectionGizmoGroup};
 

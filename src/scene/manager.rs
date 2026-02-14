@@ -4,7 +4,7 @@ use rfd::FileDialog;
 use std::path::PathBuf;
 
 use crate::core::{AppState, MainCamera, SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity, ViewportCamera};
-use crate::shared::{CameraNodeData, CameraRigData};
+use crate::component_system::{CameraNodeData, CameraRigData};
 use crate::project::{CurrentProject, AppConfig, open_project};
 use crate::{console_success, console_error, console_info};
 

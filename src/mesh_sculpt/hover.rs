@@ -6,7 +6,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::core::{ViewportCamera, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
-use crate::shared::MeshNodeData;
+use crate::component_system::MeshNodeData;
 use crate::terrain::TerrainSculptState;
 
 use super::data::MeshSculptState;

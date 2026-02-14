@@ -13,7 +13,7 @@ pub use resources::{
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState, ImportFileResult, ImportStatus,
     DockingState, EditorSettings, MonoFont, RenderStats, CameraSettings, UiFont,
-    ExportLogLevel, ExportLogger, ExportState, GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
+    GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, InspectorPanelRenderState, LogEntry, LogLevel, MeshHandling,
     ModelImportSettings, NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
@@ -54,7 +54,6 @@ impl Plugin for CorePlugin {
             .init_resource::<EditorSettings>()
             .init_resource::<KeyBindings>()
             .init_resource::<AssetLoadingProgress>()
-            .init_resource::<ExportState>()
             .init_resource::<DefaultCameraEntity>()
             .init_resource::<PlayModeState>()
             .init_resource::<ConsoleState>()

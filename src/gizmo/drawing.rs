@@ -4,8 +4,8 @@ use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 
 use crate::core::{EditorEntity, SelectionState, PlayModeState, PlayState};
 use crate::particles::HanabiEffectData;
-use crate::shared::CameraNodeData;
-use crate::shared::CameraRigData;
+use crate::component_system::CameraNodeData;
+use crate::component_system::CameraRigData;
 use crate::terrain::{TerrainChunkData, TerrainData};
 
 use super::modal_transform::ModalTransformState;

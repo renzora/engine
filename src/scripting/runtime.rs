@@ -57,7 +57,7 @@ pub struct ScriptComponentQueries<'w, 's> {
     pub mesh_materials: Query<'w, 's, &'static MeshMaterial3d<StandardMaterial>>,
     // Note: material_assets moved to ScriptCommandQueues as ResMut to avoid conflict
     // Sun data for scripting environment changes
-    pub sun_data: Query<'w, 's, &'static mut crate::shared::SunData>,
+    pub sun_data: Query<'w, 's, &'static mut crate::component_system::SunData>,
 }
 
 /// Pending parent/child transform changes
@@ -87,10 +87,10 @@ pub fn run_rhai_scripts(
     mut editor_entities: Query<(Entity, &mut EditorEntity)>,
     mut world_environments: Query<(
         &mut WorldEnvironmentMarker,
-        Option<&mut crate::shared::AmbientLightData>,
-        Option<&mut crate::shared::SkyboxData>,
-        Option<&mut crate::shared::FogData>,
-        Option<&mut crate::shared::TonemappingData>,
+        Option<&mut crate::component_system::AmbientLightData>,
+        Option<&mut crate::component_system::SkyboxData>,
+        Option<&mut crate::component_system::FogData>,
+        Option<&mut crate::component_system::TonemappingData>,
     )>,
     mut visibility_query: Query<&mut Visibility>,
     // Bundled command queues to stay within 16-param limit
@@ -465,7 +465,7 @@ pub fn run_rhai_scripts(
                 || ctx.env_fog_end.is_some();
 
             if has_env_changes {
-                use crate::shared::SkyMode;
+                use crate::component_system::SkyMode;
                 for (_world_env, ambient_opt, skybox_opt, fog_opt, tm_opt) in world_environments.iter_mut() {
                     // Ambient light
                     if let Some(mut ambient) = ambient_opt {

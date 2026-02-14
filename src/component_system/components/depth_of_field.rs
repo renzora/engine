@@ -8,7 +8,7 @@ use egui_phosphor::regular::APERTURE;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::DepthOfFieldData;
+use crate::component_system::DepthOfFieldData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

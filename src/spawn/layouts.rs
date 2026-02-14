@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use std::f32::consts::FRAC_PI_4;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{
+use crate::component_system::{
     DirectionalLightData, MeshNodeData, MeshPrimitiveType,
     PhysicsBodyData, PhysicsBodyType, CollisionShapeData, CollisionShapeType,
 };

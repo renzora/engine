@@ -8,7 +8,7 @@ use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::post_process::GaussianBlurSettings;
 use crate::register_component;
-use crate::shared::GaussianBlurData;
+use crate::component_system::GaussianBlurData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

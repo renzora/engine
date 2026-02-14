@@ -8,7 +8,7 @@ use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::post_process::VignetteSettings;
 use crate::register_component;
-use crate::shared::VignetteData;
+use crate::component_system::VignetteData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

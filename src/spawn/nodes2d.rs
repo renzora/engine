@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{Sprite2DData, Camera2DData};
+use crate::component_system::{Sprite2DData, Camera2DData};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[

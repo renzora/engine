@@ -8,12 +8,12 @@ use crate::component_system::{ComponentCategory, ComponentRegistry, PresetCatego
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
-use crate::shared::{
+use crate::component_system::{
     CameraNodeData, CameraRigData, MeshNodeData, MeshInstanceData, SceneInstanceData,
     Sprite2DData, Camera2DData,
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
-use crate::shared::components::animation::{AnimationData, GltfAnimations};
+use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
 use crate::particles::HanabiEffectData;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use crate::theming::Theme;
@@ -1342,7 +1342,7 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
     // 3D Meshes - check mesh data for specific type
     if queries.meshes.get(entity).is_ok() {
         if let Ok(mesh_data) = queries.mesh_data.get(entity) {
-            use crate::shared::MeshPrimitiveType;
+            use crate::component_system::MeshPrimitiveType;
             return match mesh_data.mesh_type {
                 MeshPrimitiveType::Cube => (CUBE, Color32::from_rgb(242, 166, 115)),
                 MeshPrimitiveType::Sphere => (SPHERE, Color32::from_rgb(242, 166, 115)),

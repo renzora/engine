@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::register_component;
-use crate::shared::SpotLightData;
+use crate::component_system::SpotLightData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::FLASHLIGHT;

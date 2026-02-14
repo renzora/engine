@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{DirectionalLightData, PointLightData, SpotLightData};
+use crate::component_system::{DirectionalLightData, PointLightData, SpotLightData};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[

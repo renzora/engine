@@ -5,7 +5,7 @@ use bevy_egui::egui;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::register_component;
-use crate::shared::CameraRigData;
+use crate::component_system::CameraRigData;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::VIDEO_CAMERA;

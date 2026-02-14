@@ -7,7 +7,7 @@ use egui_phosphor::regular::SUN_DIM;
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::AmbientLightData;
+use crate::component_system::AmbientLightData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

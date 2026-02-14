@@ -3,7 +3,7 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{AssetBrowserState, DockingState, ExportState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge, PlayModeState, PlayState};
+use crate::core::{AssetBrowserState, DockingState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge, PlayModeState, PlayState};
 use crate::gizmo::{GizmoState, EditorTool};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::theming::Theme;
@@ -21,7 +21,6 @@ pub fn render_title_bar(
     selection: &mut SelectionState,
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
-    export_state: &mut ExportState,
     assets: &mut AssetBrowserState,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
@@ -88,7 +87,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, plugin_host, command_history, docking_state, viewport_state, theme);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, assets, plugin_host, command_history, docking_state, viewport_state, theme);
 
                 // Center layout tabs in the title bar
                 let tabs_width_id = ui.id().with("layout_tabs_width");
@@ -723,7 +722,6 @@ fn render_menu_items(
     selection: &mut SelectionState,
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
-    export_state: &mut ExportState,
     assets: &mut AssetBrowserState,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
@@ -854,14 +852,6 @@ fn render_menu_items(
                         }
                     }
                 }
-                ui.close();
-            }
-        });
-
-        // Export submenu
-        submenu(ui, "Export", |ui| {
-            if menu_item(ui, "Export Game...") {
-                export_state.show_dialog = true;
                 ui.close();
             }
         });

@@ -8,7 +8,7 @@ use egui_phosphor::regular::CLOUD;
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::shared::FogData;
+use crate::component_system::FogData;
 use crate::ui::inline_property;
 use crate::ui::inspectors::sanitize_f32;
 

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{AudioListenerMarker, EditorEntity, SceneNode, WorldEnvironmentMarker};
-use crate::shared::{
+use crate::component_system::{
     AmbientLightData,
     SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
     ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData,

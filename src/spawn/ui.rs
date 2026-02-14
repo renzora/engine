@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};
-use crate::shared::{UIPanelData, UILabelData, UIButtonData, UIImageData};
+use crate::component_system::{UIPanelData, UILabelData, UIButtonData, UIImageData};
 use super::{Category, EntityTemplate};
 
 pub static TEMPLATES: &[EntityTemplate] = &[
