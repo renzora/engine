@@ -28,6 +28,60 @@ use crate::brushes::{BrushSettings, BrushState, BlockEditState};
 use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::surface_painting::{SurfacePaintSettings, SurfacePaintState};
 use crate::update::{UpdateState, UpdateDialogState};
+use crate::component_system::{ComponentRegistry, AddComponentPopupState};
+use panels::HierarchyQueries;
+use crate::project::{AppConfig, CurrentProject};
+use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
+use crate::viewport::{CameraPreviewImage, ViewportImage};
+use crate::plugin_core::PluginHost;
+use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry, serialization::BlueprintFile};
+use crate::ui_api::renderer::UiRenderer;
+use crate::ui_api::UiEvent as InternalUiEvent;
+use docking::{
+    get_legacy_layout_values, render_dock_tree, render_panel_frame,
+    calculate_panel_rects_with_adjustments, DockedPanelContext, PanelId, DropZone, SplitDirection,
+};
+use bevy_egui::egui::{Rect, Pos2};
+use panels::{
+    render_plugin_panels,
+    render_document_tabs, render_code_editor_content, render_image_preview_content,
+    render_splash, render_status_bar, render_title_bar, render_viewport,
+    TITLE_BAR_HEIGHT,
+    render_hierarchy_content, render_assets_content, render_assets_dialogs,
+    render_console_content, render_history_content, render_gamepad_content, render_performance_content,
+    render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
+    render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
+    render_level_tools_content, render_animation_content, AnimationPanelState,
+    render_particle_editor_content,
+    render_particle_preview_content,
+    render_shader_preview_content,
+    render_pixel_canvas_content,
+    render_pixel_layers_content,
+    render_pixel_palette_content,
+    render_pixel_tools_content,
+    render_pixel_timeline_content,
+    render_pixel_brush_settings_content,
+    render_physics_playground_content,
+    render_physics_properties_content,
+    render_physics_forces_content,
+    render_physics_metrics_content,
+    render_physics_scenarios_content,
+    render_collision_viz_content,
+    render_movement_trails_content,
+    render_stress_test_content,
+    render_state_recorder_content,
+    render_arena_presets_content,
+    render_shape_library_content,
+    render_geo_map_panel_content,
+    render_culling_debug_content,
+};
+use crate::particles::ParticleEditorState;
+use crate::pixel_editor::PixelEditorState;
+use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
+#[allow(unused_imports)]
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState, GeoMapPanelState};
+use style::{apply_editor_style_with_theme, init_fonts};
+use crate::theming::ThemeManager;
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]
@@ -105,60 +159,6 @@ pub struct EditorResources<'w> {
     pub geo_map_panel: ResMut<'w, GeoMapPanelState>,
     pub culling_debug: ResMut<'w, CullingDebugState>,
 }
-use crate::component_system::{ComponentRegistry, AddComponentPopupState};
-use panels::HierarchyQueries;
-use crate::project::{AppConfig, CurrentProject};
-use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
-use crate::viewport::{CameraPreviewImage, ViewportImage};
-use crate::plugin_core::PluginHost;
-use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry, serialization::BlueprintFile};
-use crate::ui_api::renderer::UiRenderer;
-use crate::ui_api::UiEvent as InternalUiEvent;
-use docking::{
-    get_legacy_layout_values, render_dock_tree, render_panel_frame,
-    calculate_panel_rects_with_adjustments, DockedPanelContext, PanelId, DropZone, SplitDirection,
-};
-use bevy_egui::egui::{Rect, Pos2};
-use panels::{
-    render_plugin_panels,
-    render_document_tabs, render_code_editor_content, render_image_preview_content,
-    render_splash, render_status_bar, render_title_bar, render_viewport,
-    TITLE_BAR_HEIGHT,
-    render_hierarchy_content, render_assets_content, render_assets_dialogs,
-    render_console_content, render_history_content, render_gamepad_content, render_performance_content,
-    render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
-    render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
-    render_level_tools_content, render_animation_content, AnimationPanelState,
-    render_particle_editor_content,
-    render_particle_preview_content,
-    render_shader_preview_content,
-    render_pixel_canvas_content,
-    render_pixel_layers_content,
-    render_pixel_palette_content,
-    render_pixel_tools_content,
-    render_pixel_timeline_content,
-    render_pixel_brush_settings_content,
-    render_physics_playground_content,
-    render_physics_properties_content,
-    render_physics_forces_content,
-    render_physics_metrics_content,
-    render_physics_scenarios_content,
-    render_collision_viz_content,
-    render_movement_trails_content,
-    render_stress_test_content,
-    render_state_recorder_content,
-    render_arena_presets_content,
-    render_shape_library_content,
-    render_geo_map_panel_content,
-    render_culling_debug_content,
-};
-use crate::particles::ParticleEditorState;
-use crate::pixel_editor::PixelEditorState;
-use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
-#[allow(unused_imports)]
-pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState, GeoMapPanelState};
-use style::{apply_editor_style_with_theme, init_fonts};
-use crate::theming::ThemeManager;
 
 /// Convert internal UiEvent to plugin API UiEvent
 fn convert_ui_event_to_api(event: InternalUiEvent) -> editor_plugin_api::events::UiEvent {
