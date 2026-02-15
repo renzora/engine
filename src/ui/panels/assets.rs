@@ -3738,7 +3738,7 @@ fn perform_model_import(assets: &mut AssetBrowserState, target_folder: &PathBuf)
             }
             Ok(_) => {
                 // Copy sidecar files (MTL, textures) for non-glTF formats
-                let sidecars = crate::import::copy_sidecar_files(source_path, target_folder);
+                let sidecars = renzora_import::copy_sidecar_files(source_path, target_folder);
                 let sidecar_count = sidecars.len();
 
                 // Convert non-glTF formats to GLB
@@ -3748,8 +3748,8 @@ fn perform_model_import(assets: &mut AssetBrowserState, target_folder: &PathBuf)
                     .unwrap_or("")
                     .to_lowercase();
 
-                if crate::import::is_convertible_model(&ext) {
-                    match crate::import::convert_to_glb(&dest_path, &settings) {
+                if renzora_import::is_convertible_model(&ext) {
+                    match renzora_import::convert_to_glb(&dest_path, &settings) {
                         Ok(glb_path) => {
                             let output_size = std::fs::metadata(&glb_path).ok().map(|m| m.len());
                             let mut msg = format!("Converted to GLB");
@@ -3911,15 +3911,15 @@ fn process_pending_file_imports(assets: &mut AssetBrowserState) {
                 info!("Imported to assets: {}", dest_path.display());
 
                 // Copy sidecar files and convert non-glTF formats
-                crate::import::copy_sidecar_files(&source_path, &target_folder);
+                renzora_import::copy_sidecar_files(&source_path, &target_folder);
 
                 let ext = dest_path
                     .extension()
                     .and_then(|e| e.to_str())
                     .unwrap_or("")
                     .to_lowercase();
-                if crate::import::is_convertible_model(&ext) {
-                    match crate::import::convert_to_glb(&dest_path, &Default::default()) {
+                if renzora_import::is_convertible_model(&ext) {
+                    match renzora_import::convert_to_glb(&dest_path, &Default::default()) {
                         Ok(glb_path) => {
                             info!("Converted to GLB: {}", glb_path.display());
                         }

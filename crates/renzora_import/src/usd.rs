@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::glb_builder::{GlbBuilder, MeshData, TextureData};
+use crate::glb_builder::{GlbBuilder, MeshData, TextureData};
 
 /// Parse a USD/USDZ file and feed geometry into a GlbBuilder.
 pub fn convert_usd(path: &Path, builder: &mut GlbBuilder) -> Result<(), String> {

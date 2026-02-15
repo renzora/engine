@@ -9,7 +9,6 @@ mod core;
 mod crash;
 mod embedded;
 mod gizmo;
-mod import;
 mod gltf_animation;
 mod input;
 mod mesh_sculpt;

@@ -1,0 +1,12 @@
+[package]
+name = "renzora_import"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gltf-json = "1.4"
+tobj = "4"
+fbxcel = "0.9"
+fbxcel-dom = "0.0"
+zip = "2"
+log = "*"

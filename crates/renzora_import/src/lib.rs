@@ -5,8 +5,10 @@ pub mod glb_builder;
 mod fbx;
 mod obj;
 mod usd;
+pub mod settings;
 
-use crate::core::{ConvertAxes, ModelImportSettings};
+pub use settings::*;
+
 use glb_builder::GlbBuilder;
 use std::path::{Path, PathBuf};
 

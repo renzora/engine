@@ -94,8 +94,8 @@ pub fn handle_file_drop(
             .to_lowercase();
 
         // Convert non-glTF model formats to GLB first
-        let load_path = if crate::import::is_convertible_model(&extension) {
-            match crate::import::convert_to_glb(&path_buf, &Default::default()) {
+        let load_path = if renzora_import::is_convertible_model(&extension) {
+            match renzora_import::convert_to_glb(&path_buf, &Default::default()) {
                 Ok(glb_path) => glb_path,
                 Err(e) => {
                     error!("Failed to convert {}: {}", path_buf.display(), e);
@@ -158,8 +158,8 @@ pub fn handle_asset_panel_drop(
             .to_lowercase();
 
         // Convert non-glTF model formats to GLB first
-        let load_path = if crate::import::is_convertible_model(&extension) {
-            match crate::import::convert_to_glb(&path, &Default::default()) {
+        let load_path = if renzora_import::is_convertible_model(&extension) {
+            match renzora_import::convert_to_glb(&path, &Default::default()) {
                 Ok(glb_path) => glb_path,
                 Err(e) => {
                     error!("Failed to convert {}: {}", path.display(), e);
@@ -476,7 +476,7 @@ fn copy_to_project_assets(source_path: &PathBuf, project: Option<&CurrentProject
         info!("Copied asset to project: {:?}", dest_path);
 
         // Copy sidecar files (MTL, textures) for non-glTF formats
-        crate::import::copy_sidecar_files(source_path, &models_dir);
+        renzora_import::copy_sidecar_files(source_path, &models_dir);
     }
 
     // Return relative path from project root (using forward slashes for cross-platform)
@@ -1572,8 +1572,8 @@ pub fn start_drag_preview(
         .to_lowercase();
 
     // For non-glTF formats, use the cached GLB sibling if it exists
-    let load_path = if crate::import::is_convertible_model(&ext) {
-        match crate::import::find_glb_sibling(dragging_path) {
+    let load_path = if renzora_import::is_convertible_model(&ext) {
+        match renzora_import::find_glb_sibling(dragging_path) {
             Some(glb_path) => glb_path,
             None => return, // No cached GLB yet - skip preview
         }

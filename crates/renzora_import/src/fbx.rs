@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use super::glb_builder::{GlbBuilder, MaterialData, MeshData};
+use crate::glb_builder::{GlbBuilder, MaterialData, MeshData};
 use fbxcel::low::v7400::AttributeValue;
 use fbxcel::tree::v7400::NodeHandle;
 

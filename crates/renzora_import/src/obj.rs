@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::glb_builder::{GlbBuilder, MaterialData, MeshData, TextureData};
+use crate::glb_builder::{GlbBuilder, MaterialData, MeshData, TextureData};
 
 /// Parse an OBJ file and feed geometry/materials into a GlbBuilder.
 pub fn convert_obj(path: &Path, builder: &mut GlbBuilder) -> Result<(), String> {
