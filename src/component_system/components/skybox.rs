@@ -19,6 +19,7 @@ use crate::core::{DisabledComponents, EditorEntity, InspectorPanelRenderState, V
 use crate::project::CurrentProject;
 use crate::register_component;
 use crate::component_system::{SkyMode, SkyboxData};
+use crate::viewport::CameraPreviewMarker;
 use crate::ui::{inline_property, get_inspector_theme};
 use crate::ui::inspectors::sanitize_f32;
 
@@ -510,8 +511,8 @@ pub(crate) fn sync_skybox(
         (&SkyboxData, &EditorEntity, Option<&DisabledComponents>),
         Or<(Changed<SkyboxData>, Changed<DisabledComponents>, Changed<EditorEntity>)>,
     >,
-    cameras: Query<Entity, With<ViewportCamera>>,
-    mut camera_query: Query<&mut Camera, With<ViewportCamera>>,
+    cameras: Query<Entity, Or<(With<ViewportCamera>, With<CameraPreviewMarker>)>>,
+    mut camera_query: Query<&mut Camera, Or<(With<ViewportCamera>, With<CameraPreviewMarker>)>>,
     asset_server: Res<AssetServer>,
     mut skybox_state: ResMut<SkyboxState>,
     current_project: Option<Res<CurrentProject>>,
@@ -567,7 +568,7 @@ pub(crate) fn sync_skybox(
     let skybox = if disabled { &SkyboxData::default() } else { skybox };
 
     // Helper to clear skybox state and remove from cameras
-    let clear_skybox = |commands: &mut Commands, skybox_state: &mut SkyboxState, cameras: &Query<Entity, With<ViewportCamera>>| {
+    let clear_skybox = |commands: &mut Commands, skybox_state: &mut SkyboxState, cameras: &Query<Entity, Or<(With<ViewportCamera>, With<CameraPreviewMarker>)>>| {
         for camera_entity in cameras.iter() {
             commands.entity(camera_entity).remove::<Skybox>();
         }

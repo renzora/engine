@@ -2,11 +2,12 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
+use bevy::core_pipeline::Skybox;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 
-use crate::core::SelectionState;
+use crate::core::{SelectionState, ViewportCamera};
 use crate::gizmo::preview_camera_layers;
 use crate::component_system::CameraNodeData;
 use crate::scene::EditorOnly;
@@ -65,6 +66,7 @@ pub fn update_camera_preview(
         (Entity, &mut Transform, &mut Projection),
         With<CameraPreviewMarker>,
     >,
+    viewport_cameras: Query<(Option<&Skybox>, &Camera), (With<ViewportCamera>, Without<CameraPreviewMarker>)>,
 ) {
     // Check if a camera node or camera rig is selected
     let selected_camera = selection
@@ -77,6 +79,13 @@ pub fn update_camera_preview(
 
     let existing_preview = preview_camera.iter_mut().next();
 
+    // Get the viewport camera's skybox and clear color so the preview matches
+    let (viewport_skybox, viewport_clear_color) = viewport_cameras
+        .iter()
+        .find(|(_, cam)| cam.order == 0)
+        .map(|(skybox, cam)| (skybox, cam.clear_color.clone()))
+        .unwrap_or((None, ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12))));
+
     // Handle Camera3D nodes
     if let Some((camera_transform, camera_data)) = selected_camera {
         match existing_preview {
@@ -87,11 +96,11 @@ pub fn update_camera_preview(
                 }
             }
             None => {
-                commands.spawn((
+                let mut ecmds = commands.spawn((
                     Camera3d::default(),
                     Msaa::Off,
                     Camera {
-                        clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                        clear_color: viewport_clear_color,
                         order: -1,
                         ..default()
                     },
@@ -107,6 +116,9 @@ pub fn update_camera_preview(
                     preview_camera_layers(),
                     Name::new("Camera Preview"),
                 ));
+                if let Some(skybox) = viewport_skybox {
+                    ecmds.insert(skybox.clone());
+                }
             }
         }
     }
@@ -120,11 +132,11 @@ pub fn update_camera_preview(
                 }
             }
             None => {
-                commands.spawn((
+                let mut ecmds = commands.spawn((
                     Camera3d::default(),
                     Msaa::Off,
                     Camera {
-                        clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                        clear_color: viewport_clear_color,
                         order: -1,
                         ..default()
                     },
@@ -140,6 +152,9 @@ pub fn update_camera_preview(
                     preview_camera_layers(),
                     Name::new("Camera Preview"),
                 ));
+                if let Some(skybox) = viewport_skybox {
+                    ecmds.insert(skybox.clone());
+                }
             }
         }
     }

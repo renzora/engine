@@ -12,7 +12,7 @@ mod texture;
 
 pub use camera::{apply_orbit_to_camera, camera_controller, camera_focus_selected, update_camera_projection};
 pub use camera_preview::{
-    setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
+    setup_camera_preview_texture, update_camera_preview, CameraPreviewImage, CameraPreviewMarker,
 };
 pub use camera2d::{
     camera2d_controller, setup_editor_camera_2d, toggle_viewport_cameras,
