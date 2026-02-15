@@ -23,7 +23,6 @@ pub(crate) mod sun;
 pub mod terrain;
 pub(crate) mod clouds;
 pub(crate) mod surface_painting;
-pub(crate) mod voxel_world;
 mod ui_button;
 mod ui_image;
 mod ui_label;
@@ -58,11 +57,6 @@ pub(crate) mod gaussian_blur;
 pub(crate) mod palette_quantization;
 pub(crate) mod distortion;
 pub(crate) mod underwater;
-
-// Geo map components
-pub(crate) mod geo_map;
-pub(crate) mod geo_position;
-pub(crate) mod geo_marker;
 
 // Navigation
 pub(crate) mod navigation_agent;
@@ -129,9 +123,6 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     // Surface painting
     surface_painting::register(registry);
 
-    // Voxel world
-    voxel_world::register(registry);
-
     // Post-processing
     fog::register(registry);
     anti_aliasing::register(registry);
@@ -160,8 +151,4 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     distortion::register(registry);
     underwater::register(registry);
 
-    // Geo map
-    geo_map::register(registry);
-    geo_position::register(registry);
-    geo_marker::register(registry);
 }

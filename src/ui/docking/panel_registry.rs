@@ -108,12 +108,6 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::ParticlePreview => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
         PanelId::TextureEditor => PanelConstraints::default().with_min_width(350.0).with_min_height(350.0),
         PanelId::ScriptVariables => PanelConstraints::default().with_min_width(220.0).with_min_height(200.0),
-        PanelId::PixelCanvas => PanelConstraints::default().with_min_width(300.0).with_min_height(300.0),
-        PanelId::PixelLayers => PanelConstraints::default().with_min_width(150.0).with_min_height(200.0),
-        PanelId::PixelPalette => PanelConstraints::default().with_min_width(150.0).with_min_height(200.0),
-        PanelId::PixelTools => PanelConstraints::default().with_min_width(100.0).with_min_height(200.0),
-        PanelId::PixelTimeline => PanelConstraints::default().with_min_width(400.0).with_min_height(80.0),
-        PanelId::PixelBrushSettings => PanelConstraints::default().with_min_width(100.0).with_min_height(150.0),
         PanelId::PhysicsPlayground => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::PhysicsProperties => PanelConstraints::default().with_min_width(250.0).with_min_height(280.0),
         PanelId::PhysicsForces => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
@@ -126,7 +120,6 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::ArenaPresets => PanelConstraints::default().with_min_width(250.0).with_min_height(300.0),
         PanelId::RenderPipeline => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
         PanelId::ShapeLibrary => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
-        PanelId::GeoMapStyle => PanelConstraints::default().with_min_width(280.0).with_min_height(350.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -168,12 +161,6 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::ParticlePreview,
         PanelId::TextureEditor,
         PanelId::ScriptVariables,
-        PanelId::PixelCanvas,
-        PanelId::PixelLayers,
-        PanelId::PixelPalette,
-        PanelId::PixelTools,
-        PanelId::PixelTimeline,
-        PanelId::PixelBrushSettings,
         PanelId::PhysicsPlayground,
         PanelId::PhysicsProperties,
         PanelId::PhysicsForces,
@@ -186,7 +173,6 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::ArenaPresets,
         PanelId::RenderPipeline,
         PanelId::ShapeLibrary,
-        PanelId::GeoMapStyle,
     ]
 }
 

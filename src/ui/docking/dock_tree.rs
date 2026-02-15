@@ -10,8 +10,7 @@ use egui_phosphor::regular::{
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
     SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
-    PENCIL_SIMPLE, PALETTE, PAINT_BRUSH,
-    GLOBE, EYE,
+    EYE,
 };
 
 /// Direction of a split in the dock tree
@@ -68,18 +67,6 @@ pub enum PanelId {
     TextureEditor,
     /// Script Variables panel - shows props from active script
     ScriptVariables,
-    /// Pixel art canvas - main drawing area
-    PixelCanvas,
-    /// Pixel art layers panel
-    PixelLayers,
-    /// Pixel art color palette
-    PixelPalette,
-    /// Pixel art tools panel
-    PixelTools,
-    /// Pixel art animation timeline
-    PixelTimeline,
-    /// Pixel art brush settings
-    PixelBrushSettings,
     /// Physics playground — stress-test spawner
     PhysicsPlayground,
     /// Physics properties — global simulation settings
@@ -104,8 +91,6 @@ pub enum PanelId {
     RenderPipeline,
     /// Shape Library — visual grid of mesh primitives for quick spawning
     ShapeLibrary,
-    /// Geo Map customization panel
-    GeoMapStyle,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -147,12 +132,6 @@ impl PanelId {
             PanelId::ParticlePreview => "Particle Preview",
             PanelId::TextureEditor => "Textures",
             PanelId::ScriptVariables => "Script Variables",
-            PanelId::PixelCanvas => "Pixel Canvas",
-            PanelId::PixelLayers => "Layers",
-            PanelId::PixelPalette => "Palette",
-            PanelId::PixelTools => "Tools",
-            PanelId::PixelTimeline => "Timeline",
-            PanelId::PixelBrushSettings => "Brush",
             PanelId::PhysicsPlayground => "Physics Playground",
             PanelId::PhysicsProperties => "Physics Properties",
             PanelId::PhysicsForces => "Forces",
@@ -165,7 +144,6 @@ impl PanelId {
             PanelId::ArenaPresets => "Arena Presets",
             PanelId::RenderPipeline => "Render Pipeline",
             PanelId::ShapeLibrary => "Shape Library",
-            PanelId::GeoMapStyle => "Geo Map",
             PanelId::Plugin(name) => name,
         }
     }
@@ -206,12 +184,6 @@ impl PanelId {
             PanelId::ParticlePreview => SPARKLE,
             PanelId::TextureEditor => PAINT_BUCKET,
             PanelId::ScriptVariables => SLIDERS_HORIZONTAL,
-            PanelId::PixelCanvas => PENCIL_SIMPLE,
-            PanelId::PixelLayers => STACK,
-            PanelId::PixelPalette => PALETTE,
-            PanelId::PixelTools => PENCIL_SIMPLE,
-            PanelId::PixelTimeline => FILM_STRIP,
-            PanelId::PixelBrushSettings => PAINT_BRUSH,
             PanelId::PhysicsPlayground => CUBE,
             PanelId::PhysicsProperties => GEAR,
             PanelId::PhysicsForces => ATOM,
@@ -224,7 +196,6 @@ impl PanelId {
             PanelId::ArenaPresets => CUBE,
             PanelId::RenderPipeline => STACK,
             PanelId::ShapeLibrary => CUBE,
-            PanelId::GeoMapStyle => GLOBE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

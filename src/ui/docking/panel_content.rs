@@ -214,12 +214,6 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::ParticlePreview => Vec2::new(300.0, 300.0),
         PanelId::TextureEditor => Vec2::new(300.0, 300.0),
         PanelId::ScriptVariables => Vec2::new(220.0, 200.0),
-        PanelId::PixelCanvas => Vec2::new(300.0, 300.0),
-        PanelId::PixelLayers => Vec2::new(150.0, 200.0),
-        PanelId::PixelPalette => Vec2::new(150.0, 200.0),
-        PanelId::PixelTools => Vec2::new(100.0, 200.0),
-        PanelId::PixelTimeline => Vec2::new(400.0, 80.0),
-        PanelId::PixelBrushSettings => Vec2::new(100.0, 150.0),
         PanelId::PhysicsPlayground => Vec2::new(250.0, 300.0),
         PanelId::PhysicsProperties => Vec2::new(250.0, 280.0),
         PanelId::PhysicsForces => Vec2::new(250.0, 300.0),
@@ -232,7 +226,6 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::ArenaPresets => Vec2::new(250.0, 300.0),
         PanelId::RenderPipeline => Vec2::new(400.0, 300.0),
         PanelId::ShapeLibrary => Vec2::new(200.0, 300.0),
-        PanelId::GeoMapStyle => Vec2::new(280.0, 350.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

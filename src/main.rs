@@ -8,7 +8,6 @@ mod component_system;
 mod core;
 mod crash;
 mod embedded;
-mod geo_map;
 mod gizmo;
 mod import;
 mod gltf_animation;
@@ -17,7 +16,6 @@ mod mesh_sculpt;
 #[cfg(feature = "solari")]
 mod meshlet;
 mod particles;
-mod pixel_editor;
 mod play_mode;
 mod post_process;
 mod plugin_core;
@@ -35,8 +33,6 @@ mod ui;
 mod ui_api;
 mod update;
 mod viewport;
-mod voxel_world;
-
 use bevy::asset::UnapprovedPathMode;
 use bevy::prelude::*;
 use bevy::render::{
@@ -268,8 +264,6 @@ fn main() {
         .register_type::<component_system::PaletteQuantizationData>()
         .register_type::<component_system::DistortionData>()
         .register_type::<component_system::UnderwaterData>()
-        .register_type::<component_system::components::voxel_world::VoxelWorldData>()
-        .register_type::<component_system::components::voxel_world::VoxelNoiseType>()
         .register_type::<core::EditorEntity>()
         .register_type::<core::SceneNode>()
         .register_type::<core::SceneTabId>()
@@ -298,7 +292,6 @@ fn main() {
         >::default())
         .add_plugins(vleue_navigator::prelude::AvoidancePlugin)
         .add_plugins(bevy_silk::ClothPlugin)
-        .add_plugins(voxel_world::RenzoraVoxelWorldPlugin)
         .add_plugins(gltf_animation::GltfAnimationPlugin)
         .add_plugins(particles::ParticlesPlugin)
         .add_plugins(core::DiagnosticsPlugin)
@@ -318,8 +311,7 @@ fn main() {
         .add_plugins(terrain::TerrainPlugin)
         .add_plugins(mesh_sculpt::MeshSculptPlugin)
         .add_plugins(surface_painting::SurfacePaintingPlugin)
-        .add_plugins(update::UpdatePlugin)
-        .add_plugins(geo_map::GeoMapPlugin);
+        .add_plugins(update::UpdatePlugin);
 
     // Meshlet/Virtual Geometry integration (requires solari feature)
     #[cfg(feature = "solari")]

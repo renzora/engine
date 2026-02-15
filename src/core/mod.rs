@@ -61,12 +61,10 @@ impl Plugin for CorePlugin {
             .init_resource::<ImagePreviewTextures>()
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
-            .init_resource::<crate::pixel_editor::PixelEditorState>()
             // ShaderPreviewState is registered by ShaderPreviewPlugin
             .init_resource::<GamepadDebugState>()
             .init_resource::<crate::theming::ThemeManager>()
             .init_resource::<crate::ui::ShapeLibraryState>()
-            .init_resource::<crate::ui::GeoMapPanelState>()
             .init_resource::<resources::InspectorPanelRenderState>()
             .init_resource::<CullingDebugState>()
             .insert_resource(AnimationTimelineState::new())

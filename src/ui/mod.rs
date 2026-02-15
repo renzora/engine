@@ -55,12 +55,6 @@ use panels::{
     render_particle_editor_content,
     render_particle_preview_content,
     render_shader_preview_content,
-    render_pixel_canvas_content,
-    render_pixel_layers_content,
-    render_pixel_palette_content,
-    render_pixel_tools_content,
-    render_pixel_timeline_content,
-    render_pixel_brush_settings_content,
     render_physics_playground_content,
     render_physics_properties_content,
     render_physics_forces_content,
@@ -72,14 +66,12 @@ use panels::{
     render_state_recorder_content,
     render_arena_presets_content,
     render_shape_library_content,
-    render_geo_map_panel_content,
     render_culling_debug_content,
 };
 use crate::particles::ParticleEditorState;
-use crate::pixel_editor::PixelEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
-pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState, GeoMapPanelState};
+pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState};
 use style::{apply_editor_style_with_theme, init_fonts};
 use crate::theming::ThemeManager;
 
@@ -140,7 +132,6 @@ pub struct EditorResources<'w> {
     pub particle_preview_image: Option<Res<'w, ParticlePreviewImage>>,
     pub particle_editor_state: ResMut<'w, ParticleEditorState>,
     pub inspector_render_state: ResMut<'w, InspectorPanelRenderState>,
-    pub pixel_editor: ResMut<'w, PixelEditorState>,
     pub shader_preview: ResMut<'w, ShaderPreviewState>,
     pub shader_preview_render: Res<'w, ShaderPreviewRender>,
     pub shader_thumbnail_cache: ResMut<'w, ShaderThumbnailCache>,
@@ -156,7 +147,6 @@ pub struct EditorResources<'w> {
     pub arena_presets: ResMut<'w, ArenaPresetsState>,
     pub render_pipeline_data: ResMut<'w, RenderPipelineGraphData>,
     pub shape_library: ResMut<'w, ShapeLibraryState>,
-    pub geo_map_panel: ResMut<'w, GeoMapPanelState>,
     pub culling_debug: ResMut<'w, CullingDebugState>,
 }
 
@@ -264,7 +254,6 @@ pub fn editor_ui(
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     material_preview_image: Option<Res<MaterialPreviewImage>>,
     time: Res<Time>,
-    geo_tile_cache: Option<Res<crate::geo_map::tile_cache::GeoTileCache>>,
     mut local_state: Local<(UiRenderer, AnimationPanelState, panels::NodeExplorerState)>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
@@ -966,18 +955,6 @@ pub fn editor_ui(
                     });
                 }
 
-                PanelId::GeoMapStyle => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        let cache = geo_tile_cache.as_ref().map(|r| r.as_ref());
-                        render_geo_map_panel_content(
-                            ui,
-                            &mut editor.geo_map_panel,
-                            cache,
-                            &editor.theme_manager.active_theme,
-                        );
-                    });
-                }
-
                 PanelId::EcsStats => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_ecs_stats_content(ui, &mut editor.ecs_stats, &editor.theme_manager.active_theme);
@@ -1207,68 +1184,6 @@ pub fn editor_ui(
                             &editor.scene_state,
                             &rhai_engine,
                             current_project.as_deref(),
-                        );
-                    });
-                }
-
-                PanelId::PixelCanvas => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_canvas_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
-                        );
-                    });
-                }
-
-                PanelId::PixelLayers => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_layers_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
-                        );
-                    });
-                }
-
-                PanelId::PixelPalette => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_palette_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
-                        );
-                    });
-                }
-
-                PanelId::PixelTools => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_tools_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
-                        );
-                    });
-                }
-
-                PanelId::PixelTimeline => {
-                    let dt_ms = time.delta_secs() * 1000.0;
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_timeline_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
-                            dt_ms,
-                        );
-                    });
-                }
-
-                PanelId::PixelBrushSettings => {
-                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_pixel_brush_settings_content(
-                            ui,
-                            &mut editor.pixel_editor,
-                            &editor.theme_manager.active_theme,
                         );
                     });
                 }

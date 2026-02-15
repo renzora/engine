@@ -308,7 +308,7 @@ Components that conflict with already-present components are grayed out. Compone
 | **Audio** | AudioListener |
 | **UI** | UIPanel, UILabel, UIButton, UIImage |
 | **Effects** | HanabiEffect (GPU particles) |
-| **Environment** | WorldEnvironment, Skybox, Clouds, Terrain, VoxelWorld |
+| **Environment** | WorldEnvironment, Skybox, Clouds, Terrain |
 | **Post-Processing** | Fog, Bloom, DepthOfField, MotionBlur, Tonemapping, AmbientOcclusion, AntiAliasing, Reflections, Vignette, FilmGrain, GodRays, and 15+ more |
 
 ### Removing Components
