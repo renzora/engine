@@ -56,7 +56,6 @@ fn new_history_redo_descriptions_empty() {
 #[test]
 fn history_clear_resets_state() {
     let mut history = CommandHistory::new();
-    // We can't push commands without a World, but we can verify clear on empty
     history.clear();
     assert!(!history.can_undo());
     assert!(!history.can_redo());
@@ -81,7 +80,6 @@ fn command_group_new_is_empty() {
 #[test]
 fn command_group_description_preserved() {
     let group = CommandGroup::new("My complex operation");
-    // The description trait method should return what we passed
     let desc = Command::description(&group);
     assert_eq!(desc, "My complex operation");
 }

@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use super::command::Command;
+use super::command::{Command, CommandContext, CommandGroup, CommandResult};
 
 /// Maximum number of commands to keep in undo history
 pub const MAX_UNDO_HISTORY: usize = 100;
@@ -16,11 +16,11 @@ pub struct CommandHistory {
     /// Stack of undone commands (most recent at the end)
     redo_stack: Vec<Box<dyn Command>>,
     /// Commands queued to be executed at the end of the frame
-    pub(crate) pending_commands: Vec<Box<dyn Command>>,
+    pub pending_commands: Vec<Box<dyn Command>>,
     /// Whether we're currently executing an undo/redo (to prevent recursion)
     in_undo_redo: bool,
     /// If set, commands will be grouped together until end_group is called
-    active_group: Option<super::command::CommandGroup>,
+    active_group: Option<CommandGroup>,
     /// Pending undo count (from menu or other UI) - number of undos to perform
     pub pending_undo: usize,
     /// Pending redo count (from menu or other UI) - number of redos to perform
@@ -33,7 +33,7 @@ impl CommandHistory {
     }
 
     /// Push an executed command onto the undo stack
-    pub(crate) fn push_executed(&mut self, command: Box<dyn Command>) {
+    pub fn push_executed(&mut self, command: Box<dyn Command>) {
         // Clear redo stack when new command is executed
         if !self.in_undo_redo {
             self.redo_stack.clear();
@@ -96,27 +96,27 @@ impl CommandHistory {
     }
 
     /// Pop command from undo stack for undoing
-    pub(crate) fn pop_for_undo(&mut self) -> Option<Box<dyn Command>> {
+    pub fn pop_for_undo(&mut self) -> Option<Box<dyn Command>> {
         self.undo_stack.pop()
     }
 
     /// Push command onto redo stack after undoing
-    pub(crate) fn push_to_redo(&mut self, command: Box<dyn Command>) {
+    pub fn push_to_redo(&mut self, command: Box<dyn Command>) {
         self.redo_stack.push(command);
     }
 
     /// Pop command from redo stack for redoing
-    pub(crate) fn pop_for_redo(&mut self) -> Option<Box<dyn Command>> {
+    pub fn pop_for_redo(&mut self) -> Option<Box<dyn Command>> {
         self.redo_stack.pop()
     }
 
     /// Push command onto undo stack after redoing
-    pub(crate) fn push_to_undo(&mut self, command: Box<dyn Command>) {
+    pub fn push_to_undo(&mut self, command: Box<dyn Command>) {
         self.undo_stack.push(command);
     }
 
     /// Set in_undo_redo flag
-    pub(crate) fn set_in_undo_redo(&mut self, value: bool) {
+    pub fn set_in_undo_redo(&mut self, value: bool) {
         self.in_undo_redo = value;
     }
 
@@ -129,7 +129,7 @@ impl CommandHistory {
     /// Start a command group - subsequent commands will be grouped together
     pub fn begin_group(&mut self, description: impl Into<String>) {
         if self.active_group.is_none() {
-            self.active_group = Some(super::command::CommandGroup::new(description));
+            self.active_group = Some(CommandGroup::new(description));
         }
     }
 
@@ -148,11 +148,8 @@ impl CommandHistory {
     }
 }
 
-/// System-compatible functions for undo/redo (need World access)
-
 /// Perform undo operation
 pub fn undo(world: &mut World) -> bool {
-    // Get the command to undo
     let command = {
         let mut history = world.resource_mut::<CommandHistory>();
         if !history.can_undo() {
@@ -166,20 +163,18 @@ pub fn undo(world: &mut World) -> bool {
         return false;
     };
 
-    // Execute undo
-    let mut ctx = super::CommandContext { world };
+    let mut ctx = CommandContext { world };
     let result = command.undo(&mut ctx);
 
-    // Put command on redo stack
     {
         let mut history = ctx.world.resource_mut::<CommandHistory>();
         history.set_in_undo_redo(false);
         match result {
-            super::CommandResult::Success | super::CommandResult::NoOp => {
+            CommandResult::Success | CommandResult::NoOp => {
                 history.push_to_redo(command);
                 true
             }
-            super::CommandResult::Failed(e) => {
+            CommandResult::Failed(e) => {
                 error!("Undo failed: {}", e);
                 false
             }
@@ -189,7 +184,6 @@ pub fn undo(world: &mut World) -> bool {
 
 /// Perform redo operation
 pub fn redo(world: &mut World) -> bool {
-    // Get the command to redo
     let command = {
         let mut history = world.resource_mut::<CommandHistory>();
         if !history.can_redo() {
@@ -203,20 +197,18 @@ pub fn redo(world: &mut World) -> bool {
         return false;
     };
 
-    // Execute redo
-    let mut ctx = super::CommandContext { world };
+    let mut ctx = CommandContext { world };
     let result = command.redo(&mut ctx);
 
-    // Put command back on undo stack
     {
         let mut history = ctx.world.resource_mut::<CommandHistory>();
         history.set_in_undo_redo(false);
         match result {
-            super::CommandResult::Success | super::CommandResult::NoOp => {
+            CommandResult::Success | CommandResult::NoOp => {
                 history.push_to_undo(command);
                 true
             }
-            super::CommandResult::Failed(e) => {
+            CommandResult::Failed(e) => {
                 error!("Redo failed: {}", e);
                 false
             }

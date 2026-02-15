@@ -5,15 +5,13 @@
 
 #![allow(dead_code)]
 
-mod command;
-mod history;
 mod entity_commands;
 
-#[cfg(test)]
-mod tests;
-
-pub use command::{Command, CommandContext, CommandResult};
-pub use history::{CommandHistory, undo, redo};
+// Re-export the generic command framework from the crate
+pub use renzora_commands::{
+    Command, CommandContext, CommandGroup, CommandResult,
+    CommandHistory, undo, redo, execute_command, queue_command,
+};
 pub use entity_commands::*;
 
 use bevy::prelude::*;
@@ -110,35 +108,6 @@ fn process_pending_commands(world: &mut World) {
 
     // Execute each pending command
     for command in pending {
-        execute_command_internal(world, command);
+        execute_command(world, command);
     }
-}
-
-/// Execute a command and add it to history
-fn execute_command_internal(world: &mut World, mut command: Box<dyn Command>) {
-    let mut ctx = CommandContext { world };
-
-    match command.execute(&mut ctx) {
-        CommandResult::Success => {
-            // Add to undo stack
-            let mut history = ctx.world.resource_mut::<CommandHistory>();
-            history.push_executed(command);
-        }
-        CommandResult::NoOp => {
-            // Command had no effect, don't add to history
-        }
-        CommandResult::Failed(err) => {
-            error!("Command failed: {}", err);
-        }
-    }
-}
-
-/// Execute a command immediately (for use in systems with World access)
-pub fn execute_command(world: &mut World, command: Box<dyn Command>) {
-    execute_command_internal(world, command);
-}
-
-/// Queue a command to be executed at the end of the frame
-pub fn queue_command(history: &mut CommandHistory, command: Box<dyn Command>) {
-    history.pending_commands.push(command);
 }

@@ -81,6 +81,20 @@ impl CommandGroup {
     }
 }
 
+impl dyn Command {
+    /// Attempt to downcast to a concrete command type
+    pub fn downcast<T: Command + 'static>(self: Box<Self>) -> Result<Box<T>, Box<Self>> {
+        if std::any::Any::type_id(&*self) == std::any::TypeId::of::<T>() {
+            unsafe {
+                let raw = Box::into_raw(self);
+                Ok(Box::from_raw(raw as *mut T))
+            }
+        } else {
+            Err(self)
+        }
+    }
+}
+
 impl Command for CommandGroup {
     fn description(&self) -> String {
         self.description.clone()

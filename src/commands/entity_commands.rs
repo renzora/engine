@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode, SceneTabId, SelectionState};
 
-use super::command::{Command, CommandContext, CommandResult};
+use renzora_commands::{Command, CommandContext, CommandResult};
 
 /// Helper to despawn an entity and all its children recursively
 fn despawn_with_children_recursive(world: &mut World, entity: Entity) {
@@ -1310,20 +1310,3 @@ impl Command for GroupEntitiesCommand {
     }
 }
 
-// ============================================================================
-// Downcast helper - uses Any trait bound
-// ============================================================================
-
-impl dyn Command {
-    /// Attempt to downcast to a concrete command type
-    pub fn downcast<T: Command + 'static>(self: Box<Self>) -> Result<Box<T>, Box<Self>> {
-        if std::any::Any::type_id(&*self) == std::any::TypeId::of::<T>() {
-            unsafe {
-                let raw = Box::into_raw(self);
-                Ok(Box::from_raw(raw as *mut T))
-            }
-        } else {
-            Err(self)
-        }
-    }
-}
