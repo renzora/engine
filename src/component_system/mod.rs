@@ -60,6 +60,8 @@ use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::embedded::{ProjectAssetOverridePath, copy_engine_asset_to_project};
+use crate::project::CurrentProject;
 use crate::scene::SceneSaveableRegistry;
 
 /// Unified registry that handles all component registration in one place
@@ -206,6 +208,12 @@ impl Plugin for ComponentSystemPlugin {
             components::distortion::sync_distortion,
             components::underwater::sync_underwater,
         ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
+
+        // Sync project path to asset reader and copy shaders on component add
+        app.add_systems(Update, (
+            sync_project_asset_path,
+            ensure_project_shaders,
+        ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
     }
 }
 
@@ -229,6 +237,71 @@ fn process_pending_component_operations(
     if let Some((entity, type_id)) = popup_state.pending_remove.take() {
         if let Some(def) = registry.get(type_id) {
             (def.remove_fn)(&mut commands, entity);
+        }
+    }
+}
+
+/// Keeps the asset reader's project path in sync with the current project.
+fn sync_project_asset_path(
+    project: Option<Res<CurrentProject>>,
+    override_path: Res<ProjectAssetOverridePath>,
+) {
+    let new_path = project.map(|p| p.path.clone());
+    if let Ok(mut lock) = override_path.0.write() {
+        if *lock != new_path {
+            *lock = new_path;
+        }
+    }
+}
+
+/// Component-to-shader mapping for automatic shader copying.
+const SHADER_COMPONENTS: &[(&str, &[&str])] = &[
+    ("clouds",               &["shaders/clouds.wgsl"]),
+    ("vignette",             &["shaders/post_process/vignette.wgsl"]),
+    ("film_grain",           &["shaders/post_process/film_grain.wgsl"]),
+    ("pixelation",           &["shaders/post_process/pixelation.wgsl"]),
+    ("crt",                  &["shaders/post_process/crt.wgsl"]),
+    ("god_rays",             &["shaders/post_process/god_rays.wgsl"]),
+    ("gaussian_blur",        &["shaders/post_process/gaussian_blur.wgsl"]),
+    ("palette_quantization", &["shaders/post_process/palette_quantization.wgsl"]),
+    ("distortion",           &["shaders/post_process/distortion.wgsl"]),
+    ("underwater",           &["shaders/post_process/underwater.wgsl"]),
+];
+
+/// When a shader-using component is added, copy its shader(s) to the project.
+fn ensure_project_shaders(
+    project: Option<Res<CurrentProject>>,
+    clouds: Query<(), Added<CloudsData>>,
+    vignette: Query<(), Added<VignetteData>>,
+    film_grain: Query<(), Added<FilmGrainData>>,
+    pixelation: Query<(), Added<PixelationData>>,
+    crt: Query<(), Added<CrtData>>,
+    god_rays: Query<(), Added<GodRaysData>>,
+    gaussian_blur: Query<(), Added<GaussianBlurData>>,
+    palette_quantization: Query<(), Added<PaletteQuantizationData>>,
+    distortion: Query<(), Added<DistortionData>>,
+    underwater: Query<(), Added<UnderwaterData>>,
+) {
+    let Some(project) = project else { return };
+
+    let triggers: [bool; 10] = [
+        !clouds.is_empty(),
+        !vignette.is_empty(),
+        !film_grain.is_empty(),
+        !pixelation.is_empty(),
+        !crt.is_empty(),
+        !god_rays.is_empty(),
+        !gaussian_blur.is_empty(),
+        !palette_quantization.is_empty(),
+        !distortion.is_empty(),
+        !underwater.is_empty(),
+    ];
+
+    for (i, &triggered) in triggers.iter().enumerate() {
+        if triggered {
+            for shader_path in SHADER_COMPONENTS[i].1 {
+                copy_engine_asset_to_project(&project.path, shader_path);
+            }
         }
     }
 }

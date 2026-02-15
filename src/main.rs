@@ -130,7 +130,7 @@ fn main() {
 
     let mut app = App::new();
 
-    // When packed, register embedded asset source before DefaultPlugins
+    // Register custom asset reader (with project-local override support) before DefaultPlugins
     embedded::setup_embedded_assets(&mut app);
 
     // DLSS requires a project ID before plugin initialization
@@ -155,7 +155,7 @@ fn main() {
         }
     } else {
         Window {
-            title: "Renzora Engine r4".to_string(),
+            title: "Renzora Engine r1".to_string(),
             resolution: (800u32, 600u32).into(),
             position: WindowPosition::Centered(MonitorSelection::Primary),
             decorations: false,
