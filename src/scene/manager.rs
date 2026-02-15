@@ -617,6 +617,22 @@ pub fn handle_make_default_camera(
     }
 }
 
+/// System to snap a camera entity's transform to the current editor viewport camera position
+pub fn handle_snap_camera_to_viewport(
+    mut hierarchy: ResMut<HierarchyState>,
+    orbit_camera: Res<OrbitCameraState>,
+    mut transforms: Query<&mut Transform>,
+) {
+    if let Some(target_entity) = hierarchy.pending_snap_to_viewport.take() {
+        let viewport_transform = orbit_camera.calculate_transform();
+        if let Ok(mut transform) = transforms.get_mut(target_entity) {
+            *transform = viewport_transform;
+            info!("Snapped camera {:?} to viewport position", target_entity);
+            console_success!("Camera", "Snapped to viewport position");
+        }
+    }
+}
+
 /// Check if any scene tab has unsaved changes
 fn has_unsaved_changes(world: &World) -> bool {
     let scene_state = world.resource::<SceneManagerState>();

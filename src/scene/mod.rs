@@ -25,7 +25,7 @@ pub use loader::{
 };
 #[cfg(feature = "solari")]
 pub use loader::add_raytracing_to_meshes;
-pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera, auto_save_scene, PendingProjectReopen};
+pub use manager::{assign_scene_tab_ids, handle_scene_requests, handle_save_shortcut, handle_make_default_camera, handle_snap_camera_to_viewport, auto_save_scene, PendingProjectReopen};
 pub use saver::EditorSceneMetadata;
 pub use saveable::{SceneSaveableRegistry, create_default_registry};
 

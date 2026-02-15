@@ -22,6 +22,8 @@ pub struct HierarchyState {
     pub rename_focus_set: bool,
     /// Pending request to make a camera the default game camera
     pub pending_make_default_camera: Option<Entity>,
+    /// Pending request to snap a camera entity to the current viewport position
+    pub pending_snap_to_viewport: Option<Entity>,
     /// Visible entities in order (for Shift+click range selection)
     /// This is the order from the PREVIOUS frame, used for click handling
     pub visible_entity_order: Vec<Entity>,

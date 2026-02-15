@@ -1093,6 +1093,10 @@ fn render_tree_node(
                 hierarchy.pending_make_default_camera = Some(entity);
                 ui.close_menu();
             }
+            if ui.button(format!("{} Snap to Viewport", FRAME_CORNERS)).clicked() {
+                hierarchy.pending_snap_to_viewport = Some(entity);
+                ui.close_menu();
+            }
         }
 
         ui.separator();

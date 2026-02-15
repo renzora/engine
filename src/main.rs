@@ -498,6 +498,11 @@ fn main() {
             )
             .add_systems(
                 Update,
+                scene::handle_snap_camera_to_viewport
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
                 input::drag_surface_raycast_system
                     .before(input::update_shape_drag_preview)
                     .before(input::update_drag_preview)
