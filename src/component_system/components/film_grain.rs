@@ -6,7 +6,7 @@ use egui_phosphor::regular::FILM_STRIP;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::FilmGrainSettings;
+use renzora_post_process::FilmGrainSettings;
 use crate::register_component;
 use crate::component_system::FilmGrainData;
 use crate::ui::inline_property;

@@ -6,7 +6,7 @@ use egui_phosphor::regular::SUN;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::GodRaysSettings;
+use renzora_post_process::GodRaysSettings;
 use crate::register_component;
 use crate::component_system::GodRaysData;
 use crate::ui::inline_property;

@@ -145,7 +145,7 @@ impl Plugin for ComponentSystemPlugin {
         // Register FullscreenMaterial plugins for custom post-processing effects
         {
             use bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin;
-            use crate::post_process::*;
+            use renzora_post_process::*;
             app.add_plugins((
                 FullscreenMaterialPlugin::<VignetteSettings>::default(),
                 FullscreenMaterialPlugin::<FilmGrainSettings>::default(),

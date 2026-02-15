@@ -6,7 +6,7 @@ use egui_phosphor::regular::MONITOR;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::CrtSettings;
+use renzora_post_process::CrtSettings;
 use crate::register_component;
 use crate::component_system::CrtData;
 use crate::ui::inline_property;

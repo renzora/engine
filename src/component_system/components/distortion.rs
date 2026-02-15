@@ -6,7 +6,7 @@ use egui_phosphor::regular::WAVES;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::DistortionSettings;
+use renzora_post_process::DistortionSettings;
 use crate::register_component;
 use crate::component_system::DistortionData;
 use crate::ui::inline_property;

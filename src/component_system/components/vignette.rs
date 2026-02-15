@@ -6,7 +6,7 @@ use egui_phosphor::regular::CIRCLE_HALF;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::VignetteSettings;
+use renzora_post_process::VignetteSettings;
 use crate::register_component;
 use crate::component_system::VignetteData;
 use crate::ui::inline_property;

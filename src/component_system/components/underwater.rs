@@ -6,7 +6,7 @@ use egui_phosphor::regular::DROP;
 
 use crate::component_system::{ComponentCategory, ComponentRegistry};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
-use crate::post_process::UnderwaterSettings;
+use renzora_post_process::UnderwaterSettings;
 use crate::register_component;
 use crate::component_system::UnderwaterData;
 use crate::ui::inline_property;

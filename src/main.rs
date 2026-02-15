@@ -16,7 +16,6 @@ mod mesh_sculpt;
 mod meshlet;
 mod particles;
 mod play_mode;
-mod post_process;
 mod plugin_core;
 mod project;
 mod scene;
