@@ -710,6 +710,9 @@ pub fn spawn_preset(
                 Mesh3d(mesh),
                 MeshMaterial3d(material),
                 MeshNodeData { mesh_type },
+                crate::component_system::MaterialData {
+                    material_path: Some("assets/materials/checkerboard_default.material_bp".to_string()),
+                },
             ));
         } else if *component_id == "rigid_body" && preset.id == "static_floor" {
             // Static floor gets a static body instead of the default dynamic body
