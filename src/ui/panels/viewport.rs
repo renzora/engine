@@ -7,7 +7,7 @@ use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityComman
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::terrain::TerrainSculptState;
 use crate::viewport::Camera2DState;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,

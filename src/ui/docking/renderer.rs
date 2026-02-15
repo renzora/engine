@@ -8,7 +8,7 @@ use super::drag_drop::{
     detect_tab_insert_position, DragState, DropTarget,
 };
 use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, Ui, Vec2};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Information about an active drop preview for animating panel positions
 #[derive(Clone)]

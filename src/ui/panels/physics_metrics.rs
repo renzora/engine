@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, RichText, Color32};
 
 use crate::core::resources::physics_metrics::PhysicsMetricsState;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the physics metrics panel content
 pub fn render_physics_metrics_content(

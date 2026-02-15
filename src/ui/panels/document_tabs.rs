@@ -2,7 +2,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Stroke, Str
 
 use crate::blueprint::BlueprintEditorState;
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
     FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE, PALETTE, IMAGE,

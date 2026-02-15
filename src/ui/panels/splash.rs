@@ -3,7 +3,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, RichText, S
 
 use crate::core::{AppState, WindowState, EditorSettings};
 use crate::project::{create_project, open_project, AppConfig, CurrentProject};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use super::title_bar::{render_splash_title_bar, TITLE_BAR_HEIGHT};
 

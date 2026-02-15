@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::collision_viz::{
     CollisionVizState, ContactColorMode,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the collision visualizer panel content
 pub fn render_collision_viz_content(

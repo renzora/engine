@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, Stroke, Vec2};
 
 use crate::core::DiagnosticsState;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the performance diagnostics panel content
 pub fn render_performance_content(

@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 
 use crate::component_system::MeshPrimitiveType;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, TRIANGLE, CIRCLE, DIAMOND, POLYGON,

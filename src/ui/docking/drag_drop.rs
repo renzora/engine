@@ -4,7 +4,7 @@
 
 use super::dock_tree::{DropZone, PanelId};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, StrokeKind};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// State for an ongoing drag operation
 #[derive(Debug, Clone)]

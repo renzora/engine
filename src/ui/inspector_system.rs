@@ -23,7 +23,7 @@ use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::update::{UpdateState, UpdateDialogState};
 use crate::commands::CommandHistory;
 use crate::plugin_core::PluginHost;
-use crate::theming::ThemeManager;
+use renzora_theme::ThemeManager;
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, MaterialPreviewState, MaterialPreviewImage, nodes::NodeRegistry as BlueprintNodeRegistry};

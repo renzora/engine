@@ -6,7 +6,7 @@ use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{AssetBrowserState, DockingState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge, PlayModeState, PlayState};
 use crate::gizmo::{GizmoState, EditorTool};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 

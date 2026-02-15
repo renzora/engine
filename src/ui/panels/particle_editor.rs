@@ -19,7 +19,7 @@ use crate::particles::{
     MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings,
 };
 use crate::core::{SceneManagerState, TabKind, AssetBrowserState, OpenParticleFX};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use super::inspector::{render_category, inline_property_themed};
 

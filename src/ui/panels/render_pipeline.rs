@@ -9,7 +9,7 @@ use crate::core::resources::render_pipeline::{
     RenderGraphEdge, RenderGraphNode, RenderPipelineGraphData,
 };
 use crate::core::resources::diagnostics::RenderStats;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Node dimensions in canvas units
 const NODE_WIDTH: f32 = 180.0;

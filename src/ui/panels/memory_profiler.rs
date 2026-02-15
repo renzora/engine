@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, Stroke, Vec2};
 
 use crate::core::{MemoryProfilerState, MemoryTrend};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the memory profiler panel content
 pub fn render_memory_profiler_content(

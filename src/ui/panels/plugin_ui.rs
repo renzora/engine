@@ -13,7 +13,7 @@ use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, PALETTE, WARNING};
 use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
-use crate::theming::ThemeManager;
+use renzora_theme::ThemeManager;
 use crate::update::{UpdateState, UpdateDialogState};
 
 /// Convert from editor_plugin_api UiId to internal UiId

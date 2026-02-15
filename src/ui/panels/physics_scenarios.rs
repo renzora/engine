@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::physics_scenarios::{
     PhysicsScenariosState, ScenarioCommand, ScenarioType,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the scenario presets panel content
 pub fn render_physics_scenarios_content(

@@ -63,7 +63,7 @@ impl Plugin for CorePlugin {
             .init_resource::<InputFocusState>()
             // ShaderPreviewState is registered by ShaderPreviewPlugin
             .init_resource::<GamepadDebugState>()
-            .init_resource::<crate::theming::ThemeManager>()
+            .init_resource::<renzora_theme::ThemeManager>()
             .init_resource::<crate::ui::ShapeLibraryState>()
             .init_resource::<resources::InspectorPanelRenderState>()
             .init_resource::<CullingDebugState>()

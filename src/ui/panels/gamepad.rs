@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, Stroke, StrokeKind, Vec2};
 
 use crate::core::resources::{GamepadDebugState, GamepadInfo};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the gamepad debug panel content
 pub fn render_gamepad_content(

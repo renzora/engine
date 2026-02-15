@@ -73,7 +73,7 @@ use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType}
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState};
 use style::{apply_editor_style_with_theme, init_fonts};
-use crate::theming::ThemeManager;
+use renzora_theme::ThemeManager;
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]

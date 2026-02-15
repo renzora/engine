@@ -15,7 +15,7 @@ use crate::core::AssetBrowserState;
 use crate::gizmo::{EditorTool, GizmoState};
 use crate::terrain::{TerrainBrushType, TerrainSettings, TerrainTab, BrushShape, BrushFalloffType, FlattenMode};
 use crate::surface_painting::{SurfacePaintSettings, SurfacePaintState, SurfacePaintCommand, PaintBrushType};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the Level Tools panel content
 pub fn render_level_tools_content(

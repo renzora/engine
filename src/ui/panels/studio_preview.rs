@@ -5,7 +5,7 @@
 
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Sense, Stroke, TextureId, Vec2};
 
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the studio preview panel content
 pub fn render_studio_preview_content(

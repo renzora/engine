@@ -17,7 +17,7 @@ use egui_phosphor::regular::{
 
 use crate::core::{AnimationTimelineState, SelectionState, TimelinePlayState};
 use crate::component_system::data::components::animation::{GltfAnimations, GltfAnimationStorage, AnimationData};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Height of the toolbar area
 const TOOLBAR_HEIGHT: f32 = 32.0;

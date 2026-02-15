@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::physics_playground::{
     PlaygroundCommand, PlaygroundShape, PlaygroundState, SpawnPattern,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the physics playground panel content
 pub fn render_physics_playground_content(

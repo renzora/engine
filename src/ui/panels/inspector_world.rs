@@ -11,7 +11,7 @@ use crate::component_system::{
     get_category_style,
 };
 use crate::core::{DisabledComponents, EditorEntity, SelectionState};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
 use crate::plugin_core::PluginHost;
 

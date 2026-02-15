@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::physics_forces::{
     DirectionPreset, ForceCommand, ForceMode, PhysicsForcesState,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the forces & impulses panel content
 pub fn render_physics_forces_content(

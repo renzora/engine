@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use std::path::PathBuf;
 
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// State for deferred Inspector panel rendering
 ///

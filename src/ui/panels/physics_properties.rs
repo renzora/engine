@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::physics_properties::{
     GravityPreset, PhysicsPropertiesState, PhysicsPropertyCommand,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the physics properties panel content
 pub fn render_physics_properties_content(

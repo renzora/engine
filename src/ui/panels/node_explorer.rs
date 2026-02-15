@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Vec2};
 use egui_phosphor::regular::{CUBE, BONE, PLACEHOLDER, CARET_RIGHT, CARET_DOWN};
 
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// State for the node explorer panel
 #[derive(Default)]

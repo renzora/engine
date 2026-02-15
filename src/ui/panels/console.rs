@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, ScrollArea, Rounding};
 
 use crate::core::{ConsoleState, LogEntry, LogLevel};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
     TRASH, FUNNEL, INFO, CHECK_CIRCLE, WARNING, X_CIRCLE, MAGNIFYING_GLASS, CLIPBOARD,

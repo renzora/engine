@@ -14,7 +14,7 @@ mod tests;
 pub use loader::*;
 
 use bevy_egui::egui::Color32;
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A color wrapper that serializes to/from hex format (#RRGGBB or #RRGGBBAA)
 #[derive(Clone, Copy, Debug, PartialEq)]

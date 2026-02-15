@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, Stroke, Vec2};
 
 use crate::core::resources::diagnostics::RenderStats;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the render statistics panel content
 pub fn render_render_stats_content(

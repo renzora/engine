@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
 
 use crate::core::EcsStatsState;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the ECS statistics panel content
 pub fn render_ecs_stats_content(

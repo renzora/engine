@@ -4,7 +4,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke,
 use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SettingsTab, SceneManagerState, UiFont, bindable_keys};
 use crate::plugin_core::{PluginHost, PluginSource};
 use crate::project::AppConfig;
-use crate::theming::{Theme, ThemeManager};
+use renzora_theme::{Theme, ThemeManager};
 use crate::update::{UpdateState, UpdateDialogState};
 
 // Phosphor icons
@@ -955,7 +955,7 @@ fn render_theme_tab(ui: &mut egui::Ui, theme_manager: &mut ThemeManager) {
 }
 
 /// Render a theme color row with alternating background
-fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut crate::theming::ThemeColor, row_even: Color32, row_odd: Color32) -> bool {
+fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut renzora_theme::ThemeColor, row_even: Color32, row_odd: Color32) -> bool {
     let mut changed = false;
     let bg_color = if row_index % 2 == 0 { row_even } else { row_odd };
 
@@ -973,7 +973,7 @@ fn theme_color_row(ui: &mut egui::Ui, row_index: usize, label: &str, color: &mut
                     let [r, g, b, a] = color.0.to_array();
                     let mut srgba = [r, g, b, a];
                     if ui.color_edit_button_srgba_unmultiplied(&mut srgba).changed() {
-                        *color = crate::theming::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
+                        *color = renzora_theme::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
                         changed = true;
                     }
                 });

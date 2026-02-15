@@ -8,7 +8,7 @@ use bevy_egui::egui::{self, Color32, Id, Pos2, Rect, Ui, Vec2};
 
 use super::dock_tree::PanelId;
 use super::renderer::TAB_BAR_HEIGHT;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Context for rendering a panel within a docked area
 #[allow(dead_code)]

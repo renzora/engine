@@ -15,7 +15,7 @@ use crate::shader_thumbnail::ShaderThumbnailCache;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 use super::console::render_console_content;
 
 // Icon constants from phosphor

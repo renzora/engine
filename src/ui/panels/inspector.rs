@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 
 use crate::commands::CommandHistory;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{CLOCK_COUNTER_CLOCKWISE, CARET_DOWN, CARET_RIGHT, IMAGE, TRASH};
 

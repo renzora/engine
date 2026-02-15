@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText, Color32};
 use crate::core::resources::state_recorder::{
     RecorderCommand, RecorderMode, StateRecorderState,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the state recorder panel content
 pub fn render_state_recorder_content(

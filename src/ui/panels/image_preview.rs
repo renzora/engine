@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, Color32, CursorIcon, Sense, Vec2};
 use std::path::PathBuf;
 
 use crate::core::{ImagePreviewTextures, SceneManagerState, OpenImage, TabKind};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS, ARROWS_OUT_CARDINAL, FRAME_CORNERS};
 

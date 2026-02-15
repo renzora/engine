@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText};
 
 use crate::core::resources::culling_debug::CullingDebugState;
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the culling debug panel content
 pub fn render_culling_debug_content(

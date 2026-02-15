@@ -9,7 +9,7 @@ use egui_phosphor::regular::{
 
 use super::UpdateState;
 use crate::project::AppConfig;
-use crate::theming::ThemeManager;
+use renzora_theme::ThemeManager;
 
 /// State for the update dialog window
 #[derive(Resource, Default)]

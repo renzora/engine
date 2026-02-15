@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText, Color32};
 use crate::core::resources::stress_test::{
     StressTestCommand, StressTestState, StressTestType,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the stress test panel content
 pub fn render_stress_test_content(

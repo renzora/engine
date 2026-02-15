@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
 
 use crate::core::{CameraDebugState, CameraProjectionType};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the camera debug panel content
 pub fn render_camera_debug_content(

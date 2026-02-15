@@ -16,7 +16,7 @@ use crate::component_system::{
 use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
 use crate::particles::HanabiEffectData;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{

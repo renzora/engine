@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, RichText};
 
 use crate::core::resources::arena_presets::{ArenaCommand, ArenaPresetsState, ArenaType};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the arena presets panel content
 pub fn render_arena_presets_content(

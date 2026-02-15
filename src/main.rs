@@ -27,7 +27,6 @@ mod shader_thumbnail;
 mod spawn;
 mod surface_painting;
 mod terrain;
-mod theming;
 mod thumbnail_cli;
 mod ui;
 mod ui_api;
@@ -705,7 +704,7 @@ fn load_editor_state(
     mut assets: ResMut<core::AssetBrowserState>,
     mut docking: ResMut<core::DockingState>,
     mut loaded_state: ResMut<project::LoadedEditorState>,
-    mut theme_manager: ResMut<theming::ThemeManager>,
+    mut theme_manager: ResMut<renzora_theme::ThemeManager>,
     mut scene_state: ResMut<core::SceneManagerState>,
 ) {
     let Some(project) = current_project else { return };
@@ -781,7 +780,7 @@ fn save_editor_state_periodic(
     settings: Res<core::EditorSettings>,
     assets: Res<core::AssetBrowserState>,
     docking: Res<core::DockingState>,
-    theme_manager: Res<theming::ThemeManager>,
+    theme_manager: Res<renzora_theme::ThemeManager>,
     scene_state: Res<core::SceneManagerState>,
     mut dirty: ResMut<project::EditorStateDirty>,
 ) {

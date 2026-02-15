@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, RichText};
 use crate::core::resources::movement_trails::{
     MovementTrailsState, TrailColorMode, TrailCommand,
 };
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the movement trails panel content
 pub fn render_movement_trails_content(

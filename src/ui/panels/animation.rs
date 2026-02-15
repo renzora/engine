@@ -16,7 +16,7 @@ use egui_phosphor::regular::{PLAY, PAUSE, STOP, PLUS, TRASH, PENCIL_SIMPLE, ARRO
 
 use crate::core::SelectionState;
 use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// State for the animation panel (local UI state only)
 #[derive(Default)]

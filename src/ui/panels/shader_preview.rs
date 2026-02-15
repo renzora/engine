@@ -4,7 +4,7 @@ use bevy_egui::egui::{self, Color32, Pos2, Rect, TextureId, Vec2};
 
 use crate::core::SceneManagerState;
 use crate::shader_preview::{ShaderPreviewState, ShaderCompileStatus, ShaderType, detect_shader_type, parse_workgroup_size};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 use egui_phosphor::regular::{ARROW_CLOCKWISE, CHECK_CIRCLE, CLIPBOARD, WARNING, X_CIRCLE};
 

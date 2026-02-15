@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Vec2};
 
 use crate::core::{DiagnosticsState, SystemTimingState};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Render the system profiler panel content
 pub fn render_system_profiler_content(

@@ -1,7 +1,7 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Stroke, Visuals};
 
 use crate::core::{UiFont, MonoFont};
-use crate::theming::Theme;
+use renzora_theme::Theme;
 
 /// Initialize all available fonts (call once at startup)
 pub fn init_fonts(ctx: &egui::Context) {
