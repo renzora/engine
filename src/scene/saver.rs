@@ -5,6 +5,8 @@ use bevy::scene::DynamicSceneBuilder;
 use std::path::Path;
 
 use crate::core::{EditorEntity, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState};
+use crate::project::CurrentProject;
+use crate::component_system::{MaterialData, MeshInstanceData, SceneInstanceData, Sprite2DData};
 
 use super::saveable::SceneSaveableRegistry;
 
@@ -46,6 +48,9 @@ pub fn save_scene_bevy(
             .map(|(e, _)| e)
             .collect()
     };
+
+    // Normalize all asset paths to project-relative before serialization
+    normalize_asset_paths(world, &entities);
 
     // Collect editor metadata and insert as resource temporarily
     let meta = collect_editor_meta(world, current_tab);
@@ -110,5 +115,72 @@ fn collect_editor_meta(world: &World, current_tab: usize) -> EditorSceneMetadata
         camera_yaw: orbit.yaw,
         camera_pitch: orbit.pitch,
         expanded_entities: expanded_names,
+    }
+}
+
+/// Normalize all asset paths on scene entities to be project-relative.
+/// This is a safety net that catches any absolute paths before they get serialized.
+fn normalize_asset_paths(world: &mut World, entities: &[Entity]) {
+    let project = world.get_resource::<CurrentProject>().cloned();
+    let Some(project) = project else {
+        return;
+    };
+
+    for &entity in entities {
+        // MaterialData.material_path
+        if let Some(mut data) = world.get_mut::<MaterialData>(entity) {
+            if let Some(ref path_str) = data.material_path {
+                let p = std::path::Path::new(path_str.as_str());
+                if p.is_absolute() {
+                    if let Some(rel) = project.make_relative(p) {
+                        info!("Scene save: normalized material path '{}' -> '{}'", path_str, rel);
+                        data.material_path = Some(rel);
+                    } else {
+                        warn!("Scene save: material path '{}' is absolute but not inside project", path_str);
+                    }
+                }
+            }
+        }
+
+        // MeshInstanceData.model_path
+        if let Some(mut data) = world.get_mut::<MeshInstanceData>(entity) {
+            if let Some(ref path_str) = data.model_path {
+                let p = std::path::Path::new(path_str.as_str());
+                if p.is_absolute() {
+                    if let Some(rel) = project.make_relative(p) {
+                        info!("Scene save: normalized model path '{}' -> '{}'", path_str, rel);
+                        data.model_path = Some(rel);
+                    } else {
+                        warn!("Scene save: model path '{}' is absolute but not inside project", path_str);
+                    }
+                }
+            }
+        }
+
+        // SceneInstanceData.scene_path
+        if let Some(mut data) = world.get_mut::<SceneInstanceData>(entity) {
+            let p = std::path::Path::new(data.scene_path.as_str());
+            if p.is_absolute() {
+                if let Some(rel) = project.make_relative(p) {
+                    info!("Scene save: normalized scene path '{}' -> '{}'", data.scene_path, rel);
+                    data.scene_path = rel;
+                } else {
+                    warn!("Scene save: scene path '{}' is absolute but not inside project", data.scene_path);
+                }
+            }
+        }
+
+        // Sprite2DData.texture_path
+        if let Some(mut data) = world.get_mut::<Sprite2DData>(entity) {
+            let p = std::path::Path::new(data.texture_path.as_str());
+            if p.is_absolute() {
+                if let Some(rel) = project.make_relative(p) {
+                    info!("Scene save: normalized texture path '{}' -> '{}'", data.texture_path, rel);
+                    data.texture_path = rel;
+                } else {
+                    warn!("Scene save: texture path '{}' is absolute but not inside project", data.texture_path);
+                }
+            }
+        }
     }
 }

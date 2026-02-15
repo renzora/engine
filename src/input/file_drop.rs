@@ -1129,6 +1129,7 @@ pub fn handle_material_panel_drop(
     mesh_query: Query<(Entity, &GlobalTransform, Option<&Aabb>), With<Mesh3d>>,
     parent_query: Query<&ChildOf>,
     editor_entity_query: Query<&EditorEntity>,
+    current_project: Option<Res<CurrentProject>>,
 ) {
     let Some(drop) = assets.pending_material_drop.take() else {
         return;
@@ -1147,8 +1148,13 @@ pub fn handle_material_panel_drop(
         return;
     };
 
-    // Get the material path as a string
-    let material_path = drop.path.to_string_lossy().to_string();
+    // Convert to project-relative path if possible
+    let material_path = if let Some(ref project) = current_project {
+        project.make_relative(&drop.path)
+            .unwrap_or_else(|| drop.path.to_string_lossy().to_string())
+    } else {
+        drop.path.to_string_lossy().to_string()
+    };
 
     // Add MaterialData component to the entity - the apply system will handle compilation
     commands.entity(mesh_entity).insert(MaterialData {
@@ -1208,8 +1214,13 @@ pub fn apply_material_data(
                 let project_relative = project.path.join(&raw_path);
                 if project_relative.exists() {
                     project_relative
+                } else if PathBuf::from(material_path).exists() {
+                    // Engine default asset — copy it into the project for portability
+                    project.ensure_default_asset(material_path);
+                    // Use the CWD copy for this load (project copy now exists for next save/load)
+                    raw_path
                 } else {
-                    raw_path // Fall back to CWD-relative (engine default assets)
+                    raw_path
                 }
             } else {
                 raw_path

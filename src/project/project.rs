@@ -39,6 +39,71 @@ impl CurrentProject {
     pub fn main_scene_path(&self) -> PathBuf {
         self.resolve_path(&self.config.main_scene)
     }
+
+    /// Convert an absolute path to a project-relative path string using forward slashes.
+    /// If the path is already relative, returns it as-is (with forward slashes).
+    /// If the path is absolute but not inside the project, returns None.
+    pub fn make_relative(&self, path: &Path) -> Option<String> {
+        let path_buf = if path.is_relative() {
+            return Some(path.to_string_lossy().replace('\\', "/"));
+        } else {
+            path.to_path_buf()
+        };
+
+        // Try with canonicalized paths first for symlink/case handling
+        let canonical_project = self.path.canonicalize().ok();
+        let canonical_path = path_buf.canonicalize().ok();
+
+        if let (Some(proj), Some(p)) = (&canonical_project, &canonical_path) {
+            if let Ok(rel) = p.strip_prefix(proj) {
+                return Some(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+
+        // Fall back to direct prefix stripping
+        if let Ok(rel) = path_buf.strip_prefix(&self.path) {
+            return Some(rel.to_string_lossy().replace('\\', "/"));
+        }
+
+        None
+    }
+
+    /// Copy an engine default asset into the project if it doesn't already exist.
+    /// `engine_relative_path` is a path like "assets/materials/checkerboard_default.material_bp"
+    /// relative to the engine CWD.
+    /// Returns the project-relative path string on success.
+    pub fn ensure_default_asset(&self, engine_relative_path: &str) -> Option<String> {
+        let project_dest = self.path.join(engine_relative_path);
+
+        // Already exists in the project — just return the relative path
+        if project_dest.exists() {
+            return Some(engine_relative_path.replace('\\', "/"));
+        }
+
+        // Source: relative to engine CWD
+        let engine_source = PathBuf::from(engine_relative_path);
+        if !engine_source.exists() {
+            warn!("Engine default asset not found: {}", engine_relative_path);
+            return None;
+        }
+
+        // Create parent directories
+        if let Some(parent) = project_dest.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                error!("Failed to create directory {}: {}", parent.display(), e);
+                return None;
+            }
+        }
+
+        // Copy the file
+        if let Err(e) = std::fs::copy(&engine_source, &project_dest) {
+            error!("Failed to copy default asset to project: {}", e);
+            return None;
+        }
+
+        info!("Copied default asset to project: {}", project_dest.display());
+        Some(engine_relative_path.replace('\\', "/"))
+    }
 }
 
 /// Create a new project at the specified path
