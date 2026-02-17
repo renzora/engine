@@ -274,15 +274,11 @@ pub fn render_crash_report_window(
 
                 ui.add_space(4.0);
 
-                ui.horizontal(|ui| {
-                    ui.label("Error:");
-                    ui.colored_label(egui::Color32::from_rgb(255, 100, 100), &report.message);
-                });
+                ui.label("Error:");
+                ui.label(egui::RichText::new(&report.message).color(egui::Color32::from_rgb(255, 100, 100)));
 
-                ui.horizontal(|ui| {
-                    ui.label("Location:");
-                    ui.monospace(&report.location);
-                });
+                ui.label("Location:");
+                ui.monospace(&report.location);
 
                 ui.add_space(8.0);
                 ui.separator();
