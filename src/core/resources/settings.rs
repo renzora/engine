@@ -183,7 +183,7 @@ impl Default for CameraSettings {
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
-            left_click_pan: true,
+            left_click_pan: false,
             show_camera_height: false,
         }
     }
