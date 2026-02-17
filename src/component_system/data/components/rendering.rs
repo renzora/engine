@@ -386,7 +386,7 @@ impl Default for PointLightData {
     fn default() -> Self {
         Self {
             color: Vec3::ONE,
-            intensity: 1000.0,
+            intensity: 100_000.0,
             range: 20.0,
             radius: 0.0,
             shadows_enabled: true,
@@ -440,7 +440,7 @@ impl Default for SpotLightData {
     fn default() -> Self {
         Self {
             color: Vec3::ONE,
-            intensity: 1000.0,
+            intensity: 100_000.0,
             range: 20.0,
             radius: 0.0,
             inner_angle: 0.3,
