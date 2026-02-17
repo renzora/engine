@@ -63,6 +63,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::embedded::{ProjectAssetOverridePath, copy_engine_asset_to_project};
 use crate::project::CurrentProject;
 use crate::scene::SceneSaveableRegistry;
+use crate::terrain::TerrainData;
+use crate::surface_painting::PaintableSurfaceData;
 
 /// Unified registry that handles all component registration in one place
 ///
@@ -209,10 +211,10 @@ impl Plugin for ComponentSystemPlugin {
             components::underwater::sync_underwater,
         ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
 
-        // Sync project path to asset reader and copy shaders on component add
+        // Sync project path to asset reader and copy assets on component add
         app.add_systems(Update, (
             sync_project_asset_path,
-            ensure_project_shaders,
+            ensure_project_assets,
         ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
     }
 }
@@ -254,8 +256,8 @@ fn sync_project_asset_path(
     }
 }
 
-/// Component-to-shader mapping for automatic shader copying.
-const SHADER_COMPONENTS: &[(&str, &[&str])] = &[
+/// Component-to-asset mapping for automatic asset copying.
+const COMPONENT_ASSETS: &[(&str, &[&str])] = &[
     ("clouds",               &["shaders/clouds.wgsl"]),
     ("vignette",             &["shaders/post_process/vignette.wgsl"]),
     ("film_grain",           &["shaders/post_process/film_grain.wgsl"]),
@@ -266,10 +268,14 @@ const SHADER_COMPONENTS: &[(&str, &[&str])] = &[
     ("palette_quantization", &["shaders/post_process/palette_quantization.wgsl"]),
     ("distortion",           &["shaders/post_process/distortion.wgsl"]),
     ("underwater",           &["shaders/post_process/underwater.wgsl"]),
+    ("mesh_node",            &["materials/checkerboard_default.material_bp", "shaders/blueprint_material.wgsl"]),
+    ("terrain",              &["materials/checkerboard_default.material_bp", "shaders/blueprint_material.wgsl", "shaders/generated/terrain_material.wgsl", "shaders/splatmap_blend.wgsl", "shaders/layers/default.wgsl", "shaders/layers/default_dark.wgsl"]),
+    ("material_data",        &["shaders/blueprint_material.wgsl"]),
+    ("surface_painting",     &["shaders/splatmap_blend.wgsl", "shaders/layers/default.wgsl", "shaders/layers/default_dark.wgsl", "shaders/layers/flowing_water.wgsl", "shaders/layers/rocky_ground.wgsl"]),
 ];
 
-/// When a shader-using component is added, copy its shader(s) to the project.
-fn ensure_project_shaders(
+/// When a component that needs default assets is added, copy them to the project.
+fn ensure_project_assets(
     project: Option<Res<CurrentProject>>,
     clouds: Query<(), Added<CloudsData>>,
     vignette: Query<(), Added<VignetteData>>,
@@ -281,10 +287,14 @@ fn ensure_project_shaders(
     palette_quantization: Query<(), Added<PaletteQuantizationData>>,
     distortion: Query<(), Added<DistortionData>>,
     underwater: Query<(), Added<UnderwaterData>>,
+    mesh_node: Query<(), Added<MeshNodeData>>,
+    terrain: Query<(), Added<TerrainData>>,
+    material_data: Query<(), Added<MaterialData>>,
+    surface_painting: Query<(), Added<PaintableSurfaceData>>,
 ) {
     let Some(project) = project else { return };
 
-    let triggers: [bool; 10] = [
+    let triggers: [bool; 14] = [
         !clouds.is_empty(),
         !vignette.is_empty(),
         !film_grain.is_empty(),
@@ -295,12 +305,16 @@ fn ensure_project_shaders(
         !palette_quantization.is_empty(),
         !distortion.is_empty(),
         !underwater.is_empty(),
+        !mesh_node.is_empty(),
+        !terrain.is_empty(),
+        !material_data.is_empty(),
+        !surface_painting.is_empty(),
     ];
 
     for (i, &triggered) in triggers.iter().enumerate() {
         if triggered {
-            for shader_path in SHADER_COMPONENTS[i].1 {
-                copy_engine_asset_to_project(&project.path, shader_path);
+            for asset_path in COMPONENT_ASSETS[i].1 {
+                copy_engine_asset_to_project(&project.path, asset_path);
             }
         }
     }
