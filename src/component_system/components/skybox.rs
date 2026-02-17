@@ -525,6 +525,9 @@ pub(crate) fn sync_skybox(
         for cam in cameras.iter() {
             commands.entity(cam).remove::<Skybox>();
         }
+        for mut camera in camera_query.iter_mut() {
+            camera.clear_color = ClearColorConfig::Default;
+        }
         skybox_state.current_path = None;
         skybox_state.equirect_handle = None;
         skybox_state.cubemap_handle = None;
