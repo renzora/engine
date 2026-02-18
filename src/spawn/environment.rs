@@ -1,8 +1,9 @@
 //! Environment entity spawning
 
 use bevy::prelude::*;
+use egui_phosphor::regular::{GLOBE, SPEAKER_HIGH};
 
-use crate::core::{AudioListenerMarker, EditorEntity, SceneNode, WorldEnvironmentMarker};
+use crate::core::{AudioListenerMarker, EditorEntity, NodeIcon, SceneNode, WorldEnvironmentMarker};
 use crate::component_system::{
     AmbientLightData,
     SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
@@ -44,6 +45,8 @@ pub fn spawn_world_environment(
         MotionBlurData::default(),
     ));
 
+    entity_commands.insert(NodeIcon(GLOBE.to_string()));
+
     if let Some(parent_entity) = parent {
         entity_commands.insert(ChildOf(parent_entity));
     }
@@ -68,6 +71,7 @@ pub fn spawn_audio_listener(
         },
         SceneNode,
         AudioListenerMarker,
+        NodeIcon(SPEAKER_HIGH.to_string()),
     ));
 
     if let Some(parent_entity) = parent {

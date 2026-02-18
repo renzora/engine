@@ -9,7 +9,7 @@ use bevy::solari::scene::RaytracingMesh3d;
 use std::path::Path;
 
 use crate::component_system::components::clouds::CloudDomeMarker;
-use crate::core::{EditorEntity, SceneNode, SceneTabId, HierarchyState, OrbitCameraState};
+use crate::core::{EditorEntity, NodeIcon, SceneNode, SceneTabId, HierarchyState, OrbitCameraState};
 use crate::gizmo::meshes::GizmoMesh;
 use crate::component_system::{
     MeshNodeData, MeshPrimitiveType,
@@ -669,5 +669,41 @@ pub fn rehydrate_cameras_2d(
             Name::new("Scene Camera 2D"),
         ));
         console_info!("Scene", "Rehydrated Camera2D for entity {:?}", entity);
+    }
+}
+
+/// System to assign NodeIcon to entities loaded from scenes.
+/// Uses the ComponentRegistry to find the highest-priority matching component's icon.
+pub fn assign_node_icons(world: &mut World) {
+    use crate::component_system::ComponentRegistry;
+
+    // Collect entities that need an icon
+    let entities_without_icon: Vec<Entity> = world
+        .query_filtered::<Entity, (With<EditorEntity>, Without<NodeIcon>)>()
+        .iter(world)
+        .collect();
+
+    if entities_without_icon.is_empty() {
+        return;
+    }
+
+    let Some(registry) = world.get_resource::<ComponentRegistry>() else {
+        return;
+    };
+
+    // For each entity, find the highest-priority component and use its icon
+    let mut assignments: Vec<(Entity, String)> = Vec::new();
+    for entity in entities_without_icon {
+        let present = registry.get_present_on(world, entity);
+        // get_present_on returns unsorted; pick highest priority (lowest number)
+        if let Some(best) = present.iter().min_by_key(|d| d.priority) {
+            assignments.push((entity, best.icon.to_string()));
+        }
+    }
+
+    for (entity, icon) in assignments {
+        if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+            entity_mut.insert(NodeIcon(icon));
+        }
     }
 }

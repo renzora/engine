@@ -76,3 +76,9 @@ pub struct WorldEnvironmentMarker;
 /// Marker for audio listener node
 #[derive(Component)]
 pub struct AudioListenerMarker;
+
+/// Stores the icon string for hierarchy display.
+/// Set automatically when entities are spawned via presets or component-as-node.
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
+pub struct NodeIcon(pub String);

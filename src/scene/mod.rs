@@ -20,7 +20,7 @@ pub use loader::{
     load_scene_bevy, on_bevy_scene_ready, rehydrate_mesh_components,
     rehydrate_point_lights, rehydrate_directional_lights, rehydrate_spot_lights, rehydrate_sun_lights,
     rehydrate_terrain_chunks, apply_terrain_materials, rebuild_children_from_child_of,
-    prepare_meshes_for_solari,
+    prepare_meshes_for_solari, assign_node_icons,
     rehydrate_cameras_3d, rehydrate_camera_rigs, rehydrate_cameras_2d,
 };
 #[cfg(feature = "solari")]

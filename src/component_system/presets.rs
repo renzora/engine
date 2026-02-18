@@ -582,7 +582,7 @@ pub fn spawn_component_as_node(
     def: &ComponentDefinition,
     parent: Option<Entity>,
 ) -> Entity {
-    use crate::core::{EditorEntity, SceneNode};
+    use crate::core::{EditorEntity, NodeIcon, SceneNode};
 
     let mut entity_commands = commands.spawn((
         Transform::default(),
@@ -594,6 +594,7 @@ pub fn spawn_component_as_node(
             locked: false,
         },
         SceneNode,
+        NodeIcon(def.icon.to_string()),
     ));
 
     if let Some(parent_entity) = parent {
@@ -615,7 +616,7 @@ pub fn spawn_preset(
     preset: &EntityPreset,
     parent: Option<Entity>,
 ) -> Entity {
-    use crate::core::{EditorEntity, SceneNode};
+    use crate::core::{EditorEntity, NodeIcon, SceneNode};
     use crate::component_system::{MeshNodeData, MeshPrimitiveType};
     use crate::spawn::meshes::create_mesh_for_type;
 
@@ -630,6 +631,7 @@ pub fn spawn_preset(
             locked: false,
         },
         SceneNode,
+        NodeIcon(preset.icon.to_string()),
     ));
 
     // Add parent if specified

@@ -347,6 +347,7 @@ fn main() {
             scene::rehydrate_camera_rigs,
             scene::rehydrate_cameras_2d,
             scene::prepare_meshes_for_solari,
+            scene::assign_node_icons,
         )
             .run_if(in_state(AppState::Editor).or(in_state(AppState::Runtime))),
     );

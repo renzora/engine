@@ -5,12 +5,12 @@ use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, Cursor
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, GroupEntitiesCommand, queue_command};
 use crate::component_system::{ComponentCategory, ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset, spawn_component_as_node, preset_component_ids};
-use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
+use crate::core::{AudioListenerMarker, EditorEntity, NodeIcon, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
 use crate::component_system::{
-    CameraNodeData, CameraRigData, MeshNodeData, MeshInstanceData, SceneInstanceData,
-    Sprite2DData, Camera2DData,
+    CameraNodeData, CameraRigData, MeshNodeData, MeshPrimitiveType, MeshInstanceData, SceneInstanceData,
+    Sprite2DData, Camera2DData, SolariLightingData,
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
@@ -27,6 +27,7 @@ use egui_phosphor::regular::{
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
     GLOBE, PACKAGE, MAGNIFYING_GLASS, SPARKLE, CIRCLE,
+    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -50,6 +51,9 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
     pub terrains: Query<'w, 's, Entity, With<crate::terrain::TerrainData>>,
     pub particles: Query<'w, 's, Entity, With<HanabiEffectData>>,
+    pub audio_listeners: Query<'w, 's, Entity, With<AudioListenerMarker>>,
+    pub solari_lights: Query<'w, 's, Entity, With<SolariLightingData>>,
+    pub node_icons: Query<'w, 's, &'static NodeIcon>,
     pub animations: Query<'w, 's, &'static AnimationData>,
     pub gltf_animations: Query<'w, 's, &'static mut GltfAnimations>,
     // Node explorer queries (read-only to avoid conflicts)
@@ -65,6 +69,21 @@ pub struct HierarchyComponentQueries<'w, 's> {
 pub struct HierarchyQueries<'w, 's> {
     pub entities: Query<'w, 's, (Entity, &'static EditorEntity, Option<&'static ChildOf>, Option<&'static Children>, Option<&'static SceneTabId>)>,
     pub components: HierarchyComponentQueries<'w, 's>,
+}
+
+// Intern icon strings so we can return &'static str from NodeIcon(String).
+// At most ~50 unique icons are ever interned (one per component type).
+fn intern_icon(s: &str) -> &'static str {
+    use std::collections::HashSet;
+    use std::sync::{LazyLock, Mutex};
+    static CACHE: LazyLock<Mutex<HashSet<&'static str>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+    let mut set = CACHE.lock().unwrap();
+    if let Some(&existing) = set.get(s) {
+        return existing;
+    }
+    let leaked: &'static str = Box::leak(s.to_string().into_boxed_str());
+    set.insert(leaked);
+    leaked
 }
 
 // Tree line constants
@@ -1337,22 +1356,60 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
     if queries.spot_lights.get(entity).is_ok() {
         return (FLASHLIGHT, Color32::from_rgb(255, 230, 140));
     }
+    if queries.solari_lights.get(entity).is_ok() {
+        return (SPARKLE, Color32::from_rgb(255, 230, 140));
+    }
 
     // World Environment
     if queries.world_environments.get(entity).is_ok() {
         return (GLOBE, Color32::from_rgb(140, 220, 200));
     }
 
-    // 3D Meshes - check mesh data for specific type
+    // Terrain
+    if queries.terrains.get(entity).is_ok() {
+        return (MOUNTAINS, Color32::from_rgb(140, 220, 200));
+    }
+
+    // Audio Listener
+    if queries.audio_listeners.get(entity).is_ok() {
+        return (SPEAKER_HIGH, Color32::from_rgb(140, 220, 200));
+    }
+
+    // 3D Meshes - check mesh data for specific type (matches preset icons)
     if queries.meshes.get(entity).is_ok() {
         if let Ok(mesh_data) = queries.mesh_data.get(entity) {
-            use crate::component_system::MeshPrimitiveType;
+            let mesh_color = Color32::from_rgb(242, 166, 115);
             return match mesh_data.mesh_type {
-                MeshPrimitiveType::Cube => (CUBE, Color32::from_rgb(242, 166, 115)),
-                MeshPrimitiveType::Sphere => (SPHERE, Color32::from_rgb(242, 166, 115)),
-                MeshPrimitiveType::Cylinder => (CYLINDER, Color32::from_rgb(242, 166, 115)),
-                MeshPrimitiveType::Plane => (SQUARE, Color32::from_rgb(242, 166, 115)),
-                _ => (CUBE, Color32::from_rgb(242, 166, 115)),
+                MeshPrimitiveType::Cube => (CUBE, mesh_color),
+                MeshPrimitiveType::Sphere => (SPHERE, mesh_color),
+                MeshPrimitiveType::Cylinder => (CYLINDER, mesh_color),
+                MeshPrimitiveType::Plane => (SQUARE, mesh_color),
+                MeshPrimitiveType::Cone => (TRIANGLE, mesh_color),
+                MeshPrimitiveType::Torus => (CIRCLE, mesh_color),
+                MeshPrimitiveType::Capsule => (CYLINDER, mesh_color),
+                MeshPrimitiveType::Wedge => (TRIANGLE, mesh_color),
+                MeshPrimitiveType::Stairs => (POLYGON, mesh_color),
+                MeshPrimitiveType::Arch => (CIRCLE, mesh_color),
+                MeshPrimitiveType::HalfCylinder => (CYLINDER, mesh_color),
+                MeshPrimitiveType::QuarterPipe => (POLYGON, mesh_color),
+                MeshPrimitiveType::Corner => (POLYGON, mesh_color),
+                MeshPrimitiveType::Prism => (TRIANGLE, mesh_color),
+                MeshPrimitiveType::Pyramid => (DIAMOND, mesh_color),
+                MeshPrimitiveType::Pipe => (CIRCLE, mesh_color),
+                MeshPrimitiveType::Ring => (CIRCLE, mesh_color),
+                MeshPrimitiveType::Wall => (SQUARE, mesh_color),
+                MeshPrimitiveType::Ramp => (TRIANGLE, mesh_color),
+                MeshPrimitiveType::Hemisphere => (SPHERE, mesh_color),
+                MeshPrimitiveType::CurvedWall => (POLYGON, mesh_color),
+                MeshPrimitiveType::Doorway => (SQUARE, mesh_color),
+                MeshPrimitiveType::WindowWall => (SQUARE, mesh_color),
+                MeshPrimitiveType::LShape => (POLYGON, mesh_color),
+                MeshPrimitiveType::TShape => (POLYGON, mesh_color),
+                MeshPrimitiveType::CrossShape => (POLYGON, mesh_color),
+                MeshPrimitiveType::Funnel => (TRIANGLE, mesh_color),
+                MeshPrimitiveType::Gutter => (CYLINDER, mesh_color),
+                MeshPrimitiveType::SpiralStairs => (POLYGON, mesh_color),
+                MeshPrimitiveType::Pillar => (CYLINDER, mesh_color),
             };
         }
         return (CUBE, Color32::from_rgb(242, 166, 115));
@@ -1388,6 +1445,12 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
     }
     if queries.ui_images.get(entity).is_ok() {
         return (IMAGE, Color32::from_rgb(191, 166, 242));
+    }
+
+    // NodeIcon component (set on spawn for all entity types)
+    if let Ok(node_icon) = queries.node_icons.get(entity) {
+        let icon = intern_icon(&node_icon.0);
+        return (icon, Color32::from_rgb(180, 180, 190));
     }
 
     // Fallback to name-based detection for scene roots and special cases
