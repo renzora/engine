@@ -2,12 +2,34 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Window configuration for exported/runtime games
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WindowConfig {
+    pub width: u32,
+    pub height: u32,
+    pub resizable: bool,
+    pub fullscreen: bool,
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            width: 1280,
+            height: 720,
+            resizable: true,
+            fullscreen: false,
+        }
+    }
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectConfig {
     pub name: String,
     pub version: String,
     pub main_scene: String,
+    #[serde(default)]
+    pub window: WindowConfig,
 }
 
 impl Default for ProjectConfig {
@@ -16,6 +38,7 @@ impl Default for ProjectConfig {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
             main_scene: "scenes/main.ron".to_string(),
+            window: WindowConfig::default(),
         }
     }
 }
@@ -119,6 +142,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn
         name: name.to_string(),
         version: "0.1.0".to_string(),
         main_scene: "scenes/main.ron".to_string(),
+        window: WindowConfig::default(),
     };
 
     // Write project.toml

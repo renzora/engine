@@ -857,6 +857,12 @@ fn render_menu_items(
         });
 
         ui.separator();
+        if menu_item(ui, "Export Project...") {
+            scene_state.export_project_requested = true;
+            ui.close();
+        }
+
+        ui.separator();
         if menu_item(ui, "Settings                Ctrl+,") {
             docking_state.open_panel(PanelId::Settings);
             ui.close();

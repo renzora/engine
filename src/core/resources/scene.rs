@@ -136,6 +136,8 @@ pub struct SceneManagerState {
     pub auto_save_enabled: bool,
     /// Auto-save interval in seconds
     pub auto_save_interval: f32,
+    /// Request to export the project as a standalone game
+    pub export_project_requested: bool,
 }
 
 impl Default for SceneManagerState {
@@ -180,6 +182,7 @@ impl Default for SceneManagerState {
             auto_save_timer: 0.0,
             auto_save_enabled: true,
             auto_save_interval: 30.0, // Auto-save every 30 seconds when modified
+            export_project_requested: false,
         }
     }
 }

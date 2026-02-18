@@ -103,24 +103,44 @@ fn main() {
         return;
     }
 
-    // Check for --play mode: launches editor, auto-opens project, auto-triggers play mode (F5)
-    let play_project = if args.len() >= 3 && args[1] == "--play" {
-        // Attach a console window so logs are visible
-        #[cfg(windows)]
-        unsafe { windows_sys::Win32::System::Console::AllocConsole(); }
+    // Check for project.toml next to the executable (exported/runtime game)
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
 
-        let project_path = std::path::PathBuf::from(&args[2]);
-        let toml_path = project_path.join("project.toml");
-        match project::open_project(&toml_path) {
-            Ok(proj) => Some(proj),
-            Err(e) => {
-                eprintln!("Error: Could not open project at {}: {}", project_path.display(), e);
-                std::process::exit(1);
+    let runtime_project = if !args.iter().any(|a| a == "--play") {
+        exe_dir.as_ref().and_then(|dir| {
+            let toml_path = dir.join("project.toml");
+            if toml_path.exists() {
+                project::open_project(&toml_path).ok()
+            } else {
+                None
             }
-        }
+        })
     } else {
         None
     };
+
+    // Check for --play mode: launches editor, auto-opens project, auto-triggers play mode (F5)
+    let play_project = runtime_project.or_else(|| {
+        if args.len() >= 3 && args[1] == "--play" {
+            // Attach a console window so logs are visible
+            #[cfg(windows)]
+            unsafe { windows_sys::Win32::System::Console::AllocConsole(); }
+
+            let project_path = std::path::PathBuf::from(&args[2]);
+            let toml_path = project_path.join("project.toml");
+            match project::open_project(&toml_path) {
+                Ok(proj) => Some(proj),
+                Err(e) => {
+                    eprintln!("Error: Could not open project at {}: {}", project_path.display(), e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            None
+        }
+    });
     let is_play_mode = play_project.is_some();
 
     // When packed, extract embedded updater and plugins to disk
@@ -139,12 +159,18 @@ fn main() {
 
     // Window config differs for --play mode (decorated, project-titled)
     let window = if let Some(ref proj) = play_project {
+        let wc = &proj.config.window;
         Window {
             title: proj.config.name.clone(),
-            resolution: (1280u32, 720u32).into(),
+            resolution: (wc.width, wc.height).into(),
             position: WindowPosition::Centered(MonitorSelection::Primary),
+            mode: if wc.fullscreen {
+                WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
+            } else {
+                WindowMode::Windowed
+            },
             decorations: true,
-            resizable: true,
+            resizable: wc.resizable,
             resize_constraints: WindowResizeConstraints {
                 min_width: 640.0,
                 min_height: 360.0,
@@ -552,6 +578,11 @@ fn main() {
                 Update,
                 scene::auto_save_scene
                     .before(scene::handle_scene_requests)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                scene::handle_export_request
                     .run_if(in_state(AppState::Editor)),
             )
             .add_systems(

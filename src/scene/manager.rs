@@ -787,6 +787,98 @@ fn do_open_project(world: &mut World) {
 #[derive(Resource)]
 pub struct PendingProjectReopen;
 
+/// System that handles the "Export Project..." request from the File menu.
+/// Copies the running executable and project files to a user-chosen folder.
+pub fn handle_export_request(
+    mut scene_state: ResMut<SceneManagerState>,
+    current_project: Option<Res<CurrentProject>>,
+) {
+    if !scene_state.export_project_requested {
+        return;
+    }
+    scene_state.export_project_requested = false;
+
+    let Some(project) = current_project else {
+        console_error!("Export", "No project is open");
+        return;
+    };
+
+    // Pick destination folder
+    let Some(export_dir) = FileDialog::new()
+        .set_title("Export Project")
+        .pick_folder()
+    else {
+        return;
+    };
+
+    match export_project(&project, &export_dir) {
+        Ok(()) => {
+            console_success!("Export", "Project exported to {}", export_dir.display());
+            info!("Project exported to {}", export_dir.display());
+        }
+        Err(e) => {
+            console_error!("Export", "Failed to export: {}", e);
+            error!("Failed to export project: {}", e);
+        }
+    }
+}
+
+/// Copy the executable and project files to the export directory.
+fn export_project(project: &CurrentProject, export_dir: &std::path::Path) -> Result<(), String> {
+    let game_name = &project.config.name;
+
+    // Copy the running executable
+    let exe_path = std::env::current_exe().map_err(|e| format!("Cannot locate executable: {}", e))?;
+    let dest_exe = export_dir.join(format!("{}.exe", game_name));
+    std::fs::copy(&exe_path, &dest_exe).map_err(|e| format!("Failed to copy executable: {}", e))?;
+
+    // Copy project.toml
+    let src_toml = project.path.join("project.toml");
+    if src_toml.exists() {
+        std::fs::copy(&src_toml, export_dir.join("project.toml"))
+            .map_err(|e| format!("Failed to copy project.toml: {}", e))?;
+    }
+
+    // Copy project directories
+    for dir_name in &["assets", "scenes", "scripts", "blueprints"] {
+        let src = project.path.join(dir_name);
+        if src.exists() {
+            copy_dir_recursive(&src, &export_dir.join(dir_name))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Recursively copy a directory and all its contents.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
+
+    let entries = std::fs::read_dir(src)
+        .map_err(|e| format!("Failed to read {}: {}", src.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Directory entry error: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            // Skip editor-only and version control directories
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str == ".editor" || name_str == ".git" || name_str == ".svn" {
+                continue;
+            }
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// System to automatically save the scene when it's modified.
 /// Saves periodically (based on auto_save_interval) if the scene has a path and is modified.
 pub fn auto_save_scene(
