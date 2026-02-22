@@ -57,14 +57,39 @@ use crate::core::{AppState, RuntimeConfig};
 #[derive(Component)]
 struct SplashCamera;
 
-/// Set the window icon from embedded icon data (Windows only)
+/// Set the window icon. Uses the project's custom icon if available (runtime/play mode),
+/// otherwise falls back to the embedded engine icon.
 #[cfg(windows)]
-fn set_window_icon(windows: Option<NonSend<WinitWindows>>) {
+fn set_window_icon(
+    windows: Option<NonSend<WinitWindows>>,
+    current_project: Option<Res<project::CurrentProject>>,
+) {
     let Some(windows) = windows else { return };
-    let icon_bytes = include_bytes!("../icon.ico");
 
-    // Parse ICO file to get the largest image (typically 256x256)
-    if let Some((rgba, width, height)) = parse_ico_largest(icon_bytes) {
+    // Try loading project-specific icon first
+    let icon_data = current_project
+        .as_ref()
+        .and_then(|proj| proj.config.icon.as_ref())
+        .and_then(|icon_rel| {
+            let icon_path = current_project.as_ref().unwrap().path.join(icon_rel);
+            if icon_path.exists() {
+                load_icon_from_file(&icon_path)
+            } else {
+                // Also check next to the executable (exported game)
+                std::env::current_exe().ok()
+                    .and_then(|exe| exe.parent().map(|d| d.to_path_buf()))
+                    .and_then(|dir| {
+                        let filename = std::path::Path::new(icon_rel).file_name()?;
+                        let path = dir.join(filename);
+                        if path.exists() { load_icon_from_file(&path) } else { None }
+                    })
+            }
+        });
+
+    // Fall back to embedded icon
+    let icon_data = icon_data.or_else(|| parse_ico_largest(include_bytes!("../icon.ico")));
+
+    if let Some((rgba, width, height)) = icon_data {
         if let Ok(icon) = winit::window::Icon::from_rgba(rgba, width, height) {
             for window in windows.windows.values() {
                 window.set_window_icon(Some(icon.clone()));
@@ -75,6 +100,13 @@ fn set_window_icon(windows: Option<NonSend<WinitWindows>>) {
 
 #[cfg(not(windows))]
 fn set_window_icon() {}
+
+/// Load an icon from a file path (.ico or .png)
+#[cfg(windows)]
+fn load_icon_from_file(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
+    let data = std::fs::read(path).ok()?;
+    parse_ico_largest(&data)
+}
 
 /// Parse ICO file and extract the largest image as RGBA
 #[cfg(windows)]

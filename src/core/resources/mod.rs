@@ -43,7 +43,7 @@ pub use default_camera::DefaultCameraEntity;
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
 pub use scene::{
-    BuildError, BuildState, OpenImage, OpenScript, SceneManagerState, SceneTab, ScriptError, TabKind,
+    BuildError, BuildState, ExportDialogState, OpenImage, OpenScript, SceneManagerState, SceneTab, ScriptError, TabKind,
     OpenVideo, OpenAudio, OpenAnimation, OpenTexture, OpenParticleFX, OpenLevel, OpenTerrain,
 };
 pub use selection::SelectionState;

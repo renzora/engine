@@ -28,6 +28,9 @@ pub struct ProjectConfig {
     pub name: String,
     pub version: String,
     pub main_scene: String,
+    /// Path to icon file (relative to project root, .ico or .png)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     #[serde(default)]
     pub window: WindowConfig,
 }
@@ -38,6 +41,7 @@ impl Default for ProjectConfig {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
             main_scene: "scenes/main.ron".to_string(),
+            icon: None,
             window: WindowConfig::default(),
         }
     }
@@ -142,6 +146,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn
         name: name.to_string(),
         version: "0.1.0".to_string(),
         main_scene: "scenes/main.ron".to_string(),
+        icon: None,
         window: WindowConfig::default(),
     };
 

@@ -61,6 +61,36 @@ pub struct BuildError {
     pub column: Option<usize>,
 }
 
+/// Editable state for the export settings dialog
+#[derive(Clone, Debug)]
+pub struct ExportDialogState {
+    /// Name of the exported binary (without extension)
+    pub binary_name: String,
+    /// Path to icon file (relative to project), empty if none
+    pub icon_path: String,
+    /// Whether the exported game starts in fullscreen
+    pub fullscreen: bool,
+    /// Window width
+    pub width: u32,
+    /// Window height
+    pub height: u32,
+    /// Whether the window is resizable
+    pub resizable: bool,
+}
+
+impl Default for ExportDialogState {
+    fn default() -> Self {
+        Self {
+            binary_name: String::new(),
+            icon_path: String::new(),
+            fullscreen: false,
+            width: 1280,
+            height: 720,
+            resizable: true,
+        }
+    }
+}
+
 /// State for scene file management and tabs
 #[derive(Resource)]
 pub struct SceneManagerState {
@@ -138,6 +168,10 @@ pub struct SceneManagerState {
     pub auto_save_interval: f32,
     /// Request to export the project as a standalone game
     pub export_project_requested: bool,
+    /// Whether the export settings dialog is open
+    pub show_export_dialog: bool,
+    /// Editable state for the export dialog
+    pub export_dialog: ExportDialogState,
 }
 
 impl Default for SceneManagerState {
@@ -183,6 +217,8 @@ impl Default for SceneManagerState {
             auto_save_enabled: true,
             auto_save_interval: 30.0, // Auto-save every 30 seconds when modified
             export_project_requested: false,
+            show_export_dialog: false,
+            export_dialog: ExportDialogState::default(),
         }
     }
 }

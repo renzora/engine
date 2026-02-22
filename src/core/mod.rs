@@ -10,7 +10,7 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 // Re-export all resources
 pub use resources::{
     AnimationTimelineState, TimelinePlayState,
-    AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
+    AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType, ExportDialogState,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DiagnosticsPlugin, DiagnosticsState, ImportFileResult, ImportStatus,
     DockingState, EditorSettings, MonoFont, RenderStats, CameraSettings, UiFont,
     GamepadDebugState, GamepadInfo, GamepadButtonState, update_gamepad_debug_state,

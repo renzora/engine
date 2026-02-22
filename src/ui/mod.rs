@@ -1311,6 +1311,9 @@ pub fn editor_ui(
         // Render assets dialogs (create script, create folder, import)
         render_assets_dialogs(ctx, &mut editor.assets, &editor.theme_manager.active_theme);
 
+        // Render export project dialog
+        render_export_dialog(ctx, &mut editor.scene_state, current_project.as_deref(), &editor.theme_manager.active_theme);
+
         // Process layout switch requests from assets panel
         if let Some(layout_name) = editor.assets.requested_layout.take() {
             if editor.docking.switch_layout(&layout_name) {
@@ -1400,6 +1403,196 @@ pub fn editor_ui(
         }
         editor.plugin_host.api_mut().push_ui_event(convert_ui_event_to_api(event));
     }
+}
+
+/// Render the export project settings dialog
+fn render_export_dialog(
+    ctx: &bevy_egui::egui::Context,
+    scene_state: &mut SceneManagerState,
+    current_project: Option<&CurrentProject>,
+    theme: &renzora_theme::Theme,
+) {
+    if !scene_state.show_export_dialog {
+        return;
+    }
+
+    let Some(project) = current_project else {
+        scene_state.show_export_dialog = false;
+        return;
+    };
+
+    // Initialize dialog state from project config on first open
+    if scene_state.export_dialog.binary_name.is_empty() {
+        scene_state.export_dialog.binary_name = project.config.name.clone();
+        scene_state.export_dialog.icon_path = project.config.icon.clone().unwrap_or_default();
+        scene_state.export_dialog.fullscreen = project.config.window.fullscreen;
+        scene_state.export_dialog.width = project.config.window.width;
+        scene_state.export_dialog.height = project.config.window.height;
+        scene_state.export_dialog.resizable = project.config.window.resizable;
+    }
+
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+    let panel_bg = theme.surfaces.popup.to_color32();
+    let row_even = theme.panels.inspector_row_even.to_color32();
+    let row_odd = theme.panels.inspector_row_odd.to_color32();
+    let item_bg = theme.panels.item_bg.to_color32();
+    let border = theme.widgets.border.to_color32();
+
+    let mut open = true;
+    bevy_egui::egui::Window::new(format!("{} Export Project", egui_phosphor::regular::EXPORT))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(bevy_egui::egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .min_width(380.0)
+        .frame(bevy_egui::egui::Frame::window(&ctx.style()).fill(panel_bg))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            let label_width = 100.0;
+
+            // Binary Name
+            export_row(ui, 0, "Binary Name", label_width, row_even, row_odd, |ui| {
+                ui.add_sized(
+                    [ui.available_width(), 20.0],
+                    bevy_egui::egui::TextEdit::singleline(&mut scene_state.export_dialog.binary_name)
+                        .hint_text("MyGame"),
+                );
+            });
+
+            // Icon
+            export_row(ui, 1, "Icon", label_width, row_even, row_odd, |ui| {
+                let icon_text = if scene_state.export_dialog.icon_path.is_empty() {
+                    "None".to_string()
+                } else {
+                    scene_state.export_dialog.icon_path.clone()
+                };
+
+                let truncated = if icon_text.len() > 30 {
+                    format!("...{}", &icon_text[icon_text.len()-27..])
+                } else {
+                    icon_text
+                };
+
+                ui.label(bevy_egui::egui::RichText::new(&truncated).size(12.0).color(text_muted));
+
+                ui.with_layout(bevy_egui::egui::Layout::right_to_left(bevy_egui::egui::Align::Center), |ui| {
+                    if !scene_state.export_dialog.icon_path.is_empty() {
+                        if ui.add(bevy_egui::egui::Button::new(
+                            bevy_egui::egui::RichText::new(egui_phosphor::regular::X).size(12.0).color(text_muted)
+                        ).fill(item_bg).corner_radius(bevy_egui::egui::CornerRadius::same(3))).clicked() {
+                            scene_state.export_dialog.icon_path.clear();
+                        }
+                    }
+
+                    if ui.add(bevy_egui::egui::Button::new(
+                        bevy_egui::egui::RichText::new("Browse...").size(12.0).color(text_primary)
+                    ).fill(item_bg).stroke(bevy_egui::egui::Stroke::new(1.0, border))
+                      .corner_radius(bevy_egui::egui::CornerRadius::same(3))).clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Icon", &["ico", "png"])
+                            .set_directory(&project.path)
+                            .pick_file()
+                        {
+                            // Try to make path relative to project
+                            if let Some(rel) = project.make_relative(&path) {
+                                scene_state.export_dialog.icon_path = rel;
+                            } else {
+                                scene_state.export_dialog.icon_path = path.to_string_lossy().to_string();
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Fullscreen
+            export_row(ui, 2, "Fullscreen", label_width, row_even, row_odd, |ui| {
+                ui.checkbox(&mut scene_state.export_dialog.fullscreen, "Start in fullscreen");
+            });
+
+            // Resolution
+            export_row(ui, 3, "Resolution", label_width, row_even, row_odd, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add(bevy_egui::egui::DragValue::new(&mut scene_state.export_dialog.width)
+                        .range(320..=7680)
+                        .speed(1));
+                    ui.label(bevy_egui::egui::RichText::new("x").size(12.0).color(text_muted));
+                    ui.add(bevy_egui::egui::DragValue::new(&mut scene_state.export_dialog.height)
+                        .range(240..=4320)
+                        .speed(1));
+                });
+            });
+
+            // Resizable
+            export_row(ui, 4, "Resizable", label_width, row_even, row_odd, |ui| {
+                ui.checkbox(&mut scene_state.export_dialog.resizable, "Allow window resize");
+            });
+
+            ui.add_space(12.0);
+
+            // Export / Cancel buttons
+            ui.horizontal(|ui| {
+                let export_btn = bevy_egui::egui::Button::new(
+                    bevy_egui::egui::RichText::new(format!("{} Export", egui_phosphor::regular::EXPORT)).color(bevy_egui::egui::Color32::WHITE).size(13.0)
+                )
+                    .fill(accent)
+                    .corner_radius(bevy_egui::egui::CornerRadius::same(4))
+                    .min_size(bevy_egui::egui::Vec2::new(100.0, 28.0));
+
+                if ui.add(export_btn).clicked() {
+                    scene_state.export_project_requested = true;
+                    scene_state.show_export_dialog = false;
+                }
+
+                let cancel_btn = bevy_egui::egui::Button::new(
+                    bevy_egui::egui::RichText::new("Cancel").color(text_primary).size(13.0)
+                )
+                    .fill(item_bg)
+                    .stroke(bevy_egui::egui::Stroke::new(1.0, border))
+                    .corner_radius(bevy_egui::egui::CornerRadius::same(4))
+                    .min_size(bevy_egui::egui::Vec2::new(80.0, 28.0));
+
+                if ui.add(cancel_btn).clicked() {
+                    scene_state.show_export_dialog = false;
+                    scene_state.export_dialog = Default::default();
+                }
+            });
+        });
+
+    if !open {
+        scene_state.show_export_dialog = false;
+        scene_state.export_dialog = Default::default();
+    }
+}
+
+/// Helper for export dialog rows with alternating backgrounds
+fn export_row(
+    ui: &mut bevy_egui::egui::Ui,
+    row_index: usize,
+    label: &str,
+    label_width: f32,
+    row_even: bevy_egui::egui::Color32,
+    row_odd: bevy_egui::egui::Color32,
+    add_widget: impl FnOnce(&mut bevy_egui::egui::Ui),
+) {
+    let bg = if row_index % 2 == 0 { row_even } else { row_odd };
+    let available_width = ui.available_width();
+
+    bevy_egui::egui::Frame::new()
+        .fill(bg)
+        .inner_margin(bevy_egui::egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            ui.set_min_width(available_width - 12.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.add_sized(
+                    [label_width, 18.0],
+                    bevy_egui::egui::Label::new(bevy_egui::egui::RichText::new(label).size(12.0)).truncate()
+                );
+                add_widget(ui);
+            });
+        });
 }
 
 /// Render play mode overlay with status and stop hint

@@ -858,7 +858,7 @@ fn render_menu_items(
 
         ui.separator();
         if menu_item(ui, "Export Project...") {
-            scene_state.export_project_requested = true;
+            scene_state.show_export_dialog = true;
             ui.close();
         }
 

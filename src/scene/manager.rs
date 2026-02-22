@@ -2,6 +2,8 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use rfd::FileDialog;
 use std::path::PathBuf;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 
 use crate::core::{AppState, MainCamera, SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity, ViewportCamera};
 use crate::component_system::{CameraNodeData, CameraRigData};
@@ -788,30 +790,65 @@ fn do_open_project(world: &mut World) {
 pub struct PendingProjectReopen;
 
 /// System that handles the "Export Project..." request from the File menu.
-/// Copies the running executable and project files to a user-chosen folder.
+/// Applies export dialog settings, saves them to project.toml, then copies
+/// the executable, project files, and icon to a user-chosen folder.
 pub fn handle_export_request(
     mut scene_state: ResMut<SceneManagerState>,
-    current_project: Option<Res<CurrentProject>>,
+    mut current_project: Option<ResMut<CurrentProject>>,
 ) {
     if !scene_state.export_project_requested {
         return;
     }
     scene_state.export_project_requested = false;
 
-    let Some(project) = current_project else {
+    let Some(ref mut project) = current_project else {
         console_error!("Export", "No project is open");
         return;
     };
+
+    // Apply dialog settings to project config
+    let dialog = &scene_state.export_dialog;
+    project.config.window.fullscreen = dialog.fullscreen;
+    project.config.window.width = dialog.width;
+    project.config.window.height = dialog.height;
+    project.config.window.resizable = dialog.resizable;
+    project.config.icon = if dialog.icon_path.is_empty() {
+        None
+    } else {
+        Some(dialog.icon_path.clone())
+    };
+
+    // Save updated project.toml
+    let config_path = project.path.join("project.toml");
+    match toml::to_string_pretty(&project.config) {
+        Ok(content) => {
+            if let Err(e) = std::fs::write(&config_path, &content) {
+                console_error!("Export", "Failed to save project.toml: {}", e);
+            }
+        }
+        Err(e) => {
+            console_error!("Export", "Failed to serialize config: {}", e);
+        }
+    }
+
+    let binary_name = if dialog.binary_name.is_empty() {
+        project.config.name.clone()
+    } else {
+        dialog.binary_name.clone()
+    };
+    let icon_path = dialog.icon_path.clone();
 
     // Pick destination folder
     let Some(export_dir) = FileDialog::new()
         .set_title("Export Project")
         .pick_folder()
     else {
+        // Reset dialog state since we're cancelling
+        scene_state.export_dialog = Default::default();
         return;
     };
 
-    match export_project(&project, &export_dir) {
+    match export_project(project, &export_dir, &binary_name, &icon_path) {
         Ok(()) => {
             console_success!("Export", "Project exported to {}", export_dir.display());
             info!("Project exported to {}", export_dir.display());
@@ -821,16 +858,32 @@ pub fn handle_export_request(
             error!("Failed to export project: {}", e);
         }
     }
+
+    // Reset dialog state
+    scene_state.export_dialog = Default::default();
 }
 
 /// Copy the executable and project files to the export directory.
-fn export_project(project: &CurrentProject, export_dir: &std::path::Path) -> Result<(), String> {
-    let game_name = &project.config.name;
-
-    // Copy the running executable
+fn export_project(
+    project: &CurrentProject,
+    export_dir: &std::path::Path,
+    binary_name: &str,
+    icon_path: &str,
+) -> Result<(), String> {
+    // Copy the running executable with the chosen binary name
     let exe_path = std::env::current_exe().map_err(|e| format!("Cannot locate executable: {}", e))?;
-    let dest_exe = export_dir.join(format!("{}.exe", game_name));
+    let dest_exe = export_dir.join(format!("{}.exe", binary_name));
     std::fs::copy(&exe_path, &dest_exe).map_err(|e| format!("Failed to copy executable: {}", e))?;
+
+    // Embed icon into the exported binary if set
+    if !icon_path.is_empty() {
+        let icon_src = project.path.join(icon_path);
+        if icon_src.exists() {
+            if let Err(e) = embed_icon_in_exe(&dest_exe, &icon_src) {
+                warn!("Failed to embed icon in executable: {}", e);
+            }
+        }
+    }
 
     // Copy project.toml
     let src_toml = project.path.join("project.toml");
@@ -848,6 +901,185 @@ fn export_project(project: &CurrentProject, export_dir: &std::path::Path) -> Res
     }
 
     Ok(())
+}
+
+/// Embed an ICO or PNG icon into a Windows PE executable using the UpdateResource API.
+#[cfg(windows)]
+fn embed_icon_in_exe(exe_path: &std::path::Path, icon_path: &std::path::Path) -> Result<(), String> {
+    use std::io::{Cursor, Read};
+
+    let icon_data = std::fs::read(icon_path)
+        .map_err(|e| format!("Failed to read icon file: {}", e))?;
+
+    // If it's a PNG, convert to ICO format first
+    let ico_data = if icon_path.extension().and_then(|e| e.to_str()) == Some("png") {
+        png_to_ico(&icon_data)?
+    } else {
+        icon_data
+    };
+
+    // Parse ICO header
+    let mut cursor = Cursor::new(&ico_data);
+    let mut header = [0u8; 6];
+    std::io::Read::read_exact(&mut cursor, &mut header)
+        .map_err(|e| format!("Invalid ICO header: {}", e))?;
+
+    let image_count = u16::from_le_bytes([header[4], header[5]]) as usize;
+    if image_count == 0 {
+        return Err("ICO file contains no images".into());
+    }
+
+    // Parse directory entries (16 bytes each)
+    let mut entries = Vec::with_capacity(image_count);
+    for _ in 0..image_count {
+        let mut entry = [0u8; 16];
+        std::io::Read::read_exact(&mut cursor, &mut entry)
+            .map_err(|e| format!("Invalid ICO entry: {}", e))?;
+        entries.push(entry);
+    }
+
+    // Open the exe for resource updates
+    let exe_wide: Vec<u16> = exe_path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let handle = unsafe {
+        windows_sys::Win32::System::LibraryLoader::BeginUpdateResourceW(
+            exe_wide.as_ptr(),
+            0, // don't delete existing resources
+        )
+    };
+    if handle.is_null() {
+        return Err("BeginUpdateResource failed".into());
+    }
+
+    let rt_icon = 3u16;        // RT_ICON
+    let rt_group_icon = 14u16;  // RT_GROUP_ICON
+
+    // Write each icon image as an RT_ICON resource
+    for (i, entry) in entries.iter().enumerate() {
+        let data_size = u32::from_le_bytes([entry[8], entry[9], entry[10], entry[11]]) as usize;
+        let data_offset = u32::from_le_bytes([entry[12], entry[13], entry[14], entry[15]]) as usize;
+
+        if data_offset + data_size > ico_data.len() {
+            unsafe { windows_sys::Win32::System::LibraryLoader::EndUpdateResourceW(handle, 1); }
+            return Err("ICO data offset out of bounds".into());
+        }
+
+        let image_data = &ico_data[data_offset..data_offset + data_size];
+        let resource_id = (i + 1) as u16;
+
+        let ok = unsafe {
+            windows_sys::Win32::System::LibraryLoader::UpdateResourceW(
+                handle,
+                rt_icon as *const u16,
+                resource_id as *const u16,
+                0x0409, // LANG_ENGLISH
+                image_data.as_ptr() as *const _,
+                image_data.len() as u32,
+            )
+        };
+        if ok == 0 {
+            unsafe { windows_sys::Win32::System::LibraryLoader::EndUpdateResourceW(handle, 1); }
+            return Err(format!("UpdateResource failed for icon {}", i));
+        }
+    }
+
+    // Build RT_GROUP_ICON data: GRPICONDIR header + GRPICONDIRENTRY per image
+    // GRPICONDIR: reserved(2) + type(2) + count(2) = 6 bytes
+    // GRPICONDIRENTRY: width(1) + height(1) + colors(1) + reserved(1) + planes(2) + bpp(2) + size(4) + id(2) = 14 bytes
+    let grp_size = 6 + image_count * 14;
+    let mut grp_data = vec![0u8; grp_size];
+    // Header
+    grp_data[0..2].copy_from_slice(&0u16.to_le_bytes()); // reserved
+    grp_data[2..4].copy_from_slice(&1u16.to_le_bytes()); // type = icon
+    grp_data[4..6].copy_from_slice(&(image_count as u16).to_le_bytes());
+
+    for (i, entry) in entries.iter().enumerate() {
+        let offset = 6 + i * 14;
+        // Copy first 12 bytes from ICO entry (width, height, colors, reserved, planes, bpp, size)
+        grp_data[offset..offset + 12].copy_from_slice(&entry[0..12]);
+        // Replace the file offset (4 bytes) with the resource ID (2 bytes)
+        let resource_id = (i + 1) as u16;
+        grp_data[offset + 12..offset + 14].copy_from_slice(&resource_id.to_le_bytes());
+    }
+
+    let ok = unsafe {
+        windows_sys::Win32::System::LibraryLoader::UpdateResourceW(
+            handle,
+            rt_group_icon as *const u16,
+            1 as *const u16, // group ID 1 (main icon)
+            0x0409,
+            grp_data.as_ptr() as *const _,
+            grp_data.len() as u32,
+        )
+    };
+    if ok == 0 {
+        unsafe { windows_sys::Win32::System::LibraryLoader::EndUpdateResourceW(handle, 1); }
+        return Err("UpdateResource failed for group icon".into());
+    }
+
+    // Commit
+    let ok = unsafe {
+        windows_sys::Win32::System::LibraryLoader::EndUpdateResourceW(handle, 0)
+    };
+    if ok == 0 {
+        return Err("EndUpdateResource failed".into());
+    }
+
+    Ok(())
+}
+
+/// Convert a PNG image to ICO format (single-image ICO).
+#[cfg(windows)]
+fn png_to_ico(png_data: &[u8]) -> Result<Vec<u8>, String> {
+    use image::ImageReader;
+    use std::io::Cursor;
+
+    let reader = ImageReader::new(Cursor::new(png_data))
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to read PNG: {}", e))?;
+    let img = reader.decode()
+        .map_err(|e| format!("Failed to decode PNG: {}", e))?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+
+    // Re-encode as PNG for the ICO container (modern ICO supports embedded PNG)
+    let mut png_buf = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(Cursor::new(&mut png_buf));
+    image::ImageEncoder::write_image(
+        encoder,
+        rgba.as_raw(),
+        w,
+        h,
+        image::ExtendedColorType::Rgba8,
+    ).map_err(|e| format!("Failed to encode PNG for ICO: {}", e))?;
+
+    // Build ICO: header(6) + entry(16) + png data
+    let mut ico = Vec::with_capacity(6 + 16 + png_buf.len());
+    // ICONDIR header
+    ico.extend_from_slice(&0u16.to_le_bytes()); // reserved
+    ico.extend_from_slice(&1u16.to_le_bytes()); // type = icon
+    ico.extend_from_slice(&1u16.to_le_bytes()); // count = 1
+    // ICONDIRENTRY
+    ico.push(if w >= 256 { 0 } else { w as u8 }); // width (0 = 256)
+    ico.push(if h >= 256 { 0 } else { h as u8 }); // height
+    ico.push(0); // color count
+    ico.push(0); // reserved
+    ico.extend_from_slice(&1u16.to_le_bytes()); // planes
+    ico.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+    ico.extend_from_slice(&(png_buf.len() as u32).to_le_bytes()); // size
+    ico.extend_from_slice(&22u32.to_le_bytes()); // offset (6 + 16 = 22)
+    // Image data
+    ico.extend_from_slice(&png_buf);
+
+    Ok(ico)
+}
+
+#[cfg(not(windows))]
+fn embed_icon_in_exe(_exe_path: &std::path::Path, _icon_path: &std::path::Path) -> Result<(), String> {
+    Ok(()) // No-op on non-Windows
 }
 
 /// Recursively copy a directory and all its contents.
