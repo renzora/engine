@@ -62,12 +62,12 @@ pub struct RetroShapes(pub Vec<RetroShape>);
 impl Default for RetroShapes {
     fn default() -> Self {
         let colors = [
-            Color::srgb(0.4, 0.8, 1.0),   // Cyan
-            Color::srgb(1.0, 0.4, 0.7),   // Pink
-            Color::srgb(0.5, 1.0, 0.6),   // Green
-            Color::srgb(1.0, 0.8, 0.3),   // Yellow
-            Color::srgb(0.7, 0.5, 1.0),   // Purple
-            Color::srgb(1.0, 0.5, 0.3),   // Orange
+            Color::srgb(0.3, 0.6, 0.8),   // Muted Cyan
+            Color::srgb(0.8, 0.3, 0.5),   // Muted Pink
+            Color::srgb(0.4, 0.8, 0.5),   // Muted Green
+            Color::srgb(0.8, 0.6, 0.2),   // Muted Gold
+            Color::srgb(0.6, 0.4, 0.8),   // Muted Purple
+            Color::srgb(0.8, 0.4, 0.2),   // Muted Orange
         ];
 
         let shapes = vec![

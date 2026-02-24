@@ -1386,17 +1386,37 @@ pub fn render_splash_title_bar(
             let window_buttons_width = button_width * 3.0;
 
             // Draw centered title with icon
-            let title_text = "Renzora Engine r1".to_string();
+            let accent_blue = Color32::from_rgb(80, 140, 220);
+            let title_text = "Renzora Engine".to_string();
             let title_galley = painter.layout_no_wrap(
                 title_text.clone(),
-                egui::FontId::proportional(13.0),
-                theme.text.muted.to_color32(),
+                egui::FontId::proportional(14.0),
+                theme.text.primary.to_color32().gamma_multiply(0.8),
             );
-            let title_pos = Pos2::new(
-                panel_rect.center().x - title_galley.size().x / 2.0,
-                panel_rect.center().y - title_galley.size().y / 2.0,
+            
+            let version_text = "r1-alpha3".to_string();
+            let version_galley = painter.layout_no_wrap(
+                version_text.clone(),
+                egui::FontId::monospace(14.0),
+                accent_blue.gamma_multiply(0.8),
             );
-            painter.galley(title_pos, title_galley, theme.text.muted.to_color32());
+
+            let title_size = title_galley.size();
+            let version_size = version_galley.size();
+            let total_width = title_size.x + 10.0 + version_size.x;
+            let start_x = panel_rect.center().x - total_width / 2.0;
+
+            painter.galley(
+                Pos2::new(start_x, panel_rect.center().y - title_size.y / 2.0),
+                title_galley,
+                theme.text.primary.to_color32().gamma_multiply(0.8),
+            );
+
+            painter.galley(
+                Pos2::new(start_x + title_size.x + 10.0, panel_rect.center().y - version_size.y / 2.0 + 0.5),
+                version_galley,
+                accent_blue.gamma_multiply(0.8),
+            );
 
             // Draw bottom border
             painter.line_segment(
