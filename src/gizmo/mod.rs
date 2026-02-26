@@ -75,6 +75,10 @@ pub struct GizmoOverlayCamera;
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct GridGizmoGroup;
 
+/// Custom gizmo config group for axis lines (renders in front of grid)
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct AxisGizmoGroup;
+
 /// Custom gizmo config group for selection gizmos (renders on top)
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct SelectionGizmoGroup;
@@ -91,6 +95,7 @@ impl Plugin for GizmoPlugin {
         app.init_resource::<GizmoState>();
         // Register custom gizmo config groups
         app.init_gizmo_group::<GridGizmoGroup>();
+        app.init_gizmo_group::<AxisGizmoGroup>();
         app.init_gizmo_group::<SelectionGizmoGroup>();
         app.init_gizmo_group::<TerrainSelectionGizmoGroup>();
         app.init_gizmo_group::<PhysicsVizGizmoGroup>();
@@ -114,6 +119,12 @@ fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
     let (grid_config, _) = config_store.config_mut::<GridGizmoGroup>();
     grid_config.render_layers = RenderLayers::layer(0);
     grid_config.line.width = 1.0;
+
+    // Axis gizmos - same layer as grid but with depth bias so they draw in front of it
+    let (axis_config, _) = config_store.config_mut::<AxisGizmoGroup>();
+    axis_config.render_layers = RenderLayers::layer(0);
+    axis_config.depth_bias = -0.5;
+    axis_config.line.width = 1.0;
 
     // Selection gizmos - render on top of everything
     let (selection_config, _) = config_store.config_mut::<SelectionGizmoGroup>();

@@ -894,6 +894,14 @@ fn viewport_gizmo_dropdown(
                 });
             });
 
+            // Sub-grid toggle
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Sub-grid").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_enabled(settings.show_grid, egui::Checkbox::new(&mut settings.show_subgrid, ""));
+                });
+            });
+
             // Axis Gizmo toggle
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Axis Gizmo").size(12.0));
