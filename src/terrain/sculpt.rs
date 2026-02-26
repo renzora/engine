@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::input::mouse::MouseWheel;
 use bevy::window::{PrimaryWindow, CursorOptions};
 
-use crate::core::{InputFocusState, ViewportCamera, ViewportState};
+use crate::core::{InputFocusState, SelectionState, ViewportCamera, ViewportState};
 use crate::gizmo::{EditorTool, GizmoState};
 
 use super::{
@@ -26,6 +26,26 @@ pub fn terrain_tool_shortcut_system(
 
     if keyboard.just_pressed(KeyCode::KeyT) {
         gizmo_state.tool = EditorTool::TerrainSculpt;
+    }
+}
+
+/// Keeps gizmo.terrain_selected in sync with the actual selection every frame.
+/// This ensures the toolbar expands/collapses regardless of how selection changed
+/// (viewport click, hierarchy panel, keyboard shortcut, etc.).
+pub fn terrain_selection_sync_system(
+    selection: Res<SelectionState>,
+    mut gizmo: ResMut<GizmoState>,
+    terrain_entities: Query<(), Or<(With<TerrainChunkData>, With<TerrainData>)>>,
+) {
+    let is_terrain = selection.selected_entity
+        .map(|e| terrain_entities.contains(e))
+        .unwrap_or(false);
+
+    if gizmo.terrain_selected != is_terrain {
+        gizmo.terrain_selected = is_terrain;
+        if !is_terrain && gizmo.tool == EditorTool::TerrainSculpt {
+            gizmo.tool = EditorTool::Select;
+        }
     }
 }
 

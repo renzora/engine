@@ -266,6 +266,8 @@ pub struct GizmoState {
     pub snap_target: SnapTarget,
     /// Position of the snap target (for drawing snap indicator)
     pub snap_target_position: Option<Vec3>,
+    /// Whether a terrain entity is currently selected (shows terrain toolbar)
+    pub terrain_selected: bool,
 }
 
 impl Default for GizmoState {
@@ -288,6 +290,7 @@ impl Default for GizmoState {
             collider_edit: ColliderEditState::default(),
             snap_target: SnapTarget::default(),
             snap_target_position: None,
+            terrain_selected: false,
         }
     }
 }

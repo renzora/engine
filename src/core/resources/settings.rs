@@ -83,9 +83,9 @@ pub enum SettingsTab {
 /// Available proportional (UI) font families
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UiFont {
-    #[default]
     Roboto,
     OpenSans,
+    #[default]
     NotoSans,
 }
 

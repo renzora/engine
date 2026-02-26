@@ -3,7 +3,7 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState, KeyBindings, EditorAction};
-use crate::terrain::{TerrainChunkData, TerrainChunkOf};
+use crate::terrain::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::console_info;
 
 use super::modal_transform::ModalTransformState;
@@ -184,7 +184,7 @@ pub fn gizmo_interaction_system(
     parent_query: Query<&ChildOf>,
     mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
-    terrain_chunks: Query<(), With<TerrainChunkData>>,
+    terrain_entities: Query<(), Or<(With<TerrainChunkData>, With<TerrainData>)>>,
 ) {
     // Disable gizmo interaction during modal transform or fullscreen play mode
     if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
@@ -324,7 +324,7 @@ pub fn gizmo_interaction_system(
             // Calculate initial drag state based on gizmo mode
             if let Some(selected) = selection.selected_entity {
                 // Don't allow gizmo drag on terrain chunks
-                if terrain_chunks.get(selected).is_ok() {
+                if terrain_entities.get(selected).is_ok() {
                     return;
                 }
                 if let Ok(obj_transform) = transforms.get(selected) {
@@ -497,6 +497,7 @@ pub fn gizmo_interaction_system(
                 // Single select
                 selection.select(clicked);
             }
+
         }
     } else {
         console_info!("Selection", "Clicked on empty space - clearing selection");
