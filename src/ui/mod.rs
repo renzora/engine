@@ -508,15 +508,17 @@ pub fn editor_ui(
 
         // Handle drop completion
         if ctx.input(|i| i.pointer.any_released()) && editor.docking.drag_state.is_some() {
-            if let Some(drop_target) = &dock_result.drop_completed {
-                let drag_panel = editor.docking.drag_state.as_ref().map(|d| d.panel.clone());
-                if let Some(panel) = drag_panel {
-                    // Don't drop on self
+            let drag_panel = editor.docking.drag_state.as_ref().map(|d| d.panel.clone());
+            if let Some(panel) = drag_panel {
+                if let Some(edge_zone) = dock_result.edge_drop {
+                    // Edge drop: wrap the entire tree with the panel on the dock border
+                    editor.docking.dock_tree.remove_panel(&panel);
+                    editor.docking.dock_tree.wrap_with_panel(panel, edge_zone);
+                    editor.docking.mark_modified();
+                } else if let Some(drop_target) = &dock_result.drop_completed {
+                    // Per-panel drop: split or tab within a specific leaf
                     if panel != drop_target.target_panel {
-                        // First remove from current location
                         editor.docking.dock_tree.remove_panel(&panel);
-
-                        // Then add to new location based on drop zone
                         match drop_target.zone {
                             DropZone::Tab => {
                                 editor.docking.dock_tree.add_tab(&drop_target.target_panel, panel);
@@ -533,6 +535,8 @@ pub fn editor_ui(
                             DropZone::Bottom => {
                                 editor.docking.dock_tree.split_at(&drop_target.target_panel, panel, SplitDirection::Vertical, false);
                             }
+                            // Edge zones are handled above, not here
+                            DropZone::EdgeLeft | DropZone::EdgeRight | DropZone::EdgeTop | DropZone::EdgeBottom => {}
                         }
                         editor.docking.mark_modified();
                     }
@@ -565,103 +569,33 @@ pub fn editor_ui(
             }
         }
 
-        // Get drag info for panel rendering
-        let drag_info = editor.docking.drag_state.as_ref().and_then(|drag| {
-            ctx.pointer_hover_pos().map(|cursor_pos| {
-                (drag.panel.clone(), cursor_pos, drag.original_rect, drag.drag_offset)
-            })
-        });
-
         // Capture drag state before panel loop — the assets panel's safety reset
         // clears dragging_asset when pointer is released, which would race with the
         // inspector panel's copy if assets renders first in the docking order.
         editor.inspector_render_state.dragging_asset_path = editor.assets.dragging_asset.clone();
+
+        let dragging_panel = editor.docking.drag_state.as_ref().map(|d| d.panel.clone());
 
         for (panel_id, panel_rect, is_active) in panel_rects {
             if !is_active {
                 continue; // Only render active tabs
             }
 
-            // Check if this panel is being dragged
-            let is_being_dragged = drag_info.as_ref().map(|(p, _, _, _)| p == &panel_id).unwrap_or(false);
-
-            // If this panel is being dragged, show muted empty space at original location
-            if is_being_dragged {
-                // Draw muted background where the panel was
-                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new(("dragged_panel_placeholder", panel_id.clone())))
-                    .fixed_pos(panel_rect.min)
-                    .order(bevy_egui::egui::Order::Background)
-                    .interactable(false)
-                    .show(ctx, |ui| {
-                        let muted_bg = bevy_egui::egui::Color32::from_rgba_unmultiplied(30, 32, 36, 180);
-                        ui.painter().rect_filled(
-                            bevy_egui::egui::Rect::from_min_size(
-                                bevy_egui::egui::Pos2::ZERO,
-                                panel_rect.size(),
-                            ),
-                            4.0,
-                            muted_bg,
-                        );
-                    });
+            // When dragging a panel, mute its content area and skip rendering
+            if dragging_panel.as_ref() == Some(&panel_id) {
+                let content_rect = bevy_egui::egui::Rect::from_min_max(
+                    bevy_egui::egui::Pos2::new(panel_rect.min.x, panel_rect.min.y + 28.0),
+                    panel_rect.max,
+                );
+                let painter = ctx.layer_painter(bevy_egui::egui::LayerId::new(
+                    bevy_egui::egui::Order::Middle,
+                    bevy_egui::egui::Id::new(("panel_drag_mute", panel_id.clone())),
+                ));
+                painter.rect_filled(content_rect, 0.0, bevy_egui::egui::Color32::from_rgba_unmultiplied(18, 20, 24, 220));
+                continue;
             }
 
-            // Calculate the actual rect for rendering - either at cursor (if dragging) or original position
-            let (render_rect, is_floating) = if is_being_dragged {
-                if let Some((_, cursor_pos, original_rect, drag_offset)) = &drag_info {
-                    // Position panel at cursor with offset so it feels like you're grabbing it
-                    let floating_rect = bevy_egui::egui::Rect::from_min_size(
-                        *cursor_pos + *drag_offset,
-                        original_rect.size(),
-                    );
-                    (floating_rect, true)
-                } else {
-                    (panel_rect, false)
-                }
-            } else {
-                (panel_rect, false)
-            };
-
-            // Draw floating tab bar for dragged panel
-            if is_floating {
-                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new(("floating_tab_bar", panel_id.clone())))
-                    .fixed_pos(render_rect.min)
-                    .order(bevy_egui::egui::Order::Foreground)
-                    .interactable(false)
-                    .show(ctx, |ui| {
-                        let tab_bar_rect = bevy_egui::egui::Rect::from_min_size(
-                            bevy_egui::egui::Pos2::ZERO,
-                            bevy_egui::egui::Vec2::new(render_rect.width(), 28.0),
-                        );
-                        // Tab bar background
-                        ui.painter().rect_filled(tab_bar_rect, 0.0, editor.theme_manager.active_theme.panels.tab_active.to_color32());
-                        // Tab with icon and title
-                        let icon_x = 8.0;
-                        let text_x = icon_x + 18.0;
-                        ui.painter().text(
-                            bevy_egui::egui::Pos2::new(icon_x, 14.0),
-                            bevy_egui::egui::Align2::LEFT_CENTER,
-                            panel_id.icon(),
-                            bevy_egui::egui::FontId::proportional(12.0),
-                            bevy_egui::egui::Color32::WHITE,
-                        );
-                        ui.painter().text(
-                            bevy_egui::egui::Pos2::new(text_x, 14.0),
-                            bevy_egui::egui::Align2::LEFT_CENTER,
-                            panel_id.title(),
-                            bevy_egui::egui::FontId::proportional(11.0),
-                            bevy_egui::egui::Color32::WHITE,
-                        );
-                        // Border
-                        let accent = editor.theme_manager.active_theme.semantic.accent.to_color32();
-                        ui.painter().rect_stroke(tab_bar_rect, 0.0, bevy_egui::egui::Stroke::new(2.0, accent), bevy_egui::egui::StrokeKind::Inside);
-                    });
-            }
-
-            let panel_ctx = if is_floating {
-                DockedPanelContext::new_floating(render_rect, panel_id.clone(), is_active)
-            } else {
-                DockedPanelContext::new(render_rect, panel_id.clone(), is_active)
-            };
+            let panel_ctx = DockedPanelContext::new(panel_rect, panel_id.clone(), is_active);
 
             match panel_id {
                 PanelId::Hierarchy => {
@@ -1204,6 +1138,71 @@ pub fn editor_ui(
                     });
                 }
             }
+        }
+
+        // Draw cursor tooltip when dragging a tab (panel stays in place, tooltip follows cursor)
+        if let Some(ref drag) = editor.docking.drag_state {
+            if let Some(cursor_pos) = ctx.pointer_hover_pos() {
+                let painter = ctx.layer_painter(bevy_egui::egui::LayerId::new(
+                    bevy_egui::egui::Order::Tooltip,
+                    bevy_egui::egui::Id::new("drag_preview_tooltip"),
+                ));
+                let theme = &editor.theme_manager.active_theme;
+                let text = format!("{} {}", drag.panel.icon(), drag.panel.title());
+                let rect = bevy_egui::egui::Rect::from_min_size(
+                    cursor_pos + bevy_egui::egui::vec2(12.0, 12.0),
+                    bevy_egui::egui::vec2(120.0, 28.0),
+                );
+                let popup_bg = theme.surfaces.popup.to_color32();
+                let [r, g, b, _] = popup_bg.to_array();
+                painter.rect_filled(rect, 4.0, bevy_egui::egui::Color32::from_rgba_unmultiplied(r, g, b, 230));
+                painter.rect_stroke(rect, 4.0, bevy_egui::egui::Stroke::new(1.0, theme.semantic.accent.to_color32()), bevy_egui::egui::StrokeKind::Outside);
+                painter.text(rect.center(), bevy_egui::egui::Align2::CENTER_CENTER, text, bevy_egui::egui::FontId::proportional(13.0), bevy_egui::egui::Color32::WHITE);
+            }
+        }
+
+        // Draw drop zone overlay in foreground (on top of panel content, no panel movement)
+        if let Some(overlay_rect) = dock_result.drop_overlay {
+            let accent = editor.theme_manager.active_theme.semantic.accent.to_color32();
+            let painter = ctx.layer_painter(bevy_egui::egui::LayerId::new(
+                bevy_egui::egui::Order::Foreground,
+                bevy_egui::egui::Id::new("drop_zone_overlay"),
+            ));
+
+            // Subtle fill
+            painter.rect_filled(
+                overlay_rect,
+                4.0,
+                bevy_egui::egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 45),
+            );
+
+            // Animated glow border
+            let time = ctx.input(|i| i.time) as f32;
+            let pulse = (time * 5.0).sin() * 0.5 + 0.5; // 0.0–1.0, ~1.6 Hz
+
+            // Wide outer glow
+            painter.rect_stroke(
+                overlay_rect,
+                4.0,
+                bevy_egui::egui::Stroke::new(
+                    8.0 + 4.0 * pulse,
+                    bevy_egui::egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (35.0 + 55.0 * pulse) as u8),
+                ),
+                bevy_egui::egui::StrokeKind::Outside,
+            );
+
+            // Crisp inner border
+            painter.rect_stroke(
+                overlay_rect,
+                4.0,
+                bevy_egui::egui::Stroke::new(
+                    2.0,
+                    bevy_egui::egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (160.0 + 95.0 * pulse) as u8),
+                ),
+                bevy_egui::egui::StrokeKind::Inside,
+            );
+
+            ctx.request_repaint(); // Keep the glow animating
         }
 
         // Clear any remaining drag if pointer was released and no panel handled it

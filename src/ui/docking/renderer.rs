@@ -53,6 +53,10 @@ pub struct DockRenderResult {
     pub resize_handle_active: bool,
     /// Panel to add as a tab in a specific leaf (leaf_first_panel, new_panel)
     pub panel_to_add: Option<(PanelId, PanelId)>,
+    /// Drop zone overlay rect to draw in foreground (on top of panel content)
+    pub drop_overlay: Option<Rect>,
+    /// Edge drop zone (full-width/height split at dock border), takes priority over per-panel drops
+    pub edge_drop: Option<DropZone>,
 }
 
 /// Context passed to panel render functions
@@ -82,29 +86,37 @@ pub fn render_dock_tree(
     // First pass: collect leaf rects without drop preview to detect drop targets
     collect_leaf_rects(tree, available_rect, &mut result);
 
-    // Detect drop target if dragging
-    let drop_preview = if let Some(drag) = drag_state {
-        if let Some(preview) = detect_current_drop_target(ui, drag, &result) {
-            // Check if target changed - if so, reset animation
-            let target_changed = drag.last_target.as_ref()
-                .map(|(p, z)| p != &preview.target_panel || *z != preview.zone)
-                .unwrap_or(true);
+    // Check edge drop zones first (full-width/height splits at dock borders)
+    let edge_zone = drag_state.and_then(|drag| detect_edge_drop_zone(ui, drag, available_rect));
 
-            let animation = if target_changed { 0.0 } else { drag.animation_progress };
+    if let Some(zone) = edge_zone {
+        result.edge_drop = Some(zone);
+        result.drop_overlay = Some(calculate_edge_overlay_rect(available_rect, zone));
+    }
 
-            Some(DropPreview {
-                target_panel: preview.target_panel,
-                zone: preview.zone,
-                animation_progress: animation,
+    // Detect per-panel drop target (only when not in an edge zone)
+    let drop_preview = if edge_zone.is_none() {
+        drag_state.and_then(|drag| {
+            detect_current_drop_target(ui, drag, &result).map(|preview| {
+                // Check if target changed - if so, reset animation
+                let target_changed = drag.last_target.as_ref()
+                    .map(|(p, z)| p != &preview.target_panel || *z != preview.zone)
+                    .unwrap_or(true);
+
+                let animation = if target_changed { 0.0 } else { drag.animation_progress };
+
+                DropPreview {
+                    target_panel: preview.target_panel,
+                    zone: preview.zone,
+                    animation_progress: animation,
+                }
             })
-        } else {
-            None
-        }
+        })
     } else {
         None
     };
 
-    // Update result with drop target
+    // Update result with per-panel drop target
     if let Some(ref preview) = drop_preview {
         result.drop_completed = Some(DropTarget {
             target_panel: preview.target_panel.clone(),
@@ -382,17 +394,9 @@ fn render_leaf(
         (rect, None)
     };
 
-    // Draw the preview area (empty space for the new panel) if applicable
+    // Store drop zone overlay rect for foreground rendering (on top of panel content)
     if let Some(preview_r) = preview_rect {
-        let accent = theme.semantic.accent.to_color32();
-        let preview = drop_preview.unwrap();
-        let t = ease_out_cubic(preview.animation_progress);
-
-        // Draw the empty space with a solid blue fill (no border)
-        let fill_alpha = (140.0 * t) as u8;
-        let fill_color = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), fill_alpha);
-
-        ui.painter().rect_filled(preview_r, 4.0, fill_color);
+        result.drop_overlay = Some(preview_r);
     }
 
     // Use the adjusted rect for rendering
@@ -985,69 +989,95 @@ fn calculate_animated_rects(rect: Rect, zone: DropZone, animation_progress: f32)
             (rect, None)
         }
         DropZone::Left => {
-            // Panel moves right and shrinks to make room on the left
             let preview_width = rect.width() * 0.5 * t;
-            let panel_width = rect.width() - preview_width;
-
             let preview_rect = Rect::from_min_size(
                 rect.min,
                 Vec2::new(preview_width, rect.height()),
             );
-            let panel_rect = Rect::from_min_size(
-                Pos2::new(rect.min.x + preview_width, rect.min.y),
-                Vec2::new(panel_width, rect.height()),
-            );
-
-            (panel_rect, Some(preview_rect))
+            (rect, Some(preview_rect))
         }
         DropZone::Right => {
-            // Panel shrinks to make room on the right
             let preview_width = rect.width() * 0.5 * t;
             let panel_width = rect.width() - preview_width;
-
-            let panel_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(panel_width, rect.height()),
-            );
             let preview_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x + panel_width, rect.min.y),
                 Vec2::new(preview_width, rect.height()),
             );
-
-            (panel_rect, Some(preview_rect))
+            (rect, Some(preview_rect))
         }
         DropZone::Top => {
-            // Panel moves down and shrinks to make room on top
             let preview_height = rect.height() * 0.5 * t;
-            let panel_height = rect.height() - preview_height;
-
             let preview_rect = Rect::from_min_size(
                 rect.min,
                 Vec2::new(rect.width(), preview_height),
             );
-            let panel_rect = Rect::from_min_size(
-                Pos2::new(rect.min.x, rect.min.y + preview_height),
-                Vec2::new(rect.width(), panel_height),
-            );
-
-            (panel_rect, Some(preview_rect))
+            (rect, Some(preview_rect))
         }
         DropZone::Bottom => {
-            // Panel shrinks to make room on the bottom
             let preview_height = rect.height() * 0.5 * t;
             let panel_height = rect.height() - preview_height;
-
-            let panel_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(rect.width(), panel_height),
-            );
             let preview_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x, rect.min.y + panel_height),
                 Vec2::new(rect.width(), preview_height),
             );
-
-            (panel_rect, Some(preview_rect))
+            (rect, Some(preview_rect))
         }
+        // Edge zones are handled separately via detect_edge_drop_zone
+        DropZone::EdgeLeft | DropZone::EdgeRight | DropZone::EdgeTop | DropZone::EdgeBottom => {
+            (rect, None)
+        }
+    }
+}
+
+/// Detect if the cursor is in an edge zone of the dock area (for full-width/height splits)
+fn detect_edge_drop_zone(ui: &Ui, _drag: &DragState, available_rect: Rect) -> Option<DropZone> {
+    let cursor_pos = ui.ctx().pointer_hover_pos()?;
+    if !available_rect.contains(cursor_pos) {
+        return None;
+    }
+    // Edge strip: 50px or 10% of the dimension, whichever is smaller
+    let h_edge = (available_rect.width() * 0.10).min(50.0);
+    let v_edge = (available_rect.height() * 0.10).min(50.0);
+
+    if cursor_pos.x - available_rect.min.x < h_edge {
+        Some(DropZone::EdgeLeft)
+    } else if available_rect.max.x - cursor_pos.x < h_edge {
+        Some(DropZone::EdgeRight)
+    } else if cursor_pos.y - available_rect.min.y < v_edge {
+        Some(DropZone::EdgeTop)
+    } else if available_rect.max.y - cursor_pos.y < v_edge {
+        Some(DropZone::EdgeBottom)
+    } else {
+        None
+    }
+}
+
+/// Calculate the overlay rect for a dock-edge drop zone
+fn calculate_edge_overlay_rect(available_rect: Rect, zone: DropZone) -> Rect {
+    match zone {
+        DropZone::EdgeLeft => Rect::from_min_size(
+            available_rect.min,
+            Vec2::new(available_rect.width() * 0.3, available_rect.height()),
+        ),
+        DropZone::EdgeRight => {
+            let w = available_rect.width() * 0.3;
+            Rect::from_min_size(
+                Pos2::new(available_rect.max.x - w, available_rect.min.y),
+                Vec2::new(w, available_rect.height()),
+            )
+        }
+        DropZone::EdgeTop => Rect::from_min_size(
+            available_rect.min,
+            Vec2::new(available_rect.width(), available_rect.height() * 0.25),
+        ),
+        DropZone::EdgeBottom => {
+            let h = available_rect.height() * 0.25;
+            Rect::from_min_size(
+                Pos2::new(available_rect.min.x, available_rect.max.y - h),
+                Vec2::new(available_rect.width(), h),
+            )
+        }
+        _ => available_rect,
     }
 }
 

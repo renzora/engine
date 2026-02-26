@@ -560,6 +560,41 @@ impl DockTree {
             DockTree::Empty => 0,
         }
     }
+
+    /// Wrap the entire tree in a new root split, placing `panel` on the specified dock edge.
+    /// The new panel takes ~30% of space on left/right or ~25% on top/bottom.
+    pub fn wrap_with_panel(&mut self, panel: PanelId, zone: DropZone) {
+        let old_tree = std::mem::replace(self, DockTree::Empty);
+        let new_leaf = Box::new(DockTree::Leaf { tabs: vec![panel], active_tab: 0 });
+        let old_box = Box::new(old_tree);
+        *self = match zone {
+            DropZone::EdgeLeft => DockTree::Split {
+                direction: SplitDirection::Horizontal,
+                ratio: 0.3,
+                first: new_leaf,
+                second: old_box,
+            },
+            DropZone::EdgeRight => DockTree::Split {
+                direction: SplitDirection::Horizontal,
+                ratio: 0.7,
+                first: old_box,
+                second: new_leaf,
+            },
+            DropZone::EdgeTop => DockTree::Split {
+                direction: SplitDirection::Vertical,
+                ratio: 0.25,
+                first: new_leaf,
+                second: old_box,
+            },
+            DropZone::EdgeBottom => DockTree::Split {
+                direction: SplitDirection::Vertical,
+                ratio: 0.75,
+                first: old_box,
+                second: new_leaf,
+            },
+            _ => *old_box, // shouldn't happen
+        };
+    }
 }
 
 /// Represents where a drop will occur
@@ -567,14 +602,22 @@ impl DockTree {
 pub enum DropZone {
     /// Add as a new tab to existing leaf
     Tab,
-    /// Split and place on the left
+    /// Split and place on the left of a panel
     Left,
-    /// Split and place on the right
+    /// Split and place on the right of a panel
     Right,
-    /// Split and place on top
+    /// Split and place on top of a panel
     Top,
-    /// Split and place on bottom
+    /// Split and place on bottom of a panel
     Bottom,
+    /// Full-height panel on the left edge of the dock
+    EdgeLeft,
+    /// Full-height panel on the right edge of the dock
+    EdgeRight,
+    /// Full-width panel on the top edge of the dock
+    EdgeTop,
+    /// Full-width panel on the bottom edge of the dock
+    EdgeBottom,
 }
 
 impl DropZone {
@@ -587,6 +630,10 @@ impl DropZone {
             DropZone::Right => Some((SplitDirection::Horizontal, false)),
             DropZone::Top => Some((SplitDirection::Vertical, true)),
             DropZone::Bottom => Some((SplitDirection::Vertical, false)),
+            DropZone::EdgeLeft => Some((SplitDirection::Horizontal, true)),
+            DropZone::EdgeRight => Some((SplitDirection::Horizontal, false)),
+            DropZone::EdgeTop => Some((SplitDirection::Vertical, true)),
+            DropZone::EdgeBottom => Some((SplitDirection::Vertical, false)),
         }
     }
 }
