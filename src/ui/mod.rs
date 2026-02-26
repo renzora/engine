@@ -72,7 +72,7 @@ use crate::particles::ParticleEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState};
-use style::{apply_editor_style_with_theme, init_fonts};
+use style::{apply_editor_style_with_theme, init_fonts, set_ui_font};
 use renzora_theme::ThemeManager;
 
 /// Bundled editor state resources for system parameter limits
@@ -255,6 +255,7 @@ pub fn editor_ui(
     material_preview_image: Option<Res<MaterialPreviewImage>>,
     time: Res<Time>,
     mut local_state: Local<(UiRenderer, AnimationPanelState, panels::NodeExplorerState)>,
+    mut fonts_applied: Local<bool>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -306,6 +307,15 @@ pub fn editor_ui(
 
     // Update input focus state - this lets other systems know if egui has keyboard focus
     editor.input_focus.egui_wants_keyboard = ctx.wants_keyboard_input();
+
+    // Force font atlas rebuild on first editor frame. init_fonts() is called during splash inside
+    // EguiPrimaryContextPass, but bevy_egui calls begin_pass() before user systems run, so the
+    // first frame renders with stale/default fonts. Re-applying here guarantees the atlas is
+    // rebuilt at the correct DPI and with the user's saved font preference.
+    if !*fonts_applied {
+        set_ui_font(ctx, editor.settings.ui_font);
+        *fonts_applied = true;
+    }
 
     apply_editor_style_with_theme(ctx, &editor.theme_manager.active_theme, editor.settings.font_size);
 

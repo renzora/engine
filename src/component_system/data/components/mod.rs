@@ -8,6 +8,7 @@ pub mod animation;
 mod camera;
 pub mod environment;
 mod instances;
+mod night_stars;
 mod physics;
 pub mod post_process;
 mod rendering;
@@ -28,6 +29,7 @@ pub use post_process::{
     VignetteData, FilmGrainData, PixelationData, CrtData, GodRaysData,
     GaussianBlurData, PaletteQuantizationData, DistortionData, UnderwaterData,
 };
+pub use night_stars::NightStarsData;
 pub use instances::{MeshInstanceData, SceneInstanceData};
 pub use physics::{
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,

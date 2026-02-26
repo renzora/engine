@@ -143,6 +143,8 @@ impl Plugin for ComponentSystemPlugin {
         app.init_resource::<components::sun::SunDiscState>();
         app.init_resource::<components::clouds::CloudsState>();
         app.add_plugins(bevy::pbr::MaterialPlugin::<components::clouds::CloudMaterial>::default());
+        app.init_resource::<components::night_stars::NightStarsState>();
+        app.add_plugins(bevy::pbr::MaterialPlugin::<components::night_stars::NightStarsMaterial>::default());
 
         // Register FullscreenMaterial plugins for custom post-processing effects
         {
@@ -187,6 +189,7 @@ impl Plugin for ComponentSystemPlugin {
             components::skybox::sync_skybox,
             components::sun::sync_sun_disc,
             components::clouds::sync_clouds,
+            components::night_stars::sync_night_stars,
         ).run_if(in_state(crate::core::AppState::Editor).or(in_state(crate::core::AppState::Runtime))));
 
         // New post-processing sync systems (split into groups of <=12 for tuple size limit)
@@ -259,6 +262,7 @@ fn sync_project_asset_path(
 /// Component-to-asset mapping for automatic asset copying.
 const COMPONENT_ASSETS: &[(&str, &[&str])] = &[
     ("clouds",               &["shaders/clouds.wgsl"]),
+    ("night_stars",          &["shaders/night_stars.wgsl"]),
     ("vignette",             &["shaders/post_process/vignette.wgsl"]),
     ("film_grain",           &["shaders/post_process/film_grain.wgsl"]),
     ("pixelation",           &["shaders/post_process/pixelation.wgsl"]),
@@ -278,6 +282,7 @@ const COMPONENT_ASSETS: &[(&str, &[&str])] = &[
 fn ensure_project_assets(
     project: Option<Res<CurrentProject>>,
     clouds: Query<(), Added<CloudsData>>,
+    night_stars: Query<(), Added<NightStarsData>>,
     vignette: Query<(), Added<VignetteData>>,
     film_grain: Query<(), Added<FilmGrainData>>,
     pixelation: Query<(), Added<PixelationData>>,
@@ -294,8 +299,9 @@ fn ensure_project_assets(
 ) {
     let Some(project) = project else { return };
 
-    let triggers: [bool; 14] = [
+    let triggers: [bool; 15] = [
         !clouds.is_empty(),
+        !night_stars.is_empty(),
         !vignette.is_empty(),
         !film_grain.is_empty(),
         !pixelation.is_empty(),

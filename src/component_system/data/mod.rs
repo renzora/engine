@@ -20,7 +20,7 @@ pub use components::{
     // Camera
     Camera2DData, CameraNodeData, CameraRigData,
     // Environment
-    CloudsData, PanoramaSkyData, ProceduralSkyData, SkyMode, WorldEnvironmentData,
+    CloudsData, NightStarsData, PanoramaSkyData, ProceduralSkyData, SkyMode, WorldEnvironmentData,
     // Post-processing
     TonemappingMode, SkyboxData, FogData, AntiAliasingData, AmbientOcclusionData,
     ReflectionsData, BloomData, TonemappingData, DepthOfFieldData, MotionBlurData, AmbientLightData,

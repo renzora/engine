@@ -177,6 +177,8 @@ pub(crate) fn sync_clouds(
             MeshMaterial3d(material_handle.clone()),
             transform,
             CloudDomeMarker,
+            bevy::light::NotShadowCaster,
+            bevy::light::NotShadowReceiver,
         )).id();
 
         clouds_state.entity = Some(dome_entity);

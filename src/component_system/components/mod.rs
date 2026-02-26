@@ -58,6 +58,9 @@ pub(crate) mod palette_quantization;
 pub(crate) mod distortion;
 pub(crate) mod underwater;
 
+// Night stars
+pub(crate) mod night_stars;
+
 // Navigation
 pub(crate) mod navigation_agent;
 
@@ -119,6 +122,9 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
 
     // Clouds
     clouds::register(registry);
+
+    // Night Stars
+    night_stars::register(registry);
 
     // Surface painting
     surface_painting::register(registry);
