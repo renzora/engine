@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
-use crate::core::{KeyBindings, EditorAction, InputFocusState, SelectionState, OrbitCameraState, EditorSettings, PlayModeState, ViewportState};
+use crate::core::{KeyBindings, EditorAction, InputFocusState, SelectionState, OrbitCameraState, EditorSettings, PlayModeState, ViewportState, HierarchyState};
 use crate::gizmo::{EditorTool, GizmoMode, GizmoState, ModalTransformState};
 
 pub fn handle_selection(
@@ -225,5 +225,28 @@ pub fn handle_play_mode(
         } else {
             play_mode.request_scripts_only = true;
         }
+    }
+}
+
+/// Handle hierarchy shortcuts (e.g. Ctrl+A to open Create Node overlay)
+pub fn handle_hierarchy_shortcuts(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    mut hierarchy: ResMut<HierarchyState>,
+) {
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+
+    if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
+        hierarchy.show_add_entity_popup = true;
+        hierarchy.add_entity_search.clear();
+        hierarchy.add_entity_parent = None;
+        hierarchy.add_entity_focus_search = true;
     }
 }

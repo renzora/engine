@@ -10,7 +10,7 @@ pub use file_drop::{
     handle_shape_library_spawn, update_shape_drag_preview, drag_surface_raycast_system,
     PendingGltfLoads, PendingMeshInstanceLoads, MaterialApplied, DragPreviewState, ShapeDragPreviewState,
 };
-pub use shortcuts::{handle_selection, handle_view_angles, handle_view_toggles, handle_play_mode};
+pub use shortcuts::{handle_selection, handle_view_angles, handle_view_toggles, handle_play_mode, handle_hierarchy_shortcuts};
 
 use bevy::prelude::*;
 

@@ -473,6 +473,7 @@ fn main() {
                     input::handle_view_angles,
                     input::handle_view_toggles,
                     input::handle_play_mode,
+                    input::handle_hierarchy_shortcuts,
                     viewport::update_camera_projection,
                     viewport::camera_controller,
                     viewport::camera2d_controller,

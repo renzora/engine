@@ -35,6 +35,7 @@ pub enum EditorAction {
     // Edit operations
     Undo,
     Redo,
+    CreateNode,
 
     // File operations
     SaveScene,
@@ -88,6 +89,7 @@ impl EditorAction {
             EditorAction::Deselect => "Deselect",
             EditorAction::Undo => "Undo",
             EditorAction::Redo => "Redo",
+            EditorAction::CreateNode => "Create Node",
             EditorAction::SaveScene => "Save Scene",
             EditorAction::SaveSceneAs => "Save Scene As",
             EditorAction::OpenScene => "Open Scene",
@@ -131,7 +133,7 @@ impl EditorAction {
 
             EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
 
-            EditorAction::Undo | EditorAction::Redo => "Edit",
+            EditorAction::Undo | EditorAction::Redo | EditorAction::CreateNode => "Edit",
 
             EditorAction::SaveScene
             | EditorAction::SaveSceneAs
@@ -185,6 +187,7 @@ impl EditorAction {
             // Edit
             EditorAction::Undo,
             EditorAction::Redo,
+            EditorAction::CreateNode,
             // File
             EditorAction::SaveScene,
             EditorAction::SaveSceneAs,
@@ -303,6 +306,7 @@ impl Default for KeyBindings {
         // Edit defaults
         bindings.insert(EditorAction::Undo, KeyBinding::new(KeyCode::KeyZ).ctrl());
         bindings.insert(EditorAction::Redo, KeyBinding::new(KeyCode::KeyY).ctrl());
+        bindings.insert(EditorAction::CreateNode, KeyBinding::new(KeyCode::KeyA).ctrl());
 
         // File defaults
         bindings.insert(EditorAction::SaveScene, KeyBinding::new(KeyCode::KeyS).ctrl());

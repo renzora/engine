@@ -27,7 +27,7 @@ use egui_phosphor::regular::{
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
     GLOBE, PACKAGE, MAGNIFYING_GLASS, SPARKLE, CIRCLE,
-    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH,
+    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH, X,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -1572,7 +1572,7 @@ fn render_add_entity_popup(
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
-            .fixed_size([340.0, 420.0])
+            .fixed_size([580.0, 660.0])
             .order(Order::Foreground)
             .frame(egui::Frame::window(&ctx.style()).fill(theme.surfaces.panel.to_color32()).inner_margin(12.0))
             .show(ctx, |ui| {
@@ -1583,9 +1583,9 @@ fn render_add_entity_popup(
                     } else {
                         "Create Node"
                     };
-                    ui.label(RichText::new(title).size(14.0).strong().color(theme.text.primary.to_color32()));
+                    ui.label(RichText::new(title).size(20.0).strong().color(theme.text.primary.to_color32()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(RichText::new("\u{2715}").size(14.0)).clicked() {
+                        if ui.button(RichText::new(X).size(18.0)).clicked() {
                             close_popup = true;
                         }
                     });
@@ -1595,9 +1595,11 @@ fn render_add_entity_popup(
 
                 // Search bar
                 let search_response = ui.add_sized(
-                    [ui.available_width(), 22.0],
+                    [ui.available_width(), 34.0],
                     egui::TextEdit::singleline(&mut hierarchy.add_entity_search)
                         .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+                        .font(egui::FontId::proportional(16.0))
+                        .margin(egui::Margin::symmetric(8, 9)),
                 );
 
                 if hierarchy.add_entity_focus_search {
@@ -1617,8 +1619,8 @@ fn render_add_entity_popup(
                     let has_search = !hierarchy.add_entity_search.is_empty();
                     let tree_line_color = theme.widgets.border.to_color32();
                     let line_stroke = Stroke::new(1.5, tree_line_color);
-                    let popup_row_height = ROW_HEIGHT;
-                    let popup_indent = INDENT_SIZE;
+                    let popup_row_height = 30.0_f32;
+                    let popup_indent = 26.0_f32;
 
                     let mut row_index: usize = 0;
 
@@ -1753,18 +1755,18 @@ fn render_add_entity_popup(
                             Pos2::new(base_x + 2.0, center_y),
                             egui::Align2::LEFT_CENTER,
                             caret,
-                            egui::FontId::proportional(10.0),
+                            egui::FontId::proportional(13.0),
                             caret_color,
                         );
 
                         // Category icon + name
-                        let text_x = base_x + 16.0;
+                        let text_x = base_x + 22.0;
                         let cat_label = format!("{} {}", comp_cat.icon(), comp_cat.display_name());
                         painter.text(
                             Pos2::new(text_x, center_y),
                             egui::Align2::LEFT_CENTER,
                             &cat_label,
-                            egui::FontId::proportional(12.0),
+                            egui::FontId::proportional(16.0),
                             cat_color,
                         );
 
@@ -1834,7 +1836,7 @@ fn render_add_entity_popup(
                                     Pos2::new(item_x, child_center_y),
                                     egui::Align2::LEFT_CENTER,
                                     &item_label,
-                                    egui::FontId::proportional(12.0),
+                                    egui::FontId::proportional(15.0),
                                     cat_color,
                                 );
 
@@ -1900,7 +1902,7 @@ fn render_add_entity_popup(
                             Pos2::new(row_rect.min.x + 6.0, row_rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             &item_label,
-                            egui::FontId::proportional(12.0),
+                            egui::FontId::proportional(15.0),
                             text_muted,
                         );
 
