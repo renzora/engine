@@ -65,7 +65,7 @@ pub fn render_viewport(
         full_viewport_rect
     } else {
         // Render viewport mode tabs at the top (with tools)
-        render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme, play_mode);
+        render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme);
 
         // Calculate content rect (below tabs, accounting for rulers in 2D mode)
         let tabs_offset = VIEWPORT_TABS_HEIGHT;
@@ -98,7 +98,7 @@ pub fn render_viewport(
     // Skip editor overlays in play mode
     if !in_play_mode {
         // Render vertical tool overlay in top-left of viewport content area
-        render_viewport_tool_overlay(ctx, gizmo, content_rect, theme);
+        render_viewport_tool_overlay(ctx, gizmo, play_mode, content_rect, theme);
 
         // Render nav overlay (pan/zoom) on the right, below the axis gizmo
         if viewport.viewport_mode == ViewportMode::Mode3D {
@@ -129,7 +129,6 @@ fn render_viewport_tabs(
     settings: &mut EditorSettings,
     full_rect: Rect,
     theme: &Theme,
-    play_mode: &mut PlayModeState,
 ) {
     let tabs_rect = Rect::from_min_size(
         full_rect.min,
@@ -148,7 +147,7 @@ fn render_viewport_tabs(
     // Right section: 4 render toggles + 4 dropdowns + snap dropdown
     let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0;
 
-    let right_start = tabs_rect.max.x - right_section_width - 4.0;
+    let right_start = tabs_rect.center().x - right_section_width / 2.0;
 
     egui::Area::new(egui::Id::new("viewport_tabs"))
         .fixed_pos(tabs_rect.min)
@@ -159,79 +158,8 @@ fn render_viewport_tabs(
             // Background
             ui.painter().rect_filled(tabs_rect, 0.0, theme.surfaces.panel.to_color32());
 
-            // === CENTER SECTION: Play/Stop Toggle ===
-            let play_btn_w = 34.0_f32;
-            let play_section_start = tabs_rect.center().x - play_btn_w / 2.0;
-            let mut x_pos = play_section_start;
-
-            let is_in_play_mode = play_mode.is_in_play_mode();
-            let is_scripts_only = play_mode.is_scripts_only();
-            let play_color = theme.semantic.success.to_color32();
-            let scripts_color = theme.semantic.accent.to_color32();
-            let stop_color = theme.semantic.error.to_color32();
-
-            // Single play/stop toggle button with dropdown caret
-            let play_button_id = ui.make_persistent_id("viewport_play_dropdown");
-            let play_btn_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(play_btn_w, button_size.y));
-            let play_main_rect = Rect::from_min_max(play_btn_rect.min, Pos2::new(play_btn_rect.right() - 12.0, play_btn_rect.max.y));
-            let play_caret_rect = Rect::from_min_max(Pos2::new(play_btn_rect.right() - 12.0, play_btn_rect.min.y), play_btn_rect.max);
-            let play_hover_resp = ui.allocate_rect(play_btn_rect, Sense::hover());
-            let play_main_resp = ui.interact(play_main_rect, play_button_id.with("main"), Sense::click());
-            let play_caret_resp = ui.interact(play_caret_rect, play_button_id.with("caret"), Sense::click());
-            let play_is_hovered = play_hover_resp.hovered() || play_main_resp.hovered() || play_caret_resp.hovered();
-            if play_is_hovered { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
-
-            let (btn_icon, btn_bg) = if is_in_play_mode {
-                (STOP, stop_color)
-            } else if is_scripts_only {
-                (STOP, scripts_color)
-            } else if play_is_hovered {
-                (PLAY, hovered_color)
-            } else {
-                (PLAY, inactive_color)
-            };
-
-            ui.painter().rect_filled(play_btn_rect, CornerRadius::same(3), btn_bg);
-            ui.painter().text(
-                Pos2::new(play_btn_rect.left() + 11.0, play_btn_rect.center().y),
-                egui::Align2::CENTER_CENTER, btn_icon, FontId::proportional(12.0), Color32::WHITE,
-            );
-            let divider_x = play_btn_rect.right() - 12.0;
-            ui.painter().line_segment(
-                [Pos2::new(divider_x, play_btn_rect.top() + 3.0), Pos2::new(divider_x, play_btn_rect.bottom() - 3.0)],
-                Stroke::new(1.0, Color32::from_white_alpha(40)),
-            );
-            ui.painter().text(
-                Pos2::new(play_btn_rect.right() - 6.0, play_btn_rect.center().y),
-                egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(8.0), Color32::from_white_alpha(180),
-            );
-
-            if play_main_resp.clicked() {
-                if is_in_play_mode || is_scripts_only {
-                    play_mode.request_stop = true;
-                } else {
-                    play_mode.request_play = true;
-                }
-            }
-            if play_caret_resp.clicked() {
-                #[allow(deprecated)]
-                ui.memory_mut(|mem| mem.toggle_popup(play_button_id));
-            }
-            #[allow(deprecated)]
-            egui::popup_below_widget(ui, play_button_id, &play_hover_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-                ui.set_min_width(160.0);
-                ui.style_mut().spacing.item_spacing.y = 2.0;
-                if viewport_play_menu_item(ui, PLAY, "Play", "F5", play_color) {
-                    if play_mode.is_editing() { play_mode.request_play = true; }
-                    ui.close();
-                }
-                if viewport_play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_color) {
-                    if play_mode.is_editing() { play_mode.request_scripts_only = true; }
-                    ui.close();
-                }
-            });
             // === RIGHT SECTION: Render Settings ===
-            x_pos = right_start;
+            let mut x_pos = right_start;
 
             let toggle_on_color = active_color;
             let toggle_off_color = inactive_color;
@@ -360,13 +288,14 @@ fn viewport_play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut:
 fn render_viewport_tool_overlay(
     ctx: &egui::Context,
     gizmo: &mut GizmoState,
+    play_mode: &mut PlayModeState,
     content_rect: Rect,
     theme: &Theme,
 ) {
     let btn_size = Vec2::new(36.0, 36.0);
     let btn_gap = 1.0_f32;
     let padding = 3.0_f32;
-    // 4 transform tools only
+    // 4 transform tools
     let panel_w = btn_size.x + padding * 2.0;
     let panel_h = btn_size.y * 4.0 + btn_gap * 3.0 + padding * 2.0;
     let margin = 8.0_f32;
@@ -437,6 +366,73 @@ fn render_viewport_tool_overlay(
             }
             scale_resp.on_hover_text("Scale (R)");
         });
+
+    // Play button in its own panel below the tools
+    let play_panel_h = btn_size.y + padding * 2.0;
+    let play_panel_pos = Pos2::new(panel_pos.x, panel_pos.y + panel_h + 4.0);
+    let play_panel_rect = Rect::from_min_size(play_panel_pos, Vec2::new(panel_w, play_panel_h));
+
+    let is_in_play_mode = play_mode.is_in_play_mode();
+    let is_scripts_only = play_mode.is_scripts_only();
+    let play_color = theme.semantic.success.to_color32();
+    let scripts_color = theme.semantic.accent.to_color32();
+    let stop_color = theme.semantic.error.to_color32();
+
+    egui::Area::new(egui::Id::new("viewport_play_overlay"))
+        .fixed_pos(play_panel_pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(play_panel_rect);
+
+            ui.painter().rect_filled(play_panel_rect, CornerRadius::same(5), panel_bg);
+            ui.painter().rect_stroke(play_panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
+
+            let x_pos = play_panel_pos.x + padding;
+            let y_pos = play_panel_pos.y + padding;
+            let play_button_id = ui.make_persistent_id("viewport_play_dropdown");
+            let play_btn_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), btn_size);
+            let play_resp = ui.interact(play_btn_rect, play_button_id.with("btn"), Sense::click());
+            if play_resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+
+            let (btn_icon, btn_bg) = if is_in_play_mode {
+                (STOP, stop_color)
+            } else if is_scripts_only {
+                (STOP, scripts_color)
+            } else if play_resp.hovered() {
+                (PLAY, hovered_color)
+            } else {
+                (PLAY, inactive_color)
+            };
+
+            ui.painter().rect_filled(play_btn_rect, CornerRadius::same(3), btn_bg);
+            let icon_color = if !is_in_play_mode && !is_scripts_only { play_color } else { Color32::WHITE };
+            ui.painter().text(
+                play_btn_rect.center(),
+                egui::Align2::CENTER_CENTER, btn_icon, FontId::proportional(14.0), icon_color,
+            );
+
+            if play_resp.clicked() {
+                if is_in_play_mode || is_scripts_only {
+                    play_mode.request_stop = true;
+                } else {
+                    #[allow(deprecated)]
+                    ui.memory_mut(|mem| mem.toggle_popup(play_button_id));
+                }
+            }
+            #[allow(deprecated)]
+            egui::popup_below_widget(ui, play_button_id, &play_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                ui.set_min_width(160.0);
+                ui.style_mut().spacing.item_spacing.y = 2.0;
+                if viewport_play_menu_item(ui, PLAY, "Play", "F5", play_color) {
+                    if play_mode.is_editing() { play_mode.request_play = true; }
+                    ui.close();
+                }
+                if viewport_play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_color) {
+                    if play_mode.is_editing() { play_mode.request_scripts_only = true; }
+                    ui.close();
+                }
+            });
+        });
 }
 
 /// Nav overlay: pan/zoom buttons on the right side, below the axis gizmo (Blender-style)
@@ -464,14 +460,6 @@ fn render_nav_overlay(
     let active_color = theme.semantic.accent.to_color32();
     let inactive_color = Color32::TRANSPARENT;
     let hovered_color = theme.widgets.hovered_bg.to_color32();
-    let border_color = {
-        let c = theme.widgets.border.to_color32();
-        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 120)
-    };
-    let panel_bg = {
-        let c = theme.surfaces.panel.to_color32();
-        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 200)
-    };
 
     // Detect drag on each button and set flags for camera system
     // Use a temporary area just for interaction detection (no painting yet)
@@ -484,9 +472,6 @@ fn render_nav_overlay(
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             ui.set_clip_rect(panel_rect);
-
-            ui.painter().rect_filled(panel_rect, CornerRadius::same(5), panel_bg);
-            ui.painter().rect_stroke(panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
 
             // Pan button — drag to pan
             let pan_resp = ui.interact(pan_btn_rect, egui::Id::new("nav_pan_btn"), Sense::drag());
