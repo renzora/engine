@@ -66,6 +66,10 @@ pub struct ViewportState {
     pub right_click_moved: bool,
     /// Currently open submenu in viewport context menu
     pub context_submenu: Option<String>,
+    /// Whether the nav overlay pan button is being dragged
+    pub nav_pan_dragging: bool,
+    /// Whether the nav overlay zoom button is being dragged
+    pub nav_zoom_dragging: bool,
 }
 
 impl Default for ViewportState {
@@ -92,6 +96,8 @@ impl Default for ViewportState {
             right_click_origin: None,
             right_click_moved: false,
             context_submenu: None,
+            nav_pan_dragging: false,
+            nav_zoom_dragging: false,
         }
     }
 }

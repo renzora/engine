@@ -3,14 +3,14 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{AssetBrowserState, DockingState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge, PlayModeState, PlayState};
+use crate::core::{AssetBrowserState, DockingState, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
 use crate::gizmo::{GizmoState, EditorTool};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use renzora_theme::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 
-use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER, PLAY, PAUSE, STOP, GEAR, CARET_DOWN, CUBE, IMAGE, MUSIC_NOTES, DOWNLOAD};
+use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER, GEAR, CUBE, IMAGE, MUSIC_NOTES, DOWNLOAD};
 
 /// Height of the custom title bar
 pub const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -27,7 +27,6 @@ pub fn render_title_bar(
     docking_state: &mut DockingState,
     viewport_state: &mut ViewportState,
     gizmo: &mut GizmoState,
-    play_mode: &mut PlayModeState,
     theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
@@ -103,43 +102,11 @@ pub fn render_title_bar(
                 let tabs_end_x = ui.cursor().left();
                 ui.ctx().data_mut(|d| d.insert_temp(tabs_width_id, tabs_end_x - tabs_start_x));
 
-                // Right-aligned section: Play controls, Settings, Sign In, Window buttons
-                let play_section_width = 34.0 + 24.0 + 24.0;
+                // Right-aligned section: Settings, Sign In, Window buttons
                 let settings_btn_width = 24.0;
                 let sign_in_width = 80.0;
-                let right_total = play_section_width + 12.0 + settings_btn_width + 8.0 + sign_in_width + 8.0 + window_buttons_width;
+                let right_total = settings_btn_width + 8.0 + sign_in_width + 8.0 + window_buttons_width;
                 ui.add_space(ui.available_width() - right_total);
-
-                // === Play Controls ===
-                let play_color = theme.semantic.success.to_color32();
-                let is_playing = play_mode.state == PlayState::Playing;
-                let is_paused = play_mode.state == PlayState::Paused;
-                let is_scripts_only = play_mode.is_scripts_only();
-                let is_scripts_paused = play_mode.state == PlayState::ScriptsPaused;
-                let is_in_play_mode = play_mode.is_in_play_mode();
-                let scripts_color = theme.semantic.accent.to_color32();
-                let current_play_color = if is_scripts_only { scripts_color } else { play_color };
-                let play_active = is_playing || is_scripts_only;
-
-                title_play_dropdown(ui, play_active, current_play_color, play_mode, theme);
-
-                let any_paused = is_paused || is_scripts_paused;
-                let pause_resp = title_icon_button(ui, PAUSE, any_paused, theme.semantic.accent.to_color32(), theme);
-                if pause_resp.clicked() {
-                    if is_playing {
-                        play_mode.state = PlayState::Paused;
-                    } else if play_mode.state == PlayState::ScriptsOnly {
-                        play_mode.state = PlayState::ScriptsPaused;
-                    }
-                }
-                pause_resp.on_hover_text("Pause (F6)");
-
-                let stop_color = if is_in_play_mode { theme.semantic.error.to_color32() } else { theme.text.disabled.to_color32() };
-                let stop_resp = title_icon_button(ui, STOP, false, stop_color, theme);
-                if stop_resp.clicked() && is_in_play_mode {
-                    play_mode.request_stop = true;
-                }
-                stop_resp.on_hover_text("Stop (Escape)");
 
                 ui.add_space(12.0);
 
@@ -1209,161 +1176,6 @@ fn title_icon_button(
     }
 
     response
-}
-
-fn title_play_dropdown(
-    ui: &mut egui::Ui,
-    active: bool,
-    active_color: Color32,
-    play_mode: &mut PlayModeState,
-    theme: &Theme,
-) {
-    let button_id = ui.make_persistent_id("title_play_dropdown");
-    let size = Vec2::new(34.0, 20.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
-
-    let main_rect = egui::Rect::from_min_max(rect.min, Pos2::new(rect.right() - 12.0, rect.max.y));
-    let dropdown_rect = egui::Rect::from_min_max(Pos2::new(rect.right() - 12.0, rect.min.y), rect.max);
-
-    let main_response = ui.interact(main_rect, button_id.with("main"), Sense::click());
-    let dropdown_response = ui.interact(dropdown_rect, button_id.with("dropdown"), Sense::click());
-
-    let is_hovered = response.hovered() || main_response.hovered() || dropdown_response.hovered();
-
-    if is_hovered {
-        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-    }
-
-    if ui.is_rect_visible(rect) {
-        let bg = if active {
-            active_color
-        } else if is_hovered {
-            theme.widgets.hovered_bg.to_color32()
-        } else {
-            Color32::TRANSPARENT
-        };
-
-        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-
-        // Play icon
-        ui.painter().text(
-            Pos2::new(rect.left() + 11.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            PLAY,
-            egui::FontId::proportional(12.0),
-            if active || is_hovered { Color32::WHITE } else { theme.text.secondary.to_color32() },
-        );
-
-        // Divider
-        let divider_x = rect.right() - 12.0;
-        ui.painter().line_segment(
-            [
-                Pos2::new(divider_x, rect.top() + 4.0),
-                Pos2::new(divider_x, rect.bottom() - 4.0),
-            ],
-            egui::Stroke::new(1.0, Color32::from_white_alpha(40)),
-        );
-
-        // Caret
-        ui.painter().text(
-            Pos2::new(rect.right() - 6.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
-            CARET_DOWN,
-            egui::FontId::proportional(8.0),
-            Color32::from_white_alpha(180),
-        );
-    }
-
-    // Main click - play/resume
-    if main_response.clicked() {
-        if play_mode.state == PlayState::Paused {
-            play_mode.state = PlayState::Playing;
-        } else if play_mode.state == PlayState::ScriptsPaused {
-            play_mode.state = PlayState::ScriptsOnly;
-        } else if play_mode.is_editing() {
-            play_mode.request_play = true;
-        }
-    }
-
-    // Dropdown click
-    if dropdown_response.clicked() {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(button_id));
-    }
-
-    #[allow(deprecated)]
-    egui::popup_below_widget(
-        ui,
-        button_id,
-        &response,
-        egui::PopupCloseBehavior::CloseOnClickOutside,
-        |ui| {
-            ui.set_min_width(160.0);
-            ui.style_mut().spacing.item_spacing.y = 2.0;
-
-            let play_icon_color = theme.semantic.success.to_color32();
-            let scripts_icon_color = theme.semantic.accent.to_color32();
-
-            if title_play_menu_item(ui, PLAY, "Play (Fullscreen)", "F5", play_icon_color) {
-                if play_mode.is_editing() {
-                    play_mode.request_play = true;
-                }
-                ui.close();
-            }
-
-            if title_play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_icon_color) {
-                if play_mode.is_editing() {
-                    play_mode.request_scripts_only = true;
-                }
-                ui.close();
-            }
-        },
-    );
-
-    let tooltip = if play_mode.is_paused() || play_mode.state == PlayState::ScriptsPaused {
-        "Resume"
-    } else if play_mode.is_in_play_mode() {
-        "Playing..."
-    } else {
-        "Play (click arrow for options)"
-    };
-    response.on_hover_text(tooltip);
-}
-
-fn title_play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
-    let desired_size = Vec2::new(ui.available_width().max(160.0), 24.0);
-    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
-
-    if response.hovered() {
-        ui.painter().rect_filled(rect, CornerRadius::same(2), Color32::from_white_alpha(15));
-        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-    }
-
-    ui.painter().text(
-        Pos2::new(rect.left() + 16.0, rect.center().y),
-        egui::Align2::CENTER_CENTER,
-        icon,
-        egui::FontId::proportional(13.0),
-        icon_color,
-    );
-
-    ui.painter().text(
-        Pos2::new(rect.left() + 32.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(12.0),
-        Color32::WHITE,
-    );
-
-    ui.painter().text(
-        Pos2::new(rect.right() - 8.0, rect.center().y),
-        egui::Align2::RIGHT_CENTER,
-        shortcut,
-        egui::FontId::proportional(10.0),
-        Color32::from_white_alpha(100),
-    );
-
-    response.clicked()
 }
 
 /// Render a simplified title bar for the splash screen (no menu items)

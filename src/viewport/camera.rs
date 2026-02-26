@@ -60,7 +60,8 @@ pub fn camera_controller(
     // (mouse controls still work)
     let keyboard_enabled = !input_focus.egui_wants_keyboard;
 
-    if !viewport.hovered {
+    let nav_dragging = viewport.nav_pan_dragging || viewport.nav_zoom_dragging;
+    if !viewport.hovered && !nav_dragging {
         mouse_motion.clear();
         scroll_events.clear();
         return;
@@ -110,6 +111,8 @@ pub fn camera_controller(
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     let gizmo_hovered_or_dragging = gizmo.is_dragging || gizmo.hovered_axis.is_some() || block_edit.is_dragging || block_edit.hovered_handle.is_some();
     let left_click_drag_disabled = viewport.disable_left_click_drag || !cam_settings.left_click_pan;
+    // Nav overlay starts drag: trigger cursor lock whenever flag becomes true while pressing
+    let nav_drag_needs_lock = nav_dragging && left_pressed && !viewport.camera_dragging;
     if let Ok((mut cursor, window)) = window_query.single_mut() {
         // Capture cursor position on right-click press for click-vs-drag detection
         if right_just_pressed && viewport.hovered && !alt_held {
@@ -123,12 +126,12 @@ pub fn camera_controller(
         // Start camera drag only when mouse button is first pressed while inside viewport
         // For left click, don't start if gizmo is hovered or being dragged
         // Middle/right click always work for camera control
-        // Left-click drag can be disabled (e.g., in terrain layout for brush tools)
-        let start_drag = viewport.hovered && !alt_held && (
+        // Nav overlay drag: lock cursor as soon as the flag is set while left is pressed
+        let start_drag = nav_drag_needs_lock || (viewport.hovered && !alt_held && (
             (left_just_pressed && !gizmo_hovered_or_dragging && !left_click_drag_disabled) ||
             middle_just_pressed ||
             right_just_pressed
-        );
+        ));
 
         if start_drag {
             cursor.visible = false;
@@ -138,6 +141,8 @@ pub fn camera_controller(
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
             viewport.camera_dragging = false;
+            viewport.nav_pan_dragging = false;
+            viewport.nav_zoom_dragging = false;
 
             // Right-click without drag -> open context menu
             if right_just_released {
@@ -281,6 +286,26 @@ pub fn camera_controller(
             orbit.pitch += ev.delta.y * orbit_speed * invert_y;
             // Clamp pitch to avoid flipping
             orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+        }
+    }
+    // Nav overlay pan button drag - lateral camera pan
+    else if left_pressed && viewport.nav_pan_dragging {
+        for ev in mouse_motion.read() {
+            let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
+            let up_dir = Vec3::new(
+                -orbit.pitch.sin() * orbit.yaw.sin(),
+                orbit.pitch.cos(),
+                -orbit.pitch.sin() * orbit.yaw.cos(),
+            ).normalize();
+            orbit.focus -= right_dir * ev.delta.x * pan_speed;
+            orbit.focus += up_dir * ev.delta.y * pan_speed * invert_y;
+        }
+    }
+    // Nav overlay zoom button drag - steady zoom in/out
+    else if left_pressed && viewport.nav_zoom_dragging {
+        for ev in mouse_motion.read() {
+            orbit.distance -= ev.delta.y * zoom_speed;
+            orbit.distance = orbit.distance.clamp(0.5, 100.0);
         }
     }
     // Left mouse drag - Forward/backward movement + horizontal look (Unreal style)

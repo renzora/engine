@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings, SelectionState, HierarchyState};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings, SelectionState, HierarchyState, PlayModeState, PlayState};
 use crate::ui::ShapeLibraryState;
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
@@ -13,7 +13,7 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
     IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA, STACK,
     COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
-    CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD, SPARKLE,
+    CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD, SPARKLE, PLAY, STOP, HAND, MAGNIFYING_GLASS,
 };
 
 /// Height of the viewport mode tabs bar
@@ -47,6 +47,7 @@ pub fn render_viewport(
     command_history: &mut CommandHistory,
     in_play_mode: bool,
     shape_library: &ShapeLibraryState,
+    play_mode: &mut PlayModeState,
 ) {
     let screen_rect = ctx.content_rect();
 
@@ -64,7 +65,7 @@ pub fn render_viewport(
         full_viewport_rect
     } else {
         // Render viewport mode tabs at the top (with tools)
-        render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme);
+        render_viewport_tabs(ctx, viewport, orbit, gizmo, settings, full_viewport_rect, theme, play_mode);
 
         // Calculate content rect (below tabs, accounting for rulers in 2D mode)
         let tabs_offset = VIEWPORT_TABS_HEIGHT;
@@ -96,6 +97,14 @@ pub fn render_viewport(
 
     // Skip editor overlays in play mode
     if !in_play_mode {
+        // Render vertical tool overlay in top-left of viewport content area
+        render_viewport_tool_overlay(ctx, gizmo, content_rect, theme);
+
+        // Render nav overlay (pan/zoom) on the right, below the axis gizmo
+        if viewport.viewport_mode == ViewportMode::Mode3D {
+            render_nav_overlay(ctx, viewport, orbit, content_rect, theme);
+        }
+
         // Render box selection rectangle (if active)
         if gizmo.box_selection.active && gizmo.box_selection.is_drag() {
             render_box_selection(ctx, gizmo);
@@ -114,12 +123,13 @@ pub fn render_viewport(
 /// Render the 3D/2D mode tabs at the top of the viewport with tool controls
 fn render_viewport_tabs(
     ctx: &egui::Context,
-    viewport: &mut ViewportState,
+    _viewport: &mut ViewportState,
     orbit: &mut OrbitCameraState,
     gizmo: &mut GizmoState,
     settings: &mut EditorSettings,
     full_rect: Rect,
     theme: &Theme,
+    play_mode: &mut PlayModeState,
 ) {
     let tabs_rect = Rect::from_min_size(
         full_rect.min,
@@ -130,27 +140,14 @@ fn render_viewport_tabs(
     let inactive_color = theme.widgets.inactive_bg.to_color32();
     let hovered_color = theme.widgets.hovered_bg.to_color32();
     let _border_color = theme.widgets.border.to_color32();
-    let text_color = theme.text.primary.to_color32();
+    let _text_color = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
     let button_size = Vec2::new(28.0, 20.0);
     let button_y = tabs_rect.min.y + (VIEWPORT_TABS_HEIGHT - button_size.y) / 2.0;
-    let tab_height = VIEWPORT_TABS_HEIGHT - 4.0;
-    let tab_y = tabs_rect.min.y + 2.0;
-    let tab_width = 36.0;
 
-    // Calculate section widths
-    // Left section: 3D/2D tabs
-    let _left_section_width = tab_width * 2.0 + 2.0 + 8.0; // Two tabs + gap + padding
+    // Right section: 4 render toggles + 4 dropdowns + snap dropdown
+    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0;
 
-    // Center section: Select + Transform tools (4 buttons) + Snap dropdown
-    let center_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0; // 4 buttons + gaps + snap dropdown
-
-    // Right section: 4 render toggles + gizmo dropdown + viz dropdown + view angles dropdown + camera settings dropdown
-    let right_section_width = button_size.x * 4.0 + 2.0 * 3.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0 + 4.0 + 36.0; // 4 buttons + gaps + gizmo dropdown + viz dropdown + view dropdown + camera dropdown
-
-    // Calculate positions
-    let left_start = tabs_rect.min.x + 4.0;
-    let center_start = tabs_rect.center().x - center_section_width / 2.0;
     let right_start = tabs_rect.max.x - right_section_width - 4.0;
 
     egui::Area::new(egui::Id::new("viewport_tabs"))
@@ -162,106 +159,77 @@ fn render_viewport_tabs(
             // Background
             ui.painter().rect_filled(tabs_rect, 0.0, theme.surfaces.panel.to_color32());
 
-            // === LEFT SECTION: 3D/2D Mode Tabs ===
-            let mut x_pos = left_start;
+            // === CENTER SECTION: Play/Stop Toggle ===
+            let play_btn_w = 34.0_f32;
+            let play_section_start = tabs_rect.center().x - play_btn_w / 2.0;
+            let mut x_pos = play_section_start;
 
-            // 3D tab
-            let tab_3d_rect = Rect::from_min_size(
-                Pos2::new(x_pos, tab_y),
-                Vec2::new(tab_width, tab_height),
-            );
-            let is_3d_active = viewport.viewport_mode == ViewportMode::Mode3D;
-            let tab_3d_color = if is_3d_active {
-                theme.widgets.active_bg.to_color32()
+            let is_in_play_mode = play_mode.is_in_play_mode();
+            let is_scripts_only = play_mode.is_scripts_only();
+            let play_color = theme.semantic.success.to_color32();
+            let scripts_color = theme.semantic.accent.to_color32();
+            let stop_color = theme.semantic.error.to_color32();
+
+            // Single play/stop toggle button with dropdown caret
+            let play_button_id = ui.make_persistent_id("viewport_play_dropdown");
+            let play_btn_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(play_btn_w, button_size.y));
+            let play_main_rect = Rect::from_min_max(play_btn_rect.min, Pos2::new(play_btn_rect.right() - 12.0, play_btn_rect.max.y));
+            let play_caret_rect = Rect::from_min_max(Pos2::new(play_btn_rect.right() - 12.0, play_btn_rect.min.y), play_btn_rect.max);
+            let play_hover_resp = ui.allocate_rect(play_btn_rect, Sense::hover());
+            let play_main_resp = ui.interact(play_main_rect, play_button_id.with("main"), Sense::click());
+            let play_caret_resp = ui.interact(play_caret_rect, play_button_id.with("caret"), Sense::click());
+            let play_is_hovered = play_hover_resp.hovered() || play_main_resp.hovered() || play_caret_resp.hovered();
+            if play_is_hovered { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+
+            let (btn_icon, btn_bg) = if is_in_play_mode {
+                (STOP, stop_color)
+            } else if is_scripts_only {
+                (STOP, scripts_color)
+            } else if play_is_hovered {
+                (PLAY, hovered_color)
             } else {
-                inactive_color
+                (PLAY, inactive_color)
             };
-            ui.painter().rect_filled(tab_3d_rect, 3.0, tab_3d_color);
+
+            ui.painter().rect_filled(play_btn_rect, CornerRadius::same(3), btn_bg);
             ui.painter().text(
-                tab_3d_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "3D",
-                FontId::proportional(11.0),
-                if is_3d_active { text_color } else { text_muted },
+                Pos2::new(play_btn_rect.left() + 11.0, play_btn_rect.center().y),
+                egui::Align2::CENTER_CENTER, btn_icon, FontId::proportional(12.0), Color32::WHITE,
             );
-            x_pos += tab_width + 2.0;
-
-            // 2D tab
-            let tab_2d_rect = Rect::from_min_size(
-                Pos2::new(x_pos, tab_y),
-                Vec2::new(tab_width, tab_height),
+            let divider_x = play_btn_rect.right() - 12.0;
+            ui.painter().line_segment(
+                [Pos2::new(divider_x, play_btn_rect.top() + 3.0), Pos2::new(divider_x, play_btn_rect.bottom() - 3.0)],
+                Stroke::new(1.0, Color32::from_white_alpha(40)),
             );
-            let is_2d_active = viewport.viewport_mode == ViewportMode::Mode2D;
-            let tab_2d_color = if is_2d_active {
-                theme.widgets.active_bg.to_color32()
-            } else {
-                inactive_color
-            };
-            ui.painter().rect_filled(tab_2d_rect, 3.0, tab_2d_color);
             ui.painter().text(
-                tab_2d_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "2D",
-                FontId::proportional(11.0),
-                if is_2d_active { text_color } else { text_muted },
+                Pos2::new(play_btn_rect.right() - 6.0, play_btn_rect.center().y),
+                egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(8.0), Color32::from_white_alpha(180),
             );
 
-            // === CENTER SECTION: Transform Tools ===
-            x_pos = center_start;
-
-            // Selection Tool
-            let is_select = gizmo.tool == EditorTool::Select;
-            let select_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let select_resp = viewport_tool_button(ui, select_rect, CURSOR, is_select, active_color, inactive_color, hovered_color);
-            if select_resp.clicked() {
-                gizmo.tool = EditorTool::Select;
+            if play_main_resp.clicked() {
+                if is_in_play_mode || is_scripts_only {
+                    play_mode.request_stop = true;
+                } else {
+                    play_mode.request_play = true;
+                }
             }
-            select_resp.on_hover_text("Select (Q)");
-            x_pos += button_size.x + 2.0;
-
-            // Translate
-            let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
-            let translate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let translate_resp = viewport_tool_button(ui, translate_rect, ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
-            if translate_resp.clicked() {
-                gizmo.tool = EditorTool::Transform;
-                gizmo.mode = GizmoMode::Translate;
+            if play_caret_resp.clicked() {
+                #[allow(deprecated)]
+                ui.memory_mut(|mem| mem.toggle_popup(play_button_id));
             }
-            translate_resp.on_hover_text("Move (W)");
-            x_pos += button_size.x + 2.0;
-
-            // Rotate
-            let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
-            let rotate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let rotate_resp = viewport_tool_button(ui, rotate_rect, ARROW_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
-            if rotate_resp.clicked() {
-                gizmo.tool = EditorTool::Transform;
-                gizmo.mode = GizmoMode::Rotate;
-            }
-            rotate_resp.on_hover_text("Rotate (E)");
-            x_pos += button_size.x + 2.0;
-
-            // Scale
-            let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
-            let scale_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let scale_resp = viewport_tool_button(ui, scale_rect, ARROWS_OUT, is_scale, active_color, inactive_color, hovered_color);
-            if scale_resp.clicked() {
-                gizmo.tool = EditorTool::Transform;
-                gizmo.mode = GizmoMode::Scale;
-            }
-            scale_resp.on_hover_text("Scale (R)");
-            x_pos += button_size.x + 4.0;
-
-            // Snap Dropdown
-            let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled || gizmo.snap.object_snap_enabled || gizmo.snap.floor_snap_enabled;
-            let snap_color = if any_snap_enabled {
-                active_color
-            } else {
-                text_muted
-            };
-            let snap_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
-            viewport_snap_dropdown(ui, ctx, snap_rect, MAGNET, snap_color, inactive_color, hovered_color, text_muted, &mut gizmo.snap, theme);
-
+            #[allow(deprecated)]
+            egui::popup_below_widget(ui, play_button_id, &play_hover_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                ui.set_min_width(160.0);
+                ui.style_mut().spacing.item_spacing.y = 2.0;
+                if viewport_play_menu_item(ui, PLAY, "Play", "F5", play_color) {
+                    if play_mode.is_editing() { play_mode.request_play = true; }
+                    ui.close();
+                }
+                if viewport_play_menu_item(ui, PLAY, "Run Scripts", "Shift+F5", scripts_color) {
+                    if play_mode.is_editing() { play_mode.request_scripts_only = true; }
+                    ui.close();
+                }
+            });
             // === RIGHT SECTION: Render Settings ===
             x_pos = right_start;
 
@@ -326,17 +294,13 @@ fn render_viewport_tabs(
             let camera_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
             let camera_color = theme.text.secondary.to_color32();
             viewport_camera_dropdown(ui, ctx, camera_rect, VIDEO_CAMERA, camera_color, inactive_color, hovered_color, text_muted, settings, theme);
+            x_pos += 36.0 + 4.0;
 
-            // Handle 3D/2D tab clicks
-            if ctx.input(|i| i.pointer.any_click()) {
-                if let Some(pos) = ctx.pointer_hover_pos() {
-                    if tab_3d_rect.contains(pos) {
-                        viewport.viewport_mode = ViewportMode::Mode3D;
-                    } else if tab_2d_rect.contains(pos) {
-                        viewport.viewport_mode = ViewportMode::Mode2D;
-                    }
-                }
-            }
+            // Snap Dropdown
+            let snap_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
+            let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled || gizmo.snap.object_snap_enabled || gizmo.snap.floor_snap_enabled;
+            let snap_bg = if any_snap_enabled { active_color } else { inactive_color };
+            viewport_snap_dropdown(ui, ctx, snap_rect, MAGNET, Color32::WHITE, snap_bg, hovered_color, text_muted, &mut gizmo.snap, theme);
         });
 }
 
@@ -370,12 +334,220 @@ fn viewport_tool_button(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(13.0),
+            FontId::proportional(16.0),
             Color32::WHITE,
         );
     }
 
     response
+}
+
+/// Play menu item for the viewport play dropdown
+fn viewport_play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
+    let desired_size = Vec2::new(ui.available_width().max(160.0), 24.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, CornerRadius::same(2), Color32::from_white_alpha(15));
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    ui.painter().text(Pos2::new(rect.left() + 16.0, rect.center().y), egui::Align2::CENTER_CENTER, icon, FontId::proportional(13.0), icon_color);
+    ui.painter().text(Pos2::new(rect.left() + 32.0, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.0), Color32::WHITE);
+    ui.painter().text(Pos2::new(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER, shortcut, FontId::proportional(10.0), Color32::from_white_alpha(100));
+    response.clicked()
+}
+
+/// Vertical tool overlay rendered in the top-left of the viewport content area (Blender-style)
+fn render_viewport_tool_overlay(
+    ctx: &egui::Context,
+    gizmo: &mut GizmoState,
+    content_rect: Rect,
+    theme: &Theme,
+) {
+    let btn_size = Vec2::new(36.0, 36.0);
+    let btn_gap = 1.0_f32;
+    let padding = 3.0_f32;
+    // 4 transform tools only
+    let panel_w = btn_size.x + padding * 2.0;
+    let panel_h = btn_size.y * 4.0 + btn_gap * 3.0 + padding * 2.0;
+    let margin = 8.0_f32;
+    let panel_pos = Pos2::new(content_rect.min.x + margin, content_rect.min.y + margin);
+    let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
+
+    let active_color = theme.semantic.accent.to_color32();
+    let inactive_color = Color32::TRANSPARENT;
+    let hovered_color = theme.widgets.hovered_bg.to_color32();
+    let border_color = {
+        let c = theme.widgets.border.to_color32();
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 120)
+    };
+    let panel_bg = {
+        let c = theme.surfaces.panel.to_color32();
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 200)
+    };
+
+    egui::Area::new(egui::Id::new("viewport_tool_overlay"))
+        .fixed_pos(panel_pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(panel_rect);
+
+            ui.painter().rect_filled(panel_rect, CornerRadius::same(5), panel_bg);
+            ui.painter().rect_stroke(panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
+
+            let x_pos = panel_pos.x + padding;
+            let mut y_pos = panel_pos.y + padding;
+
+            // Select
+            let is_select = gizmo.tool == EditorTool::Select;
+            let select_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), btn_size);
+            let select_resp = viewport_tool_button(ui, select_rect, CURSOR, is_select, active_color, inactive_color, hovered_color);
+            if select_resp.clicked() { gizmo.tool = EditorTool::Select; }
+            select_resp.on_hover_text("Select (Q)");
+            y_pos += btn_size.y + btn_gap;
+
+            // Move
+            let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
+            let translate_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), btn_size);
+            let translate_resp = viewport_tool_button(ui, translate_rect, ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
+            if translate_resp.clicked() {
+                gizmo.tool = EditorTool::Transform;
+                gizmo.mode = GizmoMode::Translate;
+            }
+            translate_resp.on_hover_text("Move (W)");
+            y_pos += btn_size.y + btn_gap;
+
+            // Rotate
+            let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
+            let rotate_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), btn_size);
+            let rotate_resp = viewport_tool_button(ui, rotate_rect, ARROW_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
+            if rotate_resp.clicked() {
+                gizmo.tool = EditorTool::Transform;
+                gizmo.mode = GizmoMode::Rotate;
+            }
+            rotate_resp.on_hover_text("Rotate (E)");
+            y_pos += btn_size.y + btn_gap;
+
+            // Scale
+            let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
+            let scale_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), btn_size);
+            let scale_resp = viewport_tool_button(ui, scale_rect, ARROWS_OUT, is_scale, active_color, inactive_color, hovered_color);
+            if scale_resp.clicked() {
+                gizmo.tool = EditorTool::Transform;
+                gizmo.mode = GizmoMode::Scale;
+            }
+            scale_resp.on_hover_text("Scale (R)");
+        });
+}
+
+/// Nav overlay: pan/zoom buttons on the right side, below the axis gizmo (Blender-style)
+fn render_nav_overlay(
+    ctx: &egui::Context,
+    viewport: &mut ViewportState,
+    orbit: &mut OrbitCameraState,
+    content_rect: Rect,
+    theme: &Theme,
+) {
+    let btn_size = Vec2::new(36.0, 36.0);
+    let btn_gap = 1.0_f32;
+    let padding = 3.0_f32;
+    let panel_w = btn_size.x + padding * 2.0;
+    let panel_h = btn_size.y * 2.0 + btn_gap + padding * 2.0;
+
+    // Center horizontally with the axis gizmo, place below it
+    let gizmo_center_x = content_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN;
+    let gizmo_bottom_y = content_rect.min.y + AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN;
+    let panel_x = gizmo_center_x - panel_w / 2.0;
+    let panel_y = gizmo_bottom_y + 6.0;
+    let panel_pos = Pos2::new(panel_x, panel_y);
+    let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
+
+    let active_color = theme.semantic.accent.to_color32();
+    let inactive_color = Color32::TRANSPARENT;
+    let hovered_color = theme.widgets.hovered_bg.to_color32();
+    let border_color = {
+        let c = theme.widgets.border.to_color32();
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 120)
+    };
+    let panel_bg = {
+        let c = theme.surfaces.panel.to_color32();
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 200)
+    };
+
+    // Detect drag on each button and set flags for camera system
+    // Use a temporary area just for interaction detection (no painting yet)
+    let x_pos = panel_pos.x + padding;
+    let pan_btn_rect = Rect::from_min_size(Pos2::new(x_pos, panel_pos.y + padding), btn_size);
+    let zoom_btn_rect = Rect::from_min_size(Pos2::new(x_pos, panel_pos.y + padding + btn_size.y + btn_gap), btn_size);
+
+    egui::Area::new(egui::Id::new("viewport_nav_overlay"))
+        .fixed_pos(panel_pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(panel_rect);
+
+            ui.painter().rect_filled(panel_rect, CornerRadius::same(5), panel_bg);
+            ui.painter().rect_stroke(panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
+
+            // Pan button — drag to pan
+            let pan_resp = ui.interact(pan_btn_rect, egui::Id::new("nav_pan_btn"), Sense::drag());
+            if pan_resp.drag_started() {
+                viewport.nav_pan_dragging = true;
+                viewport.nav_zoom_dragging = false;
+            }
+            if pan_resp.drag_stopped() {
+                viewport.nav_pan_dragging = false;
+            }
+            if pan_resp.hovered() || viewport.nav_pan_dragging {
+                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            } else {
+                // draw grab cursor on hover
+            }
+            let pan_active = viewport.nav_pan_dragging;
+            let pan_bg = if pan_active { active_color } else if pan_resp.hovered() { hovered_color } else { inactive_color };
+            ui.painter().rect_filled(pan_btn_rect, CornerRadius::same((btn_size.x / 2.0) as u8), pan_bg);
+            ui.painter().text(pan_btn_rect.center(), egui::Align2::CENTER_CENTER, HAND, FontId::proportional(16.0), Color32::WHITE);
+
+            // Zoom button — drag up/down to zoom
+            let zoom_resp = ui.interact(zoom_btn_rect, egui::Id::new("nav_zoom_btn"), Sense::drag());
+            if zoom_resp.drag_started() {
+                viewport.nav_zoom_dragging = true;
+                viewport.nav_pan_dragging = false;
+            }
+            if zoom_resp.drag_stopped() {
+                viewport.nav_zoom_dragging = false;
+            }
+            if zoom_resp.hovered() || viewport.nav_zoom_dragging {
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
+            }
+            let zoom_active = viewport.nav_zoom_dragging;
+            let zoom_bg = if zoom_active { active_color } else if zoom_resp.hovered() { hovered_color } else { inactive_color };
+            ui.painter().rect_filled(zoom_btn_rect, CornerRadius::same((btn_size.x / 2.0) as u8), zoom_bg);
+            ui.painter().text(zoom_btn_rect.center(), egui::Align2::CENTER_CENTER, MAGNIFYING_GLASS, FontId::proportional(16.0), Color32::WHITE);
+
+            let pan_dragged = pan_resp.dragged();
+            let pan_delta = pan_resp.drag_delta();
+            let zoom_dragged = zoom_resp.dragged();
+            let zoom_delta = zoom_resp.drag_delta();
+
+            // Apply movement directly from drag delta for immediate response
+            // (camera system handles cursor lock; this gives frame-0 response)
+            if pan_dragged {
+                let pan_speed = 0.003 * orbit.distance.max(0.5);
+                let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
+                let up_dir = Vec3::new(
+                    -orbit.pitch.sin() * orbit.yaw.sin(),
+                    orbit.pitch.cos(),
+                    -orbit.pitch.sin() * orbit.yaw.cos(),
+                ).normalize();
+                orbit.focus -= right_dir * pan_delta.x * pan_speed;
+                orbit.focus += up_dir * pan_delta.y * pan_speed;
+            }
+            if zoom_dragged {
+                let zoom_speed = 0.02 * orbit.distance.max(0.5);
+                orbit.distance -= zoom_delta.y * zoom_speed;
+                orbit.distance = orbit.distance.clamp(0.5, 100.0);
+            }
+        });
 }
 
 /// Snap dropdown for viewport header

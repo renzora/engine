@@ -347,7 +347,6 @@ pub fn editor_ui(
             &mut editor.docking,
             &mut editor.viewport,
             &mut editor.gizmo,
-            &mut editor.play_mode,
             &editor.theme_manager.active_theme,
         );
         all_ui_events.extend(title_bar_events);
@@ -388,6 +387,7 @@ pub fn editor_ui(
             &mut editor.command_history,
             true, // in_play_mode
             &editor.shape_library,
+            &mut editor.play_mode,
         );
 
         // Render play mode overlay with info
@@ -728,15 +728,17 @@ pub fn editor_ui(
                         &mut editor.command_history,
                         false, // not in fullscreen play mode when docked
                         &editor.shape_library,
+                        &mut editor.play_mode,
                     );
 
-                    // Render on-screen console logs in viewport
-                    // Use actual viewport content area (below tabs) from viewport state
-                    let vp_rect = bevy_egui::egui::Rect::from_min_size(
-                        bevy_egui::egui::Pos2::new(editor.viewport.position[0], editor.viewport.position[1]),
-                        bevy_egui::egui::Vec2::new(editor.viewport.size[0], editor.viewport.size[1]),
-                    );
-                    render_viewport_logs(ctx, &editor.console, time.elapsed_secs_f64(), vp_rect);
+                    // Render on-screen console logs in viewport (only during play mode)
+                    if editor.play_mode.is_in_play_mode() {
+                        let vp_rect = bevy_egui::egui::Rect::from_min_size(
+                            bevy_egui::egui::Pos2::new(editor.viewport.position[0], editor.viewport.position[1]),
+                            bevy_egui::egui::Vec2::new(editor.viewport.size[0], editor.viewport.size[1]),
+                        );
+                        render_viewport_logs(ctx, &editor.console, time.elapsed_secs_f64(), vp_rect);
+                    }
                 }
 
                 PanelId::Animation => {
