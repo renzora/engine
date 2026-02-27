@@ -243,6 +243,8 @@ pub struct EditorSettings {
     pub mono_font: MonoFont,
     /// Re-run on_ready when a script is hot-reloaded
     pub script_rerun_on_ready_on_reload: bool,
+    /// Whether the settings overlay is open
+    pub show_settings: bool,
 }
 
 impl Default for EditorSettings {
@@ -268,6 +270,7 @@ impl Default for EditorSettings {
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
             script_rerun_on_ready_on_reload: true,
+            show_settings: false,
         }
     }
 }

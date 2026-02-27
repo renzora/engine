@@ -178,11 +178,11 @@ pub struct SemanticColors {
 impl Default for SemanticColors {
     fn default() -> Self {
         Self {
-            accent: ThemeColor::new(66, 150, 250),
+            accent: ThemeColor::new(69, 101, 151),
             success: ThemeColor::new(89, 191, 115),
             warning: ThemeColor::new(242, 166, 64),
             error: ThemeColor::new(230, 89, 89),
-            selection: ThemeColor::new(66, 150, 250),
+            selection: ThemeColor::new(69, 101, 151),
             selection_stroke: ThemeColor::new(100, 180, 255),
         }
     }
@@ -204,7 +204,7 @@ pub struct SurfaceColors {
 impl Default for SurfaceColors {
     fn default() -> Self {
         Self {
-            window: ThemeColor::new(26, 26, 31),
+            window: ThemeColor::new(11, 11, 17),
             window_stroke: ThemeColor::new(50, 50, 58),
             panel: ThemeColor::new(26, 26, 31),
             popup: ThemeColor::new(28, 28, 35),
@@ -276,7 +276,7 @@ impl Default for WidgetColors {
             hovered_fg: ThemeColor::new(220, 220, 230),
             active_bg: ThemeColor::new(66, 150, 250),
             active_fg: ThemeColor::new(255, 255, 255),
-            border: ThemeColor::new(50, 50, 60),
+            border: ThemeColor::new(15, 15, 22),
             border_light: ThemeColor::new(45, 45, 52),
         }
     }

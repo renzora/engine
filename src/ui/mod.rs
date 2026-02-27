@@ -846,22 +846,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::Settings => {
-                    // Clone theme to avoid borrow conflict with theme_manager mutation
-                    let theme_for_frame = editor.theme_manager.active_theme.clone();
-                    render_panel_frame(ctx, &panel_ctx, &theme_for_frame, |ui| {
-                        panels::render_settings_content(
-                            ui,
-                            ctx,
-                            &mut editor.settings,
-                            &mut editor.keybindings,
-                            &mut editor.theme_manager,
-                            &mut editor.app_config,
-                            &mut editor.update_state,
-                            &mut editor.update_dialog,
-                            &mut editor.scene_state,
-                            &mut editor.plugin_host,
-                        );
-                    });
+                    // Settings is rendered as a floating overlay, not a docked panel
                 }
 
                 PanelId::Gamepad => {
@@ -1249,13 +1234,40 @@ pub fn editor_ui(
 
     // Only show settings/export dialogs in edit mode
     if !editor.play_mode.is_in_play_mode() {
-        // Ctrl+, to toggle settings panel
+        // Ctrl+, to toggle settings overlay
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
-            let settings_panel = PanelId::Settings;
-            if editor.docking.is_panel_visible(&settings_panel) {
-                editor.docking.close_panel(&settings_panel);
-            } else {
-                editor.docking.open_panel(settings_panel);
+            editor.settings.show_settings = !editor.settings.show_settings;
+        }
+
+        // Settings overlay
+        if editor.settings.show_settings {
+            let theme_for_window = editor.theme_manager.active_theme.clone();
+            let panel_bg = theme_for_window.surfaces.panel.to_color32();
+            let mut open = true;
+            bevy_egui::egui::Window::new(format!("{} Settings", egui_phosphor::regular::GEAR))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(true)
+                .anchor(bevy_egui::egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .default_size([720.0, 540.0])
+                .min_size([500.0, 400.0])
+                .frame(bevy_egui::egui::Frame::window(&ctx.style()).fill(panel_bg))
+                .show(ctx, |ui| {
+                    panels::render_settings_content(
+                        ui,
+                        ctx,
+                        &mut editor.settings,
+                        &mut editor.keybindings,
+                        &mut editor.theme_manager,
+                        &mut editor.app_config,
+                        &mut editor.update_state,
+                        &mut editor.update_dialog,
+                        &mut editor.scene_state,
+                        &mut editor.plugin_host,
+                    );
+                });
+            if !open {
+                editor.settings.show_settings = false;
             }
         }
 

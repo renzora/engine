@@ -7,7 +7,7 @@ use crate::core::{AssetBrowserState, DockingState, SelectionState, ViewportState
 use crate::gizmo::{GizmoState, EditorTool};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use renzora_theme::Theme;
-use crate::ui::docking::{builtin_layouts, PanelId};
+use crate::ui::docking::builtin_layouts;
 use crate::ui_api::UiEvent;
 
 use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR, USER, GEAR, CUBE, IMAGE, MUSIC_NOTES, DOWNLOAD};
@@ -111,15 +111,9 @@ pub fn render_title_bar(
                 ui.add_space(12.0);
 
                 // === Settings ===
-                let settings_panel = PanelId::Settings;
-                let settings_visible = docking_state.is_panel_visible(&settings_panel);
-                let settings_resp = title_icon_button(ui, GEAR, settings_visible, theme.semantic.accent.to_color32(), theme);
+                let settings_resp = title_icon_button(ui, GEAR, settings.show_settings, theme.semantic.accent.to_color32(), theme);
                 if settings_resp.clicked() {
-                    if settings_visible {
-                        docking_state.close_panel(&settings_panel);
-                    } else {
-                        docking_state.open_panel(settings_panel);
-                    }
+                    settings.show_settings = !settings.show_settings;
                 }
                 settings_resp.on_hover_text("Settings");
 
@@ -831,7 +825,7 @@ fn render_menu_items(
 
         ui.separator();
         if menu_item(ui, "Settings                Ctrl+,") {
-            docking_state.open_panel(PanelId::Settings);
+            settings.show_settings = true;
             ui.close();
         }
         ui.separator();
