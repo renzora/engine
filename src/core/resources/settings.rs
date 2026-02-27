@@ -58,6 +58,16 @@ impl Default for RenderToggles {
     }
 }
 
+/// Selection highlight mode when using the Select tool
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelectionHighlightMode {
+    /// Show an outline around selected meshes (default)
+    #[default]
+    Outline,
+    /// Show the transform gizmo instead of an outline
+    Gizmo,
+}
+
 /// Collision gizmo visibility mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CollisionGizmoVisibility {
@@ -210,6 +220,8 @@ pub struct EditorSettings {
     pub grid_divisions: u32,
     /// Color of the grid lines
     pub grid_color: [f32; 3],
+    /// Selection highlight mode (outline or gizmo) when using the Select tool
+    pub selection_highlight_mode: SelectionHighlightMode,
     /// Collision gizmo visibility mode
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     /// Show demo window (debug)
@@ -245,6 +257,7 @@ impl Default for EditorSettings {
             grid_size: 10.0,
             grid_divisions: 10,
             grid_color: [0.3, 0.3, 0.3],
+            selection_highlight_mode: SelectionHighlightMode::default(),
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             show_demo_window: false,
             new_project_name: String::new(),

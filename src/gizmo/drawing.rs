@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::math::Isometry3d;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil};
 
-use crate::core::{EditorEntity, SelectionState, PlayModeState, PlayState};
+use crate::core::{EditorEntity, EditorSettings, SelectionHighlightMode, SelectionState, PlayModeState, PlayState};
 use crate::particles::HanabiEffectData;
 use crate::component_system::CameraNodeData;
 use crate::component_system::CameraRigData;
@@ -22,6 +22,7 @@ pub fn update_selection_outlines(
     modal: Res<ModalTransformState>,
     gizmo_state: Res<GizmoState>,
     play_mode: Res<PlayModeState>,
+    settings: Res<EditorSettings>,
     mesh_entities: Query<Entity, With<Mesh3d>>,
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
@@ -35,9 +36,11 @@ pub fn update_selection_outlines(
     let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8); // Lighter orange
     let outline_width = 3.0;
 
-    // Don't show outlines during modal transform, collider edit mode, or fullscreen play mode
+    // Don't show outlines during modal transform, collider edit mode, fullscreen play mode,
+    // or when gizmo highlight mode is active (regardless of which tool is selected)
     let should_show_outlines = !modal.active && !gizmo_state.collider_edit.is_active()
-        && !matches!(play_mode.state, PlayState::Playing | PlayState::Paused);
+        && !matches!(play_mode.state, PlayState::Playing | PlayState::Paused)
+        && settings.selection_highlight_mode != SelectionHighlightMode::Gizmo;
 
     // Remove all existing outlines first
     for entity in outlined_entities.iter() {
@@ -137,12 +140,17 @@ pub fn draw_selection_gizmo(
     gizmo_state: Res<GizmoState>,
     modal: Res<ModalTransformState>,
     play_mode: Res<PlayModeState>,
+    settings: Res<EditorSettings>,
     mut gizmos: Gizmos<SelectionGizmoGroup>,
     transforms: Query<&Transform, With<EditorEntity>>,
     cameras: Query<&CameraNodeData>,
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
     particle_effects: Query<(), With<HanabiEffectData>>,
+    mesh_aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_query: Query<&Children>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
+    terrain_parents: Query<(), With<TerrainData>>,
 ) {
     // Don't draw gizmo during modal transform (G/R/S mode)
     if modal.active {
@@ -190,6 +198,27 @@ pub fn draw_selection_gizmo(
         }
     }
 
+    // Draw a single bounding box around each selected entity in Gizmo highlight mode
+    if settings.selection_highlight_mode == SelectionHighlightMode::Gizmo {
+        let primary_color = Color::srgb(1.0, 0.5, 0.0);
+        let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8);
+        for &entity in &all_selected {
+            if terrain_chunks.get(entity).is_ok() || terrain_parents.get(entity).is_ok() {
+                continue;
+            }
+            let is_primary = selection.selected_entity == Some(entity);
+            let color = if is_primary { primary_color } else { secondary_color };
+            let mut min = Vec3::splat(f32::MAX);
+            let mut max = Vec3::splat(f32::MIN);
+            collect_world_aabb(entity, &mesh_aabbs, &children_query, &mut min, &mut max);
+            if min.x <= max.x {
+                let center = (min + max) * 0.5;
+                let size = max - min;
+                gizmos.cube(Transform::from_translation(center).with_scale(size), color);
+            }
+        }
+    }
+
     // Only draw transform gizmo in Transform tool mode and if there's a primary selection
     let Some(selected) = selection.selected_entity else {
         return;
@@ -199,8 +228,11 @@ pub fn draw_selection_gizmo(
         return;
     };
 
-    // Don't show transform gizmo in collider edit mode or if not in transform tool
-    if gizmo_state.tool != EditorTool::Transform || gizmo_state.collider_edit.is_active() {
+    // Show gizmo in Transform tool, or in Select tool when highlight mode is set to Gizmo
+    let show_gizmo = gizmo_state.tool == EditorTool::Transform
+        || (gizmo_state.tool == EditorTool::Select
+            && settings.selection_highlight_mode == SelectionHighlightMode::Gizmo);
+    if !show_gizmo || gizmo_state.collider_edit.is_active() {
         return;
     }
 
@@ -622,6 +654,35 @@ fn draw_camera_rig_gizmo(
     let look_dir = (target_pos - camera_pos).normalize_or_zero();
     let look_end = camera_pos + look_dir * 1.0;
     gizmos.line(camera_pos, look_end, Color::srgb(1.0, 0.8, 0.2));
+}
+
+/// Recursively expand min/max with world-space corners of every mesh in the hierarchy
+fn collect_world_aabb(
+    entity: Entity,
+    mesh_aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_query: &Query<&Children>,
+    min: &mut Vec3,
+    max: &mut Vec3,
+) {
+    if let Ok((Some(aabb), global_transform)) = mesh_aabbs.get(entity) {
+        let c = Vec3::from(aabb.center);
+        let h = Vec3::from(aabb.half_extents);
+        // Transform all 8 corners to world space and expand bounds
+        for sx in [-1.0_f32, 1.0] {
+            for sy in [-1.0_f32, 1.0] {
+                for sz in [-1.0_f32, 1.0] {
+                    let corner = global_transform.transform_point(c + h * Vec3::new(sx, sy, sz));
+                    *min = min.min(corner);
+                    *max = max.max(corner);
+                }
+            }
+        }
+    }
+    if let Ok(children) = children_query.get(entity) {
+        for child in children.iter() {
+            collect_world_aabb(child, mesh_aabbs, children_query, min, max);
+        }
+    }
 }
 
 /// Draw a wireframe octahedron (diamond) around a particle effect

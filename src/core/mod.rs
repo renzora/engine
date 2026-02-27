@@ -17,7 +17,7 @@ pub use resources::{
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, InspectorPanelRenderState, LogEntry, LogLevel, MeshHandling,
     ModelImportSettings, NormalImportMethod, OpenImage, OpenScript, PendingImageDrop, PendingMaterialDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, ProjectionMode, RenderToggles, RightPanelTab, SceneManagerState,
-    SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
+    SceneTab, ScriptError, SelectionHighlightMode, SelectionState, SettingsTab, TabCameraState, TabKind, TangentImportMethod,
     ThumbnailCache, ImagePreviewTextures, supports_thumbnail, supports_model_preview, supports_shader_thumbnail,
     ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
     // New debug/profiler resources

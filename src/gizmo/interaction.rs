@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
-use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState, KeyBindings, EditorAction};
+use crate::core::{EditorEntity, EditorSettings, SceneNode, SelectionHighlightMode, ViewportCamera, SelectionState, ViewportState, SceneManagerState, PlayModeState, PlayState, KeyBindings, EditorAction};
 use crate::terrain::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::console_info;
 
@@ -19,6 +19,7 @@ pub fn gizmo_hover_system(
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
     play_mode: Res<PlayModeState>,
+    settings: Res<EditorSettings>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
@@ -37,8 +38,11 @@ pub fn gizmo_hover_system(
 
     gizmo.hovered_axis = None;
 
-    // Only check gizmo hover in Transform tool mode, not in collider edit mode
-    if gizmo.tool != EditorTool::Transform || gizmo.collider_edit.is_active() {
+    // Only check gizmo hover in Transform tool mode, or Select tool with Gizmo highlight mode
+    let gizmo_tool_active = gizmo.tool == EditorTool::Transform
+        || (gizmo.tool == EditorTool::Select
+            && settings.selection_highlight_mode == SelectionHighlightMode::Gizmo);
+    if !gizmo_tool_active || gizmo.collider_edit.is_active() {
         return;
     }
 
@@ -317,9 +321,10 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    // If in Transform mode and hovering over a gizmo axis, start axis-constrained drag
+    // If hovering over a gizmo axis, start axis-constrained drag
+    // (gizmo_hover_system already gates this on the correct tool/mode)
     // (only for mouse clicks, not keyboard select)
-    if !key_select && gizmo.tool == EditorTool::Transform {
+    if !key_select && gizmo.hovered_axis.is_some() {
         if let Some(axis) = gizmo.hovered_axis {
             // Calculate initial drag state based on gizmo mode
             if let Some(selected) = selection.selected_entity {

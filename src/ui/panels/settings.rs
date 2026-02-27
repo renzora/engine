@@ -1,7 +1,7 @@
 use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
 
-use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SettingsTab, SceneManagerState, UiFont, bindable_keys};
+use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SelectionHighlightMode, SettingsTab, SceneManagerState, UiFont, bindable_keys};
 use crate::plugin_core::{PluginHost, PluginSource};
 use crate::project::AppConfig;
 use renzora_theme::{Theme, ThemeManager};
@@ -511,6 +511,25 @@ fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: 
                             &mut settings.collision_gizmo_visibility,
                             CollisionGizmoVisibility::Always,
                             "Always",
+                        );
+                    })
+            });
+            settings_row(ui, 1, "Selection", theme, |ui| {
+                egui::ComboBox::from_id_salt("selection_highlight_mode")
+                    .selected_text(match settings.selection_highlight_mode {
+                        SelectionHighlightMode::Outline => "Outline",
+                        SelectionHighlightMode::Gizmo => "Gizmo",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut settings.selection_highlight_mode,
+                            SelectionHighlightMode::Outline,
+                            "Outline",
+                        );
+                        ui.selectable_value(
+                            &mut settings.selection_highlight_mode,
+                            SelectionHighlightMode::Gizmo,
+                            "Gizmo",
                         );
                     })
             });

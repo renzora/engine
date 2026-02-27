@@ -98,6 +98,13 @@ pub struct SettingsConfig {
     /// Auto-save interval in seconds
     #[serde(default = "default_auto_save_interval")]
     pub auto_save_interval: f32,
+    /// Selection highlight mode: "outline" or "gizmo"
+    #[serde(default = "default_selection_highlight_mode")]
+    pub selection_highlight_mode: String,
+}
+
+fn default_selection_highlight_mode() -> String {
+    "outline".to_string()
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -120,6 +127,7 @@ impl Default for SettingsConfig {
             render: RenderConfig::default(),
             auto_save_enabled: default_auto_save_enabled(),
             auto_save_interval: default_auto_save_interval(),
+            selection_highlight_mode: default_selection_highlight_mode(),
         }
     }
 }

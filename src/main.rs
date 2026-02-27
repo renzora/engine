@@ -801,6 +801,10 @@ fn load_editor_state(
     settings.render_toggles.wireframe = state.settings.render.wireframe;
     settings.render_toggles.lighting = state.settings.render.lighting;
     settings.render_toggles.shadows = state.settings.render.shadows;
+    settings.selection_highlight_mode = match state.settings.selection_highlight_mode.as_str() {
+        "gizmo" => core::SelectionHighlightMode::Gizmo,
+        _ => core::SelectionHighlightMode::Outline,
+    };
 
     // Apply auto-save settings
     scene_state.auto_save_enabled = state.settings.auto_save_enabled;
@@ -884,6 +888,10 @@ fn save_editor_state_periodic(
             },
             auto_save_enabled: scene_state.auto_save_enabled,
             auto_save_interval: scene_state.auto_save_interval,
+            selection_highlight_mode: match settings.selection_highlight_mode {
+                core::SelectionHighlightMode::Outline => "outline".to_string(),
+                core::SelectionHighlightMode::Gizmo => "gizmo".to_string(),
+            },
         },
         asset_browser: project::editor_state::AssetBrowserConfig {
             zoom: assets.zoom,
