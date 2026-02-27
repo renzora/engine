@@ -10,7 +10,7 @@ use crate::project::CurrentProject;
 use crate::scripting::{RhaiScriptEngine, ScriptComponent, ScriptValue};
 use crate::ui::{inline_property, property_row};
 
-use egui_phosphor::regular::{CODE, FILE, FOLDER_OPEN, X};
+use egui_phosphor::regular::{CODE, FILE, FOLDER_OPEN, MAGNIFYING_GLASS, X};
 
 // ScriptComponent doesn't derive Serialize/Deserialize/Default,
 // so we keep the static definition pattern instead of register_component! macro.
@@ -164,6 +164,27 @@ fn is_script_file(path: &str) -> bool {
     path.ends_with(".rhai") || path.ends_with(".blueprint")
 }
 
+fn scan_scripts_folder(folder: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let mut scripts = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext == "rhai" || ext == "blueprint" {
+                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+                let name = if ext == "blueprint" {
+                    format!("{} (Blueprint)", stem)
+                } else {
+                    stem.to_string()
+                };
+                scripts.push((name, path));
+            }
+        }
+    }
+    scripts.sort_by(|a, b| a.0.cmp(&b.0));
+    scripts
+}
+
 fn inspect_script(
     ui: &mut egui::Ui, world: &mut World, entity: Entity,
     _meshes: &mut Assets<Mesh>, _materials: &mut Assets<StandardMaterial>,
@@ -185,6 +206,18 @@ fn inspect_script(
             })
             .collect()
     });
+
+    // Collect available scripts for the search box (project + shipped)
+    let (all_project_scripts, all_shipped_scripts): (Vec<(String, std::path::PathBuf)>, Vec<(String, std::path::PathBuf)>) = {
+        let project = world.get_resource::<RhaiScriptEngine>()
+            .map(|e| e.get_available_scripts())
+            .unwrap_or_default();
+        let shipped = std::fs::canonicalize(std::path::PathBuf::from("assets/scripts"))
+            .ok()
+            .map(|f| scan_scripts_folder(&f))
+            .unwrap_or_default();
+        (project, shipped)
+    };
 
     // Collect script props for each file-based script entry
     let script_props: Vec<Vec<crate::scripting::ScriptVariableDefinition>> = {
@@ -223,10 +256,148 @@ fn inspect_script(
     let mut remove_index: Option<usize> = None;
 
     let theme_colors = crate::ui::get_inspector_theme(ui.ctx());
+    let available_width = ui.available_width();
+
+    // === Search Box ===
+    let search_id = ui.id().with("script_search");
+    let mut search_text = ui.ctx().data_mut(|d| d.get_temp::<String>(search_id).unwrap_or_default());
+
+    let search_resp = ui.add(
+        egui::TextEdit::singleline(&mut search_text)
+            .hint_text(format!("{} Search scripts...", MAGNIFYING_GLASS))
+            .desired_width(f32::INFINITY),
+    );
+    if search_resp.changed() {
+        ui.ctx().data_mut(|d| d.insert_temp(search_id, search_text.clone()));
+    }
+
+    // === Search Results Popup (floating overlay, doesn't affect layout) ===
+    if !search_text.is_empty() && (search_resp.has_focus() || search_resp.lost_focus()) {
+        let query = search_text.to_lowercase();
+        let matching_project: Vec<_> = all_project_scripts.iter()
+            .filter(|(n, _)| n.to_lowercase().contains(&query))
+            .collect();
+        let matching_shipped: Vec<_> = all_shipped_scripts.iter()
+            .filter(|(n, _)| n.to_lowercase().contains(&query))
+            .collect();
+
+        let popup_id = search_id.with("popup");
+        let popup_pos = search_resp.rect.left_bottom() + egui::vec2(0.0, 2.0);
+        let popup_width = search_resp.rect.width();
+
+        // Extract colors before moving into closure
+        let inactive_bg = theme_colors.widget_inactive_bg;
+        let hovered_bg = theme_colors.widget_hovered_bg;
+        let border_color = theme_colors.widget_border;
+        let muted_color = theme_colors.text_muted;
+        let project_path_ref = project_path.clone();
+
+        let area_resp = egui::Area::new(popup_id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ui.ctx(), |ui| -> Option<std::path::PathBuf> {
+                let mut clicked: Option<std::path::PathBuf> = None;
+                ui.set_width(popup_width);
+
+                egui::Frame::new()
+                    .fill(inactive_bg)
+                    .stroke(egui::Stroke::new(1.0, border_color))
+                    .corner_radius(egui::CornerRadius::same(4))
+                    .inner_margin(egui::Margin::same(4))
+                    .show(ui, |ui| {
+                        if matching_project.is_empty() && matching_shipped.is_empty() {
+                            ui.label(egui::RichText::new("No scripts found").size(11.0).color(muted_color));
+                            return;
+                        }
+
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .id_salt("script_search_results")
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+
+                                if !matching_project.is_empty() {
+                                    ui.label(egui::RichText::new("Project").size(10.0).color(muted_color));
+                                    for (name, path) in &matching_project {
+                                        let resp = ui.add(
+                                            egui::Button::new(
+                                                egui::RichText::new(format!("{} {}", CODE, name)).size(11.0)
+                                            )
+                                            .frame(false)
+                                            .min_size(egui::Vec2::new(ui.available_width(), 20.0)),
+                                        );
+                                        if resp.hovered() {
+                                            let [r, g, b, _] = hovered_bg.to_array();
+                                            ui.painter().rect_filled(resp.rect, 2.0, egui::Color32::from_rgba_unmultiplied(r, g, b, 80));
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                        }
+                                        if resp.clicked() {
+                                            clicked = Some(if let Some(ref proj) = project_path_ref {
+                                                path.strip_prefix(proj).unwrap_or(path).to_path_buf()
+                                            } else {
+                                                path.to_path_buf()
+                                            });
+                                        }
+                                    }
+                                }
+
+                                if !matching_shipped.is_empty() {
+                                    if !matching_project.is_empty() { ui.add_space(4.0); }
+                                    ui.label(egui::RichText::new("Built-in").size(10.0).color(muted_color));
+                                    for (name, path) in &matching_shipped {
+                                        let resp = ui.add(
+                                            egui::Button::new(
+                                                egui::RichText::new(format!("{} {}", CODE, name)).size(11.0)
+                                            )
+                                            .frame(false)
+                                            .min_size(egui::Vec2::new(ui.available_width(), 20.0)),
+                                        );
+                                        if resp.hovered() {
+                                            let [r, g, b, _] = hovered_bg.to_array();
+                                            ui.painter().rect_filled(resp.rect, 2.0, egui::Color32::from_rgba_unmultiplied(r, g, b, 80));
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                        }
+                                        if resp.clicked() {
+                                            // Copy built-in script into the project's scripts folder
+                                            // so the project owns its own copy.
+                                            if let Some(ref proj) = project_path_ref {
+                                                let scripts_dir = proj.join("scripts");
+                                                let _ = std::fs::create_dir_all(&scripts_dir);
+                                                let filename = path.file_name().unwrap_or_default();
+                                                let dest = scripts_dir.join(filename);
+                                                if !dest.exists() {
+                                                    let _ = std::fs::copy(path, &dest);
+                                                }
+                                                clicked = Some(std::path::PathBuf::from("scripts").join(filename));
+                                            } else {
+                                                clicked = Some(path.to_path_buf());
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                    });
+
+                clicked
+            });
+
+        if let Some(path) = area_resp.inner {
+            script.add_file_script(path);
+            changed = true;
+            ui.ctx().data_mut(|d| d.insert_temp::<String>(search_id, String::new()));
+        }
+
+        // Eat scroll events when the pointer is inside the popup to stop them
+        // from bubbling up to the inspector panel's scroll area.
+        if area_resp.response.rect.contains(ui.ctx().pointer_hover_pos().unwrap_or_default()) {
+            ui.ctx().input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+        }
+    }
+
+    ui.add_space(4.0);
 
     // === Drop Zone ===
     let drop_zone_height = 48.0;
-    let available_width = ui.available_width();
     let (rect, _response) = ui.allocate_exact_size(
         egui::Vec2::new(available_width, drop_zone_height),
         egui::Sense::click_and_drag(),
