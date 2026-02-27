@@ -21,8 +21,10 @@ use super::inspector::{
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE,
-    TAG, PENCIL_SIMPLE, PUZZLE_PIECE,
+    TAG, PENCIL_SIMPLE, PUZZLE_PIECE, PAINT_BUCKET, X,
 };
+
+use crate::core::EntityLabelColor;
 
 /// Map component category to theme category name
 fn category_to_theme_name(category: ComponentCategory) -> &'static str {
@@ -142,6 +144,53 @@ pub fn render_inspector_content_world(
                                 tag_changed = true;
                             }
                         });
+
+                        // Label color picker
+                        {
+                            use crate::ui::panels::hierarchy::LABEL_COLORS;
+                            let current_label_color = world.get::<EntityLabelColor>(selected).map(|c| c.0);
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(RichText::new(PAINT_BUCKET).size(14.0).color(theme.text.muted.to_color32()));
+                                ui.label(RichText::new("Label").size(12.0).color(theme.text.muted.to_color32()));
+                                if current_label_color.is_some() {
+                                    ui.add_space(4.0);
+                                    let clear_resp = ui.add(
+                                        egui::Button::new(RichText::new(X).size(10.0).color(theme.text.muted.to_color32()))
+                                            .frame(false)
+                                    );
+                                    if clear_resp.on_hover_text("Clear label color").clicked() {
+                                        if let Ok(mut entity_ref) = world.get_entity_mut(selected) {
+                                            entity_ref.remove::<EntityLabelColor>();
+                                        }
+                                        scene_changed = true;
+                                    }
+                                }
+                            });
+                            for row in [&LABEL_COLORS[..10], &LABEL_COLORS[10..]] {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.spacing_mut().item_spacing = egui::Vec2::new(3.0, 0.0);
+                                    for ([r, g, b], name) in row {
+                                        let color = egui::Color32::from_rgb(*r, *g, *b);
+                                        let is_current = current_label_color == Some([*r, *g, *b]);
+                                        let (swatch_rect, swatch_resp) = ui.allocate_exact_size(egui::Vec2::splat(14.0), egui::Sense::click());
+                                        ui.painter().rect_filled(swatch_rect.shrink(1.0), 2.0, color);
+                                        if is_current {
+                                            ui.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.5, egui::Color32::WHITE), egui::StrokeKind::Outside);
+                                        } else if swatch_resp.hovered() {
+                                            ui.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 200, 200)), egui::StrokeKind::Outside);
+                                        }
+                                        if swatch_resp.on_hover_text(*name).clicked() {
+                                            if let Ok(mut entity_ref) = world.get_entity_mut(selected) {
+                                                entity_ref.insert(EntityLabelColor([*r, *g, *b]));
+                                            }
+                                            scene_changed = true;
+                                        }
+                                    }
+                                });
+                            }
+                        }
 
                         // Apply changes if name or tag changed
                         if name_changed || tag_changed {

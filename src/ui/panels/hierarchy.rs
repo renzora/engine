@@ -27,7 +27,7 @@ use egui_phosphor::regular::{
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
     GLOBE, PACKAGE, MAGNIFYING_GLASS, SPARKLE, CIRCLE,
-    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH, X, PALETTE,
+    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH, X, PALETTE, PENCIL_SIMPLE,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -333,6 +333,7 @@ pub fn render_hierarchy_content(
         // Add button opens centered popup
         if ui.button(RichText::new(format!("{} Add", PLUS)).color(accent_color)).clicked() {
             hierarchy.show_add_entity_popup = true;
+            hierarchy.add_entity_popup_just_opened = true;
             hierarchy.add_entity_search.clear();
             hierarchy.add_entity_parent = scene_root_entity;
             hierarchy.add_entity_focus_search = true;
@@ -569,6 +570,14 @@ fn render_tree_node(
         painter.rect_filled(rect, 0.0, row_odd_bg(theme));
     }
     *row_index += 1;
+
+    // Label color background
+    if let Ok(label_color) = hierarchy_queries.components.label_colors.get(entity) {
+        let [r, g, b] = label_color.0;
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 25));
+        let stripe_rect = egui::Rect::from_min_max(rect.min, Pos2::new(rect.min.x + 3.0, rect.max.y));
+        painter.rect_filled(stripe_rect, 0.0, Color32::from_rgb(r, g, b));
+    }
 
     // Selection highlight color with transparency
     let [r, g, b, _] = selection_color.to_array();
@@ -887,13 +896,6 @@ fn render_tree_node(
             ui.label(RichText::new(STAR).color(Color32::from_rgb(255, 200, 80)).size(10.0));
         }
 
-        // Label color dot
-        if let Ok(label_color) = hierarchy_queries.components.label_colors.get(entity) {
-            let [r, g, b] = label_color.0;
-            let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(8.0, ROW_HEIGHT), Sense::hover());
-            ui.painter().circle_filled(dot_rect.center(), 3.5, Color32::from_rgb(r, g, b));
-        }
-
         // Check if this entity is being renamed
         let is_renaming = hierarchy.renaming_entity == Some(entity);
 
@@ -1087,7 +1089,7 @@ fn render_tree_node(
         ui.set_min_width(180.0);
 
         // Rename option
-        if ui.button("✏ Rename").clicked() {
+        if ui.button(format!("{} Rename", PENCIL_SIMPLE)).clicked() {
             hierarchy.renaming_entity = Some(entity);
             hierarchy.rename_buffer = editor_entity.name.clone();
             hierarchy.rename_focus_set = false;
@@ -1099,6 +1101,7 @@ fn render_tree_node(
         // Add Child Entity opens popup
         if ui.button(RichText::new(format!("{} Add Child Entity", PLUS))).clicked() {
             hierarchy.show_add_entity_popup = true;
+            hierarchy.add_entity_popup_just_opened = true;
             hierarchy.add_entity_search.clear();
             hierarchy.add_entity_parent = Some(entity);
             hierarchy.add_entity_focus_search = true;
@@ -1153,55 +1156,45 @@ fn render_tree_node(
 
         ui.separator();
 
-        // Label Color submenu
+        // Label Color inline picker
         let current_label_color = hierarchy_queries.components.label_colors.get(entity).ok().map(|c| c.0);
-        ui.menu_button(format!("{} Label Color", PALETTE), |ui| {
-            ui.set_min_width(120.0);
-
-            // Clear color option
-            let clear_resp = ui.add_enabled(
-                current_label_color.is_some(),
-                egui::Button::new("✕  Clear"),
-            );
-            if clear_resp.clicked() {
-                commands.entity(entity).remove::<EntityLabelColor>();
-                ui.close_menu();
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.label(RichText::new(format!("{} Label Color", PALETTE)).size(13.0));
+            if current_label_color.is_some() {
+                ui.add_space(4.0);
+                let clear_resp = ui.add(
+                    egui::Button::new(RichText::new(X).size(10.0))
+                        .frame(false)
+                        .min_size(Vec2::new(14.0, 14.0))
+                );
+                if clear_resp.on_hover_text("Clear").clicked() {
+                    apply_label_color_recursive(entity, None, commands, &hierarchy_queries.components.children);
+                    ui.close_menu();
+                }
             }
-
-            ui.separator();
-
-            const LABEL_COLORS: &[([u8; 3], &str)] = &[
-                ([220, 70,  70],  "Red"),
-                ([220, 140, 60],  "Orange"),
-                ([210, 195, 60],  "Yellow"),
-                ([70,  190, 100], "Green"),
-                ([60,  200, 200], "Cyan"),
-                ([80,  140, 220], "Blue"),
-                ([155, 80,  220], "Purple"),
-                ([220, 80,  180], "Pink"),
-                ([200, 200, 200], "White"),
-            ];
-
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
-                for ([r, g, b], name) in LABEL_COLORS {
+        });
+        for row in [&LABEL_COLORS[..10], &LABEL_COLORS[10..]] {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                for ([r, g, b], name) in row {
                     let color = Color32::from_rgb(*r, *g, *b);
                     let is_current = current_label_color == Some([*r, *g, *b]);
-                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::click());
-                    ui.painter().rect_filled(swatch_rect.shrink(2.0), 3.0, color);
+                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), Sense::click());
+                    ui.painter().rect_filled(swatch_rect.shrink(1.0), 2.0, color);
                     if is_current {
-                        ui.painter().rect_stroke(swatch_rect.shrink(1.0), 3.0, Stroke::new(2.0, Color32::WHITE), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(swatch_rect, 2.0, Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Outside);
                     } else if swatch_resp.hovered() {
-                        ui.painter().rect_stroke(swatch_rect.shrink(1.0), 3.0, Stroke::new(1.5, Color32::from_rgb(200, 200, 200)), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(swatch_rect, 2.0, Stroke::new(1.0, Color32::from_rgb(200, 200, 200)), egui::StrokeKind::Outside);
                     }
-                    let swatch_resp = swatch_resp.on_hover_text(*name);
-                    if swatch_resp.clicked() {
-                        commands.entity(entity).insert(EntityLabelColor([*r, *g, *b]));
+                    if swatch_resp.on_hover_text(*name).clicked() {
+                        apply_label_color_recursive(entity, Some([*r, *g, *b]), commands, &hierarchy_queries.components.children);
                         ui.close_menu();
                     }
                 }
             });
-        });
+        }
 
         ui.separator();
 
@@ -1332,6 +1325,46 @@ fn render_plugin_context_menu_item(ui: &mut egui::Ui, item: &PluginMenuItem) -> 
     }
 
     false
+}
+
+pub const LABEL_COLORS: &[([u8; 3], &str)] = &[
+    ([220, 70,  70],  "Red"),
+    ([210, 120, 80],  "Coral"),
+    ([220, 140, 60],  "Orange"),
+    ([210, 175, 55],  "Amber"),
+    ([210, 195, 60],  "Yellow"),
+    ([160, 210, 60],  "Lime"),
+    ([70,  190, 100], "Green"),
+    ([55,  185, 155], "Teal"),
+    ([60,  200, 200], "Cyan"),
+    ([70,  170, 220], "Sky"),
+    ([80,  140, 220], "Blue"),
+    ([90,  100, 220], "Indigo"),
+    ([155, 80,  220], "Purple"),
+    ([190, 70,  200], "Violet"),
+    ([220, 80,  180], "Pink"),
+    ([220, 80,  120], "Rose"),
+    ([160, 110, 75],  "Brown"),
+    ([130, 130, 140], "Gray"),
+    ([200, 200, 200], "White"),
+];
+
+/// Recursively apply or remove a label color on an entity and all its descendants.
+fn apply_label_color_recursive(
+    entity: Entity,
+    color: Option<[u8; 3]>,
+    commands: &mut Commands,
+    children_query: &Query<&Children>,
+) {
+    match color {
+        Some(rgb) => commands.entity(entity).insert(EntityLabelColor(rgb)),
+        None => commands.entity(entity).remove::<EntityLabelColor>(),
+    };
+    if let Ok(children) = children_query.get(entity) {
+        for child in children.iter() {
+            apply_label_color_recursive(child, color, commands, children_query);
+        }
+    }
 }
 
 /// Check if an entity is a descendant of any entity in the given set
@@ -1558,18 +1591,20 @@ fn render_add_entity_popup(
     let mut spawned = false;
     let mut close_popup = false;
 
-    // Semi-transparent backdrop - clicking it closes the popup
+    // Semi-transparent backdrop - visual only, does not block scroll or other input
     let screen_rect = ctx.input(|i| i.screen_rect());
     egui::Area::new(egui::Id::new("add_entity_backdrop"))
         .fixed_pos(Pos2::ZERO)
         .order(Order::Foreground)
-        .interactable(true)
+        .interactable(false)
         .show(ctx, |ui| {
-            let (rect, response) = ui.allocate_exact_size(screen_rect.size(), Sense::click());
-            ui.painter().rect_filled(rect, 0.0, Color32::from_black_alpha(120));
-            if response.clicked() {
-                close_popup = true;
-            }
+            ui.painter().rect_filled(
+                egui::Rect::from_min_size(Pos2::ZERO, screen_rect.size()),
+                0.0,
+                Color32::from_black_alpha(120),
+            );
+            // Still need to allocate space so the area is sized correctly
+            ui.allocate_exact_size(screen_rect.size(), Sense::hover());
         });
 
     // Escape to close
@@ -1625,15 +1660,15 @@ fn render_add_entity_popup(
         }
     }
 
-    // Main popup window
+    // Main popup window — Order::Tooltip ensures it always renders above the backdrop
     if !close_popup {
-        egui::Window::new("add_entity_popup")
+        let popup_response = egui::Window::new("add_entity_popup")
             .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .fixed_size([580.0, 660.0])
-            .order(Order::Foreground)
+            .order(Order::Tooltip)
             .frame(egui::Frame::window(&ctx.style()).fill(theme.surfaces.panel.to_color32()).inner_margin(12.0))
             .show(ctx, |ui| {
                 // Title bar with close button
@@ -1982,6 +2017,24 @@ fn render_add_entity_popup(
                     }
                 });
             });
+
+        // Click outside the popup to close (skip the first frame to avoid catching the
+        // click that opened the popup)
+        if hierarchy.add_entity_popup_just_opened {
+            hierarchy.add_entity_popup_just_opened = false;
+        } else if ctx.input(|i| i.pointer.any_click()) {
+            if let Some(click_pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                let in_popup = popup_response
+                    .as_ref()
+                    .map_or(false, |r| r.response.rect.contains(click_pos));
+                if !in_popup {
+                    close_popup = true;
+                }
+            }
+        }
+    } else {
+        // Popup was closed this frame before rendering — clear the guard too
+        hierarchy.add_entity_popup_just_opened = false;
     }
 
     if close_popup {

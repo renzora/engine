@@ -41,6 +41,8 @@ pub struct HierarchyState {
     pub add_entity_focus_search: bool,
     /// Entity that a script/blueprint asset drag is hovering over in the hierarchy
     pub script_drop_target: Option<Entity>,
+    /// True for the first frame after the popup opens, to skip backdrop click detection
+    pub add_entity_popup_just_opened: bool,
 }
 
 impl HierarchyState {

@@ -245,6 +245,7 @@ pub fn handle_hierarchy_shortcuts(
 
     if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
         hierarchy.show_add_entity_popup = true;
+        hierarchy.add_entity_popup_just_opened = true;
         hierarchy.add_entity_search.clear();
         hierarchy.add_entity_parent = None;
         hierarchy.add_entity_focus_search = true;
