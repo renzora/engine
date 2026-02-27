@@ -102,6 +102,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<SceneNode>();
     registry.register::<crate::core::DisabledComponents>();
     registry.register::<crate::core::EntityLabelColor>();
+    registry.register::<crate::core::ComponentOrder>();
 
     // Shared game components
     registry.register::<MeshNodeData>();

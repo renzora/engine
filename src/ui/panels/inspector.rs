@@ -308,6 +308,7 @@ pub fn render_category(
 pub struct CategoryHeaderAction {
     pub remove_clicked: bool,
     pub toggle_clicked: bool,
+    pub drag_started: bool,
 }
 
 /// Renders a styled inspector category with header, content, toggle switch, and remove button
@@ -328,6 +329,7 @@ pub fn render_category_removable(
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
     let mut remove_clicked = false;
     let mut toggle_clicked = false;
+    let mut drag_started = false;
     let (accent_color, header_bg) = get_category_colors(theme, category);
     let frame_bg = theme.panels.category_frame_bg.to_color32();
     let text_muted = theme.text.muted.to_color32();
@@ -360,8 +362,11 @@ pub fn render_category_removable(
                         .inner_margin(egui::Margin::symmetric(8, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // Left side: caret + icon + label (no individual click handler)
+                                // Left side: grip + caret + icon + label (no individual click handler)
                                 ui.scope(|ui| {
+                                    // Drag grip handle
+                                    ui.label(RichText::new("⠿").size(10.0).color(dim_color(text_muted, 0.5)));
+
                                     // Collapse indicator
                                     let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
                                     ui.label(RichText::new(caret).size(12.0).color(text_muted));
@@ -409,10 +414,17 @@ pub fn render_category_removable(
                         });
                 }).response;
 
-                // Entire header is clickable for collapse (except toggle/trash which set their own flags)
-                let header_click = header_response.interact(Sense::click());
+                // Entire header is clickable for collapse and draggable for reordering
+                let header_click = header_response.interact(Sense::click_and_drag());
+                if header_click.drag_started() {
+                    drag_started = true;
+                }
                 if header_click.hovered() && !toggle_clicked && !remove_clicked {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    if header_click.dragged() {
+                        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+                    } else {
+                        ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                    }
                 }
                 if header_click.clicked() && !toggle_clicked && !remove_clicked {
                     state.toggle(ui);
@@ -436,7 +448,7 @@ pub fn render_category_removable(
 
     ui.add_space(6.0);
 
-    CategoryHeaderAction { remove_clicked, toggle_clicked }
+    CategoryHeaderAction { remove_clicked, toggle_clicked, drag_started }
 }
 
 /// Dim a Color32 by a brightness factor (0.0 = black, 1.0 = unchanged)

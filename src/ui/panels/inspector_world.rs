@@ -10,7 +10,7 @@ use crate::component_system::{
     AddComponentPopupState, ComponentCategory, ComponentDefinition, ComponentRegistry,
     get_category_style,
 };
-use crate::core::{DisabledComponents, EditorEntity, SelectionState};
+use crate::core::{ComponentOrder, DisabledComponents, EditorEntity, SelectionState};
 use renzora_theme::Theme;
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
 use crate::plugin_core::PluginHost;
@@ -76,7 +76,14 @@ pub fn render_inspector_content_world(
     egui::Frame::new()
         .inner_margin(egui::Margin::symmetric(6, 4))
         .show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            // Disable drag-to-scroll while the user is reordering components
+            let comp_drag_active = ui.ctx()
+                .data(|d| d.get_temp::<String>(egui::Id::new("inspector_comp_drag")))
+                .filter(|s| !s.is_empty())
+                .is_some();
+            egui::ScrollArea::vertical()
+                .drag_to_scroll(!comp_drag_active)
+                .show(ui, |ui| {
                 if let Some(selected) = selection.selected_entity {
                     // Get editor entity data (clone to release borrow)
                     let editor_entity_data = world.get::<EditorEntity>(selected).cloned();
@@ -241,6 +248,15 @@ pub fn render_inspector_content_world(
                             (present, menu_data)
                         };
 
+                        // Sort non-transform components by stored ComponentOrder
+                        let component_order = world.get::<ComponentOrder>(selected).cloned().unwrap_or_default();
+                        let mut ordered_components: Vec<&ComponentToRender> = components_to_render.iter()
+                            .filter(|c| c.def.type_id != "transform")
+                            .collect();
+                        ordered_components.sort_by_key(|c| {
+                            component_order.order.iter().position(|id| id.as_str() == c.def.type_id).unwrap_or(usize::MAX)
+                        });
+
                         // Add Component dropdown button
                         ui.vertical_centered(|ui| {
                             ui.menu_button(
@@ -294,33 +310,118 @@ pub fn render_inspector_content_world(
                             );
                         }
 
-                        // Render each registered component
-                        for comp in &components_to_render {
-                            // Skip Transform - handled above
-                            if comp.def.type_id == "transform" {
-                                continue;
+                        // Drag state for component reordering (persisted in egui temp memory as String,
+                        // empty string = not dragging, non-empty = type_id of dragged component)
+                        let drag_state_id = egui::Id::new("inspector_comp_drag");
+                        let dragging_type_id: Option<String> = ui.ctx()
+                            .data(|d| d.get_temp::<String>(drag_state_id))
+                            .filter(|s| !s.is_empty());
+                        let is_drag_active = dragging_type_id.is_some();
+                        let drag_released = is_drag_active && ui.ctx().input(|i| !i.pointer.any_down());
+
+                        // Show drag ghost near cursor
+                        if let Some(ref dragging_type) = dragging_type_id {
+                            if let Some(pos) = ui.ctx().pointer_hover_pos() {
+                                let display_name = ordered_components.iter()
+                                    .find(|c| c.def.type_id == dragging_type.as_str())
+                                    .map(|c| c.def.display_name)
+                                    .unwrap_or("Component");
+                                let icon = ordered_components.iter()
+                                    .find(|c| c.def.type_id == dragging_type.as_str())
+                                    .map(|c| c.def.icon)
+                                    .unwrap_or("");
+                                egui::Area::new(egui::Id::new("comp_drag_ghost"))
+                                    .order(egui::Order::Tooltip)
+                                    .fixed_pos(pos + egui::Vec2::new(14.0, 8.0))
+                                    .show(ui.ctx(), |ui| {
+                                        egui::Frame::new()
+                                            .fill(theme.panels.category_frame_bg.to_color32())
+                                            .corner_radius(egui::CornerRadius::same(4))
+                                            .inner_margin(egui::Margin::symmetric(8, 4))
+                                            .show(ui, |ui| {
+                                                ui.label(egui::RichText::new(format!("{} {}", icon, display_name))
+                                                    .size(12.0)
+                                                    .color(theme.text.primary.to_color32()));
+                                            });
+                                    });
                             }
+                        }
 
+                        // Render each registered component (sorted, transform already handled above)
+                        let mut new_drag_type: Option<String> = None;
+                        let mut component_rects: Vec<(String, f32, f32)> = Vec::new();
+
+                        for comp in &ordered_components {
                             let comp_disabled = disabled_components.is_disabled(comp.def.type_id);
+                            let is_dragged = dragging_type_id.as_deref() == Some(comp.def.type_id);
 
-                            // Use a closure that captures world mutably for each component
-                            let action = render_component_inspector(
-                                ui,
-                                world,
-                                selected,
-                                comp.def,
-                                comp.theme_category,
-                                theme,
-                                comp_disabled,
-                                &mut scene_changed,
-                            );
+                            let top_y = ui.cursor().top();
 
+                            let action = ui.scope(|ui| {
+                                if is_dragged {
+                                    ui.set_opacity(0.35);
+                                }
+                                render_component_inspector(
+                                    ui,
+                                    world,
+                                    selected,
+                                    comp.def,
+                                    comp.theme_category,
+                                    theme,
+                                    comp_disabled,
+                                    &mut scene_changed,
+                                )
+                            }).inner;
+
+                            let bottom_y = ui.cursor().top();
+                            component_rects.push((comp.def.type_id.to_string(), top_y, bottom_y));
+
+                            if action.drag_started {
+                                new_drag_type = Some(comp.def.type_id.to_string());
+                            }
                             if action.remove_clicked {
                                 component_to_remove = Some(comp.def.type_id);
                             }
                             if action.toggle_clicked {
                                 component_to_toggle = Some(comp.def.type_id);
                             }
+                        }
+
+                        // Show drop indicator and commit reorder on release
+                        if let Some(ref dragging_type) = dragging_type_id {
+                            if let Some(cursor_pos) = ui.ctx().pointer_hover_pos() {
+                                let drop_idx = compute_drop_idx(cursor_pos.y, &component_rects, dragging_type);
+
+                                // Draw drop indicator line
+                                let indicator_y = if drop_idx < component_rects.len() {
+                                    component_rects[drop_idx].1
+                                } else if let Some((_, _, bottom)) = component_rects.last() {
+                                    *bottom
+                                } else {
+                                    0.0
+                                };
+                                ui.painter().hline(
+                                    ui.max_rect().x_range(),
+                                    indicator_y,
+                                    egui::Stroke::new(2.0, egui::Color32::from_rgb(66, 135, 245)),
+                                );
+
+                                // Commit reorder when drag is released
+                                if drag_released {
+                                    let new_order = compute_new_order(&ordered_components, dragging_type, drop_idx);
+                                    if let Ok(mut entity_ref) = world.get_entity_mut(selected) {
+                                        entity_ref.insert(ComponentOrder { order: new_order });
+                                    }
+                                    scene_changed = true;
+                                }
+                            }
+                        }
+
+                        // Update drag state in egui temp memory (String, empty = cleared)
+                        if drag_released {
+                            ui.ctx().data_mut(|d| d.insert_temp(drag_state_id, String::new()));
+                        } else if let Some(ref new_type) = new_drag_type {
+                            ui.ctx().data_mut(|d| d.insert_temp(drag_state_id, new_type.clone()));
                         }
 
                         // Plugin-registered inspector sections (only if plugin_host is provided)
@@ -401,7 +502,7 @@ fn render_component_inspector(
     is_disabled: bool,
     scene_changed: &mut bool,
 ) -> CategoryHeaderAction {
-    let mut action = CategoryHeaderAction { remove_clicked: false, toggle_clicked: false };
+    let mut action = CategoryHeaderAction { remove_clicked: false, toggle_clicked: false, drag_started: false };
 
     // We need to scope the world access properly
     // First, extract the assets we need
@@ -427,4 +528,29 @@ fn render_component_inspector(
     });
 
     action
+}
+
+/// Compute the index to insert the dragged component at, based on cursor Y position.
+/// Returns an index into `rects` (before that item), or `rects.len()` for end.
+fn compute_drop_idx(cursor_y: f32, rects: &[(String, f32, f32)], dragging: &str) -> usize {
+    for (idx, (type_id, top, bottom)) in rects.iter().enumerate() {
+        if type_id.as_str() == dragging {
+            continue; // skip the dragged item itself
+        }
+        let mid = (top + bottom) / 2.0;
+        if cursor_y < mid {
+            return idx;
+        }
+    }
+    rects.len()
+}
+
+/// Compute the new component order after dropping `dragging` at `drop_idx`.
+fn compute_new_order(components: &[&ComponentToRender], dragging: &str, drop_idx: usize) -> Vec<String> {
+    let from_idx = components.iter().position(|c| c.def.type_id == dragging).unwrap_or(0);
+    let mut new_order: Vec<String> = components.iter().map(|c| c.def.type_id.to_string()).collect();
+    new_order.remove(from_idx);
+    let insert_idx = if drop_idx > from_idx { drop_idx - 1 } else { drop_idx }.min(new_order.len());
+    new_order.insert(insert_idx, dragging.to_string());
+    new_order
 }

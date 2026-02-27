@@ -323,6 +323,7 @@ fn main() {
         .register_type::<component_system::UnderwaterData>()
         .register_type::<core::EditorEntity>()
         .register_type::<core::EntityLabelColor>()
+        .register_type::<core::ComponentOrder>()
         .register_type::<core::SceneNode>()
         .register_type::<core::SceneTabId>()
         .register_type::<core::WorldEnvironmentMarker>()

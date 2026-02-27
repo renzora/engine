@@ -26,6 +26,14 @@ impl DisabledComponents {
     }
 }
 
+/// Stores the user-defined display order of components in the inspector.
+/// Component type_ids are stored in order. Components not in the list appear at the end.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Default)]
+pub struct ComponentOrder {
+    pub order: Vec<String>,
+}
+
 /// Marker component for entities visible in the editor hierarchy
 #[derive(Component, Clone, Reflect)]
 #[reflect(Component, Default)]
