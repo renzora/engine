@@ -137,6 +137,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<crate::component_system::MotionBlurData>();
     registry.register::<crate::component_system::AmbientLightData>();
     registry.register::<crate::component_system::CloudsData>();
+    registry.register::<crate::component_system::NightStarsData>();
     registry.register::<crate::component_system::TaaData>();
     registry.register::<crate::component_system::SmaaData>();
     registry.register::<crate::component_system::CasData>();
