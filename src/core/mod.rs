@@ -4,7 +4,7 @@ mod keybindings;
 pub mod resources;
 
 pub use app_state::{AppState, AssetLoadingProgress, RuntimeConfig, format_bytes};
-pub use components::{AudioListenerMarker, DisabledComponents, EditorEntity, MainCamera, NodeIcon, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
+pub use components::{AudioListenerMarker, DisabledComponents, EditorEntity, EntityLabelColor, MainCamera, NodeIcon, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
 pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 // Re-export all resources

@@ -13,6 +13,71 @@ use super::{
 };
 use crate::mesh_sculpt::MeshSculptState;
 
+// ============================================================================
+// Noise Utilities
+// ============================================================================
+
+/// Integer hash for value noise
+#[inline]
+fn hash_u32(x: u32) -> u32 {
+    let mut h = x.wrapping_mul(2747636419u32);
+    h ^= h >> 16;
+    h = h.wrapping_mul(2246822519u32);
+    h ^= h >> 13;
+    h = h.wrapping_mul(3266489917u32);
+    h ^= h >> 16;
+    h
+}
+
+/// 2D hash returning a value in [0, 1]
+#[inline]
+fn hash2d(x: i32, y: i32, seed: u32) -> f32 {
+    let hx = hash_u32(x as u32 ^ seed);
+    let hy = hash_u32(y as u32 ^ seed.wrapping_add(0xDEAD_BEEF));
+    let h = hash_u32(hx.wrapping_add(hy));
+    (h as f32) / (u32::MAX as f32)
+}
+
+/// Value noise (smooth lattice noise) at (x, y)
+#[inline]
+fn value_noise(x: f32, y: f32, seed: u32) -> f32 {
+    let ix = x.floor() as i32;
+    let iy = y.floor() as i32;
+    let fx = x.fract();
+    let fy = y.fract();
+    // Smoothstep interpolation
+    let ux = fx * fx * (3.0 - 2.0 * fx);
+    let uy = fy * fy * (3.0 - 2.0 * fy);
+
+    let a = hash2d(ix,     iy,     seed);
+    let b = hash2d(ix + 1, iy,     seed);
+    let c = hash2d(ix,     iy + 1, seed);
+    let d = hash2d(ix + 1, iy + 1, seed);
+
+    let h0 = a + (b - a) * ux;
+    let h1 = c + (d - c) * ux;
+    h0 + (h1 - h0) * uy
+}
+
+/// Fractal Brownian Motion: layered value noise.
+/// Returns a value roughly in [0, 1].
+fn fbm(x: f32, y: f32, octaves: u32, lacunarity: f32, persistence: f32, seed: u32) -> f32 {
+    let mut value = 0.0f32;
+    let mut amplitude = 1.0f32;
+    let mut frequency = 1.0f32;
+    let mut max_amp = 0.0f32;
+
+    for i in 0..octaves {
+        let oct_seed = seed.wrapping_add(i.wrapping_mul(12_345));
+        value += value_noise(x * frequency, y * frequency, oct_seed) * amplitude;
+        max_amp += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+}
+
 /// System to handle T key shortcut for terrain sculpt tool
 pub fn terrain_tool_shortcut_system(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -371,23 +436,27 @@ pub fn terrain_sculpt_system(
         sculpt_state.brush_visible = true;
         let hover_pos = sculpt_state.hover_position.unwrap();
         let color = match settings.brush_type {
-            TerrainBrushType::Raise => Color::srgba(0.2, 0.8, 0.2, 0.8),
-            TerrainBrushType::Lower => Color::srgba(0.8, 0.4, 0.2, 0.8),
-            TerrainBrushType::Sculpt => Color::srgba(0.2, 0.8, 0.2, 0.8),
-            TerrainBrushType::Erase => Color::srgba(0.8, 0.2, 0.2, 0.8),
-            TerrainBrushType::Smooth => Color::srgba(0.2, 0.5, 0.8, 0.8),
-            TerrainBrushType::Flatten => Color::srgba(0.8, 0.8, 0.2, 0.8),
-            TerrainBrushType::SetHeight => Color::srgba(0.8, 0.8, 0.2, 0.8),
-            TerrainBrushType::Ramp => Color::srgba(0.8, 0.6, 0.2, 0.8),
-            TerrainBrushType::Erosion => Color::srgba(0.6, 0.4, 0.2, 0.8),
-            TerrainBrushType::Hydro => Color::srgba(0.2, 0.4, 0.8, 0.8),
-            TerrainBrushType::Noise => Color::srgba(0.6, 0.6, 0.6, 0.8),
-            TerrainBrushType::Retop => Color::srgba(0.4, 0.8, 0.4, 0.8),
-            TerrainBrushType::Visibility => Color::srgba(0.8, 0.8, 0.8, 0.8),
-            TerrainBrushType::Blueprint => Color::srgba(0.2, 0.2, 0.8, 0.8),
-            TerrainBrushType::Mirror => Color::srgba(0.8, 0.2, 0.8, 0.8),
-            TerrainBrushType::Select => Color::srgba(1.0, 0.8, 0.0, 0.8),
-            TerrainBrushType::Copy => Color::srgba(0.0, 0.8, 0.8, 0.8),
+            TerrainBrushType::Raise    => Color::srgba(0.2, 0.8, 0.2, 0.9),
+            TerrainBrushType::Lower    => Color::srgba(0.8, 0.4, 0.2, 0.9),
+            TerrainBrushType::Sculpt   => Color::srgba(0.3, 0.7, 0.3, 0.9),
+            TerrainBrushType::Erase    => Color::srgba(0.8, 0.2, 0.2, 0.9),
+            TerrainBrushType::Smooth   => Color::srgba(0.2, 0.5, 0.9, 0.9),
+            TerrainBrushType::Flatten  => Color::srgba(0.9, 0.9, 0.2, 0.9),
+            TerrainBrushType::SetHeight=> Color::srgba(0.9, 0.7, 0.1, 0.9),
+            TerrainBrushType::Ramp     => Color::srgba(0.9, 0.6, 0.2, 0.9),
+            TerrainBrushType::Erosion  => Color::srgba(0.6, 0.35, 0.1, 0.9),
+            TerrainBrushType::Hydro    => Color::srgba(0.1, 0.5, 0.9, 0.9),
+            TerrainBrushType::Noise    => Color::srgba(0.7, 0.5, 0.8, 0.9),
+            TerrainBrushType::Retop    => Color::srgba(0.4, 0.8, 0.4, 0.9),
+            TerrainBrushType::Terrace  => Color::srgba(0.8, 0.7, 0.3, 0.9),
+            TerrainBrushType::Pinch    => Color::srgba(0.9, 0.3, 0.7, 0.9),
+            TerrainBrushType::Relax    => Color::srgba(0.3, 0.8, 0.8, 0.9),
+            TerrainBrushType::Cliff    => Color::srgba(0.5, 0.4, 0.3, 0.9),
+            TerrainBrushType::Visibility=> Color::srgba(0.8, 0.8, 0.8, 0.9),
+            TerrainBrushType::Blueprint => Color::srgba(0.2, 0.2, 0.9, 0.9),
+            TerrainBrushType::Mirror   => Color::srgba(0.8, 0.2, 0.8, 0.9),
+            TerrainBrushType::Select   => Color::srgba(1.0, 0.8, 0.0, 0.9),
+            TerrainBrushType::Copy     => Color::srgba(0.0, 0.8, 0.8, 0.9),
         };
 
         // Draw contoured brush circle that follows terrain
@@ -639,156 +708,172 @@ pub fn terrain_sculpt_system(
 
                 match settings.brush_type {
                     TerrainBrushType::Raise => {
-                        // Raise terrain
                         let delta = effect / height_range;
                         chunk_data.modify_height(vx, vz, resolution, delta);
                     }
                     TerrainBrushType::Lower => {
-                        // Lower terrain
                         let delta = -effect / height_range;
                         chunk_data.modify_height(vx, vz, resolution, delta);
                     }
                     TerrainBrushType::Sculpt => {
-                        // Raise terrain (hold Shift to lower)
+                        // Raise (Shift = lower)
                         let delta = effect / height_range;
                         let delta = if shift_held { -delta } else { delta };
                         chunk_data.modify_height(vx, vz, resolution, delta);
                     }
                     TerrainBrushType::SetHeight => {
-                        // Set terrain to exact target height
                         let current = chunk_data.get_height(vx, vz, resolution);
                         let target = settings.target_height;
-                        let new_height = current + (target - current) * effect * 2.0;
+                        let new_height = current + (target - current) * (effect * 3.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Erase => {
-                        // Reset to default height (0.5)
+                        // Blend back towards flat mid-point
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let target = 0.5;
-                        let new_height = current + (target - current) * effect * 2.0;
+                        let new_height = current + (0.2 - current) * (effect * 2.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Smooth => {
-                        // Average with neighbors
+                        // Gaussian-weighted 3×3 kernel for a natural softening effect
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let mut sum = current;
-                        let mut count = 1.0;
-
-                        // Sample neighbors
-                        for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
-                            for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
-                                if nx != vx || nz != vz {
-                                    sum += chunk_data.get_height(nx, nz, resolution);
-                                    count += 1.0;
-                                }
+                        const KERNEL: &[(i32, i32, f32)] = &[
+                            (-1,-1,0.0625), (0,-1,0.125), (1,-1,0.0625),
+                            (-1, 0,0.125),  (0, 0,0.25),  (1, 0,0.125),
+                            (-1, 1,0.0625), (0, 1,0.125), (1, 1,0.0625),
+                        ];
+                        let mut weighted = 0.0f32;
+                        let mut total_w = 0.0f32;
+                        for &(kx, kz, w) in KERNEL {
+                            let nx = vx as i32 + kx;
+                            let nz = vz as i32 + kz;
+                            if nx >= 0 && nx < resolution as i32 && nz >= 0 && nz < resolution as i32 {
+                                weighted += chunk_data.get_height(nx as u32, nz as u32, resolution) * w;
+                                total_w += w;
                             }
                         }
-
-                        let avg = sum / count;
-                        let new_height = current + (avg - current) * effect * 2.0;
+                        let avg = weighted / total_w;
+                        let new_height = current + (avg - current) * (effect * 2.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Flatten => {
                         if let Some(target) = sculpt_state.flatten_start_height {
                             let current = chunk_data.get_height(vx, vz, resolution);
-                            // Apply flatten mode constraints
                             let should_apply = match settings.flatten_mode {
-                                FlattenMode::Both => true,
+                                FlattenMode::Both  => true,
                                 FlattenMode::Raise => current < target,
                                 FlattenMode::Lower => current > target,
                             };
                             if should_apply {
-                                let new_height = current + (target - current) * effect * 2.0;
+                                let new_height = current + (target - current) * (effect * 2.0).min(1.0);
                                 chunk_data.set_height(vx, vz, resolution, new_height);
                             }
                         }
                     }
                     TerrainBrushType::Noise => {
-                        // Add procedural noise (hold Shift to smooth instead)
                         if shift_held {
-                            // Smooth when shift held
+                            // Shift: Gaussian smooth
                             let current = chunk_data.get_height(vx, vz, resolution);
-                            let mut sum = current;
-                            let mut count = 1.0;
+                            let mut sum = 0.0;
+                            let mut count = 0.0;
                             for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
                                 for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
-                                    if nx != vx || nz != vz {
-                                        sum += chunk_data.get_height(nx, nz, resolution);
-                                        count += 1.0;
-                                    }
+                                    sum += chunk_data.get_height(nx, nz, resolution);
+                                    count += 1.0;
                                 }
                             }
                             let avg = sum / count;
-                            let new_height = current + (avg - current) * effect * 2.0;
-                            chunk_data.set_height(vx, vz, resolution, new_height);
+                            chunk_data.set_height(vx, vz, resolution, current + (avg - current) * effect);
                         } else {
-                            // Multi-octave noise for more natural results
-                            let noise1 = ((vertex_world_x * 0.1).sin() * (vertex_world_z * 0.1).cos()) * 0.5;
-                            let noise2 = ((vertex_world_x * 0.23).sin() * (vertex_world_z * 0.19).cos()) * 0.25;
-                            let noise3 = ((vertex_world_x * 0.47).sin() * (vertex_world_z * 0.41).cos()) * 0.125;
-                            let noise_val = noise1 + noise2 + noise3;
-                            let delta = effect * noise_val / height_range;
+                            // FBM value noise — much more natural than sin/cos
+                            let scale = settings.noise_scale.max(0.1);
+                            let n = fbm(
+                                vertex_world_x / scale,
+                                vertex_world_z / scale,
+                                settings.noise_octaves.clamp(1, 8),
+                                settings.noise_lacunarity,
+                                settings.noise_persistence,
+                                settings.noise_seed,
+                            );
+                            // Center around zero so noise adds AND removes height
+                            let centered = n - 0.5;
+                            let delta = effect * centered / height_range;
                             chunk_data.modify_height(vx, vz, resolution, delta);
                         }
                     }
                     TerrainBrushType::Erosion => {
-                        // Simple thermal erosion - move height towards neighbors
+                        // Thermal erosion: material slides down slopes steeper than talus angle.
+                        // This produces realistic scree slopes and mountain ridges.
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let mut lowest = current;
-                        for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
-                            for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
-                                let h = chunk_data.get_height(nx, nz, resolution);
-                                if h < lowest {
-                                    lowest = h;
+                        // Talus angle expressed in normalised height units per vertex spacing
+                        let talus = 0.004;
+                        let neighbors = [
+                            (vx.wrapping_sub(1), vz),
+                            (vx + 1,              vz),
+                            (vx,  vz.wrapping_sub(1)),
+                            (vx,  vz + 1),
+                        ];
+                        let mut total_excess = 0.0f32;
+                        let mut steep_count = 0u32;
+                        for (nx, nz) in neighbors {
+                            if nx < resolution && nz < resolution {
+                                let diff = current - chunk_data.get_height(nx, nz, resolution);
+                                if diff > talus {
+                                    total_excess += diff - talus;
+                                    steep_count += 1;
                                 }
                             }
                         }
-                        if current > lowest {
-                            let delta = (lowest - current) * effect * 0.5;
-                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        if steep_count > 0 {
+                            let erode = (total_excess / steep_count as f32) * effect * 0.6;
+                            chunk_data.modify_height(vx, vz, resolution, -erode);
                         }
                     }
                     TerrainBrushType::Hydro => {
-                        // Simple hydraulic erosion simulation
+                        // Hydraulic erosion: water flows downhill carrying sediment, carving channels.
+                        // High points surrounded by lower areas erode faster (positive drainage).
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let mut sum = 0.0;
-                        let mut count = 0.0;
-                        for nz in vz.saturating_sub(1)..=(vz + 1).min(resolution - 1) {
-                            for nx in vx.saturating_sub(1)..=(vx + 1).min(resolution - 1) {
-                                let h = chunk_data.get_height(nx, nz, resolution);
-                                if h < current {
-                                    sum += h;
-                                    count += 1.0;
+                        let neighbors = [
+                            (vx.wrapping_sub(1), vz),
+                            (vx + 1,              vz),
+                            (vx,  vz.wrapping_sub(1)),
+                            (vx,  vz + 1),
+                        ];
+                        let mut max_drop = 0.0f32;
+                        let mut drop_count = 0u32;
+                        for (nx, nz) in neighbors {
+                            if nx < resolution && nz < resolution {
+                                let drop = current - chunk_data.get_height(nx, nz, resolution);
+                                if drop > 0.001 {
+                                    max_drop += drop;
+                                    drop_count += 1;
                                 }
                             }
                         }
-                        if count > 0.0 {
-                            let avg_lower = sum / count;
-                            let delta = (avg_lower - current) * effect * 0.3;
-                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        if drop_count > 0 {
+                            // Erode proportional to water flow (steeper = more erosion)
+                            let sediment = (max_drop / drop_count as f32) * effect * 0.45;
+                            chunk_data.modify_height(vx, vz, resolution, -sediment);
                         }
                     }
                     TerrainBrushType::Ramp => {
-                        // Create a slope from brush edge towards center
-                        // Height increases as you get closer to center (Shift to invert)
+                        // Linear ramp from click height at brush edge to flat at center.
+                        // Shift inverts the ramp direction.
                         let t = if shift_held {
-                            dist / brush_radius // Higher at edges
+                            dist / brush_radius
                         } else {
-                            1.0 - (dist / brush_radius) // Higher at center
+                            1.0 - dist / brush_radius
                         };
                         let target = sculpt_state.flatten_start_height.unwrap_or(0.5);
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        // Blend towards target height weighted by distance
-                        let ramp_height = current + (target - current) * t;
-                        let new_height = current + (ramp_height - current) * effect * 2.0;
+                        let ramp_h = current + (target - current) * t;
+                        let new_height = current + (ramp_h - current) * (effect * 2.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Retop => {
-                        // Aggressive smoothing that normalizes the terrain more strongly
+                        // Wide-kernel aggressive smooth for retopologising noisy terrain.
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let mut sum = 0.0;
-                        let mut count = 0.0;
-                        // Sample a wider neighborhood for stronger effect
+                        let mut sum = 0.0f32;
+                        let mut count = 0.0f32;
                         for nz in vz.saturating_sub(2)..=(vz + 2).min(resolution - 1) {
                             for nx in vx.saturating_sub(2)..=(vx + 2).min(resolution - 1) {
                                 sum += chunk_data.get_height(nx, nz, resolution);
@@ -796,46 +881,101 @@ pub fn terrain_sculpt_system(
                             }
                         }
                         let avg = sum / count;
-                        // Stronger blend than regular smooth
-                        let new_height = current + (avg - current) * effect * 3.0;
+                        let new_height = current + (avg - current) * (effect * 3.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Terrace => {
+                        // Quantise height into discrete steps, creating Gaea-style terraces.
+                        // Sharpness controls how hard the step edges are.
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let steps = settings.terrace_steps.max(1) as f32;
+                        let sharpness = settings.terrace_sharpness.clamp(0.0, 1.0);
+
+                        let stepped = (current * steps).round() / steps;
+                        // Blend between soft and hard step based on sharpness
+                        let soft_target = stepped;
+                        let blend = effect * (0.5 + sharpness * 1.5).min(1.0);
+                        let new_height = current + (soft_target - current) * blend;
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Pinch => {
+                        // Pinch/sharpen ridges: pushes vertices away from the local average,
+                        // amplifying peaks and sharpening ridge lines.
+                        // Shift inverts: acts as a gentle smooth towards average.
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let left  = if vx > 0              { chunk_data.get_height(vx - 1, vz,     resolution) } else { current };
+                        let right = if vx < resolution - 1 { chunk_data.get_height(vx + 1, vz,     resolution) } else { current };
+                        let up    = if vz < resolution - 1 { chunk_data.get_height(vx,     vz + 1, resolution) } else { current };
+                        let down  = if vz > 0              { chunk_data.get_height(vx,     vz - 1, resolution) } else { current };
+                        let avg = (left + right + up + down) * 0.25;
+                        let deviation = current - avg;
+                        let target = if shift_held {
+                            // Smooth: pull towards average
+                            current - deviation * effect
+                        } else {
+                            // Pinch: push away from average (amplify ridges)
+                            current + deviation * effect * 0.5
+                        };
+                        chunk_data.set_height(vx, vz, resolution, target.clamp(0.0, 1.0));
+                    }
+                    TerrainBrushType::Relax => {
+                        // Laplacian relaxation: redistributes height more evenly than box smooth.
+                        // Ideal for removing small artefacts while preserving large features.
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let left  = if vx > 0              { chunk_data.get_height(vx - 1, vz,     resolution) } else { current };
+                        let right = if vx < resolution - 1 { chunk_data.get_height(vx + 1, vz,     resolution) } else { current };
+                        let up    = if vz < resolution - 1 { chunk_data.get_height(vx,     vz + 1, resolution) } else { current };
+                        let down  = if vz > 0              { chunk_data.get_height(vx,     vz - 1, resolution) } else { current };
+                        // Discrete Laplacian
+                        let laplacian = (left + right + up + down) * 0.25 - current;
+                        let new_height = current + laplacian * (effect * 2.5).min(1.0);
+                        chunk_data.set_height(vx, vz, resolution, new_height);
+                    }
+                    TerrainBrushType::Cliff => {
+                        // Cliff: amplifies the local slope gradient, steepening gentle inclines
+                        // into sharp cliff faces. Shift softens them back.
+                        let current = chunk_data.get_height(vx, vz, resolution);
+                        let left  = if vx > 0              { chunk_data.get_height(vx - 1, vz,     resolution) } else { current };
+                        let right = if vx < resolution - 1 { chunk_data.get_height(vx + 1, vz,     resolution) } else { current };
+                        let up    = if vz < resolution - 1 { chunk_data.get_height(vx,     vz + 1, resolution) } else { current };
+                        let down  = if vz > 0              { chunk_data.get_height(vx,     vz - 1, resolution) } else { current };
+                        let dh_dx = (right - left) * 0.5;
+                        let dh_dz = (up - down) * 0.5;
+                        let slope = (dh_dx * dh_dx + dh_dz * dh_dz).sqrt();
+                        if slope > 0.001 {
+                            let delta = if shift_held {
+                                -slope * effect * 0.4   // Soften cliffs
+                            } else {
+                                slope * effect * 0.4    // Steepen slopes
+                            };
+                            chunk_data.modify_height(vx, vz, resolution, delta);
+                        }
                     }
                     TerrainBrushType::Visibility => {
-                        // Lower terrain below visible range (simulates hiding)
-                        // Hold Shift to raise back up
                         let current = chunk_data.get_height(vx, vz, resolution);
                         let delta = if shift_held { effect * 0.5 } else { -effect * 0.5 };
-                        let new_height = current + delta;
-                        chunk_data.set_height(vx, vz, resolution, new_height);
+                        chunk_data.set_height(vx, vz, resolution, current + delta);
                     }
                     TerrainBrushType::Blueprint => {
-                        // Blueprint brush - set to flat reference height
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let target = 0.5; // Reference plane
-                        let new_height = current + (target - current) * effect * 2.0;
+                        let new_height = current + (0.5 - current) * (effect * 2.0).min(1.0);
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Mirror => {
-                        // Mirror effect - invert height around midpoint
                         let current = chunk_data.get_height(vx, vz, resolution);
-                        let midpoint = 0.5;
-                        let mirrored = midpoint + (midpoint - current);
+                        let mirrored = 1.0 - current;
                         let new_height = current + (mirrored - current) * effect;
                         chunk_data.set_height(vx, vz, resolution, new_height);
                     }
                     TerrainBrushType::Select => {
-                        // Select mode - highlight by slight raise (visual feedback)
-                        // In a full implementation this would mark vertices for batch operations
-                        let delta = effect * 0.01 / height_range;
+                        // Visual feedback only
+                        let delta = effect * 0.005 / height_range;
                         chunk_data.modify_height(vx, vz, resolution, delta);
                     }
                     TerrainBrushType::Copy => {
-                        // Copy mode - sample and store height (first click), paste on subsequent
-                        // Simplified: blend towards the flatten start height like stamp
                         if let Some(target) = sculpt_state.flatten_start_height {
                             let current = chunk_data.get_height(vx, vz, resolution);
-                            let new_height = current + (target - current) * effect;
-                            chunk_data.set_height(vx, vz, resolution, new_height);
+                            chunk_data.set_height(vx, vz, resolution, current + (target - current) * effect);
                         }
                     }
                 }

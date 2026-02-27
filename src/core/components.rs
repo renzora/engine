@@ -82,3 +82,9 @@ pub struct AudioListenerMarker;
 #[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
 pub struct NodeIcon(pub String);
+
+/// Optional label color for visual organization in the hierarchy panel.
+/// Set via right-click → Label Color. Stored as [R, G, B] bytes.
+#[derive(Component, Clone, Reflect, Serialize, Deserialize, Default)]
+#[reflect(Component, Default)]
+pub struct EntityLabelColor(pub [u8; 3]);

@@ -48,7 +48,7 @@ pub enum TerrainBrushType {
     Raise,
     /// Lower terrain height
     Lower,
-    /// Smooth terrain to average nearby heights
+    /// Smooth terrain to average nearby heights (Gaussian-weighted)
     Smooth,
     /// Flatten terrain to a specific height
     Flatten,
@@ -60,14 +60,22 @@ pub enum TerrainBrushType {
     Erase,
     /// Create ramps
     Ramp,
-    /// Thermal erosion
+    /// Thermal erosion - material slides down steep slopes
     Erosion,
-    /// Hydraulic erosion
+    /// Hydraulic erosion - water carves channels
     Hydro,
-    /// Add procedural noise
+    /// Add procedural FBM noise
     Noise,
     /// Retopologize/aggressive smooth
     Retop,
+    /// Create stepped terraces (Gaea/UE/Unity style)
+    Terrace,
+    /// Sharpen ridges and peaks (Unity Terrain Tools style)
+    Pinch,
+    /// Laplacian relaxation smoothing
+    Relax,
+    /// Steepen slopes into cliffs
+    Cliff,
     /// Toggle terrain visibility
     Visibility,
     /// Blueprint reference plane
@@ -95,6 +103,10 @@ impl TerrainBrushType {
             TerrainBrushType::Hydro => "Hydro",
             TerrainBrushType::Noise => "Noise",
             TerrainBrushType::Retop => "Retop",
+            TerrainBrushType::Terrace => "Terrace",
+            TerrainBrushType::Pinch => "Pinch",
+            TerrainBrushType::Relax => "Relax",
+            TerrainBrushType::Cliff => "Cliff",
             TerrainBrushType::Visibility => "Visibility",
             TerrainBrushType::Blueprint => "Blueprint",
             TerrainBrushType::Mirror => "Mirror",
@@ -117,6 +129,10 @@ impl TerrainBrushType {
             TerrainBrushType::Hydro,
             TerrainBrushType::Noise,
             TerrainBrushType::Retop,
+            TerrainBrushType::Terrace,
+            TerrainBrushType::Pinch,
+            TerrainBrushType::Relax,
+            TerrainBrushType::Cliff,
             TerrainBrushType::Visibility,
             TerrainBrushType::Blueprint,
             TerrainBrushType::Mirror,
@@ -277,6 +293,26 @@ pub struct TerrainSettings {
     pub flatten_mode: FlattenMode,
     /// Whether to use slope-based flattening
     pub use_slope_flatten: bool,
+
+    // --- Noise brush settings ---
+    /// World-space scale of noise features (higher = larger features)
+    pub noise_scale: f32,
+    /// Number of FBM octaves (more = finer detail)
+    pub noise_octaves: u32,
+    /// Lacunarity: frequency multiplier per octave (usually ~2.0)
+    pub noise_lacunarity: f32,
+    /// Persistence: amplitude multiplier per octave (usually 0.4–0.6)
+    pub noise_persistence: f32,
+    /// Noise seed for variation
+    pub noise_seed: u32,
+
+    // --- Terrace brush settings ---
+    /// Number of distinct terrace steps
+    pub terrace_steps: u32,
+    /// How hard/sharp the terrace edges are (0=soft blend, 1=hard step)
+    pub terrace_sharpness: f32,
+
+    // --- UI section visibility ---
     /// UI section visibility: Tool Settings
     pub section_tool_settings: bool,
     /// UI section visibility: Brush Settings
@@ -291,15 +327,22 @@ impl Default for TerrainSettings {
     fn default() -> Self {
         Self {
             tab: TerrainTab::default(),
-            brush_type: TerrainBrushType::Raise,
+            brush_type: TerrainBrushType::Sculpt,
             brush_shape: BrushShape::default(),
-            brush_radius: 5.0,
+            brush_radius: 20.0,
             brush_strength: 0.5,
             target_height: 0.5,
-            falloff: 1.0, // Smooth falloff
-            falloff_type: BrushFalloffType::default(),
+            falloff: 0.7,
+            falloff_type: BrushFalloffType::Smooth,
             flatten_mode: FlattenMode::default(),
             use_slope_flatten: false,
+            noise_scale: 30.0,
+            noise_octaves: 5,
+            noise_lacunarity: 2.0,
+            noise_persistence: 0.5,
+            noise_seed: 42,
+            terrace_steps: 8,
+            terrace_sharpness: 0.8,
             section_tool_settings: true,
             section_brush_settings: true,
             section_layers: false,

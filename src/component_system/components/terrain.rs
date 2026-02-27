@@ -103,16 +103,26 @@ fn inspect_terrain(
     _meshes: &mut Assets<Mesh>,
     _materials: &mut Assets<StandardMaterial>,
 ) -> bool {
-    let Some(mut data) = world.get_mut::<TerrainData>(entity) else {
+    // Read immutably to avoid triggering Changed<TerrainData> every frame.
+    // get_mut() marks the component changed even without any writes, which would
+    // cause terrain_data_changed_system to destroy and respawn all chunks each frame.
+    let Some(data) = world.get::<TerrainData>(entity) else {
         return false;
     };
+
+    let mut chunks_x = data.chunks_x;
+    let mut chunks_z = data.chunks_z;
+    let mut chunk_size = data.chunk_size;
+    let mut chunk_resolution = data.chunk_resolution;
+    let mut max_height = data.max_height;
+    let mut min_height = data.min_height;
     let mut changed = false;
 
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
             ui.label("Chunks X");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.chunks_x).speed(1.0).range(1..=64)).changed() {
+                if ui.add(egui::DragValue::new(&mut chunks_x).speed(1.0).range(1..=64)).changed() {
                     changed = true;
                 }
             });
@@ -123,7 +133,7 @@ fn inspect_terrain(
         ui.horizontal(|ui| {
             ui.label("Chunks Z");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.chunks_z).speed(1.0).range(1..=64)).changed() {
+                if ui.add(egui::DragValue::new(&mut chunks_z).speed(1.0).range(1..=64)).changed() {
                     changed = true;
                 }
             });
@@ -134,7 +144,7 @@ fn inspect_terrain(
         ui.horizontal(|ui| {
             ui.label("Chunk Size");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.chunk_size).speed(1.0).range(1.0..=256.0)).changed() {
+                if ui.add(egui::DragValue::new(&mut chunk_size).speed(1.0).range(1.0..=256.0)).changed() {
                     changed = true;
                 }
             });
@@ -145,7 +155,7 @@ fn inspect_terrain(
         ui.horizontal(|ui| {
             ui.label("Resolution");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.chunk_resolution).speed(1.0).range(3..=129)).changed() {
+                if ui.add(egui::DragValue::new(&mut chunk_resolution).speed(1.0).range(3..=129)).changed() {
                     changed = true;
                 }
             });
@@ -156,7 +166,7 @@ fn inspect_terrain(
         ui.horizontal(|ui| {
             ui.label("Max Height");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.max_height).speed(1.0).range(-1000.0..=1000.0)).changed() {
+                if ui.add(egui::DragValue::new(&mut max_height).speed(1.0).range(-1000.0..=1000.0)).changed() {
                     changed = true;
                 }
             });
@@ -167,12 +177,24 @@ fn inspect_terrain(
         ui.horizontal(|ui| {
             ui.label("Min Height");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::DragValue::new(&mut data.min_height).speed(1.0).range(-1000.0..=1000.0)).changed() {
+                if ui.add(egui::DragValue::new(&mut min_height).speed(1.0).range(-1000.0..=1000.0)).changed() {
                     changed = true;
                 }
             });
         });
     });
+
+    // Only take a mutable borrow (which marks Changed) when values actually changed
+    if changed {
+        if let Some(mut data) = world.get_mut::<TerrainData>(entity) {
+            data.chunks_x = chunks_x;
+            data.chunks_z = chunks_z;
+            data.chunk_size = chunk_size;
+            data.chunk_resolution = chunk_resolution;
+            data.max_height = max_height;
+            data.min_height = min_height;
+        }
+    }
 
     changed
 }

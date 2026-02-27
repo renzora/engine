@@ -5,7 +5,7 @@ use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, Cursor
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, GroupEntitiesCommand, queue_command};
 use crate::component_system::{ComponentCategory, ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset, spawn_component_as_node, preset_component_ids};
-use crate::core::{AudioListenerMarker, EditorEntity, NodeIcon, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
+use crate::core::{AudioListenerMarker, EditorEntity, EntityLabelColor, NodeIcon, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
 use crate::component_system::{
@@ -27,7 +27,7 @@ use egui_phosphor::regular::{
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
     GLOBE, PACKAGE, MAGNIFYING_GLASS, SPARKLE, CIRCLE,
-    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH, X,
+    TRIANGLE, POLYGON, DIAMOND, MOUNTAINS, SPEAKER_HIGH, X, PALETTE,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -54,6 +54,7 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub audio_listeners: Query<'w, 's, Entity, With<AudioListenerMarker>>,
     pub solari_lights: Query<'w, 's, Entity, With<SolariLightingData>>,
     pub node_icons: Query<'w, 's, &'static NodeIcon>,
+    pub label_colors: Query<'w, 's, &'static EntityLabelColor>,
     pub animations: Query<'w, 's, &'static AnimationData>,
     pub gltf_animations: Query<'w, 's, &'static mut GltfAnimations>,
     // Node explorer queries (read-only to avoid conflicts)
@@ -886,6 +887,13 @@ fn render_tree_node(
             ui.label(RichText::new(STAR).color(Color32::from_rgb(255, 200, 80)).size(10.0));
         }
 
+        // Label color dot
+        if let Ok(label_color) = hierarchy_queries.components.label_colors.get(entity) {
+            let [r, g, b] = label_color.0;
+            let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(8.0, ROW_HEIGHT), Sense::hover());
+            ui.painter().circle_filled(dot_rect.center(), 3.5, Color32::from_rgb(r, g, b));
+        }
+
         // Check if this entity is being renamed
         let is_renaming = hierarchy.renaming_entity == Some(entity);
 
@@ -1142,6 +1150,58 @@ fn render_tree_node(
                 ui.close_menu();
             }
         }
+
+        ui.separator();
+
+        // Label Color submenu
+        let current_label_color = hierarchy_queries.components.label_colors.get(entity).ok().map(|c| c.0);
+        ui.menu_button(format!("{} Label Color", PALETTE), |ui| {
+            ui.set_min_width(120.0);
+
+            // Clear color option
+            let clear_resp = ui.add_enabled(
+                current_label_color.is_some(),
+                egui::Button::new("✕  Clear"),
+            );
+            if clear_resp.clicked() {
+                commands.entity(entity).remove::<EntityLabelColor>();
+                ui.close_menu();
+            }
+
+            ui.separator();
+
+            const LABEL_COLORS: &[([u8; 3], &str)] = &[
+                ([220, 70,  70],  "Red"),
+                ([220, 140, 60],  "Orange"),
+                ([210, 195, 60],  "Yellow"),
+                ([70,  190, 100], "Green"),
+                ([60,  200, 200], "Cyan"),
+                ([80,  140, 220], "Blue"),
+                ([155, 80,  220], "Purple"),
+                ([220, 80,  180], "Pink"),
+                ([200, 200, 200], "White"),
+            ];
+
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
+                for ([r, g, b], name) in LABEL_COLORS {
+                    let color = Color32::from_rgb(*r, *g, *b);
+                    let is_current = current_label_color == Some([*r, *g, *b]);
+                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::click());
+                    ui.painter().rect_filled(swatch_rect.shrink(2.0), 3.0, color);
+                    if is_current {
+                        ui.painter().rect_stroke(swatch_rect.shrink(1.0), 3.0, Stroke::new(2.0, Color32::WHITE), egui::StrokeKind::Outside);
+                    } else if swatch_resp.hovered() {
+                        ui.painter().rect_stroke(swatch_rect.shrink(1.0), 3.0, Stroke::new(1.5, Color32::from_rgb(200, 200, 200)), egui::StrokeKind::Outside);
+                    }
+                    let swatch_resp = swatch_resp.on_hover_text(*name);
+                    if swatch_resp.clicked() {
+                        commands.entity(entity).insert(EntityLabelColor([*r, *g, *b]));
+                        ui.close_menu();
+                    }
+                }
+            });
+        });
 
         ui.separator();
 

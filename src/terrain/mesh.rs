@@ -3,8 +3,13 @@
 use bevy::prelude::*;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::RenderAssetUsages;
+use std::collections::HashMap;
 
+use crate::core::{EditorEntity, SceneNode};
+use crate::component_system::MaterialData;
 use super::{TerrainChunkData, TerrainChunkOf, TerrainData};
+
+const DEFAULT_TERRAIN_MATERIAL: &str = "assets/materials/checkerboard_default.material_bp";
 
 /// Generate a terrain mesh for a chunk
 pub fn generate_chunk_mesh(
@@ -151,5 +156,148 @@ pub fn terrain_chunk_mesh_update_system(
         }
 
         chunk.dirty = false;
+    }
+}
+
+/// Bilinear resampling of heightmap from one resolution to another.
+/// Preserves sculpted detail when resolution changes.
+fn resample_heights(old_heights: &[f32], old_res: u32, new_res: u32) -> Vec<f32> {
+    let new_size = (new_res * new_res) as usize;
+    let mut out = vec![0.2f32; new_size];
+
+    if old_heights.is_empty() || old_res < 2 || new_res < 2 {
+        return out;
+    }
+
+    for nz in 0..new_res {
+        for nx in 0..new_res {
+            let fx = nx as f32 / (new_res - 1) as f32 * (old_res - 1) as f32;
+            let fz = nz as f32 / (new_res - 1) as f32 * (old_res - 1) as f32;
+
+            let ox0 = (fx.floor() as u32).min(old_res - 1);
+            let oz0 = (fz.floor() as u32).min(old_res - 1);
+            let ox1 = (ox0 + 1).min(old_res - 1);
+            let oz1 = (oz0 + 1).min(old_res - 1);
+
+            let tx = fx.fract();
+            let tz = fz.fract();
+
+            let get = |x: u32, z: u32| -> f32 {
+                old_heights.get((z * old_res + x) as usize).copied().unwrap_or(0.2)
+            };
+
+            let h = get(ox0, oz0) * (1.0 - tx) * (1.0 - tz)
+                + get(ox1, oz0) * tx * (1.0 - tz)
+                + get(ox0, oz1) * (1.0 - tx) * tz
+                + get(ox1, oz1) * tx * tz;
+
+            out[(nz * new_res + nx) as usize] = h;
+        }
+    }
+
+    out
+}
+
+/// System that fully rebuilds terrain chunks whenever TerrainData is modified.
+///
+/// Handles all inspector changes: min/max height, chunk size, count, and resolution.
+/// Heights are bilinearly resampled when resolution changes to preserve sculpting.
+pub fn terrain_data_changed_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut std_materials: ResMut<Assets<StandardMaterial>>,
+    changed_terrain: Query<(Entity, &TerrainData), Changed<TerrainData>>,
+    added: Query<Entity, Added<TerrainData>>,
+    chunk_query: Query<(Entity, &TerrainChunkOf, &TerrainChunkData)>,
+) {
+    for (terrain_entity, terrain_data) in changed_terrain.iter() {
+        // Skip the very first insertion — chunks are spawned by add_terrain / spawn functions
+        if added.contains(terrain_entity) {
+            continue;
+        }
+
+        // Collect existing chunks for this terrain
+        let existing: Vec<(Entity, u32, u32, Vec<f32>)> = chunk_query
+            .iter()
+            .filter(|(_, of, _)| of.0 == terrain_entity)
+            .map(|(e, _, data)| (e, data.chunk_x, data.chunk_z, data.heights.clone()))
+            .collect();
+
+        if existing.is_empty() {
+            continue;
+        }
+
+        // Detect old resolution from existing chunk heightmap size
+        let old_res = {
+            let len = existing[0].3.len();
+            (len as f32).sqrt().round() as u32
+        };
+
+        // Build lookup: (cx, cz) → old heights
+        let old_map: HashMap<(u32, u32), Vec<f32>> = existing
+            .iter()
+            .map(|(_, cx, cz, h)| ((*cx, *cz), h.clone()))
+            .collect();
+
+        // Despawn all old chunk entities
+        for (chunk_entity, _, _, _) in &existing {
+            commands.entity(*chunk_entity).despawn();
+        }
+
+        // Create a fresh material for rebuilt chunks (blueprint system overrides on next frame)
+        let material = std_materials.add(StandardMaterial {
+            base_color: Color::srgb(0.7, 0.7, 0.7),
+            perceptual_roughness: 0.9,
+            ..default()
+        });
+
+        let new_res = terrain_data.chunk_resolution;
+
+        // Spawn new chunks with resampled or fresh heights
+        for cz in 0..terrain_data.chunks_z {
+            for cx in 0..terrain_data.chunks_x {
+                let heights = if let Some(old_h) = old_map.get(&(cx, cz)) {
+                    if old_res != new_res {
+                        resample_heights(old_h, old_res, new_res)
+                    } else {
+                        old_h.clone()
+                    }
+                } else {
+                    // Brand-new chunk (terrain grew) — initialize flat
+                    vec![0.2f32; (new_res * new_res) as usize]
+                };
+
+                let chunk_data = TerrainChunkData {
+                    chunk_x: cx,
+                    chunk_z: cz,
+                    heights,
+                    dirty: false, // mesh is generated immediately below
+                };
+
+                let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
+                let mesh_handle = meshes.add(mesh);
+                let origin = terrain_data.chunk_world_origin(cx, cz);
+
+                commands.spawn((
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(material.clone()),
+                    Transform::from_translation(origin),
+                    Visibility::default(),
+                    EditorEntity {
+                        name: format!("Chunk_{}_{}", cx, cz),
+                        tag: String::new(),
+                        visible: true,
+                        locked: false,
+                    },
+                    SceneNode,
+                    chunk_data,
+                    TerrainChunkOf(terrain_entity),
+                    ChildOf(terrain_entity),
+                    MaterialData {
+                        material_path: Some(DEFAULT_TERRAIN_MATERIAL.to_string()),
+                    },
+                ));
+            }
+        }
     }
 }

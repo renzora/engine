@@ -33,6 +33,8 @@ impl Plugin for TerrainPlugin {
                     terrain_sculpt_hover_system,
                     terrain_sculpt_system,
                     terrain_brush_cursor_system,
+                    // Respond to inspector changes BEFORE mesh update runs
+                    terrain_data_changed_system,
                     terrain_chunk_mesh_update_system,
                 )
                     .chain()

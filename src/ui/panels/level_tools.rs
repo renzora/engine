@@ -8,6 +8,7 @@ use egui_phosphor::regular::{
     WAVES, EQUALS, ARROW_FAT_LINE_UP, TREE,
     DROP, WAVEFORM, GRAPH, EYE, ARROWS_HORIZONTAL, CURSOR, COPY,
     CARET_DOWN, CARET_RIGHT, CIRCLE, SQUARE, DIAMOND,
+    STAIRS, ARROWS_IN_CARDINAL, ACTIVITY, CHART_BAR,
 };
 
 use crate::brushes::{BrushSettings, BrushType, BlockEditState};
@@ -129,19 +130,28 @@ fn render_sculpt_tools(
     accent: Color32,
     theme: &Theme,
 ) {
+    // 4 columns, 4 rows — the 16 most useful sculpt tools
     let tools: &[(TerrainBrushType, &str, &str)] = &[
-        (TerrainBrushType::Sculpt, MOUNTAINS, "Sculpt"),
-        (TerrainBrushType::Smooth, WAVES, "Smooth"),
-        (TerrainBrushType::Flatten, EQUALS, "Flatten"),
-        (TerrainBrushType::Ramp, ARROW_FAT_LINE_UP, "Ramp"),
-        (TerrainBrushType::Erosion, TREE, "Erosion"),
-        (TerrainBrushType::Hydro, DROP, "Hydro"),
-        (TerrainBrushType::Noise, WAVEFORM, "Noise"),
-        (TerrainBrushType::Retop, GRAPH, "Retop"),
-        (TerrainBrushType::Visibility, EYE, "Visibility"),
-        (TerrainBrushType::Mirror, ARROWS_HORIZONTAL, "Mirror"),
-        (TerrainBrushType::Select, CURSOR, "Select"),
-        (TerrainBrushType::Copy, COPY, "Copy"),
+        // Row 1: Core deformation
+        (TerrainBrushType::Sculpt,  MOUNTAINS,          "Sculpt"),
+        (TerrainBrushType::Smooth,  WAVES,              "Smooth"),
+        (TerrainBrushType::Flatten, EQUALS,             "Flatten"),
+        (TerrainBrushType::Ramp,    ARROW_FAT_LINE_UP,  "Ramp"),
+        // Row 2: Erosion & procedural
+        (TerrainBrushType::Erosion, TREE,               "Erosion"),
+        (TerrainBrushType::Hydro,   DROP,               "Hydro"),
+        (TerrainBrushType::Noise,   WAVEFORM,           "Noise"),
+        (TerrainBrushType::Terrace, STAIRS,             "Terrace"),
+        // Row 3: Refinement
+        (TerrainBrushType::Pinch,   ARROWS_IN_CARDINAL, "Pinch"),
+        (TerrainBrushType::Relax,   ACTIVITY,           "Relax"),
+        (TerrainBrushType::Retop,   GRAPH,              "Retop"),
+        (TerrainBrushType::Cliff,   CHART_BAR,          "Cliff"),
+        // Row 4: Utility
+        (TerrainBrushType::Visibility, EYE,             "Visibility"),
+        (TerrainBrushType::Mirror,  ARROWS_HORIZONTAL,  "Mirror"),
+        (TerrainBrushType::Select,  CURSOR,             "Select"),
+        (TerrainBrushType::Copy,    COPY,               "Copy"),
     ];
 
     render_tool_grid(ui, tools, &mut settings.brush_type, accent, theme);
@@ -487,7 +497,6 @@ fn render_tool_settings(
 
     // Flatten-specific settings
     if settings.brush_type == TerrainBrushType::Flatten {
-        // Flatten Mode
         ui.horizontal(|ui| {
             ui.allocate_ui_with_layout(
                 egui::vec2(label_width, 20.0),
@@ -496,37 +505,77 @@ fn render_tool_settings(
             );
             egui::ComboBox::from_id_salt("flatten_mode")
                 .selected_text(match settings.flatten_mode {
-                    FlattenMode::Both => "Both",
+                    FlattenMode::Both  => "Both",
                     FlattenMode::Raise => "Raise",
                     FlattenMode::Lower => "Lower",
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut settings.flatten_mode, FlattenMode::Both, "Both");
+                    ui.selectable_value(&mut settings.flatten_mode, FlattenMode::Both,  "Both");
                     ui.selectable_value(&mut settings.flatten_mode, FlattenMode::Raise, "Raise");
                     ui.selectable_value(&mut settings.flatten_mode, FlattenMode::Lower, "Lower");
                 });
         });
 
-        // Use Slope Flatten
         ui.horizontal(|ui| {
             ui.allocate_ui_with_layout(
                 egui::vec2(label_width, 20.0),
                 egui::Layout::left_to_right(egui::Align::Center),
-                |ui| { ui.label(RichText::new("Use Slope Flatten").color(text_secondary).size(11.0)); }
-            );
-            ui.checkbox(&mut settings.use_slope_flatten, "");
-        });
-
-        // Flatten Target
-        ui.horizontal(|ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(label_width, 20.0),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| { ui.label(RichText::new("Flatten Target").color(text_secondary).size(11.0)); }
+                |ui| { ui.label(RichText::new("Target Height").color(text_secondary).size(11.0)); }
             );
             ui.add(egui::DragValue::new(&mut settings.target_height)
-                .speed(0.01)
-                .range(0.0..=1.0));
+                .speed(0.005).range(0.0..=1.0));
+        });
+    }
+
+    // Noise-specific settings
+    if settings.brush_type == TerrainBrushType::Noise {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Noise Settings").color(text_primary).size(11.0));
+        ui.add_space(2.0);
+
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Scale").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.noise_scale).speed(0.5).range(1.0..=500.0));
+        });
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Octaves").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.noise_octaves).speed(0.1).range(1..=8));
+        });
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Lacunarity").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.noise_lacunarity).speed(0.05).range(1.0..=4.0));
+        });
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Persistence").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.noise_persistence).speed(0.01).range(0.1..=0.9));
+        });
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Seed").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.noise_seed).speed(1.0));
+        });
+    }
+
+    // Terrace-specific settings
+    if settings.brush_type == TerrainBrushType::Terrace {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Terrace Settings").color(text_primary).size(11.0));
+        ui.add_space(2.0);
+
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Steps").color(text_secondary).size(11.0)); });
+            ui.add(egui::DragValue::new(&mut settings.terrace_steps).speed(0.1).range(2..=32));
+        });
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(egui::vec2(label_width, 20.0), egui::Layout::left_to_right(egui::Align::Center),
+                |ui| { ui.label(RichText::new("Sharpness").color(text_secondary).size(11.0)); });
+            ui.add(egui::Slider::new(&mut settings.terrace_sharpness, 0.0..=1.0)
+                .custom_formatter(|v, _| format!("{:.2}", v)));
         });
     }
 
