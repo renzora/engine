@@ -5,7 +5,7 @@
 
 fn props() {
     #{
-        target_name: #{ type: "string", value: "Player", hint: "Entity to detect" },
+        target_name: #{ type: "entity", value: "Player", hint: "Entity to detect" },
         trigger_radius: #{ type: "float", value: 3.0, hint: "Detection radius" },
         one_shot: #{ type: "bool", value: false, hint: "Only trigger once" },
     }

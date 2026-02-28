@@ -245,6 +245,8 @@ pub enum ScriptValue {
     Int(i32),
     Bool(bool),
     String(String),
+    /// An entity reference stored as its name string
+    Entity(String),
     Vec2(Vec2),
     Vec3(Vec3),
     Color(Vec4),
@@ -257,6 +259,7 @@ impl ScriptValue {
             ScriptValue::Int(_) => "Int",
             ScriptValue::Bool(_) => "Bool",
             ScriptValue::String(_) => "String",
+            ScriptValue::Entity(_) => "Entity",
             ScriptValue::Vec2(_) => "Vec2",
             ScriptValue::Vec3(_) => "Vec3",
             ScriptValue::Color(_) => "Color",

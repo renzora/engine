@@ -115,6 +115,26 @@ fn parse_script_props(engine: &Engine, ast: &AST) -> Vec<ScriptVariableDefinitio
                     .and_then(|v| v.clone().try_cast::<ImmutableString>())
                     .map(|s| s.to_string());
 
+                // Check for explicit "entity" type — stored as a named string but shown with entity picker UI
+                let is_entity = prop_map.get("type")
+                    .and_then(|v| v.clone().try_cast::<ImmutableString>())
+                    .map(|s| s == "entity")
+                    .unwrap_or(false);
+
+                if is_entity {
+                    let entity_name = default_val.clone()
+                        .try_cast::<ImmutableString>()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+                    let mut def = ScriptVariableDefinition::new(name.clone(), ScriptValue::Entity(entity_name))
+                        .with_display_name(display_name);
+                    if let Some(h) = hint {
+                        def = def.with_hint(h);
+                    }
+                    props.push(def);
+                    continue;
+                }
+
                 if let Some(script_value) = dynamic_to_script_value(default_val) {
                     let mut def = ScriptVariableDefinition::new(name.clone(), script_value)
                         .with_display_name(display_name);
@@ -659,6 +679,7 @@ impl RhaiScriptEngine {
                 ScriptValue::Int(v) => Dynamic::from(*v as i64),
                 ScriptValue::Bool(v) => Dynamic::from(*v),
                 ScriptValue::String(v) => Dynamic::from(v.clone()),
+                ScriptValue::Entity(v) => Dynamic::from(v.clone()),
                 ScriptValue::Vec2(v) => {
                     let mut m = Map::new();
                     m.insert("x".into(), Dynamic::from(v.x as f64));

@@ -5,7 +5,7 @@
 
 fn props() {
     #{
-        target_name: #{ type: "string", value: "Player", hint: "Name of entity to look at" },
+        target_name: #{ type: "entity", value: "Player", hint: "Name of entity to look at" },
         speed: #{ type: "float", value: 0.0, hint: "Rotation speed (0 = instant)" },
     }
 }

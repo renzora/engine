@@ -5,7 +5,7 @@
 
 fn props() {
     #{
-        target_name: #{ type: "string", value: "Player", hint: "Name of entity to follow" },
+        target_name: #{ type: "entity", value: "Player", hint: "Name of entity to follow" },
         offset_x: #{ type: "float", value: 0.0, hint: "Offset X from target" },
         offset_y: #{ type: "float", value: 5.0, hint: "Offset Y from target" },
         offset_z: #{ type: "float", value: -10.0, hint: "Offset Z from target" },

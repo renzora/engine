@@ -11,7 +11,7 @@
 
 fn props() {
     #{
-        target:     #{ type: "string", value: "",   hint: "Entity name to orbit (leave empty to use center_x/y/z)" },
+        target:     #{ type: "entity", value: "",   hint: "Entity name to orbit (leave empty to use center_x/y/z)" },
         radius:     #{ type: "float",  value: 5.0,  hint: "Orbit radius" },
         height:     #{ type: "float",  value: 2.0,  hint: "Height above the target" },
         speed:      #{ type: "float",  value: 1.0,  hint: "Orbit speed (radians/sec)" },

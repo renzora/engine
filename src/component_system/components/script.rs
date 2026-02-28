@@ -5,7 +5,7 @@ use bevy_egui::egui;
 use serde_json::json;
 
 use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentRegistry};
-use crate::core::InspectorPanelRenderState;
+use crate::core::{EditorEntity, InspectorPanelRenderState};
 use crate::project::CurrentProject;
 use crate::scripting::{RhaiScriptEngine, ScriptComponent, ScriptValue};
 use crate::ui::{inline_property, property_row};
@@ -61,6 +61,7 @@ fn serialize_script(world: &World, entity: Entity) -> Option<serde_json::Value> 
                 ScriptValue::Int(i) => json!({ "type": "int", "value": i }),
                 ScriptValue::Bool(b) => json!({ "type": "bool", "value": b }),
                 ScriptValue::String(s) => json!({ "type": "string", "value": s }),
+                ScriptValue::Entity(s) => json!({ "type": "entity", "value": s }),
                 ScriptValue::Vec2(v) => json!({ "type": "vec2", "value": [v.x, v.y] }),
                 ScriptValue::Vec3(v) => json!({ "type": "vec3", "value": [v.x, v.y, v.z] }),
                 ScriptValue::Color(c) => json!({ "type": "color", "value": [c.x, c.y, c.z, c.w] }),
@@ -86,6 +87,7 @@ fn deserialize_variable(data: &serde_json::Value) -> Option<ScriptValue> {
         "int" => Some(ScriptValue::Int(val.as_i64()? as i32)),
         "bool" => Some(ScriptValue::Bool(val.as_bool()?)),
         "string" => Some(ScriptValue::String(val.as_str()?.to_string())),
+        "entity" => Some(ScriptValue::Entity(val.as_str()?.to_string())),
         "vec2" => {
             let arr = val.as_array()?;
             Some(ScriptValue::Vec2(Vec2::new(
@@ -244,6 +246,13 @@ fn inspect_script(
         } else {
             Vec::new()
         }
+    };
+
+    // Collect entity tags for entity prop autocomplete (before mutable borrow of world).
+    // Scripts look up entities by tag (EditorEntity.tag), not hierarchy display name.
+    let entity_names: Vec<String> = {
+        let mut q = world.query::<&EditorEntity>();
+        q.iter(world).map(|e| e.tag.clone()).filter(|t| !t.is_empty()).collect()
     };
 
     // Now get mutable access to the script component
@@ -579,6 +588,74 @@ fn inspect_script(
                                 let r = ui.text_edit_singleline(v);
                                 if r.changed() { changed = true; }
                                 r
+                            }
+                            ScriptValue::Entity(ref mut v) => {
+                                let ac_id = ui.id().with("entity_ac").with(var_row);
+                                let text_resp = ui.add(
+                                    egui::TextEdit::singleline(v)
+                                        .hint_text("Entity name...")
+                                        .desired_width(f32::INFINITY),
+                                );
+                                if text_resp.changed() { changed = true; }
+
+                                if text_resp.has_focus() || text_resp.lost_focus() {
+                                    let query = v.to_lowercase();
+                                    let filtered: Vec<&String> = entity_names.iter()
+                                        .filter(|n| query.is_empty() || n.to_lowercase().contains(&query))
+                                        .collect();
+
+                                    if !filtered.is_empty() {
+                                        let popup_pos = text_resp.rect.left_bottom() + egui::vec2(0.0, 2.0);
+                                        let popup_width = text_resp.rect.width().max(100.0);
+                                        let inactive_bg = theme_colors.widget_inactive_bg;
+                                        let hovered_bg = theme_colors.widget_hovered_bg;
+                                        let border_color = theme_colors.widget_border;
+
+                                        let area_resp = egui::Area::new(ac_id)
+                                            .order(egui::Order::Foreground)
+                                            .fixed_pos(popup_pos)
+                                            .show(ui.ctx(), |ui| -> Option<String> {
+                                                let mut selected = None;
+                                                ui.set_width(popup_width);
+                                                egui::Frame::new()
+                                                    .fill(inactive_bg)
+                                                    .stroke(egui::Stroke::new(1.0, border_color))
+                                                    .corner_radius(egui::CornerRadius::same(4))
+                                                    .inner_margin(egui::Margin::same(4))
+                                                    .show(ui, |ui| {
+                                                        egui::ScrollArea::vertical()
+                                                            .max_height(160.0)
+                                                            .id_salt(ac_id.with("scroll"))
+                                                            .show(ui, |ui| {
+                                                                ui.set_width(ui.available_width());
+                                                                for name in &filtered {
+                                                                    let resp = ui.add(
+                                                                        egui::Button::new(egui::RichText::new(name.as_str()).size(11.0))
+                                                                            .frame(false)
+                                                                            .min_size(egui::Vec2::new(ui.available_width(), 20.0)),
+                                                                    );
+                                                                    if resp.hovered() {
+                                                                        let [r, g, b, _] = hovered_bg.to_array();
+                                                                        ui.painter().rect_filled(resp.rect, 2.0, egui::Color32::from_rgba_unmultiplied(r, g, b, 80));
+                                                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                                    }
+                                                                    if resp.clicked() {
+                                                                        selected = Some(name.to_string());
+                                                                    }
+                                                                }
+                                                            });
+                                                    });
+                                                selected
+                                            });
+
+                                        if let Some(name) = area_resp.inner {
+                                            *v = name;
+                                            changed = true;
+                                        }
+                                    }
+                                }
+
+                                text_resp
                             }
                             ScriptValue::Vec2(ref mut v) => {
                                 let mut any_changed = false;
