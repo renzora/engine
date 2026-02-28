@@ -392,9 +392,9 @@ pub fn run_rhai_scripts(
 
             if let Some(rot) = ctx.new_rotation {
                 transform.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    rot.x.to_radians(),
+                    EulerRot::YXZ,
                     rot.y.to_radians(),
+                    rot.x.to_radians(),
                     rot.z.to_radians(),
                 );
             }
@@ -578,9 +578,9 @@ pub fn run_rhai_scripts(
             }
             if let Some(rot) = change.new_rotation {
                 parent_transform.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    rot.x.to_radians(),
+                    EulerRot::YXZ,
                     rot.y.to_radians(),
+                    rot.x.to_radians(),
                     rot.z.to_radians(),
                 );
             }
@@ -598,9 +598,9 @@ pub fn run_rhai_scripts(
             }
             if let Some(rot) = change.new_rotation {
                 child_transform.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    rot.x.to_radians(),
+                    EulerRot::YXZ,
                     rot.y.to_radians(),
+                    rot.x.to_radians(),
                     rot.z.to_radians(),
                 );
             }

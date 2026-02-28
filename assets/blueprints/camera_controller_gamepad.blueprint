@@ -1,7 +1,7 @@
 {
   "version": 1,
   "graph": {
-    "name": "Gamepad FPS Controller",
+    "name": "Camera Controller Gamepad",
     "graph_type": "Behavior",
     "nodes": [
       {
