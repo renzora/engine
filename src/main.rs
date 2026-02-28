@@ -811,6 +811,7 @@ fn load_editor_state(
     };
     settings.scripts_use_game_camera = state.settings.scripts_use_game_camera;
     settings.hide_cursor_in_play_mode = state.settings.hide_cursor_in_play_mode;
+    settings.selection_boundary_on_top = state.settings.selection_boundary_on_top;
 
     // Apply auto-save settings
     scene_state.auto_save_enabled = state.settings.auto_save_enabled;
@@ -900,6 +901,7 @@ fn save_editor_state_periodic(
             },
             scripts_use_game_camera: settings.scripts_use_game_camera,
             hide_cursor_in_play_mode: settings.hide_cursor_in_play_mode,
+            selection_boundary_on_top: settings.selection_boundary_on_top,
         },
         asset_browser: project::editor_state::AssetBrowserConfig {
             zoom: assets.zoom,

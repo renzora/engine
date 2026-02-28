@@ -737,6 +737,26 @@ fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: 
                         );
                     })
             });
+            settings_row(ui, 2, "Boundary", theme, |ui| {
+                egui::ComboBox::from_id_salt("selection_boundary_depth")
+                    .selected_text(if settings.selection_boundary_on_top {
+                        "On Top"
+                    } else {
+                        "Depth Tested"
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut settings.selection_boundary_on_top,
+                            true,
+                            "On Top",
+                        );
+                        ui.selectable_value(
+                            &mut settings.selection_boundary_on_top,
+                            false,
+                            "Depth Tested",
+                        );
+                    })
+            });
         },
     );
 }

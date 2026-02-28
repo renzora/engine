@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::math::Isometry3d;
-use bevy_mod_outline::{OutlineVolume, OutlineStencil};
+use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
 
 use crate::core::{EditorEntity, EditorSettings, SelectionHighlightMode, SelectionState, PlayModeState, PlayState};
 use crate::particles::HanabiEffectData;
@@ -45,7 +45,7 @@ pub fn update_selection_outlines(
     // Remove all existing outlines first
     for entity in outlined_entities.iter() {
         if let Ok(mut entity_commands) = commands.get_entity(entity) {
-            entity_commands.remove::<(OutlineVolume, OutlineStencil, SelectionOutline)>();
+            entity_commands.remove::<(OutlineVolume, OutlineStencil, OutlineMode, SelectionOutline)>();
         }
     }
 
@@ -78,6 +78,12 @@ pub fn update_selection_outlines(
         let is_primary = selection.selected_entity == Some(entity);
         let color = if is_primary { primary_color } else { secondary_color };
 
+        let outline_mode = if settings.selection_boundary_on_top {
+            OutlineMode::ExtrudeFlat
+        } else {
+            OutlineMode::ExtrudeReal
+        };
+
         // Add outline to the entity itself if it has a mesh
         if mesh_entities.get(entity).is_ok() {
             if let Ok(mut entity_commands) = commands.get_entity(entity) {
@@ -88,6 +94,7 @@ pub fn update_selection_outlines(
                         colour: color,
                     },
                     OutlineStencil::default(),
+                    outline_mode.clone(),
                     SelectionOutline,
                 ));
             }
@@ -99,6 +106,7 @@ pub fn update_selection_outlines(
             entity,
             color,
             outline_width,
+            outline_mode,
             &mesh_entities,
             &children_query,
         );
@@ -110,6 +118,7 @@ fn add_outline_to_children(
     entity: Entity,
     color: Color,
     width: f32,
+    outline_mode: OutlineMode,
     mesh_entities: &Query<Entity, With<Mesh3d>>,
     children_query: &Query<&Children>,
 ) {
@@ -125,12 +134,13 @@ fn add_outline_to_children(
                             colour: color,
                         },
                         OutlineStencil::default(),
+                        outline_mode.clone(),
                         SelectionOutline,
                     ));
                 }
             }
             // Recurse into children
-            add_outline_to_children(commands, child, color, width, mesh_entities, children_query);
+            add_outline_to_children(commands, child, color, width, outline_mode.clone(), mesh_entities, children_query);
         }
     }
 }

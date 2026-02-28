@@ -107,6 +107,9 @@ pub struct SettingsConfig {
     /// Hide and lock the cursor when entering play mode
     #[serde(default = "default_hide_cursor_in_play_mode")]
     pub hide_cursor_in_play_mode: bool,
+    /// Render selection boundary on top of geometry (true) or depth-tested (false)
+    #[serde(default = "default_selection_boundary_on_top")]
+    pub selection_boundary_on_top: bool,
 }
 
 fn default_selection_highlight_mode() -> String {
@@ -119,6 +122,10 @@ fn default_scripts_use_game_camera() -> bool {
 
 fn default_hide_cursor_in_play_mode() -> bool {
     true
+}
+
+fn default_selection_boundary_on_top() -> bool {
+    false
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -144,6 +151,7 @@ impl Default for SettingsConfig {
             selection_highlight_mode: default_selection_highlight_mode(),
             scripts_use_game_camera: default_scripts_use_game_camera(),
             hide_cursor_in_play_mode: default_hide_cursor_in_play_mode(),
+            selection_boundary_on_top: default_selection_boundary_on_top(),
         }
     }
 }

@@ -101,9 +101,31 @@ impl Plugin for GizmoPlugin {
         app.init_gizmo_group::<PhysicsVizGizmoGroup>();
         // Configure gizmos to render on the gizmo layer
         app.add_systems(Startup, (configure_gizmo_render_layers, meshes::setup_gizmo_meshes));
-        // Update mesh-based gizmos
-        app.add_systems(Update, (meshes::update_gizmo_mesh_transforms, meshes::update_gizmo_materials)
-            .run_if(in_state(crate::core::AppState::Editor)));
+        // Update mesh-based gizmos and selection boundary depth mode
+        app.add_systems(Update, (
+            meshes::update_gizmo_mesh_transforms,
+            meshes::update_gizmo_materials,
+            update_selection_gizmo_depth,
+        ).run_if(in_state(crate::core::AppState::Editor)));
+    }
+}
+
+/// Update SelectionGizmoGroup render layers based on the boundary depth setting.
+fn update_selection_gizmo_depth(
+    settings: Res<crate::core::EditorSettings>,
+    mut config_store: ResMut<GizmoConfigStore>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    let (selection_config, _) = config_store.config_mut::<SelectionGizmoGroup>();
+    if settings.selection_boundary_on_top {
+        selection_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+        selection_config.depth_bias = -1.0;
+    } else {
+        // Scene layer — participates in the main camera's depth buffer
+        selection_config.render_layers = RenderLayers::layer(0);
+        selection_config.depth_bias = 0.0;
     }
 }
 

@@ -249,6 +249,8 @@ pub struct EditorSettings {
     pub hide_cursor_in_play_mode: bool,
     /// Whether the settings overlay is open
     pub show_settings: bool,
+    /// Render the selection boundary on top of all geometry (true) or depth-tested (false)
+    pub selection_boundary_on_top: bool,
 }
 
 impl Default for EditorSettings {
@@ -277,6 +279,7 @@ impl Default for EditorSettings {
             scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
             show_settings: false,
+            selection_boundary_on_top: false,
         }
     }
 }
