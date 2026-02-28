@@ -101,10 +101,17 @@ pub struct SettingsConfig {
     /// Selection highlight mode: "outline" or "gizmo"
     #[serde(default = "default_selection_highlight_mode")]
     pub selection_highlight_mode: String,
+    /// Use game camera when running scripts (ScriptsOnly mode)
+    #[serde(default = "default_scripts_use_game_camera")]
+    pub scripts_use_game_camera: bool,
 }
 
 fn default_selection_highlight_mode() -> String {
     "outline".to_string()
+}
+
+fn default_scripts_use_game_camera() -> bool {
+    true
 }
 
 fn default_auto_save_enabled() -> bool {
@@ -128,6 +135,7 @@ impl Default for SettingsConfig {
             auto_save_enabled: default_auto_save_enabled(),
             auto_save_interval: default_auto_save_interval(),
             selection_highlight_mode: default_selection_highlight_mode(),
+            scripts_use_game_camera: default_scripts_use_game_camera(),
         }
     }
 }

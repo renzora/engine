@@ -7,6 +7,7 @@ mod commands;
 mod component_system;
 mod core;
 mod crash;
+mod locale;
 mod embedded;
 mod gizmo;
 mod import;
@@ -342,6 +343,7 @@ fn main() {
         .add_plugins(core::CorePlugin)
         .add_plugins(commands::CommandPlugin)
         .add_plugins(project::ProjectPlugin)
+        .add_plugins(locale::LocalePlugin)
         .add_plugins(component_system::ComponentSystemPlugin)
         .add_plugins(plugin_core::PluginCorePlugin)
         .add_plugins(component_system::RenzoraPhysicsPlugin::new(true)) // Always start paused; play mode unpauses
@@ -807,6 +809,7 @@ fn load_editor_state(
         "gizmo" => core::SelectionHighlightMode::Gizmo,
         _ => core::SelectionHighlightMode::Outline,
     };
+    settings.scripts_use_game_camera = state.settings.scripts_use_game_camera;
 
     // Apply auto-save settings
     scene_state.auto_save_enabled = state.settings.auto_save_enabled;
@@ -894,6 +897,7 @@ fn save_editor_state_periodic(
                 core::SelectionHighlightMode::Outline => "outline".to_string(),
                 core::SelectionHighlightMode::Gizmo => "gizmo".to_string(),
             },
+            scripts_use_game_camera: settings.scripts_use_game_camera,
         },
         asset_browser: project::editor_state::AssetBrowserConfig {
             zoom: assets.zoom,
