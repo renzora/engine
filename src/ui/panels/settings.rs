@@ -2,6 +2,7 @@ use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
 
 use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, MonoFont, SelectionHighlightMode, SettingsTab, SceneManagerState, UiFont, bindable_keys};
+use crate::locale::LocaleResource;
 use crate::plugin_core::{PluginHost, PluginSource};
 use crate::project::AppConfig;
 use renzora_theme::{Theme, ThemeManager};
@@ -12,6 +13,7 @@ use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
     TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE, ARROW_CLOCKWISE,
     DOWNLOAD_SIMPLE, CHECK_CIRCLE, CHECK, WARNING, FLOPPY_DISK, PUZZLE_PIECE,
+    TRANSLATE, FOLDER_OPEN, ARROWS_CLOCKWISE,
 };
 
 /// Width reserved for property labels
@@ -29,6 +31,7 @@ pub fn render_settings_content(
     update_dialog: &mut UpdateDialogState,
     scene_state: &mut SceneManagerState,
     plugin_host: &mut PluginHost,
+    locale: &mut LocaleResource,
 ) {
     // Clone the theme to avoid borrow conflicts with theme editor tab
     let theme_clone = theme_manager.active_theme.clone();
@@ -49,7 +52,7 @@ pub fn render_settings_content(
 
         // Tab content
         match settings.settings_tab {
-            SettingsTab::General => render_general_tab(ui, settings, scene_state, theme),
+            SettingsTab::General => render_general_tab(ui, settings, scene_state, theme, locale, app_config),
             SettingsTab::Viewport => render_viewport_tab(ui, settings, theme),
             SettingsTab::Shortcuts => render_shortcuts_tab(ui, keybindings, theme),
             SettingsTab::Theme => render_theme_tab(ui, theme_manager),
@@ -140,6 +143,13 @@ impl SettingsCategoryStyle {
         Self {
             accent_color: Color32::from_rgb(180, 140, 220),  // Purple
             header_bg: Color32::from_rgb(44, 38, 54),
+        }
+    }
+
+    fn language() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(100, 200, 170),  // Teal/green
+            header_bg: Color32::from_rgb(35, 50, 46),
         }
     }
 }
@@ -268,12 +278,12 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     let accent_color = theme.semantic.accent.to_color32();
 
     let tabs = [
-        (SettingsTab::General, DESKTOP, "General"),
-        (SettingsTab::Viewport, CUBE, "Viewport"),
-        (SettingsTab::Shortcuts, KEYBOARD, "Shortcuts"),
-        (SettingsTab::Theme, PALETTE, "Theme"),
-        (SettingsTab::Plugins, PUZZLE_PIECE, "Plugins"),
-        (SettingsTab::Updates, ARROW_CLOCKWISE, "Updates"),
+        (SettingsTab::General,   DESKTOP,         crate::locale::t("settings.tab.general")),
+        (SettingsTab::Viewport,  CUBE,             crate::locale::t("settings.tab.viewport")),
+        (SettingsTab::Shortcuts, KEYBOARD,         crate::locale::t("settings.tab.shortcuts")),
+        (SettingsTab::Theme,     PALETTE,          crate::locale::t("settings.tab.theme")),
+        (SettingsTab::Plugins,   PUZZLE_PIECE,     crate::locale::t("settings.tab.plugins")),
+        (SettingsTab::Updates,   ARROW_CLOCKWISE,  crate::locale::t("settings.tab.updates")),
     ];
 
     let tab_active_bg = theme.panels.tab_active.to_color32();
@@ -303,20 +313,28 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     });
 }
 
-fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_state: &mut SceneManagerState, theme: &Theme) {
+fn render_general_tab(
+    ui: &mut egui::Ui,
+    settings: &mut EditorSettings,
+    scene_state: &mut SceneManagerState,
+    theme: &Theme,
+    locale: &mut LocaleResource,
+    app_config: &mut AppConfig,
+) {
     let text_muted = theme.text.muted.to_color32();
+    let text_primary = theme.text.primary.to_color32();
 
     // Interface / Font Section
     render_settings_category(
         ui,
         TEXT_AA,
-        "Interface",
+        &crate::locale::t("settings.category.interface"),
         SettingsCategoryStyle::interface(),
         "settings_interface",
         true,
         theme,
         |ui| {
-            settings_row(ui, 0, "UI Font", theme, |ui| {
+            settings_row(ui, 0, &crate::locale::t("settings.row.ui_font"), theme, |ui| {
                 let prev = settings.ui_font;
                 egui::ComboBox::from_id_salt("ui_font_selector")
                     .selected_text(settings.ui_font.label())
@@ -330,7 +348,7 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
                 }
             });
 
-            settings_row(ui, 1, "Code Font", theme, |ui| {
+            settings_row(ui, 1, &crate::locale::t("settings.row.code_font"), theme, |ui| {
                 let prev = settings.mono_font;
                 egui::ComboBox::from_id_salt("mono_font_selector")
                     .selected_text(settings.mono_font.label())
@@ -344,11 +362,45 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
                 }
             });
 
-            settings_row(ui, 2, "Font Size", theme, |ui| {
+            settings_row(ui, 2, &crate::locale::t("settings.row.font_size"), theme, |ui| {
                 ui.add(egui::DragValue::new(&mut settings.font_size)
                     .range(10.0..=24.0)
                     .speed(0.5)
                     .suffix(" px"))
+            });
+
+            // Language selector
+            settings_row(ui, 3, &crate::locale::t("settings.row.language"), theme, |ui| {
+                let current_name = locale
+                    .available
+                    .iter()
+                    .find(|l| l.code == locale.current)
+                    .map(|l| l.name.clone())
+                    .unwrap_or_else(|| "English".to_string());
+
+                let mut changed_to: Option<String> = None;
+                egui::ComboBox::from_id_salt("language_selector")
+                    .selected_text(&current_name)
+                    .show_ui(ui, |ui| {
+                        let codes_and_names: Vec<(String, String)> = locale
+                            .available
+                            .iter()
+                            .map(|l| (l.code.clone(), l.name.clone()))
+                            .collect();
+                        for (code, name) in &codes_and_names {
+                            let is_selected = *code == locale.current;
+                            if ui.selectable_label(is_selected, name).clicked() && !is_selected {
+                                changed_to = Some(code.clone());
+                            }
+                        }
+                    });
+
+                if let Some(new_code) = changed_to {
+                    locale.load_locale(&new_code);
+                    crate::locale::set_active_locale(&locale.strings);
+                    app_config.language = new_code;
+                    let _ = app_config.save();
+                }
             });
         },
     );
@@ -357,24 +409,23 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
     render_settings_category(
         ui,
         FLOPPY_DISK,
-        "Auto Save",
+        &crate::locale::t("settings.category.auto_save"),
         SettingsCategoryStyle::auto_save(),
         "settings_auto_save",
         true,
         theme,
         |ui| {
-            settings_row(ui, 0, "Enabled", theme, |ui| {
+            settings_row(ui, 0, &crate::locale::t("settings.row.enabled"), theme, |ui| {
                 ui.checkbox(&mut scene_state.auto_save_enabled, "Auto-save when modified")
             });
 
-            settings_row(ui, 1, "Interval", theme, |ui| {
+            settings_row(ui, 1, &crate::locale::t("settings.row.interval"), theme, |ui| {
                 ui.horizontal(|ui| {
                     let response = ui.add(egui::DragValue::new(&mut scene_state.auto_save_interval)
                         .range(10.0..=600.0)
                         .speed(1.0)
                         .suffix(" sec"));
 
-                    // Show human-readable time
                     let mins = (scene_state.auto_save_interval / 60.0).floor() as i32;
                     let secs = (scene_state.auto_save_interval % 60.0) as i32;
                     let time_str = if mins > 0 {
@@ -393,13 +444,13 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
     render_settings_category(
         ui,
         VIDEO_CAMERA,
-        "Camera",
+        &crate::locale::t("settings.category.camera"),
         SettingsCategoryStyle::camera(),
         "settings_camera",
         true,
         theme,
         |ui| {
-            settings_row(ui, 0, "Move Speed", theme, |ui| {
+            settings_row(ui, 0, &crate::locale::t("settings.row.move_speed"), theme, |ui| {
                 ui.add(egui::DragValue::new(&mut settings.camera_move_speed)
                     .range(1.0..=50.0)
                     .speed(0.1))
@@ -411,13 +462,13 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
     render_settings_category(
         ui,
         WRENCH,
-        "Developer",
+        &crate::locale::t("settings.category.developer"),
         SettingsCategoryStyle::developer(),
         "settings_developer",
         true,
         theme,
         |ui| {
-            settings_row(ui, 0, "Dev Mode", theme, |ui| {
+            settings_row(ui, 0, &crate::locale::t("settings.row.dev_mode"), theme, |ui| {
                 ui.checkbox(&mut settings.dev_mode, "Enable plugin tools")
             });
         },
@@ -427,17 +478,170 @@ fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, scene_st
     render_settings_category(
         ui,
         CODE,
-        "Scripting",
+        &crate::locale::t("settings.category.scripting"),
         SettingsCategoryStyle::scripting(),
         "settings_scripting",
         true,
         theme,
         |ui| {
-            settings_row(ui, 0, "Hot Reload", theme, |ui| {
+            settings_row(ui, 0, &crate::locale::t("settings.row.hot_reload"), theme, |ui| {
                 ui.checkbox(&mut settings.script_rerun_on_ready_on_reload, "Re-run on_ready on hot reload")
+            });
+            settings_row(ui, 1, "Script Camera", theme, |ui| {
+                ui.checkbox(&mut settings.scripts_use_game_camera, "Use game camera when running scripts")
+            });
+            settings_row(ui, 2, "Cursor", theme, |ui| {
+                ui.checkbox(&mut settings.hide_cursor_in_play_mode, "Hide and lock cursor in play mode (Escape to exit)")
             });
         },
     );
+
+    // Language Packs Section
+    render_settings_category(
+        ui,
+        TRANSLATE,
+        &crate::locale::t("settings.category.language_packs"),
+        SettingsCategoryStyle::language(),
+        "settings_language_packs",
+        false,
+        theme,
+        |ui| {
+            render_language_packs_content(ui, locale, theme, text_primary, text_muted);
+        },
+    );
+}
+
+fn render_language_packs_content(
+    ui: &mut egui::Ui,
+    locale: &mut LocaleResource,
+    theme: &Theme,
+    text_primary: egui::Color32,
+    text_muted: egui::Color32,
+) {
+    let accent = theme.semantic.accent.to_color32();
+    let border = theme.widgets.border.to_color32();
+    let item_bg = theme.panels.item_bg.to_color32();
+
+    ui.add_space(4.0);
+
+    // ── Installed packs list ──────────────────────────────────────────────────
+    let has_user_packs = locale.available.iter().any(|l| !l.is_builtin);
+
+    if locale.available.is_empty() {
+        ui.label(egui::RichText::new(crate::locale::t("locale.packs.no_extra")).size(11.0).color(text_muted));
+    } else {
+        let packs: Vec<crate::locale::LocaleInfo> = locale.available.clone();
+        for pack in &packs {
+            egui::Frame::new()
+                .fill(item_bg)
+                .corner_radius(egui::CornerRadius::same(4))
+                .inner_margin(egui::Margin::symmetric(8, 5))
+                .stroke(egui::Stroke::new(1.0, border))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Language name
+                        ui.label(egui::RichText::new(&pack.name).size(12.0).strong().color(text_primary));
+
+                        ui.add_space(6.0);
+
+                        // Code badge
+                        ui.label(egui::RichText::new(format!("[{}]", pack.code)).size(11.0).color(text_muted));
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // Built-in / installed badge
+                            let (badge_text, badge_color) = if pack.is_builtin {
+                                (crate::locale::t("locale.packs.builtin"), text_muted)
+                            } else {
+                                (crate::locale::t("locale.packs.installed"), accent)
+                            };
+                            ui.label(egui::RichText::new(badge_text).size(10.0).color(badge_color));
+
+                            // Author + version
+                            if !pack.author.is_empty() {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(
+                                    format!("v{}  ·  {}", pack.version, pack.author)
+                                ).size(10.0).color(text_muted));
+                            }
+                        });
+                    });
+                });
+            ui.add_space(3.0);
+        }
+
+        if !has_user_packs {
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(crate::locale::t("locale.packs.no_extra")).size(11.0).color(text_muted));
+        }
+    }
+
+    ui.add_space(8.0);
+
+    // ── Buttons ───────────────────────────────────────────────────────────────
+    ui.horizontal(|ui| {
+        // Open packs folder
+        let open_btn = egui::Button::new(
+            egui::RichText::new(format!("{} {}", FOLDER_OPEN, crate::locale::t("locale.packs.open_folder")))
+                .size(12.0)
+                .color(text_primary),
+        )
+        .fill(item_bg)
+        .stroke(egui::Stroke::new(1.0, border))
+        .corner_radius(egui::CornerRadius::same(4))
+        .min_size(egui::Vec2::new(140.0, 26.0));
+
+        if ui.add(open_btn).clicked() {
+            if let Some(dir) = LocaleResource::user_locale_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("open").arg(&dir).spawn();
+                #[cfg(target_os = "linux")]
+                let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+            }
+        }
+
+        ui.add_space(6.0);
+
+        // Reload packs
+        let reload_btn = egui::Button::new(
+            egui::RichText::new(format!("{} {}", ARROWS_CLOCKWISE, crate::locale::t("locale.packs.reload")))
+                .size(12.0)
+                .color(text_primary),
+        )
+        .fill(item_bg)
+        .stroke(egui::Stroke::new(1.0, border))
+        .corner_radius(egui::CornerRadius::same(4))
+        .min_size(egui::Vec2::new(80.0, 26.0));
+
+        if ui.add(reload_btn).clicked() {
+            locale.discover_locales();
+        }
+    });
+
+    ui.add_space(8.0);
+
+    // ── Install instructions ──────────────────────────────────────────────────
+    ui.separator();
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(crate::locale::t("locale.packs.install_help")).size(11.0).color(text_muted));
+
+    if let Some(dir) = LocaleResource::user_locale_dir() {
+        let path_str = dir.to_string_lossy().to_string();
+        ui.add_space(2.0);
+        egui::Frame::new()
+            .fill(theme.surfaces.extreme.to_color32())
+            .corner_radius(egui::CornerRadius::same(4))
+            .inner_margin(egui::Margin::symmetric(8, 4))
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new(&path_str).size(11.0).color(accent).monospace());
+            });
+    }
+
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(crate::locale::t("locale.packs.format_help")).size(10.0).color(text_muted).italics());
+    ui.add_space(4.0);
 }
 
 fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {

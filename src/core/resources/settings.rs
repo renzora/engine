@@ -245,6 +245,8 @@ pub struct EditorSettings {
     pub script_rerun_on_ready_on_reload: bool,
     /// Use game camera when running scripts (ScriptsOnly mode)
     pub scripts_use_game_camera: bool,
+    /// Hide and lock the cursor when entering play mode
+    pub hide_cursor_in_play_mode: bool,
     /// Whether the settings overlay is open
     pub show_settings: bool,
 }
@@ -273,6 +275,7 @@ impl Default for EditorSettings {
             mono_font: MonoFont::default(),
             script_rerun_on_ready_on_reload: true,
             scripts_use_game_camera: true,
+            hide_cursor_in_play_mode: true,
             show_settings: false,
         }
     }

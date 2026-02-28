@@ -810,6 +810,7 @@ fn load_editor_state(
         _ => core::SelectionHighlightMode::Outline,
     };
     settings.scripts_use_game_camera = state.settings.scripts_use_game_camera;
+    settings.hide_cursor_in_play_mode = state.settings.hide_cursor_in_play_mode;
 
     // Apply auto-save settings
     scene_state.auto_save_enabled = state.settings.auto_save_enabled;
@@ -898,6 +899,7 @@ fn save_editor_state_periodic(
                 core::SelectionHighlightMode::Gizmo => "gizmo".to_string(),
             },
             scripts_use_game_camera: settings.scripts_use_game_camera,
+            hide_cursor_in_play_mode: settings.hide_cursor_in_play_mode,
         },
         asset_browser: project::editor_state::AssetBrowserConfig {
             zoom: assets.zoom,

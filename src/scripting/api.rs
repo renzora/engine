@@ -381,6 +381,21 @@ pub enum ScriptCommand {
     Destroy { entity: Entity },
 }
 
+/// Yaw (Y-axis rotation in degrees) of the active viewport camera, pre-computed for scripts.
+#[derive(Resource, Default)]
+pub struct ScriptCameraYaw(pub f32);
+
+/// System to update ScriptCameraYaw from the active viewport camera each frame.
+pub fn update_script_camera_yaw(
+    camera_query: Query<&Transform, With<crate::core::ViewportCamera>>,
+    mut camera_yaw: ResMut<ScriptCameraYaw>,
+) {
+    if let Ok(t) = camera_query.single() {
+        let (yaw, _, _) = t.rotation.to_euler(EulerRot::YXZ);
+        camera_yaw.0 = yaw.to_degrees();
+    }
+}
+
 /// System to update ScriptInput from Bevy's input resources.
 /// Uses raw KeyboardInput events so keyboard state is not affected by egui absorption.
 pub fn update_script_input(

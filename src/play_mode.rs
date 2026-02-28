@@ -5,10 +5,11 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use avian3d::prelude::*;
 
-use crate::core::{AppState, EditorEntity, PlayModeCamera, PlayModeState, PlayState, RuntimeConfig, ViewportCamera};
+use crate::core::{AppState, EditorEntity, EditorSettings, PlayModeCamera, PlayModeState, PlayState, RuntimeConfig, ViewportCamera};
 use crate::viewport::ViewportImage;
 use crate::component_system::{
     CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData, RuntimePhysics,
@@ -26,6 +27,7 @@ impl Plugin for PlayModePlugin {
                 handle_play_mode_input,
                 handle_play_mode_transitions,
                 handle_physics_transitions,
+                update_cursor_for_play_mode,
             )
                 .chain()
                 .run_if(in_state(AppState::Editor)),
@@ -74,6 +76,7 @@ fn handle_play_mode_transitions(
     mut editor_camera: Query<&mut Camera, With<ViewportCamera>>,
     viewport_image: Res<ViewportImage>,
     runtime_config: Option<Res<RuntimeConfig>>,
+    editor_settings: Res<EditorSettings>,
     // Physics queries
     physics_entities: Query<
         (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
@@ -92,22 +95,39 @@ fn handle_play_mode_transitions(
         spawn_play_mode_physics(&mut commands, &physics_entities);
     }
 
-    // Handle request to enter scripts-only mode (no camera switch)
+    // Handle request to enter scripts-only mode
     if play_mode.request_scripts_only {
         play_mode.request_scripts_only = false;
-        enter_scripts_only_mode(&mut commands, &mut play_mode, &physics_entities);
+        if editor_settings.scripts_use_game_camera {
+            enter_scripts_only_mode_game_camera(
+                &mut commands,
+                &mut play_mode,
+                &cameras,
+                &camera_rigs,
+                &mut editor_camera,
+                &viewport_image,
+                &physics_entities,
+            );
+        } else {
+            enter_scripts_only_mode(&mut commands, &mut play_mode, &physics_entities);
+        }
     }
 
     // Handle request to exit play mode
     if play_mode.request_stop {
         play_mode.request_stop = false;
 
-        // Check if we're in scripts-only mode (no camera cleanup needed)
         if play_mode.is_scripts_only() {
-            exit_scripts_only_mode(&mut commands, &mut play_mode, &runtime_physics_entities);
+            if play_mode.active_game_camera.is_some() {
+                // Scripts mode used the game camera — full cleanup
+                exit_play_mode(&mut commands, &mut play_mode, &play_mode_cameras, &mut editor_camera);
+                despawn_play_mode_physics(&mut commands, &runtime_physics_entities);
+            } else {
+                // Scripts mode used the editor camera — only physics cleanup
+                exit_scripts_only_mode(&mut commands, &mut play_mode, &runtime_physics_entities);
+            }
         } else {
             exit_play_mode(&mut commands, &mut play_mode, &play_mode_cameras, &mut editor_camera);
-            // Despawn physics components from all entities
             despawn_play_mode_physics(&mut commands, &runtime_physics_entities);
         }
     }
@@ -161,6 +181,69 @@ fn enter_scripts_only_mode(
 
     play_mode.state = PlayState::ScriptsOnly;
     console_success!("Scripts", "Scripts active - editor camera retained");
+}
+
+/// Enter scripts-only mode with the game camera active (same viewport as full play mode)
+fn enter_scripts_only_mode_game_camera(
+    commands: &mut Commands,
+    play_mode: &mut PlayModeState,
+    cameras: &Query<(Entity, &CameraNodeData, &Transform), Without<CameraRigData>>,
+    camera_rigs: &Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
+    editor_camera: &mut Query<&mut Camera, With<ViewportCamera>>,
+    viewport_image: &ViewportImage,
+    physics_entities: &Query<
+        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>),
+        Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+    >,
+) {
+    console_info!("Scripts", "Running scripts with game camera...");
+
+    spawn_play_mode_physics(commands, physics_entities);
+
+    let render_target = RenderTarget::Image(viewport_image.0.clone().into());
+
+    let default_camera = cameras.iter().find(|(_, data, _)| data.is_default_camera);
+    let default_rig = camera_rigs.iter().find(|(_, data, _)| data.is_default_camera);
+
+    let activated = if let Some((entity, data, _)) = default_camera {
+        Some((entity, data.fov, false))
+    } else if let Some((entity, data, _)) = default_rig {
+        Some((entity, data.fov, false))
+    } else if let Some((entity, data, _)) = cameras.iter().next() {
+        Some((entity, data.fov, false))
+    } else if let Some((entity, data, _)) = camera_rigs.iter().next() {
+        Some((entity, data.fov, false))
+    } else {
+        None
+    };
+
+    if let Some((entity, fov, _)) = activated {
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Msaa::Off,
+            Camera {
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                order: 1,
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: fov.to_radians(),
+                ..default()
+            }),
+            render_target,
+            PlayModeCamera,
+            ViewportCamera,
+        ));
+        for mut cam in editor_camera.iter_mut() {
+            cam.is_active = false;
+        }
+        play_mode.active_game_camera = Some(entity);
+        console_success!("Scripts", "Game camera activated (FOV: {:.0}°) - scripts running", fov);
+    } else {
+        console_warn!("Scripts", "No camera in scene - using editor camera");
+    }
+
+    play_mode.state = PlayState::ScriptsOnly;
 }
 
 /// Exit scripts-only mode
@@ -426,6 +509,28 @@ fn exit_play_mode(
 /// The sync systems (skybox, bloom, fog, etc.) only run on `Changed<EditorEntity>`.
 /// When play mode adds a new camera with `ViewportCamera`, the data hasn't changed,
 /// so the effects never get applied to the new camera. This system waits one frame
+/// Hide and lock the cursor when entering play mode; restore it when exiting.
+fn update_cursor_for_play_mode(
+    play_mode: Res<PlayModeState>,
+    settings: Res<EditorSettings>,
+    mut cursor_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    if !play_mode.is_changed() && !settings.is_changed() {
+        return;
+    }
+
+    let should_hide = settings.hide_cursor_in_play_mode && play_mode.is_in_play_mode();
+
+    if let Ok(mut cursor) = cursor_query.single_mut() {
+        cursor.visible = !should_hide;
+        cursor.grab_mode = if should_hide {
+            CursorGrabMode::Locked
+        } else {
+            CursorGrabMode::None
+        };
+    }
+}
+
 /// (for deferred commands to flush) then touches `EditorEntity` to trigger re-sync.
 fn resync_effects_on_play_mode(
     play_mode: Res<PlayModeState>,
@@ -442,7 +547,7 @@ fn resync_effects_on_play_mode(
     }
 
     // Schedule resync for next frame when play mode just started
-    if play_mode.is_changed() && play_mode.is_playing() {
+    if play_mode.is_changed() && (play_mode.is_playing() || play_mode.is_scripts_only()) {
         *pending_resync = true;
     }
 }

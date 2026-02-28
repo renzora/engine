@@ -69,6 +69,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<HealthCommandQueue>()
             .init_resource::<ParticleScriptCommandQueue>()
             .init_resource::<DeferredPropertyWrites>()
+            .init_resource::<ScriptCameraYaw>()
             // Configure system set ordering
             .configure_sets(
                 Update,
@@ -88,6 +89,7 @@ impl Plugin for ScriptingPlugin {
                 (
                     update_rhai_scripts_folder,
                     update_script_input,
+                    update_script_camera_yaw,
                     reset_scripts_on_play_start,
                     update_script_timers,
                 )
@@ -274,6 +276,7 @@ impl Plugin for RuntimeScriptingPlugin {
             .init_resource::<HealthCommandQueue>()
             .init_resource::<ParticleScriptCommandQueue>()
             .init_resource::<DeferredPropertyWrites>()
+            .init_resource::<ScriptCameraYaw>()
             // Configure system set ordering (no run_if conditions - always runs)
             .configure_sets(
                 Update,
@@ -289,6 +292,7 @@ impl Plugin for RuntimeScriptingPlugin {
                 Update,
                 (
                     update_script_input,
+                    update_script_camera_yaw,
                     update_script_timers,
                     collect_collision_events,
                 ).in_set(RuntimeScriptingSet::PreScript),

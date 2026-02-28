@@ -58,6 +58,8 @@ pub struct ScriptComponentQueries<'w, 's> {
     // Note: material_assets moved to ScriptCommandQueues as ResMut to avoid conflict
     // Sun data for scripting environment changes
     pub sun_data: Query<'w, 's, &'static mut crate::component_system::SunData>,
+    // Pre-computed camera yaw from the active viewport camera
+    pub script_camera_yaw: Res<'w, super::api::ScriptCameraYaw>,
 }
 
 /// Pending parent/child transform changes
@@ -106,7 +108,7 @@ pub fn run_rhai_scripts(
     let should_run = if runtime_mode.is_some() {
         true // Runtime mode - always run
     } else if let Some(ref pm) = play_mode {
-        pm.is_playing() // Editor mode - check play state
+        pm.is_scripts_running() // Editor mode - check play state
     } else {
         false // No mode resource - don't run
     };
@@ -160,6 +162,9 @@ pub fn run_rhai_scripts(
             }
         }
     }
+
+    // Pre-computed camera yaw from the active viewport camera (updated each frame in PreScript)
+    let camera_yaw_deg = component_queries.script_camera_yaw.0;
 
     for (entity, mut script_comp, mut transform, parent_ref, children_ref, dc) in scripts.iter_mut() {
         if dc.map_or(false, |d| d.is_disabled("script")) {
@@ -255,6 +260,7 @@ pub fn run_rhai_scripts(
             ctx.input_movement = input.get_movement_vector();
             ctx.mouse_position = input.mouse_position;
             ctx.mouse_delta = input.mouse_delta;
+            ctx.camera_yaw = camera_yaw_deg;
 
             // Keyboard state
             for (key, &pressed) in &input.keys_pressed {
@@ -1249,7 +1255,7 @@ pub fn populate_entity_data_store(world: &mut World) {
     let should_run = if world.get_resource::<RuntimeMode>().is_some() {
         true
     } else if let Some(pm) = world.get_resource::<PlayModeState>() {
-        pm.is_playing()
+        pm.is_scripts_running()
     } else {
         false
     };

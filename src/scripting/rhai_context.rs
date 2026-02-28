@@ -42,6 +42,8 @@ pub struct RhaiScriptContext {
     pub input_movement: Vec2,
     pub mouse_position: Vec2,
     pub mouse_delta: Vec2,
+    /// Yaw (Y-axis rotation in degrees) of the active viewport camera
+    pub camera_yaw: f32,
 
     // ===================
     // Input - Keyboard
@@ -206,6 +208,7 @@ impl RhaiScriptContext {
             input_movement: Vec2::ZERO,
             mouse_position: Vec2::ZERO,
             mouse_delta: Vec2::ZERO,
+            camera_yaw: 0.0,
             keys_pressed: HashMap::new(),
             keys_just_pressed: HashMap::new(),
             keys_just_released: HashMap::new(),

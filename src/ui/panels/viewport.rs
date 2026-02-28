@@ -10,7 +10,8 @@ use crate::viewport::Camera2DState;
 use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
-    ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
+    ARROWS_OUT_CARDINAL, ARROWS_COUNTER_CLOCKWISE, ARROWS_OUT_SIMPLE, CURSOR, MAGNET, CARET_DOWN,
+    ARROW_U_UP_LEFT, ARROW_U_UP_RIGHT,
     IMAGE, POLYGON, SUN, CLOUD, EYE, CUBE, VIDEO_CAMERA, STACK,
     COPY, CLIPBOARD, PLUS, TRASH, PALETTE, FILM_SCRIPT, FOLDER_PLUS, SCROLL, DOWNLOAD,
     CARET_RIGHT, BLUEPRINT, GRAPHICS_CARD, SPARKLE, PLAY, STOP, HAND, MAGNIFYING_GLASS,
@@ -62,8 +63,11 @@ pub fn render_viewport(
         ),
     );
 
+    // Hide editor overlays in fullscreen play mode OR when any play/scripts mode is active
+    let hide_overlays = in_play_mode || play_mode.is_in_play_mode();
+
     // In play mode, skip tabs/rulers and use full area as content
-    let content_rect = if in_play_mode {
+    let content_rect = if hide_overlays {
         full_viewport_rect
     } else {
         // Render viewport mode tabs at the top (with tools)
@@ -94,14 +98,15 @@ pub fn render_viewport(
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
-            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, in_play_mode, shape_library, settings);
+            render_viewport_content(ui, viewport, assets, orbit, gizmo, terrain_sculpt_state, viewport_texture_id, content_rect, hide_overlays, shape_library, settings);
         });
 
-    // Skip editor overlays in play mode
-    if !in_play_mode {
-        // Render vertical tool overlay in top-left of viewport content area
-        render_viewport_tool_overlay(ctx, gizmo, terrain_settings, play_mode, content_rect, theme);
+    // Always render play/stop button; skip other editor overlays in play mode
+    // When cursor is hidden in play mode, also hide the stop button (use Escape to exit)
+    let hide_stop_btn = settings.hide_cursor_in_play_mode && play_mode.is_in_play_mode();
+    render_viewport_tool_overlay(ctx, gizmo, terrain_settings, play_mode, command_history, content_rect, theme, hide_overlays, hide_stop_btn);
 
+    if !hide_overlays {
         // Render nav overlay (pan/zoom) on the right, below the axis gizmo
         if viewport.viewport_mode == ViewportMode::Mode3D {
             render_nav_overlay(ctx, viewport, orbit, content_rect, theme);
@@ -292,8 +297,11 @@ fn render_viewport_tool_overlay(
     gizmo: &mut GizmoState,
     terrain_settings: &mut TerrainSettings,
     play_mode: &mut PlayModeState,
+    command_history: &mut CommandHistory,
     content_rect: Rect,
     theme: &Theme,
+    hide_tools: bool,
+    hide_stop_btn: bool,
 ) {
     let btn_size = Vec2::new(36.0, 36.0);
     let btn_gap = 1.0_f32;
@@ -302,8 +310,8 @@ fn render_viewport_tool_overlay(
     let row_step = btn_size.y + btn_gap;
     let panel_w = btn_size.x * 2.0 + btn_gap + padding * 2.0;
     let in_terrain = gizmo.terrain_selected;
-    // Height: 2 base rows, plus divider + 6 terrain rows when a terrain is selected
-    let panel_h = row_step * 2.0 - btn_gap + padding * 2.0
+    // Height: 2 tool rows + divider + 1 undo/redo row, plus optional terrain rows
+    let panel_h = row_step * 3.0 - btn_gap + padding * 2.0 + divider_gap * 2.0 + 1.0
         + if in_terrain { divider_gap * 2.0 + 1.0 + row_step * 6.0 } else { 0.0 };
     let margin = 8.0_f32;
     let panel_pos = Pos2::new(content_rect.min.x + margin, content_rect.min.y + margin);
@@ -321,87 +329,141 @@ fn render_viewport_tool_overlay(
         Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 255)
     };
 
-    egui::Area::new(egui::Id::new("viewport_tool_overlay"))
-        .fixed_pos(panel_pos)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            ui.set_clip_rect(panel_rect);
+    if !hide_tools {
+        egui::Area::new(egui::Id::new("viewport_tool_overlay"))
+            .fixed_pos(panel_pos)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.set_clip_rect(panel_rect);
 
-            ui.painter().rect_filled(panel_rect, CornerRadius::same(5), panel_bg);
-            ui.painter().rect_stroke(panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
+                ui.painter().rect_filled(panel_rect, CornerRadius::same(5), panel_bg);
+                ui.painter().rect_stroke(panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
 
-            let col0_x = panel_pos.x + padding;
-            let col1_x = col0_x + btn_size.x + btn_gap;
-            let mut y = panel_pos.y + padding;
+                let col0_x = panel_pos.x + padding;
+                let col1_x = col0_x + btn_size.x + btn_gap;
+                let mut y = panel_pos.y + padding;
 
-            // Row 0: Select | Move
-            let is_select = gizmo.tool == EditorTool::Select;
-            let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), btn_size), CURSOR, is_select, active_color, inactive_color, hovered_color);
-            if r.clicked() { gizmo.tool = EditorTool::Select; }
-            r.on_hover_text("Select (Q)");
+                // Row 0: Select | Move
+                let is_select = gizmo.tool == EditorTool::Select;
+                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), btn_size), CURSOR, is_select, active_color, inactive_color, hovered_color);
+                if r.clicked() { gizmo.tool = EditorTool::Select; }
+                r.on_hover_text("Select (Q)");
 
-            let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
-            let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), btn_size), ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
-            if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Translate; }
-            r.on_hover_text("Move (W)");
-            y += row_step;
+                let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
+                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), btn_size), ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
+                if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Translate; }
+                r.on_hover_text("Move (W)");
+                y += row_step;
 
-            // Row 1: Rotate | Scale
-            let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
-            let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), btn_size), ARROW_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
-            if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Rotate; }
-            r.on_hover_text("Rotate (E)");
+                // Row 1: Rotate | Scale
+                let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
+                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), btn_size), ARROWS_COUNTER_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
+                if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Rotate; }
+                r.on_hover_text("Rotate (E)");
 
-            let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
-            let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), btn_size), ARROWS_OUT, is_scale, active_color, inactive_color, hovered_color);
-            if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Scale; }
-            r.on_hover_text("Scale (R)");
-            y += row_step;
+                let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
+                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), btn_size), ARROWS_OUT_SIMPLE, is_scale, active_color, inactive_color, hovered_color);
+                if r.clicked() { gizmo.tool = EditorTool::Transform; gizmo.mode = GizmoMode::Scale; }
+                r.on_hover_text("Scale (R)");
+                y += row_step;
 
-            // Terrain brush tools — only visible when TerrainSculpt is the active tool
-            if in_terrain {
-                // Divider
-                y += divider_gap - btn_gap; // compensate for the extra gap already added above
-                let divider_color = Color32::from_rgba_unmultiplied(border_color.r(), border_color.g(), border_color.b(), 80);
-                let divider_x0 = panel_pos.x + padding + 4.0;
-                let divider_x1 = panel_pos.x + panel_w - padding - 4.0;
-                ui.painter().line_segment([Pos2::new(divider_x0, y), Pos2::new(divider_x1, y)], Stroke::new(1.0, divider_color));
-                y += 1.0 + divider_gap;
-
-                let brush = terrain_settings.brush_type;
-                let terrain_tools: &[(TerrainBrushType, &str, &str)] = &[
-                    (TerrainBrushType::Sculpt,     MOUNTAINS,        "Sculpt"),
-                    (TerrainBrushType::Smooth,     WAVES,            "Smooth"),
-                    (TerrainBrushType::Flatten,    EQUALS,           "Flatten"),
-                    (TerrainBrushType::Ramp,       ARROW_FAT_LINE_UP,"Ramp"),
-                    (TerrainBrushType::Erosion,    TREE,             "Erosion"),
-                    (TerrainBrushType::Hydro,      DROP,             "Hydro"),
-                    (TerrainBrushType::Noise,      WAVEFORM,         "Noise"),
-                    (TerrainBrushType::Retop,      GRAPH,            "Retop"),
-                    (TerrainBrushType::Visibility, EYE,              "Visibility"),
-                    (TerrainBrushType::Mirror,     ARROWS_HORIZONTAL,"Mirror"),
-                    (TerrainBrushType::Select,     CURSOR,           "Select"),
-                    (TerrainBrushType::Copy,       COPY,             "Copy"),
-                ];
-
-                for (i, (brush_type, icon, label)) in terrain_tools.iter().enumerate() {
-                    let bx = col0_x + (i % 2) as f32 * (btn_size.x + btn_gap);
-                    let by = y + (i / 2) as f32 * row_step;
-                    let is_active = gizmo.tool == EditorTool::TerrainSculpt && brush == *brush_type;
-                    let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(bx, by), btn_size), icon, is_active, active_color, inactive_color, hovered_color);
-                    if r.clicked() {
-                        gizmo.tool = EditorTool::TerrainSculpt;
-                        terrain_settings.brush_type = *brush_type;
-                    }
-                    r.on_hover_text(*label);
+                // Divider before undo/redo
+                {
+                    y += divider_gap - btn_gap;
+                    let divider_color = Color32::from_rgba_unmultiplied(border_color.r(), border_color.g(), border_color.b(), 80);
+                    let divider_x0 = panel_pos.x + padding + 4.0;
+                    let divider_x1 = panel_pos.x + panel_w - padding - 4.0;
+                    ui.painter().line_segment([Pos2::new(divider_x0, y), Pos2::new(divider_x1, y)], Stroke::new(1.0, divider_color));
+                    y += 1.0 + divider_gap;
                 }
-            }
-        });
 
-    // Play button in its own panel below the tools (1-column width)
+                // Row 2: Undo | Redo (dimmed when unavailable)
+                let can_undo = command_history.can_undo();
+                let can_redo = command_history.can_redo();
+                let disabled_color = Color32::from_rgba_unmultiplied(inactive_color.r(), inactive_color.g(), inactive_color.b(), 80);
+                let disabled_icon_color = Color32::from_white_alpha(40);
+
+                let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), btn_size);
+                if can_undo {
+                    let r = viewport_tool_button(ui, undo_rect, ARROW_U_UP_LEFT, false, active_color, inactive_color, hovered_color);
+                    if r.clicked() { command_history.pending_undo += 1; }
+                    r.on_hover_text("Undo (Ctrl+Z)");
+                } else {
+                    ui.allocate_rect(undo_rect, Sense::hover());
+                    ui.painter().rect_filled(undo_rect, CornerRadius::same(3), disabled_color);
+                    ui.painter().text(undo_rect.center(), egui::Align2::CENTER_CENTER, ARROW_U_UP_LEFT, FontId::proportional(16.0), disabled_icon_color);
+                }
+
+                let redo_rect = Rect::from_min_size(Pos2::new(col1_x, y), btn_size);
+                if can_redo {
+                    let r = viewport_tool_button(ui, redo_rect, ARROW_U_UP_RIGHT, false, active_color, inactive_color, hovered_color);
+                    if r.clicked() { command_history.pending_redo += 1; }
+                    r.on_hover_text("Redo (Ctrl+Y)");
+                } else {
+                    ui.allocate_rect(redo_rect, Sense::hover());
+                    ui.painter().rect_filled(redo_rect, CornerRadius::same(3), disabled_color);
+                    ui.painter().text(redo_rect.center(), egui::Align2::CENTER_CENTER, ARROW_U_UP_RIGHT, FontId::proportional(16.0), disabled_icon_color);
+                }
+                y += row_step;
+
+                // Terrain brush tools — only visible when TerrainSculpt is the active tool
+                if in_terrain {
+                    // Divider
+                    y += divider_gap - btn_gap; // compensate for the extra gap already added above
+                    let divider_color = Color32::from_rgba_unmultiplied(border_color.r(), border_color.g(), border_color.b(), 80);
+                    let divider_x0 = panel_pos.x + padding + 4.0;
+                    let divider_x1 = panel_pos.x + panel_w - padding - 4.0;
+                    ui.painter().line_segment([Pos2::new(divider_x0, y), Pos2::new(divider_x1, y)], Stroke::new(1.0, divider_color));
+                    y += 1.0 + divider_gap;
+
+                    let brush = terrain_settings.brush_type;
+                    let terrain_tools: &[(TerrainBrushType, &str, &str)] = &[
+                        (TerrainBrushType::Sculpt,     MOUNTAINS,        "Sculpt"),
+                        (TerrainBrushType::Smooth,     WAVES,            "Smooth"),
+                        (TerrainBrushType::Flatten,    EQUALS,           "Flatten"),
+                        (TerrainBrushType::Ramp,       ARROW_FAT_LINE_UP,"Ramp"),
+                        (TerrainBrushType::Erosion,    TREE,             "Erosion"),
+                        (TerrainBrushType::Hydro,      DROP,             "Hydro"),
+                        (TerrainBrushType::Noise,      WAVEFORM,         "Noise"),
+                        (TerrainBrushType::Retop,      GRAPH,            "Retop"),
+                        (TerrainBrushType::Visibility, EYE,              "Visibility"),
+                        (TerrainBrushType::Mirror,     ARROWS_HORIZONTAL,"Mirror"),
+                        (TerrainBrushType::Select,     CURSOR,           "Select"),
+                        (TerrainBrushType::Copy,       COPY,             "Copy"),
+                    ];
+
+                    for (i, (brush_type, icon, label)) in terrain_tools.iter().enumerate() {
+                        let bx = col0_x + (i % 2) as f32 * (btn_size.x + btn_gap);
+                        let by = y + (i / 2) as f32 * row_step;
+                        let is_active = gizmo.tool == EditorTool::TerrainSculpt && brush == *brush_type;
+                        let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(bx, by), btn_size), icon, is_active, active_color, inactive_color, hovered_color);
+                        if r.clicked() {
+                            gizmo.tool = EditorTool::TerrainSculpt;
+                            terrain_settings.brush_type = *brush_type;
+                        }
+                        r.on_hover_text(*label);
+                    }
+                }
+            });
+    }
+
+    // Play button: hidden when cursor is locked in play mode (Escape to exit instead)
+    if hide_stop_btn {
+        return;
+    }
+
+    // Play button: below tools panel in edit mode, at top-left in play mode
     let play_panel_w = btn_size.x + padding * 2.0;
     let play_panel_h = btn_size.y + padding * 2.0;
-    let play_panel_pos = Pos2::new(panel_pos.x, panel_pos.y + panel_h + 4.0);
+    let play_panel_pos = if hide_tools {
+        // Bottom-center of the viewport — avoids clashing with top-left console logs
+        Pos2::new(
+            content_rect.center().x - play_panel_w / 2.0,
+            content_rect.max.y - play_panel_h - margin,
+        )
+    } else {
+        Pos2::new(panel_pos.x, panel_pos.y + panel_h + 4.0)
+    };
     let play_panel_rect = Rect::from_min_size(play_panel_pos, Vec2::new(play_panel_w, play_panel_h));
 
     let is_in_play_mode = play_mode.is_in_play_mode();

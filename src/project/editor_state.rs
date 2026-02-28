@@ -104,6 +104,9 @@ pub struct SettingsConfig {
     /// Use game camera when running scripts (ScriptsOnly mode)
     #[serde(default = "default_scripts_use_game_camera")]
     pub scripts_use_game_camera: bool,
+    /// Hide and lock the cursor when entering play mode
+    #[serde(default = "default_hide_cursor_in_play_mode")]
+    pub hide_cursor_in_play_mode: bool,
 }
 
 fn default_selection_highlight_mode() -> String {
@@ -111,6 +114,10 @@ fn default_selection_highlight_mode() -> String {
 }
 
 fn default_scripts_use_game_camera() -> bool {
+    true
+}
+
+fn default_hide_cursor_in_play_mode() -> bool {
     true
 }
 
@@ -136,6 +143,7 @@ impl Default for SettingsConfig {
             auto_save_interval: default_auto_save_interval(),
             selection_highlight_mode: default_selection_highlight_mode(),
             scripts_use_game_camera: default_scripts_use_game_camera(),
+            hide_cursor_in_play_mode: default_hide_cursor_in_play_mode(),
         }
     }
 }

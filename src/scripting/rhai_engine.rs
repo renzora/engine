@@ -519,6 +519,7 @@ impl RhaiScriptEngine {
         scope.push("mouse_y", ctx.mouse_position.y as f64);
         scope.push("mouse_delta_x", ctx.mouse_delta.x as f64);
         scope.push("mouse_delta_y", ctx.mouse_delta.y as f64);
+        scope.push("camera_yaw", ctx.camera_yaw as f64);
 
         // Gamepad
         scope.push("gamepad_left_x", ctx.gamepad_left_stick.x as f64);
