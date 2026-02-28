@@ -1993,7 +1993,14 @@ pub fn drag_surface_raycast_system(
         return;
     };
 
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+    // Disable early exit so we get all hits along the ray — without this, if the
+    // preview mesh is the closest hit it gets skipped but no further hits are
+    // returned, causing the position to flicker between the surface and the
+    // ground plane every other frame.
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings {
+        early_exit_test: &|_| false,
+        ..MeshRayCastSettings::default()
+    });
 
     // Find closest hit that isn't a preview entity
     for (hit_entity, hit) in hits.iter() {
