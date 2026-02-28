@@ -126,7 +126,7 @@ impl Default for UpdateState {
 }
 
 /// The current editor version — update this before each release to match the git tag
-pub const EDITOR_VERSION: &str = "r1-alpha2";
+pub const EDITOR_VERSION: &str = "r1-alpha3";
 
 /// Get the current editor version
 pub fn current_version() -> &'static str {

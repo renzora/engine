@@ -128,7 +128,7 @@ fn find_download_asset(assets: &[GitHubAsset]) -> (Option<String>, Option<String
     (None, None)
 }
 
-/// Parsed version from tag format like "r1-alpha2", "r1-beta1", "r1", "r2-alpha1"
+/// Parsed version from tag format like "r1-alpha3", "r1-beta1", "r1", "r2-alpha1"
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedVersion {
     release: u32,
@@ -163,7 +163,7 @@ impl Ord for ParsedVersion {
 }
 
 impl ParsedVersion {
-    /// Parse a version string like "r1-alpha2", "r1-beta1", "r1"
+    /// Parse a version string like "r1-alpha3", "r1-beta1", "r1"
     fn parse(s: &str) -> Option<Self> {
         let s = s.trim_start_matches('v');
         let s = s.strip_prefix('r')?;
@@ -219,10 +219,10 @@ mod tests {
     #[test]
     fn test_version_comparison() {
         // Same release, higher alpha
-        assert!(is_newer_version("r1-alpha3", "r1-alpha2"));
-        assert!(!is_newer_version("r1-alpha2", "r1-alpha3"));
+        assert!(is_newer_version("r1-alpha4", "r1-alpha3"));
+        assert!(!is_newer_version("r1-alpha3", "r1-alpha4"));
         // Same version
-        assert!(!is_newer_version("r1-alpha2", "r1-alpha2"));
+        assert!(!is_newer_version("r1-alpha3", "r1-alpha3"));
         // Higher release
         assert!(is_newer_version("r2-alpha1", "r1-alpha3"));
         // Stable is newer than pre-release
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_version_parsing() {
-        assert!(ParsedVersion::parse("r1-alpha2").is_some());
+        assert!(ParsedVersion::parse("r1-alpha3").is_some());
         assert!(ParsedVersion::parse("r1-beta1").is_some());
         assert!(ParsedVersion::parse("r1").is_some());
         assert!(ParsedVersion::parse("r10-alpha15").is_some());
