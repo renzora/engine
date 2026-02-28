@@ -394,7 +394,7 @@ pub fn render_status_bar(
                     ui.spacing_mut().item_spacing.x = 16.0;
 
                     // Version text (rightmost)
-                    ui.label(RichText::new("Renzora r1-alpha3").size(11.0).color(text_color));
+                    ui.label(RichText::new("Renzora r1-alpha4").size(11.0).color(text_color));
 
                     // Theme picker dropup
                     let theme_popup_id = ui.id().with("theme_picker_popup");

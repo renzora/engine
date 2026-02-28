@@ -1202,7 +1202,7 @@ pub fn render_splash_title_bar(
                 theme.text.primary.to_color32().gamma_multiply(0.8),
             );
             
-            let version_text = "r1-alpha3".to_string();
+            let version_text = "r1-alpha4".to_string();
             let version_galley = painter.layout_no_wrap(
                 version_text.clone(),
                 egui::FontId::monospace(14.0),
