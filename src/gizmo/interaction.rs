@@ -68,18 +68,19 @@ pub fn gizmo_hover_system(
     };
 
     let pos = obj_transform.translation;
+    let gs = gizmo.gizmo_scale;
 
     match gizmo.mode {
         GizmoMode::Translate => {
             // Check hits with priority: planes > axes > center
             // Check plane handles (small squares)
-            let plane_center_xy = pos + Vec3::new(GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET, 0.0);
-            let plane_center_xz = pos + Vec3::new(GIZMO_PLANE_OFFSET, 0.0, GIZMO_PLANE_OFFSET);
-            let plane_center_yz = pos + Vec3::new(0.0, GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET);
+            let plane_center_xy = pos + Vec3::new(GIZMO_PLANE_OFFSET * gs, GIZMO_PLANE_OFFSET * gs, 0.0);
+            let plane_center_xz = pos + Vec3::new(GIZMO_PLANE_OFFSET * gs, 0.0, GIZMO_PLANE_OFFSET * gs);
+            let plane_center_yz = pos + Vec3::new(0.0, GIZMO_PLANE_OFFSET * gs, GIZMO_PLANE_OFFSET * gs);
 
-            let xy_hit = ray_quad_intersection(&ray, plane_center_xy, Vec3::Z, GIZMO_PLANE_SIZE * 0.5);
-            let xz_hit = ray_quad_intersection(&ray, plane_center_xz, Vec3::Y, GIZMO_PLANE_SIZE * 0.5);
-            let yz_hit = ray_quad_intersection(&ray, plane_center_yz, Vec3::X, GIZMO_PLANE_SIZE * 0.5);
+            let xy_hit = ray_quad_intersection(&ray, plane_center_xy, Vec3::Z, GIZMO_PLANE_SIZE * gs * 0.5);
+            let xz_hit = ray_quad_intersection(&ray, plane_center_xz, Vec3::Y, GIZMO_PLANE_SIZE * gs * 0.5);
+            let yz_hit = ray_quad_intersection(&ray, plane_center_yz, Vec3::X, GIZMO_PLANE_SIZE * gs * 0.5);
 
             // Find closest plane hit
             let mut best_plane: Option<(DragAxis, f32)> = None;
@@ -103,19 +104,20 @@ pub fn gizmo_hover_system(
             }
 
             // Check center cube
-            if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE).is_some() {
+            if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE * gs).is_some() {
                 gizmo.hovered_axis = Some(DragAxis::Free);
                 return;
             }
 
             // Check distance to each axis
-            let x_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::X * GIZMO_SIZE);
-            let y_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Y * GIZMO_SIZE);
-            let z_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Z * GIZMO_SIZE);
+            let effective_size = GIZMO_SIZE * gs;
+            let x_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::X * effective_size);
+            let y_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Y * effective_size);
+            let z_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Z * effective_size);
 
             let min_dist = x_dist.min(y_dist).min(z_dist);
 
-            if min_dist < GIZMO_PICK_THRESHOLD {
+            if min_dist < GIZMO_PICK_THRESHOLD * gs {
                 if (x_dist - min_dist).abs() < 0.001 {
                     gizmo.hovered_axis = Some(DragAxis::X);
                 } else if (y_dist - min_dist).abs() < 0.001 {
@@ -127,8 +129,8 @@ pub fn gizmo_hover_system(
         }
         GizmoMode::Rotate => {
             // Check distance to each rotation circle
-            let radius = GIZMO_SIZE * 0.7;
-            let threshold = GIZMO_PICK_THRESHOLD * 1.5;
+            let radius = GIZMO_SIZE * gs * 0.7;
+            let threshold = GIZMO_PICK_THRESHOLD * gs * 1.5;
 
             let x_dist = ray_to_circle_distance(&ray, pos, Vec3::X, radius);
             let y_dist = ray_to_circle_distance(&ray, pos, Vec3::Y, radius);
@@ -148,13 +150,14 @@ pub fn gizmo_hover_system(
         }
         GizmoMode::Scale => {
             // Check distance to each axis (same as translate but without planes)
-            let x_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::X * GIZMO_SIZE);
-            let y_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Y * GIZMO_SIZE);
-            let z_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Z * GIZMO_SIZE);
+            let effective_size = GIZMO_SIZE * gs;
+            let x_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::X * effective_size);
+            let y_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Y * effective_size);
+            let z_dist = ray_to_axis_distance(&ray, pos, pos + Vec3::Z * effective_size);
 
             let min_dist = x_dist.min(y_dist).min(z_dist);
 
-            if min_dist < GIZMO_PICK_THRESHOLD {
+            if min_dist < GIZMO_PICK_THRESHOLD * gs {
                 if (x_dist - min_dist).abs() < 0.001 {
                     gizmo.hovered_axis = Some(DragAxis::X);
                 } else if (y_dist - min_dist).abs() < 0.001 {
@@ -165,7 +168,7 @@ pub fn gizmo_hover_system(
             }
 
             // Check center cube for uniform scale
-            if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE).is_some() {
+            if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE * gs).is_some() {
                 gizmo.hovered_axis = Some(DragAxis::Free);
             }
         }

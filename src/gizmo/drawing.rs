@@ -264,7 +264,8 @@ pub fn draw_selection_gizmo(
         z_base
     };
 
-    let gizmo_size = GIZMO_SIZE;
+    let gs = gizmo_state.gizmo_scale;
+    let gizmo_size = GIZMO_SIZE * gs;
 
     match gizmo_state.mode {
         GizmoMode::Translate => {
@@ -274,24 +275,24 @@ pub fn draw_selection_gizmo(
             let xz_color = if active_axis == Some(DragAxis::XZ) { highlight } else { Color::srgba(0.9, 0.2, 0.9, 0.9) };
             let yz_color = if active_axis == Some(DragAxis::YZ) { highlight } else { Color::srgba(0.2, 0.9, 0.9, 0.9) };
 
-            let plane_half = GIZMO_PLANE_SIZE * 0.5;
+            let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
 
             // XY plane handle (wireframe square)
-            let xy_center = pos + Vec3::new(GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET, 0.0);
+            let xy_center = pos + Vec3::new(GIZMO_PLANE_OFFSET * gs, GIZMO_PLANE_OFFSET * gs, 0.0);
             gizmos.line(xy_center + Vec3::new(-plane_half, -plane_half, 0.0), xy_center + Vec3::new(plane_half, -plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(plane_half, -plane_half, 0.0), xy_center + Vec3::new(plane_half, plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(plane_half, plane_half, 0.0), xy_center + Vec3::new(-plane_half, plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(-plane_half, plane_half, 0.0), xy_center + Vec3::new(-plane_half, -plane_half, 0.0), xy_color);
 
             // XZ plane handle (wireframe square)
-            let xz_center = pos + Vec3::new(GIZMO_PLANE_OFFSET, 0.0, GIZMO_PLANE_OFFSET);
+            let xz_center = pos + Vec3::new(GIZMO_PLANE_OFFSET * gs, 0.0, GIZMO_PLANE_OFFSET * gs);
             gizmos.line(xz_center + Vec3::new(-plane_half, 0.0, -plane_half), xz_center + Vec3::new(plane_half, 0.0, -plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(plane_half, 0.0, -plane_half), xz_center + Vec3::new(plane_half, 0.0, plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(plane_half, 0.0, plane_half), xz_center + Vec3::new(-plane_half, 0.0, plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(-plane_half, 0.0, plane_half), xz_center + Vec3::new(-plane_half, 0.0, -plane_half), xz_color);
 
             // YZ plane handle (wireframe square)
-            let yz_center = pos + Vec3::new(0.0, GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET);
+            let yz_center = pos + Vec3::new(0.0, GIZMO_PLANE_OFFSET * gs, GIZMO_PLANE_OFFSET * gs);
             gizmos.line(yz_center + Vec3::new(0.0, -plane_half, -plane_half), yz_center + Vec3::new(0.0, plane_half, -plane_half), yz_color);
             gizmos.line(yz_center + Vec3::new(0.0, plane_half, -plane_half), yz_center + Vec3::new(0.0, plane_half, plane_half), yz_color);
             gizmos.line(yz_center + Vec3::new(0.0, plane_half, plane_half), yz_center + Vec3::new(0.0, -plane_half, plane_half), yz_color);
@@ -312,15 +313,15 @@ pub fn draw_selection_gizmo(
         GizmoMode::Scale => {
             // X axis with box
             gizmos.line(pos, pos + Vec3::X * gizmo_size, x_color);
-            gizmos.cube(Transform::from_translation(pos + Vec3::X * gizmo_size).with_scale(Vec3::splat(0.15)), x_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::X * gizmo_size).with_scale(Vec3::splat(0.15 * gs)), x_color);
 
             // Y axis with box
             gizmos.line(pos, pos + Vec3::Y * gizmo_size, y_color);
-            gizmos.cube(Transform::from_translation(pos + Vec3::Y * gizmo_size).with_scale(Vec3::splat(0.15)), y_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::Y * gizmo_size).with_scale(Vec3::splat(0.15 * gs)), y_color);
 
             // Z axis with box
             gizmos.line(pos, pos + Vec3::Z * gizmo_size, z_color);
-            gizmos.cube(Transform::from_translation(pos + Vec3::Z * gizmo_size).with_scale(Vec3::splat(0.15)), z_color);
+            gizmos.cube(Transform::from_translation(pos + Vec3::Z * gizmo_size).with_scale(Vec3::splat(0.15 * gs)), z_color);
         }
     }
 

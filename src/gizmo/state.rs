@@ -268,6 +268,8 @@ pub struct GizmoState {
     pub snap_target_position: Option<Vec3>,
     /// Whether a terrain entity is currently selected (shows terrain toolbar)
     pub terrain_selected: bool,
+    /// Screen-space scale factor so the gizmo appears the same size regardless of camera distance
+    pub gizmo_scale: f32,
 }
 
 impl Default for GizmoState {
@@ -291,6 +293,7 @@ impl Default for GizmoState {
             snap_target: SnapTarget::default(),
             snap_target_position: None,
             terrain_selected: false,
+            gizmo_scale: 1.0,
         }
     }
 }

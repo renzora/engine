@@ -5,7 +5,7 @@ use bevy::camera::visibility::RenderLayers;
 
 use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, GIZMO_RENDER_LAYER, GIZMO_SIZE};
-use crate::core::{EditorSettings, SelectionHighlightMode, SelectionState};
+use crate::core::{EditorSettings, SelectionHighlightMode, SelectionState, ViewportCamera};
 
 /// Marker component for gizmo mesh entities
 #[derive(Component)]
@@ -268,14 +268,18 @@ pub fn setup_gizmo_meshes(
 #[derive(Component)]
 pub struct GizmoRoot;
 
+/// Distance at which gizmo_scale = 1.0 (gizmo appears at its base world size)
+const GIZMO_SCALE_REF_DIST: f32 = 10.0;
+
 /// System to update gizmo mesh positions based on selection
 pub fn update_gizmo_mesh_transforms(
     selection: Res<SelectionState>,
-    gizmo_state: Res<GizmoState>,
+    mut gizmo_state: ResMut<GizmoState>,
     modal: Res<ModalTransformState>,
     settings: Res<EditorSettings>,
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
+    camera_query: Query<&GlobalTransform, With<ViewportCamera>>,
 ) {
     let Ok((mut root_transform, mut root_visibility)) = gizmo_root.single_mut() else { return };
 
@@ -293,7 +297,16 @@ pub fn update_gizmo_mesh_transforms(
 
     if let Some(selected) = selection.selected_entity {
         if let Ok(selected_transform) = transforms.get(selected) {
-            root_transform.translation = selected_transform.translation;
+            let gizmo_pos = selected_transform.translation;
+            root_transform.translation = gizmo_pos;
+
+            // Scale gizmo so it occupies the same screen area regardless of camera distance
+            if let Ok(cam_transform) = camera_query.single() {
+                let dist = (cam_transform.translation() - gizmo_pos).length().max(0.1);
+                let scale = dist / GIZMO_SCALE_REF_DIST;
+                root_transform.scale = Vec3::splat(scale);
+                gizmo_state.gizmo_scale = scale;
+            }
         }
     }
 }
