@@ -393,7 +393,7 @@ pub fn render_category_removable(
                                             let rect = trash_response.rect.expand(2.0);
                                             painter.rect_filled(rect, 3.0, Color32::from_rgba_premultiplied(230, 89, 89, 30));
                                         }
-                                        trash_response.clone().on_hover_text("Remove component");
+                                        trash_response.clone().on_hover_text(crate::locale::t("inspector.component.remove"));
                                         if trash_response.clicked() {
                                             remove_clicked = true;
                                         }
@@ -493,7 +493,7 @@ fn paint_toggle_switch(ui: &mut egui::Ui, id: egui::Id, enabled: bool) -> Toggle
 
     if response.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-        response.clone().on_hover_text(if enabled { "Disable component" } else { "Enable component" });
+        response.clone().on_hover_text(if enabled { crate::locale::t("inspector.component.disable") } else { crate::locale::t("inspector.component.enable") });
     }
 
     ToggleSwitchResponse {
@@ -526,9 +526,9 @@ pub fn render_history_content(
                     ui.vertical_centered(|ui| {
                         ui.label(RichText::new(CLOCK_COUNTER_CLOCKWISE).size(32.0).color(theme_colors.text_disabled));
                         ui.add_space(8.0);
-                        ui.label(RichText::new("No History").weak());
+                        ui.label(RichText::new(crate::locale::t("inspector.history.no_history")).weak());
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Actions you perform will\nappear here.").weak());
+                        ui.label(RichText::new(crate::locale::t("inspector.history.hint")).weak());
                     });
                     return;
                 }
@@ -536,7 +536,7 @@ pub fn render_history_content(
                 // Show redo stack (future actions) - displayed at top, grayed out
                 // Clicking on a redo item will redo all actions up to and including that item
                 if !redo_descriptions.is_empty() {
-                    ui.label(RichText::new("Redo Stack").size(11.0).color(theme_colors.text_disabled));
+                    ui.label(RichText::new(crate::locale::t("inspector.history.redo_stack")).size(11.0).color(theme_colors.text_disabled));
                     ui.add_space(4.0);
 
                     // Show redo items in reverse order (most recent undone at top)
@@ -602,14 +602,14 @@ pub fn render_history_content(
                 // Current state indicator
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(CIRCLE).size(10.0).color(theme_colors.semantic_success));
-                    ui.label(RichText::new("Current State").size(11.0).color(theme_colors.semantic_success));
+                    ui.label(RichText::new(crate::locale::t("inspector.history.current_state")).size(11.0).color(theme_colors.semantic_success));
                 });
                 ui.add_space(8.0);
 
                 // Show undo stack (past actions) - displayed below current state
                 // Clicking on an undo item will undo all actions back to that point
                 if !undo_descriptions.is_empty() {
-                    ui.label(RichText::new("Undo Stack").size(11.0).color(theme_colors.text_muted));
+                    ui.label(RichText::new(crate::locale::t("inspector.history.undo_stack")).size(11.0).color(theme_colors.text_muted));
                     ui.add_space(4.0);
 
                     // Show undo items in reverse order (most recent at top)

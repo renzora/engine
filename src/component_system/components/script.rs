@@ -264,7 +264,7 @@ fn inspect_script(
 
     let search_resp = ui.add(
         egui::TextEdit::singleline(&mut search_text)
-            .hint_text(format!("{} Search scripts...", MAGNIFYING_GLASS))
+            .hint_text(format!("{} {}", MAGNIFYING_GLASS, crate::locale::t("comp.script.search")))
             .desired_width(f32::INFINITY),
     );
     if search_resp.changed() {
@@ -317,7 +317,7 @@ fn inspect_script(
                                 ui.set_width(ui.available_width());
 
                                 if !matching_project.is_empty() {
-                                    ui.label(egui::RichText::new("Project").size(10.0).color(muted_color));
+                                    ui.label(egui::RichText::new(crate::locale::t("comp.script.project")).size(10.0).color(muted_color));
                                     for (name, path) in &matching_project {
                                         let resp = ui.add(
                                             egui::Button::new(
@@ -343,7 +343,7 @@ fn inspect_script(
 
                                 if !matching_shipped.is_empty() {
                                     if !matching_project.is_empty() { ui.add_space(4.0); }
-                                    ui.label(egui::RichText::new("Built-in").size(10.0).color(muted_color));
+                                    ui.label(egui::RichText::new(crate::locale::t("comp.script.builtin")).size(10.0).color(muted_color));
                                     for (name, path) in &matching_shipped {
                                         let resp = ui.add(
                                             egui::Button::new(
@@ -480,7 +480,7 @@ fn inspect_script(
         )).clicked() {
             if let Some(file_path) = rfd::FileDialog::new()
                 .add_filter("Scripts", &["rhai", "blueprint"])
-                .set_title("Select Script")
+                .set_title(&crate::locale::t("comp.script.select"))
                 .pick_file()
             {
                 let rel_path = if let Some(ref proj) = project_path {
@@ -500,7 +500,7 @@ fn inspect_script(
     if script.scripts.is_empty() {
         property_row(ui, 0, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("No scripts attached").size(11.0).color(theme_colors.text_muted));
+                ui.label(egui::RichText::new(crate::locale::t("comp.script.no_attached")).size(11.0).color(theme_colors.text_muted));
             });
         });
     }

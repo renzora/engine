@@ -118,7 +118,7 @@ fn inspect_camera_3d(
     // FOV
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("FOV");
+            ui.label(crate::locale::t("comp.camera.fov"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -138,7 +138,7 @@ fn inspect_camera_3d(
     // Is Default Camera
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Default Camera");
+            ui.label(crate::locale::t("comp.camera.active"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.is_default_camera, "").changed() {
                     changed = true;

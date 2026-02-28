@@ -29,7 +29,7 @@ fn inspect_ui_image(
     // Texture Path
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Texture");
+            ui.label(&crate::locale::t("comp.ui_image.texture"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.text_edit_singleline(&mut data.texture_path).changed() {
                     changed = true;
@@ -71,7 +71,7 @@ fn inspect_ui_image(
     // Tint
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Tint");
+            ui.label(&crate::locale::t("comp.ui_image.tint"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgba_unmultiplied(
                     (data.tint.x * 255.0) as u8,

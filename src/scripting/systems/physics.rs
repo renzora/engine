@@ -138,7 +138,7 @@ pub fn clear_raycast_results_on_stop(
     mut raycast_results: ResMut<RaycastResults>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

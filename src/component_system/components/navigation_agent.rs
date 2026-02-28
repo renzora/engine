@@ -84,7 +84,7 @@ fn inspect_navigation_agent(
 
     if let Some(mut data) = world.get_mut::<NavigationAgentData>(entity) {
         ui.horizontal(|ui| {
-            ui.label("Radius:");
+            ui.label(&crate::locale::t("comp.nav_agent.radius"));
             if ui
                 .add(egui::DragValue::new(&mut data.radius).speed(0.05).range(0.1..=10.0))
                 .changed()
@@ -94,7 +94,7 @@ fn inspect_navigation_agent(
         });
 
         ui.horizontal(|ui| {
-            ui.label("Max Speed:");
+            ui.label(&crate::locale::t("comp.nav_agent.speed"));
             if ui
                 .add(egui::DragValue::new(&mut data.max_speed).speed(0.1).range(0.1..=100.0))
                 .changed()

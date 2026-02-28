@@ -13,7 +13,7 @@ pub fn tick_debug_draws(
     mut draws: ResMut<DebugDrawQueue>,
 ) {
     // Only tick during play mode
-    if !play_mode.is_playing() {
+    if !play_mode.is_scripts_running() {
         return;
     }
 
@@ -110,7 +110,7 @@ pub fn clear_debug_draws_on_stop(
     mut draws: ResMut<DebugDrawQueue>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

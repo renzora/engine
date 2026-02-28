@@ -39,7 +39,7 @@ fn inspect_film_grain(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.film_grain.intensity"), |ui| {
         ui.add(egui::DragValue::new(&mut fg.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;

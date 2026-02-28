@@ -38,7 +38,7 @@ fn inspect_motion_blur(
     let mut changed = false;
     let row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.motion_blur.shutter_angle"), |ui| {
         ui.add(egui::DragValue::new(&mut mb.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
 

@@ -39,12 +39,12 @@ fn inspect_bloom(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.bloom.intensity"), |ui| {
         ui.add(egui::DragValue::new(&mut bloom.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Threshold", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.bloom.threshold"), |ui| {
         ui.add(egui::DragValue::new(&mut bloom.threshold).speed(0.1).range(0.0..=5.0)).changed()
     });
 

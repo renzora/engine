@@ -16,6 +16,8 @@ pub struct EntityDataStore {
     pub entities: HashMap<u64, EntityProperties>,
     /// entity_name → entity_id (for `entity("Name")` lookup)
     pub name_to_id: HashMap<String, u64>,
+    /// tag → list of entity_ids (for `entity_by_tag("tag")` lookup)
+    pub tag_to_ids: HashMap<String, Vec<u64>>,
 }
 
 impl EntityDataStore {
@@ -23,12 +25,14 @@ impl EntityDataStore {
         Self {
             entities: HashMap::new(),
             name_to_id: HashMap::new(),
+            tag_to_ids: HashMap::new(),
         }
     }
 
     pub fn clear(&mut self) {
         self.entities.clear();
         self.name_to_id.clear();
+        self.tag_to_ids.clear();
     }
 
     /// Build a Rhai Map from the stored properties for an entity.

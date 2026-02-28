@@ -180,17 +180,17 @@ fn inspect_night_stars(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Brightness", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.night_stars.brightness"), |ui| {
         ui.add(egui::DragValue::new(&mut data.brightness).speed(0.05).range(0.0..=10.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Star Size", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.night_stars.size"), |ui| {
         ui.add(egui::DragValue::new(&mut data.star_size).speed(0.05).range(0.2..=5.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Twinkle Speed", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.night_stars.twinkle"), |ui| {
         ui.add(egui::DragValue::new(&mut data.twinkle_speed).speed(0.05).range(0.0..=10.0)).changed()
     });
     row += 1;
@@ -205,7 +205,7 @@ fn inspect_night_stars(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Color", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.night_stars.color"), |ui| {
         let mut color = egui::Color32::from_rgb(
             (data.color.0 * 255.0) as u8,
             (data.color.1 * 255.0) as u8,

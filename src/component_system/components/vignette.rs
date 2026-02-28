@@ -40,12 +40,12 @@ fn inspect_vignette(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.vignette.intensity"), |ui| {
         ui.add(egui::DragValue::new(&mut v.intensity).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Radius", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.vignette.radius"), |ui| {
         ui.add(egui::DragValue::new(&mut v.radius).speed(0.01).range(0.0..=2.0)).changed()
     });
     row += 1;
@@ -55,7 +55,7 @@ fn inspect_vignette(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Color", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.vignette.color"), |ui| {
         let mut color = egui::Color32::from_rgb(
             (v.color.0 * 255.0) as u8,
             (v.color.1 * 255.0) as u8,

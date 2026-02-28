@@ -29,19 +29,22 @@ fn inspect_rigid_body(
     // Body Type
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Body Type");
+            ui.label(crate::locale::t("comp.rigid_body.body_type"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let dynamic_label = crate::locale::t("comp.rigid_body.dynamic");
+                let static_label = crate::locale::t("comp.rigid_body.static");
+                let kinematic_label = crate::locale::t("comp.rigid_body.kinematic");
                 let body_types = [
-                    (PhysicsBodyType::RigidBody, "Dynamic"),
-                    (PhysicsBodyType::StaticBody, "Static"),
-                    (PhysicsBodyType::KinematicBody, "Kinematic"),
+                    (PhysicsBodyType::RigidBody, dynamic_label.as_str()),
+                    (PhysicsBodyType::StaticBody, static_label.as_str()),
+                    (PhysicsBodyType::KinematicBody, kinematic_label.as_str()),
                 ];
 
                 let current_name = body_types
                     .iter()
                     .find(|(t, _)| *t == data.body_type)
                     .map(|(_, n)| *n)
-                    .unwrap_or("Dynamic");
+                    .unwrap_or(dynamic_label.as_str());
 
                 egui::ComboBox::from_id_salt("body_type")
                     .selected_text(current_name)
@@ -63,7 +66,7 @@ fn inspect_rigid_body(
     if data.body_type == PhysicsBodyType::RigidBody {
         property_row(ui, 1, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Mass");
+                ui.label(crate::locale::t("comp.rigid_body.mass"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(
@@ -82,7 +85,7 @@ fn inspect_rigid_body(
         // Gravity Scale
         property_row(ui, 2, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Gravity Scale");
+                ui.label(crate::locale::t("comp.rigid_body.gravity_scale"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(
@@ -102,7 +105,7 @@ fn inspect_rigid_body(
     // Linear Damping
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Linear Damping");
+            ui.label(crate::locale::t("comp.rigid_body.linear_damping"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -121,7 +124,7 @@ fn inspect_rigid_body(
     // Angular Damping
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Angular Damping");
+            ui.label(crate::locale::t("comp.rigid_body.angular_damping"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -139,7 +142,7 @@ fn inspect_rigid_body(
 
     // Lock Rotation section
     ui.add_space(4.0);
-    ui.label("Lock Rotation");
+    ui.label(crate::locale::t("comp.rigid_body.lock_rotation"));
     property_row(ui, 5, |ui| {
         ui.horizontal(|ui| {
             if ui.checkbox(&mut data.lock_rotation_x, "X").changed() {
@@ -156,7 +159,7 @@ fn inspect_rigid_body(
 
     // Lock Translation section
     ui.add_space(4.0);
-    ui.label("Lock Translation");
+    ui.label(crate::locale::t("comp.rigid_body.lock_translation"));
     property_row(ui, 6, |ui| {
         ui.horizontal(|ui| {
             if ui.checkbox(&mut data.lock_translation_x, "X").changed() {

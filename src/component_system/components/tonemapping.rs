@@ -39,10 +39,16 @@ fn inspect_tonemapping(
     let mut changed = false;
     let mut row = 0;
 
-    inline_property(ui, row, "Mode", |ui| {
+    inline_property(ui, row, &crate::locale::t("comp.tonemapping.operator"), |ui| {
         let tonemap_options = [
-            "None", "Reinhard", "Reinhard Luminance", "ACES Fitted",
-            "AgX", "SomewhatBoring", "TonyMcMapface", "Blender Filmic",
+            crate::locale::t("comp.tonemapping.none"),
+            crate::locale::t("comp.tonemapping.reinhard"),
+            String::from("Reinhard Luminance"),
+            String::from("ACES Fitted"),
+            crate::locale::t("comp.tonemapping.agx"),
+            crate::locale::t("comp.tonemapping.sbdt"),
+            crate::locale::t("comp.tonemapping.tony_mc_mapface"),
+            crate::locale::t("comp.tonemapping.blender_filmic"),
         ];
         let mut tonemap_index = match tm.mode {
             TonemappingMode::None => 0,
@@ -55,10 +61,10 @@ fn inspect_tonemapping(
             TonemappingMode::BlenderFilmic => 7,
         };
         egui::ComboBox::from_id_salt("tm_tonemap_combo")
-            .selected_text(tonemap_options[tonemap_index])
+            .selected_text(&tonemap_options[tonemap_index])
             .show_ui(ui, |ui| {
                 for (i, option) in tonemap_options.iter().enumerate() {
-                    if ui.selectable_value(&mut tonemap_index, i, *option).changed() {
+                    if ui.selectable_value(&mut tonemap_index, i, option).changed() {
                         tm.mode = match tonemap_index {
                             0 => TonemappingMode::None,
                             1 => TonemappingMode::Reinhard,

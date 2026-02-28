@@ -115,7 +115,7 @@ pub fn render_title_bar(
                 if settings_resp.clicked() {
                     settings.show_settings = !settings.show_settings;
                 }
-                settings_resp.on_hover_text("Settings");
+                settings_resp.on_hover_text(crate::locale::t("common.settings"));
 
                 ui.add_space(8.0);
 
@@ -152,7 +152,7 @@ pub fn render_title_bar(
                     ui.painter().text(
                         Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
                         egui::Align2::LEFT_CENTER,
-                        "Sign In",
+                        crate::locale::t("auth.sign_in"),
                         egui::FontId::proportional(11.0),
                         theme.text.secondary.to_color32(),
                     );
@@ -370,7 +370,9 @@ fn render_layout_tabs(
         let is_active = active_layout == layout.name;
         let tab_id = ui.make_persistent_id(format!("layout_tab_{}", layout.name));
 
-        let text = &layout.name;
+        let layout_key = format!("layout.{}", layout.name.to_lowercase().replace(' ', "_"));
+        let layout_text = crate::locale::t(&layout_key);
+        let text = &layout_text;
         let font = egui::FontId::proportional(11.5);
         let text_galley = ui.painter().layout_no_wrap(
             text.to_string(),
@@ -475,9 +477,9 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
     let mut username: String = ctx.data_mut(|d| d.get_temp::<String>(username_id).unwrap_or_default());
 
     let title = match view {
-        AuthView::SignIn => "Sign In",
-        AuthView::Register => "Create Account",
-        AuthView::ForgotPassword => "Reset Password",
+        AuthView::SignIn => crate::locale::t("auth.sign_in"),
+        AuthView::Register => crate::locale::t("auth.create_account"),
+        AuthView::ForgotPassword => crate::locale::t("auth.reset_password"),
     };
 
     let accent = theme.semantic.accent.to_color32();
@@ -500,7 +502,7 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
             match view {
                 AuthView::SignIn => {
                     // Email
-                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.email")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut email)
                         .desired_width(f32::INFINITY)
@@ -508,18 +510,18 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                     ui.add_space(8.0);
 
                     // Password
-                    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.password")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut password)
                         .desired_width(f32::INFINITY)
                         .password(true)
-                        .hint_text("Password"));
+                        .hint_text(crate::locale::t("auth.hint.password")));
                     ui.add_space(4.0);
 
                     // Forgot password link
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         let forgot = ui.add(egui::Label::new(
-                            egui::RichText::new("Forgot password?").size(11.0).color(accent)
+                            egui::RichText::new(crate::locale::t("auth.forgot_password")).size(11.0).color(accent)
                         ).sense(Sense::click()));
                         if forgot.hovered() {
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -534,7 +536,7 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                     // Sign In button
                     let btn = ui.add_sized(
                         [ui.available_width(), 32.0],
-                        egui::Button::new(egui::RichText::new("Sign In").color(Color32::WHITE).size(13.0))
+                        egui::Button::new(egui::RichText::new(crate::locale::t("auth.sign_in")).color(Color32::WHITE).size(13.0))
                             .fill(accent)
                             .corner_radius(CornerRadius::same(4)),
                     );
@@ -546,9 +548,9 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
 
                     // Register link
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Don't have an account?").size(11.0).color(text_secondary));
+                        ui.label(egui::RichText::new(crate::locale::t("auth.no_account")).size(11.0).color(text_secondary));
                         let reg = ui.add(egui::Label::new(
-                            egui::RichText::new("Register").size(11.0).color(accent)
+                            egui::RichText::new(crate::locale::t("auth.register")).size(11.0).color(accent)
                         ).sense(Sense::click()));
                         if reg.hovered() {
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -561,15 +563,15 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
 
                 AuthView::Register => {
                     // Username
-                    ui.label(egui::RichText::new("Username").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.username")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut username)
                         .desired_width(f32::INFINITY)
-                        .hint_text("Username"));
+                        .hint_text(crate::locale::t("auth.hint.username")));
                     ui.add_space(8.0);
 
                     // Email
-                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.email")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut email)
                         .desired_width(f32::INFINITY)
@@ -577,28 +579,28 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                     ui.add_space(8.0);
 
                     // Password
-                    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.password")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut password)
                         .desired_width(f32::INFINITY)
                         .password(true)
-                        .hint_text("Password"));
+                        .hint_text(crate::locale::t("auth.hint.password")));
                     ui.add_space(8.0);
 
                     // Confirm password
-                    ui.label(egui::RichText::new("Confirm Password").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.confirm_password")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut confirm_pw)
                         .desired_width(f32::INFINITY)
                         .password(true)
-                        .hint_text("Confirm password"));
+                        .hint_text(crate::locale::t("auth.hint.confirm_password")));
 
                     ui.add_space(16.0);
 
                     // Create Account button
                     let btn = ui.add_sized(
                         [ui.available_width(), 32.0],
-                        egui::Button::new(egui::RichText::new("Create Account").color(Color32::WHITE).size(13.0))
+                        egui::Button::new(egui::RichText::new(crate::locale::t("auth.create_account")).color(Color32::WHITE).size(13.0))
                             .fill(accent)
                             .corner_radius(CornerRadius::same(4)),
                     );
@@ -610,9 +612,9 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
 
                     // Back to sign in
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Already have an account?").size(11.0).color(text_secondary));
+                        ui.label(egui::RichText::new(crate::locale::t("auth.already_have_account")).size(11.0).color(text_secondary));
                         let back = ui.add(egui::Label::new(
-                            egui::RichText::new("Sign In").size(11.0).color(accent)
+                            egui::RichText::new(crate::locale::t("auth.sign_in")).size(11.0).color(accent)
                         ).sense(Sense::click()));
                         if back.hovered() {
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -624,11 +626,11 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                 }
 
                 AuthView::ForgotPassword => {
-                    ui.label(egui::RichText::new("Enter your email and we'll send you a link to reset your password.").size(11.0).color(text_secondary).weak());
+                    ui.label(egui::RichText::new(crate::locale::t("auth.reset_hint")).size(11.0).color(text_secondary).weak());
                     ui.add_space(12.0);
 
                     // Email
-                    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+                    ui.label(egui::RichText::new(crate::locale::t("auth.email")).size(11.0).color(text_secondary));
                     ui.add_space(2.0);
                     ui.add(egui::TextEdit::singleline(&mut email)
                         .desired_width(f32::INFINITY)
@@ -639,7 +641,7 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                     // Send Reset Link button
                     let btn = ui.add_sized(
                         [ui.available_width(), 32.0],
-                        egui::Button::new(egui::RichText::new("Send Reset Link").color(Color32::WHITE).size(13.0))
+                        egui::Button::new(egui::RichText::new(crate::locale::t("auth.send_reset_link")).color(Color32::WHITE).size(13.0))
                             .fill(accent)
                             .corner_radius(CornerRadius::same(4)),
                     );
@@ -652,7 +654,7 @@ fn render_auth_window(ctx: &egui::Context, theme: &Theme) {
                     // Back to sign in
                     ui.horizontal(|ui| {
                         let back = ui.add(egui::Label::new(
-                            egui::RichText::new("Back to Sign In").size(11.0).color(accent)
+                            egui::RichText::new(crate::locale::t("auth.back_to_sign_in")).size(11.0).color(accent)
                         ).sense(Sense::click()));
                         if back.hovered() {
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -708,31 +710,31 @@ fn render_menu_items(
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = theme.widgets.hovered_bg.to_color32();
     ui.style_mut().visuals.widgets.active.weak_bg_fill = theme.widgets.active_bg.to_color32();
 
-    submenu(ui, "File", |ui| {
-        if menu_item(ui, "New Scene") {
+    submenu(ui, &crate::locale::t("menu.file"), |ui| {
+        if menu_item(ui, &crate::locale::t("menu.file.new_scene")) {
             scene_state.new_scene_requested = true;
             ui.close();
         }
-        if menu_item(ui, "Open Scene...") {
+        if menu_item(ui, &crate::locale::t("menu.file.open_scene")) {
             scene_state.open_scene_requested = true;
             ui.close();
         }
         ui.separator();
-        if menu_item(ui, "Save Scene        Ctrl+S") {
+        if menu_item(ui, &crate::locale::t("menu.file.save_scene")) {
             scene_state.save_scene_requested = true;
             ui.close();
         }
-        if menu_item(ui, "Save Scene As...  Ctrl+Shift+S") {
+        if menu_item(ui, &crate::locale::t("menu.file.save_scene_as")) {
             scene_state.save_scene_as_requested = true;
             ui.close();
         }
 
         ui.separator();
-        if menu_item(ui, "New Project") {
+        if menu_item(ui, &crate::locale::t("menu.file.new_project")) {
             scene_state.new_project_requested = true;
             ui.close();
         }
-        if menu_item(ui, "Open Project...") {
+        if menu_item(ui, &crate::locale::t("menu.file.open_project")) {
             scene_state.open_project_requested = true;
             ui.close();
         }
@@ -754,9 +756,9 @@ fn render_menu_items(
         let green = Color32::from_rgb(80, 200, 120);
         let orange = Color32::from_rgb(230, 160, 60);
 
-        submenu(ui, "Import", |ui| {
+        submenu(ui, &crate::locale::t("menu.file.import"), |ui| {
             ui.set_min_width(260.0);
-            if menu_item_rich(ui, DOWNLOAD, accent_blue, "Import Assets...", "All supported types") {
+            if menu_item_rich(ui, DOWNLOAD, accent_blue, &crate::locale::t("menu.file.import_assets"), "All supported types") {
                 assets.import_asset_requested = true;
                 ui.close();
             }
@@ -818,52 +820,52 @@ fn render_menu_items(
         });
 
         ui.separator();
-        if menu_item(ui, "Export Project...") {
+        if menu_item(ui, &crate::locale::t("menu.file.export_project")) {
             scene_state.show_export_dialog = true;
             ui.close();
         }
 
         ui.separator();
-        if menu_item(ui, "Settings                Ctrl+,") {
+        if menu_item(ui, &crate::locale::t("menu.file.settings")) {
             settings.show_settings = true;
             ui.close();
         }
         ui.separator();
-        if menu_item(ui, "Exit") {
+        if menu_item(ui, &crate::locale::t("menu.file.exit")) {
             std::process::exit(0);
         }
     });
 
-    submenu(ui, "Edit", |ui| {
+    submenu(ui, &crate::locale::t("menu.edit"), |ui| {
         // Undo with shortcut hint and disabled state
         let can_undo = command_history.can_undo();
-        if menu_item_enabled(ui, "Undo                    Ctrl+Z", can_undo) {
+        if menu_item_enabled(ui, &crate::locale::t("menu.edit.undo"), can_undo) {
             command_history.pending_undo = 1;
             ui.close();
         }
 
         // Redo with shortcut hint and disabled state
         let can_redo = command_history.can_redo();
-        if menu_item_enabled(ui, "Redo                    Ctrl+Y", can_redo) {
+        if menu_item_enabled(ui, &crate::locale::t("menu.edit.redo"), can_redo) {
             command_history.pending_redo = 1;
             ui.close();
         }
 
         ui.separator();
-        if menu_item(ui, "Cut") {
+        if menu_item(ui, &crate::locale::t("menu.edit.cut")) {
             ui.close();
         }
-        if menu_item(ui, "Copy") {
+        if menu_item(ui, &crate::locale::t("menu.edit.copy")) {
             ui.close();
         }
-        if menu_item(ui, "Paste") {
+        if menu_item(ui, &crate::locale::t("menu.edit.paste")) {
             ui.close();
         }
         ui.separator();
-        if menu_item(ui, "Duplicate") {
+        if menu_item(ui, &crate::locale::t("menu.edit.duplicate")) {
             ui.close();
         }
-        if menu_item(ui, "Delete") {
+        if menu_item(ui, &crate::locale::t("menu.edit.delete")) {
             if let Some(entity) = selection.selected_entity {
                 queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
             }
@@ -873,7 +875,7 @@ fn render_menu_items(
 
     // Tools menu (for plugins)
     if !tools_items.is_empty() {
-        submenu(ui, "Tools", |ui| {
+        submenu(ui, &crate::locale::t("menu.edit.tools"), |ui| {
             for item in &tools_items {
                 if let Some(event) = render_plugin_menu_item(ui, item) {
                     events.push(event);
@@ -913,14 +915,14 @@ fn render_menu_items(
     };
 
     // Window menu
-    submenu(ui, "Window", |ui| {
+    submenu(ui, &crate::locale::t("menu.window"), |ui| {
         // Save layout
-        if menu_item(ui, "Save Layout As...") {
+        if menu_item(ui, &crate::locale::t("menu.window.save_layout")) {
             // TODO: Show save layout dialog
             ui.close();
         }
 
-        if menu_item(ui, "Reset Layout") {
+        if menu_item(ui, &crate::locale::t("menu.window.reset_layout")) {
             let current = docking_state.active_layout.clone();
             apply_layout(&current, docking_state, viewport_state);
             ui.close();
@@ -929,13 +931,13 @@ fn render_menu_items(
 
     // Dev menu (only visible when dev_mode is enabled)
     if settings.dev_mode {
-        submenu(ui, "Dev", |ui| {
-            if menu_item(ui, "New Plugin...") {
+        submenu(ui, &crate::locale::t("menu.window.dev"), |ui| {
+            if menu_item(ui, &crate::locale::t("menu.window.dev.new_plugin")) {
                 // TODO: Show new plugin dialog
                 ui.close();
             }
             ui.separator();
-            if menu_item(ui, "Open Plugin Source...") {
+            if menu_item(ui, &crate::locale::t("menu.window.dev.open_plugin_source")) {
                 // Open file dialog to select a .rs file
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Rust Source", &["rs"])
@@ -947,7 +949,7 @@ fn render_menu_items(
                 }
                 ui.close();
             }
-            if menu_item(ui, "Open Cargo.toml...") {
+            if menu_item(ui, &crate::locale::t("menu.window.dev.open_cargo")) {
                 // Open file dialog to select Cargo.toml
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Cargo.toml", &["toml"])
@@ -965,21 +967,21 @@ fn render_menu_items(
         });
     }
 
-    submenu(ui, "Help", |ui| {
-        if menu_item(ui, "Documentation") {
+    submenu(ui, &crate::locale::t("menu.help"), |ui| {
+        if menu_item(ui, &crate::locale::t("menu.help.documentation")) {
             ui.close();
         }
         ui.separator();
-        if menu_item(ui, "Discord") {
+        if menu_item(ui, &crate::locale::t("menu.help.discord")) {
             let _ = open::that("https://discord.gg/9UHUGUyDJv");
             ui.close();
         }
-        if menu_item(ui, "YouTube") {
+        if menu_item(ui, &crate::locale::t("menu.help.youtube")) {
             let _ = open::that("https://youtube.com/@renzoragame");
             ui.close();
         }
         ui.separator();
-        if menu_item(ui, "About") {
+        if menu_item(ui, &crate::locale::t("menu.help.about")) {
             ui.close();
         }
     });

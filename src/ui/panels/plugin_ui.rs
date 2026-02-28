@@ -8,10 +8,12 @@
 #![allow(dead_code)]
 
 use bevy_egui::egui::{self, Color32, RichText, CornerRadius};
-use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, PALETTE, WARNING};
+use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, GLOBE, PALETTE, WARNING};
 
 use crate::core::{AssetLoadingProgress, format_bytes};
+use crate::locale::LocaleResource;
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
+use crate::project::AppConfig;
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
 use renzora_theme::ThemeManager;
 use crate::update::{UpdateState, UpdateDialogState};
@@ -246,10 +248,22 @@ pub fn render_status_bar(
     theme_manager: &mut ThemeManager,
     update_state: &UpdateState,
     update_dialog: &mut UpdateDialogState,
+    locale: &mut LocaleResource,
+    app_config: &mut AppConfig,
 ) {
     // Clone theme data needed for the dropup before borrowing theme immutably
     let active_theme_name = theme_manager.active_theme_name.clone();
     let available_themes = theme_manager.available_themes.clone();
+
+    // Clone locale data for the language dropup
+    let active_locale_code = locale.current.clone();
+    let active_locale_name = locale.available.iter()
+        .find(|l| l.code == active_locale_code)
+        .map(|l| l.name.clone())
+        .unwrap_or_else(|| "English".to_string());
+    let available_locales: Vec<(String, String)> = locale.available.iter()
+        .map(|l| (l.code.clone(), l.name.clone()))
+        .collect();
 
     let theme = &theme_manager.active_theme;
     use crate::plugin_core::StatusBarAlign;
@@ -286,6 +300,17 @@ pub fn render_status_bar(
     if let Some(name) = pending {
         ctx.data_mut(|d| d.remove_temp::<String>(theme_selection_id));
         theme_manager.load_theme(&name);
+    }
+
+    // Check if a locale was selected last frame (via egui temp data)
+    let locale_selection_id = egui::Id::new("status_bar_locale_selection");
+    let pending_locale: Option<String> = ctx.data(|d| d.get_temp::<String>(locale_selection_id));
+    if let Some(code) = pending_locale {
+        ctx.data_mut(|d| d.remove_temp::<String>(locale_selection_id));
+        locale.load_locale(&code);
+        crate::locale::set_active_locale(&locale.strings);
+        app_config.language = code;
+        let _ = app_config.save();
     }
 
     egui::TopBottomPanel::bottom("status_bar")
@@ -444,6 +469,81 @@ pub fn render_status_bar(
                             if let Some(pos) = pointer_pos {
                                 if !popup_rect.contains(pos) && !btn_rect.contains(pos) {
                                     ui.data_mut(|d| d.insert_temp(theme_popup_id, false));
+                                }
+                            }
+                        }
+                    }
+
+                    // Language picker dropup
+                    let lang_popup_id = ui.id().with("lang_picker_popup");
+                    let lang_is_open: bool = ui.data(|d| d.get_temp::<bool>(lang_popup_id).unwrap_or(false));
+                    let lang_btn = ui.add(
+                        egui::Button::new(
+                            RichText::new(format!("{} {} {}", GLOBE, &active_locale_name, CARET_UP))
+                                .size(11.0)
+                                .color(text_color),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(3))
+                        .min_size(egui::vec2(0.0, 18.0)),
+                    );
+                    let lr = lang_btn.rect;
+                    let lang_stroke = egui::Stroke::new(1.0, border_color);
+                    ui.painter().line_segment([lr.left_top(), lr.left_bottom()], lang_stroke);
+                    ui.painter().line_segment([lr.left_bottom(), lr.right_bottom()], lang_stroke);
+                    ui.painter().line_segment([lr.right_top(), lr.right_bottom()], lang_stroke);
+                    if lang_btn.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if lang_btn.clicked() {
+                        ui.data_mut(|d| d.insert_temp(lang_popup_id, !lang_is_open));
+                    }
+
+                    if lang_is_open {
+                        let lang_btn_rect = lang_btn.rect;
+                        let lang_area_id = lang_popup_id.with("area");
+                        let lang_area_resp = egui::Area::new(lang_area_id)
+                            .order(egui::Order::Foreground)
+                            .fixed_pos(egui::pos2(lang_btn_rect.max.x, lang_btn_rect.min.y))
+                            .pivot(egui::Align2::RIGHT_BOTTOM)
+                            .show(ui.ctx(), |ui| {
+                                let mut frame = egui::Frame::popup(ui.style());
+                                frame.stroke = egui::Stroke::NONE;
+                                frame.show(ui, |ui| {
+                                    ui.set_max_height(200.0);
+                                    ui.set_max_width(160.0);
+                                    ui.style_mut().spacing.item_spacing.y = 2.0;
+
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        for (code, name) in &available_locales {
+                                            let is_active = *code == active_locale_code;
+                                            let label = format!("{} {}", GLOBE, name);
+
+                                            let btn = ui.add_enabled(
+                                                !is_active,
+                                                egui::Button::new(&label)
+                                                    .fill(Color32::TRANSPARENT)
+                                                    .corner_radius(CornerRadius::same(2))
+                                                    .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                            );
+                                            if btn.hovered() && !is_active {
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
+                                            if btn.clicked() {
+                                                ui.ctx().data_mut(|d| d.insert_temp::<String>(locale_selection_id, code.clone()));
+                                                ui.data_mut(|d| d.insert_temp(lang_popup_id, false));
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+
+                        let lang_popup_rect = lang_area_resp.response.rect;
+                        if ui.input(|i| i.pointer.any_pressed()) {
+                            let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+                            if let Some(pos) = pointer_pos {
+                                if !lang_popup_rect.contains(pos) && !lang_btn_rect.contains(pos) {
+                                    ui.data_mut(|d| d.insert_temp(lang_popup_id, false));
                                 }
                             }
                         }

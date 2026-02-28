@@ -75,7 +75,7 @@ fn inspect_box_collider(
     // Half Extents
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Half Extents");
+            ui.label(crate::locale::t("comp.collider.half_extents"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Z");
@@ -107,7 +107,7 @@ fn inspect_box_collider(
     // Friction
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Friction");
+            ui.label(crate::locale::t("comp.collider.friction"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -126,7 +126,7 @@ fn inspect_box_collider(
     // Restitution
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Restitution");
+            ui.label(crate::locale::t("comp.collider.restitution"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -145,7 +145,7 @@ fn inspect_box_collider(
     // Is Sensor
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Is Sensor");
+            ui.label(crate::locale::t("comp.collider.sensor"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.is_sensor, "").changed() {
                     changed = true;
@@ -175,7 +175,7 @@ fn inspect_sphere_collider(
     // Radius
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Radius");
+            ui.label(crate::locale::t("comp.collider.radius"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -194,7 +194,7 @@ fn inspect_sphere_collider(
     // Friction
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Friction");
+            ui.label(crate::locale::t("comp.collider.friction"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -213,7 +213,7 @@ fn inspect_sphere_collider(
     // Restitution
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Restitution");
+            ui.label(crate::locale::t("comp.collider.restitution"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -232,7 +232,7 @@ fn inspect_sphere_collider(
     // Is Sensor
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Is Sensor");
+            ui.label(crate::locale::t("comp.collider.sensor"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.is_sensor, "").changed() {
                     changed = true;
@@ -262,7 +262,7 @@ fn inspect_capsule_collider(
     // Radius
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Radius");
+            ui.label(crate::locale::t("comp.collider.radius"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -281,7 +281,7 @@ fn inspect_capsule_collider(
     // Half Height
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Half Height");
+            ui.label(crate::locale::t("comp.collider.height"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -300,7 +300,7 @@ fn inspect_capsule_collider(
     // Friction
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Friction");
+            ui.label(crate::locale::t("comp.collider.friction"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -319,7 +319,7 @@ fn inspect_capsule_collider(
     // Restitution
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Restitution");
+            ui.label(crate::locale::t("comp.collider.restitution"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -338,7 +338,7 @@ fn inspect_capsule_collider(
     // Is Sensor
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Is Sensor");
+            ui.label(crate::locale::t("comp.collider.sensor"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.is_sensor, "").changed() {
                     changed = true;

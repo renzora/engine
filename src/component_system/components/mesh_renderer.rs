@@ -151,7 +151,7 @@ fn inspect_mesh_renderer(
     // Mesh type selector
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Mesh Type");
+            ui.label(crate::locale::t("comp.mesh.type"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let all_types = MeshPrimitiveType::all();
 
@@ -189,7 +189,7 @@ fn inspect_mesh_renderer(
             // Color
             property_row(ui, 1, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Color");
+                    ui.label(crate::locale::t("common.color"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let srgba = mat.base_color.to_srgba();
                         let mut color = egui::Color32::from_rgb(
@@ -212,7 +212,7 @@ fn inspect_mesh_renderer(
             // Roughness
             property_row(ui, 2, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Roughness");
+                    ui.label(crate::locale::t("comp.mesh.roughness"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(
@@ -231,7 +231,7 @@ fn inspect_mesh_renderer(
             // Metallic
             property_row(ui, 3, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Metallic");
+                    ui.label(crate::locale::t("comp.mesh.metallic"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(

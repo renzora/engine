@@ -29,7 +29,7 @@ fn inspect_ui_button(
     // Text
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Text");
+            ui.label(&crate::locale::t("comp.ui_button.text"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.text_edit_singleline(&mut data.text).changed() {
                     changed = true;
@@ -71,7 +71,7 @@ fn inspect_ui_button(
     // Font Size
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Font Size");
+            ui.label(&crate::locale::t("comp.ui_label.font_size"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -90,7 +90,7 @@ fn inspect_ui_button(
     // Text Color
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Text Color");
+            ui.label(&crate::locale::t("comp.ui_button.text_color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgba_unmultiplied(
                     (data.text_color.x * 255.0) as u8,

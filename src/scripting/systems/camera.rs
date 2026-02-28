@@ -67,67 +67,77 @@ pub fn apply_camera_effects(
 
     let delta = time.delta_secs();
 
+    let has_effects = camera_state.follow_entity.is_some()
+        || camera_state.look_target.is_some()
+        || camera_state.shake.is_some();
+
     for (mut transform, mut projection) in camera_query.iter_mut() {
-        // Store original transform if not already stored
-        if camera_state.original_transform.is_none() {
-            camera_state.original_transform = Some(*transform);
-        }
+        if has_effects {
+            // Store original transform if not already stored
+            if camera_state.original_transform.is_none() {
+                camera_state.original_transform = Some(*transform);
+            }
 
-        let base_transform = camera_state
-            .original_transform
-            .unwrap_or(*transform);
+            let base_transform = camera_state
+                .original_transform
+                .unwrap_or(*transform);
 
-        // Start with base transform
-        let mut final_position = base_transform.translation;
-        let mut final_rotation = base_transform.rotation;
+            // Start with base transform
+            let mut final_position = base_transform.translation;
+            let mut final_rotation = base_transform.rotation;
 
-        // Apply follow entity
-        if let Some(follow_entity) = camera_state.follow_entity {
-            if let Ok(target_transform) = transforms.get(follow_entity) {
-                let target_pos = target_transform.translation + camera_state.follow_offset;
+            // Apply follow entity
+            if let Some(follow_entity) = camera_state.follow_entity {
+                if let Ok(target_transform) = transforms.get(follow_entity) {
+                    let target_pos = target_transform.translation + camera_state.follow_offset;
 
-                // Smooth interpolation
-                let t = 1.0 - (-delta / camera_state.follow_smoothing).exp();
-                final_position = transform.translation.lerp(target_pos, t);
+                    // Smooth interpolation
+                    let t = 1.0 - (-delta / camera_state.follow_smoothing).exp();
+                    final_position = transform.translation.lerp(target_pos, t);
 
-                // Update stored original to track the smooth position
-                if let Some(ref mut orig) = camera_state.original_transform {
-                    orig.translation = final_position;
+                    // Update stored original to track the smooth position
+                    if let Some(ref mut orig) = camera_state.original_transform {
+                        orig.translation = final_position;
+                    }
                 }
             }
-        }
 
-        // Apply look target
-        if let Some(target) = camera_state.look_target {
-            let direction = target - final_position;
-            if direction.length_squared() > 0.001 {
-                final_rotation = Transform::from_translation(final_position)
-                    .looking_at(target, Vec3::Y)
-                    .rotation;
+            // Apply look target
+            if let Some(target) = camera_state.look_target {
+                let direction = target - final_position;
+                if direction.length_squared() > 0.001 {
+                    final_rotation = Transform::from_translation(final_position)
+                        .looking_at(target, Vec3::Y)
+                        .rotation;
+                }
             }
-        }
 
-        // Apply screen shake
-        if let Some(ref mut shake) = camera_state.shake {
-            let shake_offset = shake.update(delta);
-            final_position += shake_offset;
+            // Apply screen shake
+            if let Some(ref mut shake) = camera_state.shake {
+                let shake_offset = shake.update(delta);
+                final_position += shake_offset;
 
-            // Remove shake when done
-            if !shake.is_active() {
-                camera_state.shake = None;
+                // Remove shake when done
+                if !shake.is_active() {
+                    camera_state.shake = None;
+                }
             }
+
+            // Apply final transform
+            transform.translation = final_position;
+            transform.rotation = final_rotation;
+        } else {
+            // No active effects — clear stored transform so it stays in sync
+            // with any script-driven movement when effects next become active.
+            camera_state.original_transform = None;
         }
 
-        // Apply zoom to projection
+        // Apply zoom to projection (always)
         if let Projection::Perspective(ref mut persp) = *projection {
             // Zoom affects FOV - higher zoom = lower FOV
             let base_fov = 45.0_f32.to_radians(); // Default FOV
             persp.fov = base_fov / camera_state.zoom;
         }
-
-        // Apply final transform
-        transform.translation = final_position;
-        transform.rotation = final_rotation;
     }
 }
 

@@ -37,7 +37,7 @@ fn inspect_pixelation(
 
     let mut changed = false;
 
-    changed |= inline_property(ui, 0, "Pixel Size", |ui| {
+    changed |= inline_property(ui, 0, &crate::locale::t("comp.pixelation.size"), |ui| {
         ui.add(egui::DragValue::new(&mut p.pixel_size).speed(0.5).range(1.0..=64.0)).changed()
     });
 

@@ -209,7 +209,7 @@ fn inspect_clouds(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Density", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.clouds.density"), |ui| {
         ui.add(egui::DragValue::new(&mut data.density).speed(0.01).range(0.0..=1.0)).changed()
     });
     row += 1;
@@ -219,7 +219,7 @@ fn inspect_clouds(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Speed", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.clouds.speed"), |ui| {
         ui.add(egui::DragValue::new(&mut data.speed).speed(0.001).range(0.0..=1.0)).changed()
     });
     row += 1;
@@ -234,7 +234,7 @@ fn inspect_clouds(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Color", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.clouds.color"), |ui| {
         let mut color = egui::Color32::from_rgb(
             (data.color.0 * 255.0) as u8,
             (data.color.1 * 255.0) as u8,

@@ -85,7 +85,7 @@ fn inspect_spot_light(
     // Color
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(crate::locale::t("comp.spot_light.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgb(
                     (data.color.x * 255.0) as u8,
@@ -107,7 +107,7 @@ fn inspect_spot_light(
     // Intensity
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Intensity");
+            ui.label(crate::locale::t("comp.spot_light.intensity"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -126,7 +126,7 @@ fn inspect_spot_light(
     // Range
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Range");
+            ui.label(crate::locale::t("comp.spot_light.range"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -145,7 +145,7 @@ fn inspect_spot_light(
     // Inner Angle
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Inner Angle");
+            ui.label(crate::locale::t("comp.spot_light.inner_angle"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut inner_deg = data.inner_angle.to_degrees();
                 if ui
@@ -167,7 +167,7 @@ fn inspect_spot_light(
     // Outer Angle
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Outer Angle");
+            ui.label(crate::locale::t("comp.spot_light.outer_angle"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut outer_deg = data.outer_angle.to_degrees();
                 if ui
@@ -189,7 +189,7 @@ fn inspect_spot_light(
     // Shadows
     property_row(ui, 5, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Shadows");
+            ui.label(crate::locale::t("comp.spot_light.shadows"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.shadows_enabled, "").changed() {
                     changed = true;

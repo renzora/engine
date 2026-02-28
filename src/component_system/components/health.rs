@@ -45,13 +45,13 @@ fn inspect_health(
     let mut changed = false;
     if let Some(mut data) = world.get_mut::<HealthData>(entity) {
         ui.horizontal(|ui| {
-            ui.label("Max Health:");
+            ui.label(&crate::locale::t("comp.health.max"));
             if ui.add(egui::DragValue::new(&mut data.max_health).speed(1.0).range(1.0..=10000.0)).changed() { changed = true; }
         });
 
         let max_health = data.max_health;
         ui.horizontal(|ui| {
-            ui.label("Current:");
+            ui.label(&crate::locale::t("comp.health.current"));
             if ui.add(egui::DragValue::new(&mut data.current_health).speed(1.0).range(0.0..=max_health)).changed() { changed = true; }
         });
 
@@ -67,7 +67,7 @@ fn inspect_health(
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("Regen/sec:");
+            ui.label(&crate::locale::t("comp.health.regen"));
             if ui.add(egui::DragValue::new(&mut data.regeneration_rate).speed(0.1).range(0.0..=100.0)).changed() { changed = true; }
         });
 

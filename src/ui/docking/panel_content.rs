@@ -164,7 +164,7 @@ pub fn render_placeholder_content(ui: &mut Ui, panel_id: &PanelId) {
         );
         ui.add_space(10.0);
         ui.label(
-            egui::RichText::new(panel_id.title())
+            egui::RichText::new(panel_id.localized_title())
                 .size(16.0)
                 .color(Color32::from_gray(100)),
         );

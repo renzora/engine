@@ -153,7 +153,7 @@ fn inspect_terrain(
 
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Resolution");
+            ui.label(&crate::locale::t("comp.terrain.resolution"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::DragValue::new(&mut chunk_resolution).speed(1.0).range(3..=129)).changed() {
                     changed = true;
@@ -164,7 +164,7 @@ fn inspect_terrain(
 
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Max Height");
+            ui.label(&crate::locale::t("comp.terrain.height_scale"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::DragValue::new(&mut max_height).speed(1.0).range(-1000.0..=1000.0)).changed() {
                     changed = true;

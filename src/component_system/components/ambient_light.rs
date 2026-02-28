@@ -37,7 +37,7 @@ fn inspect_ambient_light(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Color", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.ambient_light.color"), |ui| {
         let mut color = egui::Color32::from_rgb(
             (data.color.0 * 255.0) as u8,
             (data.color.1 * 255.0) as u8,
@@ -55,7 +55,7 @@ fn inspect_ambient_light(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Brightness", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.ambient_light.brightness"), |ui| {
         ui.add(egui::DragValue::new(&mut data.brightness).speed(10.0).range(0.0..=1000.0)).changed()
     });
 

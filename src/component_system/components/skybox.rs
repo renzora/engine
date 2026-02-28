@@ -145,7 +145,7 @@ fn inspect_skybox(
     let mut row = 0;
 
     // Sky mode combo
-    inline_property(ui, row, "Mode", |ui| {
+    inline_property(ui, row, &crate::locale::t("comp.skybox.type"), |ui| {
         let sky_options = ["Color", "Procedural", "Panorama"];
         let mut sky_index = match skybox.sky_mode {
             SkyMode::Color => 0,
@@ -236,7 +236,7 @@ fn inspect_skybox(
             sanitize_f32(&mut pano.energy, 0.0, 10.0, 1.0);
 
             ui.horizontal(|ui| {
-                ui.label("Sky Texture");
+                ui.label(&crate::locale::t("comp.skybox.image"));
             });
             ui.add_space(4.0);
 
@@ -369,7 +369,7 @@ fn inspect_skybox(
 
             row += 1;
 
-            changed |= inline_property(ui, row, "Rotation", |ui| {
+            changed |= inline_property(ui, row, &crate::locale::t("comp.skybox.rotation"), |ui| {
                 ui.add(egui::DragValue::new(&mut pano.rotation).speed(1.0).range(0.0..=360.0).suffix("\u{00b0}")).changed()
             });
             row += 1;

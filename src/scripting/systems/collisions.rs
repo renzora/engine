@@ -18,7 +18,7 @@ pub fn collect_collision_events(
     mut collision_ended: MessageReader<CollisionEnd>,
 ) {
     // Only collect events during play mode
-    if !play_mode.is_playing() {
+    if !play_mode.is_scripts_running() {
         return;
     }
 
@@ -84,7 +84,7 @@ pub fn clear_collisions_on_stop(
     mut collision_events: ResMut<ScriptCollisionEvents>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

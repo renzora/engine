@@ -30,7 +30,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
     // Toolbar
     ui.horizontal(|ui| {
         // Clear button
-        let clear_btn = ui.button(RichText::new(format!("{} Clear", TRASH)).size(12.0));
+        let clear_btn = ui.button(RichText::new(format!("{} {}", TRASH, crate::locale::t("console.clear"))).size(12.0));
         if clear_btn.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
@@ -39,7 +39,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         }
 
         // Copy to clipboard button
-        let copy_btn = ui.button(RichText::new(format!("{} Copy", CLIPBOARD)).size(12.0));
+        let copy_btn = ui.button(RichText::new(format!("{} {}", CLIPBOARD, crate::locale::t("console.copy"))).size(12.0));
         if copy_btn.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
@@ -135,7 +135,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         ui.label(RichText::new(MAGNIFYING_GLASS).size(12.0).color(muted_color));
         ui.add(
             egui::TextEdit::singleline(&mut console.search_filter)
-                .hint_text("Search...")
+                .hint_text(crate::locale::t("console.search"))
                 .desired_width(150.0)
         );
 
@@ -150,7 +150,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Auto-scroll toggle
-            ui.checkbox(&mut console.auto_scroll, "Auto-scroll");
+            ui.checkbox(&mut console.auto_scroll, crate::locale::t("console.autoscroll"));
 
             // Entry count
             let total = console.entries.len();
@@ -189,7 +189,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    RichText::new("No log entries")
+                    RichText::new(crate::locale::t("console.empty"))
                         .size(13.0)
                         .color(muted_color)
                 );

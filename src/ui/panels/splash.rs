@@ -279,6 +279,7 @@ pub fn render_splash(
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
     theme: &Theme,
+    locale: &mut crate::locale::LocaleResource,
 ) {
     ctx.request_repaint();
 
@@ -344,7 +345,7 @@ pub fn render_splash(
                 *mem.data.get_temp_mut_or_default::<SplashAnimationState>(egui::Id::new("splash_anim")) = anim_state;
             });
 
-            render_two_column_layout(ui, settings, app_config, commands, next_state);
+            render_two_column_layout(ui, settings, app_config, commands, next_state, locale);
         });
 }
 
@@ -354,6 +355,7 @@ fn render_two_column_layout(
     app_config: &mut AppConfig,
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
+    locale: &mut crate::locale::LocaleResource,
 ) {
     let accent_color = Color32::from_rgb(80, 140, 220);
     let text_muted = Color32::from_rgb(120, 120, 135);
@@ -393,7 +395,7 @@ fn render_two_column_layout(
             ui.add_space(content_height * 0.2); // Push down to center content
             
             // New Project Section
-            ui.label(RichText::new("NEW PROJECT").size(10.0).color(text_muted).strong().extra_letter_spacing(1.0));
+            ui.label(RichText::new(crate::locale::t("splash.new_project").to_uppercase()).size(10.0).color(text_muted).strong().extra_letter_spacing(1.0));
             ui.add_space(20.0);
 
             let input_width = (left_width - 10.0).max(50.0);
@@ -420,7 +422,7 @@ fn render_two_column_layout(
                 let btn_width = ((input_width - 16.0) / 2.0).max(40.0);
 
                 let create_btn = egui::Button::new(
-                    RichText::new("CREATE").color(Color32::WHITE).strong()
+                    RichText::new(crate::locale::t("splash.create").to_uppercase()).color(Color32::WHITE).strong()
                 )
                 .fill(accent_color)
                 .corner_radius(CornerRadius::same(4))
@@ -453,7 +455,7 @@ fn render_two_column_layout(
                 }
 
                 let open_btn = egui::Button::new(
-                    RichText::new("OPEN").color(Color32::from_rgb(220, 220, 230))
+                    RichText::new(crate::locale::t("splash.open_project").to_uppercase()).color(Color32::from_rgb(220, 220, 230))
                 )
                 .fill(item_bg)
                 .stroke(Stroke::new(1.0, border_color))
@@ -480,6 +482,38 @@ fn render_two_column_layout(
                     }
                 }
             });
+
+            ui.add_space(24.0);
+
+            // Language selector
+            let current_lang_name = locale.available.iter()
+                .find(|l| l.code == locale.current)
+                .map(|l| l.name.clone())
+                .unwrap_or_else(|| "English".to_string());
+            let mut changed_to: Option<String> = None;
+            ui.horizontal(|ui: &mut egui::Ui| {
+                ui.label(RichText::new(crate::locale::t("settings.language")).size(11.0).color(text_muted));
+                egui::ComboBox::from_id_salt("splash_language_selector")
+                    .selected_text(&current_lang_name)
+                    .width((input_width * 0.6).max(80.0))
+                    .show_ui(ui, |ui| {
+                        let codes_and_names: Vec<(String, String)> = locale.available.iter()
+                            .map(|l| (l.code.clone(), l.name.clone()))
+                            .collect();
+                        for (code, name) in &codes_and_names {
+                            let is_selected = *code == locale.current;
+                            if ui.selectable_label(is_selected, name).clicked() && !is_selected {
+                                changed_to = Some(code.clone());
+                            }
+                        }
+                    });
+            });
+            if let Some(new_code) = changed_to {
+                locale.load_locale(&new_code);
+                crate::locale::set_active_locale(&locale.strings);
+                app_config.language = new_code;
+                let _ = app_config.save();
+            }
         });
     });
 
@@ -488,13 +522,13 @@ fn render_two_column_layout(
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui: &mut egui::Ui| {
         ui.vertical(|ui: &mut egui::Ui| {
             ui.add_space(20.0);
-            ui.label(RichText::new("RECENT PROJECTS").size(10.0).color(text_muted).strong().extra_letter_spacing(1.0));
+            ui.label(RichText::new(crate::locale::t("splash.recent").to_uppercase()).size(10.0).color(text_muted).strong().extra_letter_spacing(1.0));
             ui.add_space(16.0);
 
             if app_config.recent_projects.is_empty() {
                 ui.add_space(40.0);
                 ui.vertical_centered(|ui: &mut egui::Ui| {
-                    ui.label(RichText::new("No recent projects found").size(13.0).color(text_muted).italics());
+                    ui.label(RichText::new(crate::locale::t("splash.no_recent")).size(13.0).color(text_muted).italics());
                 });
             } else {
                 egui::ScrollArea::vertical()

@@ -13,7 +13,7 @@ pub fn update_script_timers(
     mut timers: ResMut<ScriptTimers>,
 ) {
     // Only tick timers during play mode
-    if !play_mode.is_playing() {
+    if !play_mode.is_scripts_running() {
         return;
     }
 
@@ -26,7 +26,7 @@ pub fn clear_timers_on_stop(
     mut timers: ResMut<ScriptTimers>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

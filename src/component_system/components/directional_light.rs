@@ -77,7 +77,7 @@ fn inspect_directional_light(
     // Color
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(crate::locale::t("comp.directional_light.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgb(
                     (data.color.x * 255.0) as u8,
@@ -99,7 +99,7 @@ fn inspect_directional_light(
     // Illuminance
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Illuminance");
+            ui.label(crate::locale::t("comp.directional_light.intensity"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -118,7 +118,7 @@ fn inspect_directional_light(
     // Shadows
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Shadows");
+            ui.label(crate::locale::t("comp.directional_light.shadows"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.shadows_enabled, "").changed() {
                     changed = true;

@@ -23,7 +23,7 @@ pub use physics::{
 };
 pub use state::{ColliderEditHandle, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget};
 pub use modal_transform::{
-    ModalTransformState, AxisConstraint,
+    ModalTransformState, ModalTransformMode, AxisConstraint,
     modal_transform_input_system, modal_transform_keyboard_system,
     modal_transform_apply_system, modal_transform_overlay_system,
 };

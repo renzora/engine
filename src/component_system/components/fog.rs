@@ -76,7 +76,7 @@ fn inspect_fog(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Color", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.fog.color"), |ui| {
         let mut color = egui::Color32::from_rgb(
             (fog.color.0 * 255.0) as u8,
             (fog.color.1 * 255.0) as u8,
@@ -94,12 +94,12 @@ fn inspect_fog(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Start", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.fog.start"), |ui| {
         ui.add(egui::DragValue::new(&mut fog.start).speed(0.1)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "End", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.fog.end"), |ui| {
         ui.add(egui::DragValue::new(&mut fog.end).speed(0.1)).changed()
     });
 

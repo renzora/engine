@@ -39,12 +39,12 @@ fn inspect_depth_of_field(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Focal Distance", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.dof.focus_distance"), |ui| {
         ui.add(egui::DragValue::new(&mut dof.focal_distance).speed(0.1).range(0.1..=100.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Aperture", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.dof.aperture"), |ui| {
         ui.add(egui::DragValue::new(&mut dof.aperture).speed(0.01).range(0.001..=0.5)).changed()
     });
 

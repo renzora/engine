@@ -81,7 +81,7 @@ fn inspect_point_light(
     // Color
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(crate::locale::t("comp.point_light.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgb(
                     (data.color.x * 255.0) as u8,
@@ -103,7 +103,7 @@ fn inspect_point_light(
     // Intensity
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Intensity");
+            ui.label(crate::locale::t("comp.point_light.intensity"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -122,7 +122,7 @@ fn inspect_point_light(
     // Range
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Range");
+            ui.label(crate::locale::t("comp.point_light.range"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -141,7 +141,7 @@ fn inspect_point_light(
     // Shadows
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Shadows");
+            ui.label(crate::locale::t("comp.point_light.shadows"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.shadows_enabled, "").changed() {
                     changed = true;

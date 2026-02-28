@@ -35,7 +35,7 @@ pub use components::{
     // Physics
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
     // Rendering
-    DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType, MeshletMeshData, ShapeCategory, SolariLightingData, Sprite2DData,
+    DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType, MeshletMeshData, ShapeCategory, SolariLightingData, Sprite2DData, Text3DData,
     // UI
     UIButtonData, UIImageData, UILabelData, UIPanelData,
     // Animation

@@ -15,6 +15,9 @@ pub struct AppConfig {
     /// Plugin IDs that the user has disabled
     #[serde(default)]
     pub disabled_plugins: Vec<String>,
+    /// Active locale code (e.g. "en", "fr"). Empty string means "en" (default).
+    #[serde(default)]
+    pub language: String,
 }
 
 impl AppConfig {

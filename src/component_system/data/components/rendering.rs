@@ -547,6 +547,34 @@ impl Default for SolariLightingData {
 }
 
 // =============================================================================
+// 3D Text Settings
+// =============================================================================
+
+/// Data component for 3D world-space text nodes
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
+pub struct Text3DData {
+    /// The text string to display
+    pub text: String,
+    /// Font size in world-space pixels
+    pub font_size: f32,
+    /// Text color (RGBA, 0-1 range)
+    pub color: Vec4,
+}
+
+impl Default for Text3DData {
+    fn default() -> Self {
+        Self {
+            text: "Text".to_string(),
+            // 64px in a 128px-tall render target fills ~50% of the quad height,
+            // giving clearly readable text by default.
+            font_size: 64.0,
+            color: Vec4::ONE,
+        }
+    }
+}
+
+// =============================================================================
 // Meshlet/Virtual Geometry Settings
 // =============================================================================
 

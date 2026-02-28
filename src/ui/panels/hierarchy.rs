@@ -327,7 +327,7 @@ pub fn render_hierarchy_content(
         ui.add_sized(
             [search_width, 20.0],
             egui::TextEdit::singleline(&mut hierarchy.search)
-                .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+                .hint_text(format!("{} {}", MAGNIFYING_GLASS, crate::locale::t("hierarchy.search")))
         );
 
         // Add button opens centered popup
@@ -382,9 +382,9 @@ pub fn render_hierarchy_content(
             // Empty scene - show add entity prompt
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new("Empty Scene").size(14.0).color(theme.text.muted.to_color32()));
+                ui.label(RichText::new(crate::locale::t("hierarchy.empty")).size(14.0).color(theme.text.muted.to_color32()));
                 ui.add_space(8.0);
-                ui.label(RichText::new("Use the + button above to add entities").size(12.0).color(theme.text.disabled.to_color32()));
+                ui.label(RichText::new(crate::locale::t("hierarchy.empty_hint")).size(12.0).color(theme.text.disabled.to_color32()));
             });
         } else {
             // Clear drop target at start of frame
@@ -860,7 +860,7 @@ fn render_tree_node(
                 commands.entity(entity).insert(Visibility::Hidden);
             }
         }
-        vis_btn.on_hover_text(if editor_entity.visible { "Hide" } else { "Show" });
+        vis_btn.on_hover_text(if editor_entity.visible { crate::locale::t("hierarchy.context.hide") } else { crate::locale::t("hierarchy.context.show") });
 
         // Lock icon (left side)
         let lock_icon = if editor_entity.locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
@@ -885,7 +885,7 @@ fn render_tree_node(
                 locked: !editor_entity.locked,
             });
         }
-        lock_btn.on_hover_text(if editor_entity.locked { "Unlock" } else { "Lock" });
+        lock_btn.on_hover_text(if editor_entity.locked { crate::locale::t("hierarchy.context.unlock") } else { crate::locale::t("hierarchy.context.lock") });
 
         // Icon based on components
         let (icon, icon_color) = get_entity_icon(entity, &editor_entity.name, &hierarchy_queries.components);
@@ -1692,7 +1692,7 @@ fn render_add_entity_popup(
                 let search_response = ui.add_sized(
                     [ui.available_width(), 34.0],
                     egui::TextEdit::singleline(&mut hierarchy.add_entity_search)
-                        .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+                        .hint_text(format!("{} {}", MAGNIFYING_GLASS, crate::locale::t("hierarchy.search")))
                         .font(egui::FontId::proportional(16.0))
                         .margin(egui::Margin::symmetric(8, 9)),
                 );

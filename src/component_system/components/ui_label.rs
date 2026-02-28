@@ -29,7 +29,7 @@ fn inspect_ui_label(
     // Text
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Text");
+            ui.label(&crate::locale::t("comp.ui_label.text"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.text_edit_singleline(&mut data.text).changed() {
                     changed = true;
@@ -41,7 +41,7 @@ fn inspect_ui_label(
     // Font Size
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Font Size");
+            ui.label(&crate::locale::t("comp.ui_label.font_size"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -60,7 +60,7 @@ fn inspect_ui_label(
     // Color
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(&crate::locale::t("comp.ui_label.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgba_unmultiplied(
                     (data.color.x * 255.0) as u8,

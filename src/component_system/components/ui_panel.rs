@@ -29,7 +29,7 @@ fn inspect_ui_panel(
     // Width
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Width");
+            ui.label(&crate::locale::t("comp.ui_panel.width"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(egui::DragValue::new(&mut data.width).speed(1.0))
@@ -44,7 +44,7 @@ fn inspect_ui_panel(
     // Height
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Height");
+            ui.label(&crate::locale::t("comp.ui_panel.height"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(egui::DragValue::new(&mut data.height).speed(1.0))
@@ -59,7 +59,7 @@ fn inspect_ui_panel(
     // Background Color
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Background");
+            ui.label(&crate::locale::t("comp.ui_panel.bg_color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgba_unmultiplied(
                     (data.background_color.x * 255.0) as u8,
@@ -83,7 +83,7 @@ fn inspect_ui_panel(
     // Border Radius
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Border Radius");
+            ui.label(&crate::locale::t("comp.ui_panel.border_radius"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -102,7 +102,7 @@ fn inspect_ui_panel(
     // Padding
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Padding");
+            ui.label(&crate::locale::t("comp.ui_panel.padding"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(

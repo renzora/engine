@@ -251,7 +251,7 @@ fn inspect_sun(
     // Color
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(&crate::locale::t("comp.sun.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut color = egui::Color32::from_rgb(
                     (data.color.x * 255.0) as u8,
@@ -273,7 +273,7 @@ fn inspect_sun(
     // Illuminance
     property_row(ui, 3, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Illuminance");
+            ui.label(&crate::locale::t("comp.sun.intensity"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -292,7 +292,7 @@ fn inspect_sun(
     // Angular Diameter
     property_row(ui, 4, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Angular Diameter");
+            ui.label(&crate::locale::t("comp.sun.angular_diameter"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -312,7 +312,7 @@ fn inspect_sun(
     // Shadows
     property_row(ui, 5, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Shadows");
+            ui.label(&crate::locale::t("comp.sun.shadows"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut data.shadows_enabled, "").changed() {
                     changed = true;

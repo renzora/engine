@@ -32,7 +32,7 @@ pub fn render_transform_inspector(ui: &mut egui::Ui, transform: &mut Transform) 
     }
 
     // Position
-    inline_property(ui, 0, "Position", |ui| {
+    inline_property(ui, 0, &crate::locale::t("common.position"), |ui| {
         if ui.add(egui::DragValue::new(&mut transform.translation.x).speed(0.1).prefix("X ")).changed() {
             changed = true;
         }
@@ -53,7 +53,7 @@ pub fn render_transform_inspector(ui: &mut egui::Ui, transform: &mut Transform) 
     sanitize_f32(&mut rot[1], -360.0, 360.0, 0.0);
     sanitize_f32(&mut rot[2], -360.0, 360.0, 0.0);
 
-    inline_property(ui, 1, "Rotation", |ui| {
+    inline_property(ui, 1, &crate::locale::t("common.rotation"), |ui| {
         if ui.add(egui::DragValue::new(&mut rot[0]).speed(1.0).prefix("X ")).changed() {
             transform.rotation = Quat::from_euler(EulerRot::XYZ, rot[0].to_radians(), rot[1].to_radians(), rot[2].to_radians());
             changed = true;
@@ -69,7 +69,7 @@ pub fn render_transform_inspector(ui: &mut egui::Ui, transform: &mut Transform) 
     });
 
     // Scale
-    inline_property(ui, 2, "Scale", |ui| {
+    inline_property(ui, 2, &crate::locale::t("common.scale"), |ui| {
         if ui.add(egui::DragValue::new(&mut transform.scale.x).speed(0.01).prefix("X ")).changed() {
             changed = true;
         }

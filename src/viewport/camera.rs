@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::core::{EditorEntity, InputFocusState, PlayModeCamera, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
+use crate::core::{EditorEntity, InputFocusState, PlayModeCamera, PlayModeState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings, ProjectionMode, MainCamera};
 use crate::brushes::BlockEditState;
 use crate::gizmo::{ModalTransformState, GizmoState};
 
@@ -14,7 +14,11 @@ pub fn camera_focus_selected(
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
     entity_query: Query<&Transform, With<EditorEntity>>,
+    play_mode: Res<PlayModeState>,
 ) {
+    if play_mode.active_game_camera.is_some() {
+        return;
+    }
     if input_focus.egui_wants_keyboard {
         return;
     }
@@ -44,7 +48,15 @@ pub fn camera_controller(
     mut window_query: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
     gizmo: Res<GizmoState>,
     block_edit: Res<BlockEditState>,
+    play_mode: Res<PlayModeState>,
 ) {
+    // Disable editor camera control whenever a game camera is active
+    if play_mode.active_game_camera.is_some() {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
     };
@@ -157,14 +169,19 @@ pub fn camera_controller(
         }
     }
 
-    // Scroll wheel - zoom (works when hovering, doesn't require drag)
+    // Scroll wheel - dolly zoom (move camera forward/backward along view direction)
     // Skip zoom when brush tools are active (scroll adjusts brush size instead)
     let brush_tool_active = matches!(gizmo.tool, crate::gizmo::EditorTool::TerrainSculpt | crate::gizmo::EditorTool::SurfacePaint);
     let mut scroll_changed = false;
     if !brush_tool_active {
         for ev in scroll_events.read() {
-            orbit.distance -= ev.y * zoom_speed;
-            orbit.distance = orbit.distance.clamp(0.5, 100.0);
+            // Move camera (and focus) along the view direction — true dolly movement
+            let forward = Vec3::new(
+                orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.pitch.sin(),
+                orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+            orbit.focus -= forward * ev.y * zoom_speed;
             scroll_changed = true;
         }
     } else {

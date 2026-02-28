@@ -169,6 +169,13 @@ impl Plugin for ComponentSystemPlugin {
             components::lighting::sync_light_data_to_bevy,
         ));
 
+        // Text 3D: off-screen render-to-texture pipeline
+        app.add_systems(Update, (
+            components::text_3d::text3d_setup_system,
+            components::text_3d::text3d_sync_system,
+            components::text_3d::text3d_cleanup_system,
+        ));
+
         // Cloth sync system
         app.add_systems(Update, components::cloth::sync_cloth_data);
 

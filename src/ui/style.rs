@@ -35,6 +35,12 @@ pub fn init_fonts(ctx: &egui::Context) {
         egui::FontData::from_static(include_bytes!("../../assets/fonts/SourceCodePro-Regular.ttf")).into(),
     );
 
+    // -- CJK fallback font (covers Japanese, Chinese, Korean) --
+    fonts.font_data.insert(
+        "noto-sans-jp".into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoSansJP-Regular.ttf")).into(),
+    );
+
     // -- Icon fonts --
     fonts.font_data.insert(
         "phosphor".into(),
@@ -45,11 +51,13 @@ pub fn init_fonts(ctx: &egui::Context) {
         egui::FontData::from_static(egui_phosphor::Variant::Fill.font_bytes()).into(),
     );
 
-    // Default families (Inter + JetBrains Mono)
+    // Default families — CJK fallback goes after the primary font so Latin text
+    // is still rendered by the preferred font, and CJK glyphs fall back to Noto.
     fonts.families.insert(
         egui::FontFamily::Proportional,
         vec![
             UiFont::default().font_key().into(),
+            "noto-sans-jp".into(),
             "phosphor".into(),
             "phosphor-fill".into(),
         ],
@@ -69,6 +77,7 @@ pub fn set_ui_font(ctx: &egui::Context, font: UiFont) {
         egui::FontFamily::Proportional,
         vec![
             font.font_key().into(),
+            "noto-sans-jp".into(),
             "phosphor".into(),
             "phosphor-fill".into(),
         ],

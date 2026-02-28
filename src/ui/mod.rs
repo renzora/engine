@@ -128,6 +128,7 @@ pub struct EditorResources<'w> {
     pub update_state: ResMut<'w, UpdateState>,
     pub update_dialog: ResMut<'w, UpdateDialogState>,
     pub app_config: ResMut<'w, AppConfig>,
+    pub locale: ResMut<'w, crate::locale::LocaleResource>,
     pub animation_timeline: ResMut<'w, AnimationTimelineState>,
     pub particle_preview_image: Option<Res<'w, ParticlePreviewImage>>,
     pub particle_editor_state: ResMut<'w, ParticleEditorState>,
@@ -217,8 +218,13 @@ pub fn splash_ui(
     mut next_state: ResMut<NextState<AppState>>,
     mut fonts_initialized: Local<bool>,
     theme_manager: Res<ThemeManager>,
+    mut locale: ResMut<crate::locale::LocaleResource>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
+
+    // Prime the thread-local with the current locale before any t() calls in this frame.
+    // (The startup system that calls set_active_locale may have run on a worker thread.)
+    crate::locale::set_active_locale(&locale.strings);
 
     // Initialize fonts once
     if !*fonts_initialized {
@@ -234,6 +240,7 @@ pub fn splash_ui(
         &mut commands,
         &mut next_state,
         &theme_manager.active_theme,
+        &mut locale,
     );
 }
 
@@ -261,6 +268,9 @@ pub fn editor_ui(
     if *app_state.get() != AppState::Editor {
         return;
     }
+
+    // Prime the thread-local translation table for this frame
+    crate::locale::set_active_locale(&editor.locale.strings);
 
     // Reset inspector render state for this frame
     editor.inspector_render_state.reset();
@@ -319,11 +329,11 @@ pub fn editor_ui(
 
     apply_editor_style_with_theme(ctx, &editor.theme_manager.active_theme, editor.settings.font_size);
 
-    // Check play mode state early
-    let in_play_mode_early = editor.play_mode.is_in_play_mode();
+    // Check if we're in fullscreen play mode (not scripts-only)
+    let in_fullscreen_play = matches!(editor.play_mode.state, PlayState::Playing | PlayState::Paused);
 
-    // Render status bar at bottom (must be rendered early to reserve space) - skip in play mode
-    if !in_play_mode_early {
+    // Render status bar at bottom (must be rendered early to reserve space) - skip in fullscreen play mode only
+    if !in_fullscreen_play {
         render_status_bar(
             ctx,
             &editor.plugin_host,
@@ -331,14 +341,13 @@ pub fn editor_ui(
             &mut editor.theme_manager,
             &editor.update_state,
             &mut editor.update_dialog,
+            &mut editor.locale,
+            &mut editor.app_config,
         );
     }
 
     // Collect all UI events to forward to plugins
     let mut all_ui_events = Vec::new();
-
-    // Check if we're in fullscreen play mode (not scripts-only)
-    let in_fullscreen_play = matches!(editor.play_mode.state, PlayState::Playing | PlayState::Paused);
 
     // In fullscreen play mode, skip title bar entirely
     let content_start_y;
@@ -1264,6 +1273,7 @@ pub fn editor_ui(
                         &mut editor.update_dialog,
                         &mut editor.scene_state,
                         &mut editor.plugin_host,
+                        &mut editor.locale,
                     );
                 });
             if !open {

@@ -140,7 +140,7 @@ fn inspect_sprite_2d(
     // Color
     property_row(ui, 0, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Color");
+            ui.label(&crate::locale::t("comp.sprite_2d.color"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let srgba = sprite.color.to_srgba();
                 let mut color = egui::Color32::from_rgba_unmultiplied(
@@ -165,7 +165,7 @@ fn inspect_sprite_2d(
     // Flip X
     property_row(ui, 1, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Flip X");
+            ui.label(&crate::locale::t("comp.sprite_2d.flip_x"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut sprite.flip_x, "").changed() {
                     changed = true;
@@ -177,7 +177,7 @@ fn inspect_sprite_2d(
     // Flip Y
     property_row(ui, 2, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Flip Y");
+            ui.label(&crate::locale::t("comp.sprite_2d.flip_y"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.checkbox(&mut sprite.flip_y, "").changed() {
                     changed = true;

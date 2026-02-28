@@ -174,7 +174,7 @@ pub fn cleanup_audio_on_stop(
     sounds_query: Query<Entity, With<SoundEffect>>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

@@ -237,7 +237,7 @@ pub fn draw_tab_insert_indicator(ui: &egui::Ui, insert_info: &TabInsertInfo, tab
 /// Draw the dragged tab preview following the cursor
 #[allow(dead_code)]
 pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2, theme: &Theme) {
-    let text = format!("{} {}", panel.icon(), panel.title());
+    let text = format!("{} {}", panel.icon(), panel.localized_title());
     let rect = Rect::from_center_size(
         cursor_pos + egui::vec2(10.0, 10.0),
         egui::vec2(120.0, 28.0),

@@ -22,7 +22,7 @@ pub fn process_prefab_spawns(
     prefab_query: Query<Entity, With<RuntimePrefabInstance>>,
 ) {
     // Only process during play mode
-    if !play_mode.is_playing() {
+    if !play_mode.is_scripts_running() {
         return;
     }
 
@@ -175,7 +175,7 @@ pub fn clear_scene_queue_on_stop(
     mut scene_queue: ResMut<SceneCommandQueue>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {
@@ -194,7 +194,7 @@ pub fn despawn_runtime_prefabs_on_stop(
     prefab_query: Query<Entity, With<RuntimePrefabInstance>>,
     mut last_playing: Local<bool>,
 ) {
-    let currently_playing = play_mode.is_playing() || play_mode.is_paused();
+    let currently_playing = play_mode.is_in_play_mode();
 
     // Detect transition from playing to editing
     if *last_playing && !currently_playing {

@@ -439,7 +439,7 @@ fn render_leaf(
 
         // Calculate tab width based on content
         let icon_width = 14.0;
-        let title = panel.title();
+        let title = panel.localized_title();
         let text_width = ui.fonts_mut(|f| {
             f.glyph_width(&egui::FontId::proportional(11.0), 'M') * title.len() as f32 * 0.65
         });
@@ -677,7 +677,7 @@ fn render_leaf(
 
                     for panel in *panels {
                         let is_here = already_here.contains(panel);
-                        let label = format!("{} {}", panel.icon(), panel.title());
+                        let label = format!("{} {}", panel.icon(), panel.localized_title());
 
                         let btn = ui.add_enabled(
                             !is_here,

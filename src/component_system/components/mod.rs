@@ -19,6 +19,7 @@ mod script;
 mod solari_lighting;
 mod spot_light;
 mod sprite_2d;
+pub(crate) mod text_3d;
 pub(crate) mod sun;
 pub mod terrain;
 pub(crate) mod clouds;
@@ -91,6 +92,7 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     // Rendering
     mesh_renderer::register(registry);
     sprite_2d::register(registry);
+    text_3d::register(registry);
     material::register(registry);
     meshlet_mesh::register(registry);
 

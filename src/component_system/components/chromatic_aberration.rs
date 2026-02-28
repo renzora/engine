@@ -38,7 +38,7 @@ fn inspect_chromatic_aberration(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.chromatic_aberration.intensity"), |ui| {
         ui.add(egui::DragValue::new(&mut ca.intensity).speed(0.001).range(0.0..=0.5)).changed()
     });
     row += 1;

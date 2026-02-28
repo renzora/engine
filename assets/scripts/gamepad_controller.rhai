@@ -9,16 +9,21 @@ fn props() {
         look_sensitivity: #{ type: "float", value: 120.0, hint: "Right stick look speed (degrees/sec)" },
         sprint_multiplier: #{ type: "float", value: 2.0, hint: "Sprint speed multiplier (LB/RB)" },
         deadzone: #{ type: "float", value: 0.15, hint: "Stick deadzone" },
+        _yaw: #{ type: "float", value: 0.0, hint: "Internal: accumulated yaw" },
     }
+}
+
+fn on_ready() {
+    _yaw = rotation_y;
 }
 
 fn on_update() {
     // Right stick look (horizontal rotation only for third-person)
     let look_x = gamepad_right_x;
     if abs(look_x) > deadzone {
-        let yaw = rotation_y - look_x * look_sensitivity * delta;
-        set_rotation(rotation_x, yaw, 0.0);
+        _yaw -= look_x * look_sensitivity * delta;
     }
+    set_rotation(0.0, _yaw, 0.0);
 
     // Left stick movement
     let move_x = gamepad_left_x;
@@ -35,7 +40,7 @@ fn on_update() {
     }
 
     // Move relative to facing direction
-    let rad_y = deg_to_rad(rotation_y);
+    let rad_y = deg_to_rad(_yaw);
     let forward_x = -sin(rad_y);
     let forward_z = -cos(rad_y);
     let right_x = cos(rad_y);

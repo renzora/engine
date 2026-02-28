@@ -148,6 +148,68 @@ impl PanelId {
         }
     }
 
+    /// Get the locale key for this panel's title
+    pub fn locale_key(&self) -> Option<&'static str> {
+        match self {
+            PanelId::Hierarchy => Some("panel.hierarchy"),
+            PanelId::Inspector => Some("panel.inspector"),
+            PanelId::Assets => Some("panel.assets"),
+            PanelId::Console => Some("panel.console"),
+            PanelId::Viewport => Some("panel.viewport"),
+            PanelId::Animation => Some("panel.animation"),
+            PanelId::Timeline => Some("panel.timeline"),
+            PanelId::CodeEditor => Some("panel.code_editor"),
+            PanelId::ShaderPreview => Some("panel.shader_preview"),
+            PanelId::History => Some("panel.history"),
+            PanelId::Blueprint => Some("panel.blueprint"),
+            PanelId::NodeLibrary => Some("panel.node_library"),
+            PanelId::MaterialPreview => Some("panel.material_preview"),
+            PanelId::Settings => Some("panel.settings"),
+            PanelId::Gamepad => Some("panel.gamepad"),
+            PanelId::Performance => Some("panel.performance"),
+            PanelId::RenderStats => Some("panel.render_stats"),
+            PanelId::EcsStats => Some("panel.ecs_stats"),
+            PanelId::MemoryProfiler => Some("panel.memory"),
+            PanelId::PhysicsDebug => Some("panel.physics_debug"),
+            PanelId::CameraDebug => Some("panel.camera_debug"),
+            PanelId::CullingDebug => Some("panel.culling_debug"),
+            PanelId::SystemProfiler => Some("panel.system_profiler"),
+            PanelId::LevelTools => Some("panel.level_tools"),
+            PanelId::StudioPreview => Some("panel.studio_preview"),
+            PanelId::NodeExplorer => Some("panel.node_explorer"),
+            PanelId::ImagePreview => Some("panel.image_preview"),
+            PanelId::VideoEditor => Some("panel.video_editor"),
+            PanelId::DAW => Some("panel.daw"),
+            PanelId::ParticleEditor => Some("panel.particles"),
+            PanelId::ParticlePreview => Some("panel.particle_preview"),
+            PanelId::TextureEditor => Some("panel.textures"),
+            PanelId::ScriptVariables => Some("panel.script_variables"),
+            PanelId::PhysicsPlayground => Some("panel.physics_playground"),
+            PanelId::PhysicsProperties => Some("panel.physics_properties"),
+            PanelId::PhysicsForces => Some("panel.forces"),
+            PanelId::PhysicsMetrics => Some("panel.physics_metrics"),
+            PanelId::PhysicsScenarios => Some("panel.scenarios"),
+            PanelId::CollisionViz => Some("panel.collisions"),
+            PanelId::MovementTrails => Some("panel.trails"),
+            PanelId::StressTest => Some("panel.stress_test"),
+            PanelId::StateRecorder => Some("panel.recorder"),
+            PanelId::ArenaPresets => Some("panel.arena_presets"),
+            PanelId::RenderPipeline => Some("panel.render_pipeline"),
+            PanelId::ShapeLibrary => Some("panel.shape_library"),
+            PanelId::Plugin(_) => None,
+        }
+    }
+
+    /// Get the localized display title for this panel.
+    /// Falls back to the static English title if no locale is active.
+    pub fn localized_title(&self) -> String {
+        if let Some(key) = self.locale_key() {
+            crate::locale::t(key)
+        } else {
+            self.title().to_string()
+        }
+    }
+
     /// Get the icon for this panel (Phosphor icons)
     pub fn icon(&self) -> &'static str {
         match self {

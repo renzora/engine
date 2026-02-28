@@ -35,16 +35,21 @@ fn inspect_anti_aliasing(
     let mut changed = false;
     let mut row = 0;
 
-    inline_property(ui, row, "MSAA", |ui| {
-        let msaa_options = ["Off", "2x", "4x", "8x"];
+    inline_property(ui, row, &crate::locale::t("comp.anti_aliasing.mode"), |ui| {
+        let msaa_options = [
+            crate::locale::t("comp.anti_aliasing.none"),
+            crate::locale::t("comp.anti_aliasing.msaa_2x"),
+            crate::locale::t("comp.anti_aliasing.msaa_4x"),
+            crate::locale::t("comp.anti_aliasing.msaa_8x"),
+        ];
         let mut msaa_index = match aa.msaa_samples {
             1 => 0, 2 => 1, 4 => 2, 8 => 3, _ => 2,
         };
         egui::ComboBox::from_id_salt("aa_msaa_combo")
-            .selected_text(msaa_options[msaa_index])
+            .selected_text(&msaa_options[msaa_index])
             .show_ui(ui, |ui| {
                 for (i, option) in msaa_options.iter().enumerate() {
-                    if ui.selectable_value(&mut msaa_index, i, *option).changed() {
+                    if ui.selectable_value(&mut msaa_index, i, option).changed() {
                         aa.msaa_samples = match msaa_index {
                             0 => 1, 1 => 2, 2 => 4, 3 => 8, _ => 4,
                         };
@@ -55,7 +60,7 @@ fn inspect_anti_aliasing(
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "FXAA", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.anti_aliasing.fxaa"), |ui| {
         ui.checkbox(&mut aa.fxaa_enabled, "").changed()
     });
 

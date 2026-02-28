@@ -684,13 +684,13 @@ pub fn render_code_editor_content(
             );
             ui.add_space(12.0);
             ui.label(
-                egui::RichText::new("No File Open")
+                egui::RichText::new(crate::locale::t("code.no_file"))
                     .size(16.0)
                     .color(theme_colors.text_muted),
             );
             ui.add_space(8.0);
             ui.label(
-                egui::RichText::new("Double-click a .rhai, .rs, or .wgsl file in Assets to open it")
+                egui::RichText::new(crate::locale::t("code.no_file_hint"))
                     .size(12.0)
                     .color(theme_colors.text_disabled),
             );

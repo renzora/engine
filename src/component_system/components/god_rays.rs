@@ -40,17 +40,17 @@ fn inspect_god_rays(
     let mut changed = false;
     let mut row = 0;
 
-    changed |= inline_property(ui, row, "Intensity", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.god_rays.intensity"), |ui| {
         ui.add(egui::DragValue::new(&mut gr.intensity).speed(0.01).range(0.0..=2.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Decay", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.god_rays.decay"), |ui| {
         ui.add(egui::DragValue::new(&mut gr.decay).speed(0.001).range(0.9..=1.0)).changed()
     });
     row += 1;
 
-    changed |= inline_property(ui, row, "Density", |ui| {
+    changed |= inline_property(ui, row, &crate::locale::t("comp.god_rays.density"), |ui| {
         ui.add(egui::DragValue::new(&mut gr.density).speed(0.01).range(0.1..=3.0)).changed()
     });
     row += 1;

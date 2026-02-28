@@ -140,7 +140,7 @@ pub fn render_inspector_content_world(
                         ui.horizontal(|ui| {
                             ui.add_space(8.0);
                             ui.label(RichText::new(TAG).size(14.0).color(theme.text.muted.to_color32()));
-                            ui.label(RichText::new("Tag").size(12.0).color(theme.text.muted.to_color32()));
+                            ui.label(RichText::new(crate::locale::t("inspector.tag")).size(12.0).color(theme.text.muted.to_color32()));
 
                             let tag_response = ui.add(
                                 egui::TextEdit::singleline(&mut current_tag)
@@ -159,7 +159,7 @@ pub fn render_inspector_content_world(
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
                                 ui.label(RichText::new(PAINT_BUCKET).size(14.0).color(theme.text.muted.to_color32()));
-                                ui.label(RichText::new("Label").size(12.0).color(theme.text.muted.to_color32()));
+                                ui.label(RichText::new(crate::locale::t("inspector.label")).size(12.0).color(theme.text.muted.to_color32()));
                                 if current_label_color.is_some() {
                                     ui.add_space(4.0);
                                     let clear_resp = ui.add(
@@ -260,7 +260,7 @@ pub fn render_inspector_content_world(
                         // Add Component dropdown button
                         ui.vertical_centered(|ui| {
                             ui.menu_button(
-                                RichText::new(format!("{} Add Component", PLUS)).color(theme.text.hyperlink.to_color32()),
+                                RichText::new(format!("{} {}", PLUS, crate::locale::t("inspector.add_component"))).color(theme.text.hyperlink.to_color32()),
                                     |ui| {
                                         ui.set_min_width(220.0);
 
@@ -272,7 +272,10 @@ pub fn render_inspector_content_world(
                                                 ui.set_min_width(180.0);
 
                                                 for def in defs {
-                                                    let item_label = format!("{} {}", def.icon, def.display_name);
+                                                    let comp_key = format!("comp.{}.label", def.type_id);
+                                                    let v = crate::locale::t(&comp_key);
+                                                    let comp_name = if v == comp_key { def.display_name.to_string() } else { v };
+                                                    let item_label = format!("{} {}", def.icon, comp_name);
                                                     if ui.button(RichText::new(item_label)).clicked() {
                                                         add_component_popup.pending_add = Some((selected, def.type_id));
                                                         scene_changed = true;
@@ -295,7 +298,7 @@ pub fn render_inspector_content_world(
                             render_category(
                                 ui,
                                 ARROWS_OUT_CARDINAL,
-                                "Transform",
+                                &crate::locale::t("inspector.category.transform"),
                                 "transform",
                                 theme,
                                 "inspector_transform",
@@ -458,9 +461,9 @@ pub fn render_inspector_content_world(
                     ui.vertical_centered(|ui| {
                         ui.label(RichText::new(MAGNIFYING_GLASS).size(32.0).color(theme.text.disabled.to_color32()));
                         ui.add_space(8.0);
-                        ui.label(RichText::new("No Selection").weak());
+                        ui.label(RichText::new(crate::locale::t("inspector.no_selection")).weak());
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Select an entity in the Hierarchy\nor click on an object in the Scene.").weak());
+                        ui.label(RichText::new(crate::locale::t("inspector.no_selection_hint")).weak());
                     });
                 }
             });
@@ -506,12 +509,16 @@ fn render_component_inspector(
 
     // We need to scope the world access properly
     // First, extract the assets we need
+    let comp_label_key = format!("comp.{}.label", def.type_id);
+    let comp_label_val = crate::locale::t(&comp_label_key);
+    let comp_label = if comp_label_val == comp_label_key { def.display_name.to_string() } else { comp_label_val };
+
     world.resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
         world.resource_scope(|world, mut materials: Mut<Assets<StandardMaterial>>| {
             action = render_category_removable(
                 ui,
                 def.icon,
-                def.display_name,
+                &comp_label,
                 theme_category,
                 theme,
                 &format!("inspector_{}", def.type_id),

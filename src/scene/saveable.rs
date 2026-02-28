@@ -84,7 +84,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
         MeshNodeData, CameraNodeData, CameraRigData, MeshInstanceData, SceneInstanceData,
         PhysicsBodyData, CollisionShapeData, Sprite2DData, Camera2DData,
         UIPanelData, UILabelData, UIButtonData, UIImageData, MaterialData,
-        SolariLightingData, MeshletMeshData,
+        SolariLightingData, MeshletMeshData, Text3DData,
     };
     use crate::scripting::ScriptComponent;
     use crate::terrain::{TerrainData, TerrainChunkData};
@@ -114,6 +114,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<PhysicsBodyData>();
     registry.register::<CollisionShapeData>();
     registry.register::<Sprite2DData>();
+    registry.register::<Text3DData>();
     registry.register::<Camera2DData>();
     registry.register::<UIPanelData>();
     registry.register::<UILabelData>();
