@@ -168,6 +168,10 @@ pub struct ModalTransformState {
     pub just_warped: bool,
     /// Pending grab mode to start on next frame (for duplicate and move)
     pub pending_grab: bool,
+    /// Screen-space pivot position for scale gizmo visualization (set when Scale mode starts)
+    pub pivot_screen_pos: Option<Vec2>,
+    /// Cursor screen position at the moment scale mode started (denominator for distance ratio)
+    pub initial_cursor_pos: Vec2,
 }
 
 impl ModalTransformState {
@@ -179,6 +183,7 @@ impl ModalTransformState {
         self.numeric_input.clear();
         self.accumulated_delta = Vec2::ZERO;
         self.last_cursor_pos = cursor_pos;
+        self.initial_cursor_pos = cursor_pos;
         self.start_transforms = entities;
         self.sensitivity = 0.01; // Default sensitivity
         self.just_warped = false;
@@ -270,50 +275,51 @@ pub fn modal_transform_input_system(
     if let Some(mode) = mode {
         let Ok(mut window) = windows.single_mut() else { return };
 
+        // Always compute pivot screen position (average world pos of selected entities → screen).
+        // This is used both for cursor snapping (non-hovered) and the scale gizmo circle.
+        let mut avg_pos = Vec3::ZERO;
+        let mut count = 0u32;
+        for &entity in &selected {
+            if terrain_chunks.get(entity).is_ok() {
+                continue;
+            }
+            if let Ok(gt) = global_transforms.get(entity) {
+                avg_pos += gt.translation();
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return;
+        }
+        avg_pos /= count as f32;
+
+        let pivot_screen_pos = camera_query.single().ok().and_then(|(camera, cam_transform)| {
+            let ndc = camera.world_to_ndc(cam_transform, avg_pos)?;
+            if ndc.z < 0.0 || ndc.z > 1.0 {
+                return None;
+            }
+            Some(Vec2::new(
+                viewport.position[0] + (ndc.x + 1.0) * 0.5 * viewport.size[0],
+                viewport.position[1] + (1.0 - ndc.y) * 0.5 * viewport.size[1],
+            ))
+        });
+
         // Get cursor position: use actual cursor if viewport is hovered,
-        // otherwise snap cursor to the selected entity's screen position
+        // otherwise snap cursor to the pivot (entity center on screen)
         let cursor_pos = if viewport.hovered {
             window.cursor_position().unwrap_or(Vec2::ZERO)
         } else {
-            // Compute average world position of selected entities
-            let mut avg_pos = Vec3::ZERO;
-            let mut count = 0u32;
-            for &entity in &selected {
-                if terrain_chunks.get(entity).is_ok() {
-                    continue;
-                }
-                if let Ok(gt) = global_transforms.get(entity) {
-                    avg_pos += gt.translation();
-                    count += 1;
-                }
-            }
-            if count == 0 {
-                return;
-            }
-            avg_pos /= count as f32;
-
-            // Project to screen via camera
-            let Ok((camera, cam_transform)) = camera_query.single() else { return };
-            let Some(ndc) = camera.world_to_ndc(cam_transform, avg_pos) else { return };
-            // Entity is behind camera
-            if ndc.z < 0.0 || ndc.z > 1.0 {
-                return;
-            }
-
-            // Convert NDC to screen coordinates (same math as interaction.rs)
-            let screen_pos = Vec2::new(
-                viewport.position[0] + (ndc.x + 1.0) * 0.5 * viewport.size[0],
-                viewport.position[1] + (1.0 - ndc.y) * 0.5 * viewport.size[1],
-            );
-
-            window.set_cursor_position(Some(screen_pos));
+            let Some(pivot) = pivot_screen_pos else { return };
+            window.set_cursor_position(Some(pivot));
             modal.just_warped = true;
-            screen_pos
+            pivot
         };
 
-        // Hide cursor
-        if let Ok(mut cursor) = cursor_options.single_mut() {
-            cursor.visible = false;
+        // Hide cursor for Grab/Rotate; Scale keeps cursor visible with a custom icon
+        if !matches!(mode, ModalTransformMode::Scale) {
+            if let Ok(mut cursor) = cursor_options.single_mut() {
+                cursor.visible = false;
+            }
         }
 
         // Collect starting transforms for all selected entities (excluding terrain chunks)
@@ -330,6 +336,8 @@ pub fn modal_transform_input_system(
 
         if !start_transforms.is_empty() {
             modal.start(mode, cursor_pos, start_transforms);
+            // Store pivot for scale gizmo overlay (initial_cursor_pos is set inside start())
+            modal.pivot_screen_pos = pivot_screen_pos;
         }
     }
 }
@@ -501,7 +509,9 @@ pub fn modal_transform_apply_system(
         should_warp = true;
     }
 
-    if should_warp {
+    // Scale mode uses distance-from-pivot, so wrapping would cause sudden jumps — skip it
+    let is_scale = matches!(modal.mode, Some(ModalTransformMode::Scale));
+    if should_warp && !is_scale {
         window.set_cursor_position(Some(new_pos));
         modal.last_cursor_pos = new_pos;
         modal.just_warped = true;
@@ -547,7 +557,7 @@ pub fn modal_transform_apply_system(
                 apply_rotate(&mut transform, &state, &modal, delta);
             }
             ModalTransformMode::Scale => {
-                apply_scale(&mut transform, &state, &modal, delta);
+                apply_scale(&mut transform, &state, &modal, current_cursor_pos);
             }
         }
     }
@@ -677,40 +687,47 @@ fn apply_scale(
     transform: &mut Transform,
     state: &EntityStartState,
     modal: &ModalTransformState,
-    delta: Vec2,
+    current_cursor: Vec2,
 ) {
-    // Check for numeric input (scale factor)
+    // Numeric input overrides mouse (explicit value entry)
     if let Some(factor) = modal.numeric_input.value() {
-        let factor = factor.max(0.001); // Prevent negative/zero scale
-        let scale = match modal.axis_constraint {
-            AxisConstraint::None => Vec3::splat(factor),
-            AxisConstraint::X => Vec3::new(factor, 1.0, 1.0),
-            AxisConstraint::Y => Vec3::new(1.0, factor, 1.0),
-            AxisConstraint::Z => Vec3::new(1.0, 1.0, factor),
-            AxisConstraint::PlaneYZ => Vec3::new(1.0, factor, factor),
-            AxisConstraint::PlaneXZ => Vec3::new(factor, 1.0, factor),
-            AxisConstraint::PlaneXY => Vec3::new(factor, factor, 1.0),
-        };
+        let scale = axis_scale_vec(modal.axis_constraint, factor);
         transform.scale = state.transform.scale * scale;
         return;
     }
 
-    // Mouse-based scaling
-    // Use horizontal movement for scale (right = bigger, left = smaller)
-    let factor = 1.0 + delta.x * modal.sensitivity * 0.1;
-    let factor = factor.max(0.001);
+    // Distance-based scaling: factor = current_distance / initial_distance.
+    // Always positive — moving past the pivot shrinks toward zero rather than flipping.
+    let factor = if let Some(pivot) = modal.pivot_screen_pos {
+        let v0 = modal.initial_cursor_pos - pivot; // vector at start
+        let v  = current_cursor - pivot;            // vector now
+        let initial_dist = v0.length();
+        if initial_dist < 1.0 {
+            1.0
+        } else {
+            let current_dist = v.length();
+            current_dist / initial_dist
+        }
+    } else {
+        // Fallback when pivot isn't projected (e.g. entity behind camera)
+        let dx = current_cursor.x - modal.initial_cursor_pos.x;
+        1.0 + dx * modal.sensitivity * 0.1
+    };
 
-    let scale = match modal.axis_constraint {
-        AxisConstraint::None => Vec3::splat(factor),
-        AxisConstraint::X => Vec3::new(factor, 1.0, 1.0),
-        AxisConstraint::Y => Vec3::new(1.0, factor, 1.0),
-        AxisConstraint::Z => Vec3::new(1.0, 1.0, factor),
+    let scale = axis_scale_vec(modal.axis_constraint, factor);
+    transform.scale = state.transform.scale * scale;
+}
+
+fn axis_scale_vec(constraint: AxisConstraint, factor: f32) -> Vec3 {
+    match constraint {
+        AxisConstraint::None    => Vec3::splat(factor),
+        AxisConstraint::X       => Vec3::new(factor, 1.0, 1.0),
+        AxisConstraint::Y       => Vec3::new(1.0, factor, 1.0),
+        AxisConstraint::Z       => Vec3::new(1.0, 1.0, factor),
         AxisConstraint::PlaneYZ => Vec3::new(1.0, factor, factor),
         AxisConstraint::PlaneXZ => Vec3::new(factor, 1.0, factor),
         AxisConstraint::PlaneXY => Vec3::new(factor, factor, 1.0),
-    };
-
-    transform.scale = state.transform.scale * scale;
+    }
 }
 
 /// System to draw axis constraint overlay with gizmos

@@ -4,7 +4,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rec
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, PendingMaterialDrop, EditorSettings, VisualizationMode, ProjectionMode, CameraSettings, SelectionState, HierarchyState, PlayModeState, PlayState};
 use crate::ui::ShapeLibraryState;
 use crate::commands::{CommandHistory, DeleteEntityCommand, DuplicateEntityCommand, queue_command};
-use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
+use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, ModalTransformMode, AxisConstraint, SnapSettings};
 use crate::terrain::{TerrainSculptState, TerrainSettings, TerrainBrushType};
 use crate::viewport::Camera2DState;
 use renzora_theme::Theme;
@@ -2038,6 +2038,33 @@ fn render_box_selection(ctx: &egui::Context, gizmo: &GizmoState) {
 /// Render the modal transform HUD overlay
 fn render_modal_transform_hud(ctx: &egui::Context, modal: &ModalTransformState, viewport_rect: Rect) {
     let Some(mode) = &modal.mode else { return };
+
+    // Draw Blender-style scale gizmo: solid circle at pivot + line out to cursor
+    if matches!(mode, ModalTransformMode::Scale) {
+        ctx.set_cursor_icon(CursorIcon::ResizeNwSe);
+
+        if let Some(pivot) = modal.pivot_screen_pos {
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("modal_scale_overlay"),
+            ));
+
+            let axis_color = axis_constraint_to_color32(modal.axis_constraint);
+            let pivot_pos = Pos2::new(pivot.x, pivot.y);
+            let cursor_pos = Pos2::new(modal.last_cursor_pos.x, modal.last_cursor_pos.y);
+
+            // Solid reference circle at the pivot
+            const CIRCLE_RADIUS: f32 = 30.0;
+            painter.circle_stroke(pivot_pos, CIRCLE_RADIUS, Stroke::new(1.5, axis_color));
+
+            // Line from pivot to cursor
+            painter.line_segment([pivot_pos, cursor_pos], Stroke::new(1.5, axis_color));
+
+            // Small dot at the pivot center and at the cursor tip
+            painter.circle_filled(pivot_pos, 3.0, axis_color);
+            painter.circle_filled(cursor_pos, 3.0, axis_color);
+        }
+    }
 
     // Position HUD at bottom of viewport
     let hud_height = 60.0;
