@@ -57,7 +57,6 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptTimers>()
             .init_resource::<DebugDrawQueue>()
             .init_resource::<AudioCommandQueue>()
-            .init_resource::<AudioState>()
             .init_resource::<RenderingCommandQueue>()
             .init_resource::<CameraCommandQueue>()
             .init_resource::<ScriptCameraState>()
@@ -115,8 +114,6 @@ impl Plugin for ScriptingPlugin {
                 Update,
                 (
                     process_physics_commands,
-                    process_audio_commands,
-                    update_audio_fades,
                     process_rendering_commands,
                     process_camera_commands,
                     apply_camera_effects,
@@ -148,7 +145,6 @@ impl Plugin for ScriptingPlugin {
                 (
                     clear_timers_on_stop,
                     clear_debug_draws_on_stop,
-                    cleanup_audio_on_stop,
                     reset_camera_on_stop,
                     clear_collisions_on_stop,
                     clear_scene_queue_on_stop,
@@ -264,7 +260,6 @@ impl Plugin for RuntimeScriptingPlugin {
             .init_resource::<ScriptTimers>()
             .init_resource::<DebugDrawQueue>()
             .init_resource::<AudioCommandQueue>()
-            .init_resource::<AudioState>()
             .init_resource::<RenderingCommandQueue>()
             .init_resource::<CameraCommandQueue>()
             .init_resource::<ScriptCameraState>()
@@ -317,8 +312,6 @@ impl Plugin for RuntimeScriptingPlugin {
                 Update,
                 (
                     process_physics_commands,
-                    process_audio_commands,
-                    update_audio_fades,
                     process_rendering_commands,
                     process_camera_commands,
                     apply_camera_effects,

@@ -167,6 +167,10 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     // Particle effects
     registry.register::<HanabiEffectData>();
 
+    // Audio
+    registry.register::<crate::component_system::components::audio_emitter::AudioEmitterData>();
+    registry.register::<crate::component_system::components::audio_listener::AudioListenerData>();
+
     // Lights (Bevy built-in + data components)
     registry.register::<PointLight>();
     registry.register::<DirectionalLight>();

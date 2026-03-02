@@ -239,5 +239,9 @@ pub fn get_category_style(category: ComponentCategory) -> (Color32, Color32) {
             Color32::from_rgb(255, 150, 150),  // Red/coral
             Color32::from_rgb(50, 38, 38),
         ),
+        ComponentCategory::Animation => (
+            Color32::from_rgb(160, 220, 255),  // Light blue
+            Color32::from_rgb(35, 45, 55),
+        ),
     }
 }

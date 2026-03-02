@@ -1,6 +1,7 @@
 //! Component definitions for the component registry
 
-mod audio_listener;
+pub mod audio_listener;
+pub mod audio_emitter;
 mod camera_2d;
 mod camera_3d;
 pub(crate) mod cloth;
@@ -62,6 +63,9 @@ pub(crate) mod underwater;
 // Night stars
 pub(crate) mod night_stars;
 
+// Animation
+pub(crate) mod animator;
+
 // Navigation
 pub(crate) mod navigation_agent;
 
@@ -111,6 +115,10 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
 
     // Audio
     audio_listener::register(registry);
+    audio_emitter::register(registry);
+
+    // Animation
+    animator::register(registry);
 
     // Gameplay
     health::register(registry);

@@ -67,6 +67,7 @@ use panels::{
     render_arena_presets_content,
     render_shape_library_content,
     render_culling_debug_content,
+    render_mixer_content,
 };
 use crate::particles::ParticleEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
@@ -149,6 +150,7 @@ pub struct EditorResources<'w> {
     pub render_pipeline_data: ResMut<'w, RenderPipelineGraphData>,
     pub shape_library: ResMut<'w, ShapeLibraryState>,
     pub culling_debug: ResMut<'w, CullingDebugState>,
+    pub mixer: ResMut<'w, crate::audio::MixerState>,
 }
 
 /// Convert internal UiEvent to plugin API UiEvent
@@ -633,6 +635,14 @@ pub fn editor_ui(
                             })
                             .unwrap_or(false);
 
+                        // Check if an audio file is being dragged
+                        let dragging_audio = editor.assets.dragging_asset.as_ref()
+                            .map(|p| {
+                                let s = p.to_string_lossy().to_lowercase();
+                                s.ends_with(".wav") || s.ends_with(".ogg") || s.ends_with(".mp3") || s.ends_with(".flac") || s.ends_with(".opus")
+                            })
+                            .unwrap_or(false);
+
                         let active_tab = editor.scene_state.active_scene_tab;
                         let (events, changed) = render_hierarchy_content(
                             ui,
@@ -649,6 +659,7 @@ pub fn editor_ui(
                             &mut editor.assets,
                             dragging_scene,
                             dragging_script,
+                            dragging_audio,
                             &editor.default_camera,
                             &mut editor.command_history,
                             &editor.theme_manager.active_theme,
@@ -892,6 +903,16 @@ pub fn editor_ui(
                         render_shape_library_content(
                             ui,
                             &mut editor.shape_library,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                PanelId::Mixer => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_mixer_content(
+                            ui,
+                            &mut editor.mixer,
                             &editor.theme_manager.active_theme,
                         );
                     });

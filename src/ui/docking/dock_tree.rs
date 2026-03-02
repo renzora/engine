@@ -91,6 +91,8 @@ pub enum PanelId {
     RenderPipeline,
     /// Shape Library — visual grid of mesh primitives for quick spawning
     ShapeLibrary,
+    /// Audio Mixer — bus volume, panning, mute, and solo controls
+    Mixer,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -144,6 +146,7 @@ impl PanelId {
             PanelId::ArenaPresets => "Arena Presets",
             PanelId::RenderPipeline => "Render Pipeline",
             PanelId::ShapeLibrary => "Shape Library",
+            PanelId::Mixer => "Mixer",
             PanelId::Plugin(name) => name,
         }
     }
@@ -196,6 +199,7 @@ impl PanelId {
             PanelId::ArenaPresets => Some("panel.arena_presets"),
             PanelId::RenderPipeline => Some("panel.render_pipeline"),
             PanelId::ShapeLibrary => Some("panel.shape_library"),
+            PanelId::Mixer => Some("panel.mixer"),
             PanelId::Plugin(_) => None,
         }
     }
@@ -258,6 +262,7 @@ impl PanelId {
             PanelId::ArenaPresets => CUBE,
             PanelId::RenderPipeline => STACK,
             PanelId::ShapeLibrary => CUBE,
+            PanelId::Mixer => SLIDERS_HORIZONTAL,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

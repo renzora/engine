@@ -72,8 +72,12 @@ pub struct AssetBrowserState {
     pub pending_skybox_drop: Option<PathBuf>,
     /// Pending .particle file drop to viewport (path, position)
     pub pending_effect_drop: Option<(PathBuf, Vec3)>,
+    /// Pending audio file drop to viewport (path, position) → spawns Audio Player entity
+    pub pending_audio_drop: Option<(PathBuf, Vec3)>,
     /// Pending script/blueprint drops from hierarchy drag (script path, target entity)
     pub pending_script_drops: Vec<(PathBuf, Entity)>,
+    /// Pending audio file drop to hierarchy (audio path, optional parent entity)
+    pub pending_audio_hierarchy_drop: Option<(PathBuf, Option<Entity>)>,
     /// Search filter text
     pub search: String,
     /// Current view mode (grid or list)

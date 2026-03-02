@@ -60,6 +60,8 @@ pub struct ScriptComponentQueries<'w, 's> {
     pub sun_data: Query<'w, 's, &'static mut crate::component_system::SunData>,
     // Pre-computed camera yaw from the active viewport camera
     pub script_camera_yaw: Res<'w, super::api::ScriptCameraYaw>,
+    // AnimatorComponent for routing play_animation through
+    pub animators: Query<'w, 's, &'static mut crate::animator::AnimatorComponent>,
 }
 
 /// Pending parent/child transform changes
@@ -640,6 +642,7 @@ pub fn run_rhai_scripts(
             &mut queues.particles,
             &mut queues.meshes,
             &mut queues.materials,
+            &mut component_queries.animators,
             source_entity,
             cmd,
         );
@@ -664,6 +667,7 @@ fn process_rhai_command(
     particle_queue: &mut ResMut<ParticleScriptCommandQueue>,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
+    animator_components: &mut Query<&mut crate::animator::AnimatorComponent>,
     source_entity: Entity,
     cmd: RhaiCommand,
 ) {
@@ -788,14 +792,14 @@ fn process_rhai_command(
         }
 
         // Audio Commands - queue for processing by audio system
-        RhaiCommand::PlaySound { path, volume, looping } => {
-            audio_queue.push(AudioCommand::PlaySound { path, volume, looping });
+        RhaiCommand::PlaySound { path, volume, looping, bus } => {
+            audio_queue.push(AudioCommand::PlaySound { path, volume, looping, bus, entity: Some(source_entity) });
         }
-        RhaiCommand::PlaySound3D { path, volume, position } => {
-            audio_queue.push(AudioCommand::PlaySound3D { path, volume, position });
+        RhaiCommand::PlaySound3D { path, volume, position, bus } => {
+            audio_queue.push(AudioCommand::PlaySound3D { path, volume, position, bus, entity: Some(source_entity) });
         }
-        RhaiCommand::PlayMusic { path, volume, fade_in } => {
-            audio_queue.push(AudioCommand::PlayMusic { path, volume, fade_in });
+        RhaiCommand::PlayMusic { path, volume, fade_in, bus } => {
+            audio_queue.push(AudioCommand::PlayMusic { path, volume, fade_in, bus });
         }
         RhaiCommand::StopMusic { fade_out } => {
             audio_queue.push(AudioCommand::StopMusic { fade_out });
@@ -805,6 +809,33 @@ fn process_rhai_command(
         }
         RhaiCommand::SetMasterVolume { volume } => {
             audio_queue.push(AudioCommand::SetMasterVolume { volume });
+        }
+        RhaiCommand::PauseSound => {
+            audio_queue.push(AudioCommand::PauseSound { entity: Some(source_entity) });
+        }
+        RhaiCommand::PauseSoundEntity { entity_id } => {
+            audio_queue.push(AudioCommand::PauseSound { entity: Some(Entity::from_bits(entity_id)) });
+        }
+        RhaiCommand::ResumeSound => {
+            audio_queue.push(AudioCommand::ResumeSound { entity: Some(source_entity) });
+        }
+        RhaiCommand::ResumeSoundEntity { entity_id } => {
+            audio_queue.push(AudioCommand::ResumeSound { entity: Some(Entity::from_bits(entity_id)) });
+        }
+        RhaiCommand::SetSoundVolume { volume, fade } => {
+            audio_queue.push(AudioCommand::SetSoundVolume { entity: source_entity, volume, fade });
+        }
+        RhaiCommand::SetSoundVolumeEntity { entity_id, volume, fade } => {
+            audio_queue.push(AudioCommand::SetSoundVolume { entity: Entity::from_bits(entity_id), volume, fade });
+        }
+        RhaiCommand::SetSoundPitch { pitch, fade } => {
+            audio_queue.push(AudioCommand::SetSoundPitch { entity: source_entity, pitch, fade });
+        }
+        RhaiCommand::SetSoundPitchEntity { entity_id, pitch, fade } => {
+            audio_queue.push(AudioCommand::SetSoundPitch { entity: Entity::from_bits(entity_id), pitch, fade });
+        }
+        RhaiCommand::CrossfadeMusic { path, volume, duration, bus } => {
+            audio_queue.push(AudioCommand::CrossfadeMusic { path, volume, duration, bus });
         }
 
         // Debug Commands
@@ -946,12 +977,18 @@ fn process_rhai_command(
         }
 
         // Animation Commands
-        RhaiCommand::PlayAnimation { entity_id, name, looping, speed } => {
+        RhaiCommand::PlayAnimation { entity_id, name, looping: _, speed: _ } => {
             let entity = entity_id
                 .map(|id| Entity::from_bits(id))
                 .unwrap_or(source_entity);
-            animation_queue.play(entity, name.clone(), looping, speed);
-            info!("[Rhai] PlayAnimation '{}' on {:?} looping={} speed={}", name, entity, looping, speed);
+            // Check if entity has AnimatorComponent — if so, route through it
+            if let Ok(mut animator) = animator_components.get_mut(entity) {
+                animator.current_clip = if name.is_empty() { None } else { Some(name.clone()) };
+                info!("[Rhai] PlayAnimation (AnimatorComponent) '{}' on {:?}", name, entity);
+            } else {
+                animation_queue.play(entity, name.clone(), true, 1.0);
+                info!("[Rhai] PlayAnimation '{}' on {:?}", name, entity);
+            }
         }
         RhaiCommand::StopAnimation { entity_id } => {
             let entity = entity_id
@@ -1266,6 +1303,15 @@ pub fn populate_entity_data_store(world: &mut World) {
 
     // Clear entity data store for this frame
     super::entity_data_store::clear_store();
+
+    // Populate audio playing entities for is_sound_playing() queries
+    {
+        let playing_entities: std::collections::HashSet<u64> = world
+            .get_non_send_resource::<crate::audio::KiraAudioManager>()
+            .map(|audio| audio.active_sounds.keys().map(|e| e.to_bits()).collect())
+            .unwrap_or_default();
+        super::rhai_api::set_audio_playing_entities(playing_entities);
+    }
 
     // Collect get_script_properties functions from registry
     let get_fns: Vec<crate::component_system::GetScriptPropertiesFn> = {

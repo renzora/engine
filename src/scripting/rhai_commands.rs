@@ -67,12 +67,21 @@ pub enum RhaiCommand {
     // ===================
     // Audio Commands
     // ===================
-    PlaySound { path: String, volume: f32, looping: bool },
-    PlaySound3D { path: String, volume: f32, position: Vec3 },
-    PlayMusic { path: String, volume: f32, fade_in: f32 },
+    PlaySound { path: String, volume: f32, looping: bool, bus: String },
+    PlaySound3D { path: String, volume: f32, position: Vec3, bus: String },
+    PlayMusic { path: String, volume: f32, fade_in: f32, bus: String },
     StopMusic { fade_out: f32 },
     StopAllSounds,
     SetMasterVolume { volume: f32 },
+    PauseSound,
+    PauseSoundEntity { entity_id: u64 },
+    ResumeSound,
+    ResumeSoundEntity { entity_id: u64 },
+    SetSoundVolume { volume: f32, fade: f32 },
+    SetSoundVolumeEntity { entity_id: u64, volume: f32, fade: f32 },
+    SetSoundPitch { pitch: f32, fade: f32 },
+    SetSoundPitchEntity { entity_id: u64, pitch: f32, fade: f32 },
+    CrossfadeMusic { path: String, volume: f32, duration: f32, bus: String },
 
     // ===================
     // Debug Commands

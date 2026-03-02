@@ -2253,6 +2253,8 @@ fn handle_item_interaction(
                                 (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
                             } else if is_hdr_file(&item.name) {
                                 (SUN, Color32::from_rgb(255, 200, 100), "Drop on World Environment (Sky Texture)")
+                            } else if is_audio_file(&item.name) {
+                                (MUSIC_NOTES, Color32::from_rgb(200, 130, 230), "Drop on Audio Player component")
                             } else {
                                 (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
                             };
@@ -4155,9 +4157,14 @@ fn is_blueprint_material_file(filename: &str) -> bool {
     filename.to_lowercase().ends_with(".material_bp")
 }
 
+fn is_audio_file(filename: &str) -> bool {
+    let lower = filename.to_lowercase();
+    lower.ends_with(".wav") || lower.ends_with(".ogg") || lower.ends_with(".mp3") || lower.ends_with(".flac") || lower.ends_with(".opus")
+}
+
 fn is_draggable_asset(filename: &str) -> bool {
     let lower = filename.to_lowercase();
-    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || is_particle_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint") || lower.ends_with(".wgsl")
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename) || is_blueprint_material_file(filename) || is_hdr_file(filename) || is_level_file(filename) || is_terrain_file(filename) || is_particle_file(filename) || is_audio_file(filename) || lower.ends_with(".rhai") || lower.ends_with(".blueprint") || lower.ends_with(".wgsl")
 }
 
 fn is_video_file(filename: &str) -> bool {

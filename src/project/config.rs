@@ -18,6 +18,73 @@ pub struct AppConfig {
     /// Active locale code (e.g. "en", "fr"). Empty string means "en" (default).
     #[serde(default)]
     pub language: String,
+    /// Persisted mixer volumes (master, sfx, music, ambient) as linear amplitude 0.0–1.5
+    #[serde(default = "default_mixer_volumes")]
+    pub mixer_volumes: MixerVolumes,
+}
+
+/// Persisted per-channel strip state
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChannelStripConfig {
+    #[serde(default = "default_volume")]
+    pub volume: f64,
+    #[serde(default)]
+    pub panning: f64,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default)]
+    pub soloed: bool,
+}
+
+fn default_volume() -> f64 { 1.0 }
+
+impl Default for ChannelStripConfig {
+    fn default() -> Self {
+        Self { volume: 1.0, panning: 0.0, muted: false, soloed: false }
+    }
+}
+
+/// Persisted mixer state (all buses + custom buses)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MixerVolumes {
+    // Legacy fields kept for backwards compatibility with existing config files
+    #[serde(default = "default_volume")]
+    pub master: f64,
+    #[serde(default = "default_volume")]
+    pub sfx: f64,
+    #[serde(default = "default_volume")]
+    pub music: f64,
+    #[serde(default = "default_volume")]
+    pub ambient: f64,
+    // Full channel strip state
+    #[serde(default)]
+    pub master_strip: ChannelStripConfig,
+    #[serde(default)]
+    pub sfx_strip: ChannelStripConfig,
+    #[serde(default)]
+    pub music_strip: ChannelStripConfig,
+    #[serde(default)]
+    pub ambient_strip: ChannelStripConfig,
+    /// Custom user-created buses: (name, strip config)
+    #[serde(default)]
+    pub custom_buses: Vec<(String, ChannelStripConfig)>,
+}
+
+impl Default for MixerVolumes {
+    fn default() -> Self {
+        Self {
+            master: 1.0, sfx: 1.0, music: 1.0, ambient: 1.0,
+            master_strip: ChannelStripConfig::default(),
+            sfx_strip: ChannelStripConfig::default(),
+            music_strip: ChannelStripConfig::default(),
+            ambient_strip: ChannelStripConfig::default(),
+            custom_buses: Vec::new(),
+        }
+    }
+}
+
+fn default_mixer_volumes() -> MixerVolumes {
+    MixerVolumes::default()
 }
 
 impl AppConfig {

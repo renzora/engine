@@ -1,6 +1,8 @@
 // Hide console window on Windows
 #![windows_subsystem = "windows"]
 
+mod audio;
+mod animator;
 mod blueprint;
 mod brushes;
 mod commands;
@@ -262,6 +264,11 @@ fn main() {
 
     app.add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
         .add_plugins(bevy_mod_outline::OutlinePlugin)
+        .register_type::<animator::AnimatorComponent>()
+        .register_type::<animator::AnimClipSlot>()
+        .register_type::<component_system::components::audio_emitter::AudioEmitterData>()
+        .register_type::<component_system::components::audio_emitter::RolloffType>()
+        .register_type::<component_system::components::audio_listener::AudioListenerData>()
         .register_type::<component_system::MeshNodeData>()
         .register_type::<component_system::MeshPrimitiveType>()
         .register_type::<brushes::BrushData>()
@@ -354,6 +361,7 @@ fn main() {
         .add_plugins(vleue_navigator::prelude::AvoidancePlugin)
         .add_plugins(bevy_silk::ClothPlugin)
         .add_plugins(gltf_animation::GltfAnimationPlugin)
+        .add_plugins(animator::AnimatorPlugin)
         .add_plugins(particles::ParticlesPlugin)
         .add_plugins(core::DiagnosticsPlugin)
         .add_plugins(viewport::ViewportPlugin)
@@ -364,6 +372,7 @@ fn main() {
         .add_plugins(input::InputPlugin)
         .add_plugins(ui::UiPlugin)
         .add_plugins(scripting::ScriptingPlugin)
+        .add_plugins(audio::KiraPlugin)
         .add_plugins(play_mode::PlayModePlugin)
         .add_plugins(shader_thumbnail::ShaderThumbnailPlugin)
         .add_plugins(blueprint::BlueprintPlugin)
@@ -579,6 +588,12 @@ fn main() {
             .add_systems(
                 Update,
                 input::handle_script_hierarchy_drop
+                    .after(input::handle_scene_hierarchy_drop)
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::handle_audio_hierarchy_drop
                     .after(input::handle_scene_hierarchy_drop)
                     .run_if(in_state(AppState::Editor)),
             )

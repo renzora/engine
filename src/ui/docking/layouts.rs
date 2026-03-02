@@ -51,30 +51,36 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
     ]
 }
 
-/// Scene layout: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
+/// Scene layout: Hierarchy | Viewport+bottom strip | ShapeLibrary+Inspector
 ///
 /// ```text
 /// ┌──────────┬──────────────────────┬───────────┐
 /// │          │                      │  Shape    │
 /// │Hierarchy │      Viewport        │  Library  │
 /// │          │                      │           │
-/// ├──────────┤                      ├───────────┤
-/// │          │                      │           │
-/// │ Assets   │                      │ Inspector │
+/// │          ├──────────────────────┤           │
+/// │          │Assets│Cons│Anim│Mixer├───────────┤
+/// │          │                      │ Inspector │
 /// └──────────┴──────────────────────┴───────────┘
 /// ```
 pub fn default_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf(PanelId::Hierarchy),
-            DockTree::leaf(PanelId::Assets),
-            0.55,
-        ),
+        // Left: Hierarchy full height
+        DockTree::leaf(PanelId::Hierarchy),
         DockTree::horizontal(
-            DockTree::Leaf {
-                tabs: vec![PanelId::Viewport, PanelId::NodeExplorer],
-                active_tab: 0,
-            },
+            // Centre: Viewport on top, bottom strip below
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Viewport, PanelId::NodeExplorer],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation, PanelId::Mixer],
+                    active_tab: 0,
+                },
+                0.72,
+            ),
+            // Right: ShapeLibrary on top, Inspector below
             DockTree::vertical(
                 DockTree::leaf(PanelId::ShapeLibrary),
                 DockTree::Leaf {
@@ -493,12 +499,14 @@ mod tests {
         assert!(layout.contains_panel(&PanelId::Inspector));
         assert!(layout.contains_panel(&PanelId::Assets));
         assert!(layout.contains_panel(&PanelId::Console));
+        assert!(layout.contains_panel(&PanelId::Animation));
+        assert!(layout.contains_panel(&PanelId::Mixer));
     }
 
     #[test]
     fn test_builtin_layouts_count() {
         let layouts = builtin_layouts();
-        assert_eq!(layouts.len(), 12, "Expected 12 built-in layouts");
+        assert_eq!(layouts.len(), 10, "Expected 10 built-in layouts");
     }
 
     #[test]

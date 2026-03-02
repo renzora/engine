@@ -364,6 +364,9 @@ pub fn render_category_removable(
                             ui.horizontal(|ui| {
                                 // Left side: grip + caret + icon + label (no individual click handler)
                                 ui.scope(|ui| {
+                                    // Reserve ~58px for the right-aligned toggle + trash buttons
+                                    ui.set_max_width((ui.available_width() - 58.0).max(20.0));
+
                                     // Drag grip handle
                                     ui.label(RichText::new("⠿").size(10.0).color(dim_color(text_muted, 0.5)));
 
@@ -376,8 +379,8 @@ pub fn render_category_removable(
 
                                     ui.add_space(4.0);
 
-                                    // Label
-                                    ui.label(RichText::new(label).size(13.0).strong().color(effective_text));
+                                    // Label (truncated so right-side buttons always have room)
+                                    ui.add(egui::Label::new(RichText::new(label).size(13.0).strong().color(effective_text)).truncate());
                                 });
 
                                 // Right-aligned: Toggle switch + Trash button

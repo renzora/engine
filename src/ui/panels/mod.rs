@@ -45,6 +45,7 @@ mod arena_presets;
 mod render_pipeline;
 mod shape_library;
 mod culling_debug;
+mod mixer;
 
 pub use animation::{render_animation_content, AnimationPanelState};
 pub use node_explorer::{render_node_explorer_content, NodeExplorerState, collect_node_infos};
@@ -100,6 +101,7 @@ pub use arena_presets::render_arena_presets_content;
 pub use render_pipeline::render_render_pipeline_content;
 pub use shape_library::{render_shape_library_content, ShapeLibraryState};
 pub use culling_debug::render_culling_debug_content;
+pub use mixer::render_mixer_content;
 
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 

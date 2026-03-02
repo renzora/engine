@@ -969,6 +969,56 @@ pub fn handle_scene_hierarchy_drop(
     }
 }
 
+/// System to handle audio files dropped onto the hierarchy (creates an entity with Audio Player)
+pub fn handle_audio_hierarchy_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+    project: Option<Res<CurrentProject>>,
+) {
+    if let Some((audio_path, parent_entity)) = assets.pending_audio_hierarchy_drop.take() {
+        // Get display name from filename
+        let display_name = audio_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Audio")
+            .to_string();
+
+        // Make path relative to project
+        let rel_path = if let Some(ref proj) = project {
+            audio_path.strip_prefix(&proj.path).unwrap_or(&audio_path).to_string_lossy().to_string()
+        } else {
+            audio_path.to_string_lossy().to_string()
+        };
+
+        let mut entity_cmd = commands.spawn((
+            Transform::default(),
+            Visibility::default(),
+            EditorEntity {
+                name: display_name,
+                tag: String::new(),
+                visible: true,
+                locked: false,
+            },
+            SceneNode,
+            crate::component_system::components::audio_emitter::AudioEmitterData {
+                clip: rel_path,
+                ..Default::default()
+            },
+        ));
+
+        if let Some(parent) = parent_entity {
+            entity_cmd.insert(ChildOf(parent));
+            hierarchy.expanded_entities.insert(parent);
+        }
+
+        let entity = entity_cmd.id();
+        selection.select(entity);
+        info!("[Audio] Created audio player entity from hierarchy drop: {:?}", entity);
+    }
+}
+
 /// System to handle script/blueprint files dropped onto entities in the hierarchy
 pub fn handle_script_hierarchy_drop(world: &mut World) {
     let drops: Vec<(PathBuf, Entity)> = {

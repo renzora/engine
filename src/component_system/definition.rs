@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use egui_phosphor::regular::{
-    CUBE, LIGHTBULB, ATOM, VIDEO_CAMERA, SPEAKER_HIGH, CODE, SQUARES_FOUR, SPARKLE, GAME_CONTROLLER, SLIDERS,
+    CUBE, LIGHTBULB, ATOM, VIDEO_CAMERA, SPEAKER_HIGH, CODE, SQUARES_FOUR, SPARKLE, GAME_CONTROLLER, SLIDERS, FILM_STRIP,
 };
 
 /// Function signature for adding a component to an entity
@@ -99,6 +99,8 @@ pub enum ComponentCategory {
     PostProcess,
     /// Gameplay mechanics (health, triggers, etc.)
     Gameplay,
+    /// Skeletal animation, blend trees, etc.
+    Animation,
 }
 
 impl ComponentCategory {
@@ -115,6 +117,7 @@ impl ComponentCategory {
             ComponentCategory::Effects => "Effects",
             ComponentCategory::PostProcess => "Post Process",
             ComponentCategory::Gameplay => "Gameplay",
+            ComponentCategory::Animation => "Animation",
         }
     }
 
@@ -131,6 +134,7 @@ impl ComponentCategory {
             ComponentCategory::Effects => SPARKLE,
             ComponentCategory::PostProcess => SLIDERS,
             ComponentCategory::Gameplay => GAME_CONTROLLER,
+            ComponentCategory::Animation => FILM_STRIP,
         }
     }
 
@@ -142,6 +146,7 @@ impl ComponentCategory {
             ComponentCategory::Camera,
             ComponentCategory::Physics,
             ComponentCategory::Audio,
+            ComponentCategory::Animation,
             ComponentCategory::Effects,
             ComponentCategory::PostProcess,
             ComponentCategory::Gameplay,

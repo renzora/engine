@@ -7,7 +7,7 @@ mod tests;
 
 use bevy::prelude::*;
 
-pub use config::AppConfig;
+pub use config::{AppConfig, ChannelStripConfig};
 pub use editor_state::{EditorStateConfig, EditorStateDirty, LoadedEditorState};
 pub use project::{CurrentProject, create_project, open_project};
 

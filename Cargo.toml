@@ -38,6 +38,10 @@ image = { version = "0.25", optional = true }
 memory-stats = "1.2"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
+# Audio engine (Kira - full control: mixer, spatial, effects, tweening)
+kira = { version = "0.12.0", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
+mint = "0.5"
+
 # Physics engine (Avian - ECS-native physics for Bevy)
 avian3d = "0.5"
 

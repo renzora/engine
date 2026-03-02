@@ -123,6 +123,14 @@ pub fn render_hierarchy(
         .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
         .unwrap_or(false);
 
+    // Check if an audio file is being dragged
+    let dragging_audio = assets.dragging_asset.as_ref()
+        .map(|p| {
+            let s = p.to_string_lossy().to_lowercase();
+            s.ends_with(".wav") || s.ends_with(".ogg") || s.ends_with(".mp3") || s.ends_with(".flac") || s.ends_with(".opus")
+        })
+        .unwrap_or(false);
+
     // Check if a script/blueprint file is being dragged
     let dragging_script = assets.dragging_asset.as_ref()
         .map(|p| {
@@ -189,7 +197,7 @@ pub fn render_hierarchy(
                 }
             } else {
                 // Render normal hierarchy
-                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, dragging_script, default_camera, command_history, theme);
+                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, dragging_script, dragging_audio, default_camera, command_history, theme);
                 ui_events.extend(events);
                 scene_changed = changed;
             }
@@ -275,6 +283,7 @@ pub fn render_hierarchy_content(
     assets: &mut AssetBrowserState,
     dragging_scene: bool,
     dragging_script: bool,
+    dragging_audio: bool,
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
     theme: &Theme,
@@ -312,6 +321,27 @@ pub fn render_hierarchy_content(
                     if let Some(scene_path) = assets.dragging_asset.take() {
                         // Queue the scene drop - parent to scene root
                         assets.pending_scene_drop = Some((scene_path, scene_root_entity));
+                    }
+                }
+            }
+        }
+    }
+
+    // Handle audio file drop on hierarchy panel
+    if dragging_audio {
+        let panel_rect = ui.max_rect();
+        if let Some(pos) = outer_ctx.pointer_hover_pos() {
+            if panel_rect.contains(pos) {
+                ui.painter().rect_stroke(
+                    panel_rect.shrink(4.0),
+                    4.0,
+                    Stroke::new(2.0, accent_color),
+                    egui::StrokeKind::Inside,
+                );
+
+                if outer_ctx.input(|i| i.pointer.any_released()) {
+                    if let Some(audio_path) = assets.dragging_asset.take() {
+                        assets.pending_audio_hierarchy_drop = Some((audio_path, scene_root_entity));
                     }
                 }
             }
@@ -2070,6 +2100,7 @@ fn get_component_category_color(category: ComponentCategory, theme: &Theme) -> C
         ComponentCategory::Effects => theme.categories.effects.accent.to_color32(),
         ComponentCategory::PostProcess => theme.categories.post_process.accent.to_color32(),
         ComponentCategory::Gameplay => theme.categories.gameplay.accent.to_color32(),
+        ComponentCategory::Animation => theme.categories.rendering.accent.to_color32(),
         ComponentCategory::Scripting => theme.categories.scripting.accent.to_color32(),
         ComponentCategory::UI => theme.categories.ui.accent.to_color32(),
     }

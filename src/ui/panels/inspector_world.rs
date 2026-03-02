@@ -39,6 +39,7 @@ fn category_to_theme_name(category: ComponentCategory) -> &'static str {
         ComponentCategory::Effects => "effects",
         ComponentCategory::PostProcess => "post_process",
         ComponentCategory::Gameplay => "gameplay",
+        ComponentCategory::Animation => "animation",
     }
 }
 
