@@ -17,6 +17,7 @@ use egui_phosphor::regular::SPEAKER_HIGH;
 // ============================================================================
 
 #[derive(Component, Default, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
 pub struct AudioListenerData {
     /// Whether this entity is the active listener for 3D spatial audio
     pub active: bool,

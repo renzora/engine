@@ -40,6 +40,7 @@ impl std::fmt::Display for RolloffType {
 
 /// Full audio emitter component with kira-backed playback
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
 pub struct AudioEmitterData {
     pub clip: String,
     pub volume: f32,
