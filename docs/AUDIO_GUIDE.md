@@ -9,7 +9,7 @@ The engine uses **Kira** as its audio backend, providing low-latency playback wi
 ## Table of Contents
 
 1. [How Audio Works in the Engine](#how-audio-works-in-the-engine)
-2. [Audio Emitter Component](#audio-emitter-component)
+2. [Audio Player Component](#audio-emitter-component)
 3. [Audio Listener Component](#audio-listener-component)
 4. [Mixer Panel](#mixer-panel)
 5. [Spatial Audio](#spatial-audio)
@@ -36,17 +36,17 @@ The engine uses **Kira** as its audio backend, providing low-latency playback wi
 
 Audio in Renzora follows a **component-then-play** pattern:
 
-1. **Design time**: You add `Audio Emitter` and `Audio Listener` components to entities in the editor. These are data components that describe what sound an entity produces and which entity is the listener.
+1. **Design time**: You add `Audio Player` and `Audio Listener` components to entities in the editor. These are data components that describe what sound an entity produces and which entity is the listener.
 2. **Play mode**: When you press `F5`, emitters with **Autoplay** enabled start playing immediately. Scripts can trigger additional sounds at any time via the audio API. The mixer applies volume, panning, mute, and solo to each bus in real-time.
 3. **Stop**: When you exit play mode, all sounds stop instantly. Active sound handles, spatial tracks, and the listener are cleaned up. Everything resets.
 
-Outside play mode, you can still **preview** sounds directly in the inspector via the play button on any Audio Emitter.
+Outside play mode, you can still **preview** sounds directly in the inspector via the play button on any Audio Player.
 
 ---
 
-## Audio Emitter Component
+## Audio Player Component
 
-Add an **Audio Emitter** to any entity to make it a sound source. This is the primary component for all audio playback.
+Add an **Audio Player** to any entity to make it a sound source. This is the primary component for all audio playback.
 
 ### Properties
 
@@ -174,7 +174,7 @@ Spatial audio makes sounds feel like they come from specific positions in 3D spa
 ### How It Works
 
 1. The **Audio Listener** component marks the entity that acts as the "ears" (usually the camera or player).
-2. **Audio Emitter** components with **Spatial** enabled are positioned in 3D space via their entity's transform.
+2. **Audio Player** components with **Spatial** enabled are positioned in 3D space via their entity's transform.
 3. Each frame, the engine:
    - Updates the Kira listener to match the Audio Listener entity's position and orientation.
    - Updates each spatial track to match its emitter entity's position.
@@ -198,7 +198,7 @@ Spatial audio makes sounds feel like they come from specific positions in 3D spa
 ### Quick Setup
 
 1. Add an **Audio Listener** to your camera (or player entity).
-2. Add an **Audio Emitter** to the sound source entity.
+2. Add an **Audio Player** to the sound source entity.
 3. Set a **Clip** path and enable **Spatial**.
 4. Adjust **Min Distance** and **Max Distance** to taste.
 5. Enter play mode — move the listener entity and hear the sound change.
@@ -266,11 +266,11 @@ The built-in delay is a standard feedback delay:
 
 ## Editor Preview
 
-You can preview any Audio Emitter's clip without entering play mode.
+You can preview any Audio Player's clip without entering play mode.
 
 ### How to Preview
 
-1. Select an entity with an Audio Emitter component.
+1. Select an entity with an Audio Player component.
 2. In the inspector, click the **▶** button next to the Clip field.
 3. The sound plays immediately on the emitter's configured bus.
 4. The preview stops automatically when playback finishes.
@@ -355,7 +355,7 @@ play_sound_looping("assets/sounds/engine_hum.wav", 0.8, "Ambient");
 
 - The `path` is relative to the project root.
 - When a script calls `play_sound`, the sound is tracked against the **calling entity**. This means `pause_sound()` and `resume_sound()` (without arguments) control that entity's sounds.
-- If the entity has an Audio Emitter component, its pitch/panning/fade/loop settings are applied to the sound automatically.
+- If the entity has an Audio Player component, its pitch/panning/fade/loop settings are applied to the sound automatically.
 - If the emitter has non-zero reverb_send or delay_send, the sound is routed through an effects send track.
 - The `bus` parameter defaults to `"Sfx"` for all sound functions when not specified.
 
@@ -389,7 +389,7 @@ play_sound_3d_at_volume("assets/sounds/gunshot.wav", 0.9, 10.0, 0.0, 5.0, "Sfx")
 ### Notes
 
 - Spatial sounds require an **Audio Listener** in the scene. Without one, the sound still plays but without spatial positioning.
-- If the calling entity has an Audio Emitter with Spatial enabled, the spatial parameters (min/max distance, rolloff) come from the component. Otherwise, defaults are used (min=1.0, max=50.0, logarithmic).
+- If the calling entity has an Audio Player with Spatial enabled, the spatial parameters (min/max distance, rolloff) come from the component. Otherwise, defaults are used (min=1.0, max=50.0, logarithmic).
 - If the calling entity has a `GlobalTransform`, its position is used instead of the x/y/z arguments.
 - Spatial tracks persist per-entity and are updated every frame with the entity's current position.
 
@@ -549,9 +549,9 @@ Returns `true` if the entity has at least one active (non-stopped) sound handle.
 
 ## Scripting API — Component Properties
 
-Audio Emitter and Audio Listener properties can be read and written at runtime via the generic property system.
+Audio Player and Audio Listener properties can be read and written at runtime via the generic property system.
 
-### Audio Emitter Properties
+### Audio Player Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -618,11 +618,11 @@ Master ──── (controls overall output)
 
 | Source | Bus Determined By |
 |--------|-------------------|
-| Audio Emitter (autoplay) | The emitter's **Bus** dropdown setting |
+| Audio Player (autoplay) | The emitter's **Bus** dropdown setting |
 | `play_sound()` (no bus argument) | Defaults to `"Sfx"` |
 | `play_sound("path", "Ambient")` | Explicit bus argument |
 | `play_music()` (no bus argument) | Defaults to `"Music"` |
-| Audio Emitter with script | Emitter's Bus setting is used when the entity has an Audio Emitter component |
+| Audio Player with script | Emitter's Bus setting is used when the entity has an Audio Player component |
 
 ### Creating Custom Buses
 
@@ -630,7 +630,7 @@ Master ──── (controls overall output)
 2. Click **+ Bus** on the right.
 3. Type a name (e.g. "Dialogue") and click **Create**.
 4. Reference the bus by name in scripts: `play_sound("clip.wav", "Dialogue")`.
-5. Set the bus in the Audio Emitter inspector dropdown — custom buses appear automatically.
+5. Set the bus in the Audio Player inspector dropdown — custom buses appear automatically.
 
 ---
 
@@ -659,7 +659,7 @@ Master ──── (controls overall output)
 
 ### Ambient sound on a torch
 
-1. Add an Audio Emitter to the torch entity.
+1. Add an Audio Player to the torch entity.
 2. Set Clip to `assets/sounds/fire_crackle.ogg`.
 3. Enable **Looping** and **Autoplay**.
 4. Enable **Spatial**, set Min Distance=1, Max Distance=15.
@@ -837,7 +837,7 @@ Rhai Script
 
 - **Use OGG for anything longer than 5 seconds.** WAV is fine for short SFX but wastes memory for longer clips.
 - **Set appropriate bus routing.** Don't put everything on "Sfx" — use "Music" for music, "Ambient" for ambient, and create custom buses for dialogue or vehicle sounds.
-- **Use Autoplay for ambient sounds.** Rather than scripting `play_sound` in `on_ready`, set Autoplay on the Audio Emitter. It's cleaner and visible in the inspector.
+- **Use Autoplay for ambient sounds.** Rather than scripting `play_sound` in `on_ready`, set Autoplay on the Audio Player. It's cleaner and visible in the inspector.
 - **Use spatial audio for world sounds.** If a sound comes from a place in the world, enable Spatial. It adds immersion with minimal effort.
 - **Guard against sound spam.** Check `is_sound_playing()` before playing repeated sounds to prevent overlapping audio.
 
@@ -883,7 +883,7 @@ Rhai Script
 
 ### "Sound plays but has no reverb"
 
-- **Check Reverb Send.** It must be > 0 on the Audio Emitter. A value of 0.3–0.5 should be clearly audible.
+- **Check Reverb Send.** It must be > 0 on the Audio Player. A value of 0.3–0.5 should be clearly audible.
 - **Is the sound playing on a bus?** Reverb sends only work for sounds routed through bus tracks (all normal playback).
 
 ### "Music cuts off when I play a new track"
@@ -903,6 +903,6 @@ Rhai Script
 
 ### "Preview works but autoplay doesn't"
 
-- **Is Autoplay enabled?** Check the Audio Emitter inspector.
+- **Is Autoplay enabled?** Check the Audio Player inspector.
 - **Is the Clip field set?** Autoplay requires a non-empty clip path.
 - **Are you entering play mode?** Autoplay triggers on the transition from editing to play mode (F5). It doesn't trigger on subsequent frames.
