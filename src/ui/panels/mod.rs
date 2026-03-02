@@ -56,7 +56,7 @@ pub use blueprint::render_blueprint_panel;
 pub use level_tools::render_level_tools_content;
 pub use material_preview::render_material_preview_content;
 pub use node_library::render_node_library_panel;
-pub use console::render_console_content;
+pub use console::{render_console_content, ConsoleCommandContext};
 pub use gamepad::render_gamepad_content;
 pub use performance::render_performance_content;
 pub use render_stats::render_render_stats_content;

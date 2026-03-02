@@ -14,6 +14,7 @@ use crate::viewport::ModelPreviewCache;
 use crate::shader_thumbnail::ShaderThumbnailCache;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
+use crate::scripting::RhaiScriptEngine;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use renzora_theme::Theme;
 use super::console::render_console_content;
@@ -52,6 +53,7 @@ pub fn render_assets(
     model_preview_cache: &mut ModelPreviewCache,
     shader_thumbnail_cache: &mut ShaderThumbnailCache,
     theme: &Theme,
+    rhai_engine: &RhaiScriptEngine,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let screen_height = ctx.content_rect().height();
@@ -349,7 +351,7 @@ pub fn render_assets(
                         render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache, shader_thumbnail_cache, theme);
                     }
                     BottomPanelTab::Console => {
-                        render_console_content(ui, console, theme);
+                        render_console_content(ui, console, theme, rhai_engine, None);
                     }
                     BottomPanelTab::Animation => {
                         // Animation tab placeholder - content is rendered separately

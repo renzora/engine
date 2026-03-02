@@ -708,7 +708,14 @@ pub fn editor_ui(
 
                 PanelId::Console => {
                     render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
-                        render_console_content(ui, &mut editor.console, &editor.theme_manager.active_theme);
+                        let mut cmd_ctx = panels::ConsoleCommandContext {
+                            settings: &mut editor.settings,
+                            gizmo: &mut editor.gizmo,
+                            play_mode: &mut editor.play_mode,
+                            fps: editor.diagnostics.fps,
+                            frame_time_ms: editor.diagnostics.frame_time_ms,
+                        };
+                        render_console_content(ui, &mut editor.console, &editor.theme_manager.active_theme, &rhai_engine, Some(&mut cmd_ctx));
                     });
                 }
 
