@@ -152,6 +152,16 @@ pub struct ConsoleState {
     pub search_filter: String,
     /// Category filter (empty = show all)
     pub category_filter: String,
+    /// Console input buffer
+    pub input_buffer: String,
+    /// Command history
+    pub command_history: Vec<String>,
+    /// Current index into command history (-1 = not browsing)
+    pub history_index: Option<usize>,
+    /// Saved input when browsing history
+    pub saved_input: String,
+    /// Whether to focus the input field
+    pub focus_input: bool,
 }
 
 impl Default for ConsoleState {
@@ -169,6 +179,11 @@ impl Default for ConsoleState {
             auto_scroll: true,
             search_filter: String::new(),
             category_filter: String::new(),
+            input_buffer: String::new(),
+            command_history: Vec::new(),
+            history_index: None,
+            saved_input: String::new(),
+            focus_input: false,
         }
     }
 }

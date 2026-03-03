@@ -445,6 +445,28 @@ impl RhaiScriptEngine {
         self.process_command_buffer(ctx);
     }
 
+    /// Evaluate an arbitrary Rhai expression and return the result as a string.
+    /// Used by the console input for interactive scripting.
+    pub fn eval_expression(&self, expr: &str) -> Result<String, String> {
+        let mut scope = Scope::new();
+        // Drain any stale commands before executing
+        rhai_api::drain_commands();
+
+        match self.engine.eval_with_scope::<Dynamic>(&mut scope, expr) {
+            Ok(result) => {
+                // Drain commands produced by the expression
+                let _commands = rhai_api::drain_commands();
+                let s = format!("{}", result);
+                if s == "()" {
+                    Ok(String::new())
+                } else {
+                    Ok(s)
+                }
+            }
+            Err(e) => Err(format!("{}", e)),
+        }
+    }
+
     /// Read back modified script variables from scope into ScriptVariables
     fn read_back_variables(&self, scope: &Scope, vars: &mut ScriptVariables) {
         // Collect names first to avoid borrow conflict
