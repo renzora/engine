@@ -229,6 +229,14 @@ impl ColliderEditState {
     }
 }
 
+/// Which VR hand is currently interacting with the gizmo
+#[cfg(feature = "xr")]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GizmoVrHand {
+    Left,
+    Right,
+}
+
 /// State for the gizmo system
 #[derive(Resource)]
 pub struct GizmoState {
@@ -270,6 +278,9 @@ pub struct GizmoState {
     pub terrain_selected: bool,
     /// Screen-space scale factor so the gizmo appears the same size regardless of camera distance
     pub gizmo_scale: f32,
+    /// Which VR hand is currently hovering/dragging the gizmo
+    #[cfg(feature = "xr")]
+    pub active_vr_hand: Option<GizmoVrHand>,
 }
 
 impl Default for GizmoState {
@@ -294,6 +305,8 @@ impl Default for GizmoState {
             snap_target_position: None,
             terrain_selected: false,
             gizmo_scale: 1.0,
+            #[cfg(feature = "xr")]
+            active_vr_hand: None,
         }
     }
 }

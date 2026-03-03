@@ -2,10 +2,57 @@
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
+use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
+use bevy::render::render_resource::{
+    AsBindGroup, CompareFunction, RenderPipelineDescriptor, SpecializedMeshPipelineError,
+};
+use bevy::shader::ShaderRef;
+use bevy::mesh::MeshVertexBufferLayoutRef;
 
 use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, GIZMO_RENDER_LAYER, GIZMO_SIZE};
 use crate::core::{EditorSettings, SelectionHighlightMode, SelectionState, ViewportCamera};
+
+// ============================================================================
+// GizmoMaterial — always renders on top via depth_compare: Always
+// ============================================================================
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct GizmoMaterial {
+    #[uniform(0)]
+    pub base_color: LinearRgba,
+    #[uniform(0)]
+    pub emissive: LinearRgba,
+}
+
+impl Material for GizmoMaterial {
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Path("shaders/gizmo_material.wgsl".into())
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Opaque
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        // Override depth state: always pass depth test, never write depth.
+        // This ensures gizmo meshes render in front of all scene geometry.
+        if let Some(ref mut depth_stencil) = descriptor.depth_stencil {
+            depth_stencil.depth_compare = CompareFunction::Always;
+            depth_stencil.depth_write_enabled = false;
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Components
+// ============================================================================
 
 /// Marker component for gizmo mesh entities
 #[derive(Component)]
@@ -39,91 +86,62 @@ pub struct GizmoMeshEntities {
 /// Resource to store gizmo materials for color changes
 #[derive(Resource)]
 pub struct GizmoMaterials {
-    pub x_normal: Handle<StandardMaterial>,
-    pub x_highlight: Handle<StandardMaterial>,
-    pub y_normal: Handle<StandardMaterial>,
-    pub y_highlight: Handle<StandardMaterial>,
-    pub z_normal: Handle<StandardMaterial>,
-    pub z_highlight: Handle<StandardMaterial>,
-    pub center_normal: Handle<StandardMaterial>,
-    pub center_highlight: Handle<StandardMaterial>,
-    pub outline: Handle<StandardMaterial>,
+    pub x_normal: Handle<GizmoMaterial>,
+    pub x_highlight: Handle<GizmoMaterial>,
+    pub y_normal: Handle<GizmoMaterial>,
+    pub y_highlight: Handle<GizmoMaterial>,
+    pub z_normal: Handle<GizmoMaterial>,
+    pub z_highlight: Handle<GizmoMaterial>,
+    pub center_normal: Handle<GizmoMaterial>,
+    pub center_highlight: Handle<GizmoMaterial>,
+    pub outline: Handle<GizmoMaterial>,
 }
 
 /// System to spawn the gizmo mesh entities
 pub fn setup_gizmo_meshes(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<GizmoMaterial>>,
 ) {
-    // Create materials - solid colors, unlit, with depth bias to render in front of scene
-    let gizmo_depth_bias = -1.0;
-
-    let x_normal = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.2, 0.2),
+    let x_normal = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(0.9, 0.2, 0.2, 1.0),
         emissive: LinearRgba::new(0.9, 0.2, 0.2, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
-    let x_highlight = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 0.3),
+    let x_highlight = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
 
-    let y_normal = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.2, 0.9, 0.2),
+    let y_normal = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(0.2, 0.9, 0.2, 1.0),
         emissive: LinearRgba::new(0.2, 0.9, 0.2, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
-    let y_highlight = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 0.3),
+    let y_highlight = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
 
-    let z_normal = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.2, 0.2, 0.9),
+    let z_normal = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(0.2, 0.2, 0.9, 1.0),
         emissive: LinearRgba::new(0.2, 0.2, 0.9, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
-    let z_highlight = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 0.3),
+    let z_highlight = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
 
-    let center_normal = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.8, 0.8, 0.8),
+    let center_normal = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(0.8, 0.8, 0.8, 1.0),
         emissive: LinearRgba::new(0.8, 0.8, 0.8, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
-    let center_highlight = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 0.3),
+    let center_highlight = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
-        unlit: true,
-        depth_bias: gizmo_depth_bias,
-        ..default()
     });
 
-    // Outline material (not used but kept for resource)
-    let outline = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.1, 0.1),
-        unlit: true,
-        ..default()
+    let outline = materials.add(GizmoMaterial {
+        base_color: LinearRgba::new(0.1, 0.1, 0.1, 1.0),
+        emissive: LinearRgba::NONE,
     });
 
     // Create meshes - main geometry
@@ -145,7 +163,7 @@ pub fn setup_gizmo_meshes(
     )).id();
 
     // Helper to spawn a gizmo part as child of root
-    let spawn_part = |commands: &mut Commands, mesh: Handle<Mesh>, material: Handle<StandardMaterial>, transform: Transform, part: GizmoPart, render_layers: &RenderLayers, gizmo_root: Entity| -> Entity {
+    let spawn_part = |commands: &mut Commands, mesh: Handle<Mesh>, material: Handle<GizmoMaterial>, transform: Transform, part: GizmoPart, render_layers: &RenderLayers, gizmo_root: Entity| -> Entity {
         commands.spawn((
             Mesh3d(mesh),
             MeshMaterial3d(material),
@@ -280,6 +298,10 @@ pub fn update_gizmo_mesh_transforms(
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
     camera_query: Query<&GlobalTransform, With<ViewportCamera>>,
+    #[cfg(feature = "xr")]
+    xr_views: Option<Res<renzora_xr::reexports::OxrViews>>,
+    #[cfg(feature = "xr")]
+    xr_root: Query<&GlobalTransform, With<renzora_xr::reexports::XrTrackingRoot>>,
 ) {
     let Ok((mut root_transform, mut root_visibility)) = gizmo_root.single_mut() else { return };
 
@@ -301,8 +323,26 @@ pub fn update_gizmo_mesh_transforms(
             root_transform.translation = gizmo_pos;
 
             // Scale gizmo so it occupies the same screen area regardless of camera distance
-            if let Ok(cam_transform) = camera_query.single() {
-                let dist = (cam_transform.translation() - gizmo_pos).length().max(0.1);
+            // Try desktop ViewportCamera first, then fall back to VR headset position
+            let cam_pos: Option<Vec3> = camera_query.single().ok().map(|t| t.translation())
+                .or_else(|| {
+                    #[cfg(feature = "xr")]
+                    {
+                        // Get VR headset world position from OxrViews + XrTrackingRoot
+                        let views = xr_views.as_ref()?;
+                        if views.is_empty() { return None; }
+                        let o = &views[0].pose.orientation;
+                        let p = &views[0].pose.position;
+                        let head_pos = Vec3::new(p.x, p.y, p.z);
+                        let root_tf = xr_root.single().ok()?;
+                        Some(root_tf.transform_point(head_pos))
+                    }
+                    #[cfg(not(feature = "xr"))]
+                    { None }
+                });
+
+            if let Some(cam_translation) = cam_pos {
+                let dist = (cam_translation - gizmo_pos).length().max(0.1);
                 let scale = dist / GIZMO_SCALE_REF_DIST;
                 root_transform.scale = Vec3::splat(scale);
                 gizmo_state.gizmo_scale = scale;
@@ -315,7 +355,7 @@ pub fn update_gizmo_mesh_transforms(
 pub fn update_gizmo_materials(
     gizmo_state: Res<GizmoState>,
     gizmo_materials: Option<Res<GizmoMaterials>>,
-    mut gizmo_query: Query<(&GizmoPart, &mut MeshMaterial3d<StandardMaterial>), With<GizmoMesh>>,
+    mut gizmo_query: Query<(&GizmoPart, &mut MeshMaterial3d<GizmoMaterial>), With<GizmoMesh>>,
 ) {
     let Some(materials) = gizmo_materials else { return };
 

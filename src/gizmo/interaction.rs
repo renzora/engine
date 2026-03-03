@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::ecs::system::SystemParam;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
@@ -11,7 +12,37 @@ use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
 };
+#[cfg(feature = "xr")]
+use super::picking::{get_vr_aim_ray, get_vr_aim_ray_either_hand};
+#[cfg(feature = "xr")]
+use super::state::GizmoVrHand;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE, SCREEN_PICK_RADIUS};
+
+/// Bundled VR + input parameters to stay under the 16-param system limit
+#[derive(SystemParam)]
+pub struct GizmoInput<'w, 's> {
+    pub keyboard: Res<'w, ButtonInput<KeyCode>>,
+    pub keybindings: Res<'w, KeyBindings>,
+    #[cfg(feature = "xr")]
+    pub vr_mode: Option<Res<'w, renzora_xr::VrModeActive>>,
+    #[cfg(feature = "xr")]
+    pub controllers: Option<Res<'w, renzora_xr::VrControllerState>>,
+    #[cfg(feature = "xr")]
+    pub xr_root: Query<'w, 's, &'static GlobalTransform, With<renzora_xr::reexports::XrTrackingRoot>>,
+    #[cfg(not(feature = "xr"))]
+    #[system_param(ignore)]
+    _marker: std::marker::PhantomData<&'s &'w ()>,
+}
+
+impl GizmoInput<'_, '_> {
+    /// Whether VR mode is active
+    pub fn is_vr(&self) -> bool {
+        #[cfg(feature = "xr")]
+        { self.vr_mode.is_some() }
+        #[cfg(not(feature = "xr"))]
+        { false }
+    }
+}
 
 pub fn gizmo_hover_system(
     mut gizmo: ResMut<GizmoState>,
@@ -24,6 +55,7 @@ pub fn gizmo_hover_system(
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
+    input: GizmoInput,
 ) {
     // Disable gizmo during modal transform or fullscreen play mode
     if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
@@ -46,7 +78,10 @@ pub fn gizmo_hover_system(
         return;
     }
 
-    if !viewport.hovered {
+    // In VR mode, skip viewport hover check (no desktop cursor)
+    let is_vr = input.is_vr();
+
+    if !viewport.hovered && !is_vr {
         return;
     }
 
@@ -63,8 +98,39 @@ pub fn gizmo_hover_system(
         return;
     };
 
-    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
-        return;
+    // Try desktop cursor ray first, then fall back to VR controller aim rays.
+    // In VR, check BOTH hands independently — prefer the hand whose button is
+    // currently pressed, otherwise prefer right hand as default.
+    let ray = if let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) {
+        ray
+    } else {
+        #[cfg(feature = "xr")]
+        {
+            use crate::gizmo::picking::get_vr_aim_ray;
+            let right_ray = get_vr_aim_ray(Some(renzora_xr::VrHand::Right), is_vr, &input.controllers, &input.xr_root);
+            let left_ray = get_vr_aim_ray(Some(renzora_xr::VrHand::Left), is_vr, &input.controllers, &input.xr_root);
+            let left_btn = input.controllers.as_ref().map_or(false, |c| c.left.button_a);
+            let right_btn = input.controllers.as_ref().map_or(false, |c| c.right.button_a);
+
+            // Prefer the hand whose grab button is held (active intent to interact),
+            // otherwise fall back to right-then-left for passive hover.
+            if left_btn && !right_btn {
+                if let Some(l) = left_ray {
+                    gizmo.active_vr_hand = Some(GizmoVrHand::Left);
+                    l
+                } else { return; }
+            } else if let Some(r) = right_ray {
+                gizmo.active_vr_hand = Some(GizmoVrHand::Right);
+                r
+            } else if let Some(l) = left_ray {
+                gizmo.active_vr_hand = Some(GizmoVrHand::Left);
+                l
+            } else {
+                return;
+            }
+        }
+        #[cfg(not(feature = "xr"))]
+        { return; }
     };
 
     let pos = obj_transform.translation;
@@ -182,8 +248,6 @@ pub fn gizmo_interaction_system(
     modal: Res<ModalTransformState>,
     play_mode: Res<PlayModeState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    keybindings: Res<KeyBindings>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     editor_entities: Query<(Entity, &GlobalTransform, &EditorEntity)>,
@@ -192,17 +256,33 @@ pub fn gizmo_interaction_system(
     mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
     terrain_entities: Query<(), Or<(With<TerrainChunkData>, With<TerrainData>)>>,
+    input: GizmoInput,
 ) {
     // Disable gizmo interaction during modal transform or fullscreen play mode
     if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 
-    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
-    let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let shift_held = input.keyboard.pressed(KeyCode::ShiftLeft) || input.keyboard.pressed(KeyCode::ShiftRight);
+    let ctrl_held = input.keyboard.pressed(KeyCode::ControlLeft) || input.keyboard.pressed(KeyCode::ControlRight);
 
-    // Handle mouse release
-    if mouse_button.just_released(MouseButton::Left) {
+    let is_vr = input.is_vr();
+
+    // Determine if a VR grab button was just released (either hand)
+    #[cfg(feature = "xr")]
+    let vr_grab_released = is_vr && input.controllers.as_ref().map_or(false, |c| {
+        // If we were dragging with a specific hand, check that hand's button
+        match gizmo.active_vr_hand {
+            Some(GizmoVrHand::Left) => !c.left.button_a,
+            Some(GizmoVrHand::Right) => !c.right.button_a,
+            None => !c.left.button_a && !c.right.button_a,
+        }
+    }) && gizmo.is_dragging;
+    #[cfg(not(feature = "xr"))]
+    let vr_grab_released = false;
+
+    // Handle mouse release or VR button release
+    if mouse_button.just_released(MouseButton::Left) || vr_grab_released {
         // Handle gizmo drag end - create undo command for transform change
         if gizmo.is_dragging {
             if let (Some(entity), Some(start_transform)) = (gizmo.drag_entity, gizmo.drag_start_transform) {
@@ -219,6 +299,8 @@ pub fn gizmo_interaction_system(
             gizmo.drag_axis = None;
             gizmo.drag_start_transform = None;
             gizmo.drag_entity = None;
+            #[cfg(feature = "xr")]
+            { gizmo.active_vr_hand = None; }
             // Clear snap target state
             gizmo.snap_target = super::SnapTarget::None;
             gizmo.snap_target_position = None;
@@ -292,7 +374,7 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    if !viewport.hovered {
+    if !viewport.hovered && !is_vr {
         return;
     }
 
@@ -306,16 +388,34 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    // Check for keyboard-triggered select (picks entity under cursor without initiating drag/box select)
-    let key_select = keybindings.just_pressed(EditorAction::SelectUnderCursor, &keyboard);
+    // Detect VR grab button press: only the hand currently hovering the gizmo can grab
+    #[cfg(feature = "xr")]
+    let vr_grab_pressed: Option<GizmoVrHand> = if is_vr && !gizmo.is_dragging {
+        match gizmo.active_vr_hand {
+            Some(GizmoVrHand::Left) if input.controllers.as_ref().map_or(false, |c| c.left.button_a) => {
+                Some(GizmoVrHand::Left)
+            }
+            Some(GizmoVrHand::Right) if input.controllers.as_ref().map_or(false, |c| c.right.button_a) => {
+                Some(GizmoVrHand::Right)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    #[cfg(not(feature = "xr"))]
+    let vr_grab_pressed: Option<()> = None;
 
-    // Only process clicks or keyboard select
-    if !mouse_button.just_pressed(MouseButton::Left) && !key_select {
+    // Check for keyboard-triggered select (picks entity under cursor without initiating drag/box select)
+    let key_select = input.keybindings.just_pressed(EditorAction::SelectUnderCursor, &input.keyboard);
+
+    // Only process clicks, keyboard select, or VR button press
+    if !mouse_button.just_pressed(MouseButton::Left) && !key_select && vr_grab_pressed.is_none() {
         return;
     }
 
     // Skip if camera is being dragged (prevents selection during camera movement)
-    if viewport.camera_dragging {
+    if viewport.camera_dragging && !is_vr {
         return;
     }
 
@@ -326,8 +426,9 @@ pub fn gizmo_interaction_system(
 
     // If hovering over a gizmo axis, start axis-constrained drag
     // (gizmo_hover_system already gates this on the correct tool/mode)
-    // (only for mouse clicks, not keyboard select)
-    if !key_select && gizmo.hovered_axis.is_some() {
+    // (only for mouse clicks or VR button presses, not keyboard select)
+    let grab_trigger = !key_select && (mouse_button.just_pressed(MouseButton::Left) || vr_grab_pressed.is_some());
+    if grab_trigger && gizmo.hovered_axis.is_some() {
         if let Some(axis) = gizmo.hovered_axis {
             // Calculate initial drag state based on gizmo mode
             if let Some(selected) = selection.selected_entity {
@@ -336,13 +437,30 @@ pub fn gizmo_interaction_system(
                     return;
                 }
                 if let Ok(obj_transform) = transforms.get(selected) {
-                    if let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) {
+                    // Get the ray — use VR aim ray if a VR button initiated the grab, otherwise cursor ray
+                    let ray = if vr_grab_pressed.is_some() {
+                        #[cfg(feature = "xr")]
+                        {
+                            let vr_hand = vr_grab_pressed.unwrap();
+                            let xr_hand = match vr_hand {
+                                GizmoVrHand::Left => renzora_xr::VrHand::Left,
+                                GizmoVrHand::Right => renzora_xr::VrHand::Right,
+                            };
+                            get_vr_aim_ray(Some(xr_hand), is_vr, &input.controllers, &input.xr_root)
+                        }
+                        #[cfg(not(feature = "xr"))]
+                        { None }
+                    } else {
+                        get_cursor_ray(&viewport, &windows, &camera_query)
+                    };
+
+                    if let Some(ray) = ray {
                         let pos = obj_transform.translation;
                         let cam_transform = camera_query.single().map(|(_, t)| t);
 
                         match gizmo.mode {
                             GizmoMode::Translate => {
-                                // Calculate where cursor intersects the constraint
+                                // Calculate where cursor/ray intersects the constraint
                                 let drag_point = match axis {
                                     DragAxis::X => ray_to_axis_closest_point(&ray, pos, Vec3::X),
                                     DragAxis::Y => ray_to_axis_closest_point(&ray, pos, Vec3::Y),
@@ -355,7 +473,8 @@ pub fn gizmo_interaction_system(
                                             let cam_forward = cam_t.forward();
                                             ray_plane_intersection(&ray, pos, *cam_forward).unwrap_or(pos)
                                         } else {
-                                            pos
+                                            // In VR, use ray direction as plane normal for Free drag
+                                            ray_plane_intersection(&ray, pos, *ray.direction).unwrap_or(pos)
                                         }
                                     }
                                 };
@@ -395,6 +514,12 @@ pub fn gizmo_interaction_system(
                         // Store original transform for undo
                         gizmo.drag_start_transform = Some(*obj_transform);
                         gizmo.drag_entity = Some(selected);
+
+                        // Track which VR hand initiated the drag
+                        #[cfg(feature = "xr")]
+                        if let Some(vr_hand) = vr_grab_pressed {
+                            gizmo.active_vr_hand = Some(vr_hand);
+                        }
                     }
                 }
             }
@@ -573,20 +698,34 @@ pub fn object_drag_system(
     modal: Res<ModalTransformState>,
     play_mode: Res<PlayModeState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
     editor_entities: Query<(Entity, &GlobalTransform), With<EditorEntity>>,
     mut scene_state: ResMut<SceneManagerState>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
+    input: GizmoInput,
 ) {
     // Disable gizmo drag during modal transform or fullscreen play mode
     if modal.active || matches!(play_mode.state, PlayState::Playing | PlayState::Paused) {
         return;
     }
 
-    if !gizmo.is_dragging || !mouse_button.pressed(MouseButton::Left) {
+    // Check if a VR button is held for the active hand (drag continues while held)
+    #[cfg(feature = "xr")]
+    let vr_button_held = input.is_vr() && input.controllers.as_ref().map_or(false, |c| {
+        match gizmo.active_vr_hand {
+            Some(GizmoVrHand::Left) => c.left.button_a,
+            Some(GizmoVrHand::Right) => c.right.button_a,
+            None => false,
+        }
+    });
+    #[cfg(not(feature = "xr"))]
+    let vr_button_held = false;
+
+    let input_held = mouse_button.pressed(MouseButton::Left) || vr_button_held;
+
+    if !gizmo.is_dragging || !input_held {
         return;
     }
 
@@ -606,16 +745,29 @@ pub fn object_drag_system(
         return;
     };
 
-    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
-        return;
+    // Get ray — use VR aim ray if dragging with a VR hand, otherwise cursor ray
+    let ray = if vr_button_held {
+        #[cfg(feature = "xr")]
+        {
+            let xr_hand = match gizmo.active_vr_hand {
+                Some(GizmoVrHand::Left) => Some(renzora_xr::VrHand::Left),
+                Some(GizmoVrHand::Right) => Some(renzora_xr::VrHand::Right),
+                None => None,
+            };
+            get_vr_aim_ray(xr_hand, true, &input.controllers, &input.xr_root)
+        }
+        #[cfg(not(feature = "xr"))]
+        { None }
+    } else {
+        get_cursor_ray(&viewport, &windows, &camera_query)
     };
+    let Some(ray) = ray else { return; };
 
-    let Ok((_, cam_global)) = camera_query.single() else {
-        return;
-    };
+    // cam_global is optional — may be absent in VR-only mode
+    let cam_global = camera_query.single().ok().map(|(_, t)| t);
 
     // Check if Ctrl is held for grid snapping
-    let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let ctrl_held = input.keyboard.pressed(KeyCode::ControlLeft) || input.keyboard.pressed(KeyCode::ControlRight);
 
     // Create effective snap settings - enable grid snap when Ctrl is held
     let snap = if ctrl_held {
@@ -676,8 +828,10 @@ pub fn object_drag_system(
                     }
                 }
                 Some(DragAxis::Free) => {
-                    let cam_forward = *cam_global.forward();
-                    if let Some(point) = ray_plane_intersection(&ray, current_pos, cam_forward) {
+                    // Use camera forward as plane normal; fall back to ray direction in VR
+                    let plane_normal = cam_global.map(|t| *t.forward())
+                        .unwrap_or(*ray.direction);
+                    if let Some(point) = ray_plane_intersection(&ray, current_pos, plane_normal) {
                         point - offset
                     } else {
                         current_pos
@@ -871,8 +1025,9 @@ pub fn object_drag_system(
                     obj_transform.scale.z = snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Free) => {
-                    // Uniform scale - use camera plane
-                    let cam_forward = *cam_global.forward();
+                    // Uniform scale - use camera plane; fall back to ray direction in VR
+                    let cam_forward = cam_global.map(|t| *t.forward())
+                        .unwrap_or(*ray.direction);
                     if let Some(point) = ray_plane_intersection(&ray, pos, cam_forward) {
                         let current_dist = (point - pos).length();
                         let scale_factor = current_dist / start_dist;

@@ -93,6 +93,8 @@ impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         // Initialize gizmo state
         app.init_resource::<GizmoState>();
+        // Register GizmoMaterial (always-on-top depth rendering)
+        app.add_plugins(MaterialPlugin::<meshes::GizmoMaterial>::default());
         // Register custom gizmo config groups
         app.init_gizmo_group::<GridGizmoGroup>();
         app.init_gizmo_group::<AxisGizmoGroup>();
@@ -107,6 +109,11 @@ impl Plugin for GizmoPlugin {
             meshes::update_gizmo_materials,
             update_selection_gizmo_depth,
         ).run_if(in_state(crate::core::AppState::Editor)));
+
+        // XR: add gizmo render layer to XR cameras so they can see gizmo meshes.
+        // GizmoMaterial uses depth_compare: Always to render on top of scene geometry.
+        #[cfg(feature = "xr")]
+        app.add_systems(PostUpdate, add_gizmo_layer_to_xr_cameras);
     }
 }
 
@@ -126,6 +133,19 @@ fn update_selection_gizmo_depth(
         // Scene layer — participates in the main camera's depth buffer
         selection_config.render_layers = RenderLayers::layer(0);
         selection_config.depth_bias = 0.0;
+    }
+}
+
+/// Add gizmo render layer to XR cameras so they can see gizmo mesh entities.
+/// bevy_mod_openxr spawns XrCameras without RenderLayers (defaulting to layer 0),
+/// so gizmo meshes on layer 1 are invisible without this.
+#[cfg(feature = "xr")]
+fn add_gizmo_layer_to_xr_cameras(
+    mut commands: Commands,
+    xr_cameras: Query<Entity, (With<renzora_xr::reexports::XrCamera>, Without<RenderLayers>)>,
+) {
+    for entity in xr_cameras.iter() {
+        commands.entity(entity).insert(RenderLayers::from_layers(&[0, GIZMO_RENDER_LAYER]));
     }
 }
 

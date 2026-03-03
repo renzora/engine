@@ -144,6 +144,58 @@ pub fn ray_circle_intersection_point(ray: &Ray3d, center: Vec3, axis: Vec3) -> O
     ray_plane_intersection(ray, center, axis)
 }
 
+/// Get ray from a VR controller aim pose, transformed to world space.
+///
+/// When `hand` is `None`, tries right hand first then left hand as fallback.
+#[cfg(feature = "xr")]
+pub fn get_vr_aim_ray(
+    hand: Option<renzora_xr::VrHand>,
+    is_vr: bool,
+    controllers: &Option<Res<renzora_xr::VrControllerState>>,
+    xr_root: &Query<&GlobalTransform, With<renzora_xr::reexports::XrTrackingRoot>>,
+) -> Option<Ray3d> {
+    if !is_vr { return None; }
+    let controllers = controllers.as_ref()?;
+    let hand_state = match hand {
+        Some(renzora_xr::VrHand::Left) => &controllers.left,
+        Some(renzora_xr::VrHand::Right) => &controllers.right,
+        None => {
+            // Prefer right hand, fall back to left
+            if controllers.right.tracked {
+                &controllers.right
+            } else {
+                &controllers.left
+            }
+        }
+    };
+    if !hand_state.tracked { return None; }
+
+    // Controller aim poses are in tracking space — apply XrTrackingRoot to get world space
+    let root_tf = xr_root.single().ok().copied().unwrap_or(GlobalTransform::IDENTITY);
+    let aim_pos = root_tf.transform_point(hand_state.aim_position);
+    let aim_fwd = root_tf.to_isometry().rotation * (hand_state.aim_rotation * Vec3::NEG_Z);
+    let dir = Dir3::new(aim_fwd).ok()?;
+    Some(Ray3d::new(aim_pos, dir))
+}
+
+/// Try both hands and return the ray plus which hand produced it.
+#[cfg(feature = "xr")]
+pub fn get_vr_aim_ray_either_hand(
+    is_vr: bool,
+    controllers: &Option<Res<renzora_xr::VrControllerState>>,
+    xr_root: &Query<&GlobalTransform, With<renzora_xr::reexports::XrTrackingRoot>>,
+) -> Option<(Ray3d, renzora_xr::VrHand)> {
+    if !is_vr { return None; }
+    // Try right hand first, then left
+    if let Some(ray) = get_vr_aim_ray(Some(renzora_xr::VrHand::Right), is_vr, controllers, xr_root) {
+        return Some((ray, renzora_xr::VrHand::Right));
+    }
+    if let Some(ray) = get_vr_aim_ray(Some(renzora_xr::VrHand::Left), is_vr, controllers, xr_root) {
+        return Some((ray, renzora_xr::VrHand::Left));
+    }
+    None
+}
+
 /// Check if ray intersects a box (for center cube)
 pub fn ray_box_intersection(ray: &Ray3d, center: Vec3, half_size: f32) -> Option<f32> {
     let min = center - Vec3::splat(half_size);
