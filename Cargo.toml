@@ -7,13 +7,14 @@ edition = "2021"
 default-run = "renzora"
 
 [features]
-default = ["editor"]
+default = ["editor", "xr"]
 editor = ["dep:libloading", "dep:image", "dep:egui-phosphor", "dep:ureq"]
 dynamic = ["bevy/dynamic_linking"]
 # Raytraced global illumination, DLSS, and virtual geometry (meshlets).
 # Requires Vulkan SDK and DLSS SDK installed for compilation.
 # Build without this feature if you don't have the SDKs: cargo run --features editor
 solari = ["bevy/bevy_solari", "bevy/dlss", "bevy/meshlet", "bevy/meshlet_processor"]
+xr = ["dep:renzora_xr", "dep:renzora_vr_editor"]
 
 [[bin]]
 name = "renzora"
@@ -68,6 +69,12 @@ open = "5.0"
 include_dir = "0.7"
 futures-lite = "2"
 
+# VR/XR support (OpenXR)
+renzora_xr = { path = "crates/renzora_xr", optional = true }
+
+# VR editor mode (in-headset scene editing)
+renzora_vr_editor = { path = "crates/renzora_vr_editor", optional = true }
+
 # Theming
 renzora_theme = { path = "crates/renzora_theme" }
 
@@ -81,7 +88,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 winit = "0.30"
 
 [workspace]
-members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/vleue_navigator", "crates/renzora_theme"]
+members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/vleue_navigator", "crates/renzora_theme", "crates/renzora_xr", "crates/renzora_vr_editor", "crates/bevy_oxr/crates/bevy_openxr", "crates/bevy_oxr/crates/bevy_xr", "crates/bevy_oxr/crates/bevy_xr_utils"]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

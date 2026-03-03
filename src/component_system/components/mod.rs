@@ -69,6 +69,30 @@ pub(crate) mod animator;
 // Navigation
 pub(crate) mod navigation_agent;
 
+// VR/XR components (feature-gated)
+#[cfg(feature = "xr")]
+pub(crate) mod vr_controller;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_teleport_area;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_grabbable;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_hand_model;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_pointer;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_snap_zone;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_climbable;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_spatial_anchor;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_overlay_panel;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_tracked_object;
+#[cfg(feature = "xr")]
+pub(crate) mod vr_passthrough_window;
+
 // Re-export commonly used gameplay components
 pub use health::HealthData;
 
@@ -149,6 +173,22 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     depth_of_field::register(registry);
     motion_blur::register(registry);
     skybox::register(registry);
+
+    // VR/XR
+    #[cfg(feature = "xr")]
+    {
+        vr_controller::register(registry);
+        vr_teleport_area::register(registry);
+        vr_grabbable::register(registry);
+        vr_hand_model::register(registry);
+        vr_pointer::register(registry);
+        vr_snap_zone::register(registry);
+        vr_climbable::register(registry);
+        vr_spatial_anchor::register(registry);
+        vr_overlay_panel::register(registry);
+        vr_tracked_object::register(registry);
+        vr_passthrough_window::register(registry);
+    }
 
     // New post-processing effects
     taa::register(registry);

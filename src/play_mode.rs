@@ -83,13 +83,31 @@ fn handle_play_mode_transitions(
         Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
     >,
     runtime_physics_entities: Query<Entity, With<RuntimePhysics>>,
+    // VR mode check
+    #[cfg(feature = "xr")]
+    vr_mode_active: Option<Res<renzora_xr::VrModeActive>>,
 ) {
     let render_to_window = runtime_config.is_some();
 
     // Handle request to enter play mode (fullscreen)
     if play_mode.request_play {
         play_mode.request_play = false;
-        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera, &viewport_image, render_to_window);
+
+        // In VR mode, skip flat camera setup — renzora_xr handles VR camera rig
+        #[cfg(feature = "xr")]
+        let is_vr = vr_mode_active.is_some();
+        #[cfg(not(feature = "xr"))]
+        let is_vr = false;
+
+        if !is_vr {
+            enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera, &viewport_image, render_to_window);
+        } else {
+            // VR: just set state to Playing, the VR camera rig is spawned by vr::enter_vr_play_mode
+            play_mode.state = PlayState::Playing;
+            for mut camera in editor_camera.iter_mut() {
+                camera.is_active = false;
+            }
+        }
 
         // Spawn physics components for all entities with physics data
         spawn_play_mode_physics(&mut commands, &physics_entities);

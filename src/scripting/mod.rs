@@ -29,6 +29,13 @@ use crate::core::resources::console::{console_log, LogLevel};
 use crate::project::CurrentProject;
 use std::path::PathBuf;
 
+#[cfg(feature = "xr")]
+use renzora_xr::{VrModeActive, VrControllerState, VrHandTrackingState};
+#[cfg(feature = "xr")]
+use renzora_xr::camera::VrHead;
+#[cfg(feature = "xr")]
+use renzora_xr::resources::VrSessionState;
+
 /// System sets for ordering scripting systems
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScriptingSet {
@@ -103,9 +110,17 @@ impl Plugin for ScriptingPlugin {
             .add_systems(
                 Update,
                 populate_entity_data_store.in_set(ScriptingSet::PreScript),
-            )
-            // Script execution
-            .add_systems(
+            );
+
+        // VR thread-local population (feature-gated)
+        #[cfg(feature = "xr")]
+        app.add_systems(
+            Update,
+            populate_vr_thread_locals.in_set(ScriptingSet::PreScript),
+        );
+
+        // Script execution
+        app.add_systems(
                 Update,
                 (run_rhai_scripts,).in_set(ScriptingSet::ScriptExecution),
             )
@@ -301,9 +316,17 @@ impl Plugin for RuntimeScriptingPlugin {
             .add_systems(
                 Update,
                 populate_entity_data_store.in_set(RuntimeScriptingSet::PreScript),
-            )
-            // Script execution
-            .add_systems(
+            );
+
+        // VR thread-local population (feature-gated)
+        #[cfg(feature = "xr")]
+        app.add_systems(
+            Update,
+            populate_vr_thread_locals.in_set(RuntimeScriptingSet::PreScript),
+        );
+
+        // Script execution
+        app.add_systems(
                 Update,
                 run_rhai_scripts.in_set(RuntimeScriptingSet::ScriptExecution),
             )
@@ -335,6 +358,82 @@ impl Plugin for RuntimeScriptingPlugin {
                 Update,
                 (tick_debug_draws, render_debug_draws).in_set(RuntimeScriptingSet::DebugDraw),
             );
+    }
+}
+
+/// System: populate VR thread-local state before script execution.
+///
+/// Reads VR resources and copies their state into the thread-local
+/// buffers that Rhai VR API functions read from.
+#[cfg(feature = "xr")]
+pub fn populate_vr_thread_locals(
+    vr_active: Option<Res<VrModeActive>>,
+    head_query: Query<&GlobalTransform, With<VrHead>>,
+    controllers: Option<Res<VrControllerState>>,
+    hand_tracking: Option<Res<VrHandTrackingState>>,
+    session: Option<Res<VrSessionState>>,
+) {
+    use crate::scripting::rhai_api::vr::*;
+
+    let active = vr_active.is_some();
+    set_vr_active(active);
+
+    if !active {
+        return;
+    }
+
+    // Head pose
+    if let Ok(head_gt) = head_query.single() {
+        let (_, rot, pos) = head_gt.to_scale_rotation_translation();
+        set_vr_head_pose(
+            [pos.x as f64, pos.y as f64, pos.z as f64],
+            [rot.x as f64, rot.y as f64, rot.z as f64, rot.w as f64],
+        );
+    }
+
+    // Controller state
+    if let Some(ref ctrls) = controllers {
+        for (hand_name, hand_state) in [("left", &ctrls.left), ("right", &ctrls.right)] {
+            set_vr_controller(hand_name, ControllerSnapshot {
+                position: [
+                    hand_state.grip_position.x as f64,
+                    hand_state.grip_position.y as f64,
+                    hand_state.grip_position.z as f64,
+                ],
+                rotation: [
+                    hand_state.grip_rotation.x as f64,
+                    hand_state.grip_rotation.y as f64,
+                    hand_state.grip_rotation.z as f64,
+                    hand_state.grip_rotation.w as f64,
+                ],
+                trigger: hand_state.trigger as f64,
+                trigger_pressed: hand_state.trigger_pressed,
+                grip: hand_state.grip as f64,
+                grip_pressed: hand_state.grip_pressed,
+                thumbstick_x: hand_state.thumbstick_x as f64,
+                thumbstick_y: hand_state.thumbstick_y as f64,
+                button_a: hand_state.button_a,
+                button_b: hand_state.button_b,
+                tracked: hand_state.tracked,
+            });
+        }
+    }
+
+    // Hand tracking state
+    if let Some(ref hands) = hand_tracking {
+        for (hand_name, hand_state) in [("left", &hands.left), ("right", &hands.right)] {
+            set_vr_hand(hand_name, HandSnapshot {
+                pinch_strength: hand_state.pinch_strength as f64,
+                grab_strength: hand_state.grab_strength as f64,
+                tracked: hand_state.tracked,
+            });
+        }
+    }
+
+    // Session info
+    if let Some(ref sess) = session {
+        set_vr_session_status(sess.status.as_str());
+        set_vr_headset_name(&sess.headset_name);
     }
 }
 

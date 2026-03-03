@@ -83,7 +83,10 @@ fn category_icon_non_empty() {
 #[test]
 fn category_count() {
     let categories = ComponentCategory::all_in_order();
-    assert_eq!(categories.len(), 10, "Expected 10 categories");
+    #[cfg(feature = "xr")]
+    assert_eq!(categories.len(), 12, "Expected 12 categories (including VR)");
+    #[cfg(not(feature = "xr"))]
+    assert_eq!(categories.len(), 11, "Expected 11 categories");
 }
 
 #[test]
@@ -164,7 +167,7 @@ fn registry_categories_with_components() {
     registry.register_owned(test_def("light1", ComponentCategory::Lighting, 0));
     registry.register_owned(test_def("mesh1", ComponentCategory::Rendering, 0));
 
-    let cats: Vec<_> = registry.categories_with_components().collect();
+    let cats = registry.categories_with_components();
     assert!(cats.contains(&ComponentCategory::Lighting));
     assert!(cats.contains(&ComponentCategory::Rendering));
     assert!(!cats.contains(&ComponentCategory::Physics));

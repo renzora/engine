@@ -208,6 +208,22 @@ pub enum RhaiCommand {
     ParticleSetVariableVec3 { entity_id: u64, name: String, x: f32, y: f32, z: f32 },
     /// Move emitter and emit at position
     ParticleEmitAt { entity_id: u64, x: f32, y: f32, z: f32, count: Option<u32> },
+
+    // ===================
+    // VR Commands
+    // ===================
+    /// Trigger haptic vibration on a VR controller
+    #[cfg(feature = "xr")]
+    VrHapticPulse { hand: String, intensity: f32, duration: f32 },
+    /// Teleport the VR camera rig to a position
+    #[cfg(feature = "xr")]
+    VrTeleportTo { x: f32, y: f32, z: f32 },
+    /// Recenter the VR reference space
+    #[cfg(feature = "xr")]
+    VrRecenter,
+    /// Toggle passthrough mode
+    #[cfg(feature = "xr")]
+    VrSetPassthrough { enabled: bool },
 }
 
 /// Value types for component fields

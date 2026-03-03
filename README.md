@@ -31,6 +31,7 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 | **[Audio Guide](docs/AUDIO_GUIDE.md)** | Kira 0.12 audio system: mixer, spatial audio, emitter/listener components, scripting API, editor preview |
 | **[Console Commands](docs/CONSOLE_COMMANDS.md)** | Built-in `/` commands for the console: settings, toggles, snap, play mode, FPS, and more |
 | **[Scripting API Reference](docs/scripting-api.md)** | Full reference for the Rhai scripting API: transforms, input, physics, audio, timers, ECS queries |
+| **[VR Guide](docs/VR_GUIDE.md)** | OpenXR VR/XR system: headset setup, controllers, hand tracking, VR components, mixed reality, scripting API |
 | **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** | Architecture, API reference, UI creation, hot reload, testing, and complete examples |
 | **[Contributing Guide](CONTRIBUTING.md)** | Guidelines for submitting issues and pull requests |
 

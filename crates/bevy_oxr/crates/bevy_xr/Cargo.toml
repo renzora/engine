@@ -1,0 +1,30 @@
+[package]
+name = "bevy_mod_xr"
+description = "semi generic Xr Api for Community Driven XR in Bevy"
+version = "0.5.0"
+edition = "2024"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/awtterpip/bevy_oxr"
+keywords = ["gamedev", "bevy", "Xr", "Vr"]
+
+[features]
+default = ["gizmos"]
+gizmos = ["dep:bevy_gizmos", "dep:bevy_color"]
+reflect = ["dep:bevy_reflect"]
+
+[dependencies]
+bevy_ecs = { version = "0.18", default-features = false }
+bevy_math = { version = "0.18", default-features = false }
+bevy_render = { version = "0.18", default-features = false }
+bevy_app = { version = "0.18", default-features = false }
+bevy_reflect = { version = "0.18", default-features = false, optional = true }
+bevy_log = { version = "0.18", default-features = false }
+bevy_gizmos = { version = "0.18", default-features = false, optional = true }
+bevy_color = { version = "0.18", default-features = false, optional = true }
+bevy_transform = { version = "0.18", default-features = false }
+bevy_camera = { version = "0.18", default-features = false }
+bevy_derive = { version = "0.18", default-features = false }
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

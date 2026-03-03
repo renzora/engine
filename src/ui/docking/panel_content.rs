@@ -227,6 +227,20 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::RenderPipeline => Vec2::new(400.0, 300.0),
         PanelId::ShapeLibrary => Vec2::new(200.0, 300.0),
         PanelId::Mixer => Vec2::new(350.0, 280.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSettings => Vec2::new(300.0, 400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrInputDebug => Vec2::new(320.0, 500.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrCameraPreview => Vec2::new(400.0, 350.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSession => Vec2::new(300.0, 400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrPerformance => Vec2::new(350.0, 400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrDevices => Vec2::new(280.0, 300.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSetupWizard => Vec2::new(350.0, 450.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

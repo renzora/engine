@@ -102,7 +102,7 @@ pub fn render_add_component_button(
                     for category in ComponentCategory::all_in_order() {
                         let in_category: Vec<_> = filtered
                             .iter()
-                            .filter(|d| d.category == *category)
+                            .filter(|d| d.category == category)
                             .copied()
                             .collect();
 
@@ -242,6 +242,11 @@ pub fn get_category_style(category: ComponentCategory) -> (Color32, Color32) {
         ComponentCategory::Animation => (
             Color32::from_rgb(160, 220, 255),  // Light blue
             Color32::from_rgb(35, 45, 55),
+        ),
+        #[cfg(feature = "xr")]
+        ComponentCategory::VR => (
+            Color32::from_rgb(100, 220, 255),  // Cyan/VR blue
+            Color32::from_rgb(30, 48, 55),
         ),
     }
 }

@@ -40,6 +40,8 @@ fn category_to_theme_name(category: ComponentCategory) -> &'static str {
         ComponentCategory::PostProcess => "post_process",
         ComponentCategory::Gameplay => "gameplay",
         ComponentCategory::Animation => "animation",
+        #[cfg(feature = "xr")]
+        ComponentCategory::VR => "vr",
     }
 }
 

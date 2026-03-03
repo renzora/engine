@@ -136,6 +136,13 @@ version = "1.0"
 "panel.arena_presets" = "Arena Presets"
 "panel.render_pipeline" = "Render Pipeline"
 "panel.shape_library" = "Shape Library"
+"panel.mixer" = "Mixer"
+"panel.vr_settings" = "VR Settings"
+"panel.vr_input_debug" = "VR Input Debug"
+"panel.vr_camera_preview" = "VR Camera Preview"
+"panel.vr_session" = "VR Session"
+"panel.vr_performance" = "VR Performance"
+"layout.vr_development" = "VR Development"
 
 # ─── Menu bar ────────────────────────────────────────────────────────────────
 "menu.file" = "File"

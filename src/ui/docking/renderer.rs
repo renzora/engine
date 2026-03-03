@@ -613,8 +613,8 @@ fn render_leaf(
             ui.set_max_height(400.0);
             ui.style_mut().spacing.item_spacing.y = 1.0;
 
-            let categories: &[(&str, &[PanelId])] = &[
-                ("General", &[
+            let mut categories: Vec<(&str, Vec<PanelId>)> = vec![
+                ("General", vec![
                     PanelId::Hierarchy,
                     PanelId::Inspector,
                     PanelId::Assets,
@@ -623,7 +623,7 @@ fn render_leaf(
                     PanelId::Settings,
                     PanelId::History,
                 ]),
-                ("Content", &[
+                ("Content", vec![
                     PanelId::CodeEditor,
                     PanelId::Blueprint,
                     PanelId::NodeLibrary,
@@ -631,14 +631,14 @@ fn render_leaf(
                     PanelId::Animation,
                     PanelId::Timeline,
                 ]),
-                ("Preview", &[
+                ("Preview", vec![
                     PanelId::StudioPreview,
                     PanelId::MaterialPreview,
                     PanelId::ShaderPreview,
                     PanelId::ImagePreview,
                     PanelId::NodeExplorer,
                 ]),
-                ("Tools", &[
+                ("Tools", vec![
                     PanelId::LevelTools,
                     PanelId::ShapeLibrary,
                     PanelId::TextureEditor,
@@ -647,7 +647,20 @@ fn render_leaf(
                     PanelId::VideoEditor,
                     PanelId::DAW,
                 ]),
-                ("Debug", &[
+            ];
+
+            #[cfg(feature = "xr")]
+            categories.push(("VR", vec![
+                PanelId::VrSettings,
+                PanelId::VrInputDebug,
+                PanelId::VrCameraPreview,
+                PanelId::VrSession,
+                PanelId::VrPerformance,
+                PanelId::VrDevices,
+                PanelId::VrSetupWizard,
+            ]));
+
+            categories.push(("Debug", vec![
                     PanelId::Performance,
                     PanelId::RenderStats,
                     PanelId::RenderPipeline,
@@ -658,8 +671,7 @@ fn render_leaf(
                     PanelId::CullingDebug,
                     PanelId::SystemProfiler,
                     PanelId::Gamepad,
-                ]),
-            ];
+            ]));
 
             let already_here: Vec<_> = tabs.to_vec();
 
@@ -675,7 +687,7 @@ fn render_leaf(
                     );
                     ui.add_space(1.0);
 
-                    for panel in *panels {
+                    for panel in panels {
                         let is_here = already_here.contains(panel);
                         let label = format!("{} {}", panel.icon(), panel.localized_title());
 

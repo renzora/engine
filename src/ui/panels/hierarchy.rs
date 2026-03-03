@@ -2103,5 +2103,7 @@ fn get_component_category_color(category: ComponentCategory, theme: &Theme) -> C
         ComponentCategory::Animation => theme.categories.rendering.accent.to_color32(),
         ComponentCategory::Scripting => theme.categories.scripting.accent.to_color32(),
         ComponentCategory::UI => theme.categories.ui.accent.to_color32(),
+        #[cfg(feature = "xr")]
+        ComponentCategory::VR => theme.categories.rendering.accent.to_color32(),
     }
 }

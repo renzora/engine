@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use bevy_egui::egui::{self, Color32, RichText, CornerRadius};
-use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, GLOBE, PALETTE, WARNING};
+use egui_phosphor::regular::{CARET_UP, DOWNLOAD_SIMPLE, GLOBE, PALETTE, VIRTUAL_REALITY, WARNING};
 
 use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::locale::LocaleResource;
@@ -250,6 +250,7 @@ pub fn render_status_bar(
     update_dialog: &mut UpdateDialogState,
     locale: &mut LocaleResource,
     app_config: &mut AppConfig,
+    vr_available: bool,
 ) {
     // Clone theme data needed for the dropup before borrowing theme immutably
     let active_theme_name = theme_manager.active_theme_name.clone();
@@ -395,6 +396,32 @@ pub fn render_status_bar(
 
                     // Version text (rightmost)
                     ui.label(RichText::new("Renzora r1-alpha4").size(11.0).color(text_color));
+
+                    // VR button (only when XR runtime is available)
+                    if vr_available {
+                        let vr_btn = ui.add(
+                            egui::Button::new(
+                                RichText::new(format!("{} Start VR", VIRTUAL_REALITY))
+                                    .size(11.0)
+                                    .color(text_color),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .corner_radius(CornerRadius::same(3))
+                            .min_size(egui::vec2(0.0, 18.0)),
+                        );
+                        // Draw border
+                        let r = vr_btn.rect;
+                        let stroke = egui::Stroke::new(1.0, border_color);
+                        ui.painter().line_segment([r.left_top(), r.left_bottom()], stroke);
+                        ui.painter().line_segment([r.left_bottom(), r.right_bottom()], stroke);
+                        ui.painter().line_segment([r.right_top(), r.right_bottom()], stroke);
+                        if vr_btn.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if vr_btn.clicked() {
+                            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("start_vr_clicked"), true));
+                        }
+                    }
 
                     // Theme picker dropup
                     let theme_popup_id = ui.id().with("theme_picker_popup");

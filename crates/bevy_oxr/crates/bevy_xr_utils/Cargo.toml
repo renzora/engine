@@ -1,0 +1,30 @@
+[package]
+name = "bevy_xr_utils"
+version = "0.5.0"
+edition = "2024"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/awtterpip/bevy_oxr"
+description = "utils for bevy_mod_xr and bevy_mod_openxr"
+
+[dependencies]
+bevy_mod_xr = { path = "../bevy_xr", version = "0.5.0" }
+bevy_mod_openxr = { path = "../bevy_openxr", version = "0.5.0" }
+bevy_ecs = { version = "0.18", default-features = false }
+bevy_app = { version = "0.18", default-features = false }
+bevy_transform = { version = "0.18", default-features = false }
+bevy_color = { version = "0.18", default-features = false }
+bevy_gizmos = { version = "0.18", default-features = false }
+bevy_log = { version = "0.18", default-features = false }
+bevy_derive = { version = "0.18", default-features = false }
+bevy_math = { version = "0.18", default-features = false }
+
+[dev-dependencies]
+bevy = "0.18"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+openxr = "0.21.1"
+openxr_mndx_xdev_space = "0.2.0"
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

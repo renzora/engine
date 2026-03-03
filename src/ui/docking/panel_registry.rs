@@ -121,6 +121,20 @@ pub fn get_panel_constraints(panel: &PanelId) -> PanelConstraints {
         PanelId::RenderPipeline => PanelConstraints::default().with_min_width(400.0).with_min_height(300.0),
         PanelId::ShapeLibrary => PanelConstraints::default().with_min_width(200.0).with_min_height(300.0),
         PanelId::Mixer => PanelConstraints::default().with_min_width(350.0).with_min_height(280.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSettings => PanelConstraints::default().with_min_width(300.0).with_min_height(400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrInputDebug => PanelConstraints::default().with_min_width(320.0).with_min_height(500.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrCameraPreview => PanelConstraints::default().with_min_width(400.0).with_min_height(350.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSession => PanelConstraints::default().with_min_width(300.0).with_min_height(400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrPerformance => PanelConstraints::default().with_min_width(350.0).with_min_height(400.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrDevices => PanelConstraints::default().with_min_width(280.0).with_min_height(300.0),
+        #[cfg(feature = "xr")]
+        PanelId::VrSetupWizard => PanelConstraints::default().with_min_width(350.0).with_min_height(450.0),
         PanelId::Plugin(_) => PanelConstraints::default(),
     }
 }
@@ -175,6 +189,20 @@ pub fn all_builtin_panels() -> Vec<PanelId> {
         PanelId::RenderPipeline,
         PanelId::ShapeLibrary,
         PanelId::Mixer,
+        #[cfg(feature = "xr")]
+        PanelId::VrSettings,
+        #[cfg(feature = "xr")]
+        PanelId::VrInputDebug,
+        #[cfg(feature = "xr")]
+        PanelId::VrCameraPreview,
+        #[cfg(feature = "xr")]
+        PanelId::VrSession,
+        #[cfg(feature = "xr")]
+        PanelId::VrPerformance,
+        #[cfg(feature = "xr")]
+        PanelId::VrDevices,
+        #[cfg(feature = "xr")]
+        PanelId::VrSetupWizard,
     ]
 }
 

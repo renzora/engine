@@ -23,6 +23,7 @@ fn project_config_serde_toml_roundtrip() {
         name: "Test Game".into(),
         version: "1.0.0".into(),
         main_scene: "scenes/main.ron".into(),
+        ..Default::default()
     };
     let toml_str = toml::to_string_pretty(&config).unwrap();
     let restored: project::ProjectConfig = toml::from_str(&toml_str).unwrap();
@@ -37,6 +38,7 @@ fn project_config_custom_values_preserved() {
         name: "My Custom Game".into(),
         version: "2.5.3".into(),
         main_scene: "levels/level1.ron".into(),
+        ..Default::default()
     };
     let json = serde_json::to_string(&config).unwrap();
     let restored: project::ProjectConfig = serde_json::from_str(&json).unwrap();

@@ -1,0 +1,3 @@
+# This file is intentionally empty.
+# The bevy_oxr subcrates (bevy_openxr, bevy_xr, bevy_xr_utils) are members
+# of the renzora engine workspace, not this directory's workspace.

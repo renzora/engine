@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use egui_phosphor::regular::{
-    CUBE, LIGHTBULB, ATOM, VIDEO_CAMERA, SPEAKER_HIGH, CODE, SQUARES_FOUR, SPARKLE, GAME_CONTROLLER, SLIDERS, FILM_STRIP,
+    CUBE, LIGHTBULB, ATOM, VIDEO_CAMERA, SPEAKER_HIGH, CODE, SQUARES_FOUR, SPARKLE, GAME_CONTROLLER, SLIDERS, FILM_STRIP, VIRTUAL_REALITY,
 };
 
 /// Function signature for adding a component to an entity
@@ -101,6 +101,9 @@ pub enum ComponentCategory {
     Gameplay,
     /// Skeletal animation, blend trees, etc.
     Animation,
+    /// VR/XR components (controllers, teleport areas, grabbables)
+    #[cfg(feature = "xr")]
+    VR,
 }
 
 impl ComponentCategory {
@@ -118,6 +121,8 @@ impl ComponentCategory {
             ComponentCategory::PostProcess => "Post Process",
             ComponentCategory::Gameplay => "Gameplay",
             ComponentCategory::Animation => "Animation",
+            #[cfg(feature = "xr")]
+            ComponentCategory::VR => "VR",
         }
     }
 
@@ -135,12 +140,14 @@ impl ComponentCategory {
             ComponentCategory::PostProcess => SLIDERS,
             ComponentCategory::Gameplay => GAME_CONTROLLER,
             ComponentCategory::Animation => FILM_STRIP,
+            #[cfg(feature = "xr")]
+            ComponentCategory::VR => VIRTUAL_REALITY,
         }
     }
 
     /// Get all categories in menu order
-    pub fn all_in_order() -> &'static [ComponentCategory] {
-        &[
+    pub fn all_in_order() -> Vec<ComponentCategory> {
+        let mut cats = vec![
             ComponentCategory::Rendering,
             ComponentCategory::Lighting,
             ComponentCategory::Camera,
@@ -152,7 +159,10 @@ impl ComponentCategory {
             ComponentCategory::Gameplay,
             ComponentCategory::Scripting,
             ComponentCategory::UI,
-        ]
+        ];
+        #[cfg(feature = "xr")]
+        cats.push(ComponentCategory::VR);
+        cats
     }
 }
 

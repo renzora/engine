@@ -61,11 +61,11 @@ impl ComponentRegistry {
     }
 
     /// Get all categories that have registered components
-    pub fn categories_with_components(&self) -> impl Iterator<Item = ComponentCategory> + '_ {
+    pub fn categories_with_components(&self) -> Vec<ComponentCategory> {
         ComponentCategory::all_in_order()
-            .iter()
-            .copied()
+            .into_iter()
             .filter(|cat| self.by_category.get(cat).map(|v| !v.is_empty()).unwrap_or(false))
+            .collect()
     }
 
     /// Get all registered component definitions

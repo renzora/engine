@@ -37,7 +37,7 @@ impl WorkspaceLayout {
 
 /// Get all built-in layouts
 pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
-    vec![
+    let mut layouts = vec![
         WorkspaceLayout::builtin("Scene", default_layout()),
         WorkspaceLayout::builtin("Scripting", scripting_layout()),
         WorkspaceLayout::builtin("Animation", animation_layout()),
@@ -48,7 +48,12 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Particles", particles_layout()),
         WorkspaceLayout::builtin("Shaders", shaders_layout()),
         WorkspaceLayout::builtin("Physics", physics_layout()),
-    ]
+    ];
+
+    #[cfg(feature = "xr")]
+    layouts.push(WorkspaceLayout::builtin("VR Development", vr_development_layout()));
+
+    layouts
 }
 
 /// Scene layout: Hierarchy | Viewport+bottom strip | ShapeLibrary+Inspector
@@ -407,6 +412,50 @@ pub fn physics_layout() -> DockTree {
     )
 }
 
+/// VR Development layout
+///
+/// ```text
+/// ┌──────────┬──────────────────────┬──────────────┐
+/// │          │                      │  Inspector   │
+/// │Hierarchy │      Viewport        │              │
+/// │          │                      ├──────────────┤
+/// │          ├──────────────────────┤ VR Settings  │
+/// │          │Console|VR Debug|Perf │ VR Session   │
+/// └──────────┴──────────────────────┴──────────────┘
+/// ```
+#[cfg(feature = "xr")]
+pub fn vr_development_layout() -> DockTree {
+    DockTree::horizontal(
+        // Left: Hierarchy
+        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::horizontal(
+            // Center: Viewport on top, bottom strip below
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Console, PanelId::VrInputDebug, PanelId::VrPerformance],
+                    active_tab: 0,
+                },
+                0.7,
+            ),
+            // Right: Inspector on top, VR panels below
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::History],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec![PanelId::VrSettings, PanelId::VrSession],
+                    active_tab: 0,
+                },
+                0.55,
+            ),
+            0.78,
+        ),
+        0.18,
+    )
+}
+
 /// Minimal layout: Just viewport
 #[allow(dead_code)]
 pub fn minimal_layout() -> DockTree {
@@ -506,7 +555,10 @@ mod tests {
     #[test]
     fn test_builtin_layouts_count() {
         let layouts = builtin_layouts();
+        #[cfg(not(feature = "xr"))]
         assert_eq!(layouts.len(), 10, "Expected 10 built-in layouts");
+        #[cfg(feature = "xr")]
+        assert_eq!(layouts.len(), 11, "Expected 11 built-in layouts (with VR Development)");
     }
 
     #[test]

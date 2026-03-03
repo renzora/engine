@@ -1242,6 +1242,15 @@ fn process_rhai_command(
             // SetProperty should not reach here — it's consumed by process_command_buffer()
             // and routed to DeferredPropertyWrites
         }
+
+        // VR commands — stored in thread-local queue, drained by VR system
+        #[cfg(feature = "xr")]
+        RhaiCommand::VrHapticPulse { .. }
+        | RhaiCommand::VrTeleportTo { .. }
+        | RhaiCommand::VrRecenter
+        | RhaiCommand::VrSetPassthrough { .. } => {
+            crate::scripting::rhai_api::vr::push_vr_command(cmd);
+        }
     }
 }
 

@@ -46,6 +46,20 @@ mod render_pipeline;
 mod shape_library;
 mod culling_debug;
 mod mixer;
+#[cfg(feature = "xr")]
+mod vr_settings;
+#[cfg(feature = "xr")]
+mod vr_input_debug;
+#[cfg(feature = "xr")]
+mod vr_camera_preview;
+#[cfg(feature = "xr")]
+mod vr_session;
+#[cfg(feature = "xr")]
+mod vr_performance;
+#[cfg(feature = "xr")]
+mod vr_devices;
+#[cfg(feature = "xr")]
+mod vr_setup_wizard;
 
 pub use animation::{render_animation_content, AnimationPanelState};
 pub use node_explorer::{render_node_explorer_content, NodeExplorerState, collect_node_infos};
@@ -102,6 +116,20 @@ pub use render_pipeline::render_render_pipeline_content;
 pub use shape_library::{render_shape_library_content, ShapeLibraryState};
 pub use culling_debug::render_culling_debug_content;
 pub use mixer::render_mixer_content;
+#[cfg(feature = "xr")]
+pub use vr_settings::{render_vr_settings_content, VrSettingsState};
+#[cfg(feature = "xr")]
+pub use vr_input_debug::{render_vr_input_debug_content, VrInputDebugState, HandSnapshot};
+#[cfg(feature = "xr")]
+pub use vr_camera_preview::{render_vr_camera_preview_content, VrCameraPreviewState};
+#[cfg(feature = "xr")]
+pub use vr_session::{render_vr_session_content, VrSessionPanelState};
+#[cfg(feature = "xr")]
+pub use vr_performance::{render_vr_performance_content, VrPerformanceState};
+#[cfg(feature = "xr")]
+pub use vr_devices::{render_vr_devices_content, VrDevicesState, TrackingQuality};
+#[cfg(feature = "xr")]
+pub use vr_setup_wizard::{render_vr_setup_wizard_content, VrSetupWizardState};
 
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 

@@ -1,5 +1,5 @@
 mod panels;
-mod style;
+pub(crate) mod style;
 pub mod docking;
 pub mod inspectors;
 
@@ -29,7 +29,7 @@ use crate::terrain::{TerrainSettings, TerrainSculptState};
 use crate::surface_painting::{SurfacePaintSettings, SurfacePaintState};
 use crate::update::{UpdateState, UpdateDialogState};
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
-use panels::HierarchyQueries;
+// HierarchyQueries is pub-used from panels above
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
@@ -43,36 +43,51 @@ use docking::{
 };
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
-    render_plugin_panels,
-    render_document_tabs, render_code_editor_content, render_image_preview_content,
-    render_splash, render_status_bar, render_title_bar, render_viewport,
-    TITLE_BAR_HEIGHT,
-    render_hierarchy_content, render_assets_content, render_assets_dialogs,
-    render_console_content, render_history_content, render_gamepad_content, render_performance_content,
-    render_render_stats_content, render_ecs_stats_content, render_memory_profiler_content,
-    render_physics_debug_content, render_camera_debug_content, render_system_profiler_content,
-    render_level_tools_content, render_animation_content, AnimationPanelState,
-    render_particle_editor_content,
-    render_particle_preview_content,
-    render_shader_preview_content,
-    render_physics_playground_content,
-    render_physics_properties_content,
-    render_physics_forces_content,
-    render_physics_metrics_content,
-    render_physics_scenarios_content,
-    render_collision_viz_content,
-    render_movement_trails_content,
-    render_stress_test_content,
-    render_state_recorder_content,
-    render_arena_presets_content,
-    render_shape_library_content,
-    render_culling_debug_content,
-    render_mixer_content,
+    render_plugin_panels, render_document_tabs, render_splash,
+    render_status_bar, render_title_bar, render_viewport,
+    TITLE_BAR_HEIGHT, render_assets_dialogs,
+    render_particle_preview_content, render_shader_preview_content,
+    render_image_preview_content,
 };
+// Re-exported for VR panel rendering (src/vr.rs) and general use
+pub use panels::{
+    // Core panels
+    render_hierarchy_content, render_console_content, render_history_content,
+    render_performance_content, render_render_stats_content, render_ecs_stats_content,
+    render_mixer_content, render_physics_debug_content, render_camera_debug_content,
+    render_shape_library_content, render_blueprint_panel, render_node_library_panel,
+    render_assets_content, HierarchyQueries,
+    // Physics panels
+    render_physics_properties_content, render_physics_forces_content,
+    render_physics_metrics_content, render_physics_playground_content,
+    render_physics_scenarios_content, render_collision_viz_content,
+    // Debug / diagnostics panels
+    render_culling_debug_content, render_movement_trails_content,
+    render_state_recorder_content, render_stress_test_content,
+    render_memory_profiler_content, render_arena_presets_content,
+    render_gamepad_content, render_system_profiler_content,
+    render_render_pipeline_content,
+    // Animation / timeline
+    render_animation_content, AnimationPanelState,
+    render_timeline_content,
+    // Scripting / code
+    render_script_variables_content, render_code_editor_content,
+    render_particle_editor_content,
+    // Level tools
+    render_level_tools_content,
+    // Settings
+    render_settings_content,
+    // Inspector (world-based)
+    render_inspector_content_world,
+};
+#[cfg(feature = "xr")]
+pub use panels::{render_vr_settings_content, render_vr_input_debug_content, render_vr_camera_preview_content, render_vr_session_content, render_vr_performance_content, render_vr_devices_content, render_vr_setup_wizard_content};
 use crate::particles::ParticleEditorState;
 use crate::shader_preview::{ShaderPreviewState, ShaderPreviewRender, ShaderType};
 #[allow(unused_imports)]
 pub use panels::{handle_window_actions, property_row, inline_property, LABEL_WIDTH, get_inspector_theme, InspectorThemeColors, load_effect_from_file, save_effect_to_file, ShapeLibraryState};
+#[cfg(feature = "xr")]
+pub use panels::{VrSettingsState, VrInputDebugState, VrCameraPreviewState, VrSessionPanelState, VrPerformanceState, HandSnapshot, VrDevicesState, VrSetupWizardState, TrackingQuality};
 use style::{apply_editor_style_with_theme, init_fonts, set_ui_font};
 use renzora_theme::ThemeManager;
 
@@ -151,6 +166,23 @@ pub struct EditorResources<'w> {
     pub shape_library: ResMut<'w, ShapeLibraryState>,
     pub culling_debug: ResMut<'w, CullingDebugState>,
     pub mixer: ResMut<'w, crate::audio::MixerState>,
+    pub vr_companion: Option<Res<'w, VrCompanionMode>>,
+    #[cfg(feature = "xr")]
+    pub vr_session_state: Res<'w, renzora_xr::resources::VrSessionState>,
+    #[cfg(feature = "xr")]
+    pub vr_settings: ResMut<'w, VrSettingsState>,
+    #[cfg(feature = "xr")]
+    pub vr_input_debug: ResMut<'w, VrInputDebugState>,
+    #[cfg(feature = "xr")]
+    pub vr_camera_preview: ResMut<'w, VrCameraPreviewState>,
+    #[cfg(feature = "xr")]
+    pub vr_session_panel: ResMut<'w, VrSessionPanelState>,
+    #[cfg(feature = "xr")]
+    pub vr_performance: ResMut<'w, VrPerformanceState>,
+    #[cfg(feature = "xr")]
+    pub vr_devices: ResMut<'w, VrDevicesState>,
+    #[cfg(feature = "xr")]
+    pub vr_setup_wizard: ResMut<'w, VrSetupWizardState>,
 }
 
 /// Convert internal UiEvent to plugin API UiEvent
@@ -201,6 +233,11 @@ fn convert_ui_event_to_api(event: InternalUiEvent) -> editor_plugin_api::events:
         },
     }
 }
+
+/// Marker resource indicating the desktop window should show a VR companion
+/// view instead of the full editor UI (editing happens in the headset).
+#[derive(Resource)]
+pub struct VrCompanionMode;
 
 pub struct UiPlugin;
 
@@ -271,6 +308,11 @@ pub fn editor_ui(
         return;
     }
 
+    // In VR mode, the editor runs in the headset — skip the desktop editor UI
+    if editor.vr_companion.is_some() {
+        return;
+    }
+
     // Prime the thread-local translation table for this frame
     crate::locale::set_active_locale(&editor.locale.strings);
 
@@ -336,6 +378,12 @@ pub fn editor_ui(
 
     // Render status bar at bottom (must be rendered early to reserve space) - skip in fullscreen play mode only
     if !in_fullscreen_play {
+        #[cfg(feature = "xr")]
+        let vr_available = editor.vr_companion.is_none()
+            && editor.vr_session_state.status != renzora_xr::resources::VrStatus::Disconnected;
+        #[cfg(not(feature = "xr"))]
+        let vr_available = false;
+
         render_status_bar(
             ctx,
             &editor.plugin_host,
@@ -345,6 +393,7 @@ pub fn editor_ui(
             &mut editor.update_dialog,
             &mut editor.locale,
             &mut editor.app_config,
+            vr_available,
         );
     }
 
@@ -920,6 +969,83 @@ pub fn editor_ui(
                         render_mixer_content(
                             ui,
                             &mut editor.mixer,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrSettings => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_settings_content(
+                            ui,
+                            &mut editor.vr_settings,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrInputDebug => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_input_debug_content(
+                            ui,
+                            &mut editor.vr_input_debug,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrCameraPreview => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_camera_preview_content(
+                            ui,
+                            &mut editor.vr_camera_preview,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrSession => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_session_content(
+                            ui,
+                            &mut editor.vr_session_panel,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrPerformance => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_performance_content(
+                            ui,
+                            &mut editor.vr_performance,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrDevices => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_devices_content(
+                            ui,
+                            &mut editor.vr_devices,
+                            &editor.theme_manager.active_theme,
+                        );
+                    });
+                }
+
+                #[cfg(feature = "xr")]
+                PanelId::VrSetupWizard => {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_vr_setup_wizard_content(
+                            ui,
+                            &mut editor.vr_setup_wizard,
                             &editor.theme_manager.active_theme,
                         );
                     });

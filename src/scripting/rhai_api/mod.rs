@@ -20,6 +20,8 @@ mod components;
 mod scene;
 mod particles;
 mod entity_access;
+#[cfg(feature = "xr")]
+pub mod vr;
 
 use rhai::Engine;
 use std::cell::RefCell;
@@ -75,4 +77,6 @@ pub fn register_all(engine: &mut Engine) {
     scene::register(engine);
     particles::register(engine);
     entity_access::register(engine);
+    #[cfg(feature = "xr")]
+    vr::register(engine);
 }

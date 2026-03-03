@@ -10,7 +10,7 @@ use egui_phosphor::regular::{
     GRAPH, LIST_BULLETS, GEAR, CUBE, GAME_CONTROLLER, CHART_LINE, CPU,
     STACK, CHART_BAR, ATOM, VIDEO_CAMERA, TIMER, WAVEFORM, IMAGE,
     SPARKLE, PAINT_BUCKET, SPEAKER_HIGH, VIDEO,
-    EYE,
+    EYE, VIRTUAL_REALITY, PLUG,
 };
 
 /// Direction of a split in the dock tree
@@ -93,6 +93,27 @@ pub enum PanelId {
     ShapeLibrary,
     /// Audio Mixer — bus volume, panning, mute, and solo controls
     Mixer,
+    /// VR Settings — headset status, locomotion, comfort, input configuration
+    #[cfg(feature = "xr")]
+    VrSettings,
+    /// VR Input Debug — real-time VR input visualization
+    #[cfg(feature = "xr")]
+    VrInputDebug,
+    /// VR Camera Preview — VR eye view preview
+    #[cfg(feature = "xr")]
+    VrCameraPreview,
+    /// VR Session — session lifecycle and capabilities
+    #[cfg(feature = "xr")]
+    VrSession,
+    /// VR Performance — VR-specific performance metrics
+    #[cfg(feature = "xr")]
+    VrPerformance,
+    /// VR Devices — connected device status, tracking, and battery
+    #[cfg(feature = "xr")]
+    VrDevices,
+    /// VR Setup Wizard — guided VR setup verification
+    #[cfg(feature = "xr")]
+    VrSetupWizard,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -147,6 +168,20 @@ impl PanelId {
             PanelId::RenderPipeline => "Render Pipeline",
             PanelId::ShapeLibrary => "Shape Library",
             PanelId::Mixer => "Mixer",
+            #[cfg(feature = "xr")]
+            PanelId::VrSettings => "VR Settings",
+            #[cfg(feature = "xr")]
+            PanelId::VrInputDebug => "VR Input Debug",
+            #[cfg(feature = "xr")]
+            PanelId::VrCameraPreview => "VR Camera Preview",
+            #[cfg(feature = "xr")]
+            PanelId::VrSession => "VR Session",
+            #[cfg(feature = "xr")]
+            PanelId::VrPerformance => "VR Performance",
+            #[cfg(feature = "xr")]
+            PanelId::VrDevices => "VR Devices",
+            #[cfg(feature = "xr")]
+            PanelId::VrSetupWizard => "VR Setup",
             PanelId::Plugin(name) => name,
         }
     }
@@ -200,6 +235,20 @@ impl PanelId {
             PanelId::RenderPipeline => Some("panel.render_pipeline"),
             PanelId::ShapeLibrary => Some("panel.shape_library"),
             PanelId::Mixer => Some("panel.mixer"),
+            #[cfg(feature = "xr")]
+            PanelId::VrSettings => Some("panel.vr_settings"),
+            #[cfg(feature = "xr")]
+            PanelId::VrInputDebug => Some("panel.vr_input_debug"),
+            #[cfg(feature = "xr")]
+            PanelId::VrCameraPreview => Some("panel.vr_camera_preview"),
+            #[cfg(feature = "xr")]
+            PanelId::VrSession => Some("panel.vr_session"),
+            #[cfg(feature = "xr")]
+            PanelId::VrPerformance => Some("panel.vr_performance"),
+            #[cfg(feature = "xr")]
+            PanelId::VrDevices => Some("panel.vr_devices"),
+            #[cfg(feature = "xr")]
+            PanelId::VrSetupWizard => Some("panel.vr_setup"),
             PanelId::Plugin(_) => None,
         }
     }
@@ -263,6 +312,20 @@ impl PanelId {
             PanelId::RenderPipeline => STACK,
             PanelId::ShapeLibrary => CUBE,
             PanelId::Mixer => SLIDERS_HORIZONTAL,
+            #[cfg(feature = "xr")]
+            PanelId::VrSettings => VIRTUAL_REALITY,
+            #[cfg(feature = "xr")]
+            PanelId::VrInputDebug => GAME_CONTROLLER,
+            #[cfg(feature = "xr")]
+            PanelId::VrCameraPreview => EYE,
+            #[cfg(feature = "xr")]
+            PanelId::VrSession => PLUG,
+            #[cfg(feature = "xr")]
+            PanelId::VrPerformance => CHART_LINE,
+            #[cfg(feature = "xr")]
+            PanelId::VrDevices => PLUG,
+            #[cfg(feature = "xr")]
+            PanelId::VrSetupWizard => SPARKLE,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }
