@@ -1019,6 +1019,70 @@ pub fn handle_audio_hierarchy_drop(
     }
 }
 
+/// System to handle audio files dropped into the scene viewport (creates an entity with Audio Player at position)
+pub fn handle_audio_scene_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
+    project: Option<Res<CurrentProject>>,
+) {
+    let Some((audio_path, position)) = assets.pending_audio_drop.take() else {
+        return;
+    };
+
+    let display_name = audio_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Audio")
+        .to_string();
+
+    // Make path relative to project
+    let rel_path = if let Some(ref proj) = project {
+        let assets_base = proj.path.join("assets");
+        audio_path
+            .strip_prefix(&assets_base)
+            .map(|r| r.to_string_lossy().to_string())
+            .unwrap_or_else(|_| {
+                audio_path.strip_prefix(&proj.path)
+                    .unwrap_or(&audio_path)
+                    .to_string_lossy()
+                    .to_string()
+            })
+    } else {
+        audio_path.to_string_lossy().to_string()
+    };
+
+    let scene_root_entity = scene_roots.iter().next().map(|(e, _)| e);
+
+    let parent = hierarchy.add_entity_parent.or(scene_root_entity);
+
+    let mut entity_cmd = commands.spawn((
+        Transform::from_translation(position),
+        Visibility::default(),
+        EditorEntity {
+            name: display_name,
+            tag: String::new(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+        crate::component_system::components::audio_emitter::AudioEmitterData {
+            clip: rel_path,
+            ..Default::default()
+        },
+    ));
+
+    if let Some(p) = parent {
+        entity_cmd.insert(ChildOf(p));
+    }
+
+    let entity = entity_cmd.id();
+    selection.select(entity);
+    info!("[Audio] Created audio player entity from scene drop at {:?}: {:?}", position, entity);
+}
+
 /// System to handle script/blueprint files dropped onto entities in the hierarchy
 pub fn handle_script_hierarchy_drop(world: &mut World) {
     let drops: Vec<(PathBuf, Entity)> = {
@@ -1796,7 +1860,7 @@ pub fn handle_pending_skybox_drop(
     info!("Applied skybox from dropped HDR/EXR: {:?}", path);
 }
 
-/// System to handle shape library spawns (both click-to-spawn and drag-to-viewport)
+/// System to handle shape library spawns (click-to-spawn, drag-to-viewport, and VR drag-drop)
 pub fn handle_shape_library_spawn(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -1805,9 +1869,59 @@ pub fn handle_shape_library_spawn(
     mut shape_library: ResMut<crate::ui::ShapeLibraryState>,
     mut selection: ResMut<SelectionState>,
     mut hierarchy: ResMut<HierarchyState>,
+    // VR drag-drop support (optional — only present when xr feature is active)
+    #[cfg(feature = "xr")]
+    controllers: Option<Res<renzora_xr::VrControllerState>>,
+    #[cfg(feature = "xr")]
+    pointer_hit: Option<Res<renzora_vr_editor::VrPointerHit>>,
+    #[cfg(feature = "xr")]
+    tracking_root: Query<&GlobalTransform, With<renzora_xr::reexports::XrTrackingRoot>>,
+    #[cfg(feature = "xr")]
+    mut was_trigger_pressed: Local<bool>,
 ) {
     use crate::component_system::MeshNodeData;
     use crate::spawn::meshes::create_mesh_for_type;
+
+    // ── VR drag-drop: detect trigger release while dragging a shape ──
+    #[cfg(feature = "xr")]
+    if let (Some(ref ctrl), Some(ref ptr_hit)) = (&controllers, &pointer_hit) {
+        let trigger_now = ctrl.right.trigger_pressed;
+        let trigger_released = !trigger_now && *was_trigger_pressed;
+        *was_trigger_pressed = trigger_now;
+
+        if shape_library.dragging_shape.is_some() && trigger_released {
+            // Only drop if NOT pointing at a panel (i.e. pointing into the scene)
+            let on_panel = ptr_hit.right.hit_entity.is_some()
+                || ptr_hit.left.hit_entity.is_some();
+
+            if !on_panel {
+                let mesh_type = shape_library.dragging_shape.take().unwrap();
+                let root_tf = tracking_root.single().copied()
+                    .unwrap_or(GlobalTransform::IDENTITY);
+                let aim_pos = root_tf.transform_point(ctrl.right.aim_position);
+                let aim_dir = (root_tf.affine().matrix3
+                    * (ctrl.right.aim_rotation * Vec3::NEG_Z))
+                    .normalize();
+
+                // Ground plane intersection (Y = 0)
+                let ground_pos = if aim_dir.y.abs() > 1e-6 {
+                    let t = -aim_pos.y / aim_dir.y;
+                    if t > 0.0 && t < 100.0 {
+                        aim_pos + aim_dir * t
+                    } else {
+                        aim_pos + aim_dir * 3.0
+                    }
+                } else {
+                    aim_pos + aim_dir * 3.0
+                };
+
+                assets.pending_shape_drop = Some((mesh_type, ground_pos));
+                assets.pending_shape_drop_normal = Vec3::Y;
+            } else {
+                shape_library.dragging_shape = None;
+            }
+        }
+    }
 
     // Handle click-to-spawn from shape library panel
     let mesh_type = if let Some(t) = shape_library.pending_spawn.take() {

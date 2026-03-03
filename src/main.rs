@@ -35,6 +35,8 @@ mod ui;
 mod ui_api;
 mod update;
 mod viewport;
+#[cfg(feature = "xr")]
+mod vr;
 use bevy::asset::UnapprovedPathMode;
 use bevy::prelude::*;
 use bevy::render::{
@@ -178,6 +180,16 @@ fn main() {
     });
     let is_play_mode = play_project.is_some();
 
+    // Check for --vr flag (VR mode)
+    #[cfg(feature = "xr")]
+    let vr_mode = args.iter().any(|a| a == "--vr");
+    #[cfg(not(feature = "xr"))]
+    let _vr_mode = false;
+
+    if !cfg!(feature = "xr") && args.iter().any(|a| a == "--vr") {
+        eprintln!("Warning: --vr flag requires the 'xr' feature. Build with: cargo run --features editor,xr -- --vr");
+    }
+
     // When packed, extract embedded updater and plugins to disk
     embedded::extract_embedded_updater();
     embedded::extract_embedded_plugins();
@@ -229,6 +241,39 @@ fn main() {
         }
     };
 
+    // VR mode: replace DefaultPlugins with OpenXR plugin set
+    #[cfg(feature = "xr")]
+    if vr_mode {
+        // Initialize VR log buffer before plugins so early logs are captured
+        renzora_xr::init_vr_log_buffer();
+        app.add_plugins(renzora_xr::build_xr_plugins(window.clone()));
+        renzora_xr::finalize_xr(&mut app);
+    }
+
+    // Standard (non-VR) plugin initialization
+    #[cfg(feature = "xr")]
+    if !vr_mode {
+        app.add_plugins(
+                DefaultPlugins
+                    .set(WindowPlugin {
+                        primary_window: Some(window),
+                        ..default()
+                    })
+                    .set(AssetPlugin {
+                        unapproved_path_mode: UnapprovedPathMode::Allow,
+                        ..default()
+                    })
+                    .set(RenderPlugin {
+                        render_creation: RenderCreation::Automatic(WgpuSettings {
+                            features: WgpuFeatures::POLYGON_MODE_LINE,
+                            ..default()
+                        }),
+                        ..default()
+                    })
+            );
+    }
+
+    #[cfg(not(feature = "xr"))]
     app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -247,10 +292,28 @@ fn main() {
                     }),
                     ..default()
                 })
-        )
-        .add_plugins(bevy_egui::EguiPlugin::default());
+        );
 
-    // Pause rendering when the window is not focused to save CPU/GPU
+    app.add_plugins(bevy_egui::EguiPlugin::default());
+
+    // VR mode must run continuously even when the desktop window is unfocused
+    // (the user is looking at the headset, not the monitor).
+    // Non-VR mode can throttle when unfocused to save CPU/GPU.
+    #[cfg(feature = "xr")]
+    if vr_mode {
+        app.insert_resource(WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::Continuous,
+            unfocused_mode: bevy::winit::UpdateMode::Continuous,
+        });
+    } else {
+        app.insert_resource(WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::Continuous,
+            unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
+                std::time::Duration::from_secs(1),
+            ),
+        });
+    }
+    #[cfg(not(feature = "xr"))]
     app.insert_resource(WinitSettings {
         focused_mode: bevy::winit::UpdateMode::Continuous,
         unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
@@ -382,6 +445,84 @@ fn main() {
         .add_plugins(mesh_sculpt::MeshSculptPlugin)
         .add_plugins(surface_painting::SurfacePaintingPlugin)
         .add_plugins(update::UpdatePlugin);
+
+    // VR/XR integration (requires xr feature)
+    #[cfg(feature = "xr")]
+    {
+        app.add_plugins(renzora_xr::XrPlugin)
+            .add_message::<renzora_xr::camera::SpawnVrCameraRigEvent>()
+            .add_message::<renzora_xr::camera::DespawnVrCameraRigEvent>()
+            .register_type::<renzora_xr::components::VrControllerData>()
+            .register_type::<renzora_xr::components::TeleportAreaData>()
+            .register_type::<renzora_xr::components::VrGrabbableData>()
+            .register_type::<renzora_xr::components::GrabType>()
+            .register_type::<renzora_xr::components::VrHandModelData>()
+            .register_type::<renzora_xr::components::VrPointerData>()
+            .register_type::<renzora_xr::components::VrSnapZoneData>()
+            .register_type::<renzora_xr::components::VrClimbableData>()
+            .register_type::<renzora_xr::components::VrSpatialAnchorData>()
+            .register_type::<renzora_xr::components::VrOverlayPanelData>()
+            .register_type::<renzora_xr::components::VrTrackedObjectData>()
+            .register_type::<renzora_xr::components::VrPassthroughWindowData>()
+            .init_resource::<ui::VrSettingsState>()
+            .init_resource::<ui::VrInputDebugState>()
+            .init_resource::<ui::VrCameraPreviewState>()
+            .init_resource::<ui::VrSessionPanelState>()
+            .init_resource::<ui::VrPerformanceState>()
+            .init_resource::<ui::VrDevicesState>()
+            .init_resource::<ui::VrSetupWizardState>();
+
+        // VR play mode bridge systems
+        if vr_mode {
+            app.add_systems(
+                Update,
+                (
+                    vr::enter_vr_play_mode,
+                    vr::exit_vr_play_mode,
+                    vr::drain_vr_logs_to_console,
+                    // Session control from editor UI (manual start/stop)
+                    vr::handle_vr_session_commands,
+                    // Sync VR resources → editor panel states
+                    vr::sync_vr_settings_panel,
+                    vr::apply_vr_settings,
+                    vr::sync_vr_input_debug_panel,
+                    vr::sync_vr_session_panel,
+                    vr::sync_vr_performance_panel,
+                    vr::sync_vr_devices_panel,
+                    vr::sync_vr_setup_wizard,
+                )
+                    .run_if(in_state(AppState::Editor)),
+            );
+
+            // VR Editor Mode — in-headset floating panels
+            app.add_plugins(renzora_vr_editor::VrEditorPlugin);
+            // VR panel spawning + teardown triggered by Start/Stop VR buttons
+            app.add_systems(
+                Update,
+                (
+                    vr::handle_start_vr,
+                    vr::handle_stop_vr,
+                    vr::auto_manage_xr_session,
+                    vr::register_vr_panel_render_systems,
+                    vr::vr_entity_selection
+                        .after(renzora_vr_editor::interaction::vr_panel_interaction),
+                    // Inject VR pointer events into EguiInput BEFORE PostUpdate
+                    // consumes it — this is the critical fix for panel hover/click.
+                    vr::inject_vr_panel_egui_input
+                        .after(renzora_vr_editor::interaction::vr_panel_interaction),
+                    vr::vr_drag_drop_system
+                        .after(renzora_vr_editor::interaction::vr_panel_interaction),
+                    vr::sync_skybox_to_xr_cameras,
+                )
+                    .run_if(resource_exists::<renzora_xr::VrModeActive>),
+            );
+            // VR companion UI (shown when VrCompanionMode is active)
+            app.add_systems(
+                EguiPrimaryContextPass,
+                vr::vr_companion_ui.run_if(not(resource_exists::<RuntimeConfig>)),
+            );
+        }
+    }
 
     // Meshlet/Virtual Geometry integration (requires solari feature)
     #[cfg(feature = "solari")]
@@ -600,6 +741,11 @@ fn main() {
             .add_systems(
                 Update,
                 input::handle_effect_panel_drop
+                    .run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                input::handle_audio_scene_drop
                     .run_if(in_state(AppState::Editor)),
             )
             .add_systems(
