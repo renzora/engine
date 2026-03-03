@@ -2,6 +2,7 @@
 //! to GLB at import time so the existing glTF pipeline handles everything downstream.
 
 pub mod glb_builder;
+pub mod fbx_skeleton;
 mod fbx;
 mod obj;
 mod usd;
@@ -113,9 +114,15 @@ pub fn convert_to_glb(source: &Path, settings: &ModelImportSettings) -> Result<P
 
     // Dispatch to format-specific converter
     match ext.as_str() {
-        "obj" => obj::convert_obj(source, &mut builder)?,
-        "fbx" => fbx::convert_fbx(source, &mut builder)?,
-        "usd" | "usdz" => usd::convert_usd(source, &mut builder)?,
+        "obj" => { obj::convert_obj(source, &mut builder)?; }
+        "fbx" => {
+            let anim_paths = fbx::convert_fbx(source, &mut builder)?;
+            // Log written .anim files
+            for p in &anim_paths {
+                log::info!("Extracted animation: {}", p.display());
+            }
+        }
+        "usd" | "usdz" => { usd::convert_usd(source, &mut builder)?; }
         _ => return Err(format!("Unsupported format: {}", ext)),
     }
 

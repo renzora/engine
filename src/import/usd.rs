@@ -235,6 +235,8 @@ fn parse_usda(content: &str, builder: &mut GlbBuilder) {
                             Some(triangulated_indices)
                         },
                         material_index: None,
+                        joints: None,
+                        weights: None,
                     });
                 }
 

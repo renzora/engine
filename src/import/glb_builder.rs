@@ -13,6 +13,26 @@ pub struct MeshData {
     pub tex_coords: Option<Vec<[f32; 2]>>,
     pub indices: Option<Vec<u32>>,
     pub material_index: Option<usize>,
+    /// Joint indices per vertex (4 joints, padded with 0)
+    pub joints: Option<Vec<[u16; 4]>>,
+    /// Joint weights per vertex (4 weights, normalized)
+    pub weights: Option<Vec<[f32; 4]>>,
+}
+
+/// A joint node in the skeleton hierarchy
+pub struct JointNodeData {
+    pub name: String,
+    pub parent: Option<usize>,       // index into joints array; None = root
+    pub translation: [f32; 3],
+    pub rotation: [f32; 4],          // xyzw quaternion
+    pub scale: [f32; 3],
+}
+
+/// Skin data (skeleton + inverse bind matrices)
+pub struct SkinData {
+    pub name: Option<String>,
+    pub joints: Vec<JointNodeData>,
+    pub inverse_bind_matrices: Vec<[[f32; 4]; 4]>,
 }
 
 /// A material to be added to the GLB
@@ -50,6 +70,7 @@ pub struct GlbBuilder {
     root_scale: Option<f32>,
     root_rotation: Option<[f32; 4]>,
     root_translation: Option<[f32; 3]>,
+    skin: Option<SkinData>,
 }
 
 impl GlbBuilder {
@@ -62,7 +83,13 @@ impl GlbBuilder {
             root_scale: None,
             root_rotation: None,
             root_translation: None,
+            skin: None,
         }
+    }
+
+    /// Set skin (skeleton + inverse bind matrices)
+    pub fn set_skin(&mut self, skin: SkinData) {
+        self.skin = Some(skin);
     }
 
     pub fn add_mesh(&mut self, mesh: MeshData) -> usize {
@@ -114,6 +141,7 @@ impl GlbBuilder {
         let mut json_textures: Vec<json::Texture> = Vec::new();
         let mut json_images: Vec<json::Image> = Vec::new();
         let mut json_nodes: Vec<json::Node> = Vec::new();
+        let mut json_skins: Vec<json::Skin> = Vec::new();
 
         // Build textures/images first (materials reference them)
         for tex in &self.textures {
@@ -207,10 +235,13 @@ impl GlbBuilder {
             });
         }
 
-        // Build nodes
+        // Build mesh nodes first; track which are mesh nodes for skin assignment
+        let mut mesh_node_indices: Vec<usize> = Vec::new();
         if self.nodes.is_empty() {
             // Auto-generate one node per mesh
             for (i, mesh) in self.meshes.iter().enumerate() {
+                let idx = json_nodes.len();
+                mesh_node_indices.push(idx);
                 json_nodes.push(json::Node {
                     name: mesh.name.clone(),
                     mesh: Some(json::Index::new(i as u32)),
@@ -228,6 +259,10 @@ impl GlbBuilder {
             }
         } else {
             for node in &self.nodes {
+                let idx = json_nodes.len();
+                if node.mesh_index.is_some() {
+                    mesh_node_indices.push(idx);
+                }
                 json_nodes.push(json::Node {
                     name: node.name.clone(),
                     mesh: node.mesh_index.map(|i| json::Index::new(i as u32)),
@@ -249,10 +284,135 @@ impl GlbBuilder {
             }
         }
 
+        // Build skin (skeleton nodes + skin JSON entry)
+        if let Some(skin_data) = self.skin {
+            // Offset: joint nodes start after mesh nodes
+            let joint_node_offset = json_nodes.len();
+
+            // Compute children lists for joint nodes based on parent indices
+            let joint_count = skin_data.joints.len();
+            let mut joint_children: Vec<Vec<usize>> = vec![Vec::new(); joint_count];
+            let mut root_joints: Vec<usize> = Vec::new();
+            for (i, joint) in skin_data.joints.iter().enumerate() {
+                if let Some(parent_idx) = joint.parent {
+                    joint_children[parent_idx].push(i);
+                } else {
+                    root_joints.push(i);
+                }
+            }
+
+            // Emit joint nodes
+            let joint_node_indices: Vec<usize> = (0..joint_count)
+                .map(|i| i + joint_node_offset)
+                .collect();
+
+            for (i, joint) in skin_data.joints.iter().enumerate() {
+                let children_node_indices: Vec<json::Index<json::Node>> = joint_children[i]
+                    .iter()
+                    .map(|&ci| json::Index::new(joint_node_indices[ci] as u32))
+                    .collect();
+                json_nodes.push(json::Node {
+                    name: Some(joint.name.clone()),
+                    mesh: None,
+                    camera: None,
+                    children: if children_node_indices.is_empty() {
+                        None
+                    } else {
+                        Some(children_node_indices)
+                    },
+                    extensions: Default::default(),
+                    extras: Default::default(),
+                    matrix: None,
+                    rotation: Some(json::scene::UnitQuaternion(joint.rotation)),
+                    scale: Some(joint.scale),
+                    translation: Some(joint.translation),
+                    skin: None,
+                    weights: None,
+                });
+            }
+
+            // Write inverseBindMatrices accessor (MAT4 FLOAT, no target)
+            while bin_data.len() % 4 != 0 {
+                bin_data.push(0);
+            }
+            let ibm_offset = bin_data.len();
+            let ibm_byte_length = joint_count * 16 * mem::size_of::<f32>();
+            for mat in &skin_data.inverse_bind_matrices {
+                for row in mat {
+                    for &v in row {
+                        bin_data.extend_from_slice(&v.to_le_bytes());
+                    }
+                }
+            }
+            // Pad IBM data
+            while bin_data.len() % 4 != 0 {
+                bin_data.push(0);
+            }
+
+            let ibm_bv_idx = buffer_views.len() as u32;
+            buffer_views.push(json::buffer::View {
+                buffer: json::Index::new(0),
+                byte_length: json::validation::USize64(ibm_byte_length as u64),
+                byte_offset: Some(json::validation::USize64(ibm_offset as u64)),
+                byte_stride: None,
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+                target: None,
+            });
+
+            let ibm_acc_idx = accessors.len() as u32;
+            accessors.push(json::Accessor {
+                buffer_view: Some(json::Index::new(ibm_bv_idx)),
+                byte_offset: None,
+                count: json::validation::USize64(joint_count as u64),
+                component_type: Valid(json::accessor::GenericComponentType(
+                    json::accessor::ComponentType::F32,
+                )),
+                extensions: Default::default(),
+                extras: Default::default(),
+                type_: Valid(json::accessor::Type::Mat4),
+                min: None,
+                max: None,
+                name: None,
+                normalized: false,
+                sparse: None,
+            });
+
+            // Build skin JSON
+            let skin_index = json_skins.len() as u32;
+            let gltf_joint_indices: Vec<json::Index<json::Node>> = joint_node_indices
+                .iter()
+                .map(|&i| json::Index::new(i as u32))
+                .collect();
+            json_skins.push(json::Skin {
+                inverse_bind_matrices: Some(json::Index::new(ibm_acc_idx)),
+                joints: gltf_joint_indices,
+                name: skin_data.name,
+                skeleton: root_joints.first().map(|&ri| json::Index::new(joint_node_indices[ri] as u32)),
+                extensions: Default::default(),
+                extras: Default::default(),
+            });
+
+            // Assign skin to mesh nodes and make root joints children of mesh nodes
+            for &mesh_node_idx in &mesh_node_indices {
+                let root_joint_node_indices: Vec<json::Index<json::Node>> = root_joints
+                    .iter()
+                    .map(|&ri| json::Index::new(joint_node_indices[ri] as u32))
+                    .collect();
+                json_nodes[mesh_node_idx].skin = Some(json::Index::new(skin_index));
+                // Add root joints as children of the mesh node
+                match json_nodes[mesh_node_idx].children {
+                    Some(ref mut existing) => existing.extend(root_joint_node_indices),
+                    None => json_nodes[mesh_node_idx].children = Some(root_joint_node_indices),
+                }
+            }
+        }
+
         // Wrap everything in a root node if we need scale/rotation/translation
         let scene_nodes: Vec<json::Index<json::Node>>;
         if self.root_scale.is_some() || self.root_rotation.is_some() || self.root_translation.is_some() {
-            let child_indices: Vec<usize> = (0..json_nodes.len()).collect();
+            let child_indices: Vec<usize> = (0..mesh_node_indices.len().max(1)).collect();
             let root_idx = json_nodes.len();
             json_nodes.push(json::Node {
                 name: Some("Root".to_string()),
@@ -270,9 +430,17 @@ impl GlbBuilder {
             });
             scene_nodes = vec![json::Index::new(root_idx as u32)];
         } else {
-            scene_nodes = (0..json_nodes.len())
-                .map(|i| json::Index::new(i as u32))
-                .collect();
+            // Only include top-level nodes in the scene (mesh nodes; joint nodes are children)
+            if mesh_node_indices.is_empty() {
+                scene_nodes = (0..json_nodes.len())
+                    .map(|i| json::Index::new(i as u32))
+                    .collect();
+            } else {
+                scene_nodes = mesh_node_indices
+                    .iter()
+                    .map(|&i| json::Index::new(i as u32))
+                    .collect();
+            }
         }
 
         // Pad bin_data to 4-byte alignment
@@ -306,6 +474,7 @@ impl GlbBuilder {
             materials: json_materials,
             textures: json_textures,
             images: json_images,
+            skins: json_skins,
             asset: json::Asset {
                 version: "2.0".to_string(),
                 generator: Some("Renzora Engine Import".to_string()),
@@ -393,6 +562,24 @@ fn build_primitive(
         attributes.insert(
             Valid(json::mesh::Semantic::TexCoords(0)),
             json::Index::new(uv_accessor),
+        );
+    }
+
+    // Skin joints (optional) — VEC4 UNSIGNED_SHORT
+    if let Some(ref joints) = mesh.joints {
+        let joints_accessor = write_joints_accessor(joints, bin_data, accessors, buffer_views);
+        attributes.insert(
+            Valid(json::mesh::Semantic::Joints(0)),
+            json::Index::new(joints_accessor),
+        );
+    }
+
+    // Skin weights (optional) — VEC4 FLOAT
+    if let Some(ref weights) = mesh.weights {
+        let weights_accessor = write_weights_accessor(weights, bin_data, accessors, buffer_views);
+        attributes.insert(
+            Valid(json::mesh::Semantic::Weights(0)),
+            json::Index::new(weights_accessor),
         );
     }
 
@@ -591,6 +778,115 @@ fn write_scalar_u32_accessor(
         extensions: Default::default(),
         extras: Default::default(),
         type_: Valid(json::accessor::Type::Scalar),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
+
+    acc_index
+}
+
+fn write_joints_accessor(
+    data: &[[u16; 4]],
+    bin_data: &mut Vec<u8>,
+    accessors: &mut Vec<json::Accessor>,
+    buffer_views: &mut Vec<json::buffer::View>,
+) -> u32 {
+    while bin_data.len() % 4 != 0 {
+        bin_data.push(0);
+    }
+
+    let offset = bin_data.len();
+    let byte_length = data.len() * 4 * mem::size_of::<u16>();
+
+    for v in data {
+        for &j in v {
+            bin_data.extend_from_slice(&j.to_le_bytes());
+        }
+    }
+
+    // Pad to 4-byte boundary after u16 data
+    while bin_data.len() % 4 != 0 {
+        bin_data.push(0);
+    }
+
+    let bv_index = buffer_views.len() as u32;
+    buffer_views.push(json::buffer::View {
+        buffer: json::Index::new(0),
+        byte_length: json::validation::USize64(byte_length as u64),
+        byte_offset: Some(json::validation::USize64(offset as u64)),
+        byte_stride: None,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: Some(Valid(json::buffer::Target::ArrayBuffer)),
+    });
+
+    let acc_index = accessors.len() as u32;
+    accessors.push(json::Accessor {
+        buffer_view: Some(json::Index::new(bv_index)),
+        byte_offset: None,
+        count: json::validation::USize64(data.len() as u64),
+        component_type: Valid(json::accessor::GenericComponentType(
+            json::accessor::ComponentType::U16,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: Valid(json::accessor::Type::Vec4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
+
+    acc_index
+}
+
+fn write_weights_accessor(
+    data: &[[f32; 4]],
+    bin_data: &mut Vec<u8>,
+    accessors: &mut Vec<json::Accessor>,
+    buffer_views: &mut Vec<json::buffer::View>,
+) -> u32 {
+    while bin_data.len() % 4 != 0 {
+        bin_data.push(0);
+    }
+
+    let offset = bin_data.len();
+    let byte_length = data.len() * 4 * mem::size_of::<f32>();
+
+    for v in data {
+        for &w in v {
+            bin_data.extend_from_slice(&w.to_le_bytes());
+        }
+    }
+
+    let bv_index = buffer_views.len() as u32;
+    buffer_views.push(json::buffer::View {
+        buffer: json::Index::new(0),
+        byte_length: json::validation::USize64(byte_length as u64),
+        byte_offset: Some(json::validation::USize64(offset as u64)),
+        byte_stride: None,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: Some(Valid(json::buffer::Target::ArrayBuffer)),
+    });
+
+    let acc_index = accessors.len() as u32;
+    accessors.push(json::Accessor {
+        buffer_view: Some(json::Index::new(bv_index)),
+        byte_offset: None,
+        count: json::validation::USize64(data.len() as u64),
+        component_type: Valid(json::accessor::GenericComponentType(
+            json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: Valid(json::accessor::Type::Vec4),
         min: None,
         max: None,
         name: None,

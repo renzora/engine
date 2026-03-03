@@ -118,6 +118,8 @@ pub fn convert_obj(path: &Path, builder: &mut GlbBuilder) -> Result<(), String> 
             tex_coords,
             indices,
             material_index,
+            joints: None,
+            weights: None,
         });
     }
 
