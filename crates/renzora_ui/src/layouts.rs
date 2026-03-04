@@ -20,25 +20,22 @@ pub struct LayoutManager {
 
 impl Default for LayoutManager {
     fn default() -> Self {
+        let layouts = vec![
+            WorkspaceLayout { name: "Scene".into(), tree: layout_scene() },
+            WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
+            WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
+            WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
+            WorkspaceLayout { name: "Blueprints".into(), tree: layout_blueprints() },
+            WorkspaceLayout { name: "Level Design".into(), tree: layout_level_design() },
+            WorkspaceLayout { name: "Terrain".into(), tree: layout_terrain() },
+            WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
+            WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
+            WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
+        ];
+
+
         Self {
-            layouts: vec![
-                WorkspaceLayout {
-                    name: "Default".into(),
-                    tree: layout_default(),
-                },
-                WorkspaceLayout {
-                    name: "Scripting".into(),
-                    tree: layout_scripting(),
-                },
-                WorkspaceLayout {
-                    name: "Debug".into(),
-                    tree: layout_debug(),
-                },
-                WorkspaceLayout {
-                    name: "Minimal".into(),
-                    tree: layout_minimal(),
-                },
-            ],
+            layouts,
             active_index: 0,
         }
     }
@@ -62,56 +59,239 @@ impl LayoutManager {
     }
 }
 
-/// Default: Hierarchy (15%) | Viewport / Assets+Console (70%) | Inspector (remaining)
-fn layout_default() -> DockTree {
-    crate::dock_tree::default_layout()
-}
-
-/// Scripting: Hierarchy (15%) | Viewport / Console (50/50) | Code Editor + Inspector tabs (35%)
-fn layout_scripting() -> DockTree {
+/// Scene: Hierarchy | Viewport+bottom strip | ShapeLibrary+Inspector
+fn layout_scene() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),
         DockTree::horizontal(
             DockTree::vertical(
-                DockTree::leaf("viewport"),
+                DockTree::Leaf {
+                    tabs: vec!["viewport".into(), "node_explorer".into()],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec!["assets".into(), "console".into(), "animation".into(), "mixer".into()],
+                    active_tab: 0,
+                },
+                0.72,
+            ),
+            DockTree::vertical(
+                DockTree::leaf("shape_library"),
+                DockTree::Leaf {
+                    tabs: vec!["inspector".into(), "history".into()],
+                    active_tab: 0,
+                },
+                0.4,
+            ),
+            0.82,
+        ),
+        0.14,
+    )
+}
+
+/// Scripting: Hierarchy+Assets | CodeEditor+Console | Inspector+ScriptVariables
+fn layout_scripting() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("assets"),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("code_editor"),
                 DockTree::leaf("console"),
+                0.7,
+            ),
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec!["inspector".into(), "history".into()],
+                    active_tab: 0,
+                },
+                DockTree::leaf("script_variables"),
                 0.5,
             ),
-            DockTree::Leaf {
-                tabs: vec!["code_editor".into(), "inspector".into()],
-                active_tab: 0,
-            },
-            0.65,
+            0.78,
+        ),
+        0.18,
+    )
+}
+
+/// Animation: Hierarchy | StudioPreview+AnimationControls | Timeline
+fn layout_animation() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(
+                DockTree::leaf("studio_preview"),
+                DockTree::leaf("animation"),
+                0.75,
+            ),
+            0.15,
+        ),
+        DockTree::leaf("timeline"),
+        0.65,
+    )
+}
+
+/// Debug: Hierarchy+Performance | Viewport+debug panels | Inspector+EcsStats
+fn layout_debug() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("performance"),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::horizontal(
+                    DockTree::horizontal(
+                        DockTree::leaf("system_profiler"),
+                        DockTree::Leaf {
+                            tabs: vec!["render_stats".into(), "render_pipeline".into()],
+                            active_tab: 0,
+                        },
+                        0.5,
+                    ),
+                    DockTree::horizontal(
+                        DockTree::leaf("memory_profiler"),
+                        DockTree::horizontal(
+                            DockTree::leaf("physics_debug"),
+                            DockTree::leaf("camera_debug"),
+                            0.5,
+                        ),
+                        0.33,
+                    ),
+                    0.4,
+                ),
+                0.65,
+            ),
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec!["inspector".into(), "gamepad".into()],
+                    active_tab: 0,
+                },
+                DockTree::leaf("ecs_stats"),
+                0.5,
+            ),
+            0.75,
         ),
         0.15,
     )
 }
 
-/// Debug: Hierarchy (12%) | Viewport / Console+Performance tabs (55%) | Inspector / Physics Debug (18%)
-fn layout_debug() -> DockTree {
+/// Blueprints: MaterialPreview+Assets | Blueprint+Console | NodeLibrary
+fn layout_blueprints() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("assets"),
+            0.4,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("blueprint"),
+                DockTree::leaf("console"),
+                0.7,
+            ),
+            DockTree::leaf("node_library"),
+            0.8,
+        ),
+        0.15,
+    )
+}
+
+/// Level Design: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
+fn layout_level_design() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("assets"),
+            0.55,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf("viewport"),
+            DockTree::vertical(
+                DockTree::leaf("shape_library"),
+                DockTree::leaf("inspector"),
+                0.4,
+            ),
+            0.82,
+        ),
+        0.14,
+    )
+}
+
+/// Terrain: LevelTools | Viewport
+fn layout_terrain() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("level_tools"),
+        DockTree::leaf("viewport"),
+        0.2,
+    )
+}
+
+/// Particles: ParticlePreview | ParticleEditor
+fn layout_particles() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("particle_preview"),
+        DockTree::leaf("particle_editor"),
+        0.8,
+    )
+}
+
+/// Shaders: Assets+Console | CodeEditor | ShaderPreview
+fn layout_shaders() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("assets"),
+            DockTree::leaf("console"),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf("code_editor"),
+            DockTree::leaf("shader_preview"),
+            0.6,
+        ),
+        0.18,
+    )
+}
+
+/// Physics: Hierarchy | Viewport+playground tabs | Inspector+physics debug tabs
+fn layout_physics() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf("viewport"),
                 DockTree::Leaf {
-                    tabs: vec!["console".into(), "performance".into()],
+                    tabs: vec!["console".into(), "physics_playground".into(), "stress_test".into(), "arena_presets".into()],
                     active_tab: 0,
                 },
-                0.55,
+                0.72,
             ),
             DockTree::vertical(
-                DockTree::leaf("inspector"),
-                DockTree::leaf("physics_debug"),
-                0.55,
+                DockTree::Leaf {
+                    tabs: vec!["inspector".into(), "physics_scenarios".into()],
+                    active_tab: 0,
+                },
+                DockTree::vertical(
+                    DockTree::Leaf {
+                        tabs: vec!["physics_debug".into(), "physics_properties".into(), "physics_metrics".into()],
+                        active_tab: 0,
+                    },
+                    DockTree::Leaf {
+                        tabs: vec!["physics_forces".into(), "collision_viz".into(), "movement_trails".into(), "state_recorder".into()],
+                        active_tab: 0,
+                    },
+                    0.5,
+                ),
+                0.4,
             ),
-            0.75,
+            0.68,
         ),
-        0.12,
+        0.15,
     )
 }
 
-/// Minimal: Viewport only (full area).
-fn layout_minimal() -> DockTree {
-    DockTree::leaf("viewport")
-}
