@@ -11,7 +11,7 @@ struct FilmGrainSettings {
     _padding1: f32,
     _padding2: f32,
     _padding3: f32,
-    _padding4: f32,
+    enabled: f32,
 };
 @group(0) @binding(2) var<uniform> settings: FilmGrainSettings;
 
@@ -24,6 +24,9 @@ fn hash(p: vec2<f32>) -> f32 {
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let color = textureSample(screen_texture, texture_sampler, in.uv);
+    if settings.enabled < 0.5 {
+        return color;
+    }
     let grain = hash(in.uv * settings.grain_size * 1000.0 + settings.time) * 2.0 - 1.0;
     return vec4(color.rgb + vec3(grain * settings.intensity), color.a);
 }

@@ -11,12 +11,16 @@ struct GodRaysSettings {
     light_pos_x: f32,
     light_pos_y: f32,
     _padding1: f32,
-    _padding2: f32,
+    enabled: f32,
 };
 @group(0) @binding(2) var<uniform> settings: GodRaysSettings;
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let color = textureSample(screen_texture, texture_sampler, in.uv);
+    if settings.enabled < 0.5 {
+        return color;
+    }
     let light_pos = vec2(settings.light_pos_x, settings.light_pos_y);
     let delta = (in.uv - light_pos) * settings.density / f32(settings.num_samples);
 
@@ -35,6 +39,5 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         illumination_decay = illumination_decay * settings.decay;
     }
 
-    let color = textureSample(screen_texture, texture_sampler, in.uv);
     return vec4(color.rgb + accumulated * settings.intensity, color.a);
 }

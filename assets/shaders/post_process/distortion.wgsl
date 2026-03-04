@@ -11,12 +11,16 @@ struct DistortionSettings {
     _padding0: f32,
     _padding1: f32,
     _padding2: f32,
-    _padding3: f32,
+    enabled: f32,
 };
 @group(0) @binding(2) var<uniform> settings: DistortionSettings;
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let color = textureSample(screen_texture, texture_sampler, in.uv);
+    if settings.enabled < 0.5 {
+        return color;
+    }
     let t = settings.time * settings.speed;
     let offset = vec2(
         sin(in.uv.y * settings.scale + t) * settings.intensity,

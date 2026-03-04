@@ -11,7 +11,7 @@ struct PaletteQuantizationSettings {
     _padding2: f32,
     _padding3: f32,
     _padding4: f32,
-    _padding5: f32,
+    enabled: f32,
 };
 @group(0) @binding(2) var<uniform> settings: PaletteQuantizationSettings;
 
@@ -30,6 +30,9 @@ fn bayer4(pos: vec2<f32>) -> f32 {
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let color = textureSample(screen_texture, texture_sampler, in.uv);
+    if settings.enabled < 0.5 {
+        return color;
+    }
     let dims = vec2<f32>(textureDimensions(screen_texture));
     let levels = max(f32(settings.num_colors), 2.0);
 

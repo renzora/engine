@@ -28,6 +28,36 @@ renzora_grid = { path = "crates/renzora_grid" }
 renzora_camera = { path = "crates/renzora_camera" }
 renzora_keybindings = { path = "crates/renzora_keybindings" }
 renzora_gizmo = { path = "crates/renzora_gizmo" }
+renzora_vignette = { path = "crates/renzora_vignette" }
+renzora_film_grain = { path = "crates/renzora_film_grain" }
+renzora_pixelation = { path = "crates/renzora_pixelation" }
+renzora_crt = { path = "crates/renzora_crt" }
+renzora_god_rays = { path = "crates/renzora_god_rays" }
+renzora_gaussian_blur = { path = "crates/renzora_gaussian_blur" }
+renzora_palette_quantization = { path = "crates/renzora_palette_quantization" }
+renzora_distortion = { path = "crates/renzora_distortion" }
+renzora_underwater = { path = "crates/renzora_underwater" }
+renzora_chromatic_aberration = { path = "crates/renzora_chromatic_aberration" }
+renzora_sharpen = { path = "crates/renzora_sharpen" }
+renzora_color_grading = { path = "crates/renzora_color_grading" }
+renzora_scanlines = { path = "crates/renzora_scanlines" }
+renzora_grayscale = { path = "crates/renzora_grayscale" }
+renzora_posterize = { path = "crates/renzora_posterize" }
+renzora_emboss = { path = "crates/renzora_emboss" }
+renzora_oil_painting = { path = "crates/renzora_oil_painting" }
+renzora_edge_glow = { path = "crates/renzora_edge_glow" }
+renzora_matrix = { path = "crates/renzora_matrix" }
+renzora_outline = { path = "crates/renzora_outline" }
+renzora_toon = { path = "crates/renzora_toon" }
+renzora_sepia = { path = "crates/renzora_sepia" }
+renzora_invert = { path = "crates/renzora_invert" }
+renzora_night_vision = { path = "crates/renzora_night_vision" }
+renzora_glitch = { path = "crates/renzora_glitch" }
+renzora_radial_blur = { path = "crates/renzora_radial_blur" }
+renzora_halftone = { path = "crates/renzora_halftone" }
+renzora_hex_pixelate = { path = "crates/renzora_hex_pixelate" }
+renzora_dithering = { path = "crates/renzora_dithering" }
+renzora_frosted_glass = { path = "crates/renzora_frosted_glass" }
 
 # Bevy recommended optimizations
 

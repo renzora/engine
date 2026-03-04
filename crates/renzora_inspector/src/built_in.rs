@@ -25,6 +25,10 @@ fn name_entry() -> InspectorEntry {
         icon: regular::TAG,
         category: "transform",
         has_fn: |world, entity| world.get::<Name>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Name",
             field_type: FieldType::String,
@@ -51,6 +55,10 @@ fn transform_entry() -> InspectorEntry {
         icon: regular::ARROWS_OUT_CARDINAL,
         category: "transform",
         has_fn: |world, entity| world.get::<Transform>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Position",
@@ -117,6 +125,10 @@ fn visibility_entry() -> InspectorEntry {
         icon: regular::EYE,
         category: "rendering",
         has_fn: |world, entity| world.get::<Visibility>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Visible",
             field_type: FieldType::Bool,
@@ -147,6 +159,10 @@ fn directional_light_entry() -> InspectorEntry {
         icon: regular::SUN,
         category: "lighting",
         has_fn: |world, entity| world.get::<DirectionalLight>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Illuminance",
@@ -212,6 +228,10 @@ fn point_light_entry() -> InspectorEntry {
         icon: regular::LIGHTBULB,
         category: "lighting",
         has_fn: |world, entity| world.get::<PointLight>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Color",
@@ -297,6 +317,10 @@ fn spot_light_entry() -> InspectorEntry {
         icon: regular::FLASHLIGHT,
         category: "lighting",
         has_fn: |world, entity| world.get::<SpotLight>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Color",
@@ -422,6 +446,10 @@ fn ambient_light_entry() -> InspectorEntry {
         icon: regular::SUN_DIM,
         category: "lighting",
         has_fn: |world, entity| world.get::<AmbientLight>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Color",
@@ -471,6 +499,10 @@ fn camera_entry() -> InspectorEntry {
         icon: regular::VIDEO_CAMERA,
         category: "camera",
         has_fn: |world, entity| world.get::<Camera>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Order",
@@ -529,6 +561,10 @@ fn camera3d_entry() -> InspectorEntry {
         icon: regular::APERTURE,
         category: "camera",
         has_fn: |world, entity| world.get::<Camera3d>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Type",
             field_type: FieldType::ReadOnly,
@@ -549,6 +585,10 @@ fn mesh3d_entry() -> InspectorEntry {
         icon: regular::CUBE,
         category: "rendering",
         has_fn: |world, entity| world.get::<Mesh3d>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Mesh",
             field_type: FieldType::ReadOnly,

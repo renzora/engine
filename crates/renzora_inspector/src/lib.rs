@@ -10,8 +10,9 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular;
 use renzora_editor::{
-    collapsible_section, empty_state, EditorCommands, EditorPanel, EditorSelection,
-    InspectorRegistry, PanelLocation, PanelRegistry,
+    collapsible_section, collapsible_section_removable, empty_state, icon_button, search_overlay,
+    EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
+    OverlayAction, OverlayEntry, PanelLocation, PanelRegistry,
 };
 use renzora_theme::ThemeManager;
 
@@ -83,6 +84,8 @@ impl EditorPanel for InspectorPanel {
             return;
         };
 
+        let mut state = self._state.write().unwrap();
+
         // Entity header
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -99,8 +102,47 @@ impl EditorPanel for InspectorPanel {
                     .size(10.0)
                     .color(theme.text.muted.to_color32()),
             );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(8.0);
+                if icon_button(ui, regular::PLUS, "Add Component", theme.semantic.accent.to_color32()) {
+                    state.show_add_overlay = true;
+                    state.add_search.clear();
+                }
+            });
         });
         ui.add_space(6.0);
+
+        // Add Component overlay
+        if state.show_add_overlay {
+            let entries: Vec<OverlayEntry> = registry
+                .iter()
+                .filter(|e| e.add_fn.is_some() && !(e.has_fn)(world, entity))
+                .map(|e| OverlayEntry {
+                    id: e.type_id,
+                    label: e.display_name,
+                    icon: e.icon,
+                    category: e.category,
+                })
+                .collect();
+
+            let ctx = ui.ctx().clone();
+            match search_overlay(&ctx, "add_component_overlay", "Add Component", &entries, &mut state.add_search, &theme) {
+                OverlayAction::Selected(id) => {
+                    state.show_add_overlay = false;
+                    if let Some(entry) = registry.iter().find(|e| e.type_id == id) {
+                        if let Some(add_fn) = entry.add_fn {
+                            cmds.push(move |world: &mut World| {
+                                add_fn(world, entity);
+                            });
+                        }
+                    }
+                }
+                OverlayAction::Closed => {
+                    state.show_add_overlay = false;
+                }
+                OverlayAction::None => {}
+            }
+        }
 
         // Render each component section
         egui::ScrollArea::vertical()
@@ -115,22 +157,61 @@ impl EditorPanel for InspectorPanel {
                     }
                     any_shown = true;
 
-                    collapsible_section(
-                        ui,
-                        entry.icon,
-                        entry.display_name,
-                        entry.category,
-                        &theme,
-                        &format!("inspector_{}", entry.type_id),
-                        true,
-                        |ui| {
-                            for (i, field) in entry.fields.iter().enumerate() {
-                                field_widget::render_field(
-                                    ui, field, world, entity, cmds, &theme, i,
-                                );
+                    if let Some(remove_fn) = entry.remove_fn {
+                        let is_disabled = entry
+                            .is_enabled_fn
+                            .map(|f| !(f)(world, entity))
+                            .unwrap_or(false);
+
+                        let action = collapsible_section_removable(
+                            ui,
+                            entry.icon,
+                            entry.display_name,
+                            entry.category,
+                            &theme,
+                            &format!("inspector_{}", entry.type_id),
+                            true,
+                            true,
+                            is_disabled,
+                            |ui| {
+                                for (i, field) in entry.fields.iter().enumerate() {
+                                    field_widget::render_field(
+                                        ui, field, world, entity, cmds, &theme, i,
+                                    );
+                                }
+                            },
+                        );
+                        if action.remove_clicked {
+                            cmds.push(move |world: &mut World| {
+                                remove_fn(world, entity);
+                            });
+                        }
+                        if action.toggle_clicked {
+                            if let Some(set_enabled_fn) = entry.set_enabled_fn {
+                                let new_enabled = is_disabled; // flip: was disabled -> enable
+                                cmds.push(move |world: &mut World| {
+                                    set_enabled_fn(world, entity, new_enabled);
+                                });
                             }
-                        },
-                    );
+                        }
+                    } else {
+                        collapsible_section(
+                            ui,
+                            entry.icon,
+                            entry.display_name,
+                            entry.category,
+                            &theme,
+                            &format!("inspector_{}", entry.type_id),
+                            true,
+                            |ui| {
+                                for (i, field) in entry.fields.iter().enumerate() {
+                                    field_widget::render_field(
+                                        ui, field, world, entity, cmds, &theme, i,
+                                    );
+                                }
+                            },
+                        );
+                    }
                 }
 
                 if !any_shown {

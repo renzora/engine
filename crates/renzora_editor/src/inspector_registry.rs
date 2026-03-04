@@ -39,6 +39,16 @@ pub struct InspectorEntry {
     pub icon: &'static str,
     pub category: &'static str,
     pub has_fn: fn(&World, Entity) -> bool,
+    /// Optional function to add this component to an entity (for "Add Component" overlay).
+    /// If `None`, the component won't appear in the Add Component overlay.
+    pub add_fn: Option<fn(&mut World, Entity)>,
+    /// Optional function to remove this component from an entity (trash button).
+    /// If `None`, the component section won't show toggle/remove controls.
+    pub remove_fn: Option<fn(&mut World, Entity)>,
+    /// Check if the component is enabled (for toggle switch display).
+    pub is_enabled_fn: Option<fn(&World, Entity) -> bool>,
+    /// Set the component's enabled state (called on toggle switch click).
+    pub set_enabled_fn: Option<fn(&mut World, Entity, bool)>,
     pub fields: Vec<FieldDef>,
 }
 

@@ -44,6 +44,10 @@ fn health_entry() -> InspectorEntry {
         icon: regular::HEART,
         category: "gameplay",
         has_fn: |world, entity| world.get::<Health>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Current",
@@ -112,6 +116,10 @@ fn movement_entry() -> InspectorEntry {
         icon: regular::SNEAKER_MOVE,
         category: "gameplay",
         has_fn: |world, entity| world.get::<Movement>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![
             FieldDef {
                 name: "Speed",
@@ -180,6 +188,10 @@ fn entity_tag_entry() -> InspectorEntry {
         icon: regular::TAG,
         category: "gameplay",
         has_fn: |world, entity| world.get::<EntityTag>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Tag",
             field_type: FieldType::String,

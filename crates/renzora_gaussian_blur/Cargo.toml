@@ -1,0 +1,10 @@
+[package]
+name = "renzora_gaussian_blur"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_editor = { path = "../renzora_editor" }
+renzora_postprocess = { path = "../renzora_postprocess" }
