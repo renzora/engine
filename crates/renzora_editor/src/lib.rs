@@ -59,7 +59,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
-            .add_systems(Startup, camera::spawn_editor_camera)
+            .add_systems(PostStartup, camera::spawn_editor_camera)
             .add_systems(EguiPrimaryContextPass, editor_ui_system);
     }
 }

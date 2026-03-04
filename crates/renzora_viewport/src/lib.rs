@@ -24,7 +24,7 @@ impl Plugin for ViewportPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
-            .add_systems(Startup, setup_viewport)
+            .add_systems(PostStartup, setup_viewport)
             .add_systems(Update, handle_viewport_resize);
 
         // Register the viewport panel

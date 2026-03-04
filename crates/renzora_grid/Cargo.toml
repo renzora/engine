@@ -1,0 +1,7 @@
+[package]
+name = "renzora_grid"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
