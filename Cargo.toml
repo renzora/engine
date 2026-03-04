@@ -10,9 +10,15 @@ dynamic = ["bevy/dynamic_linking"]
 name = "renzora"
 path = "src/main.rs"
 
+[[bin]]
+name = "renzora-runtime"
+path = "src/bin/runtime.rs"
+
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
+renzora_runtime = { path = "crates/renzora_runtime" }
 renzora_editor = { path = "crates/renzora_editor" }
+renzora_viewport = { path = "crates/renzora_viewport" }
 renzora_hierarchy = { path = "crates/renzora_hierarchy" }
 renzora_widget_gallery = { path = "crates/renzora_widget_gallery" }
 
@@ -26,3 +32,10 @@ opt-level = 3
 
 [profile.release]
 lto = "thin"
+strip = true
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+strip = true
+codegen-units = 1
