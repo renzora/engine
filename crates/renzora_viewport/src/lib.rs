@@ -3,7 +3,7 @@
 //! Creates an offscreen render target, wires it to the runtime camera,
 //! and displays the result as an egui image inside the docking panel system.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
@@ -42,6 +42,12 @@ impl Plugin for ViewportPlugin {
 pub struct ViewportState {
     pub image_handle: Option<Handle<Image>>,
     pub current_size: UVec2,
+    /// Whether the mouse cursor is currently over the viewport.
+    pub hovered: bool,
+    /// Screen-space position of the viewport panel (top-left corner).
+    pub screen_position: Vec2,
+    /// Screen-space size of the viewport panel.
+    pub screen_size: Vec2,
 }
 
 impl Default for ViewportState {
@@ -49,6 +55,9 @@ impl Default for ViewportState {
         Self {
             image_handle: None,
             current_size: UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
+            hovered: false,
+            screen_position: Vec2::ZERO,
+            screen_size: Vec2::new(DEFAULT_WIDTH as f32, DEFAULT_HEIGHT as f32),
         }
     }
 }
@@ -61,6 +70,9 @@ impl Default for ViewportState {
 pub struct ViewportResizeRequest {
     pub width: AtomicU32,
     pub height: AtomicU32,
+    pub hovered: AtomicBool,
+    pub screen_x: AtomicU32,
+    pub screen_y: AtomicU32,
 }
 
 impl Default for ViewportResizeRequest {
@@ -68,6 +80,9 @@ impl Default for ViewportResizeRequest {
         Self {
             width: AtomicU32::new(DEFAULT_WIDTH),
             height: AtomicU32::new(DEFAULT_HEIGHT),
+            hovered: AtomicBool::new(false),
+            screen_x: AtomicU32::new(0),
+            screen_y: AtomicU32::new(0),
         }
     }
 }
@@ -113,12 +128,21 @@ fn handle_viewport_resize(
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    // Sync hover state and screen position
+    viewport_state.hovered = resize_req.hovered.load(Ordering::Relaxed);
+    viewport_state.screen_position = Vec2::new(
+        f32::from_bits(resize_req.screen_x.load(Ordering::Relaxed)),
+        f32::from_bits(resize_req.screen_y.load(Ordering::Relaxed)),
+    );
+
     let w = resize_req.width.load(Ordering::Relaxed);
     let h = resize_req.height.load(Ordering::Relaxed);
 
     // Clamp to reasonable bounds
     let w = w.max(64).min(7680);
     let h = h.max(64).min(4320);
+
+    viewport_state.screen_size = Vec2::new(w as f32, h as f32);
 
     let requested = UVec2::new(w, h);
     if viewport_state.current_size == requested {
@@ -158,12 +182,16 @@ impl EditorPanel for ViewportPanel {
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let rect = ui.available_rect_before_wrap();
 
-        // Request resize to match panel dimensions
+        // Request resize to match panel dimensions + track hover
         if let Some(req) = world.get_resource::<ViewportResizeRequest>() {
             let w = (rect.width().max(1.0)) as u32;
             let h = (rect.height().max(1.0)) as u32;
             req.width.store(w, Ordering::Relaxed);
             req.height.store(h, Ordering::Relaxed);
+            req.screen_x.store(rect.min.x.to_bits(), Ordering::Relaxed);
+            req.screen_y.store(rect.min.y.to_bits(), Ordering::Relaxed);
+            let is_hovered = ui.rect_contains_pointer(rect);
+            req.hovered.store(is_hovered, Ordering::Relaxed);
         }
 
         // Look up the egui texture ID for our render target

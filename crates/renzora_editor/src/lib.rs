@@ -17,6 +17,10 @@ pub use inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
 pub use selection::EditorSelection;
+
+/// Marker component to hide an entity (and its children) from the hierarchy panel.
+#[derive(Component)]
+pub struct HideInHierarchy;
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
 use std::sync::atomic::{AtomicBool, Ordering};

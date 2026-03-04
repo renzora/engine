@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy_egui::egui::Color32;
 use egui_phosphor::regular;
+use renzora_editor::HideInHierarchy;
 
 /// Persistent UI state for the hierarchy panel.
 pub struct HierarchyState {
@@ -50,6 +51,15 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             let Some(name) = world.get::<Name>(entity) else {
                 continue;
             };
+            if world.get::<HideInHierarchy>(entity).is_some() {
+                continue;
+            }
+            // Also hide if parent has HideInHierarchy
+            if let Some(child_of) = world.get::<ChildOf>(entity) {
+                if world.get::<HideInHierarchy>(child_of.parent()).is_some() {
+                    continue;
+                }
+            }
             let name_str = name.as_str().to_string();
             let (icon, color) = entity_icon(world, entity);
             let parent = world.get::<ChildOf>(entity).map(|c| c.parent());

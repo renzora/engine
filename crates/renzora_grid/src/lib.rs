@@ -76,7 +76,6 @@ fn spawn_grid(
         })),
         Transform::default(),
         EditorGrid,
-        Name::new("Editor Grid"),
     ));
 
     // X axis (red)
@@ -91,7 +90,6 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
-        Name::new("X Axis"),
     ));
 
     // Z axis (blue)
@@ -106,7 +104,6 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
-        Name::new("Z Axis"),
     ));
 
     // Y axis (green, vertical)
@@ -121,7 +118,6 @@ fn spawn_grid(
         })),
         Transform::default(),
         AxisIndicator,
-        Name::new("Y Axis"),
     ));
 }
 

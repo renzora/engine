@@ -25,6 +25,9 @@ renzora_asset_browser = { path = "crates/renzora_asset_browser" }
 renzora_inspector = { path = "crates/renzora_inspector" }
 renzora_test_component = { path = "crates/renzora_test_component" }
 renzora_grid = { path = "crates/renzora_grid" }
+renzora_camera = { path = "crates/renzora_camera" }
+renzora_keybindings = { path = "crates/renzora_keybindings" }
+renzora_gizmo = { path = "crates/renzora_gizmo" }
 
 # Bevy recommended optimizations
 

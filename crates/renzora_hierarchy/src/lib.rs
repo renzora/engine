@@ -130,7 +130,14 @@ impl EditorPanel for HierarchyPanel {
             return;
         }
 
+        // Pull global selection into local state before rendering,
+        // so viewport picks are reflected in the hierarchy highlight.
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            state.selected = sel.get();
+        }
+
         // Render the tree (reborrow to allow split field access)
+        let prev_selected = state.selected;
         let state = &mut *state;
         egui::ScrollArea::vertical()
             .id_salt("hierarchy_tree")
@@ -145,9 +152,11 @@ impl EditorPanel for HierarchyPanel {
                 );
             });
 
-        // Sync local selection → global EditorSelection
-        if let Some(sel) = world.get_resource::<EditorSelection>() {
-            sel.set(state.selected);
+        // If the hierarchy click changed selection, push to global
+        if state.selected != prev_selected {
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.set(state.selected);
+            }
         }
     }
 
