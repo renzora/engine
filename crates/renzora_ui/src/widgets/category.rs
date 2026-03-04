@@ -4,8 +4,8 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense};
 use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT, TRASH};
 use renzora_theme::Theme;
 
-use crate::colors::dim_color;
-use crate::toggle::toggle_switch;
+use super::colors::dim_color;
+use super::toggle::toggle_switch;
 
 /// Result of interacting with a removable category header.
 pub struct CategoryHeaderAction {

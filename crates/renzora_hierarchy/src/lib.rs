@@ -28,7 +28,7 @@ impl EditorPanel for HierarchyPanel {
         ui.add_space(4.0);
 
         if let Some(theme) = theme {
-            renzora_widgets::section_header(ui, "Scene Entities", theme);
+            renzora_editor::section_header(ui, "Scene Entities", theme);
         } else {
             ui.label(egui::RichText::new("Scene Entities").size(12.0));
             ui.add_space(4.0);

@@ -1,0 +1,26 @@
+//! Renzora UI — standalone docking panel framework and widget library for Bevy + egui.
+//!
+//! Includes the dock tree layout engine, panel trait, drag-drop, document tabs,
+//! title bar, status bar, theme application, and all reusable widgets.
+
+pub mod dock_renderer;
+pub mod dock_tree;
+pub mod document_tabs;
+pub mod drag_drop;
+pub mod layouts;
+pub mod panel;
+pub mod status_bar;
+pub mod theme;
+pub mod title_bar;
+pub mod widgets;
+
+// Re-export key types at crate root
+pub use dock_tree::{DockTree, DockingState, DropZone, SplitDirection};
+pub use document_tabs::{DocTabAction, DocumentTab, DocumentTabState, TabKind};
+pub use drag_drop::{DragState, DropTarget};
+pub use layouts::{LayoutManager, WorkspaceLayout};
+pub use panel::{EditorPanel, PanelLocation, PanelRegistry};
+pub use title_bar::TitleBarAction;
+
+// Re-export all widgets at crate root
+pub use widgets::*;

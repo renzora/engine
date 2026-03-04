@@ -1,15 +1,12 @@
 //! Renzora Editor — pluggable editor shell with docking panel system.
+//!
+//! The UI framework (docking, panels, widgets, theme) lives in `renzora_ui`.
+//! This crate adds the Bevy plugin that wires it all together.
 
 pub mod camera;
-pub mod dock_renderer;
-pub mod dock_tree;
-pub mod document_tabs;
-pub mod drag_drop;
-pub mod layouts;
-pub mod panel;
-pub mod status_bar;
-pub mod theme;
-pub mod title_bar;
+
+// Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
+pub use renzora_ui::*;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -19,17 +16,10 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::egui;
 use renzora_theme::ThemeManager;
 
+// Module and type names come through `pub use renzora_ui::*` above.
+// Use fully-qualified `renzora_ui::module::fn` for sub-module function calls.
+
 static FONTS_INITIALIZED: AtomicBool = AtomicBool::new(false);
-
-use dock_tree::DropZone;
-use document_tabs::{DocTabAction, DocumentTabState};
-use drag_drop::DragState;
-use layouts::LayoutManager;
-use title_bar::TitleBarAction;
-
-pub use dock_tree::DockingState;
-pub use document_tabs::{DocumentTab, TabKind};
-pub use panel::{EditorPanel, PanelLocation, PanelRegistry};
 
 /// Whether the editor overlay is active or hidden.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -75,14 +65,14 @@ fn editor_ui_system(world: &mut World) {
 
     // 2. Init fonts once, then apply theme
     if !FONTS_INITIALIZED.load(Ordering::Relaxed) {
-        theme::init_fonts(&ctx);
+        renzora_ui::theme::init_fonts(&ctx);
         FONTS_INITIALIZED.store(true, Ordering::Relaxed);
     }
     let theme = world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.active_theme.clone())
         .unwrap_or_default();
-    theme::apply_theme(&ctx, &theme);
+    renzora_ui::theme::apply_theme(&ctx, &theme);
 
     // 3. Temporarily remove PanelRegistry so we can pass &World to panels
     let registry = world
@@ -96,17 +86,17 @@ fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
 
     // 5. Title bar (top) — returns action
-    let title_action = title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager);
+    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager);
 
     // 6. Document tabs (below title bar)
     let doc_tab_state = world
         .get_resource::<DocumentTabState>()
         .cloned()
         .unwrap_or_default();
-    let doc_tab_action = document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
+    let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
     // 7. Status bar (bottom)
-    status_bar::render_status_bar(&ctx, &theme);
+    renzora_ui::status_bar::render_status_bar(&ctx, &theme);
 
     // 8. Get current drag state (read-only snapshot for rendering)
     let drag_snapshot = world.get_resource::<DragState>().map(|d| DragState {
@@ -125,10 +115,10 @@ fn editor_ui_system(world: &mut World) {
             let docking = world.get_resource::<DockingState>();
             let tree = match docking {
                 Some(ds) => &ds.tree,
-                None => return dock_renderer::DockRenderResult::default(),
+                None => return renzora_ui::dock_renderer::DockRenderResult::default(),
             };
 
-            dock_renderer::render_dock_tree(
+            renzora_ui::dock_renderer::render_dock_tree(
                 ui,
                 tree,
                 rect,
@@ -180,13 +170,13 @@ fn editor_ui_system(world: &mut World) {
                     docking.tree.remove_panel(&drag.panel_id);
                     // 2. Apply drop based on zone
                     match target.zone {
-                        DropZone::Tab(idx) => {
+                        renzora_ui::DropZone::Tab(idx) => {
                             docking.tree.add_tab_at(&target.panel_id, drag.panel_id, idx);
                         }
-                        DropZone::Center => {
+                        renzora_ui::DropZone::Center => {
                             docking.tree.add_tab(&target.panel_id, drag.panel_id);
                         }
-                        DropZone::Left | DropZone::Right | DropZone::Top | DropZone::Bottom => {
+                        renzora_ui::DropZone::Left | renzora_ui::DropZone::Right | renzora_ui::DropZone::Top | renzora_ui::DropZone::Bottom => {
                             docking.tree.split_at(&target.panel_id, drag.panel_id, target.zone);
                         }
                     }
@@ -209,7 +199,7 @@ fn editor_ui_system(world: &mut World) {
                 let title = registry
                     .and_then(|r| r.get(&drag.panel_id).map(|p| p.title().to_string()))
                     .unwrap_or_else(|| drag.panel_id.clone());
-                drag_drop::draw_drag_ghost(&ctx, &title, pos, &theme);
+                renzora_ui::drag_drop::draw_drag_ghost(&ctx, &title, pos, &theme);
             }
         }
     }

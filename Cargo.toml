@@ -14,6 +14,7 @@ path = "src/main.rs"
 bevy = { version = "0.18", features = ["jpeg"] }
 renzora_editor = { path = "crates/renzora_editor" }
 renzora_hierarchy = { path = "crates/renzora_hierarchy" }
+renzora_widget_gallery = { path = "crates/renzora_widget_gallery" }
 
 # Bevy recommended optimizations
 

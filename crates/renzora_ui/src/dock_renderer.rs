@@ -404,8 +404,12 @@ fn render_leaf(
 
     let active_id = tabs.get(active_tab).cloned().unwrap_or_default();
     if let Some(panel) = registry.get(&active_id) {
-        // Render registered panel
-        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(content_rect));
+        // Render registered panel with unique ID scope
+        let mut child_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(content_rect)
+                .id_salt(&active_id),
+        );
         child_ui.set_clip_rect(content_rect);
         panel.ui(&mut child_ui, world);
     } else {

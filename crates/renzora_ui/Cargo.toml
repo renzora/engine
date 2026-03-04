@@ -1,10 +1,10 @@
 [package]
-name = "renzora_editor"
+name = "renzora_ui"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 bevy = { version = "0.18" }
 bevy_egui = "0.39"
-renzora_ui = { path = "../renzora_ui" }
+egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_theme = { path = "../renzora_theme" }

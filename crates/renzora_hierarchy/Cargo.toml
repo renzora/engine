@@ -7,5 +7,4 @@ edition = "2021"
 bevy = { version = "0.18" }
 bevy_egui = "0.39"
 renzora_editor = { path = "../renzora_editor" }
-renzora_widgets = { path = "../renzora_widgets" }
 renzora_theme = { path = "../renzora_theme" }
