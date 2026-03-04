@@ -1,0 +1,9 @@
+[package]
+name = "renzora_widgets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_theme = { path = "../renzora_theme" }

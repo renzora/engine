@@ -1,115 +1,27 @@
-# cargo-features = ["codegen-backend"]
-
 [package]
 name = "renzora"
 version = "0.2.0"
 edition = "2021"
-default-run = "renzora"
 
 [features]
-default = ["editor", "xr"]
-editor = ["dep:libloading", "dep:image", "dep:egui-phosphor", "dep:ureq"]
 dynamic = ["bevy/dynamic_linking"]
-# Raytraced global illumination, DLSS, and virtual geometry (meshlets).
-# Requires Vulkan SDK and DLSS SDK installed for compilation.
-# Build without this feature if you don't have the SDKs: cargo run --features editor
-solari = ["bevy/bevy_solari", "bevy/dlss", "bevy/meshlet", "bevy/meshlet_processor"]
-xr = ["dep:renzora_xr", "dep:renzora_vr_editor"]
 
 [[bin]]
 name = "renzora"
 path = "src/main.rs"
-required-features = ["editor"]
 
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-ron = "0.8"
-toml = "0.8"
-dirs = "5.0"
-zstd = "0.13"
-gltf = "1.4"
-gltf-json = "1.4"
-tobj = "4"
-fbxcel = "0.9"
-fbxcel-dom = "0.0"
-zip = "2"
-image = { version = "0.25", optional = true }
-memory-stats = "1.2"
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
-
-# Audio engine (Kira - full control: mixer, spatial, effects, tweening)
-kira = { version = "0.12.0", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
-mint = "0.5"
-
-# Physics engine (Avian - ECS-native physics for Bevy)
-avian3d = "0.5"
-
-# GPU particle system (Hanabi)
-bevy_hanabi = { version = "0.18", default-features = false, features = ["3d", "serde"] }
-
-# Navigation mesh pathfinding
-vleue_navigator = { path = "crates/vleue_navigator", features = ["avian3d", "avoidance"] }
-
-# Mesh outline rendering
-bevy_mod_outline = { path = "crates/bevy_mod_outline", default-features = false, features = ["reflect"] }
-
-# Cloth physics simulation
-bevy_silk = { path = "crates/bevy_silk", features = ["avian_collisions"] }
-
-# Editor-only dependencies
-bevy_egui = "0.39"
-egui-phosphor = { version = "0.11", features = ["regular", "fill"], optional = true }
-rfd = "0.15"
-rhai = { version = "1.21", features = ["sync"] }
-arboard = "3.4"
-ureq = { version = "2.9", features = ["json"], optional = true }
-open = "5.0"
-include_dir = "0.7"
-futures-lite = "2"
-
-# VR/XR support (OpenXR)
-renzora_xr = { path = "crates/renzora_xr", optional = true }
-
-# VR editor mode (in-headset scene editing)
-renzora_vr_editor = { path = "crates/renzora_vr_editor", optional = true }
-
-# Theming
-renzora_theme = { path = "crates/renzora_theme" }
-
-# Plugin system dependencies (editor-only)
-libloading = { version = "0.8", optional = true }
-notify = "6.0"
-editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"] }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_System_LibraryLoader"] }
-winit = "0.30"
-
-[workspace]
-members = ["crates/editor_plugin_api", "crates/bevy_mod_outline", "crates/bevy_silk", "crates/bevy_solari", "crates/vleue_navigator", "crates/renzora_theme", "crates/renzora_xr", "crates/renzora_vr_editor", "crates/bevy_oxr/crates/bevy_openxr", "crates/bevy_oxr/crates/bevy_xr", "crates/bevy_oxr/crates/bevy_xr_utils"]
+renzora_editor = { path = "crates/renzora_editor" }
+renzora_hierarchy = { path = "crates/renzora_hierarchy" }
 
 # Bevy recommended optimizations
-# https://bevy.org/learn/quick-start/getting-started/setup/
-
-# [unstable]
-# codegen-backend = true
 
 [profile.dev]
 opt-level = 1
-# Note: Cranelift is incompatible with Bevy's dynamic linking on Windows nightly
-# codegen-backend = "cranelift"
 
 [profile.dev.package."*"]
 opt-level = 3
-# codegen-backend = "llvm"
 
 [profile.release]
 lto = "thin"
-
-[patch.crates-io]
-bevy_solari = { path = "crates/bevy_solari" }
-
-[target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
