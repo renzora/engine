@@ -6,12 +6,42 @@ use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorR
 
 /// Register inspector entries for built-in Bevy components.
 pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
+    registry.register(name_entry());
     registry.register(transform_entry());
+    registry.register(visibility_entry());
     registry.register(directional_light_entry());
     registry.register(point_light_entry());
+    registry.register(spot_light_entry());
     registry.register(ambient_light_entry());
+    registry.register(camera_entry());
     registry.register(camera3d_entry());
     registry.register(mesh3d_entry());
+}
+
+fn name_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "name",
+        display_name: "Name",
+        icon: regular::TAG,
+        category: "transform",
+        has_fn: |world, entity| world.get::<Name>(entity).is_some(),
+        fields: vec![FieldDef {
+            name: "Name",
+            field_type: FieldType::String,
+            get_fn: |world, entity| {
+                world
+                    .get::<Name>(entity)
+                    .map(|n| FieldValue::String(n.as_str().to_string()))
+            },
+            set_fn: |world, entity, val| {
+                if let FieldValue::String(v) = val {
+                    if let Some(mut n) = world.get_mut::<Name>(entity) {
+                        *n = Name::new(v);
+                    }
+                }
+            },
+        }],
+    }
 }
 
 fn transform_entry() -> InspectorEntry {
@@ -77,6 +107,36 @@ fn transform_entry() -> InspectorEntry {
                 },
             },
         ],
+    }
+}
+
+fn visibility_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "visibility",
+        display_name: "Visibility",
+        icon: regular::EYE,
+        category: "rendering",
+        has_fn: |world, entity| world.get::<Visibility>(entity).is_some(),
+        fields: vec![FieldDef {
+            name: "Visible",
+            field_type: FieldType::Bool,
+            get_fn: |world, entity| {
+                world.get::<Visibility>(entity).map(|v| {
+                    FieldValue::Bool(matches!(*v, Visibility::Inherited | Visibility::Visible))
+                })
+            },
+            set_fn: |world, entity, val| {
+                if let FieldValue::Bool(v) = val {
+                    if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
+                        *vis = if v {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        };
+                    }
+                }
+            },
+        }],
     }
 }
 
@@ -196,6 +256,114 @@ fn point_light_entry() -> InspectorEntry {
     }
 }
 
+fn spot_light_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "spot_light",
+        display_name: "Spot Light",
+        icon: regular::FLASHLIGHT,
+        category: "lighting",
+        has_fn: |world, entity| world.get::<SpotLight>(entity).is_some(),
+        fields: vec![
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float {
+                    speed: 100.0,
+                    min: 0.0,
+                    max: 10_000_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SpotLight>(entity)
+                        .map(|l| FieldValue::Float(l.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.intensity = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Range",
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SpotLight>(entity)
+                        .map(|l| FieldValue::Float(l.range))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.range = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Inner Angle",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.57,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SpotLight>(entity)
+                        .map(|l| FieldValue::Float(l.inner_angle))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.inner_angle = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Outer Angle",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.57,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SpotLight>(entity)
+                        .map(|l| FieldValue::Float(l.outer_angle))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.outer_angle = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Shadows",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<SpotLight>(entity)
+                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(v) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.shadows_enabled = v;
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
 fn ambient_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "ambient_light",
@@ -226,20 +394,78 @@ fn ambient_light_entry() -> InspectorEntry {
     }
 }
 
+fn camera_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "camera",
+        display_name: "Camera",
+        icon: regular::VIDEO_CAMERA,
+        category: "camera",
+        has_fn: |world, entity| world.get::<Camera>(entity).is_some(),
+        fields: vec![
+            FieldDef {
+                name: "Order",
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: -100.0,
+                    max: 100.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<Camera>(entity)
+                        .map(|c| FieldValue::Float(c.order as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut c) = world.get_mut::<Camera>(entity) {
+                            c.order = v as isize;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Active",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<Camera>(entity)
+                        .map(|c| FieldValue::Bool(c.is_active))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(v) = val {
+                        if let Some(mut c) = world.get_mut::<Camera>(entity) {
+                            c.is_active = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Output",
+                field_type: FieldType::ReadOnly,
+                get_fn: |world, entity| {
+                    world.get::<Camera>(entity).map(|c| {
+                        FieldValue::ReadOnly(format!("{:?}", c.output_mode))
+                    })
+                },
+                set_fn: |_, _, _| {},
+            },
+        ],
+    }
+}
+
 fn camera3d_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "camera3d",
         display_name: "Camera 3D",
-        icon: regular::VIDEO_CAMERA,
+        icon: regular::APERTURE,
         category: "camera",
         has_fn: |world, entity| world.get::<Camera3d>(entity).is_some(),
         fields: vec![FieldDef {
-            name: "Status",
+            name: "Type",
             field_type: FieldType::ReadOnly,
             get_fn: |world, entity| {
                 world
                     .get::<Camera3d>(entity)
-                    .map(|_| FieldValue::ReadOnly("Active".to_string()))
+                    .map(|_| FieldValue::ReadOnly("Perspective 3D".to_string()))
             },
             set_fn: |_, _, _| {},
         }],
