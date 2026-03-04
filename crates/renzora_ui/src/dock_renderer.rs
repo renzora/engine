@@ -33,6 +33,8 @@ pub struct DockRenderResult {
     pub drag_started: Option<String>,
     /// Current frame's drop target (computed during drag).
     pub drop_target: Option<DropTarget>,
+    /// A panel was added from the "+" menu: `(sibling_panel_id, new_panel_id)`.
+    pub panel_to_add: Option<(String, String)>,
 }
 
 // ── Public entry point ───────────────────────────────────────────────────────
@@ -364,6 +366,89 @@ fn render_leaf(
         }
 
         tab_x += tab_width + 1.0;
+    }
+
+    // "+" button to add a panel as a new tab
+    if !is_dragging {
+        let plus_size = Vec2::new(22.0, tab_height);
+        let plus_rect = Rect::from_min_size(
+            Pos2::new(tab_x + 2.0, rect.min.y + 2.0),
+            plus_size,
+        );
+        let plus_id = base_id.with(("plus_tab", path));
+        let plus_resp = ui.interact(plus_rect, plus_id, Sense::click());
+
+        if plus_resp.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+
+        // Draw "+" button
+        if ui.is_rect_visible(plus_rect) {
+            let bg = if plus_resp.hovered() {
+                theme.panels.tab_hover.to_color32()
+            } else {
+                Color32::TRANSPARENT
+            };
+            ui.painter().rect_filled(plus_rect, egui::CornerRadius::ZERO, bg);
+            ui.painter().text(
+                plus_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "+",
+                egui::FontId::proportional(14.0),
+                theme.text.muted.to_color32(),
+            );
+        }
+
+        if plus_resp.clicked() {
+            #[allow(deprecated)]
+            ui.memory_mut(|mem| mem.toggle_popup(plus_id.with("popup")));
+        }
+
+        // Panel picker popup
+        #[allow(deprecated)]
+        egui::popup_below_widget(
+            ui,
+            plus_id.with("popup"),
+            &plus_resp,
+            egui::PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                ui.set_min_width(180.0);
+                ui.set_max_height(400.0);
+                ui.style_mut().spacing.item_spacing.y = 1.0;
+
+                let already_here: std::collections::HashSet<&str> =
+                    tabs.iter().map(|s| s.as_str()).collect();
+
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for panel in registry.iter() {
+                        let pid = panel.id();
+                        let is_here = already_here.contains(pid);
+                        let label = if let Some(icon) = panel.icon() {
+                            format!("{} {}", icon, panel.title())
+                        } else {
+                            panel.title().to_string()
+                        };
+
+                        let btn = ui.add_enabled(
+                            !is_here,
+                            egui::Button::new(&label)
+                                .fill(Color32::TRANSPARENT)
+                                .corner_radius(egui::CornerRadius::same(2))
+                                .min_size(Vec2::new(ui.available_width(), 0.0)),
+                        );
+                        if btn.hovered() && !is_here {
+                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if btn.clicked() {
+                            if let Some(sibling) = tabs.first() {
+                                result.panel_to_add = Some((sibling.clone(), pid.to_string()));
+                            }
+                            ui.close();
+                        }
+                    }
+                });
+            },
+        );
     }
 
     // Separator line under tab bar

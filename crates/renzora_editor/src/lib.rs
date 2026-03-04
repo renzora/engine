@@ -259,12 +259,19 @@ fn editor_ui_system(world: &mut World) {
         }
     }
 
-    // I) Handle title bar layout switch
+    // I) Handle add panel
+    if let Some((ref sibling, ref new_panel)) = render_result.panel_to_add {
+        if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+            docking.tree.add_tab(sibling, new_panel.clone());
+        }
+    }
+
+    // K) Handle title bar layout switch
     if let TitleBarAction::SwitchLayout(i) = title_action {
         switch_layout(world, i);
     }
 
-    // J) Handle document tab actions
+    // L) Handle document tab actions
     match doc_tab_action {
         DocTabAction::Activate(idx, _layout_name) => {
             let layout_name = world
