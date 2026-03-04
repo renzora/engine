@@ -4,6 +4,8 @@ use renzora_editor::RenzoraEditorPlugin;
 use renzora_viewport::ViewportPlugin;
 use renzora_asset_browser::AssetBrowserPlugin;
 use renzora_hierarchy::HierarchyPanelPlugin;
+use renzora_inspector::InspectorPanelPlugin;
+use renzora_test_component::TestComponentPlugin;
 
 fn main() {
     App::new()
@@ -13,5 +15,7 @@ fn main() {
         .add_plugins(ViewportPlugin)
         .add_plugins(AssetBrowserPlugin)
         .add_plugins(HierarchyPanelPlugin)
+        .add_plugins(InspectorPanelPlugin)
+        .add_plugins(TestComponentPlugin)
         .run();
 }

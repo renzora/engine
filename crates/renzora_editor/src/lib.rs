@@ -4,9 +4,18 @@
 //! This crate adds the Bevy plugin that wires it all together.
 
 pub mod camera;
+pub mod commands;
+pub mod inspector_registry;
+pub mod selection;
 
 // Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
 pub use renzora_ui::*;
+
+pub use commands::EditorCommands;
+pub use inspector_registry::{
+    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
+};
+pub use selection::EditorSelection;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -44,6 +53,9 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<DockingState>()
             .init_resource::<LayoutManager>()
             .init_resource::<DocumentTabState>()
+            .init_resource::<EditorSelection>()
+            .init_resource::<EditorCommands>()
+            .init_resource::<InspectorRegistry>()
             .add_systems(Startup, camera::spawn_editor_camera)
             .add_systems(EguiPrimaryContextPass, editor_ui_system);
     }
@@ -263,6 +275,15 @@ fn editor_ui_system(world: &mut World) {
             switch_layout_by_name(world, &layout_name);
         }
         DocTabAction::None => {}
+    }
+
+    // K) Drain and execute deferred editor commands (from inspector, etc.)
+    let cmds = world
+        .get_resource::<EditorCommands>()
+        .map(|ec| ec.drain())
+        .unwrap_or_default();
+    for cmd in cmds {
+        cmd(world);
     }
 }
 

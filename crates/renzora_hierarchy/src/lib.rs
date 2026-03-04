@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor::{EditorPanel, PanelLocation, PanelRegistry};
+use renzora_editor::{EditorPanel, EditorSelection, PanelLocation, PanelRegistry};
 use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
@@ -94,6 +94,11 @@ impl EditorPanel for HierarchyPanel {
                     &theme,
                 );
             });
+
+        // Sync local selection → global EditorSelection
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            sel.set(state.selected);
+        }
     }
 
     fn closable(&self) -> bool {
