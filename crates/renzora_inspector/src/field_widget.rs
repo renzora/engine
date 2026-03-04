@@ -101,28 +101,7 @@ pub fn render_field(
 
             inline_property(ui, row_index, field.name, theme, |ui| {
                 let orig = rgb;
-                let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
-                ui.spacing_mut().item_spacing.x = 2.0;
-
-                ui.label(egui::RichText::new("R").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                ui.add_sized(
-                    [w, 16.0],
-                    egui::DragValue::new(&mut rgb[0]).speed(0.005).range(0.0..=1.0),
-                );
-
-                ui.label(egui::RichText::new("G").size(10.0).color(egui::Color32::from_rgb(130, 200, 90)));
-                ui.add_sized(
-                    [w, 16.0],
-                    egui::DragValue::new(&mut rgb[1]).speed(0.005).range(0.0..=1.0),
-                );
-
-                ui.label(egui::RichText::new("B").size(10.0).color(egui::Color32::from_rgb(90, 150, 230)));
-                ui.add_sized(
-                    [w, 16.0],
-                    egui::DragValue::new(&mut rgb[2]).speed(0.005).range(0.0..=1.0),
-                );
-
-                if rgb != orig {
+                if ui.color_edit_button_rgb(&mut rgb).changed() && rgb != orig {
                     cmds.push(move |w| (set_fn)(w, entity, FieldValue::Color(rgb)));
                 }
             });

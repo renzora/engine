@@ -169,6 +169,23 @@ fn directional_light_entry() -> InspectorEntry {
                 },
             },
             FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<DirectionalLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
+                    }
+                },
+            },
+            FieldDef {
                 name: "Shadows",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
@@ -196,6 +213,23 @@ fn point_light_entry() -> InspectorEntry {
         category: "lighting",
         has_fn: |world, entity| world.get::<PointLight>(entity).is_some(),
         fields: vec![
+            FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<PointLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<PointLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
+                    }
+                },
+            },
             FieldDef {
                 name: "Intensity",
                 field_type: FieldType::Float {
@@ -264,6 +298,23 @@ fn spot_light_entry() -> InspectorEntry {
         category: "lighting",
         has_fn: |world, entity| world.get::<SpotLight>(entity).is_some(),
         fields: vec![
+            FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<SpotLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
+                    }
+                },
+            },
             FieldDef {
                 name: "Intensity",
                 field_type: FieldType::Float {
@@ -371,26 +422,45 @@ fn ambient_light_entry() -> InspectorEntry {
         icon: regular::SUN_DIM,
         category: "lighting",
         has_fn: |world, entity| world.get::<AmbientLight>(entity).is_some(),
-        fields: vec![FieldDef {
-            name: "Brightness",
-            field_type: FieldType::Float {
-                speed: 10.0,
-                min: 0.0,
-                max: 100_000.0,
-            },
-            get_fn: |world, entity| {
-                world
-                    .get::<AmbientLight>(entity)
-                    .map(|l| FieldValue::Float(l.brightness))
-            },
-            set_fn: |world, entity, val| {
-                if let FieldValue::Float(v) = val {
-                    if let Some(mut l) = world.get_mut::<AmbientLight>(entity) {
-                        l.brightness = v;
+        fields: vec![
+            FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<AmbientLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<AmbientLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
                     }
-                }
+                },
             },
-        }],
+            FieldDef {
+                name: "Brightness",
+                field_type: FieldType::Float {
+                    speed: 10.0,
+                    min: 0.0,
+                    max: 100_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<AmbientLight>(entity)
+                        .map(|l| FieldValue::Float(l.brightness))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<AmbientLight>(entity) {
+                            l.brightness = v;
+                        }
+                    }
+                },
+            },
+        ],
     }
 }
 
