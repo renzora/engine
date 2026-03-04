@@ -151,31 +151,42 @@ impl<'a> TileGrid<'a> {
                     tile_size,
                 };
 
+                // --- Card background (paint before content) ---
+                let is_hovered = response.hovered();
+                {
+                    let painter = ui.painter();
+
+                    // Base card fill
+                    let bg = if is_hovered { item_hover } else { item_bg };
+                    painter.rect_filled(rect, CornerRadius::same(8), bg);
+
+                    // Darker icon area when not highlighted
+                    if !is_hovered {
+                        painter.rect_filled(
+                            icon_area_rect,
+                            CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
+                            surface_faint,
+                        );
+                    }
+                }
+
                 // Let the caller render content and report state
                 let state = render_tile(ui, index, &layout);
 
-                // --- Card background ---
-                let bg = if state.is_selected {
-                    selection_bg
-                } else if state.is_hovered {
-                    item_hover
-                } else {
-                    item_bg
-                };
-                // Paint behind content (layer order: bg first via rect_filled)
+                // --- Post-content painting (selected state, borders, separator) ---
                 let painter = ui.painter();
-                painter.rect_filled(rect, CornerRadius::same(8), bg);
 
-                // Darker icon area when not highlighted
-                if !state.is_selected && !state.is_hovered {
+                // Semi-transparent selection tint (preserves content visibility)
+                if state.is_selected {
+                    let [r, g, b, _] = selection_bg.to_array();
                     painter.rect_filled(
-                        icon_area_rect,
-                        CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
-                        surface_faint,
+                        rect,
+                        CornerRadius::same(8),
+                        Color32::from_rgba_unmultiplied(r, g, b, 80),
                     );
                 }
 
-                // --- Borders ---
+                // Borders
                 if state.is_selected {
                     painter.rect_stroke(
                         rect,
@@ -197,7 +208,7 @@ impl<'a> TileGrid<'a> {
                     }
                 }
 
-                // --- Color separator ---
+                // Color separator
                 let sep_alpha = if state.is_selected || state.is_hovered { 200 } else { 120 };
                 if let Some(c) = state.color {
                     painter.rect_filled(

@@ -21,6 +21,15 @@ pub use selection::EditorSelection;
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
 #[derive(Component)]
 pub struct HideInHierarchy;
+
+/// Marker component — entity is locked from editing in the hierarchy.
+#[derive(Component)]
+pub struct EditorLocked;
+
+/// Optional label color for an entity row in the hierarchy.
+#[derive(Component)]
+pub struct EntityLabelColor(pub [u8; 3]);
+
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
 use std::sync::atomic::{AtomicBool, Ordering};

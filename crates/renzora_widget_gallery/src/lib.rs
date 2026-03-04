@@ -1537,6 +1537,7 @@ impl EditorPanel for TreeGallery {
                             label: node.label,
                             label_color: node.label_color,
                             theme,
+                            prefix_width: 0.0,
                         },
                     );
 

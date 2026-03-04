@@ -16,6 +16,29 @@ use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
 
+/// Label color presets: ([r, g, b], name).
+pub const LABEL_COLORS: &[([u8; 3], &str)] = &[
+    ([220, 70,  70],  "Red"),
+    ([210, 120, 80],  "Coral"),
+    ([220, 140, 60],  "Orange"),
+    ([210, 175, 55],  "Amber"),
+    ([210, 195, 60],  "Yellow"),
+    ([160, 210, 60],  "Lime"),
+    ([70,  190, 100], "Green"),
+    ([55,  185, 155], "Teal"),
+    ([60,  200, 200], "Cyan"),
+    ([70,  170, 220], "Sky"),
+    ([80,  140, 220], "Blue"),
+    ([90,  100, 220], "Indigo"),
+    ([155, 80,  220], "Purple"),
+    ([190, 70,  200], "Violet"),
+    ([220, 80,  180], "Pink"),
+    ([220, 80,  120], "Rose"),
+    ([160, 110, 75],  "Brown"),
+    ([130, 130, 140], "Gray"),
+    ([200, 200, 200], "White"),
+];
+
 /// Hierarchy panel — displays all named entities as a tree.
 pub struct HierarchyPanel {
     state: RwLock<HierarchyState>,
@@ -48,6 +71,16 @@ impl EditorPanel for HierarchyPanel {
             None => return,
         };
 
+        let commands = match world.get_resource::<EditorCommands>() {
+            Some(c) => c,
+            None => return,
+        };
+
+        let selection = match world.get_resource::<EditorSelection>() {
+            Some(s) => s,
+            None => return,
+        };
+
         let mut state = self.state.write().unwrap();
 
         // Search bar + "Add Entity" button
@@ -68,7 +101,6 @@ impl EditorPanel for HierarchyPanel {
 
         // Add Entity overlay
         if state.show_add_overlay {
-            // Build entries from SpawnRegistry
             let entries: Vec<OverlayEntry> = if let Some(registry) = world.get_resource::<SpawnRegistry>() {
                 registry
                     .iter()
@@ -87,18 +119,15 @@ impl EditorPanel for HierarchyPanel {
             match search_overlay(&ctx, "add_entity_overlay", "Add Entity", &entries, &mut state.add_search, &theme) {
                 OverlayAction::Selected(id) => {
                     state.show_add_overlay = false;
-                    // Find the preset's spawn_fn and push a deferred command
                     if let Some(registry) = world.get_resource::<SpawnRegistry>() {
                         if let Some(preset) = registry.iter().find(|p| p.id == id) {
                             let spawn_fn = preset.spawn_fn;
-                            if let Some(commands) = world.get_resource::<EditorCommands>() {
-                                commands.push(move |world: &mut World| {
-                                    let entity = spawn_fn(world);
-                                    if let Some(sel) = world.get_resource::<EditorSelection>() {
-                                        sel.set(Some(entity));
-                                    }
-                                });
-                            }
+                            commands.push(move |world: &mut World| {
+                                let entity = spawn_fn(world);
+                                if let Some(sel) = world.get_resource::<EditorSelection>() {
+                                    sel.set(Some(entity));
+                                }
+                            });
                         }
                     }
                 }
@@ -130,32 +159,75 @@ impl EditorPanel for HierarchyPanel {
             return;
         }
 
-        // Pull global selection into local state before rendering,
-        // so viewport picks are reflected in the hierarchy highlight.
-        if let Some(sel) = world.get_resource::<EditorSelection>() {
-            state.selected = sel.get();
-        }
+        // Reset drop target each frame
+        state.drop_target = None;
 
-        // Render the tree (reborrow to allow split field access)
-        let prev_selected = state.selected;
+        // Render the tree
         let state = &mut *state;
         egui::ScrollArea::vertical()
             .id_salt("hierarchy_tree")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                ui.style_mut().spacing.item_spacing.y = 0.0;
                 tree::render_tree(
                     ui,
                     &nodes,
-                    &mut state.expanded,
-                    &mut state.selected,
+                    state,
+                    selection,
+                    commands,
                     &theme,
                 );
             });
 
-        // If the hierarchy click changed selection, push to global
-        if state.selected != prev_selected {
-            if let Some(sel) = world.get_resource::<EditorSelection>() {
-                sel.set(state.selected);
+        // Swap visible entity order for next frame's range selection
+        std::mem::swap(&mut state.visible_entity_order, &mut state.building_entity_order);
+
+        // Handle drag release → apply reparent
+        if !state.drag_entities.is_empty() && !ui.ctx().input(|i| i.pointer.any_down()) {
+            if let Some((target, zone)) = state.drop_target.take() {
+                let drag_entities = std::mem::take(&mut state.drag_entities);
+                commands.push(move |world: &mut World| {
+                    use renzora_editor::TreeDropZone;
+                    for entity in &drag_entities {
+                        if *entity == target {
+                            continue;
+                        }
+                        match zone {
+                            TreeDropZone::AsChild => {
+                                world.entity_mut(*entity).set_parent_in_place(target);
+                            }
+                            TreeDropZone::Before | TreeDropZone::After => {
+                                let parent = world.get::<ChildOf>(target).map(|c| c.parent());
+                                world.entity_mut(*entity).remove_parent_in_place();
+                                if let Some(p) = parent {
+                                    world.entity_mut(*entity).set_parent_in_place(p);
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                state.drag_entities.clear();
+            }
+        }
+
+        // Drag tooltip
+        if !state.drag_entities.is_empty() {
+            if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                let count = state.drag_entities.len();
+                let label = if count == 1 {
+                    "Moving 1 entity".to_string()
+                } else {
+                    format!("Moving {} entities", count)
+                };
+                egui::Area::new(egui::Id::new("hierarchy_drag_tooltip"))
+                    .fixed_pos(pos + egui::vec2(12.0, 4.0))
+                    .interactable(false)
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.label(egui::RichText::new(label).size(11.0));
+                        });
+                    });
             }
         }
     }
@@ -174,7 +246,6 @@ pub struct HierarchyPanelPlugin;
 
 impl Plugin for HierarchyPanelPlugin {
     fn build(&self, app: &mut App) {
-        // Register panel
         let world = app.world_mut();
         let mut registry = world
             .remove_resource::<PanelRegistry>()
@@ -182,7 +253,6 @@ impl Plugin for HierarchyPanelPlugin {
         registry.register(HierarchyPanel::default());
         world.insert_resource(registry);
 
-        // Register built-in entity presets
         let mut spawn_reg = world
             .remove_resource::<SpawnRegistry>()
             .unwrap_or_default();
@@ -192,7 +262,6 @@ impl Plugin for HierarchyPanelPlugin {
 }
 
 fn register_builtin_presets(registry: &mut SpawnRegistry) {
-    // Empty
     registry.register(EntityPreset {
         id: "empty_entity",
         display_name: "Empty Entity",
@@ -205,7 +274,6 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         },
     });
 
-    // 3D Objects
     registry.register(EntityPreset {
         id: "cube",
         display_name: "Cube",
@@ -298,7 +366,6 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         },
     });
 
-    // Lights
     registry.register(EntityPreset {
         id: "directional_light",
         display_name: "Directional Light",
@@ -347,7 +414,6 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         },
     });
 
-    // Camera
     registry.register(EntityPreset {
         id: "camera_3d",
         display_name: "Camera 3D",

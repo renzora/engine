@@ -73,6 +73,9 @@ pub struct TreeRowConfig<'a> {
     pub label_color: Option<[u8; 3]>,
     /// Theme reference.
     pub theme: &'a Theme,
+    /// Extra horizontal space reserved after the caret (before the icon) for caller-drawn content.
+    /// The caller can use `TreeRowResult::prefix_rect` to draw into this area.
+    pub prefix_width: f32,
 }
 
 /// Result of rendering a tree row.
@@ -89,6 +92,9 @@ pub struct TreeRowResult {
     pub shift_click: bool,
     /// The allocated rect for this row.
     pub rect: egui::Rect,
+    /// Rect reserved for caller-drawn prefix content (between caret and icon).
+    /// Only meaningful when `TreeRowConfig::prefix_width > 0`.
+    pub prefix_rect: egui::Rect,
 }
 
 /// Render a single tree row. Call this inside a vertical layout, once per visible node.
@@ -224,8 +230,15 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
 
     let after_caret_x = content_x + 16.0;
 
+    // --- Prefix area (caller-drawn content between caret and icon) ---
+    let prefix_rect = egui::Rect::from_min_size(
+        Pos2::new(after_caret_x, rect.min.y),
+        Vec2::new(cfg.prefix_width, ROW_HEIGHT),
+    );
+    let after_prefix_x = after_caret_x + cfg.prefix_width;
+
     // --- Icon ---
-    let mut text_x = after_caret_x;
+    let mut text_x = after_prefix_x;
     if let Some(icon_str) = cfg.icon {
         let ic = cfg.icon_color.unwrap_or_else(|| theme.text.muted.to_color32());
         painter.text(
@@ -263,6 +276,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
         ctrl_click: row_clicked && (modifiers.ctrl || modifiers.command),
         shift_click: row_clicked && modifiers.shift,
         rect,
+        prefix_rect,
     }
 }
 
