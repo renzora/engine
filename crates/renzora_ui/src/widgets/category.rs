@@ -278,7 +278,7 @@ pub fn collapsible_section_removable(
 }
 
 /// Map a category name to its accent + header background colors from the theme.
-fn category_colors(theme: &Theme, category: &str) -> (Color32, Color32) {
+pub fn category_colors(theme: &Theme, category: &str) -> (Color32, Color32) {
     let style = match category {
         "transform" => &theme.categories.transform,
         "environment" => &theme.categories.environment,

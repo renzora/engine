@@ -7,6 +7,7 @@ pub mod camera;
 pub mod commands;
 pub mod inspector_registry;
 pub mod selection;
+pub mod spawn_registry;
 
 // Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
 pub use renzora_ui::*;
@@ -16,6 +17,7 @@ pub use inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
 pub use selection::EditorSelection;
+pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -56,6 +58,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorSelection>()
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
+            .init_resource::<SpawnRegistry>()
             .add_systems(Startup, camera::spawn_editor_camera)
             .add_systems(EguiPrimaryContextPass, editor_ui_system);
     }

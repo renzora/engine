@@ -9,6 +9,8 @@ pub struct HierarchyState {
     pub expanded: HashSet<Entity>,
     pub selected: Option<Entity>,
     pub search: String,
+    pub show_add_overlay: bool,
+    pub add_search: String,
 }
 
 impl Default for HierarchyState {
@@ -17,6 +19,8 @@ impl Default for HierarchyState {
             expanded: HashSet::new(),
             selected: None,
             search: String::new(),
+            show_add_overlay: false,
+            add_search: String::new(),
         }
     }
 }

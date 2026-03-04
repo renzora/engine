@@ -11,6 +11,7 @@ mod property;
 mod section;
 pub mod node_graph;
 pub mod tile_grid;
+pub mod search_overlay;
 mod toggle;
 pub mod tree;
 mod utils;
@@ -18,7 +19,7 @@ mod vu_meter;
 
 pub use buttons::icon_button;
 pub use category::{
-    collapsible_section, collapsible_section_removable, CategoryHeaderAction,
+    category_colors, collapsible_section, collapsible_section_removable, CategoryHeaderAction,
 };
 pub use colors::{checkerboard, dim_color};
 pub use empty_state::empty_state;
@@ -37,3 +38,4 @@ pub use node_graph::{
     node_graph, NodeGraphState, NodeGraphConfig, NodeGraphResponse,
     NodeDef, PinDef, PinDirection, PinShape, ConnectionDef, PinId, NodeId,
 };
+pub use search_overlay::{search_overlay, OverlayAction, OverlayEntry};
