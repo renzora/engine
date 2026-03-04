@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use renzora_runtime::RuntimePlugin;
 use renzora_editor::RenzoraEditorPlugin;
 use renzora_viewport::ViewportPlugin;
+use renzora_asset_browser::AssetBrowserPlugin;
 
 fn main() {
     App::new()
@@ -9,5 +10,6 @@ fn main() {
         .add_plugins(RuntimePlugin)
         .add_plugins(RenzoraEditorPlugin)
         .add_plugins(ViewportPlugin)
+        .add_plugins(AssetBrowserPlugin)
         .run();
 }

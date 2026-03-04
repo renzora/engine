@@ -21,6 +21,7 @@ renzora_editor = { path = "crates/renzora_editor" }
 renzora_viewport = { path = "crates/renzora_viewport" }
 renzora_hierarchy = { path = "crates/renzora_hierarchy" }
 renzora_widget_gallery = { path = "crates/renzora_widget_gallery" }
+renzora_asset_browser = { path = "crates/renzora_asset_browser" }
 
 # Bevy recommended optimizations
 
