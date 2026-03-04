@@ -85,6 +85,7 @@ fn inspector_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| { if let FieldValue::Color([r, g, b]) = val { if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) { s.color_r = r; s.color_g = g; s.color_b = b; } } },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 

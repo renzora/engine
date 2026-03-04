@@ -37,68 +37,60 @@ pub fn collapsible_section(
     let text_muted = theme.text.muted.to_color32();
     let text_primary = theme.text.primary.to_color32();
 
-    ui.scope(|ui| {
-        egui::Frame::new()
-            .fill(frame_bg)
-            .corner_radius(CornerRadius::same(6))
-            .show(ui, |ui| {
-                // Header bar
-                let header_rect = ui
-                    .scope(|ui| {
-                        egui::Frame::new()
-                            .fill(header_bg)
-                            .corner_radius(CornerRadius {
-                                nw: 6,
-                                ne: 6,
-                                sw: if state.is_open() { 0 } else { 6 },
-                                se: if state.is_open() { 0 } else { 6 },
-                            })
-                            .inner_margin(egui::Margin::symmetric(8, 6))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                                    ui.label(RichText::new(caret).size(12.0).color(text_muted));
-                                    ui.label(RichText::new(icon).size(15.0).color(accent_color));
-                                    ui.add_space(4.0);
-                                    ui.label(
-                                        RichText::new(label)
-                                            .size(13.0)
-                                            .strong()
-                                            .color(text_primary),
-                                    );
-                                    ui.allocate_space(ui.available_size());
-                                });
-                            });
+    egui::Frame::new()
+        .fill(frame_bg)
+        .corner_radius(CornerRadius::ZERO)
+        .outer_margin(egui::Margin::ZERO)
+        .inner_margin(egui::Margin::ZERO)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+
+            // Header bar
+            let header_rect = egui::Frame::new()
+                .fill(header_bg)
+                .corner_radius(CornerRadius::ZERO)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                        ui.label(RichText::new(caret).size(12.0).color(text_muted));
+                        ui.label(RichText::new(icon).size(15.0).color(accent_color));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(label)
+                                .size(13.0)
+                                .strong()
+                                .color(text_primary),
+                        );
+                        ui.allocate_space(ui.available_size());
+                    });
+                })
+                .response
+                .rect;
+
+            let resp = ui.interact(header_rect, id.with("header"), Sense::click());
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if resp.clicked() {
+                state.toggle(ui);
+            }
+
+            if state.is_open() {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 4,
+                        right: 4,
+                        top: 4,
+                        bottom: 4,
                     })
-                    .response
-                    .rect;
-
-                let resp = ui.interact(header_rect, id.with("header"), Sense::click());
-                if resp.hovered() {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                }
-                if resp.clicked() {
-                    state.toggle(ui);
-                }
-
-                if state.is_open() {
-                    ui.add_space(4.0);
-                    egui::Frame::new()
-                        .inner_margin(egui::Margin {
-                            left: 4,
-                            right: 4,
-                            top: 0,
-                            bottom: 4,
-                        })
-                        .show(ui, |ui| {
-                            add_contents(ui);
-                        });
-                }
-            });
-    });
+                    .show(ui, |ui| {
+                        add_contents(ui);
+                    });
+            }
+        });
 
     state.store(ui.ctx());
-    ui.add_space(6.0);
 }
 
 /// Render a collapsible category with toggle switch, remove button, and drag handle.
@@ -134,103 +126,98 @@ pub fn collapsible_section_removable(
     let eff_text = if is_disabled { dim_color(text_primary, 0.5) } else { text_primary };
     let eff_icon = if is_disabled { dim_color(accent_color, 0.4) } else { accent_color };
 
-    ui.scope(|ui| {
-        egui::Frame::new()
-            .fill(frame_bg)
-            .corner_radius(CornerRadius::same(6))
-            .show(ui, |ui| {
-                // Header
-                let header_response = ui
-                    .scope(|ui| {
-                        egui::Frame::new()
-                            .fill(eff_header)
-                            .corner_radius(CornerRadius {
-                                nw: 6,
-                                ne: 6,
-                                sw: if state.is_open() { 0 } else { 6 },
-                                se: if state.is_open() { 0 } else { 6 },
-                            })
-                            .inner_margin(egui::Margin::symmetric(8, 6))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    // Left: grip + caret + icon + label
-                                    ui.scope(|ui| {
-                                        ui.set_max_width(
-                                            (ui.available_width() - 58.0).max(20.0),
+    egui::Frame::new()
+        .fill(frame_bg)
+        .corner_radius(CornerRadius::ZERO)
+        .outer_margin(egui::Margin::ZERO)
+        .inner_margin(egui::Margin::ZERO)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+
+            // Header
+            let header_response = egui::Frame::new()
+                .fill(eff_header)
+                .corner_radius(CornerRadius::ZERO)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Left: grip + caret + icon + label
+                        ui.scope(|ui| {
+                            ui.set_max_width(
+                                (ui.available_width() - 58.0).max(20.0),
+                            );
+
+                            ui.label(
+                                RichText::new("⠿")
+                                    .size(10.0)
+                                    .color(dim_color(text_muted, 0.5)),
+                            );
+
+                            let caret =
+                                if state.is_open() { "▾" } else { "▸" };
+                            ui.label(
+                                RichText::new(caret).size(12.0).color(text_muted),
+                            );
+
+                            ui.label(
+                                RichText::new(icon).size(15.0).color(eff_icon),
+                            );
+                            ui.add_space(4.0);
+
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(label)
+                                        .size(13.0)
+                                        .strong()
+                                        .color(eff_text),
+                                )
+                                .truncate(),
+                            );
+                        });
+
+                        // Right: toggle + trash
+                        if can_remove {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    // Trash
+                                    let trash = ui.add(
+                                        egui::Button::new(
+                                            RichText::new(TRASH)
+                                                .size(13.0)
+                                                .color(text_muted),
+                                        )
+                                        .frame(false),
+                                    );
+                                    if trash.hovered() {
+                                        let r = trash.rect.expand(2.0);
+                                        ui.painter().rect_filled(
+                                            r,
+                                            3.0,
+                                            Color32::from_rgba_premultiplied(
+                                                230, 89, 89, 30,
+                                            ),
                                         );
-
-                                        ui.label(
-                                            RichText::new("⠿")
-                                                .size(10.0)
-                                                .color(dim_color(text_muted, 0.5)),
-                                        );
-
-                                        let caret =
-                                            if state.is_open() { "▾" } else { "▸" };
-                                        ui.label(
-                                            RichText::new(caret).size(12.0).color(text_muted),
-                                        );
-
-                                        ui.label(
-                                            RichText::new(icon).size(15.0).color(eff_icon),
-                                        );
-                                        ui.add_space(4.0);
-
-                                        ui.add(
-                                            egui::Label::new(
-                                                RichText::new(label)
-                                                    .size(13.0)
-                                                    .strong()
-                                                    .color(eff_text),
-                                            )
-                                            .truncate(),
-                                        );
-                                    });
-
-                                    // Right: toggle + trash
-                                    if can_remove {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                // Trash
-                                                let trash = ui.add(
-                                                    egui::Button::new(
-                                                        RichText::new(TRASH)
-                                                            .size(13.0)
-                                                            .color(text_muted),
-                                                    )
-                                                    .frame(false),
-                                                );
-                                                if trash.hovered() {
-                                                    let r = trash.rect.expand(2.0);
-                                                    ui.painter().rect_filled(
-                                                        r,
-                                                        3.0,
-                                                        Color32::from_rgba_premultiplied(
-                                                            230, 89, 89, 30,
-                                                        ),
-                                                    );
-                                                }
-                                                if trash.clicked() {
-                                                    remove_clicked = true;
-                                                }
-
-                                                ui.add_space(4.0);
-
-                                                // Toggle
-                                                if toggle_switch(ui, id.with("toggle"), !is_disabled)
-                                                {
-                                                    toggle_clicked_flag = true;
-                                                }
-                                            },
-                                        );
-                                    } else {
-                                        ui.allocate_space(ui.available_size());
                                     }
-                                });
-                            });
-                    })
-                    .response;
+                                    if trash.clicked() {
+                                        remove_clicked = true;
+                                    }
+
+                                    ui.add_space(4.0);
+
+                                    // Toggle
+                                    if toggle_switch(ui, id.with("toggle"), !is_disabled)
+                                    {
+                                        toggle_clicked_flag = true;
+                                    }
+                                },
+                            );
+                        } else {
+                            ui.allocate_space(ui.available_size());
+                        }
+                    });
+                })
+                .response;
 
                 let click = header_response.interact(Sense::click_and_drag());
                 if click.drag_started() {
@@ -247,28 +234,25 @@ pub fn collapsible_section_removable(
                     state.toggle(ui);
                 }
 
-                // Content
-                if state.is_open() {
-                    ui.add_space(4.0);
-                    egui::Frame::new()
-                        .inner_margin(egui::Margin {
-                            left: 4,
-                            right: 4,
-                            top: 0,
-                            bottom: 4,
-                        })
-                        .show(ui, |ui| {
-                            if is_disabled {
-                                ui.disable();
-                            }
-                            add_contents(ui);
-                        });
-                }
-            });
-    });
+            // Content
+            if state.is_open() {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 4,
+                        right: 4,
+                        top: 4,
+                        bottom: 4,
+                    })
+                    .show(ui, |ui| {
+                        if is_disabled {
+                            ui.disable();
+                        }
+                        add_contents(ui);
+                    });
+            }
+        });
 
     state.store(ui.ctx());
-    ui.add_space(6.0);
 
     CategoryHeaderAction {
         remove_clicked,

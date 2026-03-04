@@ -12,6 +12,7 @@ mod section;
 pub mod node_graph;
 pub mod tile_grid;
 pub mod search_overlay;
+mod drop_zone;
 mod toggle;
 pub mod tree;
 mod utils;
@@ -38,4 +39,5 @@ pub use node_graph::{
     node_graph, NodeGraphState, NodeGraphConfig, NodeGraphResponse,
     NodeDef, PinDef, PinDirection, PinShape, ConnectionDef, PinId, NodeId,
 };
+pub use drop_zone::{file_drop_zone, FileDropResult};
 pub use search_overlay::{search_overlay, OverlayAction, OverlayEntry};

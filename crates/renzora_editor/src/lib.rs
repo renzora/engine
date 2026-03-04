@@ -30,6 +30,12 @@ pub struct EditorLocked;
 #[derive(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
 
+/// Optional tag string for an entity.
+#[derive(Component, Default)]
+pub struct EntityTag {
+    pub tag: String,
+}
+
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
 use std::sync::atomic::{AtomicBool, Ordering};

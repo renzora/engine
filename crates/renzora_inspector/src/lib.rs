@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular;
 use renzora_editor::{
-    collapsible_section, collapsible_section_removable, empty_state, icon_button, search_overlay,
+    collapsible_section, collapsible_section_removable, empty_state, search_overlay,
     EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
     OverlayAction, OverlayEntry, PanelLocation, PanelRegistry,
 };
@@ -86,32 +86,6 @@ impl EditorPanel for InspectorPanel {
 
         let mut state = self._state.write().unwrap();
 
-        // Entity header
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            let entity_name = name.map(|n| n.as_str()).unwrap_or("Unnamed");
-            ui.label(
-                RichText::new(entity_name)
-                    .size(14.0)
-                    .strong()
-                    .color(theme.text.heading.to_color32()),
-            );
-            ui.label(
-                RichText::new(format!("({}v{})", entity.index(), entity.generation()))
-                    .size(10.0)
-                    .color(theme.text.muted.to_color32()),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(8.0);
-                if icon_button(ui, regular::PLUS, "Add Component", theme.semantic.accent.to_color32()) {
-                    state.show_add_overlay = true;
-                    state.add_search.clear();
-                }
-            });
-        });
-        ui.add_space(6.0);
-
         // Add Component overlay
         if state.show_add_overlay {
             let entries: Vec<OverlayEntry> = registry
@@ -149,6 +123,7 @@ impl EditorPanel for InspectorPanel {
             .id_salt("inspector_scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
                 let mut any_shown = false;
 
                 for entry in registry.iter() {
@@ -174,10 +149,14 @@ impl EditorPanel for InspectorPanel {
                             true,
                             is_disabled,
                             |ui| {
-                                for (i, field) in entry.fields.iter().enumerate() {
-                                    field_widget::render_field(
-                                        ui, field, world, entity, cmds, &theme, i,
-                                    );
+                                if let Some(custom_fn) = entry.custom_ui_fn {
+                                    custom_fn(ui, world, entity, cmds, &theme);
+                                } else {
+                                    for (i, field) in entry.fields.iter().enumerate() {
+                                        field_widget::render_field(
+                                            ui, field, world, entity, cmds, &theme, i,
+                                        );
+                                    }
                                 }
                             },
                         );
@@ -204,10 +183,14 @@ impl EditorPanel for InspectorPanel {
                             &format!("inspector_{}", entry.type_id),
                             true,
                             |ui| {
-                                for (i, field) in entry.fields.iter().enumerate() {
-                                    field_widget::render_field(
-                                        ui, field, world, entity, cmds, &theme, i,
-                                    );
+                                if let Some(custom_fn) = entry.custom_ui_fn {
+                                    custom_fn(ui, world, entity, cmds, &theme);
+                                } else {
+                                    for (i, field) in entry.fields.iter().enumerate() {
+                                        field_widget::render_field(
+                                            ui, field, world, entity, cmds, &theme, i,
+                                        );
+                                    }
                                 }
                             },
                         );
@@ -224,6 +207,21 @@ impl EditorPanel for InspectorPanel {
                         );
                     });
                 }
+
+                // Add Component button
+                ui.add_space(8.0);
+                ui.vertical_centered(|ui| {
+                    if ui.add(
+                        egui::Button::new(
+                            RichText::new(format!("{} Add Component", regular::PLUS))
+                                .size(12.0),
+                        ),
+                    ).clicked() {
+                        state.show_add_overlay = true;
+                        state.add_search.clear();
+                    }
+                });
+                ui.add_space(8.0);
             });
     }
 

@@ -40,6 +40,8 @@ use renzora_halftone::HalftonePlugin;
 use renzora_hex_pixelate::HexPixelatePlugin;
 use renzora_dithering::DitheringPlugin;
 use renzora_frosted_glass::FrostedGlassPlugin;
+use renzora_skybox::SkyboxPlugin;
+use renzora_clouds::CloudsPlugin;
 
 fn main() {
     App::new()
@@ -85,5 +87,7 @@ fn main() {
         .add_plugins(HexPixelatePlugin)
         .add_plugins(DitheringPlugin)
         .add_plugins(FrostedGlassPlugin)
+        .add_plugins(SkyboxPlugin)
+        .add_plugins(CloudsPlugin)
         .run();
 }

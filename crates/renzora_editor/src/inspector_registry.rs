@@ -50,6 +50,9 @@ pub struct InspectorEntry {
     /// Set the component's enabled state (called on toggle switch click).
     pub set_enabled_fn: Option<fn(&mut World, Entity, bool)>,
     pub fields: Vec<FieldDef>,
+    /// Optional custom UI function. When set, the inspector calls this instead
+    /// of rendering the declarative `fields` list.
+    pub custom_ui_fn: Option<fn(&mut bevy_egui::egui::Ui, &World, Entity, &crate::EditorCommands, &renzora_theme::Theme)>,
 }
 
 /// Registry holding all inspector entries, keyed by component type_id.

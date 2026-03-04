@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_editor::{EntityLabelColor, EntityTag, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 
 /// Register inspector entries for built-in Bevy components.
 pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
@@ -29,22 +29,71 @@ fn name_entry() -> InspectorEntry {
         remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Name",
-            field_type: FieldType::String,
-            get_fn: |world, entity| {
-                world
-                    .get::<Name>(entity)
-                    .map(|n| FieldValue::String(n.as_str().to_string()))
-            },
-            set_fn: |world, entity, val| {
-                if let FieldValue::String(v) = val {
-                    if let Some(mut n) = world.get_mut::<Name>(entity) {
-                        *n = Name::new(v);
+        fields: vec![
+            FieldDef {
+                name: "Name",
+                field_type: FieldType::String,
+                get_fn: |world, entity| {
+                    world
+                        .get::<Name>(entity)
+                        .map(|n| FieldValue::String(n.as_str().to_string()))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::String(v) = val {
+                        if let Some(mut n) = world.get_mut::<Name>(entity) {
+                            *n = Name::new(v);
+                        }
                     }
-                }
+                },
             },
-        }],
+            FieldDef {
+                name: "Tag",
+                field_type: FieldType::String,
+                get_fn: |world, entity| {
+                    Some(FieldValue::String(
+                        world
+                            .get::<EntityTag>(entity)
+                            .map(|t| t.tag.clone())
+                            .unwrap_or_default(),
+                    ))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::String(v) = val {
+                        if let Some(mut t) = world.get_mut::<EntityTag>(entity) {
+                            t.tag = v;
+                        } else {
+                            world.entity_mut(entity).insert(EntityTag { tag: v });
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Label Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    let c = world
+                        .get::<EntityLabelColor>(entity)
+                        .map(|lc| lc.0)
+                        .unwrap_or([220, 222, 228]);
+                    Some(FieldValue::Color([
+                        c[0] as f32 / 255.0,
+                        c[1] as f32 / 255.0,
+                        c[2] as f32 / 255.0,
+                    ]))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        let color = [
+                            (r * 255.0) as u8,
+                            (g * 255.0) as u8,
+                            (b * 255.0) as u8,
+                        ];
+                        world.entity_mut(entity).insert(EntityLabelColor(color));
+                    }
+                },
+            },
+        ],
+        custom_ui_fn: None,
     }
 }
 
@@ -115,6 +164,7 @@ fn transform_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -149,6 +199,7 @@ fn visibility_entry() -> InspectorEntry {
                 }
             },
         }],
+        custom_ui_fn: None,
     }
 }
 
@@ -218,6 +269,7 @@ fn directional_light_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -307,6 +359,7 @@ fn point_light_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -436,6 +489,7 @@ fn spot_light_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -489,6 +543,7 @@ fn ambient_light_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -551,6 +606,7 @@ fn camera_entry() -> InspectorEntry {
                 set_fn: |_, _, _| {},
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -575,6 +631,7 @@ fn camera3d_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
+        custom_ui_fn: None,
     }
 }
 
@@ -599,5 +656,6 @@ fn mesh3d_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
+        custom_ui_fn: None,
     }
 }

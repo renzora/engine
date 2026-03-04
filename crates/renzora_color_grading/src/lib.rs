@@ -103,6 +103,7 @@ fn inspector_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<ColorGradingSettings>(entity) { s.tint = v; } } },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 

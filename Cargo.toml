@@ -58,6 +58,8 @@ renzora_halftone = { path = "crates/renzora_halftone" }
 renzora_hex_pixelate = { path = "crates/renzora_hex_pixelate" }
 renzora_dithering = { path = "crates/renzora_dithering" }
 renzora_frosted_glass = { path = "crates/renzora_frosted_glass" }
+renzora_skybox = { path = "crates/renzora_skybox" }
+renzora_clouds = { path = "crates/renzora_clouds" }
 
 # Bevy recommended optimizations
 

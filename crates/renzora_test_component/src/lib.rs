@@ -106,6 +106,7 @@ fn health_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -178,6 +179,7 @@ fn movement_entry() -> InspectorEntry {
                 },
             },
         ],
+        custom_ui_fn: None,
     }
 }
 
@@ -208,6 +210,7 @@ fn entity_tag_entry() -> InspectorEntry {
                 }
             },
         }],
+        custom_ui_fn: None,
     }
 }
 
