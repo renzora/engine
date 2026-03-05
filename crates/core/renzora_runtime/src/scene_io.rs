@@ -1,7 +1,8 @@
 //! Shared scene load/save and rehydration — used by both editor and runtime.
 
+use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::{CurrentProject, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive};
+use renzora_core::{CurrentProject, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera};
 use renzora_lighting::SunData;
 use serde::de::DeserializeSeed;
 use std::path::Path;
@@ -12,8 +13,6 @@ use std::path::Path;
 
 /// Save specific entities to a RON file.
 pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use bevy::camera::visibility::VisibilityClass;
-
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut entities: Vec<Entity> = Vec::new();
@@ -32,7 +31,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
-    let scene = DynamicSceneBuilder::from_world(world)
+    let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_component::<Mesh3d>()
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
@@ -41,9 +40,24 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<InheritedVisibility>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
-        .deny_component::<VisibilityClass>()
         .extract_entities(entities.into_iter())
         .build();
+
+    // Strip components that can't be serialized to avoid hard failures.
+    // We trial-serialize each component and drop any that fail.
+    {
+        let registry = type_registry.read();
+        for entity in &mut scene.entities {
+            entity.components.retain(|component| {
+                let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
+                    component.as_partial_reflect(),
+                    &registry,
+                );
+                // Try serializing to a throwaway RON value
+                ron::ser::to_string(&serializer).is_ok()
+            });
+        }
+    }
 
     let registry = type_registry.read();
     let serialized = scene
@@ -171,6 +185,112 @@ pub fn rehydrate_meshes(
         });
 
         commands.entity(entity).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+    }
+}
+
+/// Rehydrate scene cameras — spawns `Camera3d` for entities that have `SceneCamera` but no `Camera3d`.
+pub fn rehydrate_cameras(
+    mut commands: Commands,
+    query: Query<Entity, (With<SceneCamera>, Without<Camera3d>)>,
+) {
+    for entity in &query {
+        commands.entity(entity).insert(Camera3d::default());
+    }
+}
+
+fn should_sync(type_path: &str) -> bool {
+    type_path.ends_with("Settings")
+}
+
+/// Sync post-process (and other reflected) components from SceneCamera entities to the EditorCamera.
+///
+/// In editor mode the viewport renders through the EditorCamera, but users attach
+/// effects to the SceneCamera entity. This system mirrors those components so they
+/// take effect during editing.
+pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
+    // Find the scene camera and editor camera entities.
+    let mut scene_cam = None;
+    let mut editor_cam = None;
+    let mut q = world.query_filtered::<Entity, With<SceneCamera>>();
+    for e in q.iter(world) {
+        scene_cam = Some(e);
+        break;
+    }
+    let mut q = world.query_filtered::<Entity, With<EditorCamera>>();
+    for e in q.iter(world) {
+        editor_cam = Some(e);
+        break;
+    }
+    let (Some(src), Some(dst)) = (scene_cam, editor_cam) else {
+        return;
+    };
+    if src == dst {
+        return;
+    }
+
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+
+    // Collect reflected component data from the scene camera.
+    let mut components_to_sync: Vec<(
+        bevy::ecs::reflect::ReflectComponent,
+        Box<dyn Reflect>,
+    )> = Vec::new();
+    let mut synced_type_paths: Vec<&'static str> = Vec::new();
+
+    let entity_ref = world.entity(src);
+    for reg in registry.iter() {
+        let Some(reflect_component) = reg.data::<bevy::ecs::reflect::ReflectComponent>() else {
+            continue;
+        };
+        let type_path = reg.type_info().type_path();
+        if !should_sync(type_path) {
+            continue;
+        }
+        if let Some(reflected) = reflect_component.reflect(FilteredEntityRef::from(entity_ref)) {
+            if let Ok(cloned) = reflected.reflect_clone() {
+                components_to_sync.push((reflect_component.clone(), cloned));
+                synced_type_paths.push(type_path);
+            }
+        }
+    }
+    drop(registry);
+
+    // Apply collected components to the editor camera.
+    {
+        let registry = type_registry.read();
+        for (reflect_component, value) in &components_to_sync {
+            let mut entity_mut = world.entity_mut(dst);
+            if reflect_component.contains(entity_mut.as_readonly()) {
+                reflect_component.apply(entity_mut, value.as_partial_reflect());
+            } else {
+                reflect_component.insert(&mut entity_mut, value.as_partial_reflect(), &registry);
+            }
+        }
+    }
+
+    // Remove components from editor camera that were removed from scene camera.
+    let registry = type_registry.read();
+    let mut to_remove: Vec<bevy::ecs::reflect::ReflectComponent> = Vec::new();
+    let editor_ref = world.entity(dst);
+    for reg in registry.iter() {
+        let Some(reflect_component) = reg.data::<bevy::ecs::reflect::ReflectComponent>() else {
+            continue;
+        };
+        let type_path = reg.type_info().type_path();
+        if !should_sync(type_path) {
+            continue;
+        }
+        if reflect_component.contains(FilteredEntityRef::from(editor_ref))
+            && !synced_type_paths.contains(&type_path)
+        {
+            to_remove.push(reflect_component.clone());
+        }
+    }
+    drop(registry);
+
+    for reflect_component in &to_remove {
+        reflect_component.remove(&mut world.entity_mut(dst));
     }
 }
 

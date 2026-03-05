@@ -100,6 +100,14 @@ pub struct HideInHierarchy;
 #[derive(Component)]
 pub struct EditorLocked;
 
+/// Serializable marker for a scene camera entity.
+///
+/// Stored alongside `Camera3d` so the camera can be recreated on scene load
+/// (since `Camera3d` itself is not serializable).
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SceneCamera;
+
 /// Mesh primitive type — serializable record of what shape an entity uses.
 ///
 /// Stored alongside `Mesh3d` so the shape can be recreated on scene load.

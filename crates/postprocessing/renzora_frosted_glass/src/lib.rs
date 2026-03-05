@@ -1,5 +1,6 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
+use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
@@ -12,7 +13,8 @@ use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 
-#[derive(Component, Clone, Copy, ShaderType, ExtractComponent)]
+#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
+#[reflect(Component, Serialize, Deserialize)]
 #[extract_component_filter(With<Camera3d>)]
 pub struct FrostedGlassSettings {
     pub intensity: f32,
@@ -90,6 +92,7 @@ pub struct FrostedGlassPlugin;
 
 impl Plugin for FrostedGlassPlugin {
     fn build(&self, app: &mut App) {
+        app.register_type::<FrostedGlassSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<FrostedGlassSettings>::default());
         #[cfg(feature = "editor")]
         {

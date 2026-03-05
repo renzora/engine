@@ -7,7 +7,7 @@
 pub mod camera;
 pub mod scene_io;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ViewportRenderTarget};
 
 use bevy::prelude::*;
 use renzora_lighting::SunData;
@@ -20,6 +20,7 @@ impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
+            .register_type::<SceneCamera>()
             .register_type::<SunData>();
 
         #[cfg(not(feature = "editor"))]
@@ -43,7 +44,7 @@ impl Plugin for RuntimePlugin {
             }
 
             app.add_systems(Startup, scene_io::load_current_scene)
-                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_suns));
+                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_cameras, scene_io::rehydrate_suns));
         }
 
         app.init_resource::<ViewportRenderTarget>()

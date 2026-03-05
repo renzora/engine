@@ -493,6 +493,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                     Name::new("Camera 3D"),
                     Transform::default(),
                     Camera3d::default(),
+                    renzora_core::SceneCamera,
                 ))
                 .id()
         },
