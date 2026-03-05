@@ -276,6 +276,9 @@ fn editor_ui_system(world: &mut World) {
             world.insert_resource(renzora_core::SaveSceneRequested);
         }
         TitleBarAction::SaveAs => {}   // TODO: scene management
+        TitleBarAction::Export => {
+            world.insert_resource(renzora_core::ExportRequested);
+        }
         TitleBarAction::None => {}
     }
 

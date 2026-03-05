@@ -1,6 +1,6 @@
 # Renzora Engine
 
-A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/). Currently in **alpha** — actively developing toward feature parity with Bevy's full capabilities.
+A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/). Currently in **alpha** -- actively developing toward feature parity with Bevy's full capabilities.
 
 ![Renzora Editor](assets/previews/interface.png)
 
@@ -11,16 +11,22 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 1. [Project Status](#project-status)
 2. [Documentation](#documentation)
 3. [Prerequisites](#prerequisites)
-4. [Building](#building)
-5. [Testing](#testing)
-6. [Cargo Features](#cargo-features)
-7. [Supported File Formats](#supported-file-formats)
-8. [Troubleshooting](#troubleshooting)
-9. [License](#license)
+4. [Building & Running](#building--running)
+5. [Project Structure](#project-structure)
+6. [Creating Extensions](#creating-extensions)
+7. [Creating Components](#creating-components)
+8. [Creating Post-Process Effects](#creating-post-process-effects)
+9. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
+10. [Exporting](#exporting)
+11. [Cargo Features](#cargo-features)
+12. [Supported File Formats](#supported-file-formats)
+13. [Testing](#testing)
+14. [Troubleshooting](#troubleshooting)
+15. [License](#license)
 
 ## Project Status
 
-**Alpha** — Core systems are functional and the editor is usable for scene composition, scripting, and game export. Not yet recommended for production use.
+**Alpha** -- Core systems are functional and the editor is usable for scene composition, scripting, and game export. Not yet recommended for production use.
 
 ## Documentation
 
@@ -39,11 +45,11 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 1. **Install Rust** from [rustup.rs](https://rustup.rs/) (this gives you `rustup`, `cargo`, and `rustc`)
 2. Windows 10/11, Linux, or macOS
-3. **Linux only:** Wayland dev libraries — `sudo apt install libwayland-dev` (Debian/Ubuntu)
+3. **Linux only:** Wayland dev libraries -- `sudo apt install libwayland-dev` (Debian/Ubuntu)
 
 ### Solari / Ray Tracing (Optional)
 
-The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruction, and meshlet virtual geometry. If you don't have the required SDKs or hardware, the engine builds and runs fine without it — just don't enable the `solari` feature.
+The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruction, and meshlet virtual geometry. If you don't have the required SDKs or hardware, the engine builds and runs fine without it -- just don't enable the `solari` feature.
 
 **Platform compatibility:**
 
@@ -52,49 +58,23 @@ The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruct
 | Compile | Yes | Yes | No |
 | Runtime | NVIDIA RTX only | NVIDIA RTX only | No |
 
-DLSS is an NVIDIA-proprietary technology — the SDK only provides libraries for Windows and Linux, and requires an RTX GPU at runtime. macOS and AMD/Intel GPU users should build without this feature.
+DLSS is an NVIDIA-proprietary technology -- the SDK only provides libraries for Windows and Linux, and requires an RTX GPU at runtime. macOS and AMD/Intel GPU users should build without this feature.
 
 #### 1. Vulkan SDK (1.3.x or newer)
 
-Download from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home) and run the installer. Any version with Vulkan 1.3+ headers works.
+Download from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home) and run the installer.
 
-- **Windows:** The installer sets the `VULKAN_SDK` environment variable automatically (e.g. `C:\VulkanSDK\1.4.309.0`). No extra steps needed.
+- **Windows:** The installer sets `VULKAN_SDK` automatically. No extra steps needed.
 - **Linux:** `sudo apt install vulkan-sdk` or use the LunarG tarball and set `VULKAN_SDK` to the extracted directory.
-
-Verify it's set:
-```bash
-echo %VULKAN_SDK%          # Windows (cmd)
-echo $env:VULKAN_SDK       # Windows (PowerShell)
-echo $VULKAN_SDK           # Linux/macOS
-```
-
-The build needs the `Include/` (Windows) or `include/` (Linux) directory containing `vulkan/vulkan.h`.
 
 #### 2. DLSS SDK (v310.4.0)
 
-Clone the exact version from NVIDIA's GitHub repo:
-
-**Windows:**
-```cmd
-git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git C:\DLSS_SDK
-setx DLSS_SDK "C:\DLSS_SDK" /M
-```
-
-**Linux:**
 ```bash
-git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git ~/DLSS_SDK
-echo 'export DLSS_SDK="$HOME/DLSS_SDK"' >> ~/.bashrc
-source ~/.bashrc
+git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git C:\DLSS_SDK   # Windows
+git clone --branch v310.4.0 https://github.com/NVIDIA/DLSS.git ~/DLSS_SDK     # Linux
 ```
 
-
-#### 3. Build with Solari
-
-After both SDKs are installed and environment variables are set, restart your terminal and run:
-
-```bash
-cargo run --features solari
-```
+Set the `DLSS_SDK` environment variable to the cloned directory.
 
 ### Faster Linking (Recommended)
 
@@ -108,84 +88,580 @@ rustup component add llvm-tools-preview
 sudo apt install lld clang
 ```
 
-Then create `.cargo/config.toml`:
+## Building & Running
+
+Renzora uses **cargo aliases** so you never need to remember `--bin` or `--no-default-features`.
+
+### Quick Start
+
+```bash
+cargo renzora                # build + run the editor
+cargo runtime                # build + run the runtime (no editor)
+```
+
+### Build Only (no run)
+
+```bash
+cargo build-editor           # build editor binary
+cargo build-runtime          # build runtime binary
+```
+
+### Release Builds
+
+```bash
+cargo release-editor         # optimized editor    -> app/release/renzora.exe
+cargo release-runtime        # optimized runtime   -> app/release/renzora-runtime.exe
+cargo dist-runtime           # max optimized runtime (fat LTO, stripped) -> app/dist/renzora-runtime.exe
+```
+
+### Running the Runtime with a Project
+
+```bash
+# PowerShell (use & prefix)
+& "./target/debug/renzora-runtime.exe" --project "C:\Users\you\Documents\my_game"
+
+# Bash / Linux / macOS
+./target/debug/renzora-runtime --project ~/Documents/my_game
+```
+
+The runtime also looks for `project.toml` in the current directory if `--project` is not specified.
+
+### How It Works
+
+Both `renzora` and `renzora-runtime` point to the same `src/main.rs`. The `#[cfg(feature = "editor")]` guards control which plugins are included. The `editor` feature is enabled by default for the `renzora` binary and disabled for `renzora-runtime`.
+
+All plugin registration lives in **`src/main.rs`** -- this is the single source of truth. To add a new plugin, add it here:
+
+```rust
+// src/main.rs
+
+// Editor-only plugins go inside the #[cfg(feature = "editor")] block
+#[cfg(feature = "editor")]
+app.add_plugins((
+    SplashPlugin,
+    RenzoraEditorPlugin,
+    // ... add your editor plugin here
+    MyEditorPlugin,
+));
+
+// Plugins needed at runtime go outside the cfg block
+app.add_plugins((
+    renzora_vignette::VignettePlugin,
+    // ... add your runtime plugin here
+    my_gameplay::GameplayPlugin,
+));
+```
+
+## Project Structure
+
+### Crate Layout
+
+```
+crates/
+  core/
+    renzora_core/          # Shared types: ProjectConfig, CurrentProject, markers
+    renzora_runtime/       # Runtime plugin: VFS, scene loading, camera, rpak support
+    renzora_rpak/          # .rpak archive format (zstd-compressed asset packs)
+    renzora_lighting/      # Lighting components and systems
+  editor/
+    renzora_editor/        # Main editor: panels, docking, inspector registry
+    renzora_export/        # Export overlay: pack projects into distributable builds
+    renzora_scene/         # Scene save/load integration
+    renzora_viewport/      # 3D viewport rendering
+    renzora_hierarchy/     # Entity hierarchy panel
+    renzora_inspector/     # Inspector panel (property editing)
+    renzora_asset_browser/ # Asset browser panel
+    renzora_camera/        # Editor camera controls (orbit, pan, zoom)
+    renzora_gizmo/         # Transform gizmos
+    renzora_grid/          # Viewport grid
+    renzora_keybindings/   # Keyboard shortcut system
+    renzora_test_component/   # Example: custom components with inspectors
+    renzora_test_extension/   # Example: custom panels and layouts
+  ui/
+    renzora_ui/            # UI framework: panels, docking, widgets, drag-drop
+    renzora_theme/         # Theming system (TOML-based, live editing)
+    renzora_splash/        # Splash screen and project management
+  postprocessing/
+    renzora_postprocess/   # Base trait for post-process effects
+    renzora_vignette/      # Example effect (30+ effects total)
+    ...
+  plugins/
+    editor_plugin_api/     # FFI plugin API for dynamic DLL plugins
+    websocket_plugin/      # Example DLL plugin
+    mcp_server_plugin/     # Example DLL plugin
+```
+
+### Game Project Structure
+
+When you create a project in the editor, it generates:
+
+```
+my_game/
+  project.toml             # Project metadata (name, version, main scene, window config)
+  scenes/
+    main.ron               # Default scene (Bevy DynamicScene in RON format)
+  assets/                  # Textures, models, audio, etc.
+  plugins/                 # Local plugins
+```
+
+## Creating Extensions
+
+Extensions add panels, layouts, and UI to the editor. See `crates/editor/renzora_test_extension/` for a complete example.
+
+### 1. Create the Crate
 
 ```toml
-# Windows
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld.exe"
+# crates/editor/my_extension/Cargo.toml
+[package]
+name = "my_extension"
+version = "0.1.0"
+edition = "2021"
 
-# Linux
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+[dependencies]
+bevy = { version = "0.18" }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }
 ```
 
-## Building
+### 2. Implement EditorPanel
 
-### Development
+```rust
+// crates/editor/my_extension/src/lib.rs
+use bevy::prelude::*;
+use bevy_egui::egui;
+use egui_phosphor::regular;
+use renzora_editor::PanelRegistry;
+use renzora_theme::ThemeManager;
+
+// Define a panel
+pub struct MyCustomPanel;
+
+impl renzora_editor::EditorPanel for MyCustomPanel {
+    fn id(&self) -> &str { "my_custom_panel" }
+    fn title(&self) -> &str { "My Panel" }
+    fn icon(&self) -> Option<&str> { Some(regular::CUBE) }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let theme = world.resource::<ThemeManager>();
+        ui.label("Hello from my extension!");
+    }
+}
+
+// Create the plugin
+pub struct MyExtensionPlugin;
+
+impl Plugin for MyExtensionPlugin {
+    fn build(&self, app: &mut App) {
+        let world = app.world_mut();
+
+        // Register panels
+        let mut registry = world.remove_resource::<PanelRegistry>().unwrap_or_default();
+        registry.register(MyCustomPanel);
+        world.insert_resource(registry);
+    }
+}
+```
+
+### 3. Register in main.rs
+
+```rust
+// src/main.rs — inside the #[cfg(feature = "editor")] block
+app.add_plugins((
+    // ... existing plugins
+    my_extension::MyExtensionPlugin,
+));
+```
+
+### EditorPanel Trait Reference
+
+```rust
+pub trait EditorPanel: Send + Sync + 'static {
+    fn id(&self) -> &str;                              // Unique ID
+    fn title(&self) -> &str;                           // Display name
+    fn icon(&self) -> Option<&str> { None }            // Phosphor icon
+    fn ui(&self, ui: &mut egui::Ui, world: &World);   // Render content
+    fn closable(&self) -> bool { true }                // Can user close it?
+    fn min_size(&self) -> [f32; 2] { [100.0, 50.0] }  // Minimum dimensions
+    fn default_location(&self) -> PanelLocation { ... } // Left|Right|Bottom|Center
+}
+```
+
+## Creating Components
+
+Components are data types that attach to entities. They show up in the inspector with editable fields. See `crates/editor/renzora_test_component/` for a complete example.
+
+### 1. Create the Crate
+
+```toml
+# crates/editor/my_components/Cargo.toml
+[package]
+name = "my_components"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_editor = { path = "../renzora_editor" }
+```
+
+### 2. Define the Component and Inspector
+
+```rust
+use bevy::prelude::*;
+use egui_phosphor::regular;
+use renzora_editor::{InspectorRegistry, InspectorEntry, FieldDef, FieldType, FieldValue};
+
+// The component itself
+#[derive(Component)]
+pub struct Health {
+    pub current: f32,
+    pub max: f32,
+    pub has_shield: bool,
+}
+
+impl Default for Health {
+    fn default() -> Self {
+        Self { current: 100.0, max: 100.0, has_shield: false }
+    }
+}
+
+// Inspector entry — tells the editor how to display and edit this component
+fn health_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "health",
+        display_name: "Health",
+        icon: regular::HEART,
+        category: "gameplay",
+        has_fn: |world, entity| world.get::<Health>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(Health::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<Health>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Current",
+                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 10_000.0 },
+                get_fn: |world, entity| {
+                    world.get::<Health>(entity).map(|h| FieldValue::Float(h.current))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut h) = world.get_mut::<Health>(entity) {
+                            h.current = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Max",
+                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 10_000.0 },
+                get_fn: |world, entity| {
+                    world.get::<Health>(entity).map(|h| FieldValue::Float(h.max))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut h) = world.get_mut::<Health>(entity) {
+                            h.max = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Has Shield",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world.get::<Health>(entity).map(|h| FieldValue::Bool(h.has_shield))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(v) = val {
+                        if let Some(mut h) = world.get_mut::<Health>(entity) {
+                            h.has_shield = v;
+                        }
+                    }
+                },
+            },
+        ],
+        custom_ui_fn: None,
+    }
+}
+
+// Plugin
+pub struct MyComponentsPlugin;
+
+impl Plugin for MyComponentsPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<InspectorRegistry>();
+        let world = app.world_mut();
+        if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
+            registry.register(health_entry());
+        }
+    }
+}
+```
+
+### 3. Register in main.rs
+
+```rust
+#[cfg(feature = "editor")]
+app.add_plugins((
+    // ... existing plugins
+    my_components::MyComponentsPlugin,
+));
+```
+
+### Field Types
+
+| FieldType | FieldValue | UI Widget |
+|-----------|------------|-----------|
+| `Float { speed, min, max }` | `Float(f32)` | Drag slider |
+| `Vec3 { speed }` | `Vec3([f32; 3])` | XYZ drag fields |
+| `Bool` | `Bool(bool)` | Checkbox |
+| `Color` | `Color([f32; 3])` | Color picker |
+| `String` | `String(String)` | Text input |
+| `ReadOnly` | `ReadOnly(String)` | Non-editable label |
+
+## Creating Post-Process Effects
+
+Post-process effects are camera-attached components with WGSL shaders. See `crates/postprocessing/renzora_vignette/` for a complete example.
+
+### 1. Create the Crate
+
+```toml
+# crates/postprocessing/my_effect/Cargo.toml
+[package]
+name = "my_effect"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+editor = ["dep:renzora_editor", "dep:egui-phosphor"]
+
+[dependencies]
+bevy = { version = "0.18" }
+serde = { version = "1", features = ["derive"] }
+renzora_postprocess = { path = "../renzora_postprocess" }
+
+# Editor-only deps
+egui-phosphor = { version = "0.11", optional = true }
+renzora_editor = { path = "../../editor/renzora_editor", optional = true }
+```
+
+### 2. Define the Effect
+
+```rust
+use bevy::prelude::*;
+use bevy::render::extract_component::ExtractComponent;
+use bevy::render::render_resource::ShaderType;
+use renzora_postprocess::PostProcessEffect;
+use serde::{Serialize, Deserialize};
+
+#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
+#[reflect(Component, Serialize, Deserialize)]
+#[extract_component_filter(With<Camera3d>)]
+pub struct MyEffectSettings {
+    pub intensity: f32,
+    pub enabled: f32,       // 1.0 = on, 0.0 = off (f32 for shader compatibility)
+}
+
+impl Default for MyEffectSettings {
+    fn default() -> Self {
+        Self { intensity: 0.5, enabled: 0.0 }
+    }
+}
+
+impl PostProcessEffect for MyEffectSettings {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/post_process/my_effect.wgsl".into()
+    }
+
+    fn node_edges() -> Vec<InternedRenderLabel> {
+        vec![
+            Node3d::Tonemapping.intern(),
+            Self::node_label().intern(),
+            Node3d::EndMainPassPostProcessing.intern(),
+        ]
+    }
+}
+```
+
+### 3. Create the WGSL Shader
+
+```wgsl
+// assets/shaders/post_process/my_effect.wgsl
+
+#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
+
+@group(0) @binding(0) var screen_texture: texture_2d<f32>;
+@group(0) @binding(1) var texture_sampler: sampler;
+
+struct MyEffectSettings {
+    intensity: f32,
+    enabled: f32,
+}
+@group(0) @binding(2) var<uniform> settings: MyEffectSettings;
+
+@fragment
+fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let color = textureSample(screen_texture, texture_sampler, in.uv);
+    if (settings.enabled < 0.5) {
+        return color;
+    }
+    // Your effect here
+    return mix(color, vec4(1.0, 0.0, 0.0, 1.0), settings.intensity * 0.1);
+}
+```
+
+### 4. Create the Plugin
+
+```rust
+pub struct MyEffectPlugin;
+
+impl Plugin for MyEffectPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_type::<MyEffectSettings>();
+        app.add_plugins(
+            renzora_postprocess::PostProcessPlugin::<MyEffectSettings>::default(),
+        );
+
+        // Editor inspector (only compiled with editor feature)
+        #[cfg(feature = "editor")]
+        {
+            app.init_resource::<renzora_editor::InspectorRegistry>();
+            let world = app.world_mut();
+            if let Some(mut registry) = world.get_resource_mut::<renzora_editor::InspectorRegistry>() {
+                registry.register(inspector_entry());
+            }
+        }
+    }
+}
+```
+
+### 5. Register in main.rs and Cargo.toml
+
+```toml
+# Root Cargo.toml — add to [features] editor list
+"my_effect/editor",
+
+# Root Cargo.toml — add to [dependencies]
+my_effect = { path = "crates/postprocessing/my_effect" }
+```
+
+```rust
+// src/main.rs — outside the #[cfg(feature = "editor")] block (runtime needs it too)
+app.add_plugins((
+    my_effect::MyEffectPlugin,
+));
+```
+
+## Dynamic Plugins (DLL)
+
+For plugins that load as dynamic libraries at runtime (hot-reloadable), use the `editor_plugin_api` crate. See `crates/plugins/websocket_plugin/` for a complete example.
+
+```rust
+use editor_plugin_api::prelude::*;
+
+pub struct MyDynamicPlugin {
+    status: String,
+}
+
+impl MyDynamicPlugin {
+    pub fn new() -> Self {
+        Self { status: "Ready".into() }
+    }
+
+    pub fn manifest(&self) -> PluginManifest {
+        PluginManifest::new("com.example.my-plugin", "My Plugin", "1.0.0")
+            .author("Your Name")
+            .description("Does something cool")
+            .capability(PluginCapability::Panel)
+    }
+}
+
+// Generates FFI entry points for dynamic loading
+declare_plugin!(MyDynamicPlugin, MyDynamicPlugin::new());
+```
+
+### Plugin Capabilities
+
+| Capability | Description |
+|------------|-------------|
+| `ScriptEngine` | Run scripts |
+| `Gizmo` | Draw in the 3D viewport |
+| `NodeType` | Custom node types |
+| `Inspector` | Custom inspector widgets |
+| `Panel` | Add editor panels |
+| `MenuItem` | Add menu items |
+| `AssetImporter` | Import custom asset formats |
+| `Custom(String)` | User-defined capability |
+
+## Exporting
+
+Renzora uses `.rpak` files -- zstd-compressed archives containing all project assets. The export system supports two packaging modes.
+
+### Export Templates
+
+Export templates are pre-built runtime binaries for each target platform. Build one locally:
 
 ```bash
-cargo run                      # run the editor (default features)
-cargo run --features solari    # run with raytraced lighting + DLSS (requires SDKs)
+cargo dist-runtime    # builds optimized runtime -> app/dist/renzora-runtime.exe
 ```
 
-### Release
+Install it as a template by copying it to the templates directory:
 
-Release builds disable dynamic linking for distributable binaries:
-
-```bash
-cargo release-editor    # builds static editor (~50MB) → app/release/renzora_editor.exe
-cargo release-runtime   # builds static runtime (~50MB) → app/release/renzora_runtime.exe
+```
+Windows:  %APPDATA%\renzora\templates\renzora-runtime-windows-x64.exe
+Linux:    ~/.config/renzora/templates/renzora-runtime-linux-x64
+macOS:    ~/Library/Application Support/renzora/templates/renzora-runtime-macos-arm64
 ```
 
-Copy the runtime for exports:
-```bash
-cp app/release/renzora_runtime.exe runtimes/windows/   # Windows
-cp app/release/renzora_runtime runtimes/linux/         # Linux
-```
+Or use the "Install from file" button in the export overlay.
 
-The `dynamic` feature (on by default) enables `bevy/dynamic_linking` for dev builds. Release aliases use `--no-default-features` and a separate `app` directory to keep static and dynamic artifacts isolated.
+### Export Overlay
 
-## Testing
+Open the export overlay from the editor (toggle `ExportOverlayState.visible`). It provides:
 
-Run the full test suite:
+- **Platform selection** -- Windows, Linux, macOS, Android, iOS, Web
+- **Packaging mode** -- Binary + `.rpak` (two files) or single executable (rpak appended to binary)
+- **Compression** -- zstd level 1-19
+- **Window settings** -- Windowed, Fullscreen, or Borderless + resolution
+- **Icon** -- Custom .png/.ico for the exported game
+- **Output directory** -- Where the build goes
 
-```bash
-cargo test
-```
+### How .rpak Works
 
-Run tests for a specific module:
+An `.rpak` file contains all your project files (scenes, assets, scripts) compressed with zstd. At runtime:
 
-```bash
-cargo test -- blueprint::graph_tests
-cargo test -- blueprint::codegen_tests
-cargo test -- blueprint::serialization_tests
-cargo test -- blueprint::tests
-cargo test -- scripting::tests
-cargo test -- component_system::tests
-cargo test -- commands::tests
-cargo test -- shared::tests
-cargo test -- project::tests
-cargo test -- export::tests
-cargo test -- theming::tests
-cargo test -- docking
-cargo test -- keybindings
-cargo test -- file_drop
-```
+1. The runtime checks for an embedded rpak inside itself (single binary mode)
+2. Falls back to an adjacent `.rpak` file (e.g., `MyGame.rpak` next to `MyGame.exe`)
+3. Falls back to `--project` CLI argument or local `project.toml`
+
+### Supported Platforms
+
+| Platform | Template Filename |
+|----------|-------------------|
+| Windows (x64) | `renzora-runtime-windows-x64.exe` |
+| Linux (x64) | `renzora-runtime-linux-x64` |
+| macOS (x64) | `renzora-runtime-macos-x64` |
+| macOS (ARM64) | `renzora-runtime-macos-arm64` |
+| Android (ARM64) | `renzora-runtime-android-arm64` |
+| iOS (ARM64) | `renzora-runtime-ios-arm64` |
+| Web (WASM) | `renzora-runtime-web-wasm32` |
 
 ## Cargo Features
 
 | Feature | Description |
 |---------|-------------|
-| `editor` | Full editor with UI, asset browser, scene editing |
-| `runtime` | Minimal runtime for exported games |
-| `physics` | Avian3D physics engine integration |
+| `editor` | Full editor with UI, asset browser, scene editing (default) |
 | `solari` | Raytraced GI, DLSS, and meshlet virtual geometry (requires Vulkan SDK + DLSS SDK) |
 | `dynamic` | Dynamic linking for faster dev builds |
-| `memory-profiling` | Memory usage tracking in diagnostics |
-
-Default: `editor`, `physics`, `memory-profiling`
 
 ## Supported File Formats
 
@@ -195,12 +671,25 @@ Default: `editor`, `physics`, `memory-profiling`
 | `.obj` | 3D models (meshes) |
 | `.fbx` | 3D models (meshes, skeletons) |
 | `.ron` | Scene files (Bevy DynamicScene) |
+| `.rpak` | Compressed asset archives (exported games) |
 | `.rhai` | Script files |
 | `.blueprint` | Visual script graphs (compile to Rhai) |
 | `.material_bp` | Material blueprint graphs (compile to WGSL) |
 | `.particle` | Particle effect definitions |
 | `.png` / `.jpg` / `.jpeg` | Textures |
 | `.hdr` / `.exr` | HDR environment maps |
+| `.ogg` / `.mp3` / `.wav` / `.flac` | Audio files (Kira 0.12) |
+
+## Testing
+
+```bash
+cargo test                                  # full test suite
+cargo test -- blueprint::graph_tests        # specific module
+cargo test -- scripting::tests
+cargo test -- component_system::tests
+cargo test -- docking
+cargo test -- keybindings
+```
 
 ## Troubleshooting
 
@@ -208,31 +697,30 @@ Default: `editor`, `physics`, `memory-profiling`
 
 Run from a terminal to see error output:
 ```bash
-cd export_folder
-./YourGame.exe
+& "./MyGame.exe" --project "./my_project"
 ```
 
 ### Small runtime binary (~1.5MB)
 
-Bevy was compiled with dynamic linking. Use the release alias:
+Bevy was compiled with dynamic linking. Use the dist build:
 ```bash
-cargo release-runtime
+cargo dist-runtime
 ```
-
-Output at `app/release/renzora_runtime.exe` (~50MB, statically linked).
 
 ### Release build fails with "Application Control policy has blocked this file"
 
-If `cargo build --release` fails with OS error 4551, **Windows Smart App Control** is blocking build script executables generated during compilation. Debug builds may work because the build scripts get approved on first run and are reused by subsequent release builds.
+Windows Smart App Control is blocking build script executables. Open **Windows Security > App & Browser Control > Smart App Control** and turn it off.
 
-**Fix:** Open **Windows Security → App & Browser Control → Smart App Control** and turn it off. Note that once disabled, Smart App Control cannot be re-enabled without reinstalling Windows.
+**Workaround:** Run `cargo build` (debug) first, then the release build.
 
-**Workaround:** Run `cargo build` (debug) first, then `cargo build --release`. The debug build compiles and approves the build scripts, which are then reused by the release build.
+### Export shows "Template not installed"
 
-### Export shows "Runtime not found"
-
-Ensure the runtime binary exists at `runtimes/windows/renzora_runtime.exe`. Build it with `cargo release-runtime` and copy it there.
+Build the runtime template and install it:
+```bash
+cargo dist-runtime
+```
+Then copy `app/dist/renzora-runtime.exe` to `%APPDATA%\renzora\templates\renzora-runtime-windows-x64.exe`, or use the "Install from file" button in the export overlay.
 
 ## License
 
-Apache License 2.0 — see [LICENSE.md](LICENSE.md)
+Apache License 2.0 -- see [LICENSE.md](LICENSE.md)

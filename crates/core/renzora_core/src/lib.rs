@@ -131,6 +131,12 @@ pub struct MeshColor(pub Color);
 #[derive(Resource)]
 pub struct SaveSceneRequested;
 
+/// Marker resource requesting the export overlay to open.
+///
+/// Insert this resource to trigger the export overlay next frame.
+#[derive(Resource)]
+pub struct ExportRequested;
+
 /// Holds the optional render target for the game camera.
 ///
 /// - `Some(handle)` — camera renders to this image (editor mode).

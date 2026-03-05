@@ -6,8 +6,10 @@
 
 pub mod camera;
 pub mod scene_io;
+pub mod vfs;
 
 pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ViewportRenderTarget};
+pub use vfs::Vfs;
 
 use bevy::prelude::*;
 use renzora_lighting::SunData;
@@ -25,20 +27,46 @@ impl Plugin for RuntimePlugin {
 
         #[cfg(not(feature = "editor"))]
         {
-            let project_path = parse_project_arg()
-                .or_else(|| {
-                    let local = std::path::PathBuf::from("project.toml");
-                    if local.exists() { Some(local) } else { None }
-                });
+            // Try VFS first (rpak), then CLI --project, then local project.toml
+            let vfs = Vfs::detect();
 
-            if let Some(toml_path) = project_path {
-                match open_project(&toml_path) {
-                    Ok(project) => {
-                        info!("Loaded project: {} ({})", project.config.name, project.path.display());
-                        app.insert_resource(project);
+            if vfs.has_archive() {
+                // Load project config from the rpak archive
+                if let Some(toml_str) = vfs.read_string("project.toml") {
+                    match toml::from_str::<ProjectConfig>(&toml_str) {
+                        Ok(config) => {
+                            // Extract archive to temp so scene_io can read scene files from disk
+                            let project_path = vfs.extract_to_temp()
+                                .unwrap_or_else(|| std::path::PathBuf::from("."));
+                            info!("Loaded project from rpak: {} (extracted to {})", config.name, project_path.display());
+                            app.insert_resource(CurrentProject { path: project_path, config });
+                        }
+                        Err(e) => {
+                            error!("Failed to parse project.toml from rpak: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        error!("Failed to load project from {}: {}", toml_path.display(), e);
+                } else {
+                    error!("rpak archive has no project.toml");
+                }
+                app.insert_resource(vfs);
+            } else {
+                app.insert_resource(vfs);
+
+                let project_path = parse_project_arg()
+                    .or_else(|| {
+                        let local = std::path::PathBuf::from("project.toml");
+                        if local.exists() { Some(local) } else { None }
+                    });
+
+                if let Some(toml_path) = project_path {
+                    match open_project(&toml_path) {
+                        Ok(project) => {
+                            info!("Loaded project: {} ({})", project.config.name, project.path.display());
+                            app.insert_resource(project);
+                        }
+                        Err(e) => {
+                            error!("Failed to load project from {}: {}", toml_path.display(), e);
+                        }
                     }
                 }
             }

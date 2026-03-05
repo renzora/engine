@@ -15,6 +15,7 @@ use {
     renzora_keybindings::KeybindingsPlugin,
     renzora_gizmo::GizmoPlugin,
     renzora_scene::ScenePlugin,
+    renzora_export::ExportPlugin,
 };
 
 fn main() {
@@ -37,6 +38,7 @@ fn main() {
         InspectorPanelPlugin,
         TestComponentPlugin,
         ScenePlugin,
+        ExportPlugin,
     ));
 
     // Post-process plugins

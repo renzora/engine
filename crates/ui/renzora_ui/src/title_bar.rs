@@ -16,6 +16,7 @@ pub enum TitleBarAction {
     OpenScene,
     Save,
     SaveAs,
+    Export,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -66,6 +67,11 @@ pub fn render_title_bar(
                     }
                     if ui.button("Save As...").clicked() {
                         action = TitleBarAction::SaveAs;
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Export Project...").clicked() {
+                        action = TitleBarAction::Export;
                         ui.close();
                     }
                 });

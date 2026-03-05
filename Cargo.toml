@@ -2,6 +2,15 @@
 name = "renzora"
 version = "0.2.0"
 edition = "2021"
+default-run = "renzora"
+
+[[bin]]
+name = "renzora"
+path = "src/main.rs"
+
+[[bin]]
+name = "renzora-runtime"
+path = "src/main.rs"
 
 [features]
 default = ["editor"]
@@ -21,6 +30,7 @@ editor = [
     "dep:renzora_keybindings",
     "dep:renzora_gizmo",
     "dep:renzora_scene",
+    "dep:renzora_export",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
     "renzora_pixelation/editor",
@@ -75,6 +85,7 @@ renzora_camera = { path = "crates/editor/renzora_camera", optional = true }
 renzora_keybindings = { path = "crates/editor/renzora_keybindings", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_scene = { path = "crates/editor/renzora_scene", optional = true }
+renzora_export = { path = "crates/editor/renzora_export", optional = true }
 
 # Component crates (always included, editor feature cascaded)
 renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }

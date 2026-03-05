@@ -1,8 +1,20 @@
-# Cargo aliases for production builds (static linking, separate target dir)
+# Cargo aliases
 [alias]
-release-editor = "build --release --no-default-features --features editor --target-dir app"
+# Dev: run
+renzora = "run --bin renzora"
+runtime = "run --bin renzora-runtime --no-default-features"
+
+# Dev: build only
+build-editor = "build --bin renzora"
+build-runtime = "build --bin renzora-runtime --no-default-features"
+
+# Release builds (static linking, separate target dir)
+release-editor = "build --release --bin renzora --target-dir app"
 release-editor-solari = "build --release --no-default-features --features editor,solari --target-dir app"
-release-runtime = "build --release --no-default-features --features runtime --bin renzora_runtime --target-dir app"
+release-runtime = "build --release --bin renzora-runtime --no-default-features --target-dir app"
+
+# Dist builds (max optimization for export templates)
+dist-runtime = "build --profile dist --bin renzora-runtime --no-default-features --target-dir app"
 
 # Static link the MSVC runtime (eliminates VCRUNTIME140.dll dependency)
 [target.x86_64-pc-windows-msvc]
