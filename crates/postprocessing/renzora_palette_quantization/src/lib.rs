@@ -44,7 +44,7 @@ impl Default for PaletteQuantizationSettings {
 
 impl PostProcessEffect for PaletteQuantizationSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/palette_quantization.wgsl".into()
+        "embedded://renzora_palette_quantization/palette_quantization.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct PaletteQuantizationPlugin;
 
 impl Plugin for PaletteQuantizationPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "palette_quantization.wgsl");
         app.register_type::<PaletteQuantizationSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<PaletteQuantizationSettings>::default(),

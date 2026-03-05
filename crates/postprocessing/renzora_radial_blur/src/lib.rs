@@ -44,7 +44,7 @@ impl Default for RadialBlurSettings {
 
 impl PostProcessEffect for RadialBlurSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/radial_blur.wgsl".into()
+        "embedded://renzora_radial_blur/radial_blur.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -104,6 +104,7 @@ pub struct RadialBlurPlugin;
 
 impl Plugin for RadialBlurPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "radial_blur.wgsl");
         app.register_type::<RadialBlurSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<RadialBlurSettings>::default(),

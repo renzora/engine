@@ -44,7 +44,7 @@ impl Default for ChromaticAberrationSettings {
 
 impl PostProcessEffect for ChromaticAberrationSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/chromatic_aberration.wgsl".into()
+        "embedded://renzora_chromatic_aberration/chromatic_aberration.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct ChromaticAberrationPlugin;
 
 impl Plugin for ChromaticAberrationPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "chromatic_aberration.wgsl");
         app.register_type::<ChromaticAberrationSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ChromaticAberrationSettings>::default());
         #[cfg(feature = "editor")]

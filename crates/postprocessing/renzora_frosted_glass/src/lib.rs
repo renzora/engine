@@ -44,7 +44,7 @@ impl Default for FrostedGlassSettings {
 
 impl PostProcessEffect for FrostedGlassSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/frosted_glass.wgsl".into()
+        "embedded://renzora_frosted_glass/frosted_glass.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct FrostedGlassPlugin;
 
 impl Plugin for FrostedGlassPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "frosted_glass.wgsl");
         app.register_type::<FrostedGlassSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<FrostedGlassSettings>::default());
         #[cfg(feature = "editor")]

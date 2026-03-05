@@ -44,7 +44,7 @@ impl Default for DistortionSettings {
 
 impl PostProcessEffect for DistortionSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/distortion.wgsl".into()
+        "embedded://renzora_distortion/distortion.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -104,6 +104,7 @@ pub struct DistortionPlugin;
 
 impl Plugin for DistortionPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "distortion.wgsl");
         app.register_type::<DistortionSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<DistortionSettings>::default(),

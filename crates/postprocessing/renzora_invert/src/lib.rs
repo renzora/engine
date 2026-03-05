@@ -44,7 +44,7 @@ impl Default for InvertSettings {
 
 impl PostProcessEffect for InvertSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/invert.wgsl".into()
+        "embedded://renzora_invert/invert.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct InvertPlugin;
 
 impl Plugin for InvertPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "invert.wgsl");
         app.register_type::<InvertSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<InvertSettings>::default());
         #[cfg(feature = "editor")]

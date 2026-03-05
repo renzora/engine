@@ -44,7 +44,7 @@ impl Default for ToonSettings {
 
 impl PostProcessEffect for ToonSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/toon.wgsl".into()
+        "embedded://renzora_toon/toon.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -146,6 +146,7 @@ pub struct ToonPlugin;
 
 impl Plugin for ToonPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "toon.wgsl");
         app.register_type::<ToonSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ToonSettings>::default());
         #[cfg(feature = "editor")]

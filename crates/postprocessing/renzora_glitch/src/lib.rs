@@ -44,7 +44,7 @@ impl Default for GlitchSettings {
 
 impl PostProcessEffect for GlitchSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/glitch.wgsl".into()
+        "embedded://renzora_glitch/glitch.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -110,6 +110,7 @@ pub struct GlitchPlugin;
 
 impl Plugin for GlitchPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "glitch.wgsl");
         app.register_type::<GlitchSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<GlitchSettings>::default(),

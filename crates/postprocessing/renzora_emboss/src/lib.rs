@@ -44,7 +44,7 @@ impl Default for EmbossSettings {
 
 impl PostProcessEffect for EmbossSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/emboss.wgsl".into()
+        "embedded://renzora_emboss/emboss.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct EmbossPlugin;
 
 impl Plugin for EmbossPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "emboss.wgsl");
         app.register_type::<EmbossSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<EmbossSettings>::default());
         #[cfg(feature = "editor")]

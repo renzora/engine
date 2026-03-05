@@ -44,7 +44,7 @@ impl Default for NightVisionSettings {
 
 impl PostProcessEffect for NightVisionSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/night_vision.wgsl".into()
+        "embedded://renzora_night_vision/night_vision.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -110,6 +110,7 @@ pub struct NightVisionPlugin;
 
 impl Plugin for NightVisionPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "night_vision.wgsl");
         app.register_type::<NightVisionSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<NightVisionSettings>::default());
         app.add_systems(Update, sync_time);

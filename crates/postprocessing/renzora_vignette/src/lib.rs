@@ -44,7 +44,7 @@ impl Default for VignetteSettings {
 
 impl PostProcessEffect for VignetteSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/vignette.wgsl".into()
+        "embedded://renzora_vignette/vignette.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -104,6 +104,7 @@ pub struct VignettePlugin;
 
 impl Plugin for VignettePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "vignette.wgsl");
         app.register_type::<VignetteSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<VignetteSettings>::default(),

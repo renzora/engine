@@ -44,7 +44,7 @@ impl Default for ScanlinesSettings {
 
 impl PostProcessEffect for ScanlinesSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/scanlines.wgsl".into()
+        "embedded://renzora_scanlines/scanlines.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -98,6 +98,7 @@ pub struct ScanlinesPlugin;
 
 impl Plugin for ScanlinesPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "scanlines.wgsl");
         app.register_type::<ScanlinesSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ScanlinesSettings>::default());
         #[cfg(feature = "editor")]

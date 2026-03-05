@@ -44,7 +44,7 @@ impl Default for GodRaysSettings {
 
 impl PostProcessEffect for GodRaysSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/god_rays.wgsl".into()
+        "embedded://renzora_god_rays/god_rays.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -116,6 +116,7 @@ pub struct GodRaysPlugin;
 
 impl Plugin for GodRaysPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "god_rays.wgsl");
         app.register_type::<GodRaysSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<GodRaysSettings>::default(),

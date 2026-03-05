@@ -44,7 +44,7 @@ impl Default for MatrixSettings {
 
 impl PostProcessEffect for MatrixSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/matrix.wgsl".into()
+        "embedded://renzora_matrix/matrix.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -152,6 +152,7 @@ pub struct MatrixPlugin;
 
 impl Plugin for MatrixPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "matrix.wgsl");
         app.register_type::<MatrixSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<MatrixSettings>::default());
         app.add_systems(Update, sync_time);

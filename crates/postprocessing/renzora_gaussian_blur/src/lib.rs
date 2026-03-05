@@ -44,7 +44,7 @@ impl Default for GaussianBlurSettings {
 
 impl PostProcessEffect for GaussianBlurSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/gaussian_blur.wgsl".into()
+        "embedded://renzora_gaussian_blur/gaussian_blur.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct GaussianBlurPlugin;
 
 impl Plugin for GaussianBlurPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "gaussian_blur.wgsl");
         app.register_type::<GaussianBlurSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<GaussianBlurSettings>::default(),

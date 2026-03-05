@@ -44,7 +44,7 @@ impl Default for DitheringSettings {
 
 impl PostProcessEffect for DitheringSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/dithering.wgsl".into()
+        "embedded://renzora_dithering/dithering.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct DitheringPlugin;
 
 impl Plugin for DitheringPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "dithering.wgsl");
         app.register_type::<DitheringSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<DitheringSettings>::default());
         #[cfg(feature = "editor")]

@@ -44,7 +44,7 @@ impl Default for SepiaSettings {
 
 impl PostProcessEffect for SepiaSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/sepia.wgsl".into()
+        "embedded://renzora_sepia/sepia.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct SepiaPlugin;
 
 impl Plugin for SepiaPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "sepia.wgsl");
         app.register_type::<SepiaSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<SepiaSettings>::default());
         #[cfg(feature = "editor")]

@@ -44,7 +44,7 @@ impl Default for PosterizeSettings {
 
 impl PostProcessEffect for PosterizeSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/posterize.wgsl".into()
+        "embedded://renzora_posterize/posterize.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct PosterizePlugin;
 
 impl Plugin for PosterizePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "posterize.wgsl");
         app.register_type::<PosterizeSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<PosterizeSettings>::default());
         #[cfg(feature = "editor")]

@@ -44,7 +44,7 @@ impl Default for CrtSettings {
 
 impl PostProcessEffect for CrtSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/crt.wgsl".into()
+        "embedded://renzora_crt/crt.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -104,6 +104,7 @@ pub struct CrtPlugin;
 
 impl Plugin for CrtPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "crt.wgsl");
         app.register_type::<CrtSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<CrtSettings>::default(),

@@ -44,7 +44,7 @@ impl Default for OutlineSettings {
 
 impl PostProcessEffect for OutlineSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/outline.wgsl".into()
+        "embedded://renzora_outline/outline.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -148,6 +148,7 @@ pub struct OutlinePlugin;
 
 impl Plugin for OutlinePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "outline.wgsl");
         app.register_type::<OutlineSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<OutlineSettings>::default());
         #[cfg(feature = "editor")]

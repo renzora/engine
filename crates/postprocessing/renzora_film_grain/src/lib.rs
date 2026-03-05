@@ -44,7 +44,7 @@ impl Default for FilmGrainSettings {
 
 impl PostProcessEffect for FilmGrainSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/film_grain.wgsl".into()
+        "embedded://renzora_film_grain/film_grain.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -98,6 +98,7 @@ pub struct FilmGrainPlugin;
 
 impl Plugin for FilmGrainPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "film_grain.wgsl");
         app.register_type::<FilmGrainSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<FilmGrainSettings>::default(),

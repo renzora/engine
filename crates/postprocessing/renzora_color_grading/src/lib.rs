@@ -44,7 +44,7 @@ impl Default for ColorGradingSettings {
 
 impl PostProcessEffect for ColorGradingSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/color_grading.wgsl".into()
+        "embedded://renzora_color_grading/color_grading.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -116,6 +116,7 @@ pub struct ColorGradingPlugin;
 
 impl Plugin for ColorGradingPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "color_grading.wgsl");
         app.register_type::<ColorGradingSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ColorGradingSettings>::default());
         #[cfg(feature = "editor")]

@@ -44,7 +44,7 @@ impl Default for HexPixelateSettings {
 
 impl PostProcessEffect for HexPixelateSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/hex_pixelate.wgsl".into()
+        "embedded://renzora_hex_pixelate/hex_pixelate.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct HexPixelatePlugin;
 
 impl Plugin for HexPixelatePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "hex_pixelate.wgsl");
         app.register_type::<HexPixelateSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<HexPixelateSettings>::default());
         #[cfg(feature = "editor")]

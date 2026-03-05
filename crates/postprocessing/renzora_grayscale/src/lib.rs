@@ -44,7 +44,7 @@ impl Default for GrayscaleSettings {
 
 impl PostProcessEffect for GrayscaleSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/grayscale.wgsl".into()
+        "embedded://renzora_grayscale/grayscale.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct GrayscalePlugin;
 
 impl Plugin for GrayscalePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "grayscale.wgsl");
         app.register_type::<GrayscaleSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<GrayscaleSettings>::default());
         #[cfg(feature = "editor")]

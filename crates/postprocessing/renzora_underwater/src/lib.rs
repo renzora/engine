@@ -52,7 +52,7 @@ impl Default for UnderwaterSettings {
 
 impl PostProcessEffect for UnderwaterSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/underwater.wgsl".into()
+        "embedded://renzora_underwater/underwater.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -124,6 +124,7 @@ pub struct UnderwaterPlugin;
 
 impl Plugin for UnderwaterPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "underwater.wgsl");
         app.register_type::<UnderwaterSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<UnderwaterSettings>::default(),

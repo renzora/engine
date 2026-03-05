@@ -44,7 +44,7 @@ impl Default for PixelationSettings {
 
 impl PostProcessEffect for PixelationSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/pixelation.wgsl".into()
+        "embedded://renzora_pixelation/pixelation.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct PixelationPlugin;
 
 impl Plugin for PixelationPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "pixelation.wgsl");
         app.register_type::<PixelationSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<PixelationSettings>::default(),

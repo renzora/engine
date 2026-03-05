@@ -44,7 +44,7 @@ impl Default for HalftoneSettings {
 
 impl PostProcessEffect for HalftoneSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/halftone.wgsl".into()
+        "embedded://renzora_halftone/halftone.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -98,6 +98,7 @@ pub struct HalftonePlugin;
 
 impl Plugin for HalftonePlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "halftone.wgsl");
         app.register_type::<HalftoneSettings>();
         app.add_plugins(
             renzora_postprocess::PostProcessPlugin::<HalftoneSettings>::default(),

@@ -44,7 +44,7 @@ impl Default for EdgeGlowSettings {
 
 impl PostProcessEffect for EdgeGlowSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/edge_glow.wgsl".into()
+        "embedded://renzora_edge_glow/edge_glow.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -98,6 +98,7 @@ pub struct EdgeGlowPlugin;
 
 impl Plugin for EdgeGlowPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "edge_glow.wgsl");
         app.register_type::<EdgeGlowSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<EdgeGlowSettings>::default());
         #[cfg(feature = "editor")]

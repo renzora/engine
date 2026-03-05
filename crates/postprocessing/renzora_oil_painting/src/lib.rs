@@ -44,7 +44,7 @@ impl Default for OilPaintingSettings {
 
 impl PostProcessEffect for OilPaintingSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/oil_painting.wgsl".into()
+        "embedded://renzora_oil_painting/oil_painting.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -92,6 +92,7 @@ pub struct OilPaintingPlugin;
 
 impl Plugin for OilPaintingPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "oil_painting.wgsl");
         app.register_type::<OilPaintingSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<OilPaintingSettings>::default());
         #[cfg(feature = "editor")]

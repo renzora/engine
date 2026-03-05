@@ -44,7 +44,7 @@ impl Default for SharpenSettings {
 
 impl PostProcessEffect for SharpenSettings {
     fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/sharpen.wgsl".into()
+        "embedded://renzora_sharpen/sharpen.wgsl".into()
     }
     fn sub_graph() -> Option<InternedRenderSubGraph> {
         Some(Core3d.intern())
@@ -86,6 +86,7 @@ pub struct SharpenPlugin;
 
 impl Plugin for SharpenPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "sharpen.wgsl");
         app.register_type::<SharpenSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<SharpenSettings>::default());
         #[cfg(feature = "editor")]

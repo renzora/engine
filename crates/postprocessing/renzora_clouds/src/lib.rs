@@ -77,7 +77,7 @@ pub struct CloudMaterial {
 
 impl Material for CloudMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("shaders/clouds.wgsl".into())
+        ShaderRef::Path("embedded://renzora_clouds/clouds.wgsl".into())
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -416,6 +416,7 @@ pub struct CloudsPlugin;
 
 impl Plugin for CloudsPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "clouds.wgsl");
         app.register_type::<CloudsData>()
             .add_plugins(MaterialPlugin::<CloudMaterial>::default())
             .init_resource::<CloudsState>()
