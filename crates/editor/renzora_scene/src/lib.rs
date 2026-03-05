@@ -37,19 +37,14 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     }
 
     let scene = DynamicSceneBuilder::from_world(world)
-        .deny_all()
-        .allow_component::<Name>()
-        .allow_component::<Transform>()
-        .allow_component::<ChildOf>()
-        .allow_component::<MeshPrimitive>()
-        .allow_component::<MeshColor>()
-        .allow_component::<DirectionalLight>()
-        .allow_component::<PointLight>()
-        .allow_component::<SpotLight>()
-        .allow_component::<AmbientLight>()
-        .allow_component::<SunData>()
-        .allow_component::<Camera3d>()
-        .allow_component::<Camera>()
+        .deny_all_resources()
+        .deny_component::<Mesh3d>()
+        .deny_component::<MeshMaterial3d<StandardMaterial>>()
+        .deny_component::<GlobalTransform>()
+        .deny_component::<Visibility>()
+        .deny_component::<InheritedVisibility>()
+        .deny_component::<ViewVisibility>()
+        .deny_component::<Children>()
         .extract_entities(entities.into_iter())
         .build();
 
