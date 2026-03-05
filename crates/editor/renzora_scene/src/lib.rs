@@ -1,5 +1,6 @@
 //! Renzora Scene — save/load scene entities to RON files using Bevy's DynamicScene.
 
+use bevy::camera::visibility::VisibilityClass;
 use bevy::prelude::*;
 use serde::de::DeserializeSeed;
 use std::path::Path;
@@ -45,6 +46,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<InheritedVisibility>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
+        .deny_component::<VisibilityClass>()
         .extract_entities(entities.into_iter())
         .build();
 

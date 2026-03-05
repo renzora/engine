@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 /// Procedural clouds settings.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct CloudsData {
     pub enabled: bool,
     /// Cloud coverage (0 = clear, 1 = overcast)
@@ -416,7 +416,8 @@ pub struct CloudsPlugin;
 
 impl Plugin for CloudsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<CloudMaterial>::default())
+        app.register_type::<CloudsData>()
+            .add_plugins(MaterialPlugin::<CloudMaterial>::default())
             .init_resource::<CloudsState>()
             .add_systems(Update, sync_clouds);
 

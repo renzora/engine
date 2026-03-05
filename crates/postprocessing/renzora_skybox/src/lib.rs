@@ -27,6 +27,7 @@ use renzora_core::EditorCamera;
 
 /// Sky rendering mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[reflect(Serialize, Deserialize)]
 pub enum SkyMode {
     #[default]
     Color,
@@ -36,6 +37,7 @@ pub enum SkyMode {
 
 /// Procedural sky parameters.
 #[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Serialize, Deserialize)]
 pub struct ProceduralSkyData {
     pub sky_top_color: (f32, f32, f32),
     pub sky_horizon_color: (f32, f32, f32),
@@ -79,6 +81,7 @@ impl Default for ProceduralSkyData {
 
 /// HDR panorama sky parameters.
 #[derive(Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Serialize, Deserialize)]
 pub struct PanoramaSkyData {
     pub panorama_path: String,
     pub rotation: f32,
@@ -87,7 +90,7 @@ pub struct PanoramaSkyData {
 
 /// Skybox / sky background settings.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct SkyboxData {
     pub sky_mode: SkyMode,
     pub clear_color: (f32, f32, f32),
@@ -739,7 +742,11 @@ pub struct SkyboxPlugin;
 
 impl Plugin for SkyboxPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SkyboxState>()
+        app.register_type::<SkyMode>()
+            .register_type::<ProceduralSkyData>()
+            .register_type::<PanoramaSkyData>()
+            .register_type::<SkyboxData>()
+            .init_resource::<SkyboxState>()
             .add_systems(Update, sync_skybox);
 
         #[cfg(feature = "editor")]
