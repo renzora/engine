@@ -9,3 +9,6 @@ editor = []
 [dependencies]
 bevy = { version = "0.18" }
 renzora_core = { path = "../renzora_core" }
+renzora_lighting = { path = "../renzora_lighting" }
+ron = "0.8"
+serde = "1"

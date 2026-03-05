@@ -5,10 +5,12 @@
 //! When standalone, it renders directly to the window.
 
 pub mod camera;
+pub mod scene_io;
 
 pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, ViewportRenderTarget};
 
 use bevy::prelude::*;
+use renzora_lighting::SunData;
 
 /// Plugin that adds the game runtime: camera, scene, and core systems.
 /// In non-editor mode, also handles project loading from CLI args.
@@ -16,6 +18,10 @@ pub struct RuntimePlugin;
 
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
+        app.register_type::<MeshPrimitive>()
+            .register_type::<MeshColor>()
+            .register_type::<SunData>();
+
         #[cfg(not(feature = "editor"))]
         {
             let project_path = parse_project_arg()
@@ -35,6 +41,9 @@ impl Plugin for RuntimePlugin {
                     }
                 }
             }
+
+            app.add_systems(Startup, scene_io::load_current_scene)
+                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_suns));
         }
 
         app.init_resource::<ViewportRenderTarget>()
@@ -49,7 +58,7 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
     for i in 0..args.len() {
         if args[i] == "--project" {
             if let Some(path_str) = args.get(i + 1) {
-                let path = PathBuf::from(path_str);
+                let path = std::path::PathBuf::from(path_str);
                 let toml = if path.is_dir() {
                     path.join("project.toml")
                 } else {
