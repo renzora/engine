@@ -4,62 +4,108 @@ version = "0.2.0"
 edition = "2021"
 
 [features]
+default = ["editor"]
 dynamic = ["bevy/dynamic_linking"]
-
-[[bin]]
-name = "renzora"
-path = "src/main.rs"
-
-[[bin]]
-name = "renzora-runtime"
-path = "src/bin/runtime.rs"
+editor = [
+    "dep:renzora_editor",
+    "renzora_runtime/editor",
+    "dep:renzora_splash",
+    "dep:renzora_viewport",
+    "dep:renzora_hierarchy",
+    "dep:renzora_widget_gallery",
+    "dep:renzora_asset_browser",
+    "dep:renzora_inspector",
+    "dep:renzora_test_component",
+    "dep:renzora_grid",
+    "dep:renzora_camera",
+    "dep:renzora_keybindings",
+    "dep:renzora_gizmo",
+    "renzora_vignette/editor",
+    "renzora_film_grain/editor",
+    "renzora_pixelation/editor",
+    "renzora_crt/editor",
+    "renzora_god_rays/editor",
+    "renzora_gaussian_blur/editor",
+    "renzora_palette_quantization/editor",
+    "renzora_distortion/editor",
+    "renzora_underwater/editor",
+    "renzora_chromatic_aberration/editor",
+    "renzora_sharpen/editor",
+    "renzora_color_grading/editor",
+    "renzora_scanlines/editor",
+    "renzora_grayscale/editor",
+    "renzora_posterize/editor",
+    "renzora_emboss/editor",
+    "renzora_oil_painting/editor",
+    "renzora_edge_glow/editor",
+    "renzora_matrix/editor",
+    "renzora_outline/editor",
+    "renzora_toon/editor",
+    "renzora_sepia/editor",
+    "renzora_invert/editor",
+    "renzora_night_vision/editor",
+    "renzora_glitch/editor",
+    "renzora_radial_blur/editor",
+    "renzora_halftone/editor",
+    "renzora_hex_pixelate/editor",
+    "renzora_dithering/editor",
+    "renzora_frosted_glass/editor",
+    "renzora_skybox/editor",
+    "renzora_clouds/editor",
+]
 
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
-renzora_runtime = { path = "crates/renzora_runtime" }
-renzora_editor = { path = "crates/renzora_editor" }
-renzora_viewport = { path = "crates/renzora_viewport" }
-renzora_hierarchy = { path = "crates/renzora_hierarchy" }
-renzora_widget_gallery = { path = "crates/renzora_widget_gallery" }
-renzora_asset_browser = { path = "crates/renzora_asset_browser" }
-renzora_inspector = { path = "crates/renzora_inspector" }
-renzora_test_component = { path = "crates/renzora_test_component" }
-renzora_grid = { path = "crates/renzora_grid" }
-renzora_camera = { path = "crates/renzora_camera" }
-renzora_keybindings = { path = "crates/renzora_keybindings" }
-renzora_gizmo = { path = "crates/renzora_gizmo" }
-renzora_vignette = { path = "crates/renzora_vignette" }
-renzora_film_grain = { path = "crates/renzora_film_grain" }
-renzora_pixelation = { path = "crates/renzora_pixelation" }
-renzora_crt = { path = "crates/renzora_crt" }
-renzora_god_rays = { path = "crates/renzora_god_rays" }
-renzora_gaussian_blur = { path = "crates/renzora_gaussian_blur" }
-renzora_palette_quantization = { path = "crates/renzora_palette_quantization" }
-renzora_distortion = { path = "crates/renzora_distortion" }
-renzora_underwater = { path = "crates/renzora_underwater" }
-renzora_chromatic_aberration = { path = "crates/renzora_chromatic_aberration" }
-renzora_sharpen = { path = "crates/renzora_sharpen" }
-renzora_color_grading = { path = "crates/renzora_color_grading" }
-renzora_scanlines = { path = "crates/renzora_scanlines" }
-renzora_grayscale = { path = "crates/renzora_grayscale" }
-renzora_posterize = { path = "crates/renzora_posterize" }
-renzora_emboss = { path = "crates/renzora_emboss" }
-renzora_oil_painting = { path = "crates/renzora_oil_painting" }
-renzora_edge_glow = { path = "crates/renzora_edge_glow" }
-renzora_matrix = { path = "crates/renzora_matrix" }
-renzora_outline = { path = "crates/renzora_outline" }
-renzora_toon = { path = "crates/renzora_toon" }
-renzora_sepia = { path = "crates/renzora_sepia" }
-renzora_invert = { path = "crates/renzora_invert" }
-renzora_night_vision = { path = "crates/renzora_night_vision" }
-renzora_glitch = { path = "crates/renzora_glitch" }
-renzora_radial_blur = { path = "crates/renzora_radial_blur" }
-renzora_halftone = { path = "crates/renzora_halftone" }
-renzora_hex_pixelate = { path = "crates/renzora_hex_pixelate" }
-renzora_dithering = { path = "crates/renzora_dithering" }
-renzora_frosted_glass = { path = "crates/renzora_frosted_glass" }
-renzora_skybox = { path = "crates/renzora_skybox" }
-renzora_clouds = { path = "crates/renzora_clouds" }
+renzora_runtime = { path = "crates/core/renzora_runtime" }
+renzora_core = { path = "crates/core/renzora_core" }
+
+# Editor plugins (optional, enabled by `editor` feature)
+renzora_editor = { path = "crates/editor/renzora_editor", optional = true }
+renzora_splash = { path = "crates/ui/renzora_splash", optional = true }
+renzora_viewport = { path = "crates/editor/renzora_viewport", optional = true }
+renzora_hierarchy = { path = "crates/editor/renzora_hierarchy", optional = true }
+renzora_widget_gallery = { path = "crates/editor/renzora_widget_gallery", optional = true }
+renzora_asset_browser = { path = "crates/editor/renzora_asset_browser", optional = true }
+renzora_inspector = { path = "crates/editor/renzora_inspector", optional = true }
+renzora_test_component = { path = "crates/editor/renzora_test_component", optional = true }
+renzora_grid = { path = "crates/editor/renzora_grid", optional = true }
+renzora_camera = { path = "crates/editor/renzora_camera", optional = true }
+renzora_keybindings = { path = "crates/editor/renzora_keybindings", optional = true }
+renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
+
+# Component crates (always included, editor feature cascaded)
+renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }
+renzora_film_grain = { path = "crates/postprocessing/renzora_film_grain" }
+renzora_pixelation = { path = "crates/postprocessing/renzora_pixelation" }
+renzora_crt = { path = "crates/postprocessing/renzora_crt" }
+renzora_god_rays = { path = "crates/postprocessing/renzora_god_rays" }
+renzora_gaussian_blur = { path = "crates/postprocessing/renzora_gaussian_blur" }
+renzora_palette_quantization = { path = "crates/postprocessing/renzora_palette_quantization" }
+renzora_distortion = { path = "crates/postprocessing/renzora_distortion" }
+renzora_underwater = { path = "crates/postprocessing/renzora_underwater" }
+renzora_chromatic_aberration = { path = "crates/postprocessing/renzora_chromatic_aberration" }
+renzora_sharpen = { path = "crates/postprocessing/renzora_sharpen" }
+renzora_color_grading = { path = "crates/postprocessing/renzora_color_grading" }
+renzora_scanlines = { path = "crates/postprocessing/renzora_scanlines" }
+renzora_grayscale = { path = "crates/postprocessing/renzora_grayscale" }
+renzora_posterize = { path = "crates/postprocessing/renzora_posterize" }
+renzora_emboss = { path = "crates/postprocessing/renzora_emboss" }
+renzora_oil_painting = { path = "crates/postprocessing/renzora_oil_painting" }
+renzora_edge_glow = { path = "crates/postprocessing/renzora_edge_glow" }
+renzora_matrix = { path = "crates/postprocessing/renzora_matrix" }
+renzora_outline = { path = "crates/postprocessing/renzora_outline" }
+renzora_toon = { path = "crates/postprocessing/renzora_toon" }
+renzora_sepia = { path = "crates/postprocessing/renzora_sepia" }
+renzora_invert = { path = "crates/postprocessing/renzora_invert" }
+renzora_night_vision = { path = "crates/postprocessing/renzora_night_vision" }
+renzora_glitch = { path = "crates/postprocessing/renzora_glitch" }
+renzora_radial_blur = { path = "crates/postprocessing/renzora_radial_blur" }
+renzora_halftone = { path = "crates/postprocessing/renzora_halftone" }
+renzora_hex_pixelate = { path = "crates/postprocessing/renzora_hex_pixelate" }
+renzora_dithering = { path = "crates/postprocessing/renzora_dithering" }
+renzora_frosted_glass = { path = "crates/postprocessing/renzora_frosted_glass" }
+renzora_skybox = { path = "crates/postprocessing/renzora_skybox" }
+renzora_clouds = { path = "crates/postprocessing/renzora_clouds" }
 
 # Bevy recommended optimizations
 

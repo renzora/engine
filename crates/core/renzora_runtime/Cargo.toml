@@ -1,0 +1,11 @@
+[package]
+name = "renzora_runtime"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+editor = []
+
+[dependencies]
+bevy = { version = "0.18" }
+renzora_core = { path = "../renzora_core" }

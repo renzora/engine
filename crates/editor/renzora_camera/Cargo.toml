@@ -1,0 +1,9 @@
+[package]
+name = "renzora_camera"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+renzora_runtime = { path = "../../core/renzora_runtime" }
+renzora_viewport = { path = "../renzora_viewport" }
