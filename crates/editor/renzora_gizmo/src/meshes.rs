@@ -13,7 +13,7 @@ use crate::modal_transform::ModalTransformState;
 use crate::state::{DragAxis, EditorTool, GizmoMode, GizmoState};
 use crate::{GIZMO_RENDER_LAYER, GIZMO_SIZE};
 use renzora_editor::{EditorSelection, HideInHierarchy};
-use renzora_runtime::RuntimeCamera;
+use renzora_runtime::EditorCamera;
 
 // ============================================================================
 // GizmoMaterial — always renders on top via depth_compare: Always
@@ -253,7 +253,7 @@ pub fn update_gizmo_mesh_transforms(
     modal: Res<ModalTransformState>,
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
-    camera_query: Query<&GlobalTransform, With<RuntimeCamera>>,
+    camera_query: Query<&GlobalTransform, With<EditorCamera>>,
 ) {
     let Ok((mut root_transform, mut root_visibility)) = gizmo_root.single_mut() else { return };
 

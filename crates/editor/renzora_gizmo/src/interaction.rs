@@ -10,7 +10,7 @@ use crate::picking::{
 use crate::state::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, SnapTarget};
 use crate::{GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 use renzora_editor::{EditorSelection, HideInHierarchy};
-use renzora_runtime::RuntimeCamera;
+use renzora_runtime::EditorCamera;
 use renzora_viewport::ViewportState;
 
 pub fn gizmo_hover_system(
@@ -19,7 +19,7 @@ pub fn gizmo_hover_system(
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
     windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     transforms: Query<&Transform>,
 ) {
     if modal.active {
@@ -163,7 +163,7 @@ pub fn gizmo_interaction_system(
     modal: Res<ModalTransformState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     transforms: Query<&Transform>,
 ) {
     if modal.active {
@@ -268,7 +268,7 @@ pub fn object_drag_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut transforms: Query<&mut Transform>,
     all_transforms: Query<(Entity, &GlobalTransform)>,
 ) {
@@ -526,7 +526,7 @@ pub fn entity_pick_system(
     modal: Res<ModalTransformState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
     named_entities: Query<Entity, With<Name>>,
     parent_query: Query<&ChildOf>,

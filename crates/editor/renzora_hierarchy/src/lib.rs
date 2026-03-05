@@ -12,6 +12,7 @@ use renzora_editor::{
     icon_button, search_overlay, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
     OverlayAction, OverlayEntry, PanelLocation, PanelRegistry, SpawnRegistry,
 };
+use renzora_core::{MeshPrimitive, MeshColor};
 use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
@@ -285,13 +286,19 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .add(Cuboid::default());
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial::default());
+                .add(StandardMaterial {
+                    base_color: Color::srgb(0.8, 0.3, 0.2),
+                    ..default()
+                });
+            let color = Color::srgb(0.8, 0.3, 0.2);
             world
                 .spawn((
                     Name::new("Cube"),
                     Transform::default(),
                     Mesh3d(mesh),
                     MeshMaterial3d(material),
+                    MeshPrimitive::Cube,
+                    MeshColor(color),
                 ))
                 .id()
         },
@@ -308,13 +315,19 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .add(Sphere::default());
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial::default());
+                .add(StandardMaterial {
+                    base_color: Color::srgb(0.2, 0.5, 0.8),
+                    ..default()
+                });
+            let color = Color::srgb(0.2, 0.5, 0.8);
             world
                 .spawn((
                     Name::new("Sphere"),
                     Transform::default(),
                     Mesh3d(mesh),
                     MeshMaterial3d(material),
+                    MeshPrimitive::Sphere,
+                    MeshColor(color),
                 ))
                 .id()
         },
@@ -331,13 +344,19 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .add(Plane3d::default().mesh().size(10.0, 10.0));
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial::default());
+                .add(StandardMaterial {
+                    base_color: Color::srgb(0.35, 0.35, 0.35),
+                    ..default()
+                });
+            let color = Color::srgb(0.35, 0.35, 0.35);
             world
                 .spawn((
                     Name::new("Plane"),
                     Transform::default(),
                     Mesh3d(mesh),
                     MeshMaterial3d(material),
+                    MeshPrimitive::Plane { width: 10.0, height: 10.0 },
+                    MeshColor(color),
                 ))
                 .id()
         },
@@ -354,13 +373,43 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .add(Cylinder::default());
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial::default());
+                .add(StandardMaterial {
+                    base_color: Color::srgb(0.3, 0.7, 0.4),
+                    ..default()
+                });
+            let color = Color::srgb(0.3, 0.7, 0.4);
             world
                 .spawn((
                     Name::new("Cylinder"),
                     Transform::default(),
                     Mesh3d(mesh),
                     MeshMaterial3d(material),
+                    MeshPrimitive::Cylinder,
+                    MeshColor(color),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "sun",
+        display_name: "Sun",
+        icon: regular::SUN_HORIZON,
+        category: "lighting",
+        spawn_fn: |world| {
+            let data = renzora_lighting::SunData::default();
+            let dir = data.direction();
+            world
+                .spawn((
+                    Name::new("Sun"),
+                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+                    DirectionalLight {
+                        color: Color::srgb(data.color.x, data.color.y, data.color.z),
+                        illuminance: data.illuminance,
+                        shadows_enabled: data.shadows_enabled,
+                        ..default()
+                    },
+                    data,
                 ))
                 .id()
         },
@@ -409,6 +458,25 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                     Name::new("Spot Light"),
                     Transform::default(),
                     SpotLight::default(),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "ambient_light",
+        display_name: "Ambient Light",
+        icon: regular::SUN_DIM,
+        category: "lighting",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Ambient Light"),
+                    AmbientLight {
+                        color: Color::WHITE,
+                        brightness: 300.0,
+                        ..default()
+                    },
                 ))
                 .id()
         },

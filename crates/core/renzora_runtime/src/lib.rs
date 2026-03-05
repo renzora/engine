@@ -6,10 +6,9 @@
 
 pub mod camera;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, RuntimeCamera, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, ViewportRenderTarget};
 
 use bevy::prelude::*;
-use std::path::PathBuf;
 
 /// Plugin that adds the game runtime: camera, scene, and core systems.
 /// In non-editor mode, also handles project loading from CLI args.
@@ -21,7 +20,7 @@ impl Plugin for RuntimePlugin {
         {
             let project_path = parse_project_arg()
                 .or_else(|| {
-                    let local = PathBuf::from("project.toml");
+                    let local = std::path::PathBuf::from("project.toml");
                     if local.exists() { Some(local) } else { None }
                 });
 
@@ -39,13 +38,13 @@ impl Plugin for RuntimePlugin {
         }
 
         app.init_resource::<ViewportRenderTarget>()
-            .add_systems(Startup, camera::spawn_runtime_camera)
+            .add_systems(Startup, camera::spawn_editor_camera)
             .add_systems(Update, camera::sync_camera_render_target);
     }
 }
 
 #[cfg(not(feature = "editor"))]
-fn parse_project_arg() -> Option<PathBuf> {
+fn parse_project_arg() -> Option<std::path::PathBuf> {
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
         if args[i] == "--project" {

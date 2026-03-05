@@ -84,9 +84,44 @@ impl CurrentProject {
     }
 }
 
-/// Marker component for the main game camera.
+/// Marker component for the editor's scene-navigation camera.
+///
+/// This camera is used for orbit/pan/zoom during editing and renders to the
+/// viewport texture. It is hidden from the hierarchy and cannot be deleted.
+/// User-created scene cameras are separate entities.
 #[derive(Component)]
-pub struct RuntimeCamera;
+pub struct EditorCamera;
+
+/// Marker component to hide an entity (and its children) from the hierarchy panel.
+#[derive(Component)]
+pub struct HideInHierarchy;
+
+/// Marker component — entity is locked from editing in the hierarchy.
+#[derive(Component)]
+pub struct EditorLocked;
+
+/// Mesh primitive type — serializable record of what shape an entity uses.
+///
+/// Stored alongside `Mesh3d` so the shape can be recreated on scene load.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize, PartialEq)]
+#[reflect(Component, Serialize, Deserialize)]
+pub enum MeshPrimitive {
+    Cube,
+    Sphere,
+    Plane { width: f32, height: f32 },
+    Cylinder,
+}
+
+/// Base color for an entity's material — serializable companion to `MeshMaterial3d`.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct MeshColor(pub Color);
+
+/// Marker resource requesting a scene save.
+///
+/// Insert this resource to trigger the scene save system next frame.
+#[derive(Resource)]
+pub struct SaveSceneRequested;
 
 /// Holds the optional render target for the game camera.
 ///

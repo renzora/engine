@@ -12,7 +12,7 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use renzora_runtime::RuntimeCamera;
+use renzora_runtime::EditorCamera;
 use renzora_viewport::ViewportState;
 
 /// Orbit camera state for the editor viewport.
@@ -140,7 +140,7 @@ impl Plugin for CameraPlugin {
 /// Set the runtime camera transform from initial orbit state.
 fn apply_initial_orbit(
     orbit: Res<OrbitCameraState>,
-    mut cameras: Query<&mut Transform, With<RuntimeCamera>>,
+    mut cameras: Query<&mut Transform, With<EditorCamera>>,
 ) {
     for mut transform in &mut cameras {
         let t = orbit.calculate_transform();
@@ -158,7 +158,7 @@ fn camera_controller(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
-    mut camera_query: Query<&mut Transform, With<RuntimeCamera>>,
+    mut camera_query: Query<&mut Transform, With<EditorCamera>>,
     mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let viewport_hovered = viewport.as_ref().map_or(true, |v| v.hovered);

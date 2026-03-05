@@ -1,0 +1,13 @@
+[package]
+name = "renzora_scene"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+ron = "0.8"
+serde = "1"
+renzora_core = { path = "../../core/renzora_core" }
+renzora_lighting = { path = "../../core/renzora_lighting" }
+renzora_splash = { path = "../../ui/renzora_splash" }
+renzora_keybindings = { path = "../renzora_keybindings" }

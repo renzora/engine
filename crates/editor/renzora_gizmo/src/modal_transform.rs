@@ -15,7 +15,7 @@ use renzora_editor::EditorSelection;
 use renzora_viewport::ViewportState;
 use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{KeyBindings, EditorAction};
-use renzora_runtime::RuntimeCamera;
+use renzora_runtime::EditorCamera;
 
 /// Modal transform mode
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -207,7 +207,7 @@ pub fn modal_transform_input_system(
     global_transforms: Query<&GlobalTransform>,
     mut windows: Query<&mut Window>,
     mut cursor_options: Query<&mut CursorOptions>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
 ) {
     if modal.active {
         return;

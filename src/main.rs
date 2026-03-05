@@ -14,6 +14,7 @@ use {
     renzora_camera::CameraPlugin,
     renzora_keybindings::KeybindingsPlugin,
     renzora_gizmo::GizmoPlugin,
+    renzora_scene::ScenePlugin,
 };
 
 fn main() {
@@ -35,6 +36,7 @@ fn main() {
         HierarchyPanelPlugin,
         InspectorPanelPlugin,
         TestComponentPlugin,
+        ScenePlugin,
     ));
 
     // Post-process plugins
@@ -75,6 +77,7 @@ fn main() {
     app.add_plugins((
         renzora_skybox::SkyboxPlugin,
         renzora_clouds::CloudsPlugin,
+        renzora_lighting::LightingPlugin,
     ));
 
     app.run();

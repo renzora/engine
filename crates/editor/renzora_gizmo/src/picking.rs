@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use renzora_runtime::RuntimeCamera;
+use renzora_runtime::EditorCamera;
 use renzora_viewport::ViewportState;
 
 /// Get ray from cursor position in viewport.
@@ -10,7 +10,7 @@ use renzora_viewport::ViewportState;
 pub fn get_cursor_ray(
     viewport: &ViewportState,
     windows: &Query<&Window>,
-    camera_query: &Query<(&Camera, &GlobalTransform), With<RuntimeCamera>>,
+    camera_query: &Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
 ) -> Option<Ray3d> {
     let window = windows.single().ok()?;
     let cursor_pos = window.cursor_position()?;

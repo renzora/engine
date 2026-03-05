@@ -3,13 +3,14 @@
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 
-use crate::{RuntimeCamera, ViewportRenderTarget};
+use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
-/// Spawns the main 3D game camera.
+/// Spawns the editor's 3D scene-navigation camera.
 ///
 /// If `ViewportRenderTarget` already has an image (editor mode),
 /// the camera renders to it. Otherwise it renders to the window.
-pub fn spawn_runtime_camera(mut commands: Commands, render_target: Res<ViewportRenderTarget>) {
+/// The camera is hidden from the hierarchy and locked from editing.
+pub fn spawn_editor_camera(mut commands: Commands, render_target: Res<ViewportRenderTarget>) {
     let mut entity = commands.spawn((
         Camera3d::default(),
         Camera {
@@ -17,8 +18,10 @@ pub fn spawn_runtime_camera(mut commands: Commands, render_target: Res<ViewportR
             ..default()
         },
         Transform::from_xyz(5.0, 4.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        RuntimeCamera,
-        Name::new("Runtime Camera"),
+        EditorCamera,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Editor Camera"),
     ));
 
     if let Some(ref image) = render_target.image {
@@ -32,7 +35,7 @@ pub fn spawn_runtime_camera(mut commands: Commands, render_target: Res<ViewportR
 /// keeps its default window target — we never remove `RenderTarget`.
 pub fn sync_camera_render_target(
     render_target: Res<ViewportRenderTarget>,
-    cameras: Query<Entity, With<RuntimeCamera>>,
+    cameras: Query<Entity, With<EditorCamera>>,
     mut commands: Commands,
 ) {
     if !render_target.is_changed() {

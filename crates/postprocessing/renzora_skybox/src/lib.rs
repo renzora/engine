@@ -19,7 +19,7 @@ use renzora_editor::{
 #[cfg(feature = "editor")]
 use renzora_theme::Theme;
 
-use renzora_core::RuntimeCamera;
+use renzora_core::EditorCamera;
 
 // ============================================================================
 // Data types
@@ -336,8 +336,8 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
 fn sync_skybox(
     mut commands: Commands,
     skybox_query: Query<&SkyboxData>,
-    cameras: Query<Entity, With<RuntimeCamera>>,
-    mut camera_query: Query<&mut Camera, With<RuntimeCamera>>,
+    cameras: Query<Entity, With<EditorCamera>>,
+    mut camera_query: Query<&mut Camera, With<EditorCamera>>,
     asset_server: Res<AssetServer>,
     mut skybox_state: ResMut<SkyboxState>,
     mut images: ResMut<Assets<Image>>,

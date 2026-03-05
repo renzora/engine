@@ -18,13 +18,8 @@ pub use inspector_registry::{
 };
 pub use selection::EditorSelection;
 
-/// Marker component to hide an entity (and its children) from the hierarchy panel.
-#[derive(Component)]
-pub struct HideInHierarchy;
-
-/// Marker component — entity is locked from editing in the hierarchy.
-#[derive(Component)]
-pub struct EditorLocked;
+// Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.
+pub use renzora_core::{HideInHierarchy, EditorLocked, EditorCamera};
 
 /// Optional label color for an entity row in the hierarchy.
 #[derive(Component)]
@@ -79,7 +74,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
-            .add_systems(PostStartup, camera::spawn_editor_camera)
+            .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
                 editor_ui_system.run_if(in_state(SplashState::Editor)),
@@ -277,7 +272,9 @@ fn editor_ui_system(world: &mut World) {
         TitleBarAction::OpenProject => handle_open_project(world),
         TitleBarAction::NewScene => {} // TODO: scene management
         TitleBarAction::OpenScene => {} // TODO: scene management
-        TitleBarAction::Save => {}     // TODO: scene management
+        TitleBarAction::Save => {
+            world.insert_resource(renzora_core::SaveSceneRequested);
+        }
         TitleBarAction::SaveAs => {}   // TODO: scene management
         TitleBarAction::None => {}
     }
