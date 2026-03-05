@@ -1,4 +1,4 @@
-//! Runtime camera spawning, render target syncing, and test scene.
+//! Runtime camera spawning and render target syncing.
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
@@ -46,51 +46,4 @@ pub fn sync_camera_render_target(
                 .insert(RenderTarget::Image(image.clone().into()));
         }
     }
-}
-
-/// Spawns a simple test scene: ground plane, cube, and lights.
-pub fn spawn_test_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // Ambient light so the scene is never pitch-black
-    commands.spawn(AmbientLight {
-        color: Color::WHITE,
-        brightness: 300.0,
-        affects_lightmapped_meshes: true,
-    });
-
-    // Ground plane
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(5.0)).mesh())),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.35, 0.35),
-            ..default()
-        })),
-        Transform::default(),
-        Name::new("Ground"),
-    ));
-
-    // Cube
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0).mesh())),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.3, 0.2),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-        Name::new("Cube"),
-    ));
-
-    // Directional light (sun)
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 10000.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.4, 0.0)),
-        Name::new("Sun"),
-    ));
 }

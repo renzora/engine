@@ -1,6 +1,6 @@
 //! Renzora Runtime — game engine core without editor dependencies.
 //!
-//! Provides the game camera, test scene, and core systems.
+//! Provides the game camera and core systems.
 //! When the editor is present, it renders to an offscreen image.
 //! When standalone, it renders directly to the window.
 
@@ -40,11 +40,6 @@ impl Plugin for RuntimePlugin {
 
         app.init_resource::<ViewportRenderTarget>()
             .add_systems(Startup, camera::spawn_runtime_camera)
-            .add_systems(
-                Startup,
-                camera::spawn_test_scene
-                    .run_if(not(resource_exists::<CurrentProject>)),
-            )
             .add_systems(Update, camera::sync_camera_render_target);
     }
 }
