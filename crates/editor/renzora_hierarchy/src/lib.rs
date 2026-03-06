@@ -9,8 +9,8 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    icon_button, search_overlay, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
-    OverlayAction, OverlayEntry, PanelLocation, PanelRegistry, SpawnRegistry,
+    icon_button, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
+    OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora_core::{MeshPrimitive, MeshColor};
 use renzora_theme::ThemeManager;
@@ -247,18 +247,12 @@ pub struct HierarchyPanelPlugin;
 
 impl Plugin for HierarchyPanelPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        registry.register(HierarchyPanel::default());
-        world.insert_resource(registry);
+        app.register_panel(HierarchyPanel::default());
 
-        let mut spawn_reg = world
-            .remove_resource::<SpawnRegistry>()
-            .unwrap_or_default();
-        register_builtin_presets(&mut spawn_reg);
-        world.insert_resource(spawn_reg);
+        app.init_resource::<SpawnRegistry>();
+        register_builtin_presets(
+            &mut app.world_mut().resource_mut::<SpawnRegistry>(),
+        );
     }
 }
 

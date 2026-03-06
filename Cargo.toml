@@ -37,6 +37,7 @@ editor = [
     "dep:renzora_export",
     "dep:renzora_mixer",
     "dep:renzora_console",
+    "dep:renzora_debugger",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
     "renzora_pixelation/editor",
@@ -96,6 +97,7 @@ renzora_scene = { path = "crates/editor/renzora_scene", optional = true }
 renzora_export = { path = "crates/editor/renzora_export", optional = true }
 renzora_mixer = { path = "crates/editor/renzora_mixer", optional = true }
 renzora_console = { path = "crates/editor/renzora_console", optional = true }
+renzora_debugger = { path = "crates/editor/renzora_debugger", optional = true }
 
 # Component crates (always included, editor feature cascaded)
 renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }

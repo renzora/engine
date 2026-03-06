@@ -11,7 +11,7 @@ use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -102,12 +102,6 @@ impl Plugin for EdgeGlowPlugin {
         app.register_type::<EdgeGlowSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<EdgeGlowSettings>::default());
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-        let world = app.world_mut();
-        if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-            registry.register(inspector_entry());
-        }
-        }
+        app.register_inspector(inspector_entry());
     }
 }

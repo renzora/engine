@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
 use renzora_editor::{
-    DockTree, EditorPanel, LayoutManager, PanelLocation, PanelRegistry, WorkspaceLayout,
+    AppEditorExt, DockTree, EditorPanel, LayoutManager, PanelLocation, WorkspaceLayout,
 };
 use renzora_theme::ThemeManager;
 // Widget re-exports come through renzora_editor (via renzora_ui)
@@ -2117,24 +2117,17 @@ pub struct WidgetGalleryPlugin;
 
 impl Plugin for WidgetGalleryPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-
         // Register panels
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-
-        registry.register(ControlsGallery::default());
-        registry.register(PropertiesGallery::default());
-        registry.register(CategoriesGallery::default());
-        registry.register(TileGridGallery::default());
-        registry.register(TreeGallery::default());
-        registry.register(MixerGallery::default());
-        registry.register(NodeGraphGallery::default());
-
-        world.insert_resource(registry);
+        app.register_panel(ControlsGallery::default());
+        app.register_panel(PropertiesGallery::default());
+        app.register_panel(CategoriesGallery::default());
+        app.register_panel(TileGridGallery::default());
+        app.register_panel(TreeGallery::default());
+        app.register_panel(MixerGallery::default());
+        app.register_panel(NodeGraphGallery::default());
 
         // Add gallery layout
+        let world = app.world_mut();
         let mut layouts = world
             .remove_resource::<LayoutManager>()
             .unwrap_or_default();

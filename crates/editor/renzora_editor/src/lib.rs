@@ -5,6 +5,7 @@
 
 pub mod camera;
 pub mod commands;
+pub mod ext;
 pub mod inspector_registry;
 pub mod selection;
 pub mod spawn_registry;
@@ -16,6 +17,8 @@ pub use commands::EditorCommands;
 pub use inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
+pub use ext::{AppEditorExt, InspectableComponent};
+pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
 
 // Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.

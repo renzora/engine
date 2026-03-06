@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    DockTree, DocumentTabState, EditorPanel, LayoutManager, PanelLocation, PanelRegistry, TabKind,
+    AppEditorExt, DockTree, DocumentTabState, EditorPanel, LayoutManager, PanelLocation, TabKind,
     WorkspaceLayout,
 };
 use renzora_theme::ThemeManager;
@@ -384,21 +384,13 @@ pub struct TestExtensionPlugin;
 
 impl Plugin for TestExtensionPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-
         // Register panels
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-
-        registry.register(ViewportPanel);
-        registry.register(InspectorPanel);
-        registry.register(ConsolePanel::default());
-        registry.register(AssetsPanel);
-        registry.register(PerformancePanel);
-        registry.register(CodeEditorPanel);
-
-        world.insert_resource(registry);
+        app.register_panel(ViewportPanel);
+        app.register_panel(InspectorPanel);
+        app.register_panel(ConsolePanel::default());
+        app.register_panel(AssetsPanel);
+        app.register_panel(PerformancePanel);
+        app.register_panel(CodeEditorPanel);
 
         // Add custom layouts
         let mut layouts = world

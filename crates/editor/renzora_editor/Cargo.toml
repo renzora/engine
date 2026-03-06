@@ -10,6 +10,8 @@ renzora_ui = { path = "../../ui/renzora_ui" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 renzora_splash = { path = "../../ui/renzora_splash" }
 renzora_core = { path = "../../core/renzora_core" }
+renzora_postprocess = { path = "../../postprocessing/renzora_postprocess" }
+renzora_macros = { path = "../../macros/renzora_macros" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

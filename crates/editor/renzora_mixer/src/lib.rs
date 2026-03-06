@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora_audio::{ChannelStrip, MixerState};
-use renzora_editor::{EditorPanel, PanelLocation, PanelRegistry};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 // ---------------------------------------------------------------------------
@@ -221,18 +221,12 @@ impl Plugin for MixerPlugin {
         app.add_systems(Update, sync_mixer_bridge);
 
         // Register the panel.
-        let world = app.world_mut();
-        let mut panel_reg = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        panel_reg.register(MixerPanel::new(arc));
-        world.insert_resource(panel_reg);
+        app.register_panel(MixerPanel::new(arc));
 
         // Register audio component inspectors.
-        let mut inspector_reg = world
-            .remove_resource::<renzora_editor::InspectorRegistry>()
-            .unwrap_or_default();
-        inspectors::register_audio_inspectors(&mut inspector_reg);
-        world.insert_resource(inspector_reg);
+        app.init_resource::<renzora_editor::InspectorRegistry>();
+        inspectors::register_audio_inspectors(
+            &mut app.world_mut().resource_mut::<renzora_editor::InspectorRegistry>(),
+        );
     }
 }

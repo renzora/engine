@@ -13,8 +13,8 @@ use bevy_egui::egui;
 use egui_phosphor::regular::SUN;
 #[cfg(feature = "editor")]
 use renzora_editor::{
-    file_drop_zone, get_theme_colors, inline_property, sanitize_f32, EditorCommands,
-    InspectorEntry, InspectorRegistry,
+    file_drop_zone, get_theme_colors, inline_property, sanitize_f32, AppEditorExt,
+    EditorCommands, InspectorEntry,
 };
 #[cfg(feature = "editor")]
 use renzora_theme::Theme;
@@ -751,12 +751,6 @@ impl Plugin for SkyboxPlugin {
             .add_systems(Update, sync_skybox);
 
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-            let world = app.world_mut();
-            if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-                registry.register(inspector_entry());
-            }
-        }
+        app.register_inspector(inspector_entry());
     }
 }

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor::{EditorPanel, PanelLocation, PanelRegistry};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::render::render_console_content;
@@ -179,12 +179,6 @@ impl Plugin for ConsolePlugin {
         app.insert_resource(bridge);
         app.add_systems(Update, (drain_log_buffer, sync_console_bridge));
 
-        // Register the panel.
-        let world = app.world_mut();
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        registry.register(ConsolePanel::new(arc));
-        world.insert_resource(registry);
+        app.register_panel(ConsolePanel::new(arc));
     }
 }

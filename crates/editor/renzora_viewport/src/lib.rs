@@ -10,7 +10,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor::{EditorPanel, PanelLocation, PanelRegistry};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_runtime::ViewportRenderTarget;
 use renzora_theme::ThemeManager;
 
@@ -27,13 +27,7 @@ impl Plugin for ViewportPlugin {
             .add_systems(PostStartup, setup_viewport)
             .add_systems(Update, handle_viewport_resize);
 
-        // Register the viewport panel
-        let world = app.world_mut();
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        registry.register(ViewportPanel);
-        world.insert_resource(registry);
+        app.register_panel(ViewportPanel);
     }
 }
 

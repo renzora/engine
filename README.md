@@ -153,7 +153,7 @@ renzora_theme = { path = "../../ui/renzora_theme" }
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor::PanelRegistry;
+use renzora_editor::AppEditorExt;
 use renzora_theme::ThemeManager;
 
 pub struct MyCustomPanel;
@@ -173,10 +173,7 @@ pub struct MyExtensionPlugin;
 
 impl Plugin for MyExtensionPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-        let mut registry = world.remove_resource::<PanelRegistry>().unwrap_or_default();
-        registry.register(MyCustomPanel);
-        world.insert_resource(registry);
+        app.register_panel(MyCustomPanel);
     }
 }
 ```
@@ -235,101 +232,55 @@ egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_editor = { path = "../renzora_editor" }
 ```
 
-### 2. Define the Component and Inspector
+### 2. Define the Component
+
+Use `#[derive(Inspectable)]` to auto-generate all inspector boilerplate:
 
 ```rust
 use bevy::prelude::*;
-use egui_phosphor::regular;
-use renzora_editor::{InspectorRegistry, InspectorEntry, FieldDef, FieldType, FieldValue};
+use renzora_editor::{AppEditorExt, Inspectable};
 
-#[derive(Component)]
+#[derive(Component, Default, Inspectable)]
+#[inspectable(name = "Health", icon = "HEART", category = "gameplay")]
 pub struct Health {
+    #[field(speed = 1.0, min = 0.0, max = 10000.0)]
     pub current: f32,
+    #[field(speed = 1.0, min = 1.0, max = 10000.0)]
     pub max: f32,
+    #[field(name = "Shield")]
     pub has_shield: bool,
-}
-
-impl Default for Health {
-    fn default() -> Self {
-        Self { current: 100.0, max: 100.0, has_shield: false }
-    }
-}
-
-fn health_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "health",
-        display_name: "Health",
-        icon: regular::HEART,
-        category: "gameplay",
-        has_fn: |world, entity| world.get::<Health>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(Health::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<Health>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Current",
-                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 10_000.0 },
-                get_fn: |world, entity| {
-                    world.get::<Health>(entity).map(|h| FieldValue::Float(h.current))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut h) = world.get_mut::<Health>(entity) {
-                            h.current = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Max",
-                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 10_000.0 },
-                get_fn: |world, entity| {
-                    world.get::<Health>(entity).map(|h| FieldValue::Float(h.max))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut h) = world.get_mut::<Health>(entity) {
-                            h.max = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Has Shield",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world.get::<Health>(entity).map(|h| FieldValue::Bool(h.has_shield))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(v) = val {
-                        if let Some(mut h) = world.get_mut::<Health>(entity) {
-                            h.has_shield = v;
-                        }
-                    }
-                },
-            },
-        ],
-        custom_ui_fn: None,
-    }
 }
 
 pub struct MyComponentsPlugin;
 
 impl Plugin for MyComponentsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<InspectorRegistry>();
-        let world = app.world_mut();
-        if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-            registry.register(health_entry());
-        }
+        app.register_inspectable::<Health>();
     }
 }
 ```
+
+The `Inspectable` derive generates the `InspectableComponent` trait impl automatically. Field types are inferred from Rust types (`f32` → drag slider, `bool` → checkbox, `String` → text input, `Vec3` → XYZ fields).
+
+#### `#[field(...)]` Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `speed = 0.1` | Drag speed for float/vec3 fields |
+| `min = 0.0` | Minimum value for float fields |
+| `max = 100.0` | Maximum value for float fields |
+| `name = "Display Name"` | Override the field's display name (default: title-cased) |
+| `skip` | Hide the field from the inspector |
+| `readonly` | Show as non-editable label |
+
+#### `#[inspectable(...)]` Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `name = "Health"` | Display name in inspector (default: struct name) |
+| `icon = "HEART"` | Phosphor icon name (default: `CUBE`) |
+| `category = "gameplay"` | Inspector category for grouping |
+| `type_id = "health"` | Unique ID (default: snake_case struct name) |
 
 ### 3. Register the Plugin
 
@@ -380,47 +331,36 @@ renzora_editor = { path = "../../editor/renzora_editor", optional = true }
 
 ### 2. Define the Effect
 
+Use `#[post_process]` to generate all derives, padding, `Default`, `PostProcessEffect`, and inspector impl:
+
 ```rust
 use bevy::prelude::*;
-use bevy::render::extract_component::ExtractComponent;
-use bevy::render::render_resource::ShaderType;
-use renzora_postprocess::PostProcessEffect;
-use serde::{Serialize, Deserialize};
+use serde;
+use renzora_postprocess;
+#[cfg(feature = "editor")]
+use renzora_editor::AppEditorExt;
 
-#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
-#[reflect(Component, Serialize, Deserialize)]
-#[extract_component_filter(With<Camera3d>)]
+#[renzora_macros::post_process(shader = "my_effect.wgsl", name = "My Effect", icon = "SPARKLE")]
 pub struct MyEffectSettings {
+    #[field(speed = 0.01, min = 0.0, max = 1.0, default = 0.5)]
     pub intensity: f32,
-    pub enabled: f32,       // 1.0 = on, 0.0 = off (f32 for shader compatibility)
-}
-
-impl Default for MyEffectSettings {
-    fn default() -> Self {
-        Self { intensity: 0.5, enabled: 0.0 }
-    }
-}
-
-impl PostProcessEffect for MyEffectSettings {
-    fn fragment_shader() -> ShaderRef {
-        "shaders/post_process/my_effect.wgsl".into()
-    }
-
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![
-            Node3d::Tonemapping.intern(),
-            Self::node_label().intern(),
-            Node3d::EndMainPassPostProcessing.intern(),
-        ]
-    }
 }
 ```
 
+The `#[post_process]` macro automatically:
+- Adds all required derives (`Component`, `Clone`, `Copy`, `Reflect`, `Serialize`, `Deserialize`, `ShaderType`, `ExtractComponent`)
+- Adds an `enabled: f32` field (1.0 = on, 0.0 = off)
+- Adds padding fields for 16-byte GPU alignment
+- Generates `Default` impl (respects `#[field(default = ...)]`)
+- Generates `PostProcessEffect` impl (shader path)
+- Generates `InspectableComponent` impl (behind `#[cfg(feature = "editor")]`)
+
 ### 3. Create the WGSL Shader
 
-```wgsl
-// assets/shaders/post_process/my_effect.wgsl
+The WGSL struct must match the Rust struct layout (user fields + padding + enabled):
 
+```wgsl
+// src/my_effect.wgsl
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;
@@ -428,19 +368,27 @@ impl PostProcessEffect for MyEffectSettings {
 
 struct MyEffectSettings {
     intensity: f32,
+    _padding1: f32,
+    _padding2: f32,
+    _padding3: f32,
+    _padding4: f32,
+    _padding5: f32,
+    _padding6: f32,
     enabled: f32,
-}
+};
 @group(0) @binding(2) var<uniform> settings: MyEffectSettings;
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let color = textureSample(screen_texture, texture_sampler, in.uv);
-    if (settings.enabled < 0.5) {
+    if settings.enabled < 0.5 {
         return color;
     }
     return mix(color, vec4(1.0, 0.0, 0.0, 1.0), settings.intensity * 0.1);
 }
 ```
+
+> **Note:** The macro pads to a minimum of 8 f32s (2 vec4s). For a struct with 1 user field + enabled = 2 fields, you get 6 padding fields. The formula is: `padding = max(8, next_multiple_of_4(fields + 1)) - fields - 1`.
 
 ### 4. Create the Plugin
 
@@ -449,19 +397,11 @@ pub struct MyEffectPlugin;
 
 impl Plugin for MyEffectPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "my_effect.wgsl");
         app.register_type::<MyEffectSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<MyEffectSettings>::default(),
-        );
-
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<MyEffectSettings>::default());
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<renzora_editor::InspectorRegistry>();
-            let world = app.world_mut();
-            if let Some(mut registry) = world.get_resource_mut::<renzora_editor::InspectorRegistry>() {
-                registry.register(inspector_entry());
-            }
-        }
+        app.register_inspectable::<MyEffectSettings>();
     }
 }
 ```

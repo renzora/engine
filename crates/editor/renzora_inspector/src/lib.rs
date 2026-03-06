@@ -11,8 +11,8 @@ use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular;
 use renzora_editor::{
     collapsible_section, collapsible_section_removable, empty_state, search_overlay,
-    EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
-    OverlayAction, OverlayEntry, PanelLocation, PanelRegistry,
+    AppEditorExt, EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
+    OverlayAction, OverlayEntry, PanelLocation,
 };
 use renzora_theme::ThemeManager;
 
@@ -239,20 +239,13 @@ pub struct InspectorPanelPlugin;
 
 impl Plugin for InspectorPanelPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-
         // Register built-in inspectors
-        let mut inspector_registry = world
-            .remove_resource::<InspectorRegistry>()
-            .unwrap_or_default();
-        built_in::register_built_in_inspectors(&mut inspector_registry);
-        world.insert_resource(inspector_registry);
+        app.init_resource::<InspectorRegistry>();
+        built_in::register_built_in_inspectors(
+            &mut app.world_mut().resource_mut::<InspectorRegistry>(),
+        );
 
         // Register the panel
-        let mut panel_registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        panel_registry.register(InspectorPanel::default());
-        world.insert_resource(panel_registry);
+        app.register_panel(InspectorPanel::default());
     }
 }

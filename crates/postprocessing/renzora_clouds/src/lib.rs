@@ -8,7 +8,7 @@ use bevy::shader::ShaderRef;
 use egui_phosphor::regular::CLOUD_SUN;
 #[cfg(feature = "editor")]
 use renzora_editor::{
-    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
+    AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 use serde::{Deserialize, Serialize};
 
@@ -423,12 +423,6 @@ impl Plugin for CloudsPlugin {
             .add_systems(Update, sync_clouds);
 
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-            let world = app.world_mut();
-            if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-                registry.register(inspector_entry());
-            }
-        }
+        app.register_inspector(inspector_entry());
     }
 }

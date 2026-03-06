@@ -17,24 +17,24 @@ fn main() {
         use renzora_export::ExportPlugin;
         use renzora_mixer::MixerPlugin;
         use renzora_console::ConsolePlugin;
+        use renzora_debugger::DebuggerPlugin;
 
-        app.add_plugins((
-            SplashPlugin,
-            RenzoraEditorPlugin,
-            GridPlugin,
-            CameraPlugin,
-            KeybindingsPlugin,
-            GizmoPlugin,
-            ViewportPlugin,
-            AssetBrowserPlugin,
-            HierarchyPanelPlugin,
-            InspectorPanelPlugin,
-            TestComponentPlugin,
-            ScenePlugin,
-            ExportPlugin,
-            MixerPlugin,
-            ConsolePlugin,
-        ));
+        app.add_plugins(SplashPlugin);
+        app.add_plugins(RenzoraEditorPlugin);
+        app.add_plugins(GridPlugin);
+        app.add_plugins(CameraPlugin);
+        app.add_plugins(KeybindingsPlugin);
+        app.add_plugins(GizmoPlugin);
+        app.add_plugins(ViewportPlugin);
+        app.add_plugins(AssetBrowserPlugin);
+        app.add_plugins(HierarchyPanelPlugin);
+        app.add_plugins(InspectorPanelPlugin);
+        app.add_plugins(TestComponentPlugin);
+        app.add_plugins(ScenePlugin);
+        app.add_plugins(ExportPlugin);
+        app.add_plugins(MixerPlugin);
+        app.add_plugins(ConsolePlugin);
+        app.add_plugins(DebuggerPlugin);
     }
 
     app.run();

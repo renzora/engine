@@ -1,96 +1,22 @@
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
-use bevy::render::{
-    extract_component::ExtractComponent,
-    render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
-    render_resource::ShaderType,
-};
-use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
+use serde;
+use renzora_postprocess;
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
-use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_editor::AppEditorExt;
 
-#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
-#[reflect(Component, Serialize, Deserialize)]
-#[extract_component_filter(With<Camera3d>)]
+#[renzora_macros::post_process(shader = "film_grain.wgsl", name = "Film Grain", icon = "FILM_STRIP")]
 pub struct FilmGrainSettings {
+    #[field(speed = 0.01, min = 0.0, max = 2.0, default = 0.3)]
     pub intensity: f32,
+    #[field(speed = 0.1, min = 0.1, max = 10.0, default = 1.5)]
     pub grain_size: f32,
+    #[field(skip, default = 0.0)]
     pub time: f32,
-    pub _padding0: f32,
-    pub _padding1: f32,
-    pub _padding2: f32,
-    pub _padding3: f32,
-    pub enabled: f32,
-}
-
-impl Default for FilmGrainSettings {
-    fn default() -> Self {
-        Self {
-            intensity: 0.3,
-            grain_size: 1.5,
-            time: 0.0,
-            _padding0: 0.0,
-            _padding1: 0.0,
-            _padding2: 0.0,
-            _padding3: 0.0,
-            enabled: 1.0,
-        }
-    }
-}
-
-impl PostProcessEffect for FilmGrainSettings {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_film_grain/film_grain.wgsl".into()
-    }
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
-    }
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![
-            Node3d::Tonemapping.intern(),
-            Self::node_label().intern(),
-            Node3d::EndMainPassPostProcessing.intern(),
-        ]
-    }
 }
 
 fn sync_time(time: Res<Time>, mut query: Query<&mut FilmGrainSettings>) {
     for mut s in query.iter_mut() {
         s.time = time.elapsed_secs();
-    }
-}
-
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "film_grain",
-        display_name: "Film Grain",
-        icon: regular::FILM_STRIP,
-        category: "post_process",
-        has_fn: |world, entity| world.get::<FilmGrainSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(FilmGrainSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<FilmGrainSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<FilmGrainSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<FilmGrainSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
-        fields: vec![
-            FieldDef {
-                name: "Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<FilmGrainSettings>(entity).map(|s| FieldValue::Float(s.intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<FilmGrainSettings>(entity) { s.intensity = v; } } },
-            },
-            FieldDef {
-                name: "Grain Size",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 10.0 },
-                get_fn: |world, entity| world.get::<FilmGrainSettings>(entity).map(|s| FieldValue::Float(s.grain_size)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<FilmGrainSettings>(entity) { s.grain_size = v; } } },
-            },
-        ],
-        custom_ui_fn: None,
     }
 }
 
@@ -100,17 +26,9 @@ impl Plugin for FilmGrainPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "film_grain.wgsl");
         app.register_type::<FilmGrainSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<FilmGrainSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<FilmGrainSettings>::default());
         app.add_systems(Update, sync_time);
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-        let world = app.world_mut();
-        if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-            registry.register(inspector_entry());
-        }
-        }
+        app.register_inspectable::<FilmGrainSettings>();
     }
 }

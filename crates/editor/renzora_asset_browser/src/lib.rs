@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Stroke};
 use egui_phosphor::regular;
-use renzora_editor::{EditorPanel, PanelLocation, PanelRegistry};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::AssetBrowserState;
@@ -161,11 +161,6 @@ pub struct AssetBrowserPlugin;
 
 impl Plugin for AssetBrowserPlugin {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
-        let mut registry = world
-            .remove_resource::<PanelRegistry>()
-            .unwrap_or_default();
-        registry.register(AssetBrowserPanel::default());
-        world.insert_resource(registry);
+        app.register_panel(AssetBrowserPanel::default());
     }
 }

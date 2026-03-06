@@ -1,103 +1,19 @@
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
-use bevy::render::{
-    extract_component::ExtractComponent,
-    render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
-    render_resource::ShaderType,
-};
-use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
+use serde;
+use renzora_postprocess;
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
-use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_editor::AppEditorExt;
 
-#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
-#[reflect(Component, Serialize, Deserialize)]
-#[extract_component_filter(With<Camera3d>)]
+#[renzora_macros::post_process(shader = "crt.wgsl", name = "CRT", icon = "MONITOR")]
 pub struct CrtSettings {
+    #[field(speed = 0.01, min = 0.0, max = 2.0, default = 0.3)]
     pub scanline_intensity: f32,
+    #[field(speed = 0.01, min = 0.0, max = 1.0, default = 0.02)]
     pub curvature: f32,
+    #[field(speed = 0.001, min = 0.0, max = 0.1, default = 0.003)]
     pub chromatic_amount: f32,
+    #[field(speed = 0.01, min = 0.0, max = 2.0, default = 0.5)]
     pub vignette_amount: f32,
-    pub _padding0: f32,
-    pub _padding1: f32,
-    pub _padding2: f32,
-    pub enabled: f32,
-}
-
-impl Default for CrtSettings {
-    fn default() -> Self {
-        Self {
-            scanline_intensity: 0.3,
-            curvature: 0.02,
-            chromatic_amount: 0.003,
-            vignette_amount: 0.5,
-            _padding0: 0.0,
-            _padding1: 0.0,
-            _padding2: 0.0,
-            enabled: 1.0,
-        }
-    }
-}
-
-impl PostProcessEffect for CrtSettings {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_crt/crt.wgsl".into()
-    }
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
-    }
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![
-            Node3d::Tonemapping.intern(),
-            Self::node_label().intern(),
-            Node3d::EndMainPassPostProcessing.intern(),
-        ]
-    }
-}
-
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "crt",
-        display_name: "CRT",
-        icon: regular::MONITOR,
-        category: "post_process",
-        has_fn: |world, entity| world.get::<CrtSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(CrtSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<CrtSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<CrtSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<CrtSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
-        fields: vec![
-            FieldDef {
-                name: "Scanline Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<CrtSettings>(entity).map(|s| FieldValue::Float(s.scanline_intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<CrtSettings>(entity) { s.scanline_intensity = v; } } },
-            },
-            FieldDef {
-                name: "Curvature",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<CrtSettings>(entity).map(|s| FieldValue::Float(s.curvature)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<CrtSettings>(entity) { s.curvature = v; } } },
-            },
-            FieldDef {
-                name: "Chromatic Amount",
-                field_type: FieldType::Float { speed: 0.001, min: 0.0, max: 0.1 },
-                get_fn: |world, entity| world.get::<CrtSettings>(entity).map(|s| FieldValue::Float(s.chromatic_amount)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<CrtSettings>(entity) { s.chromatic_amount = v; } } },
-            },
-            FieldDef {
-                name: "Vignette Amount",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<CrtSettings>(entity).map(|s| FieldValue::Float(s.vignette_amount)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<CrtSettings>(entity) { s.vignette_amount = v; } } },
-            },
-        ],
-        custom_ui_fn: None,
-    }
 }
 
 pub struct CrtPlugin;
@@ -106,16 +22,8 @@ impl Plugin for CrtPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "crt.wgsl");
         app.register_type::<CrtSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<CrtSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<CrtSettings>::default());
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-        let world = app.world_mut();
-        if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-            registry.register(inspector_entry());
-        }
-        }
+        app.register_inspectable::<CrtSettings>();
     }
 }

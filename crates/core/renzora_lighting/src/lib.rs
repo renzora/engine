@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular::SUN_HORIZON,
-    renzora_editor::{inline_property, EditorCommands, InspectorEntry, InspectorRegistry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -222,12 +222,6 @@ impl Plugin for LightingPlugin {
         app.add_systems(Update, sync_sun);
 
         #[cfg(feature = "editor")]
-        {
-            app.init_resource::<InspectorRegistry>();
-            let world = app.world_mut();
-            if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {
-                registry.register(inspector_entry());
-            }
-        }
+        app.register_inspector(inspector_entry());
     }
 }
