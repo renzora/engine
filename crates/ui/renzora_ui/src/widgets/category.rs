@@ -135,14 +135,14 @@ pub fn collapsible_section_removable(
             ui.spacing_mut().item_spacing.y = 0.0;
 
             // Header
-            let header_response = egui::Frame::new()
+            let header_inner = egui::Frame::new()
                 .fill(eff_header)
                 .corner_radius(CornerRadius::ZERO)
                 .inner_margin(egui::Margin::symmetric(8, 6))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         // Left: grip + caret + icon + label
-                        ui.scope(|ui| {
+                        let left_response = ui.scope(|ui| {
                             ui.set_max_width(
                                 (ui.available_width() - 58.0).max(20.0),
                             );
@@ -173,7 +173,7 @@ pub fn collapsible_section_removable(
                                 )
                                 .truncate(),
                             );
-                        });
+                        }).response;
 
                         // Right: toggle + trash
                         if can_remove {
@@ -215,22 +215,23 @@ pub fn collapsible_section_removable(
                         } else {
                             ui.allocate_space(ui.available_size());
                         }
-                    });
-                })
-                .response;
 
-                let click = header_response.interact(Sense::click_and_drag());
+                        left_response.rect
+                    }).inner
+                }).inner;
+
+                let click = ui.interact(header_inner, id.with("header_click"), Sense::click_and_drag());
                 if click.drag_started() {
                     drag_started = true;
                 }
-                if click.hovered() && !toggle_clicked_flag && !remove_clicked {
+                if click.hovered() {
                     if click.dragged() {
                         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                     } else {
                         ui.ctx().set_cursor_icon(CursorIcon::Grab);
                     }
                 }
-                if click.clicked() && !toggle_clicked_flag && !remove_clicked {
+                if click.clicked() {
                     state.toggle(ui);
                 }
 

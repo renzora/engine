@@ -63,8 +63,20 @@ pub struct InspectorRegistry {
 
 impl InspectorRegistry {
     /// Register an inspector entry for a component.
+    ///
+    /// The "name" component is always kept at the front; all others are appended.
     pub fn register(&mut self, entry: InspectorEntry) {
-        self.entries.push(entry);
+        match entry.type_id {
+            "name" => self.entries.insert(0, entry),
+            "transform" => {
+                // Insert after "name" if present, otherwise at the front.
+                let pos = self.entries.iter()
+                    .position(|e| e.type_id != "name")
+                    .unwrap_or(self.entries.len());
+                self.entries.insert(pos, entry);
+            }
+            _ => self.entries.push(entry),
+        }
     }
 
     /// Iterate over all registered entries.
