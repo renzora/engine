@@ -12,6 +12,7 @@ pub enum Platform {
     MacOSX64,
     MacOSArm64,
     AndroidArm64,
+    FireTVArm64,
     #[serde(rename = "ios_arm64")]
     IOSArm64,
     WebWasm32,
@@ -24,6 +25,7 @@ impl Platform {
         Platform::MacOSX64,
         Platform::MacOSArm64,
         Platform::AndroidArm64,
+        Platform::FireTVArm64,
         Platform::IOSArm64,
         Platform::WebWasm32,
     ];
@@ -35,6 +37,7 @@ impl Platform {
             Platform::MacOSX64 => "macOS (x64)",
             Platform::MacOSArm64 => "macOS (ARM64)",
             Platform::AndroidArm64 => "Android (ARM64)",
+            Platform::FireTVArm64 => "Fire TV (ARM64)",
             Platform::IOSArm64 => "iOS (ARM64)",
             Platform::WebWasm32 => "Web (WASM)",
         }
@@ -45,7 +48,7 @@ impl Platform {
             Platform::WindowsX64 => format!("{}.exe", project_name),
             Platform::LinuxX64 => project_name.to_string(),
             Platform::MacOSX64 | Platform::MacOSArm64 => project_name.to_string(),
-            Platform::AndroidArm64 => format!("{}.apk", project_name),
+            Platform::AndroidArm64 | Platform::FireTVArm64 => format!("{}.apk", project_name),
             Platform::IOSArm64 => format!("{}.app", project_name),
             Platform::WebWasm32 => format!("{}.wasm", project_name),
         }
@@ -57,7 +60,8 @@ impl Platform {
             Platform::LinuxX64 => "renzora-runtime-linux-x64",
             Platform::MacOSX64 => "renzora-runtime-macos-x64",
             Platform::MacOSArm64 => "renzora-runtime-macos-arm64",
-            Platform::AndroidArm64 => "renzora-runtime-android-arm64",
+            Platform::AndroidArm64 => "renzora-runtime-android-arm64.apk",
+            Platform::FireTVArm64 => "renzora-runtime-firetv-arm64.apk",
             Platform::IOSArm64 => "renzora-runtime-ios-arm64",
             Platform::WebWasm32 => "renzora-runtime-web-wasm32",
         }

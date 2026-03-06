@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_core::CurrentProject;
-use renzora_rpak::pack_directory;
+use renzora_rpak::{pack_directory, RpakPacker};
 use renzora_theme::ThemeManager;
 
 use crate::templates::{Platform, TemplateManager};
@@ -397,6 +397,57 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
         });
 }
 
+/// Export for Android: copy the template APK and inject the rpak into its assets/ folder.
+fn export_android_apk(
+    template_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    binary_name: &str,
+    packer: RpakPacker,
+    compression_level: i32,
+) -> std::io::Result<()> {
+    use std::io::{Read as _, Write as _};
+
+    let rpak_bytes = packer.finish(compression_level)?;
+
+    let apk_dest = output_dir.join(binary_name);
+
+    // Read the template APK
+    let template_data = std::fs::read(template_path)?;
+    let cursor = std::io::Cursor::new(&template_data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    // Create the output APK, copying all existing entries and adding the rpak
+    let out_file = std::fs::File::create(&apk_dest)?;
+    let mut writer = zip::ZipWriter::new(out_file);
+
+    // Copy all existing entries from template
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(entry.compression())
+            .unix_permissions(entry.unix_mode().unwrap_or(0o644));
+        writer.start_file(entry.name().to_string(), options)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let mut buf = Vec::new();
+        entry.read_to_end(&mut buf)?;
+        writer.write_all(&buf)?;
+    }
+
+    // Add the rpak as assets/game.rpak
+    let rpak_options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("assets/game.rpak", rpak_options)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    writer.write_all(&rpak_bytes)?;
+
+    writer.finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok(())
+}
+
 fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color32) {
     ui.label(
         egui::RichText::new(format!("{} {}", icon, label))
@@ -460,37 +511,40 @@ fn run_export(world: &mut World, project_name: &str) {
     }
 
     let binary_name = platform.binary_name(&project_name);
-    let result = match packaging_mode {
-        PackagingMode::SeparateFiles => {
-            let rpak_path = output_dir.join(format!("{}.rpak", project_name));
-            let binary_dest = output_dir.join(&binary_name);
+    let result = if matches!(platform, Platform::AndroidArm64 | Platform::FireTVArm64) {
+        export_android_apk(&template_path, &output_dir, &binary_name, packer, compression_level)
+    } else {
+        match packaging_mode {
+            PackagingMode::SeparateFiles => {
+                let rpak_path = output_dir.join(format!("{}.rpak", project_name));
+                let binary_dest = output_dir.join(&binary_name);
 
-            packer
-                .write_to_file(&rpak_path, compression_level)
-                .and_then(|_| std::fs::copy(&template_path, &binary_dest).map(|_| ()))
-                .and_then(|_| {
-                    // Make binary executable on Unix
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let perms = std::fs::Permissions::from_mode(0o755);
-                        std::fs::set_permissions(&binary_dest, perms)?;
-                    }
-                    Ok(())
-                })
-        }
-        PackagingMode::SingleBinary => {
-            let binary_dest = output_dir.join(&binary_name);
-            packer.append_to_binary(&template_path, &binary_dest, compression_level)
-                .and_then(|_| {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let perms = std::fs::Permissions::from_mode(0o755);
-                        std::fs::set_permissions(&binary_dest, perms)?;
-                    }
-                    Ok(())
-                })
+                packer
+                    .write_to_file(&rpak_path, compression_level)
+                    .and_then(|_| std::fs::copy(&template_path, &binary_dest).map(|_| ()))
+                    .and_then(|_| {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let perms = std::fs::Permissions::from_mode(0o755);
+                            std::fs::set_permissions(&binary_dest, perms)?;
+                        }
+                        Ok(())
+                    })
+            }
+            PackagingMode::SingleBinary => {
+                let binary_dest = output_dir.join(&binary_name);
+                packer.append_to_binary(&template_path, &binary_dest, compression_level)
+                    .and_then(|_| {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let perms = std::fs::Permissions::from_mode(0o755);
+                            std::fs::set_permissions(&binary_dest, perms)?;
+                        }
+                        Ok(())
+                    })
+            }
         }
     };
 

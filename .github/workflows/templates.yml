@@ -122,6 +122,11 @@ jobs:
         with:
           targets: aarch64-linux-android
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         id: ndk
@@ -131,23 +136,33 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
-      - name: Build runtime for Android ARM64
+      - name: Build native library
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        working-directory: crates/platform/renzora_android
         run: |
           cargo ndk \
             --target aarch64-linux-android \
             --platform 30 \
-            build --profile dist --no-default-features --bin renzora-runtime
+            build --profile dist
 
-      - name: Rename template
-        run: cp target/aarch64-linux-android/dist/renzora-runtime renzora-runtime-android-arm64
+      - name: Copy .so to Gradle project
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp crates/platform/renzora_android/target/aarch64-linux-android/dist/libmain.so \
+            android/app/src/main/jniLibs/arm64-v8a/libmain.so
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          gradle wrapper
+          ./gradlew :app:assembleRelease
 
       - name: Upload template
         uses: actions/upload-artifact@v4
         with:
-          name: renzora-runtime-android-arm64
-          path: renzora-runtime-android-arm64
+          name: renzora-runtime-android-arm64.apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
 
   # ---------------------------------------------------------------------------
   # iOS (ARM64) template

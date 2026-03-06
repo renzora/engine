@@ -3,7 +3,12 @@
 /app/
 /target-runtime/
 updater/target/
+**/target/
 Cargo.lock
+
+# Build artifacts
+/build/
+rustc-ice-*.txt
 
 # IDE
 .idea/

@@ -18,11 +18,12 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 8. [Creating Post-Process Effects](#creating-post-process-effects)
 9. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
 10. [Exporting](#exporting)
-11. [Cargo Features](#cargo-features)
-12. [Supported File Formats](#supported-file-formats)
-13. [Testing](#testing)
-14. [Troubleshooting](#troubleshooting)
-15. [License](#license)
+11. [Building Android Runtime](#building-android-runtime)
+12. [Cargo Features](#cargo-features)
+13. [Supported File Formats](#supported-file-formats)
+14. [Testing](#testing)
+15. [Troubleshooting](#troubleshooting)
+16. [License](#license)
 
 ## Project Status
 
@@ -654,6 +655,69 @@ An `.rpak` file contains all your project files (scenes, assets, scripts) compre
 | Android (ARM64) | `renzora-runtime-android-arm64` |
 | iOS (ARM64) | `renzora-runtime-ios-arm64` |
 | Web (WASM) | `renzora-runtime-web-wasm32` |
+
+## Building Android Runtime
+
+Build the Android runtime template APK so the editor can export games for Android devices.
+
+### Prerequisites
+
+1. **Android Studio** (includes SDK, NDK, and Java JBR)
+2. **cargo-ndk**: `cargo install cargo-ndk`
+3. **Rust Android targets** (nightly):
+   ```bash
+   rustup target add aarch64-linux-android --toolchain nightly
+   rustup target add x86_64-linux-android --toolchain nightly   # optional, for emulator
+   ```
+
+### Building the Template
+
+A single script handles environment detection, Rust cross-compilation, native library bundling, and Gradle build:
+
+```bash
+./scripts/build-android-template.sh              # ARM64 template
+./scripts/build-android-template.sh --x86_64     # Also build x86_64 (for emulator)
+./scripts/build-android-template.sh --firetv     # Fire TV variant
+./scripts/build-android-template.sh --sign       # Sign the APK after build
+./scripts/build-android-template.sh --install    # Sign + install to connected device
+```
+
+The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
+
+The built template is installed to:
+```
+Windows:  %APPDATA%\renzora\templates\renzora-runtime-android-arm64.apk
+Linux:    ~/.config/renzora/templates/renzora-runtime-android-arm64.apk
+```
+
+### Export Workflow
+
+1. **Build the template** using the script above
+2. **Export from the editor** -- select Android in the export overlay, which injects your game's `.rpak` into the template APK
+3. **Sign the exported APK** -- the editor produces an unsigned APK (the rpak injection invalidates any prior signature):
+   ```bash
+   ./scripts/sign-apk.sh path/to/exported-game.apk
+   ./scripts/sign-apk.sh path/to/exported-game.apk --install   # Sign + install to device
+   ```
+
+The sign script auto-creates a debug keystore if one doesn't exist at `~/.android/debug.keystore`.
+
+### How It Works
+
+- `cargo ndk` cross-compiles the `renzora_android` crate to `libmain.so` for each target architecture
+- `libc++_shared.so` is copied from the NDK sysroot alongside the native library
+- Gradle packages everything into an APK using `GameActivity` (from `androidx.games:games-activity:2.0.2`)
+- At runtime, the VFS reads `game.rpak` from the APK's `assets/` folder via the Android AssetManager NDK API
+
+### Troubleshooting Android
+
+| Issue | Fix |
+|-------|-----|
+| `ClassNotFoundException: GameActivity` | Ensure `games-activity` version matches `android-activity` Rust crate (currently 2.0.2) |
+| `UnsatisfiedLinkError: libc++_shared.so` | The build script copies this automatically; if building manually, copy from NDK sysroot |
+| `INSTALL_PARSE_FAILED_NO_CERTIFICATES` | Sign the APK with `./scripts/sign-apk.sh` before installing |
+| Blank screen (app runs but no content) | Ensure the rpak was injected into `assets/game.rpak` in the APK |
+| `SDK location not found` | Create `android/local.properties` with `sdk.dir=/path/to/Android/Sdk` |
 
 ## Cargo Features
 

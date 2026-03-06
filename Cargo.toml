@@ -4,13 +4,17 @@ version = "0.2.0"
 edition = "2021"
 default-run = "renzora"
 
+[lib]
+name = "renzora"
+path = "src/runtime.rs"
+
 [[bin]]
 name = "renzora"
-path = "src/main.rs"
+path = "src/editor.rs"
 
 [[bin]]
 name = "renzora-runtime"
-path = "src/main.rs"
+path = "src/editor.rs"
 
 [features]
 default = ["editor"]

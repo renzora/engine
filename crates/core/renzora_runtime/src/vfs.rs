@@ -23,6 +23,14 @@ pub struct Vfs {
 impl Vfs {
     /// Try to initialize the VFS from an embedded or adjacent rpak.
     pub fn detect() -> Self {
+        // Android: load rpak from APK assets
+        #[cfg(target_os = "android")]
+        {
+            if let Some(vfs) = Self::detect_android() {
+                return vfs;
+            }
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             // 1. Check for embedded rpak in current exe
@@ -71,6 +79,77 @@ impl Vfs {
         Self {
             archive: None,
             project_root: None,
+        }
+    }
+
+    /// On Android, try to load game.rpak from APK assets or internal storage.
+    #[cfg(target_os = "android")]
+    fn detect_android() -> Option<Self> {
+        // 1. Check if already extracted to internal storage
+        let candidates = [
+            "/data/data/com.renzora.runtime/files/game.rpak",
+            "/data/data/com.renzora.runtime/game.rpak",
+        ];
+
+        for path_str in &candidates {
+            let path = std::path::Path::new(path_str);
+            if path.exists() {
+                match RpakArchive::from_file(path) {
+                    Ok(archive) => {
+                        info!("Loaded Android rpak from {} ({} files)", path_str, archive.len());
+                        return Some(Self {
+                            archive: Some(archive),
+                            project_root: None,
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Failed to load Android rpak at {}: {}", path_str, e);
+                    }
+                }
+            }
+        }
+
+        // 2. Read assets/game.rpak from the APK via Android AssetManager
+        if let Some(vfs) = Self::load_from_apk_assets() {
+            return Some(vfs);
+        }
+
+        warn!("No rpak found on Android — running in filesystem mode");
+        None
+    }
+
+    /// Read game.rpak from APK assets/ using the Android AssetManager NDK API.
+    #[cfg(target_os = "android")]
+    fn load_from_apk_assets() -> Option<Self> {
+        use std::ffi::CString;
+
+        let android_app = bevy::android::ANDROID_APP.get()?;
+        let asset_manager = android_app.asset_manager();
+
+        let filename = CString::new("game.rpak").ok()?;
+        let mut asset = asset_manager.open(&filename)?;
+        let data = match asset.buffer() {
+            Ok(buf) => buf.to_vec(),
+            Err(e) => {
+                error!("Failed to read game.rpak from APK assets: {}", e);
+                return None;
+            }
+        };
+
+        info!("Read game.rpak from APK assets ({} bytes)", data.len());
+
+        match RpakArchive::from_bytes(&data) {
+            Ok(archive) => {
+                info!("Loaded rpak from APK assets ({} files)", archive.len());
+                Some(Self {
+                    archive: Some(archive),
+                    project_root: None,
+                })
+            }
+            Err(e) => {
+                error!("Failed to parse rpak from APK assets: {}", e);
+                None
+            }
         }
     }
 
