@@ -1,0 +1,10 @@
+[package]
+name = "renzora_audio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
+mint = "0.5"
+serde = { version = "1", features = ["derive"] }

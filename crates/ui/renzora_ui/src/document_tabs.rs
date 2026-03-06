@@ -88,18 +88,18 @@ impl TabKind {
     /// The layout name this tab type prefers.
     pub fn preferred_layout(&self) -> &'static str {
         match self {
-            TabKind::Scene => "Default",
+            TabKind::Scene => "Scene",
             TabKind::Script => "Scripting",
-            TabKind::Blueprint => "Default",
-            TabKind::Image => "Default",
-            TabKind::Video => "Default",
-            TabKind::Audio => "Default",
-            TabKind::Animation => "Default",
-            TabKind::Texture => "Default",
-            TabKind::ParticleFX => "Default",
-            TabKind::Level => "Default",
-            TabKind::Terrain => "Default",
-            TabKind::Shader => "Scripting",
+            TabKind::Blueprint => "Blueprints",
+            TabKind::Image => "Scene",
+            TabKind::Video => "Scene",
+            TabKind::Audio => "Scene",
+            TabKind::Animation => "Animation",
+            TabKind::Texture => "Scene",
+            TabKind::ParticleFX => "Particles",
+            TabKind::Level => "Level Design",
+            TabKind::Terrain => "Terrain",
+            TabKind::Shader => "Shaders",
         }
     }
 

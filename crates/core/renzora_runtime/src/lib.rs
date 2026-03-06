@@ -11,6 +11,9 @@ pub mod vfs;
 pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ViewportRenderTarget};
 pub use vfs::Vfs;
 
+// Re-export audio crate so downstream can use renzora_runtime::audio types
+pub use renzora_audio;
+
 use bevy::prelude::*;
 use renzora_lighting::SunData;
 

@@ -11,6 +11,7 @@ bevy = { version = "0.18" }
 renzora_core = { path = "../renzora_core" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_rpak = { path = "../renzora_rpak" }
+renzora_audio = { path = "../renzora_audio" }
 ron = "0.8"
 serde = "1"
 toml = "0.8"

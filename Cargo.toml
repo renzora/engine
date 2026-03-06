@@ -35,6 +35,8 @@ editor = [
     "dep:renzora_gizmo",
     "dep:renzora_scene",
     "dep:renzora_export",
+    "dep:renzora_mixer",
+    "dep:renzora_console",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
     "renzora_pixelation/editor",
@@ -74,6 +76,7 @@ editor = [
 bevy = { version = "0.18", features = ["jpeg"] }
 renzora_runtime = { path = "crates/core/renzora_runtime" }
 renzora_stinger = { path = "crates/core/renzora_stinger" }
+renzora_audio = { path = "crates/core/renzora_audio" }
 renzora_core = { path = "crates/core/renzora_core" }
 
 # Editor plugins (optional, enabled by `editor` feature)
@@ -91,6 +94,8 @@ renzora_keybindings = { path = "crates/editor/renzora_keybindings", optional = t
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_scene = { path = "crates/editor/renzora_scene", optional = true }
 renzora_export = { path = "crates/editor/renzora_export", optional = true }
+renzora_mixer = { path = "crates/editor/renzora_mixer", optional = true }
+renzora_console = { path = "crates/editor/renzora_console", optional = true }
 
 # Component crates (always included, editor feature cascaded)
 renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }

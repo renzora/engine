@@ -15,6 +15,8 @@ fn main() {
         use renzora_gizmo::GizmoPlugin;
         use renzora_scene::ScenePlugin;
         use renzora_export::ExportPlugin;
+        use renzora_mixer::MixerPlugin;
+        use renzora_console::ConsolePlugin;
 
         app.add_plugins((
             SplashPlugin,
@@ -30,6 +32,8 @@ fn main() {
             TestComponentPlugin,
             ScenePlugin,
             ExportPlugin,
+            MixerPlugin,
+            ConsolePlugin,
         ));
     }
 

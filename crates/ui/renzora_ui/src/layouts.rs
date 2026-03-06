@@ -21,7 +21,7 @@ pub struct LayoutManager {
 impl Default for LayoutManager {
     fn default() -> Self {
         let layouts = vec![
-            WorkspaceLayout { name: "Scene".into(), tree: layout_scene() },
+            WorkspaceLayout { name: "Scene".into(), tree: scene_layout() },
             WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
@@ -60,7 +60,7 @@ impl LayoutManager {
 }
 
 /// Scene: Hierarchy | Viewport+bottom strip | ShapeLibrary+Inspector
-fn layout_scene() -> DockTree {
+pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),
         DockTree::horizontal(

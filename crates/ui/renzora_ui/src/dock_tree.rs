@@ -299,8 +299,9 @@ pub struct DockingState {
 
 impl Default for DockingState {
     fn default() -> Self {
+        // Use the Scene layout from LayoutManager so they start in sync.
         Self {
-            tree: default_layout(),
+            tree: crate::layouts::scene_layout(),
         }
     }
 }

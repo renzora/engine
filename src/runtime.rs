@@ -37,6 +37,7 @@ pub fn build_runtime_app() -> App {
             })
     );
     app.add_plugins(renzora_runtime::RuntimePlugin);
+    app.add_plugins(renzora_audio::KiraPlugin);
 
     #[cfg(not(feature = "editor"))]
     app.add_plugins(StingerPlugin);
