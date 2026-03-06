@@ -11,8 +11,7 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 1. [Documentation](#documentation)
 2. [Prerequisites](#prerequisites)
 3. [Building & Running](#building--running)
-4. [Project Structure](#project-structure)
-5. [Creating Extensions](#creating-extensions)
+4. [Creating Extensions](#creating-extensions)
 6. [Creating Components](#creating-components)
 7. [Creating Post-Process Effects](#creating-post-process-effects)
 8. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
@@ -127,73 +126,6 @@ The engine has two binaries that share a common runtime library:
 
 Both binaries (`renzora` and `renzora-runtime`) use the same runtime core. The `editor` feature controls whether the editor UI is included.
 
-## Project Structure
-
-### Crate Layout
-
-```
-crates/
-  core/
-    renzora_core/              # Shared types: ProjectConfig, CurrentProject, markers
-    renzora_runtime/           # Runtime plugin: VFS, scene loading, camera, rpak
-    renzora_rpak/              # .rpak archive format (zstd-compressed asset packs)
-    renzora_lighting/          # Lighting components and systems
-  editor/
-    renzora_editor/            # Main editor: panels, docking, inspector registry
-    renzora_export/            # Export overlay + APK signing (pure Rust, no SDK needed)
-    renzora_scene/             # Scene save/load integration
-    renzora_viewport/          # 3D viewport rendering
-    renzora_hierarchy/         # Entity hierarchy panel
-    renzora_inspector/         # Inspector panel (property editing)
-    renzora_asset_browser/     # Asset browser panel
-    renzora_camera/            # Editor camera controls (orbit, pan, zoom)
-    renzora_gizmo/             # Transform gizmos
-    renzora_grid/              # Viewport grid
-    renzora_keybindings/       # Keyboard shortcut system
-    renzora_test_component/    # Example: custom components with inspectors
-    renzora_test_extension/    # Example: custom panels and layouts
-  ui/
-    renzora_ui/                # UI framework: panels, docking, widgets, drag-drop
-    renzora_theme/             # Theming system (TOML-based, live editing)
-    renzora_splash/            # Splash screen and project management
-  platform/
-    renzora_android/           # Android runtime entry point (GameActivity + NDK)
-  postprocessing/
-    renzora_postprocess/       # Base trait for post-process effects
-    renzora_vignette/          # Example effect (30+ effects total)
-    ...
-  plugins/
-    editor_plugin_api/         # FFI plugin API for dynamic DLL plugins
-    websocket_plugin/          # Example DLL plugin
-    mcp_server_plugin/         # Example DLL plugin
-  xr/
-    renzora_xr/                # VR/XR integration
-    renzora_vr_editor/         # VR editor UI
-  third_party/
-    bevy_oxr/                  # OpenXR bindings (local fork)
-    bevy_solari/               # Raytraced GI + DLSS
-    bevy_silk/                 # Cloth simulation
-    bevy_mod_outline/          # Mesh outlines
-    vleue_navigator/           # Navigation meshes
-
-android/                       # Gradle project for Android APK packaging
-scripts/                       # Build scripts (Android template)
-web/                           # Web/WASM hosting files
-```
-
-### Game Project Structure
-
-When you create a project in the editor, it generates:
-
-```
-my_game/
-  project.toml             # Project metadata (name, version, main scene, window config)
-  scenes/
-    main.ron               # Default scene (Bevy DynamicScene in RON format)
-  assets/                  # Textures, models, audio, etc.
-  plugins/                 # Local plugins
-```
-
 ## Creating Extensions
 
 Extensions add panels, layouts, and UI to the editor. See `crates/editor/renzora_test_extension/` for a complete example.
@@ -249,11 +181,25 @@ impl Plugin for MyExtensionPlugin {
 }
 ```
 
-### 3. Register in main.rs
+### 3. Register the Plugin
+
+The engine has two entry points:
+
+- **`src/runtime.rs`** -- `build_runtime_app()` sets up the core engine (rendering, physics, audio, post-process effects). Plugins registered here run in both the editor and exported games.
+- **`src/editor.rs`** -- `main()` calls `build_runtime_app()` then adds editor-only plugins inside `#[cfg(feature = "editor")]`. Plugins registered here only run in the editor.
+
+Editor extensions (panels, inspectors, UI) go in `src/editor.rs`:
 
 ```rust
 // src/editor.rs — inside the #[cfg(feature = "editor")] block
 app.add_plugins(my_extension::MyExtensionPlugin);
+```
+
+Gameplay or rendering plugins that should also run in exported games go in `src/runtime.rs`:
+
+```rust
+// src/runtime.rs — inside build_runtime_app()
+app.add_plugins(my_gameplay::GameplayPlugin);
 ```
 
 ### EditorPanel Trait Reference
@@ -385,7 +331,9 @@ impl Plugin for MyComponentsPlugin {
 }
 ```
 
-### 3. Register in main.rs
+### 3. Register the Plugin
+
+Component plugins with editor inspectors go in `src/editor.rs` (editor-only). If the component also needs to exist at runtime (e.g., for scripting or gameplay), register it in both places or use a feature gate.
 
 ```rust
 // src/editor.rs — inside the #[cfg(feature = "editor")] block
@@ -518,19 +466,21 @@ impl Plugin for MyEffectPlugin {
 }
 ```
 
-### 5. Register in main.rs and Cargo.toml
+### 5. Register the Plugin
 
-```toml
-# Root Cargo.toml — add to [features] editor list
-"my_effect/editor",
-
-# Root Cargo.toml — add to [dependencies]
-my_effect = { path = "crates/postprocessing/my_effect" }
-```
+Post-process effects run at runtime (they render in exported games), so register them in `src/runtime.rs`:
 
 ```rust
-// src/runtime.rs — add to build_runtime_app()
+// src/runtime.rs — inside build_runtime_app()
 app.add_plugins(my_effect::MyEffectPlugin);
+```
+
+```toml
+# Root Cargo.toml — add to [dependencies]
+my_effect = { path = "crates/postprocessing/my_effect" }
+
+# Root Cargo.toml — add to [features] editor list (for inspector UI)
+"my_effect/editor",
 ```
 
 ## Dynamic Plugins (DLL)
@@ -757,4 +707,7 @@ Then copy the binary to the templates directory, or use the "Install from file" 
 
 ## License
 
-MIT License -- see [LICENSE-MIT](LICENSE-MIT)
+Dual-licensed under MIT or Apache 2.0, at your option.
+
+- [MIT License](LICENSE-MIT)
+- [Apache License 2.0](LICENSE-APACHE)
