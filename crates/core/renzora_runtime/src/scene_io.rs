@@ -221,9 +221,35 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
         editor_cam = Some(e);
         break;
     }
-    let (Some(src), Some(dst)) = (scene_cam, editor_cam) else {
+    let Some(dst) = editor_cam else {
         return;
     };
+
+    // If no scene camera exists, remove all synced components from the editor camera.
+    let Some(src) = scene_cam else {
+        let type_registry = world.resource::<AppTypeRegistry>().clone();
+        let registry = type_registry.read();
+        let mut to_remove: Vec<bevy::ecs::reflect::ReflectComponent> = Vec::new();
+        let editor_ref = world.entity(dst);
+        for reg in registry.iter() {
+            let Some(reflect_component) = reg.data::<bevy::ecs::reflect::ReflectComponent>() else {
+                continue;
+            };
+            let type_path = reg.type_info().type_path();
+            if !should_sync(type_path) {
+                continue;
+            }
+            if reflect_component.contains(FilteredEntityRef::from(editor_ref)) {
+                to_remove.push(reflect_component.clone());
+            }
+        }
+        drop(registry);
+        for reflect_component in &to_remove {
+            reflect_component.remove(&mut world.entity_mut(dst));
+        }
+        return;
+    };
+
     if src == dst {
         return;
     }
