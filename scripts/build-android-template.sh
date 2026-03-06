@@ -16,8 +16,6 @@ set -euo pipefail
 # Usage:
 #   ./scripts/build-android-template.sh              # Build arm64 template
 #   ./scripts/build-android-template.sh --x86_64     # Also build x86_64 (for emulator)
-#   ./scripts/build-android-template.sh --sign       # Sign the APK after build
-#   ./scripts/build-android-template.sh --install    # Sign + install to connected device
 #   ./scripts/build-android-template.sh --firetv     # Build Fire TV variant instead
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,15 +25,11 @@ ANDROID_CRATE="$PROJECT_ROOT/crates/platform/renzora_android"
 JNILIBS_DIR="$ANDROID_DIR/app/src/main/jniLibs"
 
 BUILD_X86_64=false
-SIGN_APK=false
-INSTALL_APK=false
 FLAVOR="standard"
 
 for arg in "$@"; do
     case "$arg" in
         --x86_64)   BUILD_X86_64=true ;;
-        --sign)     SIGN_APK=true ;;
-        --install)  SIGN_APK=true; INSTALL_APK=true ;;
         --firetv)   FLAVOR="firetv" ;;
         *)          echo "Unknown option: $arg"; exit 1 ;;
     esac
@@ -182,63 +176,10 @@ echo ""
 echo "  Template: $TEMPLATES_DIR/$TEMPLATE_NAME"
 echo "  Copy:     $OUTPUT_DIR/$TEMPLATE_NAME"
 
-# --- Sign (optional) ---
-
-if [ "$SIGN_APK" = true ]; then
-    echo ""
-    echo "--- Signing APK ---"
-
-    # Find apksigner
-    APKSIGNER=""
-    for bt_dir in "$ANDROID_HOME"/build-tools/*/; do
-        if [ -f "${bt_dir}apksigner.bat" ]; then
-            APKSIGNER="${bt_dir}apksigner.bat"
-        elif [ -f "${bt_dir}apksigner" ]; then
-            APKSIGNER="${bt_dir}apksigner"
-        fi
-    done
-
-    if [ -z "$APKSIGNER" ]; then
-        echo "Error: apksigner not found in $ANDROID_HOME/build-tools/"
-        exit 1
-    fi
-
-    KEYSTORE="$HOME/.android/debug.keystore"
-    if [ ! -f "$KEYSTORE" ]; then
-        echo "  Creating debug keystore..."
-        "$JAVA_HOME/bin/keytool" -genkeypair -v \
-            -keystore "$KEYSTORE" \
-            -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android -keypass android \
-            -dname "CN=Debug,O=Android,C=US"
-    fi
-
-    "$APKSIGNER" sign \
-        --ks "$KEYSTORE" \
-        --ks-pass pass:android \
-        --key-pass pass:android \
-        "$TEMPLATES_DIR/$TEMPLATE_NAME"
-
-    echo "  Signed: $TEMPLATES_DIR/$TEMPLATE_NAME"
-fi
-
-# --- Install to device (optional) ---
-
-if [ "$INSTALL_APK" = true ]; then
-    echo ""
-    echo "--- Installing on device ---"
-    ADB="$ANDROID_HOME/platform-tools/adb"
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
-        ADB="${ADB}.exe"
-    fi
-    "$ADB" install -r "$TEMPLATES_DIR/$TEMPLATE_NAME"
-fi
-
 echo ""
 echo "=== Done! ==="
 echo ""
-echo "The template APK is UNSIGNED (so the editor can inject game assets)."
+echo "The template APK is UNSIGNED -- the editor injects game assets into it."
 echo "After exporting from the editor, sign the final APK with:"
 echo ""
 echo "  ./scripts/sign-apk.sh path/to/exported.apk"

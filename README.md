@@ -678,8 +678,6 @@ A single script handles environment detection, Rust cross-compilation, native li
 ./scripts/build-android-template.sh              # ARM64 template
 ./scripts/build-android-template.sh --x86_64     # Also build x86_64 (for emulator)
 ./scripts/build-android-template.sh --firetv     # Fire TV variant
-./scripts/build-android-template.sh --sign       # Sign the APK after build
-./scripts/build-android-template.sh --install    # Sign + install to connected device
 ```
 
 The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
