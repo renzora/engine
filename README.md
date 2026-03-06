@@ -529,30 +529,46 @@ Renzora uses `.rpak` files -- zstd-compressed archives containing all project as
 
 ### Export Templates
 
-Export templates are pre-built runtime binaries for each target platform. Build one locally:
+Export templates are pre-built runtime binaries for each target platform. When you export a game, the editor injects your project's assets into the template — so the template is a snapshot of the engine at build time.
+
+**Building templates:**
 
 ```bash
-cargo dist-runtime    # builds optimized desktop runtime
+# Desktop (current platform)
+cargo dist-runtime
+
+# Android (from Git Bash on Windows, or bash on Linux/macOS)
+./scripts/build-android-template.sh              # ARM64 (phones, tablets, VR headsets)
+./scripts/build-android-template.sh --x86_64     # ARM64 + x86_64 (emulator)
+./scripts/build-android-template.sh --firetv     # Fire TV
 ```
 
-Install it as a template by copying to the templates directory:
+Templates are installed automatically to:
 
 ```
-Windows:  %APPDATA%\renzora\templates\renzora-runtime-windows-x64.exe
-Linux:    ~/.config/renzora/templates/renzora-runtime-linux-x64
-macOS:    ~/Library/Application Support/renzora/templates/renzora-runtime-macos-arm64
+Windows:  %APPDATA%\renzora\templates\
+Linux:    ~/.config/renzora/templates/
+macOS:    ~/Library/Application Support/renzora/templates/
 ```
 
 Or use the "Install from file" button in the export overlay.
 
+**When to rebuild templates:** Templates only contain the engine runtime (`src/runtime.rs`) — not your game assets. You need to rebuild templates when you:
+
+- Add or remove plugins in `src/runtime.rs`
+- Update Bevy or other engine dependencies
+- Change any crate that the runtime depends on
+
+Changes to `src/editor.rs` (editor-only code) do **not** require rebuilding templates. Changes to your game project (scenes, scripts, assets) also do not — those are packed into the `.rpak` at export time.
+
 ### Export Overlay
 
-Open the export overlay from the editor. It provides:
+Open the export overlay from the editor. Options vary by platform:
 
-- **Platform selection** -- Windows, Linux, macOS, Android, Fire TV, iOS, Web
-- **Packaging mode** -- Binary + `.rpak` (two files) or single executable (rpak appended to binary)
+- **Platform selection** -- Windows, Linux, macOS, Android, Fire TV, iOS, Web (with supported device list)
+- **Packaging mode** (desktop only) -- Binary + `.rpak` (two files) or single executable (rpak appended)
 - **Compression** -- zstd level 1-19
-- **Window settings** -- Windowed, Fullscreen, or Borderless + resolution
+- **Window settings** (desktop only) -- Windowed, Fullscreen, or Borderless + resolution
 - **Icon** -- Custom .png/.ico for the exported game
 - **Output directory** -- Where the build goes
 
@@ -567,20 +583,33 @@ An `.rpak` file contains all your project files (scenes, assets, scripts) compre
 
 ### APK Signing
 
-Android APKs are signed automatically during export using APK Signature Scheme v2. The editor generates a debug RSA keypair and self-signed certificate on first use, stored in `%APPDATA%/renzora/signing/` (Windows) or `~/.config/renzora/signing/` (Linux/macOS). No Android SDK or external tools are required on the exporting machine.
+Android APKs are signed automatically during export using APK Signature Scheme v2 with ECDSA P-256. The editor generates a debug keypair and self-signed certificate on first use, stored in `%APPDATA%/renzora/signing/` (Windows) or `~/.config/renzora/signing/` (Linux/macOS). No Android SDK or external tools are required on the exporting machine.
 
 ### Supported Platforms
 
-| Platform | Template Filename |
-|----------|-------------------|
-| Windows (x64) | `renzora-runtime-windows-x64.exe` |
-| Linux (x64) | `renzora-runtime-linux-x64` |
-| macOS (x64) | `renzora-runtime-macos-x64` |
-| macOS (ARM64) | `renzora-runtime-macos-arm64` |
-| Android (ARM64) | `renzora-runtime-android-arm64.apk` |
-| Fire TV (ARM64) | `renzora-runtime-firetv-arm64.apk` |
-| iOS (ARM64) | `renzora-runtime-ios-arm64` |
-| Web (WASM) | `renzora-runtime-web-wasm32` |
+| Platform | Template | GPU Backend | Devices |
+|----------|----------|-------------|---------|
+| Windows (x64) | `renzora-runtime-windows-x64.exe` | Auto (DX12/Vulkan) | Desktop PCs, laptops, PCVR (SteamVR, Oculus Link) |
+| Linux (x64) | `renzora-runtime-linux-x64` | Auto (Vulkan) | Desktop PCs, laptops, Steam Deck |
+| macOS (x64) | `renzora-runtime-macos-x64` | Metal | Intel Macs |
+| macOS (ARM64) | `renzora-runtime-macos-arm64` | Metal | Apple Silicon Macs (M1/M2/M3/M4) |
+| Android (ARM64) | `renzora-runtime-android-arm64.apk` | Vulkan | Phones, tablets, Meta Quest, Pico, HTC Vive Focus |
+| Android (x86_64) | `renzora-runtime-android-x86_64.apk` | Vulkan | Android emulators |
+| Fire TV (ARM64) | `renzora-runtime-firetv-arm64.apk` | Vulkan | Fire TV Stick 4K Max, Fire TV Cube (3rd gen+) |
+| Fire TV (ARM) | `renzora-runtime-firetv-arm.apk` | OpenGL ES | Fire TV Stick, Fire TV Stick 4K (1st gen), Fire TV Cube (1st/2nd gen) |
+| iOS (ARM64) | `renzora-runtime-ios-arm64` | Metal | iPhone, iPad |
+| Web (WASM) | `renzora-runtime-web-wasm32` | WebGPU/WebGL | All modern browsers |
+
+#### Build Commands
+
+| Template | Command |
+|----------|---------|
+| Desktop (current OS) | `cargo dist-runtime` |
+| Android ARM64 | `./scripts/build-android-template.sh` |
+| Android ARM64 + x86_64 | `./scripts/build-android-template.sh --x86_64` |
+| Fire TV (ARM + ARM64) | `./scripts/build-android-template.sh --firetv` |
+
+> **Note:** Fire TV (ARM) uses OpenGL ES instead of Vulkan because older Fire TV devices have PowerVR GPUs with broken Vulkan drivers. Fire TV (ARM64) targets newer devices with Mali GPUs that have full Vulkan support. The `--firetv` flag builds both templates automatically.
 
 ## Building Android Runtime
 
@@ -593,7 +622,8 @@ Build the Android runtime template APK so the editor can export games for Androi
 3. **Rust Android targets** (nightly):
    ```bash
    rustup target add aarch64-linux-android --toolchain nightly
-   rustup target add x86_64-linux-android --toolchain nightly   # optional, for emulator
+   rustup target add x86_64-linux-android --toolchain nightly       # optional, for emulator
+   rustup target add armv7-linux-androideabi --toolchain nightly     # optional, for older Fire TV
    ```
 
 ### Building the Template
@@ -601,9 +631,9 @@ Build the Android runtime template APK so the editor can export games for Androi
 A single script handles environment detection, Rust cross-compilation, native library bundling, and Gradle build:
 
 ```bash
-./scripts/build-android-template.sh              # ARM64 template
+./scripts/build-android-template.sh              # ARM64 template (Vulkan)
 ./scripts/build-android-template.sh --x86_64     # Also build x86_64 (for emulator)
-./scripts/build-android-template.sh --firetv     # Fire TV variant
+./scripts/build-android-template.sh --firetv     # Fire TV: ARM (GLES) + ARM64 (Vulkan)
 ```
 
 The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
