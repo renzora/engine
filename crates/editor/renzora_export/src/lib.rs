@@ -5,6 +5,8 @@
 //! using pre-built runtime templates.
 
 #[cfg(not(target_arch = "wasm32"))]
+mod apk_signer;
+#[cfg(not(target_arch = "wasm32"))]
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;

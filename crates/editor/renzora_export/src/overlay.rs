@@ -511,8 +511,13 @@ fn run_export(world: &mut World, project_name: &str) {
     }
 
     let binary_name = platform.binary_name(&project_name);
-    let result = if matches!(platform, Platform::AndroidArm64 | Platform::FireTVArm64) {
+    let is_android = matches!(platform, Platform::AndroidArm64 | Platform::FireTVArm64);
+    let result = if is_android {
         export_android_apk(&template_path, &output_dir, &binary_name, packer, compression_level)
+            .and_then(|_| {
+                let apk_path = output_dir.join(&binary_name);
+                crate::apk_signer::sign_apk(&apk_path)
+            })
     } else {
         match packaging_mode {
             PackagingMode::SeparateFiles => {

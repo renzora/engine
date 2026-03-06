@@ -17,3 +17,5 @@ toml = "0.8"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
 zip = "2"
+rcgen = "0.13"
+ring = "0.17"

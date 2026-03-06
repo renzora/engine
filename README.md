@@ -1,6 +1,6 @@
 # Renzora Engine
 
-A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/). Currently in **alpha** -- actively developing toward feature parity with Bevy's full capabilities.
+A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/).
 
 ![Renzora Editor](assets/previews/interface.png)
 
@@ -8,65 +8,56 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Table of Contents
 
-1. [Project Status](#project-status)
-2. [Documentation](#documentation)
-3. [Prerequisites](#prerequisites)
-4. [Building & Running](#building--running)
-5. [Project Structure](#project-structure)
-6. [Creating Extensions](#creating-extensions)
-7. [Creating Components](#creating-components)
-8. [Creating Post-Process Effects](#creating-post-process-effects)
-9. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
-10. [Exporting](#exporting)
-11. [Building Android Runtime](#building-android-runtime)
-12. [Cargo Features](#cargo-features)
-13. [Supported File Formats](#supported-file-formats)
-14. [Testing](#testing)
-15. [Troubleshooting](#troubleshooting)
-16. [License](#license)
-
-## Project Status
-
-**Alpha** -- Core systems are functional and the editor is usable for scene composition, scripting, and game export. Not yet recommended for production use.
+1. [Documentation](#documentation)
+2. [Prerequisites](#prerequisites)
+3. [Building & Running](#building--running)
+4. [Project Structure](#project-structure)
+5. [Creating Extensions](#creating-extensions)
+6. [Creating Components](#creating-components)
+7. [Creating Post-Process Effects](#creating-post-process-effects)
+8. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
+9. [Exporting](#exporting)
+10. [Building Android Runtime](#building-android-runtime)
+11. [Cargo Features](#cargo-features)
+12. [Supported File Formats](#supported-file-formats)
+13. [Testing](#testing)
+14. [Troubleshooting](#troubleshooting)
+15. [License](#license)
 
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
-| **[Engine User Guide](docs/ENGINE_USER_GUIDE.md)** | Viewport controls, keyboard shortcuts, transform gizmos, terrain editing, scene management, components, and more |
-| **[Physics Guide](docs/PHYSICS_GUIDE.md)** | Rigid bodies, colliders, cloth simulation, debug panels, stress testing, and scripting integration |
-| **[Audio Guide](docs/AUDIO_GUIDE.md)** | Kira 0.12 audio system: mixer, spatial audio, emitter/listener components, scripting API, editor preview |
-| **[Console Commands](docs/CONSOLE_COMMANDS.md)** | Built-in `/` commands for the console: settings, toggles, snap, play mode, FPS, and more |
-| **[Scripting API Reference](docs/scripting-api.md)** | Full reference for the Rhai scripting API: transforms, input, physics, audio, timers, ECS queries |
-| **[VR Guide](docs/VR_GUIDE.md)** | OpenXR VR/XR system: headset setup, controllers, hand tracking, VR components, mixed reality, scripting API |
-| **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** | Architecture, API reference, UI creation, hot reload, testing, and complete examples |
+| **[Engine User Guide](docs/ENGINE_USER_GUIDE.md)** | Viewport controls, keyboard shortcuts, transform gizmos, terrain editing, scene management, components |
+| **[Physics Guide](docs/PHYSICS_GUIDE.md)** | Rigid bodies, colliders, cloth simulation, debug panels, stress testing, scripting integration |
+| **[Audio Guide](docs/AUDIO_GUIDE.md)** | Kira 0.12 audio system: mixer, spatial audio, emitter/listener components, scripting API |
+| **[Console Commands](docs/CONSOLE_COMMANDS.md)** | Built-in `/` commands for the console |
+| **[Scripting API Reference](docs/scripting-api.md)** | Full reference for the Rhai scripting API |
+| **[VR Guide](docs/VR_GUIDE.md)** | OpenXR VR/XR system: headset setup, controllers, hand tracking, mixed reality |
+| **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** | Architecture, API reference, UI creation, hot reload, testing |
 | **[Contributing Guide](CONTRIBUTING.md)** | Guidelines for submitting issues and pull requests |
 
 ## Prerequisites
 
-1. **Install Rust** from [rustup.rs](https://rustup.rs/) (this gives you `rustup`, `cargo`, and `rustc`)
+1. **Install Rust** from [rustup.rs](https://rustup.rs/)
 2. Windows 10/11, Linux, or macOS
 3. **Linux only:** Wayland dev libraries -- `sudo apt install libwayland-dev` (Debian/Ubuntu)
 
 ### Solari / Ray Tracing (Optional)
 
-The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruction, and meshlet virtual geometry. If you don't have the required SDKs or hardware, the engine builds and runs fine without it -- just don't enable the `solari` feature.
-
-**Platform compatibility:**
+The `solari` feature enables raytraced global illumination, DLSS Ray Reconstruction, and meshlet virtual geometry. The engine builds and runs fine without it.
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
 | Compile | Yes | Yes | No |
 | Runtime | NVIDIA RTX only | NVIDIA RTX only | No |
 
-DLSS is an NVIDIA-proprietary technology -- the SDK only provides libraries for Windows and Linux, and requires an RTX GPU at runtime. macOS and AMD/Intel GPU users should build without this feature.
-
 #### 1. Vulkan SDK (1.3.x or newer)
 
-Download from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home) and run the installer.
+Download from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home).
 
-- **Windows:** The installer sets `VULKAN_SDK` automatically. No extra steps needed.
-- **Linux:** `sudo apt install vulkan-sdk` or use the LunarG tarball and set `VULKAN_SDK` to the extracted directory.
+- **Windows:** The installer sets `VULKAN_SDK` automatically.
+- **Linux:** `sudo apt install vulkan-sdk` or use the LunarG tarball and set `VULKAN_SDK`.
 
 #### 2. DLSS SDK (v310.4.0)
 
@@ -110,15 +101,15 @@ cargo build-runtime          # build runtime binary
 ### Release Builds
 
 ```bash
-cargo release-editor         # optimized editor    -> app/release/renzora.exe
-cargo release-runtime        # optimized runtime   -> app/release/renzora-runtime.exe
-cargo dist-runtime           # max optimized runtime (fat LTO, stripped) -> app/dist/renzora-runtime.exe
+cargo release-editor         # optimized editor
+cargo release-runtime        # optimized runtime
+cargo dist-runtime           # max optimized runtime (fat LTO, stripped)
 ```
 
 ### Running the Runtime with a Project
 
 ```bash
-# PowerShell (use & prefix)
+# PowerShell
 & "./target/debug/renzora-runtime.exe" --project "C:\Users\you\Documents\my_game"
 
 # Bash / Linux / macOS
@@ -127,31 +118,14 @@ cargo dist-runtime           # max optimized runtime (fat LTO, stripped) -> app/
 
 The runtime also looks for `project.toml` in the current directory if `--project` is not specified.
 
-### How It Works
+### Architecture
 
-Both `renzora` and `renzora-runtime` point to the same `src/main.rs`. The `#[cfg(feature = "editor")]` guards control which plugins are included. The `editor` feature is enabled by default for the `renzora` binary and disabled for `renzora-runtime`.
+The engine has two binaries that share a common runtime library:
 
-All plugin registration lives in **`src/main.rs`** -- this is the single source of truth. To add a new plugin, add it here:
+- **`src/editor.rs`** -- Editor binary. Calls `build_runtime_app()` then adds editor plugins (UI, viewport, inspector, etc.) behind `#[cfg(feature = "editor")]`.
+- **`src/runtime.rs`** -- Shared runtime setup. Registers `DefaultPlugins`, `RuntimePlugin`, all post-process effects, environment plugins (skybox, clouds, lighting).
 
-```rust
-// src/main.rs
-
-// Editor-only plugins go inside the #[cfg(feature = "editor")] block
-#[cfg(feature = "editor")]
-app.add_plugins((
-    SplashPlugin,
-    RenzoraEditorPlugin,
-    // ... add your editor plugin here
-    MyEditorPlugin,
-));
-
-// Plugins needed at runtime go outside the cfg block
-app.add_plugins((
-    renzora_vignette::VignettePlugin,
-    // ... add your runtime plugin here
-    my_gameplay::GameplayPlugin,
-));
-```
+Both binaries (`renzora` and `renzora-runtime`) use the same runtime core. The `editor` feature controls whether the editor UI is included.
 
 ## Project Structure
 
@@ -160,36 +134,51 @@ app.add_plugins((
 ```
 crates/
   core/
-    renzora_core/          # Shared types: ProjectConfig, CurrentProject, markers
-    renzora_runtime/       # Runtime plugin: VFS, scene loading, camera, rpak support
-    renzora_rpak/          # .rpak archive format (zstd-compressed asset packs)
-    renzora_lighting/      # Lighting components and systems
+    renzora_core/              # Shared types: ProjectConfig, CurrentProject, markers
+    renzora_runtime/           # Runtime plugin: VFS, scene loading, camera, rpak
+    renzora_rpak/              # .rpak archive format (zstd-compressed asset packs)
+    renzora_lighting/          # Lighting components and systems
   editor/
-    renzora_editor/        # Main editor: panels, docking, inspector registry
-    renzora_export/        # Export overlay: pack projects into distributable builds
-    renzora_scene/         # Scene save/load integration
-    renzora_viewport/      # 3D viewport rendering
-    renzora_hierarchy/     # Entity hierarchy panel
-    renzora_inspector/     # Inspector panel (property editing)
-    renzora_asset_browser/ # Asset browser panel
-    renzora_camera/        # Editor camera controls (orbit, pan, zoom)
-    renzora_gizmo/         # Transform gizmos
-    renzora_grid/          # Viewport grid
-    renzora_keybindings/   # Keyboard shortcut system
-    renzora_test_component/   # Example: custom components with inspectors
-    renzora_test_extension/   # Example: custom panels and layouts
+    renzora_editor/            # Main editor: panels, docking, inspector registry
+    renzora_export/            # Export overlay + APK signing (pure Rust, no SDK needed)
+    renzora_scene/             # Scene save/load integration
+    renzora_viewport/          # 3D viewport rendering
+    renzora_hierarchy/         # Entity hierarchy panel
+    renzora_inspector/         # Inspector panel (property editing)
+    renzora_asset_browser/     # Asset browser panel
+    renzora_camera/            # Editor camera controls (orbit, pan, zoom)
+    renzora_gizmo/             # Transform gizmos
+    renzora_grid/              # Viewport grid
+    renzora_keybindings/       # Keyboard shortcut system
+    renzora_test_component/    # Example: custom components with inspectors
+    renzora_test_extension/    # Example: custom panels and layouts
   ui/
-    renzora_ui/            # UI framework: panels, docking, widgets, drag-drop
-    renzora_theme/         # Theming system (TOML-based, live editing)
-    renzora_splash/        # Splash screen and project management
+    renzora_ui/                # UI framework: panels, docking, widgets, drag-drop
+    renzora_theme/             # Theming system (TOML-based, live editing)
+    renzora_splash/            # Splash screen and project management
+  platform/
+    renzora_android/           # Android runtime entry point (GameActivity + NDK)
   postprocessing/
-    renzora_postprocess/   # Base trait for post-process effects
-    renzora_vignette/      # Example effect (30+ effects total)
+    renzora_postprocess/       # Base trait for post-process effects
+    renzora_vignette/          # Example effect (30+ effects total)
     ...
   plugins/
-    editor_plugin_api/     # FFI plugin API for dynamic DLL plugins
-    websocket_plugin/      # Example DLL plugin
-    mcp_server_plugin/     # Example DLL plugin
+    editor_plugin_api/         # FFI plugin API for dynamic DLL plugins
+    websocket_plugin/          # Example DLL plugin
+    mcp_server_plugin/         # Example DLL plugin
+  xr/
+    renzora_xr/                # VR/XR integration
+    renzora_vr_editor/         # VR editor UI
+  third_party/
+    bevy_oxr/                  # OpenXR bindings (local fork)
+    bevy_solari/               # Raytraced GI + DLSS
+    bevy_silk/                 # Cloth simulation
+    bevy_mod_outline/          # Mesh outlines
+    vleue_navigator/           # Navigation meshes
+
+android/                       # Gradle project for Android APK packaging
+scripts/                       # Build scripts (Android template)
+web/                           # Web/WASM hosting files
 ```
 
 ### Game Project Structure
@@ -229,14 +218,12 @@ renzora_theme = { path = "../../ui/renzora_theme" }
 ### 2. Implement EditorPanel
 
 ```rust
-// crates/editor/my_extension/src/lib.rs
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::PanelRegistry;
 use renzora_theme::ThemeManager;
 
-// Define a panel
 pub struct MyCustomPanel;
 
 impl renzora_editor::EditorPanel for MyCustomPanel {
@@ -250,14 +237,11 @@ impl renzora_editor::EditorPanel for MyCustomPanel {
     }
 }
 
-// Create the plugin
 pub struct MyExtensionPlugin;
 
 impl Plugin for MyExtensionPlugin {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
-
-        // Register panels
         let mut registry = world.remove_resource::<PanelRegistry>().unwrap_or_default();
         registry.register(MyCustomPanel);
         world.insert_resource(registry);
@@ -268,11 +252,8 @@ impl Plugin for MyExtensionPlugin {
 ### 3. Register in main.rs
 
 ```rust
-// src/main.rs — inside the #[cfg(feature = "editor")] block
-app.add_plugins((
-    // ... existing plugins
-    my_extension::MyExtensionPlugin,
-));
+// src/editor.rs — inside the #[cfg(feature = "editor")] block
+app.add_plugins(my_extension::MyExtensionPlugin);
 ```
 
 ### EditorPanel Trait Reference
@@ -315,7 +296,6 @@ use bevy::prelude::*;
 use egui_phosphor::regular;
 use renzora_editor::{InspectorRegistry, InspectorEntry, FieldDef, FieldType, FieldValue};
 
-// The component itself
 #[derive(Component)]
 pub struct Health {
     pub current: f32,
@@ -329,7 +309,6 @@ impl Default for Health {
     }
 }
 
-// Inspector entry — tells the editor how to display and edit this component
 fn health_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "health",
@@ -393,7 +372,6 @@ fn health_entry() -> InspectorEntry {
     }
 }
 
-// Plugin
 pub struct MyComponentsPlugin;
 
 impl Plugin for MyComponentsPlugin {
@@ -410,11 +388,8 @@ impl Plugin for MyComponentsPlugin {
 ### 3. Register in main.rs
 
 ```rust
-#[cfg(feature = "editor")]
-app.add_plugins((
-    // ... existing plugins
-    my_components::MyComponentsPlugin,
-));
+// src/editor.rs — inside the #[cfg(feature = "editor")] block
+app.add_plugins(my_components::MyComponentsPlugin);
 ```
 
 ### Field Types
@@ -515,7 +490,6 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     if (settings.enabled < 0.5) {
         return color;
     }
-    // Your effect here
     return mix(color, vec4(1.0, 0.0, 0.0, 1.0), settings.intensity * 0.1);
 }
 ```
@@ -532,7 +506,6 @@ impl Plugin for MyEffectPlugin {
             renzora_postprocess::PostProcessPlugin::<MyEffectSettings>::default(),
         );
 
-        // Editor inspector (only compiled with editor feature)
         #[cfg(feature = "editor")]
         {
             app.init_resource::<renzora_editor::InspectorRegistry>();
@@ -556,10 +529,8 @@ my_effect = { path = "crates/postprocessing/my_effect" }
 ```
 
 ```rust
-// src/main.rs — outside the #[cfg(feature = "editor")] block (runtime needs it too)
-app.add_plugins((
-    my_effect::MyEffectPlugin,
-));
+// src/runtime.rs — add to build_runtime_app()
+app.add_plugins(my_effect::MyEffectPlugin);
 ```
 
 ## Dynamic Plugins (DLL)
@@ -586,7 +557,6 @@ impl MyDynamicPlugin {
     }
 }
 
-// Generates FFI entry points for dynamic loading
 declare_plugin!(MyDynamicPlugin, MyDynamicPlugin::new());
 ```
 
@@ -605,17 +575,17 @@ declare_plugin!(MyDynamicPlugin, MyDynamicPlugin::new());
 
 ## Exporting
 
-Renzora uses `.rpak` files -- zstd-compressed archives containing all project assets. The export system supports two packaging modes.
+Renzora uses `.rpak` files -- zstd-compressed archives containing all project assets. The export system supports multiple platforms and packaging modes.
 
 ### Export Templates
 
 Export templates are pre-built runtime binaries for each target platform. Build one locally:
 
 ```bash
-cargo dist-runtime    # builds optimized runtime -> app/dist/renzora-runtime.exe
+cargo dist-runtime    # builds optimized desktop runtime
 ```
 
-Install it as a template by copying it to the templates directory:
+Install it as a template by copying to the templates directory:
 
 ```
 Windows:  %APPDATA%\renzora\templates\renzora-runtime-windows-x64.exe
@@ -627,9 +597,9 @@ Or use the "Install from file" button in the export overlay.
 
 ### Export Overlay
 
-Open the export overlay from the editor (toggle `ExportOverlayState.visible`). It provides:
+Open the export overlay from the editor. It provides:
 
-- **Platform selection** -- Windows, Linux, macOS, Android, iOS, Web
+- **Platform selection** -- Windows, Linux, macOS, Android, Fire TV, iOS, Web
 - **Packaging mode** -- Binary + `.rpak` (two files) or single executable (rpak appended to binary)
 - **Compression** -- zstd level 1-19
 - **Window settings** -- Windowed, Fullscreen, or Borderless + resolution
@@ -643,6 +613,11 @@ An `.rpak` file contains all your project files (scenes, assets, scripts) compre
 1. The runtime checks for an embedded rpak inside itself (single binary mode)
 2. Falls back to an adjacent `.rpak` file (e.g., `MyGame.rpak` next to `MyGame.exe`)
 3. Falls back to `--project` CLI argument or local `project.toml`
+4. On Android, reads `game.rpak` from the APK's `assets/` folder via the NDK AssetManager
+
+### APK Signing
+
+Android APKs are signed automatically during export using APK Signature Scheme v2. The editor generates a debug RSA keypair and self-signed certificate on first use, stored in `%APPDATA%/renzora/signing/` (Windows) or `~/.config/renzora/signing/` (Linux/macOS). No Android SDK or external tools are required on the exporting machine.
 
 ### Supported Platforms
 
@@ -652,13 +627,14 @@ An `.rpak` file contains all your project files (scenes, assets, scripts) compre
 | Linux (x64) | `renzora-runtime-linux-x64` |
 | macOS (x64) | `renzora-runtime-macos-x64` |
 | macOS (ARM64) | `renzora-runtime-macos-arm64` |
-| Android (ARM64) | `renzora-runtime-android-arm64` |
+| Android (ARM64) | `renzora-runtime-android-arm64.apk` |
+| Fire TV (ARM64) | `renzora-runtime-firetv-arm64.apk` |
 | iOS (ARM64) | `renzora-runtime-ios-arm64` |
 | Web (WASM) | `renzora-runtime-web-wasm32` |
 
 ## Building Android Runtime
 
-Build the Android runtime template APK so the editor can export games for Android devices.
+Build the Android runtime template APK so the editor can export games for Android devices. This is only needed if you're building template APKs yourself -- consumers just need the template file.
 
 ### Prerequisites
 
@@ -688,24 +664,23 @@ Windows:  %APPDATA%\renzora\templates\renzora-runtime-android-arm64.apk
 Linux:    ~/.config/renzora/templates/renzora-runtime-android-arm64.apk
 ```
 
+### CI/CD
+
+Android templates are also built automatically via GitHub Actions on tagged releases and manual dispatch. The workflow cross-compiles on Ubuntu runners using `cargo-ndk` and uploads the unsigned template APK as a build artifact.
+
 ### Export Workflow
 
-1. **Build the template** using the script above
-2. **Export from the editor** -- select Android in the export overlay, which injects your game's `.rpak` into the template APK
-3. **Sign the exported APK** -- the editor produces an unsigned APK (the rpak injection invalidates any prior signature):
-   ```bash
-   ./scripts/sign-apk.sh path/to/exported-game.apk
-   ./scripts/sign-apk.sh path/to/exported-game.apk --install   # Sign + install to device
-   ```
-
-The sign script auto-creates a debug keystore if one doesn't exist at `~/.android/debug.keystore`.
+1. **Build the template** (or download from CI)
+2. **Export from the editor** -- select Android in the export overlay, which injects your game's `.rpak` into the template APK and signs it automatically
+3. **Install on device** -- the exported APK is ready to install, no additional signing step needed
 
 ### How It Works
 
 - `cargo ndk` cross-compiles the `renzora_android` crate to `libmain.so` for each target architecture
 - `libc++_shared.so` is copied from the NDK sysroot alongside the native library
 - Gradle packages everything into an APK using `GameActivity` (from `androidx.games:games-activity:2.0.2`)
-- At runtime, the VFS reads `game.rpak` from the APK's `assets/` folder via the Android AssetManager NDK API
+- At export time, the editor injects `game.rpak` into the APK's `assets/` folder and signs it with APK Signature Scheme v2 (pure Rust, no SDK needed)
+- At runtime, the VFS reads `game.rpak` from APK assets via the Android AssetManager NDK API
 
 ### Troubleshooting Android
 
@@ -713,7 +688,6 @@ The sign script auto-creates a debug keystore if one doesn't exist at `~/.androi
 |-------|-----|
 | `ClassNotFoundException: GameActivity` | Ensure `games-activity` version matches `android-activity` Rust crate (currently 2.0.2) |
 | `UnsatisfiedLinkError: libc++_shared.so` | The build script copies this automatically; if building manually, copy from NDK sysroot |
-| `INSTALL_PARSE_FAILED_NO_CERTIFICATES` | Sign the APK with `./scripts/sign-apk.sh` before installing |
 | Blank screen (app runs but no content) | Ensure the rpak was injected into `assets/game.rpak` in the APK |
 | `SDK location not found` | Create `android/local.properties` with `sdk.dir=/path/to/Android/Sdk` |
 
@@ -773,16 +747,14 @@ cargo dist-runtime
 
 Windows Smart App Control is blocking build script executables. Open **Windows Security > App & Browser Control > Smart App Control** and turn it off.
 
-**Workaround:** Run `cargo build` (debug) first, then the release build.
-
 ### Export shows "Template not installed"
 
 Build the runtime template and install it:
 ```bash
 cargo dist-runtime
 ```
-Then copy `app/dist/renzora-runtime.exe` to `%APPDATA%\renzora\templates\renzora-runtime-windows-x64.exe`, or use the "Install from file" button in the export overlay.
+Then copy the binary to the templates directory, or use the "Install from file" button in the export overlay.
 
 ## License
 
-Apache License 2.0 -- see [LICENSE.md](LICENSE.md)
+MIT License -- see [LICENSE-MIT](LICENSE-MIT)
