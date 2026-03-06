@@ -6,22 +6,17 @@
 #   3. Rust Android targets:
 #        rustup target add aarch64-linux-android --toolchain nightly
 #        rustup target add x86_64-linux-android --toolchain nightly
-#        rustup target add armv7-linux-androideabi --toolchain nightly
 #
 # Usage:
-#   .\scripts\build-android-template.ps1                        # Android ARM64 (Vulkan)
-#   .\scripts\build-android-template.ps1 --x86_64               # Android x86_64 (Vulkan)
-#   .\scripts\build-android-template.ps1 --firetv-arm           # Fire TV ARM 32-bit (GLES)
-#   .\scripts\build-android-template.ps1 --firetv-arm64         # Fire TV ARM64 (Vulkan)
-#   .\scripts\build-android-template.ps1 --firetv               # Both Fire TV templates
-#   .\scripts\build-android-template.ps1 --all                  # Build all templates
-#   .\scripts\build-android-template.ps1 --firetv-arm --x86_64  # Multiple targets
+#   .\scripts\build-android-template.ps1              # Android ARM64 (Vulkan)
+#   .\scripts\build-android-template.ps1 -x86         # Android x86_64 (Vulkan)
+#   .\scripts\build-android-template.ps1 -firetv      # Fire TV ARM64 (Vulkan)
+#   .\scripts\build-android-template.ps1 -all         # Build all templates
+#   .\scripts\build-android-template.ps1 -firetv -x86 # Multiple targets
 
 param(
     [switch]$arm64,
     [Alias("x86_64")][switch]$x86,
-    [Alias("firetv-arm")][switch]$firetvArm,
-    [Alias("firetv-arm64")][switch]$firetvArm64,
     [switch]$firetv,
     [switch]$all
 )
@@ -34,11 +29,10 @@ $AndroidCrate = "$ProjectRoot\crates\platform\renzora_android"
 $JniLibsDir = "$AndroidDir\app\src\main\jniLibs"
 
 # --- Expand shortcut flags ---
-if ($firetv) { $firetvArm = $true; $firetvArm64 = $true }
-if ($all) { $arm64 = $true; $x86 = $true; $firetvArm = $true; $firetvArm64 = $true }
+if ($all) { $arm64 = $true; $x86 = $true; $firetv = $true }
 
 # Default: Android ARM64 if nothing specified
-if (-not $arm64 -and -not $x86 -and -not $firetvArm -and -not $firetvArm64) {
+if (-not $arm64 -and -not $x86 -and -not $firetv) {
     $arm64 = $true
 }
 
@@ -113,7 +107,6 @@ function Build-Arch {
         [string]$Abi,
         [string]$TemplateName,
         [string]$Flavor,
-        [bool]$UseGles = $false,
         [int]$MinPlatform = 30
     )
 
@@ -130,15 +123,7 @@ function Build-Arch {
     Write-Host "--- Building native library: $Abi ---"
     Push-Location $AndroidCrate
 
-    $extraArgs = @()
-    if ($UseGles) {
-        $extraArgs = @("--features", "gles")
-        Write-Host "  -> Using OpenGL ES backend" -ForegroundColor Yellow
-    } else {
-        Write-Host "  -> Using Vulkan backend" -ForegroundColor Green
-    }
-
-    & cargo ndk --target $RustTarget --platform $MinPlatform build --release @extraArgs
+    & cargo ndk --target $RustTarget --platform $MinPlatform build --release
     if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Error "cargo ndk build failed" }
 
     Pop-Location
@@ -179,19 +164,15 @@ function Build-Arch {
 # --- Build selected targets ---
 
 if ($arm64) {
-    Build-Arch -RustTarget "aarch64-linux-android" -Abi "arm64-v8a" -TemplateName "renzora-runtime-android-arm64.apk" -Flavor "standard" -UseGles $false -MinPlatform 30
+    Build-Arch -RustTarget "aarch64-linux-android" -Abi "arm64-v8a" -TemplateName "renzora-runtime-android-arm64.apk" -Flavor "standard" -MinPlatform 30
 }
 
 if ($x86) {
-    Build-Arch -RustTarget "x86_64-linux-android" -Abi "x86_64" -TemplateName "renzora-runtime-android-x86_64.apk" -Flavor "standard" -UseGles $false -MinPlatform 30
+    Build-Arch -RustTarget "x86_64-linux-android" -Abi "x86_64" -TemplateName "renzora-runtime-android-x86_64.apk" -Flavor "standard" -MinPlatform 30
 }
 
-if ($firetvArm) {
-    Build-Arch -RustTarget "armv7-linux-androideabi" -Abi "armeabi-v7a" -TemplateName "renzora-runtime-firetv-arm.apk" -Flavor "firetv" -UseGles $true -MinPlatform 25
-}
-
-if ($firetvArm64) {
-    Build-Arch -RustTarget "aarch64-linux-android" -Abi "arm64-v8a" -TemplateName "renzora-runtime-firetv-arm64.apk" -Flavor "firetv" -UseGles $false -MinPlatform 25
+if ($firetv) {
+    Build-Arch -RustTarget "aarch64-linux-android" -Abi "arm64-v8a" -TemplateName "renzora-runtime-firetv-arm64.apk" -Flavor "firetv" -MinPlatform 30
 }
 
 # --- Clean up ---

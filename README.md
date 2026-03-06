@@ -540,13 +540,13 @@ cargo dist-runtime
 # Android (bash / Git Bash)
 ./scripts/build-android-template.sh              # ARM64 (phones, tablets, VR headsets)
 ./scripts/build-android-template.sh --x86_64     # x86_64 (emulator)
-./scripts/build-android-template.sh --firetv     # Fire TV (ARM + ARM64)
+./scripts/build-android-template.sh --firetv     # Fire TV ARM64
 ./scripts/build-android-template.sh --all        # All Android templates
 
 # Android (PowerShell)
 .\scripts\build-android-template.ps1             # ARM64 (phones, tablets, VR headsets)
 .\scripts\build-android-template.ps1 -x86        # x86_64 (emulator)
-.\scripts\build-android-template.ps1 -firetv     # Fire TV (ARM + ARM64)
+.\scripts\build-android-template.ps1 -firetv     # Fire TV ARM64
 .\scripts\build-android-template.ps1 -all        # All Android templates
 ```
 
@@ -602,8 +602,7 @@ Android APKs are signed automatically during export using APK Signature Scheme v
 | macOS (ARM64) | `renzora-runtime-macos-arm64` | Metal | Apple Silicon Macs (M1/M2/M3/M4) |
 | Android (ARM64) | `renzora-runtime-android-arm64.apk` | Vulkan | Phones, tablets, Meta Quest, Pico, HTC Vive Focus |
 | Android (x86_64) | `renzora-runtime-android-x86_64.apk` | Vulkan | Android emulators |
-| Fire TV (ARM64) | `renzora-runtime-firetv-arm64.apk` | Vulkan | Fire TV Stick 4K Max, Fire TV Cube (3rd gen+) |
-| Fire TV (ARM) | `renzora-runtime-firetv-arm.apk` | OpenGL ES | Fire TV Stick, Fire TV Stick 4K (1st gen), Fire TV Cube (1st/2nd gen) |
+| Fire TV | `renzora-runtime-firetv-arm64.apk` | Vulkan | Fire TV Stick 4K Max, Fire TV Cube (3rd gen+) |
 | iOS (ARM64) | `renzora-runtime-ios-arm64` | Metal | iPhone, iPad |
 | Web (WASM) | `renzora-runtime-web-wasm32` | WebGPU/WebGL | All modern browsers |
 
@@ -614,14 +613,14 @@ Android APKs are signed automatically during export using APK Signature Scheme v
 | Desktop (current OS) | `cargo dist-runtime` | `cargo dist-runtime` |
 | Android ARM64 | `./scripts/build-android-template.sh` | `.\scripts\build-android-template.ps1` |
 | Android x86_64 | `./scripts/build-android-template.sh --x86_64` | `.\scripts\build-android-template.ps1 -x86` |
-| Fire TV ARM (32-bit) | `./scripts/build-android-template.sh --firetv-arm` | `.\scripts\build-android-template.ps1 -firetvArm` |
-| Fire TV ARM64 | `./scripts/build-android-template.sh --firetv-arm64` | `.\scripts\build-android-template.ps1 -firetvArm64` |
-| All Fire TV | `./scripts/build-android-template.sh --firetv` | `.\scripts\build-android-template.ps1 -firetv` |
+| Fire TV | `./scripts/build-android-template.sh --firetv` | `.\scripts\build-android-template.ps1 -firetv` |
 | Everything | `./scripts/build-android-template.sh --all` | `.\scripts\build-android-template.ps1 -all` |
 
-Flags can be combined: `--arm64 --firetv-arm` / `-arm64 -firetvArm` builds just those two.
+Flags can be combined: `--arm64 --firetv` / `-arm64 -firetv` builds just those two.
 
-> **Note:** Fire TV (ARM) uses OpenGL ES instead of Vulkan because older Fire TV devices have PowerVR GPUs with broken Vulkan drivers. Fire TV (ARM64) targets newer devices with Mali GPUs that have full Vulkan support.
+#### Unsupported Devices
+
+Older Fire TV devices (Stick 1st/2nd gen, Stick 4K 1st gen, Cube 1st/2nd gen) are **not supported**. These use 32-bit ARM SoCs with PowerVR GPUs that lack the minimum GPU feature set required by wgpu/Bevy (texture view dimensions, downlevel limits). Only ARM64 Fire TV devices with Vulkan-capable Mali GPUs are supported.
 
 ## Building Android Runtime
 
@@ -635,7 +634,6 @@ Build the Android runtime template APK so the editor can export games for Androi
    ```bash
    rustup target add aarch64-linux-android --toolchain nightly
    rustup target add x86_64-linux-android --toolchain nightly       # optional, for emulator
-   rustup target add armv7-linux-androideabi --toolchain nightly     # optional, for older Fire TV
    ```
 
 ### Building the Template
@@ -644,20 +642,16 @@ A single script handles environment detection, Rust cross-compilation, native li
 
 ```bash
 # Bash / Git Bash
-./scripts/build-android-template.sh                    # Android ARM64 (Vulkan)
-./scripts/build-android-template.sh --x86_64           # Android x86_64 (Vulkan)
-./scripts/build-android-template.sh --firetv-arm       # Fire TV ARM 32-bit (GLES)
-./scripts/build-android-template.sh --firetv-arm64     # Fire TV ARM64 (Vulkan)
-./scripts/build-android-template.sh --firetv           # Both Fire TV templates
-./scripts/build-android-template.sh --all              # All templates
+./scripts/build-android-template.sh              # Android ARM64 (Vulkan)
+./scripts/build-android-template.sh --x86_64     # Android x86_64 (Vulkan)
+./scripts/build-android-template.sh --firetv     # Fire TV ARM64 (Vulkan)
+./scripts/build-android-template.sh --all        # All templates
 
 # PowerShell
-.\scripts\build-android-template.ps1                   # Android ARM64 (Vulkan)
-.\scripts\build-android-template.ps1 -x86              # Android x86_64 (Vulkan)
-.\scripts\build-android-template.ps1 -firetvArm        # Fire TV ARM 32-bit (GLES)
-.\scripts\build-android-template.ps1 -firetvArm64      # Fire TV ARM64 (Vulkan)
-.\scripts\build-android-template.ps1 -firetv           # Both Fire TV templates
-.\scripts\build-android-template.ps1 -all              # All templates
+.\scripts\build-android-template.ps1             # Android ARM64 (Vulkan)
+.\scripts\build-android-template.ps1 -x86        # Android x86_64 (Vulkan)
+.\scripts\build-android-template.ps1 -firetv     # Fire TV ARM64 (Vulkan)
+.\scripts\build-android-template.ps1 -all        # All templates
 ```
 
 The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.

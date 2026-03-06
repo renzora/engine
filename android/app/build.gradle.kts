@@ -14,6 +14,8 @@ android {
         versionName = "0.2.0"
 
         ndk {
+            // Only include ABIs that have native libs in jniLibs/
+            // The build script populates one arch at a time for separate templates
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
@@ -37,6 +39,10 @@ android {
         release {
             isMinifyEnabled = false
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
     }
 
     sourceSets {

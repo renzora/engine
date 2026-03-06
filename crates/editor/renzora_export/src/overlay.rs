@@ -74,7 +74,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
     // Dim background
     let screen = ctx.screen_rect();
     let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Foreground,
+        egui::Order::Middle,
         egui::Id::new("export_overlay_bg"),
     ));
     painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
@@ -159,15 +159,37 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 let mut export_state = world.resource_mut::<ExportOverlayState>();
                 let current_platform_name = export_state.platform.display_name().to_string();
 
+                let combo_width = ui.available_width() - 8.0;
                 egui::ComboBox::from_id_salt("export_platform")
                     .selected_text(&current_platform_name)
-                    .width(ui.available_width() - 8.0)
+                    .width(combo_width)
                     .show_ui(ui, |ui| {
+                        ui.set_min_width(combo_width);
                         for platform in Platform::ALL {
-                            ui.selectable_value(
-                                &mut export_state.platform,
-                                *platform,
+                            let selected = export_state.platform == *platform;
+                            let (rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), 36.0),
+                                egui::Sense::click(),
+                            );
+                            if resp.clicked() {
+                                export_state.platform = *platform;
+                            }
+                            if resp.hovered() {
+                                ui.painter().rect_filled(rect, 4.0, surface_mid);
+                            }
+                            ui.painter().text(
+                                rect.left_top() + egui::vec2(6.0, 2.0),
+                                egui::Align2::LEFT_TOP,
                                 platform.display_name(),
+                                egui::FontId::proportional(13.0),
+                                if selected { accent } else { text_primary },
+                            );
+                            ui.painter().text(
+                                rect.left_top() + egui::vec2(6.0, 18.0),
+                                egui::Align2::LEFT_TOP,
+                                platform.supported_devices(),
+                                egui::FontId::proportional(11.0),
+                                text_secondary,
                             );
                         }
                     });
@@ -208,73 +230,92 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                 ui.add_space(12.0);
 
-                // --- Packaging ---
-                section_label(ui, regular::FILE_ARCHIVE, "Packaging", text_primary);
-                ui.add_space(4.0);
+                let is_desktop = matches!(selected_platform,
+                    Platform::WindowsX64 | Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64
+                );
 
-                let mut export_state = world.resource_mut::<ExportOverlayState>();
-
-                ui.horizontal(|ui| {
-                    ui.radio_value(
-                        &mut export_state.packaging_mode,
-                        PackagingMode::SeparateFiles,
-                        egui::RichText::new("Binary + .rpak").color(text_primary),
-                    );
-                    ui.radio_value(
-                        &mut export_state.packaging_mode,
-                        PackagingMode::SingleBinary,
-                        egui::RichText::new("Single executable").color(text_primary),
-                    );
-                });
-
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Compression:").size(12.0).color(text_secondary));
-                    ui.add(
-                        egui::Slider::new(&mut export_state.compression_level, 1..=19)
-                            .text("zstd level"),
-                    );
-                });
-
-                drop(export_state);
-                ui.add_space(12.0);
-
-                // --- Window Settings ---
-                section_label(ui, regular::MONITOR, "Window", text_primary);
-                ui.add_space(4.0);
-
-                let mut export_state = world.resource_mut::<ExportOverlayState>();
-
-                ui.horizontal(|ui| {
-                    ui.radio_value(
-                        &mut export_state.window_mode,
-                        WindowMode::Windowed,
-                        egui::RichText::new("Windowed").color(text_primary),
-                    );
-                    ui.radio_value(
-                        &mut export_state.window_mode,
-                        WindowMode::Fullscreen,
-                        egui::RichText::new("Fullscreen").color(text_primary),
-                    );
-                    ui.radio_value(
-                        &mut export_state.window_mode,
-                        WindowMode::Borderless,
-                        egui::RichText::new("Borderless").color(text_primary),
-                    );
-                });
-
-                if export_state.window_mode == WindowMode::Windowed {
+                // --- Packaging (desktop only) ---
+                if is_desktop {
+                    section_label(ui, regular::FILE_ARCHIVE, "Packaging", text_primary);
                     ui.add_space(4.0);
+
+                    let mut export_state = world.resource_mut::<ExportOverlayState>();
+
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Size:").size(12.0).color(text_secondary));
-                        ui.add(egui::DragValue::new(&mut export_state.window_width).speed(1).range(320..=7680).suffix("w"));
-                        ui.label(egui::RichText::new("x").color(text_secondary));
-                        ui.add(egui::DragValue::new(&mut export_state.window_height).speed(1).range(240..=4320).suffix("h"));
+                        ui.radio_value(
+                            &mut export_state.packaging_mode,
+                            PackagingMode::SeparateFiles,
+                            egui::RichText::new("Binary + .rpak").color(text_primary),
+                        );
+                        ui.radio_value(
+                            &mut export_state.packaging_mode,
+                            PackagingMode::SingleBinary,
+                            egui::RichText::new("Single executable").color(text_primary),
+                        );
                     });
+
+                    drop(export_state);
                 }
 
-                drop(export_state);
+                // --- Compression ---
+                {
+                    if !is_desktop {
+                        section_label(ui, regular::FILE_ARCHIVE, "Packaging", text_primary);
+                        ui.add_space(4.0);
+                    } else {
+                        ui.add_space(4.0);
+                    }
+                    let mut export_state = world.resource_mut::<ExportOverlayState>();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Compression:").size(12.0).color(text_secondary));
+                        ui.add(
+                            egui::Slider::new(&mut export_state.compression_level, 1..=19)
+                                .text("zstd level"),
+                        );
+                    });
+                    drop(export_state);
+                }
+
                 ui.add_space(12.0);
+
+                // --- Window Settings (desktop only) ---
+                if is_desktop {
+                    section_label(ui, regular::MONITOR, "Window", text_primary);
+                    ui.add_space(4.0);
+
+                    let mut export_state = world.resource_mut::<ExportOverlayState>();
+
+                    ui.horizontal(|ui| {
+                        ui.radio_value(
+                            &mut export_state.window_mode,
+                            WindowMode::Windowed,
+                            egui::RichText::new("Windowed").color(text_primary),
+                        );
+                        ui.radio_value(
+                            &mut export_state.window_mode,
+                            WindowMode::Fullscreen,
+                            egui::RichText::new("Fullscreen").color(text_primary),
+                        );
+                        ui.radio_value(
+                            &mut export_state.window_mode,
+                            WindowMode::Borderless,
+                            egui::RichText::new("Borderless").color(text_primary),
+                        );
+                    });
+
+                    if export_state.window_mode == WindowMode::Windowed {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Size:").size(12.0).color(text_secondary));
+                            ui.add(egui::DragValue::new(&mut export_state.window_width).speed(1).range(320..=7680).suffix("w"));
+                            ui.label(egui::RichText::new("x").color(text_secondary));
+                            ui.add(egui::DragValue::new(&mut export_state.window_height).speed(1).range(240..=4320).suffix("h"));
+                        });
+                    }
+
+                    drop(export_state);
+                    ui.add_space(12.0);
+                }
 
                 // --- Options ---
                 section_label(ui, regular::GEAR, "Options", text_primary);
@@ -425,10 +466,25 @@ fn export_android_apk(
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(entry.compression())
-            .unix_permissions(entry.unix_mode().unwrap_or(0o644));
-        writer.start_file(entry.name().to_string(), options)
+        let name = entry.name().to_string();
+
+        // Android requires resources.arsc and native libs to be stored
+        // uncompressed with 4-byte alignment (R+ / API 30+)
+        let must_store = name == "resources.arsc"
+            || name.ends_with(".so");
+
+        let options = if must_store {
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored)
+                .unix_permissions(entry.unix_mode().unwrap_or(0o644))
+                .with_alignment(16384)
+        } else {
+            zip::write::SimpleFileOptions::default()
+                .compression_method(entry.compression())
+                .unix_permissions(entry.unix_mode().unwrap_or(0o644))
+        };
+
+        writer.start_file(name, options)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
@@ -511,7 +567,7 @@ fn run_export(world: &mut World, project_name: &str) {
     }
 
     let binary_name = platform.binary_name(&project_name);
-    let is_android = matches!(platform, Platform::AndroidArm64 | Platform::FireTVArm64);
+    let is_android = matches!(platform, Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64);
     let result = if is_android {
         export_android_apk(&template_path, &output_dir, &binary_name, packer, compression_level)
             .and_then(|_| {

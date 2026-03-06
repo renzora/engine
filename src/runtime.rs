@@ -1,12 +1,45 @@
 use bevy::prelude::*;
+use bevy::render::{
+    settings::{Backends, RenderCreation, WgpuSettings},
+    RenderPlugin,
+};
+
+pub use renzora_stinger::{StingerPlugin, StingerState};
+
+/// Pick the best GPU backend for the current platform.
+fn platform_wgpu_settings() -> WgpuSettings {
+    // Android: force Vulkan (all supported devices have Vulkan)
+    #[cfg(target_os = "android")]
+    {
+        WgpuSettings {
+            backends: Some(Backends::VULKAN),
+            ..default()
+        }
+    }
+
+    // Desktop: let wgpu auto-select (Vulkan/DX12/Metal)
+    #[cfg(not(target_os = "android"))]
+    {
+        WgpuSettings::default()
+    }
+}
 
 /// Build the runtime app with all engine plugins (no editor).
 /// Used by both the desktop binary and the Android cdylib.
 pub fn build_runtime_app() -> App {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(
+        DefaultPlugins
+            .set(RenderPlugin {
+                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+                ..default()
+            })
+    );
     app.add_plugins(renzora_runtime::RuntimePlugin);
+
+    #[cfg(not(feature = "editor"))]
+    app.add_plugins(StingerPlugin);
 
     // Post-process plugins
     app.add_plugins(renzora_vignette::VignettePlugin);

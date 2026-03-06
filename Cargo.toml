@@ -73,6 +73,7 @@ editor = [
 [dependencies]
 bevy = { version = "0.18", features = ["jpeg"] }
 renzora_runtime = { path = "crates/core/renzora_runtime" }
+renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_core = { path = "crates/core/renzora_core" }
 
 # Editor plugins (optional, enabled by `editor` feature)
