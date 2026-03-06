@@ -36,8 +36,11 @@ impl Plugin for RuntimePlugin {
                     match toml::from_str::<ProjectConfig>(&toml_str) {
                         Ok(config) => {
                             // Extract archive to temp so scene_io can read scene files from disk
+                            #[cfg(not(target_arch = "wasm32"))]
                             let project_path = vfs.extract_to_temp()
                                 .unwrap_or_else(|| std::path::PathBuf::from("."));
+                            #[cfg(target_arch = "wasm32")]
+                            let project_path = std::path::PathBuf::from(".");
                             info!("Loaded project from rpak: {} (extracted to {})", config.name, project_path.display());
                             app.insert_resource(CurrentProject { path: project_path, config });
                         }
@@ -52,11 +55,14 @@ impl Plugin for RuntimePlugin {
             } else {
                 app.insert_resource(vfs);
 
+                #[cfg(not(target_arch = "wasm32"))]
                 let project_path = parse_project_arg()
                     .or_else(|| {
                         let local = std::path::PathBuf::from("project.toml");
                         if local.exists() { Some(local) } else { None }
                     });
+                #[cfg(target_arch = "wasm32")]
+                let project_path: Option<std::path::PathBuf> = None;
 
                 if let Some(toml_path) = project_path {
                     match open_project(&toml_path) {
@@ -81,7 +87,7 @@ impl Plugin for RuntimePlugin {
     }
 }
 
-#[cfg(not(feature = "editor"))]
+#[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
 fn parse_project_arg() -> Option<std::path::PathBuf> {
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {

@@ -31,6 +31,9 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     };
 
     // Collect and sort entries
+    #[cfg(target_arch = "wasm32")]
+    let mut entries: Vec<GridEntry> = Vec::new();
+    #[cfg(not(target_arch = "wasm32"))]
     let mut entries: Vec<GridEntry> = match std::fs::read_dir(&folder) {
         Ok(iter) => iter
             .filter_map(|e| e.ok())

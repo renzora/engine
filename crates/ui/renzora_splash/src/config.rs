@@ -11,26 +11,41 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// Get the path to the config file
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn config_path() -> Option<PathBuf> {
         dirs::config_dir().map(|p| p.join("bevy_editor").join("config.toml"))
     }
 
-    /// Load configuration from disk
+    /// Load configuration from disk or browser storage
     pub fn load() -> Self {
-        Self::config_path()
-            .and_then(|path| std::fs::read_to_string(&path).ok())
-            .and_then(|content| toml::from_str(&content).ok())
-            .unwrap_or_default()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::config_path()
+                .and_then(|path| std::fs::read_to_string(&path).ok())
+                .and_then(|content| toml::from_str(&content).ok())
+                .unwrap_or_default()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web_storage::load_config()
+        }
     }
 
-    /// Save configuration to disk
+    /// Save configuration to disk or browser storage
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let path = Self::config_path().ok_or("Could not determine config directory")?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let path = Self::config_path().ok_or("Could not determine config directory")?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let content = toml::to_string_pretty(self)?;
+            std::fs::write(&path, content)?;
         }
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(&path, content)?;
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web_storage::save_config(self);
+        }
         Ok(())
     }
 

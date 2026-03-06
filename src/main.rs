@@ -20,7 +20,13 @@ use {
 
 fn main() {
     let mut app = App::new();
+
+    #[cfg(target_arch = "wasm32")]
     app.add_plugins(DefaultPlugins);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_plugins(DefaultPlugins);
+
     app.add_plugins(RuntimePlugin);
 
     // Editor plugins

@@ -363,36 +363,45 @@ fn handle_new_project(world: &mut World) {
 
 /// Handle "Open Project" — file dialog, validate, then reopen via splash.
 fn handle_open_project(world: &mut World) {
-    let file = rfd::FileDialog::new()
-        .set_title("Open Project")
-        .add_filter("Project File", &["toml"])
-        .pick_file();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let file = rfd::FileDialog::new()
+            .set_title("Open Project")
+            .add_filter("Project File", &["toml"])
+            .pick_file();
 
-    let Some(file) = file else { return };
+        let Some(file) = file else { return };
 
-    let project = match renzora_core::open_project(&file) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to open project: {}", e);
-            rfd::MessageDialog::new()
-                .set_title("Invalid Project")
-                .set_description(&format!("Failed to open project: {}", e))
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
-            return;
+        let project = match renzora_core::open_project(&file) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to open project: {}", e);
+                rfd::MessageDialog::new()
+                    .set_title("Invalid Project")
+                    .set_description(&format!("Failed to open project: {}", e))
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+                return;
+            }
+        };
+
+        // Update recent projects
+        if let Some(mut app_config) = world.get_resource_mut::<renzora_splash::AppConfig>() {
+            app_config.add_recent_project(project.path.clone());
+            let _ = app_config.save();
         }
-    };
 
-    // Update recent projects
-    if let Some(mut app_config) = world.get_resource_mut::<renzora_splash::AppConfig>() {
-        app_config.add_recent_project(project.path.clone());
-        let _ = app_config.save();
+        world.insert_resource(project);
+        world
+            .resource_mut::<NextState<SplashState>>()
+            .set(SplashState::Splash);
+        world.insert_resource(renzora_splash::PendingProjectReopen);
+        info!("Opening project...");
     }
 
-    world.insert_resource(project);
-    world
-        .resource_mut::<NextState<SplashState>>()
-        .set(SplashState::Splash);
-    world.insert_resource(renzora_splash::PendingProjectReopen);
-    info!("Opening project...");
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = world;
+        warn!("Open Project is not available in the browser");
+    }
 }

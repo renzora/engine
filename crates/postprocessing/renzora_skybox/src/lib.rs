@@ -664,6 +664,7 @@ fn skybox_custom_ui(
             }
 
             if drop_result.browse_clicked {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(texture_path) = rfd::FileDialog::new()
                     .add_filter("HDR Images", &["hdr", "exr"])
                     .set_title("Select Sky Texture")

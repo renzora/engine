@@ -13,6 +13,9 @@ release-editor = "build --release --bin renzora --target-dir app"
 release-editor-solari = "build --release --no-default-features --features editor,solari --target-dir app"
 release-runtime = "build --release --bin renzora-runtime --no-default-features --target-dir app"
 
+# WASM: build editor for browser
+build-web = "build --features editor --target wasm32-unknown-unknown"
+
 # Dist builds (max optimization for export templates)
 dist-runtime = "build --profile dist --bin renzora-runtime --no-default-features --target-dir app"
 

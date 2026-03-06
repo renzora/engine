@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, RichText, Stroke, StrokeKind, Vec2};
 
 use crate::config::AppConfig;
-use crate::project::{create_project, open_project, CurrentProject};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::project::create_project;
+use crate::project::{open_project, CurrentProject};
 use crate::SplashState;
 
 // ── Wireframe shapes ───────────────────────────────────────────────
@@ -403,26 +405,47 @@ fn render_two_column_layout(
                 .min_size(Vec2::new(btn_width, 42.0));
 
                 if ui.add(create_btn).clicked() {
-                    if let Some(folder) = rfd::FileDialog::new()
-                        .set_title("Select Project Location")
-                        .pick_folder()
-                    {
-                        let project_name = if new_name.is_empty() {
-                            "New Project"
-                        } else {
-                            &new_name
-                        };
-                        let project_path = folder.join(project_name.replace(' ', "_").to_lowercase());
+                    let project_name = if new_name.is_empty() {
+                        "New Project"
+                    } else {
+                        &new_name
+                    };
 
-                        match create_project(&project_path, project_name) {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        if let Some(folder) = rfd::FileDialog::new()
+                            .set_title("Select Project Location")
+                            .pick_folder()
+                        {
+                            let project_path = folder.join(project_name.replace(' ', "_").to_lowercase());
+
+                            match create_project(&project_path, project_name) {
+                                Ok(project) => {
+                                    app_config.add_recent_project(project_path);
+                                    let _ = app_config.save();
+                                    commands.insert_resource(project);
+                                    next_state.set(SplashState::Editor);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create project: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        web_sys::console::log_1(&format!("Creating project: {}", project_name).into());
+                        match crate::web_storage::create_web_project(project_name) {
                             Ok(project) => {
-                                app_config.add_recent_project(project_path);
+                                web_sys::console::log_1(&"Project created successfully".into());
+                                app_config.add_recent_project(project.path.clone());
                                 let _ = app_config.save();
                                 commands.insert_resource(project);
                                 next_state.set(SplashState::Editor);
                             }
                             Err(e) => {
-                                eprintln!("Failed to create project: {}", e);
+                                web_sys::console::log_1(&format!("Failed to create project: {}", e).into());
                             }
                         }
                     }
@@ -437,20 +460,23 @@ fn render_two_column_layout(
                 .min_size(Vec2::new(btn_width, 42.0));
 
                 if ui.add(open_btn).clicked() {
-                    if let Some(file) = rfd::FileDialog::new()
-                        .set_title("Open Project")
-                        .add_filter("Project File", &["toml"])
-                        .pick_file()
+                    #[cfg(not(target_arch = "wasm32"))]
                     {
-                        match open_project(&file) {
-                            Ok(project) => {
-                                app_config.add_recent_project(project.path.clone());
-                                let _ = app_config.save();
-                                commands.insert_resource(project);
-                                next_state.set(SplashState::Editor);
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to open project: {}", e);
+                        if let Some(file) = rfd::FileDialog::new()
+                            .set_title("Open Project")
+                            .add_filter("Project File", &["toml"])
+                            .pick_file()
+                        {
+                            match open_project(&file) {
+                                Ok(project) => {
+                                    app_config.add_recent_project(project.path.clone());
+                                    let _ = app_config.save();
+                                    commands.insert_resource(project);
+                                    next_state.set(SplashState::Editor);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to open project: {}", e);
+                                }
                             }
                         }
                     }
@@ -485,8 +511,13 @@ fn render_two_column_layout(
                                 .unwrap_or("Unknown Project");
 
                             let path_display = project_path.to_string_lossy();
-                            let project_toml = project_path.join("project.toml");
-                            let exists = project_toml.exists();
+                            #[cfg(not(target_arch = "wasm32"))]
+                            let exists = project_path.join("project.toml").exists();
+                            #[cfg(target_arch = "wasm32")]
+                            let exists = {
+                                let slug = path_display.strip_prefix("web:/").unwrap_or(&path_display);
+                                crate::web_storage::load_web_project(slug).is_some()
+                            };
 
                             let item_rect = ui.available_rect_before_wrap();
                             let item_rect = egui::Rect::from_min_size(
@@ -537,12 +568,23 @@ fn render_two_column_layout(
                                 );
 
                                 if response.clicked() {
-                                    match open_project(&project_toml) {
-                                        Ok(project) => {
-                                            project_to_open = Some(project);
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        let project_toml = project_path.join("project.toml");
+                                        match open_project(&project_toml) {
+                                            Ok(project) => {
+                                                project_to_open = Some(project);
+                                            }
+                                            Err(e) => {
+                                                eprintln!("Failed to open project: {}", e);
+                                            }
                                         }
-                                        Err(e) => {
-                                            eprintln!("Failed to open project: {}", e);
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    {
+                                        let slug = path_display.strip_prefix("web:/").unwrap_or(&path_display);
+                                        if let Some(project) = crate::web_storage::load_web_project(slug) {
+                                            project_to_open = Some(project);
                                         }
                                     }
                                 }

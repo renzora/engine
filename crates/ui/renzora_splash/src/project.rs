@@ -3,6 +3,7 @@ pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project
 use std::path::Path;
 
 /// Create a new project at the specified path
+#[cfg(not(target_arch = "wasm32"))]
 pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn std::error::Error>> {
     std::fs::create_dir_all(path)?;
     std::fs::create_dir_all(path.join("scenes"))?;

@@ -1,9 +1,13 @@
 pub mod config;
 pub mod project;
 mod ui;
+#[cfg(target_arch = "wasm32")]
+pub mod web_storage;
 
 pub use config::AppConfig;
-pub use project::{CurrentProject, ProjectConfig, WindowConfig, create_project, open_project};
+pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
+#[cfg(not(target_arch = "wasm32"))]
+pub use project::create_project;
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;

@@ -55,7 +55,8 @@ impl ThemeManager {
         // Start with built-in themes
         self.available_themes = vec!["Dark".to_string(), "Light".to_string()];
 
-        // Add custom themes from project directory
+        // Add custom themes from project directory (not available on WASM)
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(themes_dir) = &self.themes_dir {
             if themes_dir.exists() {
                 if let Ok(entries) = std::fs::read_dir(themes_dir) {
@@ -92,14 +93,17 @@ impl ThemeManager {
                 true
             }
             _ => {
-                // Try to load from file
-                if let Some(themes_dir) = &self.themes_dir {
-                    let path = themes_dir.join(format!("{}.toml", name));
-                    if let Some(theme) = Self::load_theme_from_file(&path) {
-                        self.active_theme = theme;
-                        self.active_theme_name = name.to_string();
-                        self.has_unsaved_changes = false;
-                        return true;
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Try to load from file
+                    if let Some(themes_dir) = &self.themes_dir {
+                        let path = themes_dir.join(format!("{}.toml", name));
+                        if let Some(theme) = Self::load_theme_from_file(&path) {
+                            self.active_theme = theme;
+                            self.active_theme_name = name.to_string();
+                            self.has_unsaved_changes = false;
+                            return true;
+                        }
                     }
                 }
                 false
@@ -108,6 +112,7 @@ impl ThemeManager {
     }
 
     /// Load a theme from a TOML file
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn load_theme_from_file(path: &Path) -> Option<Theme> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| eprintln!("Failed to read theme file {:?}: {}", path, e))
@@ -120,30 +125,36 @@ impl ThemeManager {
     /// Save the current theme to a file
     /// Returns the path if successful
     pub fn save_theme(&mut self, name: &str) -> Option<PathBuf> {
-        let themes_dir = self.themes_dir.as_ref()?;
+        #[cfg(target_arch = "wasm32")]
+        { let _ = name; return None; }
 
-        // Create themes directory if it doesn't exist
-        if !themes_dir.exists() {
-            std::fs::create_dir_all(themes_dir).ok()?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let themes_dir = self.themes_dir.as_ref()?;
+
+            // Create themes directory if it doesn't exist
+            if !themes_dir.exists() {
+                std::fs::create_dir_all(themes_dir).ok()?;
+            }
+
+            let path = themes_dir.join(format!("{}.toml", name));
+
+            // Update theme metadata
+            self.active_theme.meta.name = name.to_string();
+
+            // Serialize and write
+            let content = toml::to_string_pretty(&self.active_theme).ok()?;
+            std::fs::write(&path, content).ok()?;
+
+            // Update state
+            self.active_theme_name = name.to_string();
+            self.has_unsaved_changes = false;
+
+            // Rescan to pick up new theme
+            self.scan_themes();
+
+            Some(path)
         }
-
-        let path = themes_dir.join(format!("{}.toml", name));
-
-        // Update theme metadata
-        self.active_theme.meta.name = name.to_string();
-
-        // Serialize and write
-        let content = toml::to_string_pretty(&self.active_theme).ok()?;
-        std::fs::write(&path, content).ok()?;
-
-        // Update state
-        self.active_theme_name = name.to_string();
-        self.has_unsaved_changes = false;
-
-        // Rescan to pick up new theme
-        self.scan_themes();
-
-        Some(path)
     }
 
     /// Mark the theme as having unsaved changes
@@ -173,6 +184,7 @@ impl ThemeManager {
             return false;
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = self.get_theme_path(name) {
             if std::fs::remove_file(&path).is_ok() {
                 self.scan_themes();
@@ -190,35 +202,41 @@ impl ThemeManager {
     /// Duplicate a theme with a new name
     #[allow(dead_code)]
     pub fn duplicate_theme(&mut self, new_name: &str) -> bool {
-        let mut theme = self.active_theme.clone();
-        theme.meta.name = new_name.to_string();
+        #[cfg(target_arch = "wasm32")]
+        { let _ = new_name; return false; }
 
-        let themes_dir = match &self.themes_dir {
-            Some(dir) => dir,
-            None => return false,
-        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut theme = self.active_theme.clone();
+            theme.meta.name = new_name.to_string();
 
-        // Create themes directory if needed
-        if !themes_dir.exists() {
-            if std::fs::create_dir_all(themes_dir).is_err() {
+            let themes_dir = match &self.themes_dir {
+                Some(dir) => dir,
+                None => return false,
+            };
+
+            // Create themes directory if needed
+            if !themes_dir.exists() {
+                if std::fs::create_dir_all(themes_dir).is_err() {
+                    return false;
+                }
+            }
+
+            let path = themes_dir.join(format!("{}.toml", new_name));
+
+            // Check if name already exists
+            if path.exists() {
                 return false;
             }
-        }
 
-        let path = themes_dir.join(format!("{}.toml", new_name));
-
-        // Check if name already exists
-        if path.exists() {
-            return false;
-        }
-
-        // Save the duplicated theme
-        if let Ok(content) = toml::to_string_pretty(&theme) {
-            if std::fs::write(&path, content).is_ok() {
-                self.scan_themes();
-                return true;
+            // Save the duplicated theme
+            if let Ok(content) = toml::to_string_pretty(&theme) {
+                if std::fs::write(&path, content).is_ok() {
+                    self.scan_themes();
+                    return true;
+                }
             }
+            false
         }
-        false
     }
 }

@@ -11,6 +11,8 @@ egui-phosphor = "0.11"
 renzora_core = { path = "../../core/renzora_core" }
 renzora_rpak = { path = "../../core/renzora_rpak" }
 renzora_theme = { path = "../../ui/renzora_theme" }
-rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

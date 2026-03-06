@@ -23,48 +23,51 @@ pub struct Vfs {
 impl Vfs {
     /// Try to initialize the VFS from an embedded or adjacent rpak.
     pub fn detect() -> Self {
-        // 1. Check for embedded rpak in current exe
-        match RpakArchive::from_current_exe() {
-            Ok(Some(archive)) => {
-                info!("Loaded embedded .rpak ({} files)", archive.len());
-                return Self {
-                    archive: Some(archive),
-                    project_root: None,
-                };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // 1. Check for embedded rpak in current exe
+            match RpakArchive::from_current_exe() {
+                Ok(Some(archive)) => {
+                    info!("Loaded embedded .rpak ({} files)", archive.len());
+                    return Self {
+                        archive: Some(archive),
+                        project_root: None,
+                    };
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!("Failed to check exe for embedded rpak: {}", e);
+                }
             }
-            Ok(None) => {}
-            Err(e) => {
-                warn!("Failed to check exe for embedded rpak: {}", e);
-            }
-        }
 
-        // 2. Check for adjacent .rpak file
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let stem = exe_path.file_stem().unwrap_or_default();
-                let rpak_path = exe_dir.join(format!("{}.rpak", stem.to_string_lossy()));
-                if rpak_path.exists() {
-                    match RpakArchive::from_file(&rpak_path) {
-                        Ok(archive) => {
-                            info!(
-                                "Loaded adjacent .rpak: {} ({} files)",
-                                rpak_path.display(),
-                                archive.len()
-                            );
-                            return Self {
-                                archive: Some(archive),
-                                project_root: None,
-                            };
-                        }
-                        Err(e) => {
-                            error!("Failed to load {}: {}", rpak_path.display(), e);
+            // 2. Check for adjacent .rpak file
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    let stem = exe_path.file_stem().unwrap_or_default();
+                    let rpak_path = exe_dir.join(format!("{}.rpak", stem.to_string_lossy()));
+                    if rpak_path.exists() {
+                        match RpakArchive::from_file(&rpak_path) {
+                            Ok(archive) => {
+                                info!(
+                                    "Loaded adjacent .rpak: {} ({} files)",
+                                    rpak_path.display(),
+                                    archive.len()
+                                );
+                                return Self {
+                                    archive: Some(archive),
+                                    project_root: None,
+                                };
+                            }
+                            Err(e) => {
+                                error!("Failed to load {}: {}", rpak_path.display(), e);
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 3. No rpak found — normal filesystem mode
+        // No rpak found (or WASM) — normal filesystem mode
         Self {
             archive: None,
             project_root: None,
@@ -109,6 +112,7 @@ impl Vfs {
 
     /// Extract the entire archive to a temporary directory and return the path.
     /// Useful for systems that need filesystem paths (e.g., Bevy asset server).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn extract_to_temp(&self) -> Option<PathBuf> {
         let archive = self.archive.as_ref()?;
         let temp_dir = std::env::temp_dir().join("renzora_runtime_vfs");

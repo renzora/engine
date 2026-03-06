@@ -63,6 +63,9 @@ fn render_folder_children(
     depth: usize,
     theme: &Theme,
 ) {
+    #[cfg(target_arch = "wasm32")]
+    let mut folders: Vec<PathBuf> = Vec::new();
+    #[cfg(not(target_arch = "wasm32"))]
     let mut folders: Vec<PathBuf> = match std::fs::read_dir(parent) {
         Ok(entries) => entries
             .filter_map(|e| e.ok())
@@ -232,23 +235,29 @@ fn toggle_expanded(set: &mut std::collections::HashSet<PathBuf>, path: &PathBuf)
 
 /// Check recursively if any file/folder within `dir` matches the search.
 fn folder_contains_match(dir: &PathBuf, search: &str) -> bool {
-    let search_lower = search.to_lowercase();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_lowercase();
-        if name.starts_with('.') {
-            continue;
-        }
-        if name.contains(&search_lower) {
-            return true;
-        }
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            if folder_contains_match(&entry.path(), search) {
+    #[cfg(target_arch = "wasm32")]
+    { let _ = (dir, search); return false; }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let search_lower = search.to_lowercase();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if name.starts_with('.') {
+                continue;
+            }
+            if name.contains(&search_lower) {
                 return true;
             }
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                if folder_contains_match(&entry.path(), search) {
+                    return true;
+                }
+            }
         }
+        false
     }
-    false
 }

@@ -12,6 +12,7 @@ pub struct RpakArchive {
 
 impl RpakArchive {
     /// Load from a standalone `.rpak` file.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_file(path: &Path) -> io::Result<Self> {
         let compressed = std::fs::read(path)?;
         Self::from_compressed(&compressed)
@@ -20,12 +21,19 @@ impl RpakArchive {
     /// Try to load an rpak archive embedded at the end of the current executable.
     ///
     /// Returns `None` if the executable doesn't have an appended rpak.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_current_exe() -> io::Result<Option<Self>> {
         let exe_path = std::env::current_exe()?;
         Self::from_binary(&exe_path)
     }
 
+    /// Load from raw compressed bytes (useful for WASM or in-memory data).
+    pub fn from_bytes(compressed: &[u8]) -> io::Result<Self> {
+        Self::from_compressed(compressed)
+    }
+
     /// Try to load an rpak archive embedded at the end of a binary.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_binary(binary_path: &Path) -> io::Result<Option<Self>> {
         let data = std::fs::read(binary_path)?;
 
@@ -153,6 +161,7 @@ impl RpakArchive {
     }
 
     /// Extract all files to a directory on disk.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn extract_to(&self, output_dir: &Path) -> io::Result<()> {
         for (path, data) in &self.files {
             let out_path = output_dir.join(path);

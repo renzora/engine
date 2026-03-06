@@ -22,9 +22,11 @@
 //! [magic: b"RPAK"]
 //! ```
 
+#[cfg(not(target_arch = "wasm32"))]
 mod pack;
 mod read;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use pack::{RpakPacker, pack_directory};
 pub use read::RpakArchive;
 

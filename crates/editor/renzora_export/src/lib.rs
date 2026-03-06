@@ -4,31 +4,42 @@
 //! window config, icon, etc.) and handles packing assets into `.rpak` archives
 //! using pre-built runtime templates.
 
+#[cfg(not(target_arch = "wasm32"))]
 mod overlay;
+#[cfg(not(target_arch = "wasm32"))]
 mod templates;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use overlay::ExportOverlayState;
+#[cfg(not(target_arch = "wasm32"))]
 pub use templates::{ExportTemplate, TemplateManager, Platform};
 
 use bevy::prelude::*;
-use bevy::ecs::system::SystemState;
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
 pub struct ExportPlugin;
 
 impl Plugin for ExportPlugin {
-    fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<EguiPlugin>() {
-            app.add_plugins(EguiPlugin::default());
-        }
+    fn build(&self, _app: &mut App) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
-        app.init_resource::<ExportOverlayState>()
-            .init_resource::<TemplateManager>()
-            .add_systems(EguiPrimaryContextPass, export_overlay_system);
+            if !_app.is_plugin_added::<EguiPlugin>() {
+                _app.add_plugins(EguiPlugin::default());
+            }
+
+            _app.init_resource::<ExportOverlayState>()
+                .init_resource::<TemplateManager>()
+                .add_systems(EguiPrimaryContextPass, export_overlay_system);
+        }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn export_overlay_system(world: &mut World) {
+    use bevy::ecs::system::SystemState;
+    use bevy_egui::EguiContexts;
+
     let mut state = SystemState::<EguiContexts>::new(world);
     let mut contexts = state.get_mut(world);
     let Ok(ctx) = contexts.ctx_mut() else {
