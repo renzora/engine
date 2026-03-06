@@ -606,10 +606,15 @@ Android APKs are signed automatically during export using APK Signature Scheme v
 |----------|---------|
 | Desktop (current OS) | `cargo dist-runtime` |
 | Android ARM64 | `./scripts/build-android-template.sh` |
-| Android ARM64 + x86_64 | `./scripts/build-android-template.sh --x86_64` |
-| Fire TV (ARM + ARM64) | `./scripts/build-android-template.sh --firetv` |
+| Android x86_64 | `./scripts/build-android-template.sh --x86_64` |
+| Fire TV ARM (32-bit) | `./scripts/build-android-template.sh --firetv-arm` |
+| Fire TV ARM64 | `./scripts/build-android-template.sh --firetv-arm64` |
+| All Fire TV | `./scripts/build-android-template.sh --firetv` |
+| Everything | `./scripts/build-android-template.sh --all` |
 
-> **Note:** Fire TV (ARM) uses OpenGL ES instead of Vulkan because older Fire TV devices have PowerVR GPUs with broken Vulkan drivers. Fire TV (ARM64) targets newer devices with Mali GPUs that have full Vulkan support. The `--firetv` flag builds both templates automatically.
+Flags can be combined: `./scripts/build-android-template.sh --arm64 --firetv-arm` builds just those two.
+
+> **Note:** Fire TV (ARM) uses OpenGL ES instead of Vulkan because older Fire TV devices have PowerVR GPUs with broken Vulkan drivers. Fire TV (ARM64) targets newer devices with Mali GPUs that have full Vulkan support.
 
 ## Building Android Runtime
 
@@ -631,9 +636,12 @@ Build the Android runtime template APK so the editor can export games for Androi
 A single script handles environment detection, Rust cross-compilation, native library bundling, and Gradle build:
 
 ```bash
-./scripts/build-android-template.sh              # ARM64 template (Vulkan)
-./scripts/build-android-template.sh --x86_64     # Also build x86_64 (for emulator)
-./scripts/build-android-template.sh --firetv     # Fire TV: ARM (GLES) + ARM64 (Vulkan)
+./scripts/build-android-template.sh                    # Android ARM64 (Vulkan)
+./scripts/build-android-template.sh --x86_64           # Android x86_64 (Vulkan)
+./scripts/build-android-template.sh --firetv-arm       # Fire TV ARM 32-bit (GLES)
+./scripts/build-android-template.sh --firetv-arm64     # Fire TV ARM64 (Vulkan)
+./scripts/build-android-template.sh --firetv           # Both Fire TV templates
+./scripts/build-android-template.sh --all              # All templates
 ```
 
 The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
