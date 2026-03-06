@@ -463,6 +463,7 @@ impl Plugin for DebuggerPlugin {
         app.insert_resource(bridge);
 
         // Update systems
+        use renzora_editor::SplashState;
         app.add_systems(Update, (
             update_diagnostics_state,
             update_render_stats,
@@ -472,8 +473,8 @@ impl Plugin for DebuggerPlugin {
             update_culling_debug_state,
             update_render_pipeline_timing,
             sync_debug_bridge,
-        ));
-        app.add_systems(Update, update_ecs_stats);
+        ).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, update_ecs_stats.run_if(in_state(SplashState::Editor)));
 
         app.register_panel(SystemProfilerPanel);
         app.register_panel(MemoryProfilerPanel);

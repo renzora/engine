@@ -60,6 +60,7 @@ impl Plugin for GizmoPlugin {
         app.add_systems(Startup, configure_gizmo_render_layers);
         app.add_systems(PostStartup, meshes::setup_gizmo_meshes);
 
+        use renzora_editor::SplashState;
         app.add_systems(Update, (
             interaction::gizmo_hover_system,
             interaction::gizmo_interaction_system,
@@ -72,7 +73,7 @@ impl Plugin for GizmoPlugin {
             modal_transform_keyboard_system,
             modal_transform_apply_system,
             modal_transform_overlay_system,
-        ));
+        ).run_if(in_state(SplashState::Editor)));
     }
 }
 

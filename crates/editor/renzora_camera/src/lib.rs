@@ -133,7 +133,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
             .add_systems(PostStartup, apply_initial_orbit)
-            .add_systems(Update, camera_controller);
+            .add_systems(Update, camera_controller.run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
 

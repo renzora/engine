@@ -13,6 +13,13 @@ use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
+/// Cached SystemStates for the splash exclusive system (avoids per-frame allocation).
+#[derive(Resource)]
+struct SplashSystemStates {
+    egui: SystemState<EguiContexts<'static, 'static>>,
+    commands: SystemState<(Commands<'static, 'static>, ResMut<'static, NextState<SplashState>>)>,
+}
+
 /// Controls whether the splash screen or the editor is shown.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SplashState {
@@ -54,23 +61,35 @@ fn splash_ui_system(world: &mut World) {
         return;
     }
 
+    // Initialise cached system states on first run
+    if !world.contains_resource::<SplashSystemStates>() {
+        let states = SplashSystemStates {
+            egui: SystemState::new(world),
+            commands: SystemState::new(world),
+        };
+        world.insert_resource(states);
+    }
+
     // Get egui context
-    let mut state = SystemState::<EguiContexts>::new(world);
-    let mut contexts = state.get_mut(world);
+    let mut states = world.remove_resource::<SplashSystemStates>().unwrap();
+    let mut contexts = states.egui.get_mut(world);
     let ctx = match contexts.ctx_mut() {
         Ok(c) => c.clone(),
-        Err(_) => return,
+        Err(_) => {
+            world.insert_resource(states);
+            return;
+        }
     };
-    state.apply(world);
+    states.egui.apply(world);
 
     // Extract mutable resources
     let mut app_config = world.remove_resource::<AppConfig>().unwrap_or_default();
 
-    let mut sys_state = SystemState::<(Commands, ResMut<NextState<SplashState>>)>::new(world);
-    let (mut commands, mut next_state) = sys_state.get_mut(world);
+    let (mut commands, mut next_state) = states.commands.get_mut(world);
 
     ui::render_splash(&ctx, &mut app_config, &mut commands, &mut next_state);
 
-    sys_state.apply(world);
+    states.commands.apply(world);
     world.insert_resource(app_config);
+    world.insert_resource(states);
 }

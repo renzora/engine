@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.18" }
+renzora_splash = { path = "../../ui/renzora_splash" }

@@ -38,17 +38,27 @@ impl Plugin for ExportPlugin {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Resource)]
+struct ExportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
+
+#[cfg(not(target_arch = "wasm32"))]
 fn export_overlay_system(world: &mut World) {
     use bevy::ecs::system::SystemState;
     use bevy_egui::EguiContexts;
 
-    let mut state = SystemState::<EguiContexts>::new(world);
-    let mut contexts = state.get_mut(world);
+    if !world.contains_resource::<ExportEguiState>() {
+        let s = ExportEguiState(SystemState::new(world));
+        world.insert_resource(s);
+    }
+    let mut cached = world.remove_resource::<ExportEguiState>().unwrap();
+    let mut contexts = cached.0.get_mut(world);
     let Ok(ctx) = contexts.ctx_mut() else {
+        world.insert_resource(cached);
         return;
     };
     let ctx = ctx.clone();
-    state.apply(world);
+    cached.0.apply(world);
+    world.insert_resource(cached);
 
     // Check for ExportRequested marker from the editor menu
     if world.remove_resource::<renzora_core::ExportRequested>().is_some() {

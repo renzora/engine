@@ -218,7 +218,7 @@ impl Plugin for MixerPlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        app.add_systems(Update, sync_mixer_bridge);
+        app.add_systems(Update, sync_mixer_bridge.run_if(in_state(renzora_editor::SplashState::Editor)));
 
         // Register the panel.
         app.register_panel(MixerPanel::new(arc));

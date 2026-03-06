@@ -18,6 +18,7 @@ fn main() {
         use renzora_mixer::MixerPlugin;
         use renzora_console::ConsolePlugin;
         use renzora_debugger::DebuggerPlugin;
+        use renzora_gamepad::GamepadPlugin;
 
         app.add_plugins(SplashPlugin);
         app.add_plugins(RenzoraEditorPlugin);
@@ -35,6 +36,7 @@ fn main() {
         app.add_plugins(MixerPlugin);
         app.add_plugins(ConsolePlugin);
         app.add_plugins(DebuggerPlugin);
+        app.add_plugins(GamepadPlugin);
     }
 
     app.run();

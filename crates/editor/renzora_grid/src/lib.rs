@@ -54,7 +54,7 @@ impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GridConfig>()
             .add_systems(PostStartup, spawn_grid)
-            .add_systems(Update, toggle_grid_visibility);
+            .add_systems(Update, toggle_grid_visibility.run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
 

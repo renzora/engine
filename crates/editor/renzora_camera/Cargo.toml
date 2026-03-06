@@ -7,3 +7,4 @@ edition = "2021"
 bevy = { version = "0.18" }
 renzora_runtime = { path = "../../core/renzora_runtime" }
 renzora_viewport = { path = "../renzora_viewport" }
+renzora_splash = { path = "../../ui/renzora_splash" }

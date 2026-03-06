@@ -177,7 +177,8 @@ impl Plugin for ConsolePlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        app.add_systems(Update, (drain_log_buffer, sync_console_bridge));
+        use renzora_editor::SplashState;
+        app.add_systems(Update, (drain_log_buffer, sync_console_bridge).run_if(in_state(SplashState::Editor)));
 
         app.register_panel(ConsolePanel::new(arc));
     }

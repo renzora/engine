@@ -25,7 +25,7 @@ impl Plugin for ViewportPlugin {
         app.init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
             .add_systems(PostStartup, setup_viewport)
-            .add_systems(Update, handle_viewport_resize);
+            .add_systems(Update, handle_viewport_resize.run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
     }

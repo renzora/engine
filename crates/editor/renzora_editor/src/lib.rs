@@ -23,6 +23,7 @@ pub use selection::EditorSelection;
 
 // Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.
 pub use renzora_core::{HideInHierarchy, EditorLocked, EditorCamera};
+pub use renzora_splash::SplashState;
 
 /// Optional label color for an entity row in the hierarchy.
 #[derive(Component)]
@@ -42,13 +43,16 @@ use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::egui;
-use renzora_splash::SplashState;
 use renzora_theme::ThemeManager;
 
 // Module and type names come through `pub use renzora_ui::*` above.
 // Use fully-qualified `renzora_ui::module::fn` for sub-module function calls.
 
 static FONTS_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Cached SystemState for the editor exclusive system (avoids per-frame allocation).
+#[derive(Resource)]
+struct EditorEguiState(SystemState<EguiContexts<'static, 'static>>);
 
 /// Whether the editor overlay is active or hidden.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -90,14 +94,22 @@ impl Plugin for RenzoraEditorPlugin {
 /// Uses `SystemState` to extract the egui context, clones it (Arc-backed, cheap),
 /// then renders everything with `&World` access for panels.
 fn editor_ui_system(world: &mut World) {
-    // 1. Get egui context
-    let mut state = SystemState::<EguiContexts>::new(world);
-    let mut contexts = state.get_mut(world);
+    // 1. Get egui context (cached to avoid per-frame allocation)
+    if !world.contains_resource::<EditorEguiState>() {
+        let s = EditorEguiState(SystemState::new(world));
+        world.insert_resource(s);
+    }
+    let mut cached = world.remove_resource::<EditorEguiState>().unwrap();
+    let mut contexts = cached.0.get_mut(world);
     let ctx = match contexts.ctx_mut() {
         Ok(c) => c.clone(), // Arc clone — cheap
-        Err(_) => return,
+        Err(_) => {
+            world.insert_resource(cached);
+            return;
+        }
     };
-    state.apply(world);
+    cached.0.apply(world);
+    world.insert_resource(cached);
 
     // 2. Init fonts once, then apply theme
     if !FONTS_INITIALIZED.load(Ordering::Relaxed) {
