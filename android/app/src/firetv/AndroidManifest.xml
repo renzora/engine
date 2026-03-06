@@ -15,6 +15,7 @@
 
     <application
         android:hasCode="true"
+        android:extractNativeLibs="true"
         android:banner="@android:drawable/sym_def_app_icon"
         android:label="Renzora Runtime"
         android:theme="@style/Theme.AppCompat.NoActionBar">

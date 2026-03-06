@@ -7,6 +7,7 @@
 
     <application
         android:hasCode="true"
+        android:extractNativeLibs="true"
         android:label="Renzora Runtime"
         android:theme="@style/Theme.AppCompat.NoActionBar">
 

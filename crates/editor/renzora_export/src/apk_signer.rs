@@ -1,26 +1,28 @@
 //! APK Signature Scheme v2 — sign APKs without requiring Android SDK tools.
 //!
-//! Generates a debug RSA keypair + self-signed X.509 certificate on first use,
-//! stored in the user's renzora config directory. Signs APKs in-place using
+//! Generates a debug ECDSA P-256 keypair + self-signed X.509 certificate on first
+//! use, stored in the user's renzora config directory. Signs APKs in-place using
 //! the APK Signature Scheme v2 (required for Android 7.0+).
 
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
 use ring::rand::SystemRandom;
-use ring::signature::{self, RsaKeyPair};
+use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
 
 const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB
 const EOCD_SIG: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
 const APK_SIG_BLOCK_MAGIC: &[u8] = b"APK Sig Block 42";
 const V2_BLOCK_ID: u32 = 0x7109871a;
-const RSA_PKCS1_SHA256_ID: u32 = 0x0103;
+/// ECDSA with SHA-256 (APK Signature Scheme v2 algorithm ID)
+const ECDSA_SHA256_ID: u32 = 0x0201;
 
 /// Sign an APK file in-place using APK Signature Scheme v2.
 pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
     let (pkcs8_der, cert_der) = load_or_generate_key()?;
 
-    let key_pair = RsaKeyPair::from_pkcs8(&pkcs8_der)
+    let rng = SystemRandom::new();
+    let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8_der, &rng)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Bad signing key: {e}")))?;
 
     let apk_data = std::fs::read(apk_path)?;
@@ -43,23 +45,17 @@ pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
     // Build the signed-data structure
     let signed_data = build_signed_data(&content_digest, &cert_der);
 
-    // Sign it
-    let rng = SystemRandom::new();
-    let mut sig_bytes = vec![0u8; key_pair.public().modulus_len()];
-    key_pair
-        .sign(
-            &signature::RSA_PKCS1_SHA256,
-            &rng,
-            &signed_data,
-            &mut sig_bytes,
-        )
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "RSA signing failed"))?;
+    // Sign signed_data with ECDSA P-256 SHA-256
+    let sig = key_pair
+        .sign(&rng, &signed_data)
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "ECDSA signing failed"))?;
 
-    // Public key in SubjectPublicKeyInfo DER format
-    let spki = build_rsa_spki(key_pair.public().as_ref());
+    // Public key in SubjectPublicKeyInfo DER format (from the certificate)
+    // Build SPKI wrapper for the EC public key
+    let spki = build_ec_spki(key_pair.public_key().as_ref());
 
     // Assemble the v2 signer block and the full APK Signing Block
-    let v2_block = build_v2_block(&signed_data, &sig_bytes, &spki);
+    let v2_block = build_v2_block(&signed_data, sig.as_ref(), &spki);
     let signing_block = build_signing_block(&v2_block);
 
     // Write the signed APK: [entries][signing block][CD][EOCD']
@@ -117,7 +113,7 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
 
     bevy::log::info!("Generating debug signing key...");
 
-    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256)
+    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Keygen failed: {e}")))?;
 
     let mut params = rcgen::CertificateParams::default();
@@ -206,7 +202,7 @@ fn lp(data: &[u8]) -> Vec<u8> {
 fn build_signed_data(content_digest: &[u8], cert_der: &[u8]) -> Vec<u8> {
     // digests: sequence of (algo_id u32 + length-prefixed digest)
     let mut digest_entry = Vec::new();
-    digest_entry.extend_from_slice(&RSA_PKCS1_SHA256_ID.to_le_bytes());
+    digest_entry.extend_from_slice(&ECDSA_SHA256_ID.to_le_bytes());
     digest_entry.extend_from_slice(&lp(content_digest));
     let digests = lp(&lp(&digest_entry));
 
@@ -228,7 +224,7 @@ fn build_v2_block(signed_data: &[u8], signature: &[u8], public_key: &[u8]) -> Ve
 
     // signatures: sequence of (algo_id u32 + length-prefixed sig)
     let mut sig_entry = Vec::new();
-    sig_entry.extend_from_slice(&RSA_PKCS1_SHA256_ID.to_le_bytes());
+    sig_entry.extend_from_slice(&ECDSA_SHA256_ID.to_le_bytes());
     sig_entry.extend_from_slice(&lp(signature));
     let signatures = lp(&lp(&sig_entry));
 
@@ -267,20 +263,20 @@ fn build_signing_block(v2_block: &[u8]) -> Vec<u8> {
 // DER encoding helpers (for SubjectPublicKeyInfo)
 // ---------------------------------------------------------------------------
 
-/// Wrap ring's RSAPublicKey DER in a SubjectPublicKeyInfo SEQUENCE.
-fn build_rsa_spki(rsa_public_key: &[u8]) -> Vec<u8> {
-    // AlgorithmIdentifier: SEQUENCE { OID rsaEncryption, NULL }
-    let oid_rsa: &[u8] = &[0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01];
-    let null: &[u8] = &[0x05, 0x00];
+/// Wrap an EC public key (uncompressed point) in a SubjectPublicKeyInfo SEQUENCE.
+fn build_ec_spki(ec_public_key: &[u8]) -> Vec<u8> {
+    // AlgorithmIdentifier: SEQUENCE { OID ecPublicKey, OID prime256v1 }
+    let oid_ec: &[u8] = &[0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
+    let oid_p256: &[u8] = &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
 
     let mut algo_content = Vec::new();
-    algo_content.extend_from_slice(oid_rsa);
-    algo_content.extend_from_slice(null);
+    algo_content.extend_from_slice(oid_ec);
+    algo_content.extend_from_slice(oid_p256);
     let algo_id = der_tag(0x30, &algo_content);
 
     // BIT STRING with 0 unused bits
     let mut bit_string_content = vec![0x00];
-    bit_string_content.extend_from_slice(rsa_public_key);
+    bit_string_content.extend_from_slice(ec_public_key);
     let bit_string = der_tag(0x03, &bit_string_content);
 
     // Outer SEQUENCE
