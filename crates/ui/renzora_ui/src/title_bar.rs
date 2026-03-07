@@ -18,6 +18,9 @@ pub enum TitleBarAction {
     SaveAs,
     Export,
     ToggleSettings,
+    Play,
+    Stop,
+    Pause,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -27,12 +30,25 @@ const TAB_CORNER_RADIUS: f32 = 3.0;
 const UNDERLINE_HEIGHT: f32 = 2.0;
 const UNDERLINE_INSET: f32 = 3.0;
 
+/// Play mode state passed into the title bar for rendering play/stop controls.
+pub struct PlayModeInfo {
+    pub is_playing: bool,
+    pub is_paused: bool,
+}
+
+impl Default for PlayModeInfo {
+    fn default() -> Self {
+        Self { is_playing: false, is_paused: false }
+    }
+}
+
 /// Render the title bar at the top of the editor window. Returns an action to handle.
 pub fn render_title_bar(
     ctx: &egui::Context,
     theme: &Theme,
     registry: &PanelRegistry,
     layout_manager: &LayoutManager,
+    play_mode: &PlayModeInfo,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
 
@@ -221,13 +237,111 @@ pub fn render_title_bar(
                     ui.add_space(tw + tab_spacing);
                 }
 
-                // --- Right: settings gear ---
+                // --- Right: play controls + settings gear ---
+                let btn_size = 20.0;
                 let gear_size = 20.0;
                 let right_margin = 8.0;
-                let remaining = ui.available_width() - gear_size - right_margin;
+                let play_controls_width = if play_mode.is_playing || play_mode.is_paused {
+                    btn_size * 2.0 + 4.0 // pause + stop
+                } else {
+                    btn_size // just play
+                };
+                let remaining = ui.available_width() - play_controls_width - 8.0 - gear_size - right_margin;
                 if remaining > 0.0 {
                     ui.add_space(remaining);
                 }
+
+                // Play/Stop/Pause buttons
+                let in_play = play_mode.is_playing || play_mode.is_paused;
+                if in_play {
+                    // Pause button
+                    let pause_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let pause_id = ui.id().with("play_pause");
+                    let pause_resp = ui.interact(pause_rect, pause_id, Sense::click());
+                    let pause_icon = if play_mode.is_paused {
+                        egui_phosphor::regular::PLAY
+                    } else {
+                        egui_phosphor::regular::PAUSE
+                    };
+                    let pause_color = if pause_resp.hovered() {
+                        Color32::WHITE
+                    } else {
+                        accent
+                    };
+                    ui.painter().text(
+                        pause_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        pause_icon,
+                        egui::FontId::proportional(14.0),
+                        pause_color,
+                    );
+                    if pause_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if pause_resp.clicked() {
+                        action = TitleBarAction::Pause;
+                    }
+                    ui.add_space(btn_size + 4.0);
+
+                    // Stop button
+                    let stop_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let stop_id = ui.id().with("play_stop");
+                    let stop_resp = ui.interact(stop_rect, stop_id, Sense::click());
+                    let stop_color = if stop_resp.hovered() {
+                        Color32::from_rgb(255, 100, 100)
+                    } else {
+                        Color32::from_rgb(220, 60, 60)
+                    };
+                    ui.painter().text(
+                        stop_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::STOP,
+                        egui::FontId::proportional(14.0),
+                        stop_color,
+                    );
+                    if stop_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if stop_resp.clicked() {
+                        action = TitleBarAction::Stop;
+                    }
+                    ui.add_space(btn_size);
+                } else {
+                    // Play button
+                    let play_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let play_id = ui.id().with("play_btn");
+                    let play_resp = ui.interact(play_rect, play_id, Sense::click());
+                    let play_color = if play_resp.hovered() {
+                        Color32::from_rgb(100, 255, 100)
+                    } else {
+                        theme.text.muted.to_color32()
+                    };
+                    ui.painter().text(
+                        play_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::PLAY,
+                        egui::FontId::proportional(14.0),
+                        play_color,
+                    );
+                    if play_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if play_resp.clicked() {
+                        action = TitleBarAction::Play;
+                    }
+                    ui.add_space(btn_size);
+                }
+
+                ui.add_space(8.0);
 
                 let gear_rect = Rect::from_min_size(
                     Pos2::new(ui.cursor().left(), tab_y + (tab_h - gear_size) / 2.0),

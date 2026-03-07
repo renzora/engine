@@ -8,6 +8,7 @@
 //! - Green line along the Y axis (vertical)
 
 use bevy::prelude::*;
+use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::{PrimitiveTopology, VertexAttributeValues};
 
 /// Marker component for the editor grid entity.
@@ -80,7 +81,7 @@ fn spawn_grid(
         })),
         Transform::default(),
         EditorGrid,
-
+        RenderLayers::layer(1),
     ));
 
     // X axis (red)
@@ -95,7 +96,7 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
-
+        RenderLayers::layer(1),
     ));
 
     // Z axis (blue)
@@ -110,7 +111,7 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
-
+        RenderLayers::layer(1),
     ));
 
     // Y axis (green, vertical)
@@ -125,7 +126,7 @@ fn spawn_grid(
         })),
         Transform::default(),
         AxisIndicator,
-
+        RenderLayers::layer(1),
     ));
 }
 

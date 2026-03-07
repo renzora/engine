@@ -137,7 +137,14 @@ fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
 
     // 5. Title bar (top) — returns action
-    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager);
+    let play_info = world
+        .get_resource::<renzora_core::PlayModeState>()
+        .map(|pm| renzora_ui::title_bar::PlayModeInfo {
+            is_playing: pm.is_playing(),
+            is_paused: pm.is_paused(),
+        })
+        .unwrap_or_default();
+    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info);
 
     // 6. Document tabs (below title bar)
     let doc_tab_state = world
@@ -300,6 +307,21 @@ fn editor_ui_system(world: &mut World) {
         TitleBarAction::ToggleSettings => {
             if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
                 settings.show_settings = !settings.show_settings;
+            }
+        }
+        TitleBarAction::Play => {
+            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+                pm.request_play = true;
+            }
+        }
+        TitleBarAction::Stop => {
+            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+                pm.request_stop = true;
+            }
+        }
+        TitleBarAction::Pause => {
+            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+                pm.request_pause = true;
             }
         }
         TitleBarAction::None => {}

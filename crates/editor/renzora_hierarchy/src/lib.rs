@@ -482,11 +482,26 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         icon: regular::VIDEO_CAMERA,
         category: "camera",
         spawn_fn: |world| {
+            // Count existing scene cameras to generate a unique name
+            let mut count = 0u32;
+            let mut q = world.query_filtered::<(), With<renzora_core::SceneCamera>>();
+            for _ in q.iter(world) {
+                count += 1;
+            }
+            let name = if count == 0 {
+                "Camera 3D".to_string()
+            } else {
+                format!("Camera 3D ({})", count + 1)
+            };
             world
                 .spawn((
-                    Name::new("Camera 3D"),
+                    Name::new(name),
                     Transform::default(),
                     Camera3d::default(),
+                    Camera {
+                        is_active: false,
+                        ..default()
+                    },
                     renzora_core::SceneCamera,
                 ))
                 .id()

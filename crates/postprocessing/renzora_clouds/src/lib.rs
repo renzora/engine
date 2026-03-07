@@ -117,7 +117,7 @@ fn sync_clouds(
     mut commands: Commands,
     mut clouds_state: ResMut<CloudsState>,
     clouds_query: Query<&CloudsData>,
-    camera_query: Query<(&Transform, &Camera), With<renzora_core::EditorCamera>>,
+    camera_query: Query<(&Transform, &Camera), With<Camera3d>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {

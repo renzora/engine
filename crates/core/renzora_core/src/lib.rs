@@ -108,6 +108,11 @@ pub struct EditorLocked;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SceneCamera;
 
+/// Marks a camera as the default game camera for preview and play mode.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct DefaultCamera;
+
 /// Mesh primitive type — serializable record of what shape an entity uses.
 ///
 /// Stored alongside `Mesh3d` so the shape can be recreated on scene load.
@@ -124,6 +129,56 @@ pub enum MeshPrimitive {
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MeshColor(pub Color);
+
+// ============================================================================
+// Play Mode
+// ============================================================================
+
+/// Current play-mode state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PlayState {
+    /// Normal editing.
+    #[default]
+    Editing,
+    /// Game is running (game camera active, editor overlays hidden).
+    Playing,
+    /// Game is paused.
+    Paused,
+}
+
+/// Resource that tracks play mode state and pending transitions.
+#[derive(Resource, Default)]
+pub struct PlayModeState {
+    pub state: PlayState,
+    /// Entity of the active game camera during play mode.
+    pub active_game_camera: Option<bevy::ecs::entity::Entity>,
+    /// Set to `true` to request entering play mode next frame.
+    pub request_play: bool,
+    /// Set to `true` to request stopping play mode next frame.
+    pub request_stop: bool,
+    /// Set to `true` to toggle pause.
+    pub request_pause: bool,
+}
+
+impl PlayModeState {
+    pub fn is_playing(&self) -> bool {
+        self.state == PlayState::Playing
+    }
+    pub fn is_paused(&self) -> bool {
+        self.state == PlayState::Paused
+    }
+    pub fn is_editing(&self) -> bool {
+        self.state == PlayState::Editing
+    }
+    /// Returns true if in Playing or Paused state.
+    pub fn is_in_play_mode(&self) -> bool {
+        matches!(self.state, PlayState::Playing | PlayState::Paused)
+    }
+}
+
+/// Marker component added to the game camera entity during play mode.
+#[derive(Component)]
+pub struct PlayModeCamera;
 
 /// Marker resource requesting a scene save.
 ///

@@ -1,5 +1,7 @@
-//! Camera preview — renders from a selected camera entity's viewpoint into a
-//! small offscreen texture, displayed in the inspector.
+//! Camera preview — renders from a scene camera's viewpoint into a
+//! small offscreen texture, displayed in the camera preview panel.
+//!
+//! Priority: selected Camera3d > DefaultCamera > first scene Camera3d.
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
@@ -9,9 +11,9 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora_editor::EditorSelection;
-use renzora_runtime::{EditorCamera, EditorLocked, HideInHierarchy};
+use renzora_runtime::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy};
 
-/// Preview image size (kept small for performance).
+/// Preview image size.
 const PREVIEW_WIDTH: u32 = 640;
 const PREVIEW_HEIGHT: u32 = 360;
 
@@ -62,14 +64,15 @@ pub fn setup_camera_preview(
     });
 }
 
-/// Manages the camera preview — spawns/updates/despawns the preview camera
-/// based on whether a Camera3d entity is selected.
+/// Manages the camera preview — spawns/updates/despawns the preview camera.
+///
+/// Shows: selected Camera3d → DefaultCamera → first scene Camera3d.
 pub fn update_camera_preview(
     mut commands: Commands,
     selection: Res<EditorSelection>,
     mut preview_state: ResMut<CameraPreviewState>,
     scene_cameras: Query<
-        (&Transform, &Projection),
+        (Entity, &GlobalTransform, &Projection, Option<&DefaultCamera>),
         (With<Camera3d>, Without<CameraPreviewMarker>, Without<EditorCamera>),
     >,
     mut preview_cameras: Query<
@@ -83,26 +86,53 @@ pub fn update_camera_preview(
 ) {
     let selected = selection.get();
 
-    // Check if the selected entity has a Camera3d (and isn't the editor camera)
-    let selected_camera = selected.and_then(|e| scene_cameras.get(e).ok());
+    // Pick which camera to preview:
+    // 1. Selected entity if it has Camera3d
+    // 2. Entity with DefaultCamera marker
+    // 3. First scene camera
+    let target = selected
+        .and_then(|e| scene_cameras.get(e).ok())
+        .map(|(e, gt, p, _)| (e, gt, p))
+        .or_else(|| {
+            scene_cameras.iter()
+                .find(|(_, _, _, dc)| dc.is_some())
+                .map(|(e, gt, p, _)| (e, gt, p))
+        })
+        .or_else(|| {
+            scene_cameras.iter()
+                .next()
+                .map(|(e, gt, p, _)| (e, gt, p))
+        });
 
     let existing_preview = preview_cameras.iter_mut().next();
 
-    // Get the editor camera's skybox and clear color so the preview matches
     let (editor_skybox, editor_clear_color) = editor_cameras
         .iter()
         .next()
-        .map(|(skybox, cam)| (skybox, cam.clear_color.clone()))
+        .map(|(skybox, cam)| (skybox.cloned(), cam.clear_color.clone()))
         .unwrap_or((None, ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12))));
 
-    if let Some((cam_transform, cam_projection)) = selected_camera {
-        let selected_entity = selected.unwrap();
-        preview_state.previewing = Some(selected_entity);
+    if let Some((cam_entity, cam_global_transform, cam_projection)) = target {
+        preview_state.previewing = Some(cam_entity);
+
+        // Decompose GlobalTransform into a local Transform for the preview camera
+        let (scale, rotation, translation) = cam_global_transform.to_scale_rotation_translation();
+        let cam_transform = Transform {
+            translation,
+            rotation,
+            scale,
+        };
 
         match existing_preview {
-            Some((_entity, mut preview_transform, mut preview_proj)) => {
-                *preview_transform = *cam_transform;
+            Some((entity, mut preview_transform, mut preview_proj)) => {
+                *preview_transform = cam_transform;
                 *preview_proj = cam_projection.clone();
+                // Sync skybox every frame
+                if let Some(ref skybox) = editor_skybox {
+                    commands.entity(entity).insert(skybox.clone());
+                } else {
+                    commands.entity(entity).remove::<Skybox>();
+                }
             }
             None => {
                 let mut ecmds = commands.spawn((
@@ -115,22 +145,19 @@ pub fn update_camera_preview(
                     },
                     RenderTarget::Image(preview_state.image_handle.clone().into()),
                     cam_projection.clone(),
-                    *cam_transform,
+                    cam_transform,
                     CameraPreviewMarker,
                     HideInHierarchy,
                     EditorLocked,
-                    // Scene only (layer 0) — no gizmos (layer 1)
                     RenderLayers::layer(0),
                     Name::new("Camera Preview"),
                 ));
-                // Copy skybox from editor camera
                 if let Some(skybox) = editor_skybox {
-                    ecmds.insert(skybox.clone());
+                    ecmds.insert(skybox);
                 }
             }
         }
     } else {
-        // No camera selected — despawn preview camera if it exists
         preview_state.previewing = None;
         if let Some((entity, _, _)) = existing_preview {
             commands.entity(entity).despawn();

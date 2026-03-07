@@ -55,11 +55,13 @@ pub struct EntityNode {
     pub label_color: Option<[u8; 3]>,
     pub is_visible: bool,
     pub is_locked: bool,
+    pub is_camera: bool,
+    pub is_default_camera: bool,
 }
 
 /// Build the entity tree from the world.
 pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
-    let mut entries: Vec<(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool)> = Vec::new();
+    let mut entries: Vec<(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool)> = Vec::new();
     let mut named_entities: HashSet<Entity> = HashSet::new();
 
     for archetype in world.archetypes().iter() {
@@ -85,16 +87,18 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 .map(|v| *v != Visibility::Hidden)
                 .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
+            let is_camera = world.get::<Camera3d>(entity).is_some();
+            let is_default_camera = world.get::<renzora_core::DefaultCamera>(entity).is_some();
 
             named_entities.insert(entity);
-            entries.push((entity, name_str, icon, color, parent, label_color, is_visible, is_locked));
+            entries.push((entity, name_str, icon, color, parent, label_color, is_visible, is_locked, is_camera, is_default_camera));
         }
     }
 
     let mut children_map: HashMap<Entity, Vec<usize>> = HashMap::new();
     let mut root_indices: Vec<usize> = Vec::new();
 
-    for (i, &(_, _, _, _, ref parent, _, _, _)) in entries.iter().enumerate() {
+    for (i, &(_, _, _, _, ref parent, _, _, _, _, _)) in entries.iter().enumerate() {
         match parent {
             Some(p) if named_entities.contains(p) => {
                 children_map.entry(*p).or_default().push(i);
@@ -109,10 +113,10 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
 
     fn build_node(
         index: usize,
-        entries: &[(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool)],
+        entries: &[(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool)],
         children_map: &HashMap<Entity, Vec<usize>>,
     ) -> EntityNode {
-        let (entity, name, icon, color, _, label_color, is_visible, is_locked) = &entries[index];
+        let (entity, name, icon, color, _, label_color, is_visible, is_locked, is_camera, is_default_camera) = &entries[index];
         let mut children = Vec::new();
 
         if let Some(child_indices) = children_map.get(entity) {
@@ -145,6 +149,8 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             label_color: *label_color,
             is_visible: *is_visible,
             is_locked: *is_locked,
+            is_camera: *is_camera,
+            is_default_camera: *is_default_camera,
         }
     }
 

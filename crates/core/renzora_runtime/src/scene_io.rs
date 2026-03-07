@@ -2,7 +2,7 @@
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::{CurrentProject, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera};
+use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera};
 use renzora_lighting::SunData;
 use serde::de::DeserializeSeed;
 use std::path::Path;
@@ -35,6 +35,8 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_all_resources()
         .deny_component::<Mesh3d>()
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
+        .deny_component::<Camera3d>()
+        .deny_component::<Camera>()
         .deny_component::<GlobalTransform>()
         .deny_component::<Visibility>()
         .deny_component::<InheritedVisibility>()
@@ -189,12 +191,60 @@ pub fn rehydrate_meshes(
 }
 
 /// Rehydrate scene cameras — spawns `Camera3d` for entities that have `SceneCamera` but no `Camera3d`.
+///
+/// In runtime mode (no editor), the `DefaultCamera` is active; if none is marked,
+/// the first scene camera wins. All others are inactive.
+/// In editor mode, all scene cameras are inactive (the editor camera renders).
 pub fn rehydrate_cameras(
     mut commands: Commands,
-    query: Query<Entity, (With<SceneCamera>, Without<Camera3d>)>,
+    query: Query<(Entity, Option<&DefaultCamera>), (With<SceneCamera>, Without<Camera3d>)>,
+    editor_camera: Query<(), With<EditorCamera>>,
 ) {
-    for entity in &query {
-        commands.entity(entity).insert(Camera3d::default());
+    if query.is_empty() { return; }
+
+    let is_editor = !editor_camera.is_empty();
+
+    // Find which entity should be the active camera in runtime mode
+    let default_entity = query.iter()
+        .find(|(_, dc)| dc.is_some())
+        .or_else(|| query.iter().next())
+        .map(|(e, _)| e);
+
+    for (entity, _) in &query {
+        let is_active = !is_editor && default_entity == Some(entity);
+
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Camera {
+                is_active,
+                ..default()
+            },
+        ));
+    }
+}
+
+/// Ensures only the default scene camera is active in runtime mode.
+///
+/// Runs every frame (cheap — early-exits if no changes). Handles cameras that
+/// were deserialized with `Camera3d` already present (so `rehydrate_cameras` skipped them).
+pub fn enforce_single_active_camera(
+    mut cameras: Query<(Entity, &mut Camera, Option<&DefaultCamera>), With<SceneCamera>>,
+    editor_camera: Query<(), With<EditorCamera>>,
+) {
+    if !editor_camera.is_empty() { return; }
+    if cameras.is_empty() { return; }
+
+    // Find which entity should be active: DefaultCamera > first
+    let default_entity = cameras.iter()
+        .find(|(_, _, dc)| dc.is_some())
+        .or_else(|| cameras.iter().next())
+        .map(|(e, _, _)| e);
+
+    for (entity, mut camera, _) in &mut cameras {
+        let should_be_active = default_entity == Some(entity);
+        if camera.is_active != should_be_active {
+            camera.is_active = should_be_active;
+        }
     }
 }
 

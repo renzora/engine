@@ -67,6 +67,7 @@ fn render_node(
     let result = renzora_editor::tree_row(
         ui,
         &TreeRowConfig {
+            stable_id: Some(egui::Id::new(("hierarchy_row", node.entity))),
             depth,
             is_last,
             parent_lines,
@@ -169,6 +170,17 @@ fn render_node(
             });
         }
         lock_resp.on_hover_text(if node.is_locked { "Unlock" } else { "Lock" });
+    }
+
+    // === Default camera star indicator ===
+    if node.is_default_camera {
+        let star_color = Color32::from_rgb(255, 200, 80);
+        let label_x = result.prefix_rect.max.x + 20.0 + 4.0;
+        // Measure the label width to position the star after it
+        let font_id = egui::FontId::proportional(13.0);
+        let label_width = painter.layout_no_wrap(node.name.clone(), font_id, Color32::WHITE).rect.width();
+        let star_pos = Pos2::new(label_x + label_width + 4.0, result.rect.center().y);
+        painter.text(star_pos, egui::Align2::LEFT_CENTER, regular::STAR, egui::FontId::proportional(10.0), star_color);
     }
 
     // === Inline rename (replaces label area) ===
@@ -511,6 +523,37 @@ fn context_menu(
                 }
             }
         });
+    }
+
+    // Camera-specific options
+    if node.is_camera {
+        ui.separator();
+        let label = if node.is_default_camera {
+            format!("{} Default Camera", regular::STAR)
+        } else {
+            format!("{} Set as Default Camera", regular::STAR)
+        };
+        let button = ui.add_enabled(!node.is_default_camera, egui::Button::new(label));
+        if button.clicked() {
+            let entity = node.entity;
+            commands.push(move |world: &mut World| {
+                // Remove DefaultCamera from all other entities
+                let mut to_remove = Vec::new();
+                for archetype in world.archetypes().iter() {
+                    for arch_entity in archetype.entities() {
+                        let e = arch_entity.id();
+                        if e != entity && world.get::<renzora_core::DefaultCamera>(e).is_some() {
+                            to_remove.push(e);
+                        }
+                    }
+                }
+                for e in to_remove {
+                    world.entity_mut(e).remove::<renzora_core::DefaultCamera>();
+                }
+                world.entity_mut(entity).insert(renzora_core::DefaultCamera);
+            });
+            ui.close();
+        }
     }
 
     ui.separator();

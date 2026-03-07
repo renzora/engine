@@ -6,6 +6,7 @@
 
 mod camera_gizmo;
 
+use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
@@ -180,6 +181,7 @@ impl Plugin for GizmoPlugin {
                 GizmoConfig {
                     depth_bias: -1.0,
                     line: GizmoLineConfig { width: 3.0, ..default() },
+                    render_layers: RenderLayers::layer(1),
                     ..default()
                 },
             )
@@ -238,6 +240,7 @@ fn setup_gizmo_meshes(
         Visibility::Hidden,
         GizmoRoot,
         HideInHierarchy,
+        RenderLayers::layer(1),
     )).id();
 
     let spawn = |commands: &mut Commands, mesh: Handle<Mesh>, mat: Handle<GizmoMaterial>, transform: Transform, part: GizmoPart, root: Entity| {
@@ -249,6 +252,7 @@ fn setup_gizmo_meshes(
             GizmoMesh,
             part,
             HideInHierarchy,
+            RenderLayers::layer(1),
             ChildOf(root),
         ));
     };

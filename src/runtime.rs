@@ -4,7 +4,6 @@ use bevy::render::{
     RenderPlugin,
 };
 
-pub use renzora_stinger::{StingerPlugin, StingerState};
 
 /// Pick the best GPU backend for the current platform.
 fn platform_wgpu_settings() -> WgpuSettings {
@@ -40,7 +39,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_audio::KiraPlugin);
 
     #[cfg(not(feature = "editor"))]
-    app.add_plugins(StingerPlugin);
+    app.add_plugins(renzora_stinger::StingerPlugin);
 
     // Post-process plugins
     app.add_plugins(renzora_vignette::VignettePlugin);

@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
+use bevy::camera::visibility::RenderLayers;
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.
@@ -20,6 +21,7 @@ pub fn spawn_editor_camera(mut commands: Commands, render_target: Res<ViewportRe
         EditorCamera,
         HideInHierarchy,
         EditorLocked,
+        RenderLayers::from_layers(&[0, 1]),
         Name::new("Editor Camera"),
     ));
 

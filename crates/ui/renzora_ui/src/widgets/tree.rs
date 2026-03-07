@@ -48,6 +48,9 @@ const LINE_OVERLAP: f32 = 3.0;
 
 /// Configuration for a single tree row.
 pub struct TreeRowConfig<'a> {
+    /// Stable identity for this row (used as the egui interaction ID).
+    /// When set, the row's response ID is deterministic regardless of rendering order.
+    pub stable_id: Option<egui::Id>,
     /// Nesting depth (0 = root).
     pub depth: usize,
     /// Is this the last sibling at its depth?
@@ -103,11 +106,17 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
     let tree_line_color = theme.widgets.border.to_color32();
     let selection_color = theme.semantic.selection.to_color32();
 
-    // Allocate row
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), ROW_HEIGHT),
-        Sense::click_and_drag(),
-    );
+    // Allocate row with stable ID if provided
+    let (rect, response) = if let Some(stable_id) = cfg.stable_id {
+        let rect = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+        let response = ui.interact(rect.1, stable_id, Sense::click_and_drag());
+        (rect.1, response)
+    } else {
+        ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), ROW_HEIGHT),
+            Sense::click_and_drag(),
+        )
+    };
     let painter = ui.painter();
 
     // --- Alternating row background ---

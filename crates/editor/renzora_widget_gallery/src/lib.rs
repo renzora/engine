@@ -1525,6 +1525,7 @@ impl EditorPanel for TreeGallery {
                     let result = tree_row(
                         ui,
                         &TreeRowConfig {
+                            stable_id: None,
                             depth,
                             is_last,
                             parent_lines,

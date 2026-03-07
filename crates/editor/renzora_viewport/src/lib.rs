@@ -5,6 +5,7 @@
 
 pub mod camera_preview;
 pub mod header;
+pub mod play_mode;
 pub mod render_systems;
 pub mod settings;
 
@@ -42,6 +43,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<ViewportSettings>()
+            .init_resource::<renzora_runtime::PlayModeState>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastRenderState>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
@@ -50,6 +52,7 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_render_toggles,
                 render_systems::update_shadow_settings,
                 camera_preview::update_camera_preview,
+                play_mode::handle_play_mode_transitions,
             ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
@@ -306,10 +309,34 @@ impl EditorPanel for CameraPreviewPanel {
                 .unwrap_or(egui::Color32::from_white_alpha(80));
 
             ui.centered_and_justified(|ui| {
-                ui.label(egui::RichText::new("Select a camera to preview").color(text_color));
+                ui.label(egui::RichText::new("No cameras in scene").color(text_color));
             });
             return;
         }
+
+        // Camera name overlay
+        let previewing_entity = preview.as_ref().and_then(|p| p.previewing);
+        let camera_name = previewing_entity.and_then(|e| {
+            world.get::<Name>(e).map(|n| n.as_str().to_string())
+        }).unwrap_or_else(|| "Camera".to_string());
+
+        let is_default = previewing_entity.map_or(false, |e| {
+            world.get::<renzora_runtime::DefaultCamera>(e).is_some()
+        });
+
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| &tm.active_theme);
+        let muted_color = theme
+            .map(|t| t.text.muted.to_color32())
+            .unwrap_or(egui::Color32::from_white_alpha(80));
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(&camera_name).size(11.0).color(muted_color));
+            if is_default {
+                ui.label(egui::RichText::new(regular::STAR).size(10.0).color(egui::Color32::from_rgb(255, 200, 80)));
+            }
+        });
 
         let available_width = ui.available_width();
         let preview_height = available_width * (9.0 / 16.0);
@@ -326,9 +353,6 @@ impl EditorPanel for CameraPreviewPanel {
                 [available_width, preview_height],
             )));
         } else {
-            let theme = world
-                .get_resource::<ThemeManager>()
-                .map(|tm| &tm.active_theme);
             let bg = theme
                 .map(|t| t.surfaces.faint.to_color32())
                 .unwrap_or(egui::Color32::from_gray(30));

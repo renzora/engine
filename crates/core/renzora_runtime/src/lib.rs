@@ -8,7 +8,7 @@ pub mod camera;
 pub mod scene_io;
 pub mod vfs;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
@@ -26,6 +26,7 @@ impl Plugin for RuntimePlugin {
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
             .register_type::<SceneCamera>()
+            .register_type::<renzora_core::DefaultCamera>()
             .register_type::<SunData>();
 
         #[cfg(not(feature = "editor"))]
@@ -81,12 +82,27 @@ impl Plugin for RuntimePlugin {
             }
 
             app.add_systems(Startup, scene_io::load_current_scene)
-                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_cameras, scene_io::rehydrate_suns));
+                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_suns))
+                .add_systems(Update, (scene_io::rehydrate_cameras, scene_io::enforce_single_active_camera)
+                    .run_if(stinger_done));
         }
 
-        app.init_resource::<ViewportRenderTarget>()
-            .add_systems(Startup, camera::spawn_editor_camera)
-            .add_systems(Update, camera::sync_camera_render_target);
+        app.init_resource::<ViewportRenderTarget>();
+
+        #[cfg(feature = "editor")]
+        {
+            app.add_systems(Startup, camera::spawn_editor_camera)
+                .add_systems(Update, camera::sync_camera_render_target);
+        }
+    }
+}
+
+/// Run condition: stinger is finished (or was never added).
+#[cfg(not(feature = "editor"))]
+fn stinger_done(state: Option<Res<State<renzora_stinger::StingerState>>>) -> bool {
+    match state {
+        Some(s) => *s.get() == renzora_stinger::StingerState::Game,
+        None => true, // no stinger plugin
     }
 }
 
