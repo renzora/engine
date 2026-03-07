@@ -17,6 +17,7 @@ pub enum TitleBarAction {
     Save,
     SaveAs,
     Export,
+    ToggleSettings,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -72,6 +73,11 @@ pub fn render_title_bar(
                     ui.separator();
                     if ui.button("Export Project...").clicked() {
                         action = TitleBarAction::Export;
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Settings").clicked() {
+                        action = TitleBarAction::ToggleSettings;
                         ui.close();
                     }
                 });
@@ -213,6 +219,41 @@ pub fn render_title_bar(
 
                     // Advance cursor past this tab + spacing
                     ui.add_space(tw + tab_spacing);
+                }
+
+                // --- Right: settings gear ---
+                let gear_size = 20.0;
+                let right_margin = 8.0;
+                let remaining = ui.available_width() - gear_size - right_margin;
+                if remaining > 0.0 {
+                    ui.add_space(remaining);
+                }
+
+                let gear_rect = Rect::from_min_size(
+                    Pos2::new(ui.cursor().left(), tab_y + (tab_h - gear_size) / 2.0),
+                    Vec2::splat(gear_size),
+                );
+                let gear_id = ui.id().with("settings_gear");
+                let gear_resp = ui.interact(gear_rect, gear_id, Sense::click());
+
+                let gear_color = if gear_resp.hovered() {
+                    accent
+                } else {
+                    theme.text.muted.to_color32()
+                };
+                ui.painter().text(
+                    gear_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    egui_phosphor::regular::GEAR,
+                    egui::FontId::proportional(15.0),
+                    gear_color,
+                );
+
+                if gear_resp.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if gear_resp.clicked() {
+                    action = TitleBarAction::ToggleSettings;
                 }
             });
         });

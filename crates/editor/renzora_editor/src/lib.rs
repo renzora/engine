@@ -8,6 +8,7 @@ pub mod commands;
 pub mod ext;
 pub mod inspector_registry;
 pub mod selection;
+pub mod settings;
 pub mod spawn_registry;
 
 // Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
@@ -20,6 +21,7 @@ pub use inspector_registry::{
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
+pub use settings::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.
 pub use renzora_core::{HideInHierarchy, EditorLocked, EditorCamera};
@@ -81,6 +83,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
+            .init_resource::<EditorSettings>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
@@ -293,6 +296,11 @@ fn editor_ui_system(world: &mut World) {
         TitleBarAction::SaveAs => {}   // TODO: scene management
         TitleBarAction::Export => {
             world.insert_resource(renzora_core::ExportRequested);
+        }
+        TitleBarAction::ToggleSettings => {
+            if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
+                settings.show_settings = !settings.show_settings;
+            }
         }
         TitleBarAction::None => {}
     }

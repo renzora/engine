@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for ThemeColor {
 }
 
 /// Complete theme definition with all editor colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Theme {
     /// Theme metadata
     #[serde(default)]
@@ -154,7 +154,7 @@ impl Default for Theme {
 }
 
 /// Theme metadata
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ThemeMeta {
     pub name: String,
     #[serde(default)]
@@ -164,7 +164,7 @@ pub struct ThemeMeta {
 }
 
 /// Semantic colors for common UI states and feedback
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SemanticColors {
     pub accent: ThemeColor,
@@ -189,7 +189,7 @@ impl Default for SemanticColors {
 }
 
 /// Surface and background colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SurfaceColors {
     pub window: ThemeColor,
@@ -216,7 +216,7 @@ impl Default for SurfaceColors {
 }
 
 /// Text colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TextColors {
     pub primary: ThemeColor,
@@ -241,7 +241,7 @@ impl Default for TextColors {
 }
 
 /// Widget colors (buttons, inputs, etc.)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WidgetColors {
     /// Non-interactive widget background
@@ -283,7 +283,7 @@ impl Default for WidgetColors {
 }
 
 /// Panel-specific colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PanelColors {
     /// Hierarchy panel
@@ -331,7 +331,7 @@ impl Default for PanelColors {
 }
 
 /// Component category colors (for inspector)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CategoryColors {
     pub transform: CategoryStyle,
@@ -414,7 +414,7 @@ impl Default for CategoryColors {
 }
 
 /// Style for a component category
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CategoryStyle {
     pub accent: ThemeColor,
@@ -431,7 +431,7 @@ impl Default for CategoryStyle {
 }
 
 /// Blueprint editor colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BlueprintColors {
     pub canvas_bg: ThemeColor,
@@ -462,7 +462,7 @@ impl Default for BlueprintColors {
 }
 
 /// Viewport colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ViewportColors {
     pub grid_line: ThemeColor,

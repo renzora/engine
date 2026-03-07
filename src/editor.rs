@@ -19,6 +19,7 @@ fn main() {
         use renzora_debugger::DebuggerPlugin;
         use renzora_gamepad::GamepadPlugin;
         use renzora_gizmo::GizmoPlugin;
+        use renzora_settings::SettingsPlugin;
 
         app.add_plugins(SplashPlugin);
         app.add_plugins(RenzoraEditorPlugin);
@@ -37,6 +38,7 @@ fn main() {
         app.add_plugins(DebuggerPlugin);
         app.add_plugins(GamepadPlugin);
         app.add_plugins(GizmoPlugin);
+        app.add_plugins(SettingsPlugin);
     }
 
     app.run();

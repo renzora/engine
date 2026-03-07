@@ -142,7 +142,7 @@ pub struct ViewAngleCommand {
 ///
 /// This resource is the single source of truth for the viewport header UI.
 /// Other crates (camera, gizmo) read from this to apply changes.
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource, Debug, Clone, PartialEq)]
 pub struct ViewportSettings {
     pub render_toggles: RenderToggles,
     pub visualization_mode: VisualizationMode,
