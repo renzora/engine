@@ -12,8 +12,8 @@ use renzora_editor::EditorSelection;
 use renzora_runtime::{EditorCamera, EditorLocked, HideInHierarchy};
 
 /// Preview image size (kept small for performance).
-const PREVIEW_WIDTH: u32 = 320;
-const PREVIEW_HEIGHT: u32 = 180;
+const PREVIEW_WIDTH: u32 = 640;
+const PREVIEW_HEIGHT: u32 = 360;
 
 /// Resource holding the camera preview render texture and egui texture id.
 #[derive(Resource)]

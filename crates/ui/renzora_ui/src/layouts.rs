@@ -77,10 +77,14 @@ pub fn scene_layout() -> DockTree {
             ),
             DockTree::vertical(
                 DockTree::leaf("shape_library"),
-                DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "history".into()],
-                    active_tab: 0,
-                },
+                DockTree::vertical(
+                    DockTree::Leaf {
+                        tabs: vec!["inspector".into(), "history".into()],
+                        active_tab: 0,
+                    },
+                    DockTree::leaf("camera_preview"),
+                    0.65,
+                ),
                 0.4,
             ),
             0.82,
