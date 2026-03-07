@@ -4,6 +4,8 @@
 //! material. Supports translate (arrows + plane squares), rotate (circles),
 //! and scale (lines + cube caps) modes.
 
+mod camera_gizmo;
+
 use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
@@ -193,6 +195,7 @@ impl Plugin for GizmoPlugin {
                     gizmo_hover_detect,
                     gizmo_drag,
                     draw_line_gizmos,
+                    camera_gizmo::draw_camera_gizmo,
                     entity_pick_system,
                 )
                     .chain()
