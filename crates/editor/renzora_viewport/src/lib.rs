@@ -53,6 +53,7 @@ impl Plugin for ViewportPlugin {
             ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
+        app.register_panel(CameraPreviewPanel);
     }
 }
 
@@ -270,5 +271,81 @@ impl EditorPanel for ViewportPanel {
 
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Center
+    }
+}
+
+// ── Camera Preview Panel ────────────────────────────────────────────────────
+
+pub struct CameraPreviewPanel;
+
+impl EditorPanel for CameraPreviewPanel {
+    fn id(&self) -> &str {
+        "camera_preview"
+    }
+
+    fn title(&self) -> &str {
+        "Camera Preview"
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some(regular::APERTURE)
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let preview = world.get_resource::<CameraPreviewState>();
+        let user_textures = world.get_resource::<EguiUserTextures>();
+
+        let has_preview = preview.as_ref().map_or(false, |p| p.previewing.is_some());
+
+        if !has_preview {
+            let theme = world
+                .get_resource::<ThemeManager>()
+                .map(|tm| &tm.active_theme);
+            let text_color = theme
+                .map(|t| t.text.muted.to_color32())
+                .unwrap_or(egui::Color32::from_white_alpha(80));
+
+            ui.centered_and_justified(|ui| {
+                ui.label(egui::RichText::new("Select a camera to preview").color(text_color));
+            });
+            return;
+        }
+
+        let available_width = ui.available_width();
+        let preview_height = available_width * (9.0 / 16.0);
+
+        let texture_id = preview.and_then(|p| {
+            p.texture_id.or_else(|| {
+                user_textures.and_then(|ut| ut.image_id(p.image_handle.id()))
+            })
+        });
+
+        if let Some(texture_id) = texture_id {
+            ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                texture_id,
+                [available_width, preview_height],
+            )));
+        } else {
+            let theme = world
+                .get_resource::<ThemeManager>()
+                .map(|tm| &tm.active_theme);
+            let bg = theme
+                .map(|t| t.surfaces.faint.to_color32())
+                .unwrap_or(egui::Color32::from_gray(30));
+            let text_color = theme
+                .map(|t| t.text.disabled.to_color32())
+                .unwrap_or(egui::Color32::from_white_alpha(50));
+
+            egui::Frame::new().fill(bg).show(ui, |ui| {
+                ui.set_min_size(egui::Vec2::new(available_width, preview_height));
+                ui.centered_and_justified(|ui| {
+                    ui.label(egui::RichText::new("Preview loading...").color(text_color));
+                });
+            });
+        }
+    }
+
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
     }
 }
