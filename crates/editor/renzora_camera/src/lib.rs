@@ -12,8 +12,9 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_runtime::EditorCamera;
-use renzora_viewport::ViewportState;
+use renzora_viewport::{ViewportSettings, ViewportState};
 
 /// Orbit camera state for the editor viewport.
 #[derive(Resource)]
@@ -133,7 +134,12 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
             .add_systems(PostStartup, apply_initial_orbit)
-            .add_systems(Update, camera_controller.run_if(in_state(renzora_splash::SplashState::Editor)));
+            .add_systems(Update, (
+                sync_viewport_settings,
+                handle_view_angle_keys,
+                camera_controller,
+                update_camera_projection,
+            ).chain().run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
 
@@ -145,6 +151,79 @@ fn apply_initial_orbit(
     for mut transform in &mut cameras {
         let t = orbit.calculate_transform();
         *transform = t;
+    }
+}
+
+/// Sync camera state from viewport header settings.
+fn sync_viewport_settings(
+    mut orbit: ResMut<OrbitCameraState>,
+    mut settings: ResMut<CameraSettings>,
+    mut vp: ResMut<ViewportSettings>,
+) {
+    // Sync projection mode
+    let proj = match vp.projection_mode {
+        renzora_viewport::ProjectionMode::Perspective => ProjectionMode::Perspective,
+        renzora_viewport::ProjectionMode::Orthographic => ProjectionMode::Orthographic,
+    };
+    orbit.projection_mode = proj;
+
+    // Sync camera settings
+    let c = &vp.camera;
+    settings.move_speed = c.move_speed;
+    settings.look_sensitivity = c.look_sensitivity;
+    settings.orbit_sensitivity = c.orbit_sensitivity;
+    settings.pan_sensitivity = c.pan_sensitivity;
+    settings.zoom_sensitivity = c.zoom_sensitivity;
+    settings.invert_y = c.invert_y;
+    settings.distance_relative_speed = c.distance_relative_speed;
+
+    // Apply pending view angle
+    if let Some(cmd) = vp.pending_view_angle.take() {
+        orbit.yaw = cmd.yaw;
+        orbit.pitch = cmd.pitch;
+    }
+}
+
+/// Handle view angle and projection toggle keyboard shortcuts.
+fn handle_view_angle_keys(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut vp: ResMut<ViewportSettings>,
+) {
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    if keybindings.just_pressed(EditorAction::ViewFront, &keyboard) {
+        orbit.yaw = 0.0;
+        orbit.pitch = 0.0;
+    }
+    if keybindings.just_pressed(EditorAction::ViewBack, &keyboard) {
+        orbit.yaw = PI;
+        orbit.pitch = 0.0;
+    }
+    if keybindings.just_pressed(EditorAction::ViewLeft, &keyboard) {
+        orbit.yaw = -FRAC_PI_2;
+        orbit.pitch = 0.0;
+    }
+    if keybindings.just_pressed(EditorAction::ViewRight, &keyboard) {
+        orbit.yaw = FRAC_PI_2;
+        orbit.pitch = 0.0;
+    }
+    if keybindings.just_pressed(EditorAction::ViewTop, &keyboard) {
+        orbit.yaw = 0.0;
+        orbit.pitch = FRAC_PI_2;
+    }
+    if keybindings.just_pressed(EditorAction::ViewBottom, &keyboard) {
+        orbit.yaw = 0.0;
+        orbit.pitch = -FRAC_PI_2;
+    }
+    if keybindings.just_pressed(EditorAction::ToggleProjection, &keyboard) {
+        orbit.projection_mode = orbit.projection_mode.toggle();
+        // Sync back to viewport settings
+        vp.projection_mode = match orbit.projection_mode {
+            ProjectionMode::Perspective => renzora_viewport::ProjectionMode::Perspective,
+            ProjectionMode::Orthographic => renzora_viewport::ProjectionMode::Orthographic,
+        };
     }
 }
 
@@ -310,4 +389,48 @@ fn camera_controller(
     // Apply orbit to transform
     let t = orbit.calculate_transform();
     *transform = t;
+}
+
+/// Update camera projection based on orbit state (perspective/orthographic).
+fn update_camera_projection(
+    orbit: Res<OrbitCameraState>,
+    viewport: Option<Res<ViewportState>>,
+    mut camera_query: Query<&mut Projection, With<EditorCamera>>,
+) {
+    if !orbit.is_changed() {
+        return;
+    }
+
+    let Ok(mut projection) = camera_query.single_mut() else {
+        return;
+    };
+
+    let aspect = viewport
+        .as_ref()
+        .filter(|v| v.screen_size.x > 0.0 && v.screen_size.y > 0.0)
+        .map(|v| v.screen_size.x / v.screen_size.y)
+        .unwrap_or(16.0 / 9.0);
+
+    match orbit.projection_mode {
+        ProjectionMode::Perspective => {
+            if !matches!(*projection, Projection::Perspective(_)) {
+                *projection = Projection::Perspective(PerspectiveProjection {
+                    fov: std::f32::consts::FRAC_PI_4,
+                    aspect_ratio: aspect,
+                    ..default()
+                });
+            } else if let Projection::Perspective(ref mut persp) = *projection {
+                persp.aspect_ratio = aspect;
+            }
+        }
+        ProjectionMode::Orthographic => {
+            if !matches!(*projection, Projection::Orthographic(_)) {
+                let mut ortho = OrthographicProjection::default_3d();
+                ortho.scale = orbit.distance / 5.0;
+                *projection = Projection::Orthographic(ortho);
+            } else if let Projection::Orthographic(ref mut ortho) = *projection {
+                ortho.scale = orbit.distance / 5.0;
+            }
+        }
+    }
 }

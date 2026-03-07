@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.18" }
 renzora_editor = { path = "../renzora_editor" }
-renzora_camera = { path = "../renzora_camera" }
+renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_viewport = { path = "../renzora_viewport" }
 renzora_runtime = { path = "../../core/renzora_runtime" }
-renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_splash = { path = "../../ui/renzora_splash" }

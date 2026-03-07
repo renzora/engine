@@ -32,13 +32,13 @@ editor = [
     "dep:renzora_grid",
     "dep:renzora_camera",
     "dep:renzora_keybindings",
-    "dep:renzora_gizmo",
     "dep:renzora_scene",
     "dep:renzora_export",
     "dep:renzora_mixer",
     "dep:renzora_console",
     "dep:renzora_debugger",
     "dep:renzora_gamepad",
+    "dep:renzora_gizmo",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
     "renzora_pixelation/editor",
@@ -93,13 +93,13 @@ renzora_test_component = { path = "crates/editor/renzora_test_component", option
 renzora_grid = { path = "crates/editor/renzora_grid", optional = true }
 renzora_camera = { path = "crates/editor/renzora_camera", optional = true }
 renzora_keybindings = { path = "crates/editor/renzora_keybindings", optional = true }
-renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_scene = { path = "crates/editor/renzora_scene", optional = true }
 renzora_export = { path = "crates/editor/renzora_export", optional = true }
 renzora_mixer = { path = "crates/editor/renzora_mixer", optional = true }
 renzora_console = { path = "crates/editor/renzora_console", optional = true }
 renzora_debugger = { path = "crates/editor/renzora_debugger", optional = true }
 renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
+renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 
 # Component crates (always included, editor feature cascaded)
 renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }

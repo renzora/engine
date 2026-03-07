@@ -2,7 +2,6 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
-
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.

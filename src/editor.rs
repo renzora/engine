@@ -12,20 +12,19 @@ fn main() {
         use renzora_grid::GridPlugin;
         use renzora_camera::CameraPlugin;
         use renzora_keybindings::KeybindingsPlugin;
-        use renzora_gizmo::GizmoPlugin;
         use renzora_scene::ScenePlugin;
         use renzora_export::ExportPlugin;
         use renzora_mixer::MixerPlugin;
         use renzora_console::ConsolePlugin;
         use renzora_debugger::DebuggerPlugin;
         use renzora_gamepad::GamepadPlugin;
+        use renzora_gizmo::GizmoPlugin;
 
         app.add_plugins(SplashPlugin);
         app.add_plugins(RenzoraEditorPlugin);
         app.add_plugins(GridPlugin);
         app.add_plugins(CameraPlugin);
         app.add_plugins(KeybindingsPlugin);
-        app.add_plugins(GizmoPlugin);
         app.add_plugins(ViewportPlugin);
         app.add_plugins(AssetBrowserPlugin);
         app.add_plugins(HierarchyPanelPlugin);
@@ -37,6 +36,7 @@ fn main() {
         app.add_plugins(ConsolePlugin);
         app.add_plugins(DebuggerPlugin);
         app.add_plugins(GamepadPlugin);
+        app.add_plugins(GizmoPlugin);
     }
 
     app.run();

@@ -54,7 +54,11 @@ impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GridConfig>()
             .add_systems(PostStartup, spawn_grid)
-            .add_systems(Update, toggle_grid_visibility.run_if(in_state(renzora_splash::SplashState::Editor)));
+            .add_systems(Update, (
+                sync_grid_from_viewport,
+                toggle_grid_visibility,
+                toggle_axis_visibility,
+            ).run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
 
@@ -76,6 +80,7 @@ fn spawn_grid(
         })),
         Transform::default(),
         EditorGrid,
+
     ));
 
     // X axis (red)
@@ -90,6 +95,7 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
+
     ));
 
     // Z axis (blue)
@@ -104,6 +110,7 @@ fn spawn_grid(
         })),
         Transform::from_xyz(0.0, 0.005, 0.0),
         AxisIndicator,
+
     ));
 
     // Y axis (green, vertical)
@@ -118,6 +125,7 @@ fn spawn_grid(
         })),
         Transform::default(),
         AxisIndicator,
+
     ));
 }
 
@@ -180,21 +188,38 @@ fn build_axis_line(from: Vec3, to: Vec3) -> Mesh {
     mesh
 }
 
+fn sync_grid_from_viewport(
+    vp: Res<renzora_viewport::ViewportSettings>,
+    mut config: ResMut<GridConfig>,
+) {
+    if !vp.is_changed() {
+        return;
+    }
+    config.visible = vp.show_grid;
+}
+
 fn toggle_grid_visibility(
     config: Res<GridConfig>,
-    mut grids: Query<&mut Visibility, Or<(With<EditorGrid>, With<AxisIndicator>)>>,
+    mut grids: Query<&mut Visibility, With<EditorGrid>>,
 ) {
     if !config.is_changed() {
         return;
     }
-
-    let vis = if config.visible {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-
+    let vis = if config.visible { Visibility::Inherited } else { Visibility::Hidden };
     for mut visibility in &mut grids {
+        *visibility = vis;
+    }
+}
+
+fn toggle_axis_visibility(
+    vp: Res<renzora_viewport::ViewportSettings>,
+    mut axes: Query<&mut Visibility, With<AxisIndicator>>,
+) {
+    if !vp.is_changed() {
+        return;
+    }
+    let vis = if vp.show_axis_gizmo { Visibility::Inherited } else { Visibility::Hidden };
+    for mut visibility in &mut axes {
         *visibility = vis;
     }
 }

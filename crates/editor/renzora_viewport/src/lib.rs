@@ -3,9 +3,15 @@
 //! Creates an offscreen render target, wires it to the runtime camera,
 //! and displays the result as an egui image inside the docking panel system.
 
+pub mod camera_preview;
+pub mod header;
+pub mod render_systems;
+pub mod settings;
+
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use bevy::prelude::*;
+use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
@@ -13,6 +19,12 @@ use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_runtime::ViewportRenderTarget;
 use renzora_theme::ThemeManager;
+
+pub use camera_preview::CameraPreviewState;
+pub use settings::{
+    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, RenderToggles, SnapSettings,
+    ViewAngleCommand, ViewportSettings, VisualizationMode,
+};
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 720;
@@ -22,10 +34,23 @@ pub struct ViewportPlugin;
 
 impl Plugin for ViewportPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ViewportState>()
+        app.add_plugins(WireframePlugin::default())
+            .insert_resource(WireframeConfig {
+                global: false,
+                default_color: bevy::color::Color::WHITE,
+            })
+            .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
-            .add_systems(PostStartup, setup_viewport)
-            .add_systems(Update, handle_viewport_resize.run_if(in_state(renzora_editor::SplashState::Editor)));
+            .init_resource::<ViewportSettings>()
+            .init_resource::<render_systems::OriginalMaterialStates>()
+            .init_resource::<render_systems::LastRenderState>()
+            .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
+            .add_systems(Update, (
+                handle_viewport_resize,
+                render_systems::update_render_toggles,
+                render_systems::update_shadow_settings,
+                camera_preview::update_camera_preview,
+            ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
     }
@@ -174,6 +199,9 @@ impl EditorPanel for ViewportPanel {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        // Header bar with toggles and dropdowns
+        header::viewport_header(ui, world);
+
         let rect = ui.available_rect_before_wrap();
 
         // Request resize to match panel dimensions + track hover

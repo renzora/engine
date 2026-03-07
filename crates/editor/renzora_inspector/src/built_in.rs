@@ -639,8 +639,51 @@ fn camera3d_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
+        custom_ui_fn: Some(camera3d_preview_ui),
     }
+}
+
+fn camera3d_preview_ui(
+    ui: &mut bevy_egui::egui::Ui,
+    world: &World,
+    _entity: Entity,
+    _cmds: &renzora_editor::EditorCommands,
+    theme: &renzora_theme::Theme,
+) {
+    use bevy_egui::egui;
+
+    let preview = world.get_resource::<renzora_viewport::CameraPreviewState>();
+    let user_textures = world.get_resource::<bevy_egui::EguiUserTextures>();
+
+    let available_width = ui.available_width();
+    let preview_height = available_width * (9.0 / 16.0);
+
+    // Try to get the egui texture ID for the preview image
+    let texture_id = preview
+        .and_then(|p| {
+            // Try cached id first, fall back to looking it up
+            p.texture_id.or_else(|| {
+                user_textures.and_then(|ut| ut.image_id(p.image_handle.id()))
+            })
+        });
+
+    if let Some(texture_id) = texture_id {
+        ui.add(egui::Image::new(egui::load::SizedTexture::new(
+            texture_id,
+            [available_width, preview_height],
+        )));
+    } else {
+        let bg = theme.surfaces.faint.to_color32();
+        let text_color = theme.text.disabled.to_color32();
+        egui::Frame::new().fill(bg).show(ui, |ui| {
+            ui.set_min_size(egui::Vec2::new(available_width, preview_height));
+            ui.centered_and_justified(|ui| {
+                ui.label(egui::RichText::new("Preview loading...").color(text_color));
+            });
+        });
+    }
+
+    ui.add_space(4.0);
 }
 
 fn mesh3d_entry() -> InspectorEntry {
