@@ -4,6 +4,7 @@
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
 use bevy::prelude::*;
+use bevy::light::SunDisk;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -25,7 +26,7 @@ use {
 /// raw quaternion rotation. A sync system automatically updates the
 /// `DirectionalLight` and `Transform` each frame.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component)]
+#[reflect(Component, Default)]
 pub struct SunData {
     /// Azimuth angle in degrees (0–360, compass direction of the sun).
     pub azimuth: f32,
@@ -39,6 +40,8 @@ pub struct SunData {
     pub shadows_enabled: bool,
     /// Angular diameter of the sun disc in degrees (Earth's sun ≈ 0.53°).
     pub angular_diameter: f32,
+    /// Brightness multiplier for the sun disk (0 = no disk, 1 = physical, >1 = overexposed).
+    pub sun_disk_intensity: f32,
 }
 
 impl Default for SunData {
@@ -50,6 +53,7 @@ impl Default for SunData {
             illuminance: 100_000.0,
             shadows_enabled: true,
             angular_diameter: 0.53,
+            sun_disk_intensity: 1.0,
         }
     }
 }
@@ -72,15 +76,20 @@ impl SunData {
 // ============================================================================
 
 fn sync_sun(
-    mut query: Query<(&SunData, &mut DirectionalLight, &mut Transform), Changed<SunData>>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &SunData, &mut DirectionalLight, &mut Transform), Or<(Changed<SunData>, Without<SunDisk>)>>,
 ) {
-    for (sun, mut light, mut transform) in &mut query {
+    for (entity, sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance;
         light.shadows_enabled = sun.shadows_enabled;
         *transform = Transform::from_rotation(
             Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()),
         );
+        commands.entity(entity).insert(SunDisk {
+            angular_size: sun.angular_diameter.to_radians(),
+            intensity: sun.sun_disk_intensity,
+        });
     }
 }
 
@@ -160,6 +169,16 @@ fn sun_custom_ui(
                 .speed(0.01)
                 .range(0.0..=10.0)
                 .suffix("°"),
+        )
+        .changed()
+    });
+    row += 1;
+
+    changed |= inline_property(ui, row, "Disk Intensity", theme, |ui| {
+        ui.add(
+            egui::DragValue::new(&mut data.sun_disk_intensity)
+                .speed(0.01)
+                .range(0.0..=10.0),
         )
         .changed()
     });

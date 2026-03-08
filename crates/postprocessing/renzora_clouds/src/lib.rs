@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 /// Procedural clouds settings.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 pub struct CloudsData {
     pub enabled: bool,
     /// Cloud coverage (0 = clear, 1 = overcast)
@@ -37,6 +37,20 @@ pub struct CloudsData {
     pub color: (f32, f32, f32),
     /// Shadow color (dark underside) RGB
     pub shadow_color: (f32, f32, f32),
+    /// Beer's law absorption coefficient (higher = darker thick clouds)
+    pub absorption: f32,
+    /// Silver lining intensity (forward scattering glow at cloud edges toward sun)
+    pub silver_intensity: f32,
+    /// Silver lining spread (lower = tighter around sun direction)
+    pub silver_spread: f32,
+    /// Powder effect strength (darkens thin cloud edges)
+    pub powder_strength: f32,
+    /// Minimum ambient brightness floor
+    pub ambient_brightness: f32,
+    /// Horizon haze color RGB
+    pub horizon_color: (f32, f32, f32),
+    /// Atmospheric perspective strength (0 = none, 1 = full haze at horizon)
+    pub atmosphere_strength: f32,
 }
 
 impl Default for CloudsData {
@@ -51,6 +65,13 @@ impl Default for CloudsData {
             altitude: 0.3,
             color: (1.0, 1.0, 1.0),
             shadow_color: (0.6, 0.65, 0.7),
+            absorption: 1.5,
+            silver_intensity: 0.4,
+            silver_spread: 0.15,
+            powder_strength: 0.8,
+            ambient_brightness: 0.3,
+            horizon_color: (0.7, 0.8, 0.95),
+            atmosphere_strength: 0.5,
         }
     }
 }
@@ -73,6 +94,15 @@ pub struct CloudMaterial {
     /// Cloud shadow color
     #[uniform(3)]
     pub shadow_color: LinearRgba,
+    /// sun_dir.x, sun_dir.y, sun_dir.z, absorption
+    #[uniform(4)]
+    pub params_c: Vec4,
+    /// silver_intensity, silver_spread, powder_strength, ambient_brightness
+    #[uniform(5)]
+    pub params_d: Vec4,
+    /// Horizon haze (rgb = color, a = atmosphere_strength)
+    #[uniform(6)]
+    pub horizon_color: LinearRgba,
 }
 
 impl Material for CloudMaterial {
@@ -118,6 +148,7 @@ fn sync_clouds(
     mut clouds_state: ResMut<CloudsState>,
     clouds_query: Query<&CloudsData>,
     camera_query: Query<(&Transform, &Camera), With<Camera3d>>,
+    sun_query: Query<&Transform, With<DirectionalLight>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
@@ -166,6 +197,25 @@ fn sync_clouds(
         1.0,
     );
 
+    // Auto-detect sun direction from directional light, fallback to default
+    let sun_dir = sun_query.iter().next()
+        .map(|t| -t.forward().as_vec3())
+        .unwrap_or(Vec3::new(0.5, 0.7, 0.5).normalize());
+
+    let params_c = Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, clouds_data.absorption);
+    let params_d = Vec4::new(
+        clouds_data.silver_intensity,
+        clouds_data.silver_spread,
+        clouds_data.powder_strength,
+        clouds_data.ambient_brightness,
+    );
+    let horizon_col = LinearRgba::new(
+        clouds_data.horizon_color.0,
+        clouds_data.horizon_color.1,
+        clouds_data.horizon_color.2,
+        clouds_data.atmosphere_strength,
+    );
+
     if let Some(dome_entity) = clouds_state.entity {
         if commands.get_entity(dome_entity).is_ok() {
             if let Some(ref mat_handle) = clouds_state.material_handle {
@@ -174,6 +224,9 @@ fn sync_clouds(
                     mat.params_b = params_b;
                     mat.cloud_color = cloud_color;
                     mat.shadow_color = shadow_color;
+                    mat.params_c = params_c;
+                    mat.params_d = params_d;
+                    mat.horizon_color = horizon_col;
                 }
             }
             let transform =
@@ -193,6 +246,9 @@ fn sync_clouds(
             params_b,
             cloud_color,
             shadow_color,
+            params_c,
+            params_d,
+            horizon_color: horizon_col,
         });
 
         let transform =
@@ -399,6 +455,142 @@ fn inspector_entry() -> InspectorEntry {
                     if let FieldValue::Color([r, g, b]) = val {
                         if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
                             d.shadow_color = (r, g, b);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Absorption",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 5.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.absorption))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.absorption = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Silver Lining",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.silver_intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.silver_intensity = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Silver Spread",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.01,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.silver_spread))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.silver_spread = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Powder Effect",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.powder_strength))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.powder_strength = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Ambient",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.ambient_brightness))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.ambient_brightness = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Horizon Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Color([d.horizon_color.0, d.horizon_color.1, d.horizon_color.2]))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.horizon_color = (r, g, b);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Atmosphere",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<CloudsData>(entity)
+                        .map(|d| FieldValue::Float(d.atmosphere_strength))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut d) = world.get_mut::<CloudsData>(entity) {
+                            d.atmosphere_strength = v;
                         }
                     }
                 },
