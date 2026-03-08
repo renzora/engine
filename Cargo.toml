@@ -79,6 +79,12 @@ editor = [
     "renzora_clouds/editor",
     "renzora_lighting/editor",
     "renzora_hanabi/editor",
+    "renzora_tonemapping/editor",
+    "renzora_bloom_effect/editor",
+    "renzora_dof/editor",
+    "renzora_motion_blur/editor",
+    "renzora_antialiasing/editor",
+    "renzora_distance_fog/editor",
     "dep:renzora_particle_editor",
 ]
 
@@ -159,6 +165,12 @@ renzora_frosted_glass = { path = "crates/postprocessing/renzora_frosted_glass" }
 renzora_skybox = { path = "crates/postprocessing/renzora_skybox" }
 renzora_night_stars = { path = "crates/postprocessing/renzora_night_stars" }
 renzora_clouds = { path = "crates/postprocessing/renzora_clouds" }
+renzora_tonemapping = { path = "crates/postprocessing/renzora_tonemapping" }
+renzora_bloom_effect = { path = "crates/postprocessing/renzora_bloom_effect" }
+renzora_dof = { path = "crates/postprocessing/renzora_dof" }
+renzora_motion_blur = { path = "crates/postprocessing/renzora_motion_blur" }
+renzora_antialiasing = { path = "crates/postprocessing/renzora_antialiasing" }
+renzora_distance_fog = { path = "crates/postprocessing/renzora_distance_fog" }
 renzora_lighting = { path = "crates/core/renzora_lighting" }
 
 # Bevy recommended optimizations

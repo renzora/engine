@@ -1008,3 +1008,4 @@ fn volumetric_fog_entry() -> InspectorEntry {
         custom_ui_fn: None,
     }
 }
+

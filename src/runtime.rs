@@ -74,6 +74,12 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
     app.add_plugins(renzora_hanabi::HanabiParticlePlugin);
+    app.add_plugins(renzora_tonemapping::TonemappingPlugin);
+    app.add_plugins(renzora_bloom_effect::BloomEffectPlugin);
+    app.add_plugins(renzora_dof::DepthOfFieldPlugin);
+    app.add_plugins(renzora_motion_blur::MotionBlurPlugin);
+    app.add_plugins(renzora_antialiasing::AntiAliasingPlugin);
+    app.add_plugins(renzora_distance_fog::DistanceFogPlugin);
 
     app
 }
