@@ -556,7 +556,7 @@ impl Default for EffectSource {
 
 #[derive(Component, Clone, Serialize, Deserialize, Reflect, Debug)]
 #[reflect(Component, Serialize, Deserialize)]
-pub struct HanabiEffectData {
+pub struct HanabiEffect {
     pub source: EffectSource,
     pub playing: bool,
     pub rate_multiplier: f32,
@@ -567,7 +567,7 @@ pub struct HanabiEffectData {
     pub variable_overrides: HashMap<String, EffectVariable>,
 }
 
-impl Default for HanabiEffectData {
+impl Default for HanabiEffect {
     fn default() -> Self {
         Self {
             source: EffectSource::default(),

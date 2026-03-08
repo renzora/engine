@@ -1,6 +1,6 @@
 //! Particle effect systems
 //!
-//! Runtime systems for syncing HanabiEffectData components with
+//! Runtime systems for syncing HanabiEffect components with
 //! bevy_hanabi ParticleEffect components.
 
 use bevy::prelude::*;
@@ -36,19 +36,19 @@ pub struct HanabiEffectSynced {
     pub effect_handle: Handle<EffectAsset>,
 }
 
-/// System to sync HanabiEffectData with bevy_hanabi ParticleEffect
+/// System to sync HanabiEffect with bevy_hanabi ParticleEffect
 ///
-/// When HanabiEffectData is added or changed, this system creates/updates
+/// When HanabiEffect is added or changed, this system creates/updates
 /// the corresponding EffectAsset and ParticleEffect components.
 pub fn sync_hanabi_effects(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
     query: Query<
-        (Entity, &HanabiEffectData, Option<&HanabiEffectSynced>),
-        Changed<HanabiEffectData>,
+        (Entity, &HanabiEffect, Option<&HanabiEffectSynced>),
+        Changed<HanabiEffect>,
     >,
-    // Query for entities that lost HanabiEffectData
-    removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffectData>>,
+    // Query for entities that lost HanabiEffect
+    removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffect>>,
     project: Option<Res<CurrentProject>>,
 ) {
     // Handle added/changed effects
@@ -77,7 +77,7 @@ pub fn sync_hanabi_effects(
         }
     }
 
-    // Clean up entities that lost HanabiEffectData
+    // Clean up entities that lost HanabiEffect
     for (entity, _synced) in removed_query.iter() {
         commands.entity(entity).remove::<(
             ParticleEffect,
@@ -92,8 +92,8 @@ pub fn sync_hanabi_effects(
 /// Handles play/pause, rate multiplier, color tint, etc.
 pub fn apply_runtime_overrides(
     mut effects_query: Query<
-        (&HanabiEffectData, &mut EffectSpawner),
-        Changed<HanabiEffectData>,
+        (&HanabiEffect, &mut EffectSpawner),
+        Changed<HanabiEffect>,
     >,
 ) {
     for (effect_data, mut spawner) in effects_query.iter_mut() {
@@ -104,12 +104,12 @@ pub fn apply_runtime_overrides(
 
 /// Rehydrate particle effects after scene load
 ///
-/// When a scene is loaded, entities have HanabiEffectData but not the
+/// When a scene is loaded, entities have HanabiEffect but not the
 /// runtime ParticleEffect components. This system recreates them.
 pub fn rehydrate_hanabi_effects(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
-    query: Query<(Entity, &HanabiEffectData), Without<HanabiEffectSynced>>,
+    query: Query<(Entity, &HanabiEffect), Without<HanabiEffectSynced>>,
     project: Option<Res<CurrentProject>>,
 ) {
     for (entity, effect_data) in query.iter() {
@@ -159,7 +159,7 @@ pub enum ParticleCommand {
 /// Process particle commands from scripts
 pub fn process_particle_commands(
     mut commands: ResMut<ParticleCommandQueue>,
-    mut effect_query: Query<(&mut HanabiEffectData, Option<&mut EffectSpawner>)>,
+    mut effect_query: Query<(&mut HanabiEffect, Option<&mut EffectSpawner>)>,
 ) {
     for cmd in commands.commands.drain(..) {
         match cmd {
@@ -232,7 +232,7 @@ pub fn process_particle_commands(
 pub fn hot_reload_saved_effects(
     mut editor_state: ResMut<ParticleEditorState>,
     mut effects: ResMut<Assets<EffectAsset>>,
-    mut query: Query<(&mut HanabiEffectData, Option<&HanabiEffectSynced>)>,
+    mut query: Query<(&mut HanabiEffect, Option<&HanabiEffectSynced>)>,
     project: Option<Res<CurrentProject>>,
 ) {
     if editor_state.recently_saved_paths.is_empty() {

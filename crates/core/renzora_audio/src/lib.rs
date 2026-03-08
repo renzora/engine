@@ -15,7 +15,7 @@ pub mod preview;
 pub mod systems;
 
 pub use commands::{AudioCommand, AudioCommandQueue};
-pub use components::AudioPlayerData;
+pub use components::AudioPlayer;
 pub use manager::{amplitude_to_db, quat_to_mint, vec3_to_mint, KiraAudioManager, RolloffType};
 pub use mixer::{ChannelStrip, MixerState};
 pub use preview::AudioPreviewState;

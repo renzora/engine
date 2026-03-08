@@ -142,6 +142,21 @@ fn drain_log_buffer(mut console: ResMut<ConsoleState>, time: Res<Time>) {
     console.drain_shared_buffer(time.elapsed_secs_f64());
 }
 
+/// Drain script log messages into the console.
+fn drain_script_logs(
+    mut console: ResMut<ConsoleState>,
+    mut log_buffer: ResMut<renzora_scripting::systems::ScriptLogBuffer>,
+) {
+    for entry in log_buffer.entries.drain(..) {
+        let level = match entry.level.as_str() {
+            "warn" => LogLevel::Warning,
+            "error" => LogLevel::Error,
+            _ => LogLevel::Info,
+        };
+        console.log(level, "Script", entry.message);
+    }
+}
+
 /// Apply pending console mutations from the panel bridge back to the real resource.
 fn sync_console_bridge(bridge: Res<ConsoleBridge>, mut console: ResMut<ConsoleState>) {
     if let Ok(mut pending) = bridge.pending.lock() {
@@ -178,7 +193,7 @@ impl Plugin for ConsolePlugin {
 
         app.insert_resource(bridge);
         use renzora_editor::SplashState;
-        app.add_systems(Update, (drain_log_buffer, sync_console_bridge).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, (drain_log_buffer, drain_script_logs, sync_console_bridge).run_if(in_state(SplashState::Editor)));
 
         app.register_panel(ConsolePanel::new(arc));
     }

@@ -678,7 +678,7 @@ impl Default for EffectSource {
 /// created/updated by the sync system.
 #[derive(Component, Clone, Serialize, Deserialize, Reflect, Debug)]
 #[reflect(Component, Serialize, Deserialize)]
-pub struct HanabiEffectData {
+pub struct HanabiEffect {
     /// Where the effect definition comes from
     pub source: EffectSource,
 
@@ -699,7 +699,7 @@ pub struct HanabiEffectData {
     pub variable_overrides: HashMap<String, EffectVariable>,
 }
 
-impl Default for HanabiEffectData {
+impl Default for HanabiEffect {
     fn default() -> Self {
         Self {
             source: EffectSource::default(),

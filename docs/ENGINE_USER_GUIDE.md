@@ -625,7 +625,7 @@ Standard PBR properties:
 **Directional Light:**
 - Parallel rays (sun-like)
 - Properties: color, illuminance (lux), shadows
-- Use `SunData` component for angle-based positioning (azimuth + elevation)
+- Use `Sun` component for angle-based positioning (azimuth + elevation)
 
 **Spot Light:**
 - Cone-shaped light with inner/outer angle falloff

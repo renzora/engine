@@ -3,6 +3,7 @@ mod command;
 mod component;
 mod context;
 mod engine;
+pub mod get_handler;
 mod input;
 mod plugin;
 

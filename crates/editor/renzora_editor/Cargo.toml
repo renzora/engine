@@ -6,11 +6,13 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.18" }
 bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_ui = { path = "../../ui/renzora_ui" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 renzora_splash = { path = "../../ui/renzora_splash" }
 renzora_core = { path = "../../core/renzora_core" }
 renzora_postprocess = { path = "../../postprocessing/renzora_postprocess" }
+renzora_scripting = { path = "../../core/renzora_scripting" }
 renzora_macros = { path = "../../macros/renzora_macros" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

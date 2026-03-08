@@ -57,7 +57,7 @@ pub struct ScriptComponentQueries<'w, 's> {
     pub mesh_materials: Query<'w, 's, &'static MeshMaterial3d<StandardMaterial>>,
     // Note: material_assets moved to ScriptCommandQueues as ResMut to avoid conflict
     // Sun data for scripting environment changes
-    pub sun_data: Query<'w, 's, &'static mut crate::component_system::SunData>,
+    pub sun_data: Query<'w, 's, &'static mut crate::component_system::Sun>,
     // Pre-computed camera yaw from the active viewport camera
     pub script_camera_yaw: Res<'w, super::api::ScriptCameraYaw>,
     // AnimatorComponent for routing play_animation through
@@ -544,7 +544,7 @@ pub fn run_rhai_scripts(
                 }
             }
 
-            // Apply sun changes to SunData components
+            // Apply sun changes to Sun components
             let has_sun_changes = ctx.env_sun_azimuth.is_some()
                 || ctx.env_sun_elevation.is_some()
                 || ctx.env_sun_color.is_some()

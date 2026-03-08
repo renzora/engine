@@ -53,7 +53,12 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_shadow_settings,
                 camera_preview::update_camera_preview,
                 play_mode::handle_play_mode_transitions,
-            ).run_if(in_state(renzora_editor::SplashState::Editor)));
+            ).run_if(in_state(renzora_editor::SplashState::Editor)))
+            .add_systems(Update,
+                camera_preview::sync_preview_post_processing
+                    .after(camera_preview::update_camera_preview)
+                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+            );
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);

@@ -29,7 +29,7 @@ impl Plugin for HanabiParticlePlugin {
         app.init_resource::<ParticlePreviewState>();
         app.init_resource::<ParticleCommandQueue>();
 
-        app.register_type::<HanabiEffectData>()
+        app.register_type::<HanabiEffect>()
             .register_type::<HanabiEffectDefinition>()
             .register_type::<EffectSource>()
             .register_type::<HanabiEmitShape>()

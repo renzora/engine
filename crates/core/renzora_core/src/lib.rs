@@ -84,6 +84,16 @@ impl CurrentProject {
     }
 }
 
+/// Unique tag for identifying an entity from scripts and other systems.
+///
+/// Unlike `Name` (which is a display label and can be duplicated), a tag
+/// is intended to be a unique identifier for lookup via `get_on()` etc.
+#[derive(Component, Default, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct EntityTag {
+    pub tag: String,
+}
+
 /// Marker component for the editor's scene-navigation camera.
 ///
 /// This camera is used for orbit/pan/zoom during editing and renders to the
@@ -197,6 +207,10 @@ pub enum PlayState {
     Playing,
     /// Game is paused.
     Paused,
+    /// Scripts running inside the editor (editor UI visible, no camera switch).
+    ScriptsOnly,
+    /// Scripts paused inside the editor.
+    ScriptsPaused,
 }
 
 /// Resource that tracks play mode state and pending transitions.
@@ -211,6 +225,8 @@ pub struct PlayModeState {
     pub request_stop: bool,
     /// Set to `true` to toggle pause.
     pub request_pause: bool,
+    /// Set to `true` to request scripts-only mode next frame.
+    pub request_scripts_only: bool,
 }
 
 impl PlayModeState {
@@ -218,14 +234,22 @@ impl PlayModeState {
         self.state == PlayState::Playing
     }
     pub fn is_paused(&self) -> bool {
-        self.state == PlayState::Paused
+        matches!(self.state, PlayState::Paused | PlayState::ScriptsPaused)
     }
     pub fn is_editing(&self) -> bool {
         self.state == PlayState::Editing
     }
-    /// Returns true if in Playing or Paused state.
+    /// Returns true if in Playing or Paused state (full play mode).
     pub fn is_in_play_mode(&self) -> bool {
         matches!(self.state, PlayState::Playing | PlayState::Paused)
+    }
+    /// Returns true if scripts are in scripts-only mode (running or paused).
+    pub fn is_scripts_only(&self) -> bool {
+        matches!(self.state, PlayState::ScriptsOnly | PlayState::ScriptsPaused)
+    }
+    /// Returns true if scripts should be executing this frame.
+    pub fn is_scripts_running(&self) -> bool {
+        matches!(self.state, PlayState::Playing | PlayState::ScriptsOnly)
     }
 }
 

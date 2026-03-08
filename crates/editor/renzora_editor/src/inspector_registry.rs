@@ -11,6 +11,8 @@ pub enum FieldValue {
     Color([f32; 3]),
     String(String),
     ReadOnly(String),
+    /// Asset path (project-relative).
+    Asset(Option<String>),
 }
 
 /// Metadata about a field's type, used to select the correct widget.
@@ -22,6 +24,10 @@ pub enum FieldType {
     Color,
     String,
     ReadOnly,
+    /// Asset path field — accepts drag-drop from asset browser.
+    /// `extensions` filters which file types are accepted (e.g. `&["png", "jpg"]`).
+    /// Empty slice = accept all.
+    Asset { extensions: Vec<std::string::String> },
 }
 
 /// A single inspectable field on a component.
@@ -33,6 +39,7 @@ pub struct FieldDef {
 }
 
 /// Registration entry for one component type.
+///
 pub struct InspectorEntry {
     pub type_id: &'static str,
     pub display_name: &'static str,

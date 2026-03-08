@@ -5,14 +5,14 @@
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 
-use crate::particles::{HanabiEffectData, EffectVariable};
+use crate::particles::{HanabiEffect, EffectVariable};
 use crate::scripting::resources::ParticleScriptCommandQueue;
 use super::super::resources::ParticleScriptCommand;
 
 /// System to process particle commands from scripts
 pub fn process_particle_script_commands(
     mut commands: ResMut<ParticleScriptCommandQueue>,
-    mut effect_query: Query<(Entity, &mut HanabiEffectData, Option<&mut EffectSpawner>, Option<&mut Transform>)>,
+    mut effect_query: Query<(Entity, &mut HanabiEffect, Option<&mut EffectSpawner>, Option<&mut Transform>)>,
 ) {
     for cmd in commands.drain() {
         let entity_id = match &cmd {

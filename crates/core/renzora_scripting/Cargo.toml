@@ -10,6 +10,7 @@ rhai = ["dep:rhai"]
 
 [dependencies]
 bevy = { version = "0.18" }
+renzora_core = { path = "../renzora_core" }
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
 

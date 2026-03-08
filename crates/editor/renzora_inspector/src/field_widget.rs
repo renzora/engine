@@ -3,7 +3,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use renzora_editor::{
-    inline_property, toggle_switch, EditorCommands, FieldDef, FieldType, FieldValue,
+    asset_drop_target, inline_property, toggle_switch, AssetDragPayload, EditorCommands,
+    FieldDef, FieldType, FieldValue,
 };
 use renzora_theme::Theme;
 
@@ -129,6 +130,35 @@ pub fn render_field(
                         .size(11.0)
                         .color(theme.text.muted.to_color32()),
                 );
+            });
+        }
+
+        (FieldType::Asset { extensions }, FieldValue::Asset(current)) => {
+            let set_fn = field.set_fn;
+            let extensions = extensions.clone();
+
+            inline_property(ui, row_index, field.name, theme, |ui| {
+                let payload = world.get_resource::<AssetDragPayload>();
+                let ext_refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+                let current_str = current.as_deref();
+
+                let drop_result = asset_drop_target(
+                    ui,
+                    ui.id().with(field.name),
+                    current_str,
+                    &ext_refs,
+                    "Drag asset here",
+                    theme,
+                    payload,
+                );
+
+                if let Some(path) = drop_result.dropped_path {
+                    let path_str = path.to_string_lossy().to_string();
+                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Asset(Some(path_str))));
+                }
+                if drop_result.cleared {
+                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Asset(None)));
+                }
             });
         }
 

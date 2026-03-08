@@ -1,6 +1,6 @@
 //! Tests for shared data types
 //!
-//! Covers MeshPrimitiveType, SunData, DisabledComponents, SpriteSheetData,
+//! Covers MeshPrimitiveType, Sun, DisabledComponents, SpriteSheetData,
 //! serde roundtrips, and default implementations.
 
 use super::*;

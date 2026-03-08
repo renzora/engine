@@ -37,6 +37,6 @@ pub use physics::{
 pub use rendering::{
     DirectionalLightData, DlssQualityMode, MaterialData, MeshNodeData, MeshPrimitiveType,
     MeshletMeshData, PointLightData, ShapeCategory, SolariLightingData, SpotLightData, Sprite2DData,
-    SpriteAnimation, SpriteSheetData, SunData, Text3DData,
+    SpriteAnimation, SpriteSheetData, Sun, Text3DData,
 };
 pub use ui::{UIButtonData, UIImageData, UILabelData, UIPanelData};

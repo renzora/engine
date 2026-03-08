@@ -17,7 +17,7 @@ pub use renzora_audio;
 pub use renzora_physics;
 
 use bevy::prelude::*;
-use renzora_lighting::SunData;
+use renzora_lighting::Sun;
 
 /// Plugin that adds the game runtime: camera, scene, and core systems.
 /// In non-editor mode, also handles project loading from CLI args.
@@ -29,7 +29,8 @@ impl Plugin for RuntimePlugin {
             .register_type::<MeshColor>()
             .register_type::<SceneCamera>()
             .register_type::<renzora_core::DefaultCamera>()
-            .register_type::<SunData>();
+            .register_type::<renzora_core::EntityTag>()
+            .register_type::<Sun>();
 
         #[cfg(not(feature = "editor"))]
         {

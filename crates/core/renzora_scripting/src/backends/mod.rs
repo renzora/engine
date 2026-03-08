@@ -2,4 +2,4 @@
 pub mod lua;
 
 #[cfg(feature = "rhai")]
-pub mod rhai_backend;
+pub mod rhai;

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use bevy_egui::egui::{self, Align2, FontId};
 use egui_phosphor::regular;
-use renzora_editor::{split_label_two_lines, TileGrid, TileState};
+use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
 use renzora_theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
@@ -15,7 +15,8 @@ struct GridEntry {
 }
 
 /// Renders the file grid with click handling.
-pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) {
+/// Returns `Some(AssetDragPayload)` if a file tile drag was initiated this frame.
+pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) -> Option<AssetDragPayload> {
     let folder = match state.current_folder.clone() {
         Some(f) => f,
         None => {
@@ -26,7 +27,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "Select a folder from the tree to browse files.",
                 theme,
             );
-            return;
+            return None;
         }
     };
 
@@ -56,7 +57,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "The selected folder could not be read.",
                 theme,
             );
-            return;
+            return None;
         }
     };
 
@@ -79,7 +80,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
             ("Empty folder", "This folder has no files or subfolders.")
         };
         renzora_editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
-        return;
+        return None;
     }
 
     let text_primary = theme.text.primary.to_color32();
@@ -87,9 +88,10 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     let zoom = state.zoom;
     let selected = state.selected_path.clone();
 
-    // Track which entry was clicked/double-clicked
+    // Track which entry was clicked/double-clicked/dragged
     let mut clicked_index: Option<usize> = None;
     let mut double_clicked_index: Option<usize> = None;
+    let mut drag_started_index: Option<usize> = None;
 
     egui::ScrollArea::vertical()
         .id_salt("asset_grid")
@@ -114,6 +116,10 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 }
                 if tile.response.double_clicked() {
                     double_clicked_index = Some(index);
+                }
+                // Drag detection — only for files (not folders)
+                if !entry.is_dir && tile.response.drag_started() {
+                    drag_started_index = Some(index);
                 }
 
                 let (icon, color) = if entry.is_dir {
@@ -173,4 +179,21 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     } else if let Some(idx) = clicked_index {
         state.selected_path = Some(entries[idx].path.clone());
     }
+
+    // Build drag payload if a file drag started
+    if let Some(idx) = drag_started_index {
+        let entry = &entries[idx];
+        let (icon, color) = file_icon(&entry.path);
+        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+        return Some(AssetDragPayload {
+            path: entry.path.clone(),
+            name: entry.name.clone(),
+            icon: icon.to_string(),
+            color,
+            origin,
+            is_detached: false,
+        });
+    }
+
+    None
 }

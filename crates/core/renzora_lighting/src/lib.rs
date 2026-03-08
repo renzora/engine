@@ -1,6 +1,6 @@
 //! Renzora Lighting — custom lighting components with editor inspectors.
 //!
-//! Provides `SunData` (directional light via azimuth/elevation), with sync
+//! Provides `Sun` (directional light via azimuth/elevation), with sync
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
 use bevy::prelude::*;
@@ -16,7 +16,7 @@ use {
 };
 
 // ============================================================================
-// SunData component
+// Sun component
 // ============================================================================
 
 /// A directional light positioned by azimuth and elevation angles.
@@ -27,7 +27,7 @@ use {
 /// `DirectionalLight` and `Transform` each frame.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Default)]
-pub struct SunData {
+pub struct Sun {
     /// Azimuth angle in degrees (0–360, compass direction of the sun).
     pub azimuth: f32,
     /// Elevation angle in degrees (−90 to 90, height above horizon).
@@ -44,7 +44,7 @@ pub struct SunData {
     pub sun_disk_intensity: f32,
 }
 
-impl Default for SunData {
+impl Default for Sun {
     fn default() -> Self {
         Self {
             azimuth: 0.0,
@@ -58,7 +58,7 @@ impl Default for SunData {
     }
 }
 
-impl SunData {
+impl Sun {
     /// Compute the direction the light travels (away from the sun toward the scene).
     pub fn direction(&self) -> Vec3 {
         let az = self.azimuth.to_radians();
@@ -72,12 +72,12 @@ impl SunData {
 }
 
 // ============================================================================
-// Sync system — keeps DirectionalLight + Transform in sync with SunData
+// Sync system — keeps DirectionalLight + Transform in sync with Sun
 // ============================================================================
 
 fn sync_sun(
     mut commands: Commands,
-    mut query: Query<(Entity, &SunData, &mut DirectionalLight, &mut Transform), Or<(Changed<SunData>, Without<SunDisk>)>>,
+    mut query: Query<(Entity, &Sun, &mut DirectionalLight, &mut Transform), Or<(Changed<Sun>, Without<SunDisk>)>>,
 ) {
     for (entity, sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
@@ -105,7 +105,7 @@ fn sun_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(sun) = world.get::<SunData>(entity) else {
+    let Some(sun) = world.get::<Sun>(entity) else {
         return;
     };
 
@@ -191,7 +191,7 @@ fn sun_custom_ui(
     if changed {
         let new_data = data;
         cmds.push(move |world: &mut World| {
-            if let Some(mut sun) = world.get_mut::<SunData>(entity) {
+            if let Some(mut sun) = world.get_mut::<Sun>(entity) {
                 *sun = new_data;
             }
         });
@@ -205,9 +205,9 @@ fn inspector_entry() -> InspectorEntry {
         display_name: "Sun",
         icon: SUN_HORIZON,
         category: "lighting",
-        has_fn: |world, entity| world.get::<SunData>(entity).is_some(),
+        has_fn: |world, entity| world.get::<Sun>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            let data = SunData::default();
+            let data = Sun::default();
             let dir = data.direction();
             world.entity_mut(entity).insert((
                 DirectionalLight {
@@ -221,7 +221,7 @@ fn inspector_entry() -> InspectorEntry {
             ));
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(SunData, DirectionalLight)>();
+            world.entity_mut(entity).remove::<(Sun, DirectionalLight)>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -236,9 +236,22 @@ fn inspector_entry() -> InspectorEntry {
 
 pub struct LightingPlugin;
 
+/// Apply pending sun angle commands from scripting.
+fn apply_script_sun_commands(
+    mut sun_query: Query<&mut Sun>,
+    mut env_cmds: ResMut<renzora_scripting::systems::ScriptEnvironmentCommands>,
+) {
+    if let Some((azimuth, elevation)) = env_cmds.sun_angles.take() {
+        for mut sun in &mut sun_query {
+            sun.azimuth = azimuth;
+            sun.elevation = elevation;
+        }
+    }
+}
+
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, sync_sun);
+        app.add_systems(Update, (sync_sun, apply_script_sun_commands));
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());

@@ -14,7 +14,7 @@ use crate::component_system::{
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::component_system::data::components::animation::{AnimationData, GltfAnimations};
-use crate::particles::HanabiEffectData;
+use crate::particles::HanabiEffect;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use renzora_theme::Theme;
 
@@ -50,7 +50,7 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub ui_buttons: Query<'w, 's, Entity, With<UIButtonData>>,
     pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
     pub terrains: Query<'w, 's, Entity, With<crate::terrain::TerrainData>>,
-    pub particles: Query<'w, 's, Entity, With<HanabiEffectData>>,
+    pub particles: Query<'w, 's, Entity, With<HanabiEffect>>,
     pub audio_listeners: Query<'w, 's, Entity, With<AudioListenerMarker>>,
     pub solari_lights: Query<'w, 's, Entity, With<SolariLightingData>>,
     pub node_icons: Query<'w, 's, &'static NodeIcon>,

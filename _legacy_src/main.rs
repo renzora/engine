@@ -359,7 +359,7 @@ fn main() {
         .register_type::<component_system::SpotLightData>()
         .register_type::<component_system::SolariLightingData>()
         .register_type::<component_system::DlssQualityMode>()
-        .register_type::<component_system::SunData>()
+        .register_type::<component_system::Sun>()
         .register_type::<component_system::WorldEnvironmentData>()
         .register_type::<component_system::SkyMode>()
         .register_type::<component_system::ProceduralSkyData>()

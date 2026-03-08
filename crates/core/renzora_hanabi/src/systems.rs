@@ -1,4 +1,4 @@
-//! Runtime systems for syncing HanabiEffectData with bevy_hanabi ParticleEffect.
+//! Runtime systems for syncing HanabiEffect with bevy_hanabi ParticleEffect.
 
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
@@ -29,12 +29,12 @@ pub struct HanabiEffectSynced {
     pub effect_handle: Handle<EffectAsset>,
 }
 
-/// Sync HanabiEffectData with bevy_hanabi ParticleEffect.
+/// Sync HanabiEffect with bevy_hanabi ParticleEffect.
 pub fn sync_hanabi_effects(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
-    query: Query<(Entity, &HanabiEffectData, Option<&HanabiEffectSynced>), Changed<HanabiEffectData>>,
-    removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffectData>>,
+    query: Query<(Entity, &HanabiEffect, Option<&HanabiEffectSynced>), Changed<HanabiEffect>>,
+    removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffect>>,
     project: Option<Res<CurrentProject>>,
 ) {
     for (entity, effect_data, maybe_synced) in query.iter() {
@@ -65,7 +65,7 @@ pub fn sync_hanabi_effects(
 
 /// Apply runtime overrides (play/pause) to particle effects.
 pub fn apply_runtime_overrides(
-    mut effects_query: Query<(&HanabiEffectData, &mut EffectSpawner), Changed<HanabiEffectData>>,
+    mut effects_query: Query<(&HanabiEffect, &mut EffectSpawner), Changed<HanabiEffect>>,
 ) {
     for (effect_data, mut spawner) in effects_query.iter_mut() {
         spawner.active = effect_data.playing;
@@ -76,7 +76,7 @@ pub fn apply_runtime_overrides(
 pub fn rehydrate_hanabi_effects(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
-    query: Query<(Entity, &HanabiEffectData), Without<HanabiEffectSynced>>,
+    query: Query<(Entity, &HanabiEffect), Without<HanabiEffectSynced>>,
     project: Option<Res<CurrentProject>>,
 ) {
     for (entity, effect_data) in query.iter() {
@@ -111,7 +111,7 @@ pub enum ParticleCommand {
 /// Process particle commands from scripts.
 pub fn process_particle_commands(
     mut commands: ResMut<ParticleCommandQueue>,
-    mut effect_query: Query<(&mut HanabiEffectData, Option<&mut EffectSpawner>)>,
+    mut effect_query: Query<(&mut HanabiEffect, Option<&mut EffectSpawner>)>,
 ) {
     for cmd in commands.commands.drain(..) {
         match cmd {
@@ -171,7 +171,7 @@ pub fn process_particle_commands(
 pub fn hot_reload_saved_effects(
     mut editor_state: ResMut<ParticleEditorState>,
     mut effects: ResMut<Assets<EffectAsset>>,
-    mut query: Query<(&mut HanabiEffectData, Option<&HanabiEffectSynced>)>,
+    mut query: Query<(&mut HanabiEffect, Option<&HanabiEffectSynced>)>,
     project: Option<Res<CurrentProject>>,
 ) {
     if editor_state.recently_saved_paths.is_empty() {

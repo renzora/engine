@@ -208,7 +208,7 @@ pub fn handle_asset_panel_drop(
 }
 
 /// System to handle .particle file drops from the assets panel to viewport
-/// Creates an entity with HanabiEffectData at the drop position
+/// Creates an entity with HanabiEffect at the drop position
 pub fn handle_effect_panel_drop(
     mut commands: Commands,
     mut assets: ResMut<AssetBrowserState>,
@@ -240,7 +240,7 @@ pub fn handle_effect_panel_drop(
     // Find the scene root to parent new entities to
     let scene_root_entity = scene_roots.iter().next().map(|(e, _)| e);
 
-    use crate::particles::{HanabiEffectData, EffectSource};
+    use crate::particles::{HanabiEffect, EffectSource};
 
     let mut entity_commands = commands.spawn((
         Transform::from_translation(position),
@@ -252,7 +252,7 @@ pub fn handle_effect_panel_drop(
             locked: false,
         },
         SceneNode,
-        HanabiEffectData {
+        HanabiEffect {
             source: EffectSource::Asset { path: relative_path },
             playing: true,
             ..Default::default()

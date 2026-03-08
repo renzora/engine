@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Stroke};
 use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::AssetBrowserState;
@@ -152,7 +152,13 @@ impl EditorPanel for AssetBrowserPanel {
             egui::UiBuilder::new()
                 .max_rect(grid_rect),
         );
-        grid::grid_ui_interactive(&mut grid_child, &mut state, &theme);
+        if let Some(payload) = grid::grid_ui_interactive(&mut grid_child, &mut state, &theme) {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    world.insert_resource(payload);
+                });
+            }
+        }
     }
 }
 

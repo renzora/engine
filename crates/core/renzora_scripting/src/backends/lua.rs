@@ -458,6 +458,56 @@ fn register_api(lua: &Lua) {
         Ok(())
     }).unwrap());
 
+    // -- Generic Reflection (set/set_on) --
+    // set("ComponentType.field.subfield", value) — on self entity
+    let _ = globals.set("set", lua.create_function(|_, (path, value): (String, LuaValue)| {
+        let (component, field) = parse_component_path(&path)
+            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
+        push_command(ScriptCommand::SetComponentField {
+            entity_id: None,
+            entity_name: None,
+            component_type: component,
+            field_path: field,
+            value: lua_to_property_value(&value),
+        });
+        Ok(())
+    }).unwrap());
+
+    // set_on("EntityName", "ComponentType.field.subfield", value) — on named entity
+    let _ = globals.set("set_on", lua.create_function(|_, (entity_name, path, value): (String, String, LuaValue)| {
+        let (component, field) = parse_component_path(&path)
+            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
+        push_command(ScriptCommand::SetComponentField {
+            entity_id: None,
+            entity_name: Some(entity_name),
+            component_type: component,
+            field_path: field,
+            value: lua_to_property_value(&value),
+        });
+        Ok(())
+    }).unwrap());
+
+    // -- Generic Reflection (get/get_on) --
+    // get("Component.field") — read from self entity
+    let _ = globals.set("get", lua.create_function(|lua, path: String| {
+        let (component, field) = parse_component_path(&path)
+            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
+        match crate::get_handler::call_get(None, &component, &field) {
+            Some(v) => property_value_to_lua_result(lua, v),
+            None => Ok(LuaValue::Nil),
+        }
+    }).unwrap());
+
+    // get_on("EntityName", "Component.field") — read from named entity
+    let _ = globals.set("get_on", lua.create_function(|lua, (entity_name, path): (String, String)| {
+        let (component, field) = parse_component_path(&path)
+            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
+        match crate::get_handler::call_get(Some(&entity_name), &component, &field) {
+            Some(v) => property_value_to_lua_result(lua, v),
+            None => Ok(LuaValue::Nil),
+        }
+    }).unwrap());
+
     // -- Math helpers --
     let _ = globals.set("vec3", lua.create_function(|lua, (x, y, z): (f32, f32, f32)| {
         let t = lua.create_table()?;
@@ -666,6 +716,63 @@ fn lua_value_to_string(value: &LuaValue) -> String {
         LuaValue::Number(n) => n.to_string(),
         LuaValue::String(s) => s.to_str().map(|s| s.to_string()).unwrap_or_default(),
         _ => format!("{:?}", value),
+    }
+}
+
+/// Parse "ComponentType.field.subfield" into ("ComponentType", "field.subfield")
+fn parse_component_path(path: &str) -> Option<(String, String)> {
+    let dot = path.find('.')?;
+    let component = path[..dot].to_string();
+    let field = path[dot + 1..].to_string();
+    if component.is_empty() || field.is_empty() {
+        return None;
+    }
+    Some((component, field))
+}
+
+/// Convert a Lua value to PropertyValue for reflection writes.
+fn lua_to_property_value(value: &LuaValue) -> crate::command::PropertyValue {
+    use crate::command::PropertyValue;
+    match value {
+        LuaValue::Number(n) => PropertyValue::Float(*n as f32),
+        LuaValue::Integer(n) => PropertyValue::Int(*n),
+        LuaValue::Boolean(b) => PropertyValue::Bool(*b),
+        LuaValue::String(s) => PropertyValue::String(s.to_str().map(|s| s.to_string()).unwrap_or_default()),
+        LuaValue::Table(t) => {
+            // Check for vec3 {x, y, z}
+            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f64>("x"), t.get::<f64>("y"), t.get::<f64>("z")) {
+                PropertyValue::Vec3([x as f32, y as f32, z as f32])
+            } else {
+                PropertyValue::Float(0.0)
+            }
+        }
+        _ => PropertyValue::Float(0.0),
+    }
+}
+
+/// Convert a PropertyValue to a Lua value (requires Lua context for strings/tables).
+fn property_value_to_lua_result(lua: &Lua, value: crate::command::PropertyValue) -> LuaResult<LuaValue> {
+    use crate::command::PropertyValue;
+    match value {
+        PropertyValue::Float(v) => Ok(LuaValue::Number(v as f64)),
+        PropertyValue::Int(v) => Ok(LuaValue::Integer(v)),
+        PropertyValue::Bool(v) => Ok(LuaValue::Boolean(v)),
+        PropertyValue::String(v) => Ok(LuaValue::String(lua.create_string(&v)?)),
+        PropertyValue::Vec3(v) => {
+            let t = lua.create_table()?;
+            t.set("x", v[0] as f64)?;
+            t.set("y", v[1] as f64)?;
+            t.set("z", v[2] as f64)?;
+            Ok(LuaValue::Table(t))
+        }
+        PropertyValue::Color(v) => {
+            let t = lua.create_table()?;
+            t.set("r", v[0] as f64)?;
+            t.set("g", v[1] as f64)?;
+            t.set("b", v[2] as f64)?;
+            t.set("a", v[3] as f64)?;
+            Ok(LuaValue::Table(t))
+        }
     }
 }
 

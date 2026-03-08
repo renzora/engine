@@ -323,7 +323,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         icon: regular::SUN_HORIZON,
         category: "lighting",
         spawn_fn: |world| {
-            let data = renzora_lighting::SunData::default();
+            let data = renzora_lighting::Sun::default();
             let dir = data.direction();
             world
                 .spawn((

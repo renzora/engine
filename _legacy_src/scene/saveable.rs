@@ -88,7 +88,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     };
     use crate::scripting::ScriptComponent;
     use crate::terrain::{TerrainData, TerrainChunkData};
-    use crate::particles::HanabiEffectData;
+    use crate::particles::HanabiEffect;
 
     let mut registry = SceneSaveableRegistry::new();
 
@@ -165,7 +165,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<TerrainChunkData>();
 
     // Particle effects
-    registry.register::<HanabiEffectData>();
+    registry.register::<HanabiEffect>();
 
     // Audio
     registry.register::<crate::component_system::components::audio_emitter::AudioEmitterData>();
@@ -175,7 +175,7 @@ pub fn create_default_registry() -> SceneSaveableRegistry {
     registry.register::<PointLight>();
     registry.register::<DirectionalLight>();
     registry.register::<SpotLight>();
-    registry.register::<crate::component_system::SunData>();
+    registry.register::<crate::component_system::Sun>();
 
     registry
 }

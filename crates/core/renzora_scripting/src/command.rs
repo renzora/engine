@@ -138,6 +138,18 @@ pub enum ScriptCommand {
 
     // === Property (cross-entity) ===
     SetProperty { entity_id: u64, property: String, value: PropertyValue },
+
+    // === Generic Reflection ===
+    /// Set any reflected component field by path.
+    /// `component_type` is the short type name (e.g. "Sun").
+    /// `field_path` is dot-separated (e.g. "elevation" or "color.x").
+    SetComponentField {
+        entity_id: Option<u64>,
+        entity_name: Option<String>,
+        component_type: String,
+        field_path: String,
+        value: PropertyValue,
+    },
 }
 
 /// Value types for property writes

@@ -31,11 +31,7 @@ pub use renzora_splash::SplashState;
 #[derive(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
 
-/// Optional tag string for an entity.
-#[derive(Component, Default)]
-pub struct EntityTag {
-    pub tag: String,
-}
+pub use renzora_core::EntityTag;
 
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
@@ -136,12 +132,48 @@ fn editor_ui_system(world: &mut World) {
         .cloned()
         .unwrap_or_default();
 
+    // 4.5. Check play mode — in Playing mode, skip editor UI and show play overlay
+    let play_state = world
+        .get_resource::<renzora_core::PlayModeState>()
+        .map(|pm| pm.state)
+        .unwrap_or(renzora_core::PlayState::Editing);
+
+    if matches!(play_state, renzora_core::PlayState::Playing | renzora_core::PlayState::Paused) {
+        world.insert_resource(registry);
+
+        // Render viewport texture fullscreen
+        render_play_mode_viewport(&ctx, world);
+        render_play_mode_overlay(&ctx, &theme, play_state);
+
+        // Escape to stop
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+                pm.request_stop = true;
+            }
+        }
+
+        // Process play mode requests
+        process_play_mode_requests(world);
+
+        // Drain editor commands
+        let cmds = world
+            .get_resource::<EditorCommands>()
+            .map(|ec| ec.drain())
+            .unwrap_or_default();
+        for cmd in cmds {
+            cmd(world);
+        }
+
+        return;
+    }
+
     // 5. Title bar (top) — returns action
     let play_info = world
         .get_resource::<renzora_core::PlayModeState>()
         .map(|pm| renzora_ui::title_bar::PlayModeInfo {
             is_playing: pm.is_playing(),
             is_paused: pm.is_paused(),
+            is_scripts_only: pm.is_scripts_only(),
         })
         .unwrap_or_default();
     let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info);
@@ -249,7 +281,40 @@ fn editor_ui_system(world: &mut World) {
         world.remove_resource::<DragState>();
     }
 
-    // E) Draw floating ghost overlay
+    // D2) Handle asset drag in progress — update detach state, cancel, release
+    {
+        let mut asset_should_cancel = false;
+        if let Some(mut asset_drag) = world.get_resource_mut::<AssetDragPayload>() {
+            if let Some(pos) = ctx.pointer_latest_pos() {
+                if !asset_drag.is_detached && pos.distance(asset_drag.origin) > 5.0 {
+                    asset_drag.is_detached = true;
+                }
+            }
+            // Cancel on Escape
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                asset_should_cancel = true;
+            }
+            // Release — drop targets consume this in their own rendering;
+            // if pointer released with no target hit, just cancel.
+            if asset_drag.is_detached && !ctx.input(|i| i.pointer.any_down()) {
+                asset_should_cancel = true;
+            }
+        }
+        if asset_should_cancel {
+            world.remove_resource::<AssetDragPayload>();
+        }
+    }
+
+    // E) Draw floating ghost overlays
+    // Asset drag ghost
+    if let Some(asset_drag) = world.get_resource::<AssetDragPayload>() {
+        if asset_drag.is_detached {
+            if let Some(pos) = ctx.pointer_latest_pos() {
+                renzora_ui::asset_drag::draw_asset_drag_ghost(&ctx, asset_drag, pos, &theme);
+            }
+        }
+    }
+    // Panel drag ghost
     if let Some(drag) = world.get_resource::<DragState>() {
         if drag.is_detached {
             if let Some(pos) = ctx.pointer_latest_pos() {
@@ -324,6 +389,11 @@ fn editor_ui_system(world: &mut World) {
                 pm.request_pause = true;
             }
         }
+        TitleBarAction::ScriptsOnly => {
+            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+                pm.request_scripts_only = true;
+            }
+        }
         TitleBarAction::None => {}
     }
 
@@ -370,6 +440,9 @@ fn editor_ui_system(world: &mut World) {
     for cmd in cmds {
         cmd(world);
     }
+
+    // L2) Process play mode state transitions
+    process_play_mode_requests(world);
 }
 
 /// Switch to a layout by index.
@@ -449,4 +522,181 @@ fn handle_open_project(world: &mut World) {
         let _ = world;
         warn!("Open Project is not available in the browser");
     }
+}
+
+/// Process play mode request flags and apply state transitions.
+fn process_play_mode_requests(world: &mut World) {
+    use renzora_core::PlayState;
+
+    // Only handle ScriptsOnly transitions here.
+    // Playing/Paused/Stop are handled by renzora_viewport::play_mode::handle_play_mode_transitions
+    // which also does the camera switching.
+    let needs_reset = {
+        let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() else {
+            return;
+        };
+
+        if pm.request_scripts_only {
+            pm.request_scripts_only = false;
+            match pm.state {
+                PlayState::Editing => {
+                    pm.state = PlayState::ScriptsOnly;
+                    info!("[PlayMode] Scripts Only");
+                    true
+                }
+                PlayState::ScriptsPaused => {
+                    pm.state = PlayState::ScriptsOnly;
+                    info!("[PlayMode] Scripts Resumed");
+                    false
+                }
+                _ => false,
+            }
+        } else if pm.is_scripts_only() || matches!(pm.state, PlayState::ScriptsPaused) {
+            // Handle stop/pause for scripts-only mode
+            if pm.request_stop {
+                pm.request_stop = false;
+                pm.state = PlayState::Editing;
+                info!("[PlayMode] Scripts Stopped");
+                false
+            } else if pm.request_pause {
+                pm.request_pause = false;
+                match pm.state {
+                    PlayState::ScriptsOnly => {
+                        pm.state = PlayState::ScriptsPaused;
+                        info!("[PlayMode] Scripts Paused");
+                    }
+                    PlayState::ScriptsPaused => {
+                        pm.state = PlayState::ScriptsOnly;
+                        info!("[PlayMode] Scripts Resumed");
+                    }
+                    _ => {}
+                }
+                false
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
+
+    if needs_reset {
+        reset_script_states(world);
+    }
+}
+
+/// Reset all script runtime states so on_ready fires again.
+fn reset_script_states(world: &mut World) {
+    use renzora_scripting::ScriptComponent;
+    let mut query = world.query::<&mut ScriptComponent>();
+    for mut sc in query.iter_mut(world) {
+        for entry in sc.scripts.iter_mut() {
+            entry.runtime_state.initialized = false;
+            entry.runtime_state.has_error = false;
+        }
+    }
+}
+
+/// Render the viewport texture fullscreen during play mode.
+fn render_play_mode_viewport(ctx: &egui::Context, world: &mut World) {
+    use bevy_egui::EguiUserTextures;
+    use renzora_core::ViewportRenderTarget;
+
+    // Get the image handle
+    let image_handle = world
+        .get_resource::<ViewportRenderTarget>()
+        .and_then(|vrt| vrt.image.clone());
+
+    // Get the egui texture ID
+    let texture_id = image_handle.as_ref().and_then(|handle| {
+        world
+            .get_resource::<EguiUserTextures>()
+            .and_then(|ut| ut.image_id(handle.id()))
+    });
+
+    // Resize the render texture to match the full window
+    let screen = ctx.screen_rect();
+    let w = (screen.width() * ctx.pixels_per_point()).max(1.0) as u32;
+    let h = (screen.height() * ctx.pixels_per_point()).max(1.0) as u32;
+
+    if let Some(ref handle) = image_handle {
+        if let Some(mut images) = world.get_resource_mut::<Assets<Image>>() {
+            if let Some(image) = images.get_mut(handle) {
+                let current = image.texture_descriptor.size;
+                if current.width != w || current.height != h {
+                    image.texture_descriptor.size.width = w;
+                    image.texture_descriptor.size.height = h;
+                    image.data = Some(vec![0u8; (w * h * 4) as usize]);
+                }
+            }
+        }
+    }
+
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE.fill(egui::Color32::BLACK))
+        .show(ctx, |ui| {
+            if let Some(tex_id) = texture_id {
+                let rect = ui.available_rect_before_wrap();
+                let size = egui::vec2(rect.width(), rect.height());
+                ui.put(
+                    rect,
+                    egui::Image::new(egui::load::SizedTexture::new(tex_id, size)),
+                );
+            }
+        });
+}
+
+/// Render a minimal overlay during full play mode (Playing/Paused).
+fn render_play_mode_overlay(
+    ctx: &egui::Context,
+    theme: &renzora_theme::Theme,
+    state: renzora_core::PlayState,
+) {
+    use egui::{Align2, Color32, FontId, Vec2};
+
+    let (icon, color, label) = match state {
+        renzora_core::PlayState::Playing => (
+            egui_phosphor::regular::PLAY,
+            Color32::from_rgb(64, 200, 100),
+            "Playing",
+        ),
+        renzora_core::PlayState::Paused => (
+            egui_phosphor::regular::PAUSE,
+            Color32::from_rgb(255, 200, 80),
+            "Paused",
+        ),
+        _ => return,
+    };
+
+    // Top center status indicator
+    egui::Area::new(egui::Id::new("play_mode_status"))
+        .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 8.0))
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let frame = egui::Frame::NONE
+                .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 180))
+                .inner_margin(egui::Margin::symmetric(16, 6))
+                .corner_radius(egui::CornerRadius::same(6));
+            frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.label(
+                        egui::RichText::new(icon)
+                            .font(FontId::proportional(14.0))
+                            .color(color),
+                    );
+                    ui.label(
+                        egui::RichText::new(label)
+                            .font(FontId::proportional(13.0))
+                            .color(Color32::WHITE),
+                    );
+                    ui.label(
+                        egui::RichText::new("Press ESC to stop")
+                            .font(FontId::proportional(11.0))
+                            .color(Color32::from_rgb(140, 140, 150)),
+                    );
+                });
+            });
+        });
 }

@@ -36,7 +36,7 @@ impl Plugin for ParticlesPlugin {
         app.init_resource::<ParticlePreviewState>();
 
         // Register types for reflection/serialization
-        app.register_type::<HanabiEffectData>()
+        app.register_type::<HanabiEffect>()
             .register_type::<HanabiEffectDefinition>()
             .register_type::<EffectSource>()
             .register_type::<HanabiEmitShape>()

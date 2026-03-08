@@ -1,7 +1,7 @@
 //! Test component extension — demonstrates how to define custom components
 //! and register them with the inspector from an extension crate.
 //!
-//! Defines three game components (`Health`, `Movement`, `EntityTag`), spawns test
+//! Defines two game components (`Health`, `Movement`), spawns test
 //! entities, and registers inspector entries so their fields are editable.
 //!
 //! **Note:** Extensions must use `PostStartup` (not `Startup`) for entity spawning
@@ -36,13 +36,6 @@ pub struct Movement {
     pub is_grounded: bool,
 }
 
-/// Tag component with an entity label string.
-#[derive(Component, Default, Inspectable)]
-#[inspectable(name = "Tag", icon = "TAG", category = "gameplay")]
-pub struct EntityTag {
-    pub tag: String,
-}
-
 // ── Plugin ─────────────────────────────────────────────────────────────────
 
 /// Test component plugin — registers custom components with the inspector
@@ -53,6 +46,5 @@ impl Plugin for TestComponentPlugin {
     fn build(&self, app: &mut App) {
         app.register_inspectable::<Health>();
         app.register_inspectable::<Movement>();
-        app.register_inspectable::<EntityTag>();
     }
 }

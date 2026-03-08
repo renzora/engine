@@ -3,7 +3,7 @@
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ShapeRegistry};
-use renzora_lighting::SunData;
+use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
 use std::path::Path;
 
@@ -399,9 +399,9 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
     }
 }
 
-/// Rehydrate sun entities — syncs `DirectionalLight` + `Transform` from `SunData` on newly added entities.
+/// Rehydrate sun entities — syncs `DirectionalLight` + `Transform` from `Sun` on newly added entities.
 pub fn rehydrate_suns(
-    mut query: Query<(&SunData, &mut DirectionalLight, &mut Transform), Added<SunData>>,
+    mut query: Query<(&Sun, &mut DirectionalLight, &mut Transform), Added<Sun>>,
 ) {
     for (sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);

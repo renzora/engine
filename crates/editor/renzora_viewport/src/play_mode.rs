@@ -107,14 +107,23 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         let mut em = world.entity_mut(entity);
         em.remove::<PlayModeCamera>();
         em.remove::<RenderTarget>();
+        em.remove::<Camera>();
+        em.remove::<Camera3d>();
     }
 
-    // Re-enable editor camera
+    // Re-enable editor camera and restore its render target
+    let viewport_image = world.get_resource::<ViewportRenderTarget>()
+        .and_then(|vrt| vrt.image.clone());
+
     let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
     let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
     for entity in editor_entities {
         if let Some(mut camera) = world.get_mut::<Camera>(entity) {
             camera.is_active = true;
+        }
+        if let Some(ref img) = viewport_image {
+            world.entity_mut(entity)
+                .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
         }
     }
 

@@ -12,11 +12,12 @@ use crate::context::ScriptContext;
 #[derive(Resource)]
 pub struct ScriptEngine {
     backends: Vec<Box<dyn ScriptBackend>>,
+    scripts_folder: Option<PathBuf>,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        Self { backends: Vec::new() }
+        Self { backends: Vec::new(), scripts_folder: None }
     }
 
     /// Register a language backend
@@ -27,8 +28,20 @@ impl ScriptEngine {
 
     /// Set scripts folder on all backends
     pub fn set_scripts_folder(&mut self, path: PathBuf) {
+        self.scripts_folder = Some(path.clone());
         for b in &mut self.backends {
             b.set_scripts_folder(path.clone());
+        }
+    }
+
+    /// Resolve a script path — if relative, prepend scripts_folder.
+    fn resolve_path(&self, path: &Path) -> PathBuf {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(folder) = &self.scripts_folder {
+            folder.join(path)
+        } else {
+            path.to_path_buf()
         }
     }
 
@@ -52,8 +65,9 @@ impl ScriptEngine {
 
     /// Get props for a script
     pub fn get_script_props(&self, path: &Path) -> Vec<ScriptVariableDefinition> {
+        let resolved = self.resolve_path(path);
         self.backend_for(path)
-            .map(|b| b.get_script_props(path))
+            .map(|b| b.get_script_props(&resolved))
             .unwrap_or_default()
     }
 
@@ -63,9 +77,10 @@ impl ScriptEngine {
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
     ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
         let backend = self.backend_for(path)
             .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
-        let commands = backend.call_on_ready(path, ctx, vars)?;
+        let commands = backend.call_on_ready(&resolved, ctx, vars)?;
         for cmd in commands {
             ctx.process_command(cmd);
         }
@@ -78,9 +93,10 @@ impl ScriptEngine {
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
     ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
         let backend = self.backend_for(path)
             .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
-        let commands = backend.call_on_update(path, ctx, vars)?;
+        let commands = backend.call_on_update(&resolved, ctx, vars)?;
         for cmd in commands {
             ctx.process_command(cmd);
         }
@@ -88,15 +104,17 @@ impl ScriptEngine {
     }
 
     pub fn needs_reload(&self, path: &Path) -> bool {
+        let resolved = self.resolve_path(path);
         self.backend_for(path)
-            .map(|b| b.needs_reload(path))
+            .map(|b| b.needs_reload(&resolved))
             .unwrap_or(false)
     }
 
     pub fn reload(&self, path: &Path) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
         self.backend_for(path)
             .ok_or_else(|| format!("No backend for {:?}", path.extension()))?
-            .reload(path)
+            .reload(&resolved)
     }
 
     pub fn eval_expression(&self, expr: &str) -> Result<String, String> {

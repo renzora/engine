@@ -1,4 +1,4 @@
-//! Editor inspector registration for HanabiEffectData.
+//! Editor inspector registration for HanabiEffect.
 
 use bevy::prelude::*;
 use bevy_egui::egui;
@@ -8,15 +8,15 @@ use renzora_theme::Theme;
 use crate::data::*;
 
 fn hanabi_has(world: &World, entity: Entity) -> bool {
-    world.get::<HanabiEffectData>(entity).is_some()
+    world.get::<HanabiEffect>(entity).is_some()
 }
 
 fn hanabi_add(world: &mut World, entity: Entity) {
-    world.entity_mut(entity).insert(HanabiEffectData::default());
+    world.entity_mut(entity).insert(HanabiEffect::default());
 }
 
 fn hanabi_remove(world: &mut World, entity: Entity) {
-    world.entity_mut(entity).remove::<HanabiEffectData>();
+    world.entity_mut(entity).remove::<HanabiEffect>();
 }
 
 fn hanabi_custom_ui(
@@ -26,7 +26,7 @@ fn hanabi_custom_ui(
     cmds: &EditorCommands,
     _theme: &Theme,
 ) {
-    let Some(data) = world.get::<HanabiEffectData>(entity) else {
+    let Some(data) = world.get::<HanabiEffect>(entity) else {
         return;
     };
 
@@ -52,7 +52,7 @@ fn hanabi_custom_ui(
     let mut new_playing = playing;
     if ui.checkbox(&mut new_playing, "Playing").changed() {
         cmds.push(move |world: &mut World| {
-            if let Some(mut d) = world.get_mut::<HanabiEffectData>(entity) {
+            if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                 d.playing = new_playing;
             }
         });
@@ -64,7 +64,7 @@ fn hanabi_custom_ui(
         ui.label("Rate Multiplier:");
         if ui.add(egui::DragValue::new(&mut new_rate).speed(0.05).range(0.0..=10.0)).changed() {
             cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffectData>(entity) {
+                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.rate_multiplier = new_rate;
                 }
             });
@@ -77,7 +77,7 @@ fn hanabi_custom_ui(
         ui.label("Scale Multiplier:");
         if ui.add(egui::DragValue::new(&mut new_scale).speed(0.05).range(0.0..=10.0)).changed() {
             cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffectData>(entity) {
+                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.scale_multiplier = new_scale;
                 }
             });
@@ -90,7 +90,7 @@ fn hanabi_custom_ui(
         ui.label("Time Scale:");
         if ui.add(egui::DragValue::new(&mut new_ts).speed(0.05).range(0.0..=5.0)).changed() {
             cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffectData>(entity) {
+                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.time_scale = new_ts;
                 }
             });
@@ -104,7 +104,7 @@ fn hanabi_custom_ui(
         if egui::color_picker::color_edit_button_rgba(ui, &mut rgba, egui::color_picker::Alpha::OnlyBlend).changed() {
             let new_tint = [rgba.r(), rgba.g(), rgba.b(), rgba.a()];
             cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffectData>(entity) {
+                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.color_tint = new_tint;
                 }
             });

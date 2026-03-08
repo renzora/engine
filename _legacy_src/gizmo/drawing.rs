@@ -3,7 +3,7 @@ use bevy::math::Isometry3d;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
 
 use crate::core::{EditorEntity, EditorSettings, SelectionHighlightMode, SelectionState, PlayModeState, PlayState};
-use crate::particles::HanabiEffectData;
+use crate::particles::HanabiEffect;
 use crate::component_system::CameraNodeData;
 use crate::component_system::CameraRigData;
 use crate::terrain::{TerrainChunkData, TerrainData};
@@ -29,7 +29,7 @@ pub fn update_selection_outlines(
     cameras: Query<(), With<CameraNodeData>>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,
     terrain_parents: Query<(), With<TerrainData>>,
-    particle_effects: Query<(), With<HanabiEffectData>>,
+    particle_effects: Query<(), With<HanabiEffect>>,
 ) {
     // Primary and secondary outline colors
     let primary_color = Color::srgb(1.0, 0.5, 0.0); // Orange
@@ -156,7 +156,7 @@ pub fn draw_selection_gizmo(
     cameras: Query<&CameraNodeData>,
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
-    particle_effects: Query<(), With<HanabiEffectData>>,
+    particle_effects: Query<(), With<HanabiEffect>>,
     mesh_aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_query: Query<&Children>,
     terrain_chunks: Query<(), With<TerrainChunkData>>,

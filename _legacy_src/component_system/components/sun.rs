@@ -6,7 +6,7 @@ use bevy_egui::egui;
 use crate::component_system::{ComponentCategory, ComponentRegistry, PropertyValue, PropertyValueType};
 use crate::core::{DisabledComponents, EditorEntity, ViewportCamera};
 use crate::register_component;
-use crate::component_system::SunData;
+use crate::component_system::Sun;
 use crate::ui::property_row;
 
 use egui_phosphor::regular::SUN_HORIZON;
@@ -33,7 +33,7 @@ pub struct SunDiscState {
 pub(crate) fn sync_sun_disc(
     mut commands: Commands,
     mut disc_state: ResMut<SunDiscState>,
-    sun_query: Query<(&SunData, &EditorEntity, Option<&DisabledComponents>)>,
+    sun_query: Query<(&Sun, &EditorEntity, Option<&DisabledComponents>)>,
     camera_query: Query<(&Transform, &Camera), With<ViewportCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -150,7 +150,7 @@ fn add_sun(
     _meshes: &mut Assets<Mesh>,
     _materials: &mut Assets<StandardMaterial>,
 ) {
-    let data = SunData::default();
+    let data = Sun::default();
     let dir = data.direction();
     commands.entity(entity).insert((
         DirectionalLight {
@@ -168,7 +168,7 @@ fn remove_sun(commands: &mut Commands, entity: Entity) {
     commands
         .entity(entity)
         .remove::<DirectionalLight>()
-        .remove::<SunData>();
+        .remove::<Sun>();
 }
 
 fn deserialize_sun(
@@ -177,7 +177,7 @@ fn deserialize_sun(
     _meshes: &mut Assets<Mesh>,
     _materials: &mut Assets<StandardMaterial>,
 ) {
-    if let Ok(data) = serde_json::from_value::<SunData>(json.clone()) {
+    if let Ok(data) = serde_json::from_value::<Sun>(json.clone()) {
         let dir = data.direction();
         entity_commands.insert((
             DirectionalLight {
@@ -203,7 +203,7 @@ fn inspect_sun(
     _meshes: &mut Assets<Mesh>,
     _materials: &mut Assets<StandardMaterial>,
 ) -> bool {
-    let Some(mut data) = world.get_mut::<SunData>(entity) else {
+    let Some(mut data) = world.get_mut::<Sun>(entity) else {
         return false;
     };
     let mut changed = false;
@@ -342,7 +342,7 @@ fn sun_property_meta() -> Vec<(&'static str, PropertyValueType)> {
 }
 
 fn sun_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyValue)> {
-    let Some(data) = world.get::<SunData>(entity) else { return vec![] };
+    let Some(data) = world.get::<Sun>(entity) else { return vec![] };
     vec![
         ("azimuth", PropertyValue::Float(data.azimuth)),
         ("elevation", PropertyValue::Float(data.elevation)),
@@ -356,7 +356,7 @@ fn sun_get_props(world: &World, entity: Entity) -> Vec<(&'static str, PropertyVa
 }
 
 fn sun_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyValue) -> bool {
-    let Some(mut data) = world.get_mut::<SunData>(entity) else { return false };
+    let Some(mut data) = world.get_mut::<Sun>(entity) else { return false };
     match prop {
         "azimuth" => { if let PropertyValue::Float(v) = val { data.azimuth = *v; true } else { false } }
         "elevation" => { if let PropertyValue::Float(v) = val { data.elevation = *v; true } else { false } }
@@ -372,7 +372,7 @@ fn sun_set_prop(world: &mut World, entity: Entity, prop: &str, val: &PropertyVal
 // ============================================================================
 
 pub fn register(registry: &mut ComponentRegistry) {
-    registry.register_owned(register_component!(SunData {
+    registry.register_owned(register_component!(Sun {
         type_id: "sun",
         display_name: "Sun",
         category: ComponentCategory::Lighting,

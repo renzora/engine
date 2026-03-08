@@ -13,7 +13,7 @@ use crate::core::{EditorEntity, NodeIcon, SceneNode, SceneTabId, HierarchyState,
 use crate::gizmo::meshes::GizmoMesh;
 use crate::component_system::{
     MeshNodeData, MeshPrimitiveType,
-    PointLightData, DirectionalLightData, SpotLightData, SunData,
+    PointLightData, DirectionalLightData, SpotLightData, Sun,
     CameraNodeData, CameraRigData, Camera2DData,
 };
 use crate::terrain::{TerrainData, TerrainChunkData, TerrainChunkOf, generate_chunk_mesh};
@@ -277,7 +277,7 @@ pub fn rehydrate_directional_lights(
 /// System to rehydrate sun components after scene loading.
 pub fn rehydrate_sun_lights(
     mut commands: Commands,
-    query: Query<(Entity, &SunData), Without<DirectionalLight>>,
+    query: Query<(Entity, &Sun), Without<DirectionalLight>>,
 ) {
     for (entity, sun_data) in query.iter() {
         let dir = sun_data.direction();

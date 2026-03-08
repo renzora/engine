@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use crate::component_system::{DirectionalLightData, PointLightData, SpotLightData, SunData};
+use crate::component_system::{DirectionalLightData, PointLightData, SpotLightData, Sun};
 
 /// Syncs wrapper data types to Bevy's built-in light components.
 /// Should be registered as a Bevy system so that inspector edits to the
@@ -14,10 +14,10 @@ pub fn sync_light_data_to_bevy(
     mut point_lights: Query<(&PointLightData, &mut PointLight, Option<&crate::core::DisabledComponents>), Or<(Changed<PointLightData>, Changed<crate::core::DisabledComponents>)>>,
     mut dir_lights: Query<
         (&DirectionalLightData, &mut DirectionalLight, Option<&crate::core::DisabledComponents>),
-        (Or<(Changed<DirectionalLightData>, Changed<crate::core::DisabledComponents>)>, Without<SunData>),
+        (Or<(Changed<DirectionalLightData>, Changed<crate::core::DisabledComponents>)>, Without<Sun>),
     >,
     mut spot_lights: Query<(&SpotLightData, &mut SpotLight, Option<&crate::core::DisabledComponents>), Or<(Changed<SpotLightData>, Changed<crate::core::DisabledComponents>)>>,
-    mut sun_lights: Query<(&SunData, &mut DirectionalLight, &mut Transform, Option<&crate::core::DisabledComponents>), Or<(Changed<SunData>, Changed<crate::core::DisabledComponents>)>>,
+    mut sun_lights: Query<(&Sun, &mut DirectionalLight, &mut Transform, Option<&crate::core::DisabledComponents>), Or<(Changed<Sun>, Changed<crate::core::DisabledComponents>)>>,
 ) {
     for (data, mut light, dc) in &mut point_lights {
         let disabled = dc.map_or(false, |d| d.is_disabled("point_light"));

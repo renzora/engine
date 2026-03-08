@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use rhai::{Dynamic, Engine, AST, Scope, Map, ImmutableString};
 
 use crate::backend::ScriptBackend;
-use crate::command::ScriptCommand;
+use crate::command::{PropertyValue, ScriptCommand};
 use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
 
@@ -290,6 +290,48 @@ fn register_api(engine: &mut Engine) {
         push_command(ScriptCommand::SetFog { enabled, start: start as f32, end: end as f32 });
     });
 
+    // Generic reflection API
+    engine.register_fn("set", |path: ImmutableString, value: Dynamic| {
+        if let Some((comp, field)) = parse_component_path(&path) {
+            push_command(ScriptCommand::SetComponentField {
+                entity_id: None,
+                entity_name: None,
+                component_type: comp,
+                field_path: field,
+                value: rhai_to_property_value(&value),
+            });
+        }
+    });
+    engine.register_fn("set_on", |entity: ImmutableString, path: ImmutableString, value: Dynamic| {
+        if let Some((comp, field)) = parse_component_path(&path) {
+            push_command(ScriptCommand::SetComponentField {
+                entity_id: None,
+                entity_name: Some(entity.to_string()),
+                component_type: comp,
+                field_path: field,
+                value: rhai_to_property_value(&value),
+            });
+        }
+    });
+
+    // Generic reflection API (get/get_on)
+    engine.register_fn("get", |path: ImmutableString| -> Dynamic {
+        if let Some((comp, field)) = parse_component_path(&path) {
+            if let Some(v) = crate::get_handler::call_get(None, &comp, &field) {
+                return property_value_to_dynamic(v);
+            }
+        }
+        Dynamic::UNIT
+    });
+    engine.register_fn("get_on", |entity: ImmutableString, path: ImmutableString| -> Dynamic {
+        if let Some((comp, field)) = parse_component_path(&path) {
+            if let Some(v) = crate::get_handler::call_get(Some(entity.as_str()), &comp, &field) {
+                return property_value_to_dynamic(v);
+            }
+        }
+        Dynamic::UNIT
+    });
+
     // Math helpers
     engine.register_fn("vec3", |x: f64, y: f64, z: f64| -> Map {
         let mut m = Map::new();
@@ -501,6 +543,54 @@ fn parse_script_props(engine: &Engine, ast: &AST) -> Vec<ScriptVariableDefinitio
 
     props.sort_by(|a, b| a.name.cmp(&b.name));
     props
+}
+
+fn parse_component_path(path: &str) -> Option<(String, String)> {
+    let dot = path.find('.')?;
+    let component = path[..dot].to_string();
+    let field = path[dot + 1..].to_string();
+    if component.is_empty() || field.is_empty() { return None; }
+    Some((component, field))
+}
+
+fn rhai_to_property_value(value: &Dynamic) -> PropertyValue {
+    if let Some(v) = value.clone().try_cast::<f64>() {
+        return PropertyValue::Float(v as f32);
+    }
+    if let Some(v) = value.clone().try_cast::<i64>() {
+        return PropertyValue::Int(v);
+    }
+    if let Some(v) = value.clone().try_cast::<bool>() {
+        return PropertyValue::Bool(v);
+    }
+    if let Some(v) = value.clone().try_cast::<ImmutableString>() {
+        return PropertyValue::String(v.to_string());
+    }
+    PropertyValue::Float(0.0)
+}
+
+fn property_value_to_dynamic(value: PropertyValue) -> Dynamic {
+    match value {
+        PropertyValue::Float(v) => Dynamic::from(v as f64),
+        PropertyValue::Int(v) => Dynamic::from(v),
+        PropertyValue::Bool(v) => Dynamic::from(v),
+        PropertyValue::String(v) => Dynamic::from(v),
+        PropertyValue::Vec3(v) => {
+            let mut m = Map::new();
+            m.insert("x".into(), Dynamic::from(v[0] as f64));
+            m.insert("y".into(), Dynamic::from(v[1] as f64));
+            m.insert("z".into(), Dynamic::from(v[2] as f64));
+            Dynamic::from(m)
+        }
+        PropertyValue::Color(v) => {
+            let mut m = Map::new();
+            m.insert("r".into(), Dynamic::from(v[0] as f64));
+            m.insert("g".into(), Dynamic::from(v[1] as f64));
+            m.insert("b".into(), Dynamic::from(v[2] as f64));
+            m.insert("a".into(), Dynamic::from(v[3] as f64));
+            Dynamic::from(m)
+        }
+    }
 }
 
 fn to_display_name(name: &str) -> String {

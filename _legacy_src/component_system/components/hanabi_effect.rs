@@ -15,7 +15,7 @@ use egui_phosphor::regular::SPARKLE;
 
 // Re-export particle types for convenience
 pub use crate::particles::{
-    HanabiEffectData, HanabiEffectDefinition, EffectSource,
+    HanabiEffect, HanabiEffectDefinition, EffectSource,
     HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
     BlendMode, BillboardMode, SimulationSpace, SimulationCondition,
     GradientStop,
@@ -28,7 +28,7 @@ pub use crate::particles::{
 // ============================================================================
 
 fn serialize_hanabi_effect(world: &World, entity: Entity) -> Option<serde_json::Value> {
-    let data = world.get::<HanabiEffectData>(entity)?;
+    let data = world.get::<HanabiEffect>(entity)?;
 
     // Serialize the source
     let source_value = match &data.source {
@@ -466,7 +466,7 @@ fn deserialize_hanabi_effect(entity_commands: &mut EntityCommands, data: &serde_
         EffectSource::default()
     };
 
-    let effect_data = HanabiEffectData {
+    let effect_data = HanabiEffect {
         source,
         playing: data.get("playing").and_then(|v| v.as_bool()).unwrap_or(true),
         rate_multiplier: data.get("rate_multiplier").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
@@ -500,7 +500,7 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
     let project_assets_path = world.get_resource::<CurrentProject>()
         .map(|p| p.path.join("assets"));
 
-    let Some(mut data) = world.get_mut::<HanabiEffectData>(entity) else {
+    let Some(mut data) = world.get_mut::<HanabiEffect>(entity) else {
         return false;
     };
 
@@ -761,7 +761,7 @@ fn inspect_hanabi_effect(ui: &mut egui::Ui, world: &mut World, entity: Entity, _
 
 /// Register all effects components
 pub fn register(registry: &mut ComponentRegistry) {
-    registry.register_owned(register_component!(HanabiEffectData {
+    registry.register_owned(register_component!(HanabiEffect {
         type_id: "hanabi_effect",
         display_name: "Hanabi Effect",
         category: ComponentCategory::Effects,

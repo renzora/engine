@@ -11,7 +11,7 @@ use crate::manager::RolloffType;
 /// fields to configure Kira playback (volume, pitch, spatial positioning, etc.).
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
-pub struct AudioPlayerData {
+pub struct AudioPlayer {
     /// Relative path to the audio clip asset.
     pub clip: String,
     /// Volume multiplier (0.0–2.0, 1.0 = unity).
@@ -46,7 +46,7 @@ pub struct AudioPlayerData {
     pub delay_send: f32,
 }
 
-impl Default for AudioPlayerData {
+impl Default for AudioPlayer {
     fn default() -> Self {
         Self {
             clip: String::new(),

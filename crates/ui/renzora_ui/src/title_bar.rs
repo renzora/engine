@@ -21,6 +21,7 @@ pub enum TitleBarAction {
     Play,
     Stop,
     Pause,
+    ScriptsOnly,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -34,11 +35,12 @@ const UNDERLINE_INSET: f32 = 3.0;
 pub struct PlayModeInfo {
     pub is_playing: bool,
     pub is_paused: bool,
+    pub is_scripts_only: bool,
 }
 
 impl Default for PlayModeInfo {
     fn default() -> Self {
-        Self { is_playing: false, is_paused: false }
+        Self { is_playing: false, is_paused: false, is_scripts_only: false }
     }
 }
 
@@ -241,10 +243,11 @@ pub fn render_title_bar(
                 let btn_size = 20.0;
                 let gear_size = 20.0;
                 let right_margin = 8.0;
-                let play_controls_width = if play_mode.is_playing || play_mode.is_paused {
+                let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
+                let play_controls_width = if in_any_play {
                     btn_size * 2.0 + 4.0 // pause + stop
                 } else {
-                    btn_size // just play
+                    btn_size * 2.0 + 4.0 // play + scripts
                 };
                 let remaining = ui.available_width() - play_controls_width - 8.0 - gear_size - right_margin;
                 if remaining > 0.0 {
@@ -252,8 +255,7 @@ pub fn render_title_bar(
                 }
 
                 // Play/Stop/Pause buttons
-                let in_play = play_mode.is_playing || play_mode.is_paused;
-                if in_play {
+                if in_any_play {
                     // Pause button
                     let pause_rect = Rect::from_min_size(
                         Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
@@ -337,6 +339,33 @@ pub fn render_title_bar(
                     }
                     if play_resp.clicked() {
                         action = TitleBarAction::Play;
+                    }
+                    ui.add_space(btn_size + 4.0);
+
+                    // Scripts button (run scripts in editor)
+                    let scripts_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let scripts_id = ui.id().with("scripts_btn");
+                    let scripts_resp = ui.interact(scripts_rect, scripts_id, Sense::click());
+                    let scripts_color = if scripts_resp.hovered() {
+                        Color32::from_rgb(100, 180, 255)
+                    } else {
+                        theme.text.muted.to_color32()
+                    };
+                    ui.painter().text(
+                        scripts_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::CODE,
+                        egui::FontId::proportional(14.0),
+                        scripts_color,
+                    );
+                    if scripts_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if scripts_resp.clicked() {
+                        action = TitleBarAction::ScriptsOnly;
                     }
                     ui.add_space(btn_size);
                 }

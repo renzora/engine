@@ -31,7 +31,7 @@ pub use components::{
     // Instances
     MeshInstanceData, SceneInstanceData,
     // Lights
-    DirectionalLightData, PointLightData, SpotLightData, SunData,
+    DirectionalLightData, PointLightData, SpotLightData, Sun,
     // Physics
     CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
     // Rendering

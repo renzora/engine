@@ -458,7 +458,7 @@ impl Default for SpotLightData {
 /// Automatically orients a DirectionalLight based on the angular position.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
-pub struct SunData {
+pub struct Sun {
     /// Azimuth angle in degrees (0-360, compass direction of the sun)
     pub azimuth: f32,
     /// Elevation angle in degrees (-90 to 90, height above horizon)
@@ -473,7 +473,7 @@ pub struct SunData {
     pub angular_diameter: f32,
 }
 
-impl Default for SunData {
+impl Default for Sun {
     fn default() -> Self {
         Self {
             azimuth: 0.0,
@@ -486,7 +486,7 @@ impl Default for SunData {
     }
 }
 
-impl SunData {
+impl Sun {
     /// Compute the sun's direction vector from azimuth and elevation.
     /// Returns the direction the light travels (pointing away from the sun toward the scene).
     pub fn direction(&self) -> Vec3 {

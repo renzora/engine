@@ -3,8 +3,15 @@
 use bevy::prelude::*;
 use bevy::pbr::Lightmap;
 use bevy::light::{EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricFog, VolumetricLight};
+use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor::{EntityLabelColor, EntityTag, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_editor::{
+    asset_drop_target, inline_property, search_overlay, toggle_switch, AssetDragPayload,
+    EditorCommands, EntityLabelColor, EntityTag, FieldDef, FieldType, FieldValue,
+    InspectorEntry, InspectorRegistry, OverlayAction, OverlayEntry,
+};
+use renzora_scripting::ScriptComponent;
+use renzora_theme::Theme;
 
 /// Register inspector entries for built-in Bevy components.
 pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
@@ -24,6 +31,7 @@ pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
     registry.register(volumetric_fog_entry());
+    registry.register(script_component_entry());
 }
 
 fn name_entry() -> InspectorEntry {
@@ -909,6 +917,368 @@ fn volumetric_light_entry() -> InspectorEntry {
         }],
         custom_ui_fn: None,
     }
+}
+
+fn script_component_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "script_component",
+        display_name: "Scripts",
+        icon: regular::CODE,
+        category: "scripting",
+        has_fn: |world, entity| world.get::<ScriptComponent>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(ScriptComponent::new());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<ScriptComponent>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(script_component_ui),
+    }
+}
+
+/// Recursively scan a directory for script files (.lua, .rhai).
+/// Returns (display_name, absolute_path) pairs.
+fn scan_script_files(root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let mut results = Vec::new();
+    scan_script_files_inner(root, root, &mut results);
+    results.sort_by(|a, b| a.0.cmp(&b.0));
+    results
+}
+
+fn scan_script_files_inner(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    out: &mut Vec<(String, std::path::PathBuf)>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.starts_with('.')) {
+            continue;
+        }
+        if path.is_dir() {
+            // Skip common non-script directories
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(name, "target" | "node_modules" | ".git") {
+                continue;
+            }
+            scan_script_files_inner(&path, root, out);
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if matches!(ext, "lua" | "rhai") {
+                // Display name = relative path from project root
+                let display = path.strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                out.push((display, path));
+            }
+        }
+    }
+}
+
+/// Convert an absolute path to project-relative, falling back to the original path.
+fn make_relative(abs: std::path::PathBuf, world: &World) -> std::path::PathBuf {
+    if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+        if let Ok(rel) = abs.strip_prefix(&project.path) {
+            return rel.to_path_buf();
+        }
+    }
+    abs
+}
+
+fn format_script_value(value: &renzora_scripting::ScriptValue) -> String {
+    use renzora_scripting::ScriptValue;
+    match value {
+        ScriptValue::Float(v) => format!("{:.3}", v),
+        ScriptValue::Int(v) => format!("{}", v),
+        ScriptValue::Bool(v) => format!("{}", v),
+        ScriptValue::String(v) => v.clone(),
+        ScriptValue::Entity(v) => v.clone(),
+        ScriptValue::Vec2(v) => format!("({:.2}, {:.2})", v.x, v.y),
+        ScriptValue::Vec3(v) => format!("({:.2}, {:.2}, {:.2})", v.x, v.y, v.z),
+        ScriptValue::Color(v) => format!("({:.2}, {:.2}, {:.2}, {:.2})", v.x, v.y, v.z, v.w),
+    }
+}
+
+fn to_display_name(name: &str) -> String {
+    name.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn script_component_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(sc) = world.get::<ScriptComponent>(entity) else {
+        return;
+    };
+    let scripts = sc.scripts.clone();
+    let payload = world.get_resource::<AssetDragPayload>();
+
+    if scripts.is_empty() {
+        // Empty state — show a drop zone to add the first script
+        ui.add_space(4.0);
+        let drop = asset_drop_target(
+            ui,
+            ui.id().with("script_drop_empty"),
+            None,
+            &["lua", "rhai"],
+            "Drop a script file here",
+            theme,
+            payload,
+        );
+        if let Some(path) = drop.dropped_path {
+            let rel = make_relative(path, world);
+            cmds.push(move |w: &mut World| {
+                if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                    sc.add_file_script(rel);
+                }
+            });
+        }
+        ui.add_space(4.0);
+    } else {
+        // Render each script entry
+        let mut remove_index: Option<usize> = None;
+        let mut toggle_index: Option<usize> = None;
+
+        for (i, entry) in scripts.iter().enumerate() {
+            let _script_name = if let Some(ref path) = entry.script_path {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string()
+            } else if !entry.script_id.is_empty() {
+                entry.script_id.clone()
+            } else {
+                format!("Script #{}", entry.id)
+            };
+
+            let row_idx = i * 3; // spacing for alternating rows
+
+            // Script path drop target
+            let current_path = entry.script_path.as_ref().map(|p| p.to_string_lossy().to_string());
+            let current_str = current_path.as_deref();
+
+            inline_property(ui, row_idx, "Script", theme, |ui| {
+                let drop = asset_drop_target(
+                    ui,
+                    ui.id().with(("script_path", i)),
+                    current_str,
+                    &["lua", "rhai"],
+                    "Drop script file",
+                    theme,
+                    payload,
+                );
+                if let Some(path) = drop.dropped_path {
+                    let idx = i;
+                    let rel = make_relative(path, world);
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                            if let Some(entry) = sc.scripts.get_mut(idx) {
+                                entry.script_path = Some(rel);
+                            }
+                        }
+                    });
+                }
+                if drop.cleared {
+                    let idx = i;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                            if let Some(entry) = sc.scripts.get_mut(idx) {
+                                entry.script_path = None;
+                            }
+                        }
+                    });
+                }
+            });
+
+            // Enabled toggle
+            inline_property(ui, row_idx + 1, "Enabled", theme, |ui| {
+                let id = ui.id().with(("script_enabled", i));
+                if toggle_switch(ui, id, entry.enabled) {
+                    toggle_index = Some(i);
+                }
+            });
+
+            // Script variables (props)
+            if !entry.variables.iter_all().next().is_none() {
+                ui.add_space(2.0);
+                for (var_name, var_value) in entry.variables.iter_all() {
+                    let display = format_script_value(var_value);
+                    let label = to_display_name(var_name);
+                    inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                        ui.label(
+                            egui::RichText::new(display)
+                                .size(11.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
+                    });
+                }
+                ui.add_space(2.0);
+            }
+
+            // Remove button
+            inline_property(ui, row_idx + 2, "", theme, |ui| {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Remove", regular::TRASH))
+                            .size(11.0)
+                            .color(theme.semantic.error.to_color32()),
+                    ))
+                    .clicked()
+                {
+                    remove_index = Some(i);
+                }
+            });
+
+            // Separator between script entries
+            if i < scripts.len() - 1 {
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(2.0);
+            }
+        }
+
+        // Apply deferred actions
+        if let Some(idx) = toggle_index {
+            let new_enabled = !scripts[idx].enabled;
+            cmds.push(move |w: &mut World| {
+                if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                    if let Some(entry) = sc.scripts.get_mut(idx) {
+                        entry.enabled = new_enabled;
+                    }
+                }
+            });
+        }
+        if let Some(idx) = remove_index {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                    sc.remove_script(idx);
+                }
+            });
+        }
+    }
+
+    // Add Script button — opens search overlay
+    let overlay_id = egui::Id::new("script_search_overlay_visible");
+    let show_overlay = ui.ctx().data_mut(|d| {
+        *d.get_persisted_mut_or_insert_with(overlay_id, || false)
+    });
+
+    if show_overlay {
+        // Scan project directory recursively for script files
+        let available = world
+            .get_resource::<renzora_core::CurrentProject>()
+            .map(|p| scan_script_files(&p.path))
+            .unwrap_or_default();
+
+        // We need owned strings for the overlay entries — store them so refs stay valid
+        let entry_data: Vec<(String, String, String, std::path::PathBuf)> = available
+            .iter()
+            .map(|(name, path)| {
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                let icon = match ext {
+                    "lua" => regular::CODE,
+                    "rhai" => regular::CODE,
+                    _ => regular::FILE,
+                };
+                let category = ext.to_string();
+                (name.clone(), icon.to_string(), category, path.clone())
+            })
+            .collect();
+
+        let entries: Vec<OverlayEntry> = entry_data
+            .iter()
+            .map(|(name, icon, cat, _path)| OverlayEntry {
+                id: name.as_str(),
+                label: name.as_str(),
+                icon: icon.as_str(),
+                category: if cat.is_empty() { "scripts" } else { cat.as_str() },
+            })
+            .collect();
+
+        let search_id = egui::Id::new("script_search_text");
+        let mut search_text: String = ui.ctx().data_mut(|d| {
+            d.get_persisted_mut_or_insert_with(search_id, String::new).clone()
+        });
+
+        let ctx = ui.ctx().clone();
+        match search_overlay(&ctx, "add_script_overlay", "Add Script", &entries, &mut search_text, theme) {
+            OverlayAction::Selected(name) => {
+                // Find the path for this script — id is the display name
+                if let Some((_, _, _, path)) = entry_data.iter().find(|(n, _, _, _)| *n == name) {
+                    let rel = make_relative(path.clone(), world);
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                            sc.add_file_script(rel);
+                        }
+                    });
+                }
+                ui.ctx().data_mut(|d| d.insert_persisted(overlay_id, false));
+                ui.ctx().data_mut(|d| d.insert_persisted(search_id, String::new()));
+            }
+            OverlayAction::Closed => {
+                ui.ctx().data_mut(|d| d.insert_persisted(overlay_id, false));
+                ui.ctx().data_mut(|d| d.insert_persisted(search_id, String::new()));
+            }
+            OverlayAction::None => {
+                // Persist search text changes
+                ui.ctx().data_mut(|d| d.insert_persisted(search_id, search_text));
+            }
+        }
+    }
+
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        if ui
+            .add(egui::Button::new(
+                egui::RichText::new(format!("{} Add Script", regular::PLUS))
+                    .size(11.0),
+            ))
+            .clicked()
+        {
+            ui.ctx().data_mut(|d| d.insert_persisted(overlay_id, true));
+        }
+    });
+
+    // Drop zone at the bottom to add new scripts
+    ui.add_space(4.0);
+    let drop = asset_drop_target(
+        ui,
+        ui.id().with("script_drop_add"),
+        None,
+        &["lua", "rhai"],
+        "Drop to add script",
+        theme,
+        payload,
+    );
+    if let Some(path) = drop.dropped_path {
+        let rel = make_relative(path, world);
+        cmds.push(move |w: &mut World| {
+            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                sc.add_file_script(rel);
+            }
+        });
+    }
+    ui.add_space(4.0);
 }
 
 fn volumetric_fog_entry() -> InspectorEntry {

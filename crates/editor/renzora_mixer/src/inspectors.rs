@@ -1,9 +1,9 @@
-//! Inspector entries for audio components (AudioPlayerData, AudioListener).
+//! Inspector entries for audio components (AudioPlayer, AudioListener).
 
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_audio::{AudioPlayerData, AudioListener, MixerState};
+use renzora_audio::{AudioPlayer, AudioListener, MixerState};
 use renzora_editor::{EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 use renzora_theme::Theme;
 
@@ -19,7 +19,7 @@ fn audio_player_custom_ui(
     commands: &EditorCommands,
     _theme: &Theme,
 ) {
-    let Some(data) = world.get::<AudioPlayerData>(entity) else {
+    let Some(data) = world.get::<AudioPlayer>(entity) else {
         return;
     };
 
@@ -30,7 +30,7 @@ fn audio_player_custom_ui(
         if ui.text_edit_singleline(&mut clip).changed() {
             let v = clip.clone();
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.clip = v;
                 }
             });
@@ -43,7 +43,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Volume").size(11.0));
         if ui.add(egui::Slider::new(&mut volume, 0.0..=2.0)).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.volume = volume;
                 }
             });
@@ -56,7 +56,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Pitch").size(11.0));
         if ui.add(egui::Slider::new(&mut pitch, 0.1..=4.0)).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.pitch = pitch;
                 }
             });
@@ -69,7 +69,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Panning").size(11.0));
         if ui.add(egui::Slider::new(&mut panning, -1.0..=1.0)).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.panning = panning;
                 }
             });
@@ -99,7 +99,7 @@ fn audio_player_custom_ui(
                     if ui.selectable_label(*bus_name == current_bus, bus_name).clicked() {
                         let v = bus_name.clone();
                         commands.push(move |w| {
-                            if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                            if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                                 d.bus = v;
                             }
                         });
@@ -114,7 +114,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Looping").size(11.0));
         if ui.checkbox(&mut looping, "").changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.looping = looping;
                 }
             });
@@ -127,7 +127,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Autoplay").size(11.0));
         if ui.checkbox(&mut autoplay, "").changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.autoplay = autoplay;
                 }
             });
@@ -140,7 +140,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Fade In").size(11.0));
         if ui.add(egui::DragValue::new(&mut fade_in).speed(0.05).range(0.0..=10.0).suffix("s")).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.fade_in = fade_in;
                 }
             });
@@ -153,7 +153,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Spatial").size(11.0));
         if ui.checkbox(&mut spatial, "").changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.spatial = spatial;
                 }
             });
@@ -166,7 +166,7 @@ fn audio_player_custom_ui(
             ui.label(egui::RichText::new("  Min Distance").size(11.0));
             if ui.add(egui::DragValue::new(&mut min_dist).speed(0.1).range(0.01..=1000.0)).changed() {
                 commands.push(move |w| {
-                    if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                    if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                         d.spatial_min_distance = min_dist;
                     }
                 });
@@ -178,7 +178,7 @@ fn audio_player_custom_ui(
             ui.label(egui::RichText::new("  Max Distance").size(11.0));
             if ui.add(egui::DragValue::new(&mut max_dist).speed(0.5).range(0.1..=10000.0)).changed() {
                 commands.push(move |w| {
-                    if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                    if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                         d.spatial_max_distance = max_dist;
                     }
                 });
@@ -192,7 +192,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Reverb Send").size(11.0));
         if ui.add(egui::Slider::new(&mut reverb, 0.0..=1.0)).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.reverb_send = reverb;
                 }
             });
@@ -205,7 +205,7 @@ fn audio_player_custom_ui(
         ui.label(egui::RichText::new("Delay Send").size(11.0));
         if ui.add(egui::Slider::new(&mut delay, 0.0..=1.0)).changed() {
             commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayerData>(entity) {
+                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.delay_send = delay;
                 }
             });
@@ -219,12 +219,12 @@ fn audio_player_entry() -> InspectorEntry {
         display_name: "Audio Player",
         icon: regular::SPEAKER_HIGH,
         category: "Audio",
-        has_fn: |world, entity| world.get::<AudioPlayerData>(entity).is_some(),
+        has_fn: |world, entity| world.get::<AudioPlayer>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(AudioPlayerData::default());
+            world.entity_mut(entity).insert(AudioPlayer::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<AudioPlayerData>();
+            world.entity_mut(entity).remove::<AudioPlayer>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
