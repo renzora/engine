@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::camera::Exposure;
 use serde::{Deserialize, Serialize};
 
@@ -179,6 +179,67 @@ fn tonemapping_custom_ui(
     });
 }
 
+// ── Deband Dither ──
+
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct DebandDitherSettings {
+    pub enabled: bool,
+}
+
+impl Default for DebandDitherSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+fn sync_deband_dither(
+    mut commands: Commands,
+    query: Query<(Entity, &DebandDitherSettings), Changed<DebandDitherSettings>>,
+) {
+    for (entity, settings) in &query {
+        commands.entity(entity).insert(if settings.enabled {
+            DebandDither::Enabled
+        } else {
+            DebandDither::Disabled
+        });
+    }
+}
+
+fn cleanup_deband_dither(mut commands: Commands, mut removed: RemovedComponents<DebandDitherSettings>) {
+    for entity in removed.read() {
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.insert(DebandDither::Disabled);
+        }
+    }
+}
+
+#[cfg(feature = "editor")]
+fn deband_dither_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "deband_dither",
+        display_name: "Deband Dither",
+        icon: regular::GRADIENT,
+        category: "rendering",
+        has_fn: |world, entity| world.get::<DebandDitherSettings>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(DebandDitherSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<DebandDitherSettings>();
+            world.entity_mut(entity).insert(DebandDither::Disabled);
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world.get::<DebandDitherSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<DebandDitherSettings>(entity) { s.enabled = val; }
+        }),
+        fields: vec![],
+        custom_ui_fn: None,
+    }
+}
+
 fn cleanup_tonemapping(mut commands: Commands, mut removed: RemovedComponents<TonemappingSettings>) {
     for entity in removed.read() {
         if let Ok(mut ec) = commands.get_entity(entity) {
@@ -192,8 +253,12 @@ pub struct TonemappingPlugin;
 impl Plugin for TonemappingPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<TonemappingSettings>();
-        app.add_systems(Update, (sync_tonemapping, cleanup_tonemapping));
+        app.register_type::<DebandDitherSettings>();
+        app.add_systems(Update, (sync_tonemapping, cleanup_tonemapping, sync_deband_dither, cleanup_deband_dither));
         #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
+        {
+            app.register_inspector(inspector_entry());
+            app.register_inspector(deband_dither_entry());
+        }
     }
 }
