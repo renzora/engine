@@ -72,7 +72,7 @@ pub struct NightStarsMaterial {
 
 impl Material for NightStarsMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("shaders/night_stars.wgsl".into())
+        ShaderRef::Path("embedded://renzora_night_stars/night_stars.wgsl".into())
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -311,6 +311,8 @@ pub struct NightStarsPlugin;
 
 impl Plugin for NightStarsPlugin {
     fn build(&self, app: &mut App) {
+        bevy::asset::embedded_asset!(app, "night_stars.wgsl");
+
         app.register_type::<NightStarsData>()
             .init_resource::<NightStarsState>()
             .add_plugins(MaterialPlugin::<NightStarsMaterial>::default())
