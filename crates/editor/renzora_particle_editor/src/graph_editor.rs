@@ -7,6 +7,10 @@ use renzora_ui::widgets::node_graph::{
 };
 
 /// Convert screen-space position to canvas-space (mirrors render::screen_to_canvas).
+pub fn screen_to_canvas_pub(screen: Pos2, offset: [f32; 2], zoom: f32, rect: egui::Rect) -> [f32; 2] {
+    screen_to_canvas(screen, offset, zoom, rect)
+}
+
 fn screen_to_canvas(screen: Pos2, offset: [f32; 2], zoom: f32, rect: egui::Rect) -> [f32; 2] {
     let center = rect.center();
     let rel = screen - center;
@@ -39,7 +43,7 @@ fn header_color(category: &str) -> Color32 {
 }
 
 /// Icon for a node category
-fn category_icon(category: &str) -> &'static str {
+pub fn category_icon(category: &str) -> &'static str {
     match category {
         "Spawn" => egui_phosphor::regular::SPARKLE,
         "Init" => egui_phosphor::regular::ARROWS_OUT,
@@ -160,6 +164,35 @@ pub fn render_graph_editor(
     if state.needs_sync {
         state.widget_state = sync_graph_to_widget(graph);
         state.needs_sync = false;
+
+        // Auto-fit: center view on all nodes and adjust zoom to fit
+        if !graph.nodes.is_empty() {
+            let node_w = 180.0_f32;
+            let node_h_est = 120.0_f32; // rough average node height
+            let mut min_x = f32::MAX;
+            let mut max_x = f32::MIN;
+            let mut min_y = f32::MAX;
+            let mut max_y = f32::MIN;
+            for node in &graph.nodes {
+                min_x = min_x.min(node.position[0]);
+                max_x = max_x.max(node.position[0] + node_w);
+                min_y = min_y.min(node.position[1]);
+                max_y = max_y.max(node.position[1] + node_h_est);
+            }
+            let center_x = (min_x + max_x) / 2.0;
+            let center_y = (min_y + max_y) / 2.0;
+            state.widget_state.offset = [-center_x, -center_y];
+
+            // Fit zoom: try to fit the bounding box into the available canvas
+            if let Some(cr) = state.canvas_rect {
+                let graph_w = max_x - min_x + 100.0; // padding
+                let graph_h = max_y - min_y + 100.0;
+                let zoom_x = cr.width() / graph_w;
+                let zoom_y = cr.height() / graph_h;
+                let fit_zoom = zoom_x.min(zoom_y).clamp(0.25, 1.5);
+                state.widget_state.zoom = fit_zoom;
+            }
+        }
     }
 
     // Render node graph widget

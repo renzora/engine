@@ -621,11 +621,18 @@ impl ParticleNodeGraph {
             emitter.values.insert("capacity".into(), PinValue::Float(def.capacity as f32));
         }
 
+        // Set emitter position (far right)
+        if let Some(emitter) = graph.get_node_mut(1) {
+            emitter.position = [1200.0, 0.0];
+        }
         let emitter_id: u64 = 1;
+
+        // Layout: Spawn → Init → Update → Render → Emitter (left to right)
+        // Node width is 180px, columns spaced 300px apart for clean cables
 
         // ── Spawn column ─────────────────────────────────────────────
         let spawn_x: f32 = -300.0;
-        let mut spawn_y: f32 = -100.0;
+        let mut spawn_y: f32 = -50.0;
 
         match def.spawn_mode {
             SpawnMode::Rate | SpawnMode::BurstRate => {
@@ -635,7 +642,7 @@ impl ParticleNodeGraph {
                     n.values.insert("count".into(), PinValue::Float(def.spawn_count as f32));
                 }
                 graph.connect(id, "module", emitter_id, "spawn");
-                spawn_y += 80.0;
+                spawn_y += 160.0;
             }
             SpawnMode::Burst => {
                 let id = graph.add_node(ParticleNodeType::SpawnBurst, [spawn_x, spawn_y]);
@@ -643,13 +650,13 @@ impl ParticleNodeGraph {
                     n.values.insert("count".into(), PinValue::Float(def.spawn_count as f32));
                 }
                 graph.connect(id, "module", emitter_id, "spawn");
-                spawn_y += 80.0;
+                spawn_y += 160.0;
             }
         }
         let _ = spawn_y;
 
         // ── Init column ──────────────────────────────────────────────
-        let init_x: f32 = -600.0;
+        let init_x: f32 = 0.0;
         let mut init_y: f32 = -200.0;
 
         // Lifetime
@@ -659,7 +666,7 @@ impl ParticleNodeGraph {
             n.values.insert("max".into(), PinValue::Float(def.lifetime_max));
         }
         graph.connect(id, "module", emitter_id, "init");
-        init_y += 80.0;
+        init_y += 160.0;
 
         // Velocity
         let id = graph.add_node(ParticleNodeType::InitVelocity, [init_x, init_y]);
@@ -671,7 +678,7 @@ impl ParticleNodeGraph {
             n.values.insert("speed_max".into(), PinValue::Float(def.velocity_speed_max));
         }
         graph.connect(id, "module", emitter_id, "init");
-        init_y += 80.0;
+        init_y += 160.0;
 
         // Size
         let id = graph.add_node(ParticleNodeType::InitSize, [init_x, init_y]);
@@ -681,7 +688,7 @@ impl ParticleNodeGraph {
             n.values.insert("random_max".into(), PinValue::Float(def.size_start_max));
         }
         graph.connect(id, "module", emitter_id, "init");
-        init_y += 80.0;
+        init_y += 160.0;
 
         // Emit shape
         {
@@ -701,13 +708,13 @@ impl ParticleNodeGraph {
                 n.values.insert("dimension".into(), PinValue::Int(dim));
             }
             graph.connect(id, "module", emitter_id, "init");
-            init_y += 80.0;
+            init_y += 160.0;
         }
 
         let _ = init_y;
 
         // ── Update column ────────────────────────────────────────────
-        let update_x: f32 = 0.0;
+        let update_x: f32 = 300.0;
         let mut update_y: f32 = -200.0;
 
         if def.acceleration != [0.0, 0.0, 0.0] {
@@ -716,7 +723,7 @@ impl ParticleNodeGraph {
                 n.values.insert("acceleration".into(), PinValue::Vec3(def.acceleration));
             }
             graph.connect(id, "module", emitter_id, "update");
-            update_y += 80.0;
+            update_y += 160.0;
         }
 
         if def.linear_drag > 0.001 {
@@ -725,7 +732,7 @@ impl ParticleNodeGraph {
                 n.values.insert("drag".into(), PinValue::Float(def.linear_drag));
             }
             graph.connect(id, "module", emitter_id, "update");
-            update_y += 80.0;
+            update_y += 160.0;
         }
 
         if def.noise_amplitude > 0.001 && def.noise_frequency > 0.001 {
@@ -735,7 +742,7 @@ impl ParticleNodeGraph {
                 n.values.insert("amplitude".into(), PinValue::Float(def.noise_amplitude));
             }
             graph.connect(id, "module", emitter_id, "update");
-            update_y += 80.0;
+            update_y += 160.0;
         }
 
         if let Some(ref orbit) = def.orbit {
@@ -746,7 +753,7 @@ impl ParticleNodeGraph {
                 n.values.insert("speed".into(), PinValue::Float(orbit.speed));
             }
             graph.connect(id, "module", emitter_id, "update");
-            update_y += 80.0;
+            update_y += 160.0;
         }
 
         if def.velocity_limit > 0.001 {
@@ -755,13 +762,13 @@ impl ParticleNodeGraph {
                 n.values.insert("max_speed".into(), PinValue::Float(def.velocity_limit));
             }
             graph.connect(id, "module", emitter_id, "update");
-            update_y += 80.0;
+            update_y += 160.0;
         }
 
         let _ = update_y;
 
         // ── Render column ────────────────────────────────────────────
-        let render_x: f32 = 300.0;
+        let render_x: f32 = 600.0;
         let mut render_y: f32 = -200.0;
 
         // Size over lifetime
@@ -777,7 +784,7 @@ impl ParticleNodeGraph {
                 n.values.insert("end_y".into(), PinValue::Float(def.size_end_y));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Color over lifetime — full gradient
@@ -792,7 +799,7 @@ impl ParticleNodeGraph {
                 n.values.insert("hdr_intensity".into(), PinValue::Float(def.hdr_intensity));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Blend mode
@@ -807,7 +814,7 @@ impl ParticleNodeGraph {
                 n.values.insert("mode".into(), PinValue::Int(mode));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Billboard
@@ -823,7 +830,7 @@ impl ParticleNodeGraph {
                 n.values.insert("mode".into(), PinValue::Int(mode));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Alpha mode
@@ -841,7 +848,7 @@ impl ParticleNodeGraph {
                 n.values.insert("mode".into(), PinValue::Int(mode));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Simulation space
@@ -855,7 +862,7 @@ impl ParticleNodeGraph {
                 n.values.insert("space".into(), PinValue::Int(space));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         // Orient (if rotation speed is set)
@@ -865,7 +872,7 @@ impl ParticleNodeGraph {
                 n.values.insert("rotation_speed".into(), PinValue::Float(def.rotation_speed));
             }
             graph.connect(id, "module", emitter_id, "render");
-            render_y += 80.0;
+            render_y += 160.0;
         }
 
         let _ = render_y;
