@@ -151,6 +151,11 @@ pub fn render_graph_editor(
 ) -> bool {
     let mut modified = false;
 
+    // Detect if graph data changed externally (e.g. mode switch regenerated it)
+    if state.widget_state.nodes.len() != graph.nodes.len() {
+        state.needs_sync = true;
+    }
+
     // Initial sync
     if state.needs_sync {
         state.widget_state = sync_graph_to_widget(graph);

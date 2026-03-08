@@ -77,14 +77,12 @@ impl EditorPanel for ParticleEditorPanel {
                         state.editor_mode = EditorMode::Simple;
                     } else {
                         state.editor_mode = EditorMode::Graph;
-                        // Generate graph from current effect if not yet created
-                        if state.node_graph.is_none() {
-                            if let Some(ref effect) = state.current_effect {
-                                state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::from_effect(effect));
-                            } else {
-                                let name = "New Effect".to_string();
-                                state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::new(&name));
-                            }
+                        // Always regenerate graph from current effect
+                        if let Some(ref effect) = state.current_effect {
+                            state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::from_effect(effect));
+                        } else {
+                            let name = "New Effect".to_string();
+                            state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::new(&name));
                         }
                     }
                     // Swap layout
@@ -412,12 +410,77 @@ impl ParticleEditorPanel {
                         });
                     }
                 });
+
+                // ── Presets ──
+                ui.add_space(32.0);
+                ui.label(RichText::new("Presets").size(14.0).color(text_muted));
+                ui.add_space(8.0);
+
+                let presets_dir = PathBuf::from("assets/particles");
+                if presets_dir.exists() {
+                    let mut preset_files: Vec<PathBuf> = std::fs::read_dir(&presets_dir)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|ext| ext == "particle"))
+                        .collect();
+                    preset_files.sort();
+
+                    let icon_for_name = |name: &str| -> &str {
+                        match name {
+                            "fire" => egui_phosphor::regular::FLAME,
+                            "firework" | "firework_rocket" => egui_phosphor::regular::STAR_FOUR,
+                            "rain" => egui_phosphor::regular::CLOUD_RAIN,
+                            "snow" => egui_phosphor::regular::SNOWFLAKE,
+                            _ => SPARKLE,
+                        }
+                    };
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(available.width() * 0.15);
+                        for preset_path in &preset_files {
+                            let stem = preset_path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("unknown");
+                            let icon = icon_for_name(stem);
+                            let display = capitalize_preset(stem);
+
+                            if ui.add(egui::Button::new(
+                                RichText::new(format!("{} {}", icon, display)).color(accent),
+                            )).clicked() {
+                                let path = preset_path.clone();
+                                cmds.push(move |world: &mut World| {
+                                    if let Some(effect) = load_effect_from_file(&path) {
+                                        let mut state = world.resource_mut::<ParticleEditorState>();
+                                        state.current_effect = Some(effect);
+                                        state.current_file_path = Some(path.to_string_lossy().to_string());
+                                        state.is_modified = false;
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
             });
         });
     }
 }
 
 // ── File I/O ────────────────────────────────────────────────────────────────
+
+fn capitalize_preset(s: &str) -> String {
+    s.split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().to_string() + c.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool {
     let pretty = ron::ser::PrettyConfig::new()

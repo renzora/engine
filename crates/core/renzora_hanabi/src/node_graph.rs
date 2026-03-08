@@ -28,6 +28,10 @@ pub enum PinValue {
     Vec3([f32; 3]),
     Vec4([f32; 4]),
     Bool(bool),
+    /// Integer — used for enum indices (blend mode, billboard, shape type, etc.)
+    Int(i32),
+    /// Color gradient stops: Vec of (position, [r, g, b, a])
+    Gradient(Vec<(f32, [f32; 4])>),
     None,
 }
 
@@ -74,11 +78,18 @@ pub enum ParticleNodeType {
     Orbit,
     VelocityLimit,
 
+    // Init — shape
+    InitEmitShape,
+
     // Render
     SizeOverLifetime,
     ColorOverLifetime,
     Orient,
     Texture,
+    SetBlendMode,
+    SetBillboard,
+    SetAlphaMode,
+    SetSimulationSpace,
 
     // Math
     Add,
@@ -111,12 +122,13 @@ impl ParticleNodeType {
             Self::Emitter => "Emitter",
             Self::SpawnRate | Self::SpawnBurst => "Spawn",
             Self::InitPosition | Self::InitVelocity | Self::InitSize |
-            Self::InitLifetime | Self::InitColor => "Init",
+            Self::InitLifetime | Self::InitColor | Self::InitEmitShape => "Init",
             Self::Gravity | Self::LinearDrag | Self::RadialAccel |
             Self::TangentAccel | Self::ConformToSphere | Self::KillSphere |
             Self::KillAabb | Self::Noise | Self::Orbit | Self::VelocityLimit => "Update",
             Self::SizeOverLifetime | Self::ColorOverLifetime | Self::Orient |
-            Self::Texture => "Render",
+            Self::Texture | Self::SetBlendMode | Self::SetBillboard |
+            Self::SetAlphaMode | Self::SetSimulationSpace => "Render",
             Self::Add | Self::Subtract | Self::Multiply | Self::Divide |
             Self::Lerp | Self::Clamp | Self::RandomRange | Self::Sin |
             Self::Cos | Self::Abs | Self::Negate | Self::SplitVec3 |
@@ -137,6 +149,7 @@ impl ParticleNodeType {
             Self::InitSize => "Set Size",
             Self::InitLifetime => "Set Lifetime",
             Self::InitColor => "Set Color",
+            Self::InitEmitShape => "Emit Shape",
             Self::Gravity => "Gravity",
             Self::LinearDrag => "Linear Drag",
             Self::RadialAccel => "Radial Accel",
@@ -151,6 +164,10 @@ impl ParticleNodeType {
             Self::ColorOverLifetime => "Color Over Lifetime",
             Self::Orient => "Orient",
             Self::Texture => "Texture",
+            Self::SetBlendMode => "Blend Mode",
+            Self::SetBillboard => "Billboard",
+            Self::SetAlphaMode => "Alpha Mode",
+            Self::SetSimulationSpace => "Simulation Space",
             Self::Add => "Add",
             Self::Subtract => "Subtract",
             Self::Multiply => "Multiply",
@@ -186,6 +203,7 @@ impl ParticleNodeType {
 
             Self::SpawnRate => vec![
                 pin_in("rate", "Rate", PinType::Float, PinValue::Float(50.0)),
+                pin_in("count", "Count", PinType::Float, PinValue::Float(10.0)),
                 pin_out("module", "Module", PinType::Float),
             ],
             Self::SpawnBurst => vec![
@@ -202,6 +220,8 @@ impl ParticleNodeType {
                 pin_in("direction", "Direction", PinType::Vec3, PinValue::Vec3([0.0, 1.0, 0.0])),
                 pin_in("speed", "Speed", PinType::Float, PinValue::Float(2.0)),
                 pin_in("spread", "Spread", PinType::Float, PinValue::Float(0.3)),
+                pin_in("speed_min", "Speed Min", PinType::Float, PinValue::Float(0.0)),
+                pin_in("speed_max", "Speed Max", PinType::Float, PinValue::Float(0.0)),
                 pin_out("module", "Module", PinType::Float),
             ],
             Self::InitSize => vec![
@@ -217,6 +237,15 @@ impl ParticleNodeType {
             ],
             Self::InitColor => vec![
                 pin_in("color", "Color", PinType::Vec4, PinValue::Vec4([1.0, 1.0, 1.0, 1.0])),
+                pin_out("module", "Module", PinType::Float),
+            ],
+            Self::InitEmitShape => vec![
+                // shape_type: 0=Point, 1=Circle, 2=Sphere, 3=Cone, 4=Rect, 5=Box
+                pin_in("shape_type", "Shape Type", PinType::Float, PinValue::Int(0)),
+                pin_in("radius", "Radius", PinType::Float, PinValue::Float(1.0)),
+                pin_in("half_extents", "Half Extents", PinType::Vec3, PinValue::Vec3([1.0, 1.0, 1.0])),
+                // dimension: 0=Volume, 1=Surface
+                pin_in("dimension", "Dimension", PinType::Float, PinValue::Int(0)),
                 pin_out("module", "Module", PinType::Float),
             ],
 
@@ -278,11 +307,21 @@ impl ParticleNodeType {
             Self::SizeOverLifetime => vec![
                 pin_in("start", "Start", PinType::Float, PinValue::Float(0.1)),
                 pin_in("end", "End", PinType::Float, PinValue::Float(0.0)),
+                pin_in("non_uniform", "Non-Uniform", PinType::Bool, PinValue::Bool(false)),
+                pin_in("start_x", "Start X", PinType::Float, PinValue::Float(0.1)),
+                pin_in("start_y", "Start Y", PinType::Float, PinValue::Float(0.1)),
+                pin_in("end_x", "End X", PinType::Float, PinValue::Float(0.0)),
+                pin_in("end_y", "End Y", PinType::Float, PinValue::Float(0.0)),
                 pin_out("module", "Module", PinType::Float),
             ],
             Self::ColorOverLifetime => vec![
-                pin_in("start_color", "Start", PinType::Vec4, PinValue::Vec4([1.0, 1.0, 1.0, 1.0])),
-                pin_in("end_color", "End", PinType::Vec4, PinValue::Vec4([1.0, 1.0, 1.0, 0.0])),
+                // gradient stored as PinValue::Gradient in node.values["gradient"]
+                pin_in("gradient", "Gradient", PinType::Vec4, PinValue::Gradient(vec![
+                    (0.0, [1.0, 1.0, 1.0, 1.0]),
+                    (1.0, [1.0, 1.0, 1.0, 0.0]),
+                ])),
+                pin_in("use_hdr", "HDR", PinType::Bool, PinValue::Bool(false)),
+                pin_in("hdr_intensity", "HDR Intensity", PinType::Float, PinValue::Float(1.0)),
                 pin_out("module", "Module", PinType::Float),
             ],
             Self::Orient => vec![
@@ -291,6 +330,26 @@ impl ParticleNodeType {
             ],
             Self::Texture => vec![
                 pin_in("path", "Path", PinType::Float, PinValue::None),
+                pin_out("module", "Module", PinType::Float),
+            ],
+            // blend_mode: 0=Blend, 1=Additive, 2=Multiply
+            Self::SetBlendMode => vec![
+                pin_in("mode", "Mode", PinType::Float, PinValue::Int(0)),
+                pin_out("module", "Module", PinType::Float),
+            ],
+            // billboard: 0=FaceCamera, 1=FaceCameraY, 2=Velocity, 3=Fixed
+            Self::SetBillboard => vec![
+                pin_in("mode", "Mode", PinType::Float, PinValue::Int(0)),
+                pin_out("module", "Module", PinType::Float),
+            ],
+            // alpha_mode: 0=Blend, 1=Premultiply, 2=Add, 3=Multiply, 4=Mask, 5=Opaque
+            Self::SetAlphaMode => vec![
+                pin_in("mode", "Mode", PinType::Float, PinValue::Int(0)),
+                pin_out("module", "Module", PinType::Float),
+            ],
+            // sim_space: 0=Local, 1=World
+            Self::SetSimulationSpace => vec![
+                pin_in("space", "Space", PinType::Float, PinValue::Int(0)),
                 pin_out("module", "Module", PinType::Float),
             ],
 
@@ -400,6 +459,7 @@ const ALL_NODE_TYPES: &[ParticleNodeType] = &[
     ParticleNodeType::SpawnRate, ParticleNodeType::SpawnBurst,
     ParticleNodeType::InitPosition, ParticleNodeType::InitVelocity,
     ParticleNodeType::InitSize, ParticleNodeType::InitLifetime, ParticleNodeType::InitColor,
+    ParticleNodeType::InitEmitShape,
     ParticleNodeType::Gravity, ParticleNodeType::LinearDrag,
     ParticleNodeType::RadialAccel, ParticleNodeType::TangentAccel,
     ParticleNodeType::ConformToSphere, ParticleNodeType::KillSphere,
@@ -407,6 +467,8 @@ const ALL_NODE_TYPES: &[ParticleNodeType] = &[
     ParticleNodeType::VelocityLimit,
     ParticleNodeType::SizeOverLifetime, ParticleNodeType::ColorOverLifetime,
     ParticleNodeType::Orient, ParticleNodeType::Texture,
+    ParticleNodeType::SetBlendMode, ParticleNodeType::SetBillboard,
+    ParticleNodeType::SetAlphaMode, ParticleNodeType::SetSimulationSpace,
     ParticleNodeType::Add, ParticleNodeType::Subtract,
     ParticleNodeType::Multiply, ParticleNodeType::Divide,
     ParticleNodeType::Lerp, ParticleNodeType::Clamp,
@@ -426,6 +488,13 @@ fn pin_in(name: &str, label: &str, pin_type: PinType, default: PinValue) -> PinT
         pin_type,
         direction: PinDir::Input,
         default_value: default,
+    }
+}
+
+fn dim_to_int(dim: &crate::data::ShapeDimension) -> i32 {
+    match dim {
+        crate::data::ShapeDimension::Volume => 0,
+        crate::data::ShapeDimension::Surface => 1,
     }
 }
 
@@ -468,6 +537,9 @@ pub struct ParticleNodeGraph {
     pub nodes: Vec<ParticleNode>,
     pub connections: Vec<NodeConnection>,
     pub next_id: u64,
+    /// Base effect definition — properties not controlled by nodes are preserved here.
+    /// When compiling, node values override relevant fields on top of this base.
+    pub base_effect: Option<crate::data::HanabiEffectDefinition>,
 }
 
 impl ParticleNodeGraph {
@@ -483,6 +555,7 @@ impl ParticleNodeGraph {
             nodes: vec![emitter],
             connections: Vec::new(),
             next_id: 2,
+            base_effect: None,
         }
     }
 
@@ -538,39 +611,46 @@ impl ParticleNodeGraph {
     /// Build a node graph from an existing HanabiEffectDefinition.
     /// Creates nodes for each active feature with their values populated.
     pub fn from_effect(def: &crate::data::HanabiEffectDefinition) -> Self {
+        use crate::data::*;
+
         let mut graph = Self::new(&def.name);
+        graph.base_effect = Some(def.clone());
+
         // Set emitter capacity
         if let Some(emitter) = graph.get_node_mut(1) {
             emitter.values.insert("capacity".into(), PinValue::Float(def.capacity as f32));
         }
 
-        let mut col_x: f32 = -300.0;
-        let mut y_offset = |col: &mut f32| -> [f32; 2] { let y = *col; *col += 80.0; [0.0, y] };
-
         let emitter_id: u64 = 1;
 
-        // Spawn
-        col_x = -300.0;
+        // ── Spawn column ─────────────────────────────────────────────
+        let spawn_x: f32 = -300.0;
+        let mut spawn_y: f32 = -100.0;
+
         match def.spawn_mode {
-            crate::data::SpawnMode::Rate => {
-                let id = graph.add_node(ParticleNodeType::SpawnRate, [-300.0, { col_x += 80.0; col_x - 80.0 }]);
+            SpawnMode::Rate | SpawnMode::BurstRate => {
+                let id = graph.add_node(ParticleNodeType::SpawnRate, [spawn_x, spawn_y]);
                 if let Some(n) = graph.get_node_mut(id) {
                     n.values.insert("rate".into(), PinValue::Float(def.spawn_rate));
+                    n.values.insert("count".into(), PinValue::Float(def.spawn_count as f32));
                 }
                 graph.connect(id, "module", emitter_id, "spawn");
+                spawn_y += 80.0;
             }
-            crate::data::SpawnMode::Burst | crate::data::SpawnMode::BurstRate => {
-                let id = graph.add_node(ParticleNodeType::SpawnBurst, [-300.0, { col_x += 80.0; col_x - 80.0 }]);
+            SpawnMode::Burst => {
+                let id = graph.add_node(ParticleNodeType::SpawnBurst, [spawn_x, spawn_y]);
                 if let Some(n) = graph.get_node_mut(id) {
                     n.values.insert("count".into(), PinValue::Float(def.spawn_count as f32));
                 }
                 graph.connect(id, "module", emitter_id, "spawn");
+                spawn_y += 80.0;
             }
         }
+        let _ = spawn_y;
 
-        // Init column
-        let mut init_y: f32 = -200.0;
+        // ── Init column ──────────────────────────────────────────────
         let init_x: f32 = -600.0;
+        let mut init_y: f32 = -200.0;
 
         // Lifetime
         let id = graph.add_node(ParticleNodeType::InitLifetime, [init_x, init_y]);
@@ -587,6 +667,8 @@ impl ParticleNodeGraph {
             n.values.insert("direction".into(), PinValue::Vec3(def.velocity_direction));
             n.values.insert("speed".into(), PinValue::Float(def.velocity_magnitude));
             n.values.insert("spread".into(), PinValue::Float(def.velocity_spread));
+            n.values.insert("speed_min".into(), PinValue::Float(def.velocity_speed_min));
+            n.values.insert("speed_max".into(), PinValue::Float(def.velocity_speed_max));
         }
         graph.connect(id, "module", emitter_id, "init");
         init_y += 80.0;
@@ -595,15 +677,39 @@ impl ParticleNodeGraph {
         let id = graph.add_node(ParticleNodeType::InitSize, [init_x, init_y]);
         if let Some(n) = graph.get_node_mut(id) {
             n.values.insert("size".into(), PinValue::Float(def.size_start));
+            n.values.insert("random_min".into(), PinValue::Float(def.size_start_min));
+            n.values.insert("random_max".into(), PinValue::Float(def.size_start_max));
         }
         graph.connect(id, "module", emitter_id, "init");
         init_y += 80.0;
 
-        // Update column
-        let mut update_y: f32 = -200.0;
-        let update_x: f32 = 0.0;
+        // Emit shape
+        {
+            let id = graph.add_node(ParticleNodeType::InitEmitShape, [init_x, init_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let (shape_type, radius, half_ext, dim) = match &def.emit_shape {
+                    HanabiEmitShape::Point => (0, 0.0, [0.0, 0.0, 0.0], 0),
+                    HanabiEmitShape::Circle { radius, dimension } => (1, *radius, [0.0, 0.0, 0.0], dim_to_int(dimension)),
+                    HanabiEmitShape::Sphere { radius, dimension } => (2, *radius, [0.0, 0.0, 0.0], dim_to_int(dimension)),
+                    HanabiEmitShape::Cone { base_radius, .. } => (3, *base_radius, [0.0, 0.0, 0.0], 0),
+                    HanabiEmitShape::Rect { half_extents, dimension } => (4, 0.0, [half_extents[0], half_extents[1], 0.0], dim_to_int(dimension)),
+                    HanabiEmitShape::Box { half_extents } => (5, 0.0, *half_extents, 0),
+                };
+                n.values.insert("shape_type".into(), PinValue::Int(shape_type));
+                n.values.insert("radius".into(), PinValue::Float(radius));
+                n.values.insert("half_extents".into(), PinValue::Vec3(half_ext));
+                n.values.insert("dimension".into(), PinValue::Int(dim));
+            }
+            graph.connect(id, "module", emitter_id, "init");
+            init_y += 80.0;
+        }
 
-        // Gravity
+        let _ = init_y;
+
+        // ── Update column ────────────────────────────────────────────
+        let update_x: f32 = 0.0;
+        let mut update_y: f32 = -200.0;
+
         if def.acceleration != [0.0, 0.0, 0.0] {
             let id = graph.add_node(ParticleNodeType::Gravity, [update_x, update_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -613,7 +719,6 @@ impl ParticleNodeGraph {
             update_y += 80.0;
         }
 
-        // Linear drag
         if def.linear_drag > 0.001 {
             let id = graph.add_node(ParticleNodeType::LinearDrag, [update_x, update_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -623,7 +728,6 @@ impl ParticleNodeGraph {
             update_y += 80.0;
         }
 
-        // Noise
         if def.noise_amplitude > 0.001 && def.noise_frequency > 0.001 {
             let id = graph.add_node(ParticleNodeType::Noise, [update_x, update_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -634,7 +738,6 @@ impl ParticleNodeGraph {
             update_y += 80.0;
         }
 
-        // Orbit
         if let Some(ref orbit) = def.orbit {
             let id = graph.add_node(ParticleNodeType::Orbit, [update_x, update_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -646,7 +749,6 @@ impl ParticleNodeGraph {
             update_y += 80.0;
         }
 
-        // Velocity limit
         if def.velocity_limit > 0.001 {
             let id = graph.add_node(ParticleNodeType::VelocityLimit, [update_x, update_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -656,32 +758,107 @@ impl ParticleNodeGraph {
             update_y += 80.0;
         }
 
-        // Render column
-        let mut render_y: f32 = -200.0;
+        let _ = update_y;
+
+        // ── Render column ────────────────────────────────────────────
         let render_x: f32 = 300.0;
+        let mut render_y: f32 = -200.0;
 
         // Size over lifetime
-        let id = graph.add_node(ParticleNodeType::SizeOverLifetime, [render_x, render_y]);
-        if let Some(n) = graph.get_node_mut(id) {
-            n.values.insert("start".into(), PinValue::Float(def.size_start));
-            n.values.insert("end".into(), PinValue::Float(def.size_end));
-        }
-        graph.connect(id, "module", emitter_id, "render");
-        render_y += 80.0;
-
-        // Color over lifetime
-        if !def.use_flat_color && def.color_gradient.len() >= 2 {
-            let id = graph.add_node(ParticleNodeType::ColorOverLifetime, [render_x, render_y]);
+        {
+            let id = graph.add_node(ParticleNodeType::SizeOverLifetime, [render_x, render_y]);
             if let Some(n) = graph.get_node_mut(id) {
-                n.values.insert("start_color".into(), PinValue::Vec4(def.color_gradient[0].color));
-                let last = &def.color_gradient[def.color_gradient.len() - 1];
-                n.values.insert("end_color".into(), PinValue::Vec4(last.color));
+                n.values.insert("start".into(), PinValue::Float(def.size_start));
+                n.values.insert("end".into(), PinValue::Float(def.size_end));
+                n.values.insert("non_uniform".into(), PinValue::Bool(def.size_non_uniform));
+                n.values.insert("start_x".into(), PinValue::Float(def.size_start_x));
+                n.values.insert("start_y".into(), PinValue::Float(def.size_start_y));
+                n.values.insert("end_x".into(), PinValue::Float(def.size_end_x));
+                n.values.insert("end_y".into(), PinValue::Float(def.size_end_y));
             }
             graph.connect(id, "module", emitter_id, "render");
             render_y += 80.0;
         }
 
-        // Orient
+        // Color over lifetime — full gradient
+        {
+            let id = graph.add_node(ParticleNodeType::ColorOverLifetime, [render_x, render_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let stops: Vec<(f32, [f32; 4])> = def.color_gradient.iter()
+                    .map(|s| (s.position, s.color))
+                    .collect();
+                n.values.insert("gradient".into(), PinValue::Gradient(stops));
+                n.values.insert("use_hdr".into(), PinValue::Bool(def.use_hdr_color));
+                n.values.insert("hdr_intensity".into(), PinValue::Float(def.hdr_intensity));
+            }
+            graph.connect(id, "module", emitter_id, "render");
+            render_y += 80.0;
+        }
+
+        // Blend mode
+        {
+            let id = graph.add_node(ParticleNodeType::SetBlendMode, [render_x, render_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let mode = match def.blend_mode {
+                    BlendMode::Blend => 0,
+                    BlendMode::Additive => 1,
+                    BlendMode::Multiply => 2,
+                };
+                n.values.insert("mode".into(), PinValue::Int(mode));
+            }
+            graph.connect(id, "module", emitter_id, "render");
+            render_y += 80.0;
+        }
+
+        // Billboard
+        {
+            let id = graph.add_node(ParticleNodeType::SetBillboard, [render_x, render_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let mode = match def.billboard_mode {
+                    BillboardMode::FaceCamera => 0,
+                    BillboardMode::FaceCameraY => 1,
+                    BillboardMode::Velocity => 2,
+                    BillboardMode::Fixed => 3,
+                };
+                n.values.insert("mode".into(), PinValue::Int(mode));
+            }
+            graph.connect(id, "module", emitter_id, "render");
+            render_y += 80.0;
+        }
+
+        // Alpha mode
+        {
+            let id = graph.add_node(ParticleNodeType::SetAlphaMode, [render_x, render_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let mode = match def.alpha_mode {
+                    ParticleAlphaMode::Blend => 0,
+                    ParticleAlphaMode::Premultiply => 1,
+                    ParticleAlphaMode::Add => 2,
+                    ParticleAlphaMode::Multiply => 3,
+                    ParticleAlphaMode::Mask => 4,
+                    ParticleAlphaMode::Opaque => 5,
+                };
+                n.values.insert("mode".into(), PinValue::Int(mode));
+            }
+            graph.connect(id, "module", emitter_id, "render");
+            render_y += 80.0;
+        }
+
+        // Simulation space
+        {
+            let id = graph.add_node(ParticleNodeType::SetSimulationSpace, [render_x, render_y]);
+            if let Some(n) = graph.get_node_mut(id) {
+                let space = match def.simulation_space {
+                    SimulationSpace::Local => 0,
+                    SimulationSpace::World => 1,
+                };
+                n.values.insert("space".into(), PinValue::Int(space));
+            }
+            graph.connect(id, "module", emitter_id, "render");
+            render_y += 80.0;
+        }
+
+        // Orient (if rotation speed is set)
         if def.rotation_speed.abs() > 0.001 {
             let id = graph.add_node(ParticleNodeType::Orient, [render_x, render_y]);
             if let Some(n) = graph.get_node_mut(id) {
@@ -691,7 +868,7 @@ impl ParticleNodeGraph {
             render_y += 80.0;
         }
 
-        let _ = (y_offset, init_y, update_y, render_y);
+        let _ = render_y;
         graph
     }
 
@@ -700,7 +877,8 @@ impl ParticleNodeGraph {
     pub fn compile_to_definition(&self) -> crate::data::HanabiEffectDefinition {
         use crate::data::*;
 
-        let mut def = HanabiEffectDefinition::default();
+        // Start from the base effect if available — preserves blend mode, billboard, etc.
+        let mut def = self.base_effect.clone().unwrap_or_default();
         def.name = self.name.clone();
 
         // Find emitter node
@@ -724,7 +902,7 @@ impl ParticleNodeGraph {
                 .collect()
         };
 
-        // Helper to get a node's effective float value for a pin
+        // Helper to get a node's effective value for a pin
         let node_float = |node: &ParticleNode, pin: &str, default: f32| -> f32 {
             match node.values.get(pin) {
                 Some(PinValue::Float(v)) => *v,
@@ -737,6 +915,7 @@ impl ParticleNodeGraph {
                 _ => default,
             }
         };
+        #[allow(unused)]
         let node_vec4 = |node: &ParticleNode, pin: &str, default: [f32; 4]| -> [f32; 4] {
             match node.values.get(pin) {
                 Some(PinValue::Vec4(v)) => *v,
@@ -746,6 +925,12 @@ impl ParticleNodeGraph {
         let node_bool = |node: &ParticleNode, pin: &str, default: bool| -> bool {
             match node.values.get(pin) {
                 Some(PinValue::Bool(v)) => *v,
+                _ => default,
+            }
+        };
+        let node_int = |node: &ParticleNode, pin: &str, default: i32| -> i32 {
+            match node.values.get(pin) {
+                Some(PinValue::Int(v)) => *v,
                 _ => default,
             }
         };
@@ -773,6 +958,7 @@ impl ParticleNodeGraph {
                 ParticleNodeType::SpawnRate => {
                     def.spawn_mode = SpawnMode::Rate;
                     def.spawn_rate = node_float(node, "rate", 50.0);
+                    def.spawn_count = node_float(node, "count", 10.0) as u32;
                 }
                 ParticleNodeType::SpawnBurst => {
                     def.spawn_mode = SpawnMode::Burst;
@@ -793,9 +979,13 @@ impl ParticleNodeGraph {
                     def.velocity_direction = node_vec3(node, "direction", [0.0, 1.0, 0.0]);
                     def.velocity_magnitude = node_float(node, "speed", 2.0);
                     def.velocity_spread = node_float(node, "spread", 0.3);
+                    def.velocity_speed_min = node_float(node, "speed_min", 0.0);
+                    def.velocity_speed_max = node_float(node, "speed_max", 0.0);
                 }
                 ParticleNodeType::InitSize => {
                     def.size_start = node_float(node, "size", 0.1);
+                    def.size_start_min = node_float(node, "random_min", 0.0);
+                    def.size_start_max = node_float(node, "random_max", 0.0);
                 }
                 ParticleNodeType::InitColor => {
                     let c = node_vec4(node, "color", [1.0, 1.0, 1.0, 1.0]);
@@ -803,7 +993,6 @@ impl ParticleNodeGraph {
                     def.flat_color = c;
                 }
                 ParticleNodeType::InitPosition => {
-                    // Position shape handled via emit_shape - basic sphere for now
                     let radius = node_float(node, "radius", 1.0);
                     if radius > 0.001 {
                         def.emit_shape = HanabiEmitShape::Sphere {
@@ -811,6 +1000,25 @@ impl ParticleNodeGraph {
                             dimension: ShapeDimension::Volume,
                         };
                     }
+                }
+                ParticleNodeType::InitEmitShape => {
+                    let shape_type = node_int(node, "shape_type", 0);
+                    let radius = node_float(node, "radius", 1.0);
+                    let half_ext = node_vec3(node, "half_extents", [1.0, 1.0, 1.0]);
+                    let dim = if node_int(node, "dimension", 0) == 0 {
+                        ShapeDimension::Volume
+                    } else {
+                        ShapeDimension::Surface
+                    };
+                    def.emit_shape = match shape_type {
+                        0 => HanabiEmitShape::Point,
+                        1 => HanabiEmitShape::Circle { radius, dimension: dim },
+                        2 => HanabiEmitShape::Sphere { radius, dimension: dim },
+                        3 => HanabiEmitShape::Cone { base_radius: radius, top_radius: 0.0, height: 1.0, dimension: dim },
+                        4 => HanabiEmitShape::Rect { half_extents: [half_ext[0], half_ext[1]], dimension: dim },
+                        5 => HanabiEmitShape::Box { half_extents: half_ext },
+                        _ => HanabiEmitShape::Point,
+                    };
                 }
                 _ => {}
             }
@@ -891,18 +1099,60 @@ impl ParticleNodeGraph {
                 ParticleNodeType::SizeOverLifetime => {
                     def.size_start = node_float(node, "start", 0.1);
                     def.size_end = node_float(node, "end", 0.0);
+                    def.size_non_uniform = node_bool(node, "non_uniform", false);
+                    def.size_start_x = node_float(node, "start_x", 0.1);
+                    def.size_start_y = node_float(node, "start_y", 0.1);
+                    def.size_end_x = node_float(node, "end_x", 0.0);
+                    def.size_end_y = node_float(node, "end_y", 0.0);
                 }
                 ParticleNodeType::ColorOverLifetime => {
-                    let start = node_vec4(node, "start_color", [1.0, 1.0, 1.0, 1.0]);
-                    let end = node_vec4(node, "end_color", [1.0, 1.0, 1.0, 0.0]);
-                    def.use_flat_color = false;
-                    def.color_gradient = vec![
-                        GradientStop { position: 0.0, color: start },
-                        GradientStop { position: 1.0, color: end },
-                    ];
+                    // Full gradient from PinValue::Gradient
+                    if let Some(PinValue::Gradient(stops)) = node.values.get("gradient") {
+                        def.use_flat_color = false;
+                        def.color_gradient = stops.iter()
+                            .map(|(pos, color)| GradientStop { position: *pos, color: *color })
+                            .collect();
+                    }
+                    def.use_hdr_color = node_bool(node, "use_hdr", false);
+                    def.hdr_intensity = node_float(node, "hdr_intensity", 1.0);
                 }
                 ParticleNodeType::Orient => {
                     def.rotation_speed = node_float(node, "rotation_speed", 0.0);
+                }
+                ParticleNodeType::SetBlendMode => {
+                    def.blend_mode = match node_int(node, "mode", 0) {
+                        0 => BlendMode::Blend,
+                        1 => BlendMode::Additive,
+                        2 => BlendMode::Multiply,
+                        _ => BlendMode::Blend,
+                    };
+                }
+                ParticleNodeType::SetBillboard => {
+                    def.billboard_mode = match node_int(node, "mode", 0) {
+                        0 => BillboardMode::FaceCamera,
+                        1 => BillboardMode::FaceCameraY,
+                        2 => BillboardMode::Velocity,
+                        3 => BillboardMode::Fixed,
+                        _ => BillboardMode::FaceCamera,
+                    };
+                }
+                ParticleNodeType::SetAlphaMode => {
+                    def.alpha_mode = match node_int(node, "mode", 0) {
+                        0 => ParticleAlphaMode::Blend,
+                        1 => ParticleAlphaMode::Premultiply,
+                        2 => ParticleAlphaMode::Add,
+                        3 => ParticleAlphaMode::Multiply,
+                        4 => ParticleAlphaMode::Mask,
+                        5 => ParticleAlphaMode::Opaque,
+                        _ => ParticleAlphaMode::Blend,
+                    };
+                }
+                ParticleNodeType::SetSimulationSpace => {
+                    def.simulation_space = match node_int(node, "space", 0) {
+                        0 => SimulationSpace::Local,
+                        1 => SimulationSpace::World,
+                        _ => SimulationSpace::Local,
+                    };
                 }
                 _ => {}
             }
