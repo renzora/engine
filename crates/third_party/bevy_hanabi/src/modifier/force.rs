@@ -299,6 +299,294 @@ impl Modifier for LinearDragModifier {
     }
 }
 
+/// A modifier applying a curl-noise turbulence force to particles, producing
+/// organic, swirling motion.
+///
+/// # Attributes
+///
+/// This modifier requires the following particle attributes:
+/// - [`Attribute::POSITION`]
+/// - [`Attribute::VELOCITY`]
+#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
+pub struct NoiseTurbulenceModifier {
+    /// Noise sampling frequency (`f32`). Higher values produce finer detail.
+    pub frequency: ExprHandle,
+    /// Amplitude of the turbulence force (`f32`).
+    pub amplitude: ExprHandle,
+    /// Number of noise octaves (compile-time constant).
+    pub octaves: u32,
+    /// Frequency multiplier per octave.
+    pub lacunarity: f32,
+}
+
+impl Hash for NoiseTurbulenceModifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.frequency.hash(state);
+        self.amplitude.hash(state);
+        self.octaves.hash(state);
+        self.lacunarity.to_bits().hash(state);
+    }
+}
+
+impl NoiseTurbulenceModifier {
+    /// Create a new modifier.
+    pub fn new(frequency: ExprHandle, amplitude: ExprHandle, octaves: u32, lacunarity: f32) -> Self {
+        Self {
+            frequency,
+            amplitude,
+            octaves,
+            lacunarity,
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", typetag::serde)]
+impl Modifier for NoiseTurbulenceModifier {
+    fn context(&self) -> ModifierContext {
+        ModifierContext::Update
+    }
+
+    fn attributes(&self) -> &[Attribute] {
+        &[Attribute::POSITION, Attribute::VELOCITY]
+    }
+
+    fn boxed_clone(&self) -> BoxedModifier {
+        Box::new(*self)
+    }
+
+    fn apply(&self, module: &mut Module, context: &mut ShaderWriter) -> Result<(), ExprError> {
+        let func_id = calc_func_id(self);
+        let func_name = format!("noise_turbulence_{0:016X}", func_id);
+        let hash_name = format!("hash33_{0:016X}", func_id);
+        let noise_name = format!("noise3d_{0:016X}", func_id);
+        let octaves = self.octaves;
+        let lacunarity = self.lacunarity;
+
+        // Emit helper functions directly into extra_code before make_fn
+        context.extra_code += &format!(
+            r##"fn {hash_name}(p: vec3<f32>) -> vec3<f32> {{
+    var p3 = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yxx) * p3.zyx);
+}}
+fn {noise_name}(p: vec3<f32>) -> f32 {{
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(dot({hash_name}(i + vec3<f32>(0.0, 0.0, 0.0)) - 0.5, f - vec3<f32>(0.0, 0.0, 0.0)),
+                       dot({hash_name}(i + vec3<f32>(1.0, 0.0, 0.0)) - 0.5, f - vec3<f32>(1.0, 0.0, 0.0)), u.x),
+                   mix(dot({hash_name}(i + vec3<f32>(0.0, 1.0, 0.0)) - 0.5, f - vec3<f32>(0.0, 1.0, 0.0)),
+                       dot({hash_name}(i + vec3<f32>(1.0, 1.0, 0.0)) - 0.5, f - vec3<f32>(1.0, 1.0, 0.0)), u.x), u.y),
+               mix(mix(dot({hash_name}(i + vec3<f32>(0.0, 0.0, 1.0)) - 0.5, f - vec3<f32>(0.0, 0.0, 1.0)),
+                       dot({hash_name}(i + vec3<f32>(1.0, 0.0, 1.0)) - 0.5, f - vec3<f32>(1.0, 0.0, 1.0)), u.x),
+                   mix(dot({hash_name}(i + vec3<f32>(0.0, 1.0, 1.0)) - 0.5, f - vec3<f32>(0.0, 1.0, 1.0)),
+                       dot({hash_name}(i + vec3<f32>(1.0, 1.0, 1.0)) - 0.5, f - vec3<f32>(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+}}
+"##
+        );
+
+        context.make_fn(
+            &func_name,
+            "particle: ptr<function, Particle>",
+            module,
+            &mut |m: &mut Module, ctx: &mut dyn EvalContext| -> Result<String, ExprError> {
+                let frequency = ctx.eval(m, self.frequency)?;
+                let amplitude = ctx.eval(m, self.amplitude)?;
+
+                let attr_pos = format!("(*particle).{}", Attribute::POSITION.name());
+                let attr_vel = format!("(*particle).{}", Attribute::VELOCITY.name());
+
+                let mut body = String::new();
+                body += &format!("    var freq = {frequency};\n    var amp = 1.0;\n    var curl_total = vec3<f32>(0.0, 0.0, 0.0);\n");
+                for _ in 0..octaves {
+                    body += &format!(
+r##"    {{
+        let pos = {attr_pos} * freq + vec3<f32>(sim_params.time * 0.5);
+        let eps = 0.01;
+        let dx = {noise_name}(pos + vec3<f32>(eps, 0.0, 0.0)) - {noise_name}(pos - vec3<f32>(eps, 0.0, 0.0));
+        let dy = {noise_name}(pos + vec3<f32>(0.0, eps, 0.0)) - {noise_name}(pos - vec3<f32>(0.0, eps, 0.0));
+        let dz = {noise_name}(pos + vec3<f32>(0.0, 0.0, eps)) - {noise_name}(pos - vec3<f32>(0.0, 0.0, eps));
+        let curl = vec3<f32>(dy - dz, dz - dx, dx - dy) / (2.0 * eps);
+        curl_total += curl * amp;
+    }}
+    freq *= {lacunarity};
+    amp *= 0.5;
+"##
+                    );
+                }
+                body += &format!("    {attr_vel} += curl_total * {amplitude} * sim_params.delta_time;\n");
+
+                Ok(body)
+            },
+        )?;
+
+        context.main_code += &format!("{}(&particle);\n", func_name);
+
+        Ok(())
+    }
+}
+
+/// A modifier that makes particles orbit around an axis through a center point.
+///
+/// # Attributes
+///
+/// This modifier requires the following particle attributes:
+/// - [`Attribute::POSITION`]
+/// - [`Attribute::VELOCITY`]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Reflect, Serialize, Deserialize)]
+pub struct OrbitModifier {
+    /// Center of the orbit (`Vec3`).
+    pub center: ExprHandle,
+    /// Normalized axis of rotation (`Vec3`).
+    pub axis: ExprHandle,
+    /// Orbital speed in radians per second (`f32`).
+    pub speed: ExprHandle,
+    /// Radial pull strength toward the desired orbit radius (`f32`).
+    pub radial_pull: ExprHandle,
+    /// Desired orbit radius (`f32`).
+    pub orbit_radius: ExprHandle,
+}
+
+impl OrbitModifier {
+    /// Create a new modifier.
+    pub fn new(
+        center: ExprHandle,
+        axis: ExprHandle,
+        speed: ExprHandle,
+        radial_pull: ExprHandle,
+        orbit_radius: ExprHandle,
+    ) -> Self {
+        Self {
+            center,
+            axis,
+            speed,
+            radial_pull,
+            orbit_radius,
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", typetag::serde)]
+impl Modifier for OrbitModifier {
+    fn context(&self) -> ModifierContext {
+        ModifierContext::Update
+    }
+
+    fn attributes(&self) -> &[Attribute] {
+        &[Attribute::POSITION, Attribute::VELOCITY]
+    }
+
+    fn boxed_clone(&self) -> BoxedModifier {
+        Box::new(*self)
+    }
+
+    fn apply(&self, module: &mut Module, context: &mut ShaderWriter) -> Result<(), ExprError> {
+        let func_id = calc_func_id(self);
+        let func_name = format!("orbit_{0:016X}", func_id);
+
+        context.make_fn(
+            &func_name,
+            "particle: ptr<function, Particle>",
+            module,
+            &mut |m: &mut Module, ctx: &mut dyn EvalContext| -> Result<String, ExprError> {
+                let center = ctx.eval(m, self.center)?;
+                let axis = ctx.eval(m, self.axis)?;
+                let speed = ctx.eval(m, self.speed)?;
+                let radial_pull = ctx.eval(m, self.radial_pull)?;
+                let orbit_radius = ctx.eval(m, self.orbit_radius)?;
+
+                let attr_pos = format!("(*particle).{}", Attribute::POSITION.name());
+                let attr_vel = format!("(*particle).{}", Attribute::VELOCITY.name());
+
+                Ok(format!(
+                    r##"    let orbit_center = {center};
+    let orbit_axis = normalize({axis});
+    let orbit_speed = {speed};
+    let rel = {attr_pos} - orbit_center;
+    // Project onto plane perpendicular to axis
+    let along_axis = dot(rel, orbit_axis) * orbit_axis;
+    let radial = rel - along_axis;
+    let radial_dist = length(radial);
+    if (radial_dist < 0.0001) {{
+        return;
+    }}
+    let radial_dir = radial / radial_dist;
+    // Tangent direction (perpendicular to both axis and radial)
+    let tangent = cross(orbit_axis, radial_dir);
+    // Apply tangential velocity
+    {attr_vel} += tangent * orbit_speed * radial_dist * sim_params.delta_time;
+    // Radial correction toward desired orbit radius
+    let pull = {radial_pull};
+    let desired_r = {orbit_radius};
+    if (pull > 0.0) {{
+        let radial_error = desired_r - radial_dist;
+        {attr_vel} += radial_dir * radial_error * pull * sim_params.delta_time;
+    }}
+"##
+                ))
+            },
+        )?;
+
+        context.main_code += &format!("{}(&particle);\n", func_name);
+
+        Ok(())
+    }
+}
+
+/// A modifier that clamps particle speed to a maximum value.
+///
+/// # Attributes
+///
+/// This modifier requires the following particle attributes:
+/// - [`Attribute::VELOCITY`]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Reflect, Serialize, Deserialize)]
+pub struct VelocityLimitModifier {
+    /// Maximum speed (`f32`). Particles exceeding this speed will have their
+    /// velocity scaled down to this magnitude.
+    pub max_speed: ExprHandle,
+}
+
+impl VelocityLimitModifier {
+    /// Create a new modifier.
+    pub fn new(max_speed: ExprHandle) -> Self {
+        Self { max_speed }
+    }
+
+    /// Instantiate a [`VelocityLimitModifier`] with a constant max speed.
+    pub fn constant(module: &mut Module, max_speed: f32) -> Self {
+        Self {
+            max_speed: module.lit(max_speed),
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", typetag::serde)]
+impl Modifier for VelocityLimitModifier {
+    fn context(&self) -> ModifierContext {
+        ModifierContext::Update
+    }
+
+    fn attributes(&self) -> &[Attribute] {
+        &[Attribute::VELOCITY]
+    }
+
+    fn boxed_clone(&self) -> BoxedModifier {
+        Box::new(*self)
+    }
+
+    fn apply(&self, module: &mut Module, context: &mut ShaderWriter) -> Result<(), ExprError> {
+        let m = module;
+        let attr = m.attr(Attribute::VELOCITY);
+        let attr = context.eval(m, attr)?;
+        let max_speed = context.eval(m, self.max_speed)?;
+        context.main_code += &format!(
+            "let __vel_limit_speed = length({attr});\n\
+             if (__vel_limit_speed > {max_speed}) {{ {attr} = normalize({attr}) * {max_speed}; }}\n"
+        );
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

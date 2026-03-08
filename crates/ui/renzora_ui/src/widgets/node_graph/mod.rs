@@ -216,6 +216,7 @@ pub fn node_graph(
     let modifiers = ui.input(|i| i.modifiers);
 
     // ── Right-click — disconnect pin or cut cable ──────────────────────
+    let mut right_click_handled = false;
     if canvas_resp.secondary_clicked() {
         if let Some((ref pin_id, _, _, _)) = hovered_pin_info {
             // Right-click on pin: remove all connections on that pin
@@ -230,6 +231,7 @@ pub fn node_graph(
                 response.connection_removed = Some((pid.node, pid.name.clone()));
             }
             state.connecting = None;
+            right_click_handled = true;
         } else {
             // Right-click on empty space: check if mouse is near a cable
             let cable_threshold = (5.0 * state.zoom).max(4.0);
@@ -251,9 +253,13 @@ pub fn node_graph(
             if let Some(idx) = cut_idx {
                 let removed = state.connections.remove(idx);
                 response.connection_removed = Some((removed.from_node, removed.from_pin));
+                right_click_handled = true;
             }
         }
     }
+    // Always expose canvas response for context_menu() — caller checks right_click_handled
+    response.canvas_response = Some(canvas_resp.clone());
+    response.right_click_handled = right_click_handled;
 
     // ── Click on pin ───────────────────────────────────────────────────
     if canvas_resp.clicked() || canvas_resp.drag_started() {

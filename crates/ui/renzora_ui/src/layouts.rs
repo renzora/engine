@@ -237,11 +237,24 @@ fn layout_terrain() -> DockTree {
 }
 
 /// Particles: ParticlePreview | ParticleEditor
-fn layout_particles() -> DockTree {
+pub fn layout_particles() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("particle_preview"),
         DockTree::leaf("particle_editor"),
         0.8,
+    )
+}
+
+/// Particles Advanced: ParticleGraph | Preview / Editor
+pub fn layout_particles_advanced() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("particle_graph"),
+        DockTree::vertical(
+            DockTree::leaf("particle_preview"),
+            DockTree::leaf("particle_editor"),
+            0.5,
+        ),
+        0.75,
     )
 }
 

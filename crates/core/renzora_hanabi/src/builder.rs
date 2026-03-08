@@ -11,7 +11,7 @@ use crate::data::{
     SimulationSpace as OurSimulationSpace,
     SimulationCondition as OurSimulationCondition,
     ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
-    MotionIntegrationMode, KillZone,
+    MotionIntegrationMode, KillZone, OrbitSettings,
 };
 
 fn map_dimension(dim: OurShapeDimension) -> ShapeDimension {
@@ -177,6 +177,34 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         )
     });
 
+    // Noise turbulence
+    let noise_data = if def.noise_amplitude > 0.001 && def.noise_frequency > 0.001 {
+        Some((
+            writer.lit(def.noise_frequency).expr(),
+            writer.lit(def.noise_amplitude).expr(),
+        ))
+    } else {
+        None
+    };
+
+    // Orbit
+    let orbit_data = def.orbit.as_ref().map(|o| {
+        (
+            writer.lit(Vec3::from_array(o.center)).expr(),
+            writer.lit(Vec3::from_array(o.axis).normalize_or_zero()).expr(),
+            writer.lit(o.speed).expr(),
+            writer.lit(o.radial_pull).expr(),
+            writer.lit(o.orbit_radius).expr(),
+        )
+    });
+
+    // Velocity limit
+    let vel_limit_expr = if def.velocity_limit > 0.001 {
+        Some(writer.lit(def.velocity_limit).expr())
+    } else {
+        None
+    };
+
     // Kill zones
     let kill_zone_data: Vec<_> = def.kill_zones.iter().map(|zone| match zone {
         KillZone::Sphere { center, radius, kill_inside } => {
@@ -295,6 +323,26 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
                 effect = effect.update(KillAabbModifier::new(*center, *half_size).with_kill_inside(*kill_inside));
             }
         }
+    }
+    if let Some((freq, amp)) = noise_data {
+        effect = effect.update(NoiseTurbulenceModifier {
+            frequency: freq,
+            amplitude: amp,
+            octaves: def.noise_octaves,
+            lacunarity: def.noise_lacunarity,
+        });
+    }
+    if let Some((center, axis, speed, radial_pull, orbit_radius)) = orbit_data {
+        effect = effect.update(OrbitModifier {
+            center,
+            axis,
+            speed,
+            radial_pull,
+            orbit_radius,
+        });
+    }
+    if let Some(max_speed) = vel_limit_expr {
+        effect = effect.update(VelocityLimitModifier { max_speed });
     }
 
     // Render modifiers

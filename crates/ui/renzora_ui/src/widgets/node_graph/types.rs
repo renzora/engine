@@ -1,6 +1,6 @@
 //! Data structures for the node graph widget.
 
-use bevy_egui::egui::Color32;
+use bevy_egui::egui::{self, Color32};
 
 // ── Identifiers ────────────────────────────────────────────────────────────
 
@@ -175,6 +175,11 @@ pub struct NodeGraphResponse {
     pub connection_made: Option<(PinId, PinId)>,
     pub connection_removed: Option<(u64, String)>,
     pub nodes_deleted: Vec<u64>,
+    /// The canvas `egui::Response` — call `.context_menu()` on this for right-click menus.
+    /// Only `Some` when right-click was NOT consumed by pin/cable interaction.
+    pub canvas_response: Option<egui::Response>,
+    /// True if a right-click was handled internally (pin disconnect or cable cut).
+    pub right_click_handled: bool,
 }
 
 impl Default for NodeGraphResponse {
@@ -185,6 +190,8 @@ impl Default for NodeGraphResponse {
             connection_made: None,
             connection_removed: None,
             nodes_deleted: Vec::new(),
+            canvas_response: None,
+            right_click_handled: false,
         }
     }
 }

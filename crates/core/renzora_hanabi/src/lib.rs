@@ -5,6 +5,7 @@
 
 pub mod builder;
 pub mod data;
+pub mod node_graph;
 pub mod systems;
 
 #[cfg(feature = "editor")]
@@ -48,7 +49,15 @@ impl Plugin for HanabiParticlePlugin {
             .register_type::<ParticleColorBlendMode>()
             .register_type::<KillZone>()
             .register_type::<ConformToSphere>()
-            .register_type::<FlipbookSettings>();
+            .register_type::<OrbitSettings>()
+            .register_type::<FlipbookSettings>()
+            .register_type::<node_graph::PinType>()
+            .register_type::<node_graph::PinDir>()
+            .register_type::<node_graph::PinValue>()
+            .register_type::<node_graph::ParticleNodeType>()
+            .register_type::<node_graph::ParticleNode>()
+            .register_type::<node_graph::NodeConnection>()
+            .register_type::<node_graph::ParticleNodeGraph>();
 
         app.add_systems(
             PostUpdate,

@@ -7,7 +7,7 @@ use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Stroke
 use egui_phosphor::regular::{
     PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN,
     SPARKLE, TIMER, SHAPES, ARROWS_OUT, WIND, RESIZE, PALETTE, CUBE, GEAR, CODE,
-    PROHIBIT, ATOM,
+    PROHIBIT, ATOM, SPIRAL, PLANET, GAUGE,
 };
 
 use renzora_editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
@@ -16,15 +16,13 @@ use renzora_theme::{Theme, ThemeManager};
 use renzora_hanabi::{
     HanabiEffectDefinition, HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
     SimulationSpace, SimulationCondition, GradientStop,
-    EffectVariable, ParticleEditorState,
+    EffectVariable, ParticleEditorState, EditorMode,
     ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
-    MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings,
+    MotionIntegrationMode, KillZone, ConformToSphere, FlipbookSettings, OrbitSettings,
     load_effect_from_file,
 };
 
 use crate::widgets::inline_property;
-
-// ── Panel ───────────────────────────────────────────────────────────────────
 
 pub struct ParticleEditorPanel;
 
@@ -64,6 +62,47 @@ impl EditorPanel for ParticleEditorPanel {
         // Check if we have an effect loaded
         if editor_state.current_effect.is_none() {
             self.render_welcome_screen(ui, cmds, &theme);
+            return;
+        }
+
+        // "Advanced" button to switch to graph layout
+        let is_advanced = editor_state.editor_mode == EditorMode::Graph;
+        ui.horizontal(|ui| {
+            let label = if is_advanced { "Switch to Simple" } else { "Switch to Advanced" };
+            if ui.small_button(label).clicked() {
+                cmds.push(move |world: &mut World| {
+                    use renzora_editor::dock_tree::DockingState;
+                    let mut state = world.resource_mut::<ParticleEditorState>();
+                    if is_advanced {
+                        state.editor_mode = EditorMode::Simple;
+                    } else {
+                        state.editor_mode = EditorMode::Graph;
+                        // Generate graph from current effect if not yet created
+                        if state.node_graph.is_none() {
+                            if let Some(ref effect) = state.current_effect {
+                                state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::from_effect(effect));
+                            } else {
+                                let name = "New Effect".to_string();
+                                state.node_graph = Some(renzora_hanabi::node_graph::ParticleNodeGraph::new(&name));
+                            }
+                        }
+                    }
+                    // Swap layout
+                    if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                        docking.tree = if is_advanced {
+                            renzora_editor::layouts::layout_particles()
+                        } else {
+                            renzora_editor::layouts::layout_particles_advanced()
+                        };
+                    }
+                });
+            }
+        });
+        ui.separator();
+
+        if is_advanced {
+            // Advanced mode: show selected node properties
+            self.render_graph_inspector(ui, cmds, editor_state, &theme);
             return;
         }
 
@@ -144,6 +183,188 @@ impl EditorPanel for ParticleEditorPanel {
 }
 
 impl ParticleEditorPanel {
+    fn render_graph_inspector(&self, ui: &mut egui::Ui, cmds: &EditorCommands, editor_state: &ParticleEditorState, theme: &Theme) {
+        use renzora_hanabi::node_graph::{PinDir, PinValue, ParticleNodeType};
+
+        let text_muted = theme.text.muted.to_color32();
+
+        let Some(ref graph) = editor_state.node_graph else {
+            ui.label(RichText::new("No graph initialized").size(11.0).color(text_muted));
+            return;
+        };
+
+        // Collect all connected nodes grouped by category
+        let emitter_id = graph.nodes.iter()
+            .find(|n| n.node_type == ParticleNodeType::Emitter)
+            .map(|n| n.id);
+
+        // Build ordered list: emitter first, then nodes by category
+        let categories = [
+            ("Emitter", GEAR, "emitter"),
+            ("Spawn", SPARKLE, "effects"),
+            ("Init", ARROWS_OUT, "effects"),
+            ("Update", WIND, "effects"),
+            ("Render", PALETTE, "effects"),
+            ("Math", GEAR, "effects"),
+            ("Constants", CODE, "effects"),
+        ];
+
+        // Collect all modified values across all nodes
+        let mut all_modified_values: Vec<(u64, std::collections::HashMap<String, PinValue>)> = Vec::new();
+        let mut any_modified = false;
+
+        egui::ScrollArea::vertical()
+            .id_salt("graph_inspector_scroll")
+            .show(ui, |ui| {
+                for &(category, icon, theme_cat) in &categories {
+                    let nodes_in_cat: Vec<_> = graph.nodes.iter()
+                        .filter(|n| n.node_type.category() == category)
+                        .collect();
+                    if nodes_in_cat.is_empty() { continue; }
+
+                    // Check if any of these nodes are connected to the emitter
+                    let connected_to_emitter: Vec<u64> = if let Some(eid) = emitter_id {
+                        graph.connections.iter()
+                            .filter(|c| c.to_node == eid)
+                            .map(|c| c.from_node)
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                    for node in &nodes_in_cat {
+                        let display_name = node.node_type.display_name();
+                        let is_connected = node.node_type == ParticleNodeType::Emitter
+                            || connected_to_emitter.contains(&node.id);
+                        let is_selected = editor_state.selected_node == Some(node.id);
+
+                        // Use node-specific icon where possible
+                        let node_icon = match node.node_type {
+                            ParticleNodeType::Emitter => GEAR,
+                            ParticleNodeType::SpawnRate | ParticleNodeType::SpawnBurst => SPARKLE,
+                            ParticleNodeType::InitLifetime => TIMER,
+                            ParticleNodeType::InitPosition => SHAPES,
+                            ParticleNodeType::InitVelocity => ARROWS_OUT,
+                            ParticleNodeType::InitSize => RESIZE,
+                            ParticleNodeType::InitColor => PALETTE,
+                            ParticleNodeType::Gravity | ParticleNodeType::LinearDrag |
+                            ParticleNodeType::RadialAccel | ParticleNodeType::TangentAccel => WIND,
+                            ParticleNodeType::Noise => SPIRAL,
+                            ParticleNodeType::Orbit => PLANET,
+                            ParticleNodeType::VelocityLimit => GAUGE,
+                            ParticleNodeType::ConformToSphere => ATOM,
+                            ParticleNodeType::KillSphere | ParticleNodeType::KillAabb => PROHIBIT,
+                            ParticleNodeType::SizeOverLifetime => RESIZE,
+                            ParticleNodeType::ColorOverLifetime => PALETTE,
+                            ParticleNodeType::Orient => CUBE,
+                            ParticleNodeType::Texture => CUBE,
+                            _ => icon,
+                        };
+
+                        // Dim label for disconnected nodes
+                        let section_label = if !is_connected {
+                            format!("{} (disconnected)", display_name)
+                        } else {
+                            display_name.to_string()
+                        };
+
+                        let id_source = format!("graph_node_{}", node.id);
+
+                        collapsible_section(ui, node_icon, &section_label, theme_cat, theme, &id_source, is_selected, |ui| {
+                            let pins = node.node_type.pins();
+                            let input_pins: Vec<_> = pins.iter()
+                                .filter(|p| p.direction == PinDir::Input)
+                                .collect();
+
+                            if input_pins.is_empty() { return; }
+
+                            // Connected input pins for this node
+                            let connected_pins: Vec<String> = graph.connections.iter()
+                                .filter(|c| c.to_node == node.id)
+                                .map(|c| c.to_pin.clone())
+                                .collect();
+
+                            let mut values = node.values.clone();
+                            let mut node_modified = false;
+
+                            for (row, pin) in input_pins.iter().enumerate() {
+                                let is_pin_connected = connected_pins.contains(&pin.name);
+
+                                if is_pin_connected {
+                                    inline_property(ui, row, &pin.label, theme, |ui| {
+                                        ui.colored_label(
+                                            Color32::from_rgb(100, 200, 100),
+                                            "(connected)",
+                                        );
+                                    });
+                                } else {
+                                    let val = values.entry(pin.name.clone())
+                                        .or_insert_with(|| pin.default_value.clone());
+
+                                    match val {
+                                        PinValue::Float(v) => {
+                                            inline_property(ui, row, &pin.label, theme, |ui| {
+                                                if ui.add(egui::DragValue::new(v).speed(0.01)).changed() {
+                                                    node_modified = true;
+                                                }
+                                            });
+                                        }
+                                        PinValue::Vec3(v) => {
+                                            inline_property(ui, row, &pin.label, theme, |ui| {
+                                                let muted = theme.text.muted.to_color32();
+                                                for (i, lbl) in ["X", "Y", "Z"].iter().enumerate() {
+                                                    ui.label(RichText::new(*lbl).size(10.0).color(muted));
+                                                    if ui.add(egui::DragValue::new(&mut v[i]).speed(0.01).max_decimals(3)).changed() {
+                                                        node_modified = true;
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        PinValue::Vec4(v) => {
+                                            inline_property(ui, row, &pin.label, theme, |ui| {
+                                                let mut color = [v[0], v[1], v[2], v[3]];
+                                                if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
+                                                    *v = color;
+                                                    node_modified = true;
+                                                }
+                                            });
+                                        }
+                                        PinValue::Bool(b) => {
+                                            inline_property(ui, row, &pin.label, theme, |ui| {
+                                                if ui.checkbox(b, "").changed() {
+                                                    node_modified = true;
+                                                }
+                                            });
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+
+                            if node_modified {
+                                all_modified_values.push((node.id, values));
+                                any_modified = true;
+                            }
+                        });
+                    }
+                }
+            });
+
+        if any_modified {
+            cmds.push(move |world: &mut World| {
+                let mut state = world.resource_mut::<ParticleEditorState>();
+                if let Some(ref mut graph) = state.node_graph {
+                    for (node_id, values) in all_modified_values {
+                        if let Some(node) = graph.get_node_mut(node_id) {
+                            node.values = values;
+                        }
+                    }
+                }
+                state.is_modified = true;
+            });
+        }
+    }
+
     fn render_welcome_screen(&self, ui: &mut egui::Ui, cmds: &EditorCommands, theme: &Theme) {
         let available = ui.available_rect_before_wrap();
         let text_muted = theme.text.muted.to_color32();
@@ -272,6 +493,9 @@ fn render_effect_editor(
     modified |= render_simulation_section(ui, effect, theme);
     modified |= render_kill_zones_section(ui, effect, theme);
     modified |= render_conform_section(ui, effect, theme);
+    modified |= render_noise_section(ui, effect, theme);
+    modified |= render_orbit_section(ui, effect, theme);
+    modified |= render_velocity_limit_section(ui, effect, theme);
     modified |= render_variables_section(ui, effect, theme);
 
     (modified, save_requested, save_as_requested)
@@ -833,6 +1057,80 @@ fn render_conform_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition
             modified |= inline_property(ui, 6, "Shell Thick.", theme, |ui| { ui.add(egui::DragValue::new(&mut conform.shell_half_thickness).speed(0.01).range(0.0..=10.0)).changed() });
             modified |= inline_property(ui, 7, "Sticky Factor", theme, |ui| { ui.add(egui::DragValue::new(&mut conform.sticky_factor).speed(0.01).range(0.0..=10.0)).changed() });
         }
+    });
+    modified
+}
+
+fn render_noise_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    collapsible_section(ui, SPIRAL, "Noise Turbulence", "effects", theme, "particle_noise", false, |ui| {
+        let mut row = 0;
+        modified |= inline_property(ui, row, "Frequency", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.noise_frequency).speed(0.01).range(0.0..=50.0)).changed()
+        });
+        row += 1;
+        modified |= inline_property(ui, row, "Amplitude", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.noise_amplitude).speed(0.01).range(0.0..=50.0)).changed()
+        });
+        row += 1;
+        modified |= inline_property(ui, row, "Octaves", theme, |ui| {
+            let mut val = effect.noise_octaves as i32;
+            let changed = ui.add(egui::DragValue::new(&mut val).range(1..=8)).changed();
+            if changed { effect.noise_octaves = val as u32; }
+            changed
+        });
+        row += 1;
+        modified |= inline_property(ui, row, "Lacunarity", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.noise_lacunarity).speed(0.01).range(1.0..=4.0)).changed()
+        });
+    });
+    modified
+}
+
+fn render_orbit_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    collapsible_section(ui, PLANET, "Orbit", "effects", theme, "particle_orbit", false, |ui| {
+        let has_orbit = effect.orbit.is_some();
+        modified |= inline_property(ui, 0, "Enabled", theme, |ui| {
+            let mut enabled = has_orbit;
+            let changed = ui.checkbox(&mut enabled, "").changed();
+            if changed { effect.orbit = if enabled { Some(OrbitSettings::default()) } else { None }; }
+            changed
+        });
+        if let Some(ref mut orbit) = effect.orbit {
+            modified |= inline_property(ui, 1, "Center", theme, |ui| {
+                let mut c = false; ui.spacing_mut().item_spacing.x = 2.0;
+                c |= ui.add(egui::DragValue::new(&mut orbit.center[0]).speed(0.1)).changed();
+                c |= ui.add(egui::DragValue::new(&mut orbit.center[1]).speed(0.1)).changed();
+                c |= ui.add(egui::DragValue::new(&mut orbit.center[2]).speed(0.1)).changed(); c
+            });
+            modified |= inline_property(ui, 2, "Axis", theme, |ui| {
+                let mut c = false; ui.spacing_mut().item_spacing.x = 2.0;
+                c |= ui.add(egui::DragValue::new(&mut orbit.axis[0]).speed(0.1)).changed();
+                c |= ui.add(egui::DragValue::new(&mut orbit.axis[1]).speed(0.1)).changed();
+                c |= ui.add(egui::DragValue::new(&mut orbit.axis[2]).speed(0.1)).changed(); c
+            });
+            modified |= inline_property(ui, 3, "Speed", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut orbit.speed).speed(0.01).range(-20.0..=20.0)).changed()
+            });
+            modified |= inline_property(ui, 4, "Radial Pull", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut orbit.radial_pull).speed(0.01).range(0.0..=20.0)).changed()
+            });
+            modified |= inline_property(ui, 5, "Orbit Radius", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut orbit.orbit_radius).speed(0.1).range(0.1..=100.0)).changed()
+            });
+        }
+    });
+    modified
+}
+
+fn render_velocity_limit_section(ui: &mut egui::Ui, effect: &mut HanabiEffectDefinition, theme: &Theme) -> bool {
+    let mut modified = false;
+    collapsible_section(ui, GAUGE, "Velocity Limit", "effects", theme, "particle_vel_limit", false, |ui| {
+        modified |= inline_property(ui, 0, "Max Speed", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut effect.velocity_limit).speed(0.1).range(0.0..=1000.0)).changed()
+        });
+        ui.label(egui::RichText::new("0 = no limit").size(10.0).color(theme.text.muted.to_color32()));
     });
     modified
 }

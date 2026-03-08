@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::node_graph::ParticleNodeGraph;
+
 // ============================================================================
 // Emission Shapes
 // ============================================================================
@@ -186,6 +188,28 @@ pub struct ConformToSphere {
     pub sticky_factor: f32,
 }
 
+#[derive(Clone, Serialize, Deserialize, PartialEq, Reflect, Debug)]
+#[reflect(Serialize, Deserialize)]
+pub struct OrbitSettings {
+    pub center: [f32; 3],
+    pub axis: [f32; 3],
+    pub speed: f32,
+    pub radial_pull: f32,
+    pub orbit_radius: f32,
+}
+
+impl Default for OrbitSettings {
+    fn default() -> Self {
+        Self {
+            center: [0.0, 0.0, 0.0],
+            axis: [0.0, 1.0, 0.0],
+            speed: 1.0,
+            radial_pull: 0.0,
+            orbit_radius: 1.0,
+        }
+    }
+}
+
 impl Default for ConformToSphere {
     fn default() -> Self {
         Self {
@@ -341,6 +365,24 @@ pub struct HanabiEffectDefinition {
     #[serde(default)]
     pub conform_to_sphere: Option<ConformToSphere>,
 
+    // Noise Turbulence
+    #[serde(default)]
+    pub noise_frequency: f32,
+    #[serde(default)]
+    pub noise_amplitude: f32,
+    #[serde(default = "default_noise_octaves")]
+    pub noise_octaves: u32,
+    #[serde(default = "default_noise_lacunarity")]
+    pub noise_lacunarity: f32,
+
+    // Orbit
+    #[serde(default)]
+    pub orbit: Option<OrbitSettings>,
+
+    // Velocity Limit
+    #[serde(default)]
+    pub velocity_limit: f32,
+
     // Size
     pub size_start: f32,
     pub size_end: f32,
@@ -408,6 +450,8 @@ pub struct HanabiEffectDefinition {
     pub variables: HashMap<String, EffectVariable>,
 }
 
+fn default_noise_octaves() -> u32 { 3 }
+fn default_noise_lacunarity() -> f32 { 2.0 }
 fn default_true() -> bool { true }
 fn default_y_axis() -> [f32; 3] { [0.0, 1.0, 0.0] }
 fn default_size() -> f32 { 0.1 }
@@ -442,6 +486,12 @@ impl Default for HanabiEffectDefinition {
             tangent_acceleration: 0.0,
             tangent_accel_axis: [0.0, 1.0, 0.0],
             conform_to_sphere: None,
+            noise_frequency: 0.0,
+            noise_amplitude: 0.0,
+            noise_octaves: 3,
+            noise_lacunarity: 2.0,
+            orbit: None,
+            velocity_limit: 0.0,
             size_start: 0.1,
             size_end: 0.0,
             size_curve: Vec::new(),
@@ -532,6 +582,17 @@ impl Default for HanabiEffectData {
 }
 
 // ============================================================================
+// Editor Mode
+// ============================================================================
+
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum EditorMode {
+    #[default]
+    Simple,
+    Graph,
+}
+
+// ============================================================================
 // Editor State
 // ============================================================================
 
@@ -544,6 +605,9 @@ pub struct ParticleEditorState {
     pub selected_curve_point: Option<usize>,
     pub preview_playing: bool,
     pub recently_saved_paths: Vec<String>,
+    pub node_graph: Option<ParticleNodeGraph>,
+    pub editor_mode: EditorMode,
+    pub selected_node: Option<u64>,
 }
 
 #[derive(Resource, Default)]

@@ -12,6 +12,7 @@ use renzora_runtime::{EditorLocked, HideInHierarchy};
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;
+use renzora_hanabi::data::EditorMode;
 
 pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 
@@ -142,16 +143,29 @@ fn spawn_preview_effect(
     editor_state: Res<ParticleEditorState>,
     existing: Query<Entity, With<ParticlePreviewEffect>>,
 ) {
-    // Only spawn when an effect is actually loaded in the editor
-    let Some(ref def) = editor_state.current_effect else {
-        return;
-    };
-
     if !existing.is_empty() {
         return;
     }
 
-    let effect_asset = build_complete_effect(def);
+    let def = match editor_state.editor_mode {
+        EditorMode::Graph => {
+            if let Some(ref graph) = editor_state.node_graph {
+                graph.compile_to_definition()
+            } else if let Some(ref d) = editor_state.current_effect {
+                d.clone()
+            } else {
+                return;
+            }
+        }
+        EditorMode::Simple => {
+            match editor_state.current_effect {
+                Some(ref d) => d.clone(),
+                None => return,
+            }
+        }
+    };
+
+    let effect_asset = build_complete_effect(&def);
     let effect_handle = effects.add(effect_asset);
 
     commands.spawn((
@@ -175,13 +189,28 @@ fn update_preview_effect(
     mut effects: ResMut<Assets<EffectAsset>>,
     existing: Query<Entity, With<ParticlePreviewEffect>>,
 ) {
-    let Some(ref def) = editor_state.current_effect else {
-        return;
+    // In graph mode, compile the node graph; in simple mode, use the definition directly
+    let def = match editor_state.editor_mode {
+        EditorMode::Graph => {
+            if let Some(ref graph) = editor_state.node_graph {
+                graph.compile_to_definition()
+            } else if let Some(ref d) = editor_state.current_effect {
+                d.clone()
+            } else {
+                return;
+            }
+        }
+        EditorMode::Simple => {
+            match editor_state.current_effect {
+                Some(ref d) => d.clone(),
+                None => return,
+            }
+        }
     };
 
     let current_path = editor_state.current_file_path.clone();
     let path_changed = current_path != tracker.last_file_path;
-    let effect_hash = compute_effect_hash(def);
+    let effect_hash = compute_effect_hash(&def);
     let hash_changed = tracker.last_effect_hash != Some(effect_hash);
 
     if !path_changed && !hash_changed {
@@ -195,7 +224,7 @@ fn update_preview_effect(
         commands.entity(entity).despawn();
     }
 
-    let effect_asset = build_complete_effect(def);
+    let effect_asset = build_complete_effect(&def);
     let effect_handle = effects.add(effect_asset);
 
     commands.spawn((
