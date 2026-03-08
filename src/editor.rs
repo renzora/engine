@@ -17,6 +17,7 @@ fn main() {
         app.add_plugins(renzora_mixer::MixerPlugin);
         app.add_plugins(renzora_console::ConsolePlugin);
         app.add_plugins(renzora_debugger::DebuggerPlugin);
+        app.add_plugins(renzora_physics_playground::PhysicsPanelPlugin);
         app.add_plugins(renzora_gamepad::GamepadPlugin);
         app.add_plugins(renzora_gizmo::GizmoPlugin);
         app.add_plugins(renzora_settings::SettingsPlugin);

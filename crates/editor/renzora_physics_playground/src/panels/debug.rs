@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
 use renzora_theme::Theme;
 
-use crate::state::{PhysicsDebugState, ColliderShapeType};
+use crate::state::{ColliderShapeType, PhysicsDebugState};
 
 pub fn render_physics_debug_content(
     ui: &mut egui::Ui,

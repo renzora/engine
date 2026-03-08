@@ -24,7 +24,6 @@ use state::*;
 #[derive(Default, Clone)]
 struct DebugBridgeInner {
     camera: Option<CameraDebugState>,
-    physics: Option<PhysicsDebugState>,
     culling: Option<CullingDebugState>,
 }
 
@@ -133,79 +132,6 @@ impl EditorPanel for CameraDebugPanel {
                     frustum_color: local.frustum_color,
                     update_interval: local.update_interval,
                     time_since_update: local.time_since_update,
-                });
-            }
-        }
-    }
-}
-
-// ============================================================================
-// Physics Debug Panel
-// ============================================================================
-
-struct PhysicsDebugPanel {
-    bridge: Arc<Mutex<DebugBridgeInner>>,
-    local: RwLock<PhysicsDebugState>,
-}
-
-impl PhysicsDebugPanel {
-    fn new(bridge: Arc<Mutex<DebugBridgeInner>>) -> Self {
-        Self { bridge, local: RwLock::new(PhysicsDebugState::default()) }
-    }
-}
-
-impl EditorPanel for PhysicsDebugPanel {
-    fn id(&self) -> &str { "physics_debug" }
-    fn title(&self) -> &str { "Physics Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::ATOM) }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Right }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        if let Some(state) = world.get_resource::<PhysicsDebugState>() {
-            if let Ok(mut local) = self.local.write() {
-                // Update data from world, preserve UI toggles
-                local.simulation_running = state.simulation_running;
-                local.dynamic_body_count = state.dynamic_body_count;
-                local.kinematic_body_count = state.kinematic_body_count;
-                local.static_body_count = state.static_body_count;
-                local.collider_count = state.collider_count;
-                local.colliders_by_type = state.colliders_by_type.clone();
-                local.collision_pair_count = state.collision_pair_count;
-                local.collision_pairs = state.collision_pairs.clone();
-                local.step_time_history = state.step_time_history.clone();
-                local.step_time_ms = state.step_time_ms;
-                local.avg_step_time_ms = state.avg_step_time_ms;
-                local.physics_available = state.physics_available;
-            }
-        }
-
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
-
-        if let Ok(mut local) = self.local.write() {
-            panels::physics::render_physics_debug_content(ui, &mut local, &theme);
-        }
-
-        if let Ok(mut pending) = self.bridge.lock() {
-            if let Ok(local) = self.local.read() {
-                pending.physics = Some(PhysicsDebugState {
-                    debug_toggles: local.debug_toggles.clone(),
-                    show_collision_pairs: local.show_collision_pairs,
-                    // Copy all other fields from local
-                    simulation_running: local.simulation_running,
-                    dynamic_body_count: local.dynamic_body_count,
-                    kinematic_body_count: local.kinematic_body_count,
-                    static_body_count: local.static_body_count,
-                    collider_count: local.collider_count,
-                    colliders_by_type: local.colliders_by_type.clone(),
-                    collision_pair_count: local.collision_pair_count,
-                    collision_pairs: local.collision_pairs.clone(),
-                    step_time_history: local.step_time_history.clone(),
-                    step_time_ms: local.step_time_ms,
-                    avg_step_time_ms: local.avg_step_time_ms,
-                    update_interval: local.update_interval,
-                    time_since_update: local.time_since_update,
-                    physics_available: local.physics_available,
                 });
             }
         }
@@ -408,7 +334,6 @@ impl EditorPanel for EcsStatsPanel {
 fn sync_debug_bridge(
     bridge: Res<DebugBridge>,
     mut camera: ResMut<CameraDebugState>,
-    mut physics: ResMut<PhysicsDebugState>,
     mut culling: ResMut<CullingDebugState>,
 ) {
     if let Ok(mut pending) = bridge.pending.lock() {
@@ -418,10 +343,6 @@ fn sync_debug_bridge(
             camera.show_camera_axes = cam.show_camera_axes;
             camera.show_all_frustums = cam.show_all_frustums;
             camera.frustum_color = cam.frustum_color;
-        }
-        if let Some(phys) = pending.physics.take() {
-            physics.debug_toggles = phys.debug_toggles;
-            physics.show_collision_pairs = phys.show_collision_pairs;
         }
         if let Some(cull) = pending.culling.take() {
             culling.enabled = cull.enabled;
@@ -452,7 +373,6 @@ impl Plugin for DebuggerPlugin {
             .init_resource::<SystemTimingState>()
             .init_resource::<MemoryProfilerState>()
             .init_resource::<CameraDebugState>()
-            .init_resource::<PhysicsDebugState>()
             .init_resource::<CullingDebugState>()
             .init_resource::<EcsStatsState>()
             .init_resource::<RenderPipelineGraphData>();
@@ -483,7 +403,6 @@ impl Plugin for DebuggerPlugin {
         app.register_panel(RenderPipelinePanel::new());
         app.register_panel(EcsStatsPanel::new());
         app.register_panel(CameraDebugPanel::new(arc.clone()));
-        app.register_panel(PhysicsDebugPanel::new(arc.clone()));
         app.register_panel(CullingDebugPanel::new(arc));
     }
 

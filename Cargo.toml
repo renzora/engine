@@ -36,6 +36,7 @@ editor = [
     "dep:renzora_mixer",
     "dep:renzora_console",
     "dep:renzora_debugger",
+    "dep:renzora_physics_playground",
     "dep:renzora_gamepad",
     "dep:renzora_gizmo",
     "dep:renzora_settings",
@@ -113,6 +114,7 @@ renzora_export = { path = "crates/editor/renzora_export", optional = true }
 renzora_mixer = { path = "crates/editor/renzora_mixer", optional = true }
 renzora_console = { path = "crates/editor/renzora_console", optional = true }
 renzora_debugger = { path = "crates/editor/renzora_debugger", optional = true }
+renzora_physics_playground = { path = "crates/editor/renzora_physics_playground", optional = true }
 renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_settings = { path = "crates/editor/renzora_settings", optional = true }

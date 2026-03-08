@@ -262,7 +262,7 @@ fn layout_shaders() -> DockTree {
     )
 }
 
-/// Physics: Hierarchy | Viewport+playground tabs | Inspector+physics debug tabs
+/// Physics: Hierarchy | Viewport+all physics tabs | Inspector+Shapes
 fn layout_physics() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),
@@ -270,30 +270,26 @@ fn layout_physics() -> DockTree {
             DockTree::vertical(
                 DockTree::leaf("viewport"),
                 DockTree::Leaf {
-                    tabs: vec!["console".into(), "physics_playground".into(), "stress_test".into(), "arena_presets".into()],
+                    tabs: vec![
+                        "physics_playground".into(),
+                        "physics_scenarios".into(),
+                        "arena_presets".into(),
+                        "physics_forces".into(),
+                        "physics_properties".into(),
+                        "physics_debug".into(),
+                        "physics_metrics".into(),
+                        "console".into(),
+                    ],
                     active_tab: 0,
                 },
                 0.72,
             ),
             DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "physics_scenarios".into()],
-                    active_tab: 0,
-                },
-                DockTree::vertical(
-                    DockTree::Leaf {
-                        tabs: vec!["physics_debug".into(), "physics_properties".into(), "physics_metrics".into()],
-                        active_tab: 0,
-                    },
-                    DockTree::Leaf {
-                        tabs: vec!["physics_forces".into(), "collision_viz".into(), "movement_trails".into(), "state_recorder".into()],
-                        active_tab: 0,
-                    },
-                    0.5,
-                ),
-                0.4,
+                DockTree::leaf("inspector"),
+                DockTree::leaf("shape_library"),
+                0.5,
             ),
-            0.68,
+            0.75,
         ),
         0.15,
     )

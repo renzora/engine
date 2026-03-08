@@ -54,7 +54,7 @@ pub enum PhysicsPropertyCommand {
     ResetAll,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct PhysicsPropertiesState {
     pub gravity: Vec3,
     pub gravity_preset: GravityPreset,
