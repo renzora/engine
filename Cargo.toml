@@ -75,6 +75,7 @@ editor = [
     "renzora_dithering/editor",
     "renzora_frosted_glass/editor",
     "renzora_skybox/editor",
+    "renzora_night_stars/editor",
     "renzora_clouds/editor",
     "renzora_lighting/editor",
     "renzora_hanabi/editor",
@@ -156,6 +157,7 @@ renzora_hex_pixelate = { path = "crates/postprocessing/renzora_hex_pixelate" }
 renzora_dithering = { path = "crates/postprocessing/renzora_dithering" }
 renzora_frosted_glass = { path = "crates/postprocessing/renzora_frosted_glass" }
 renzora_skybox = { path = "crates/postprocessing/renzora_skybox" }
+renzora_night_stars = { path = "crates/postprocessing/renzora_night_stars" }
 renzora_clouds = { path = "crates/postprocessing/renzora_clouds" }
 renzora_lighting = { path = "crates/core/renzora_lighting" }
 

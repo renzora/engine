@@ -69,6 +69,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_dithering::DitheringPlugin);
     app.add_plugins(renzora_frosted_glass::FrostedGlassPlugin);
     app.add_plugins(renzora_skybox::SkyboxPlugin);
+    app.add_plugins(renzora_night_stars::NightStarsPlugin);
     app.add_plugins(renzora_clouds::CloudsPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
