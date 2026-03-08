@@ -12,7 +12,7 @@ use renzora_editor::{
     icon_button, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
     OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
-use renzora_core::{MeshPrimitive, MeshColor};
+use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
 use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
@@ -102,24 +102,35 @@ impl EditorPanel for HierarchyPanel {
 
         // Add Entity overlay
         if state.show_add_overlay {
-            let entries: Vec<OverlayEntry> = if let Some(registry) = world.get_resource::<SpawnRegistry>() {
-                registry
-                    .iter()
-                    .map(|p| OverlayEntry {
-                        id: p.id,
-                        label: p.display_name,
-                        icon: p.icon,
-                        category: p.category,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let mut entries: Vec<OverlayEntry> = Vec::new();
+
+            // Add SpawnRegistry presets (lights, cameras, etc.)
+            if let Some(registry) = world.get_resource::<SpawnRegistry>() {
+                entries.extend(registry.iter().map(|p| OverlayEntry {
+                    id: p.id,
+                    label: p.display_name,
+                    icon: p.icon,
+                    category: p.category,
+                }));
+            }
+
+            // Add ShapeRegistry shapes (meshes)
+            if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
+                entries.extend(shape_reg.iter().map(|s| OverlayEntry {
+                    id: s.id,
+                    label: s.name,
+                    icon: s.icon,
+                    category: s.category,
+                }));
+            }
 
             let ctx = ui.ctx().clone();
             match search_overlay(&ctx, "add_entity_overlay", "Add Entity", &entries, &mut state.add_search, &theme) {
                 OverlayAction::Selected(id) => {
                     state.show_add_overlay = false;
+
+                    // Try SpawnRegistry first (lights, cameras, etc.)
+                    let mut handled = false;
                     if let Some(registry) = world.get_resource::<SpawnRegistry>() {
                         if let Some(preset) = registry.iter().find(|p| p.id == id) {
                             let spawn_fn = preset.spawn_fn;
@@ -129,6 +140,40 @@ impl EditorPanel for HierarchyPanel {
                                     sel.set(Some(entity));
                                 }
                             });
+                            handled = true;
+                        }
+                    }
+
+                    // Fall back to ShapeRegistry (meshes)
+                    if !handled {
+                        if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
+                            if let Some(entry) = shape_reg.get(&id) {
+                                let create_mesh = entry.create_mesh;
+                                let color = entry.default_color;
+                                let name = entry.name;
+                                let shape_id = entry.id;
+                                commands.push(move |world: &mut World| {
+                                    let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
+                                    let material = world
+                                        .resource_mut::<Assets<StandardMaterial>>()
+                                        .add(StandardMaterial {
+                                            base_color: color,
+                                            perceptual_roughness: 0.9,
+                                            ..default()
+                                        });
+                                    let entity = world.spawn((
+                                        Name::new(name),
+                                        Transform::default(),
+                                        Mesh3d(mesh),
+                                        MeshMaterial3d(material),
+                                        MeshPrimitive(shape_id.to_string()),
+                                        MeshColor(color),
+                                    )).id();
+                                    if let Some(sel) = world.get_resource::<EditorSelection>() {
+                                        sel.set(Some(entity));
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -269,121 +314,8 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         },
     });
 
-    registry.register(EntityPreset {
-        id: "cube",
-        display_name: "Cube",
-        icon: regular::CUBE,
-        category: "rendering",
-        spawn_fn: |world| {
-            let mesh = world
-                .resource_mut::<Assets<Mesh>>()
-                .add(Cuboid::default());
-            let material = world
-                .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial {
-                    base_color: Color::srgb(0.8, 0.3, 0.2),
-                    ..default()
-                });
-            let color = Color::srgb(0.8, 0.3, 0.2);
-            world
-                .spawn((
-                    Name::new("Cube"),
-                    Transform::default(),
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    MeshPrimitive::Cube,
-                    MeshColor(color),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "sphere",
-        display_name: "Sphere",
-        icon: regular::GLOBE,
-        category: "rendering",
-        spawn_fn: |world| {
-            let mesh = world
-                .resource_mut::<Assets<Mesh>>()
-                .add(Sphere::default());
-            let material = world
-                .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial {
-                    base_color: Color::srgb(0.2, 0.5, 0.8),
-                    ..default()
-                });
-            let color = Color::srgb(0.2, 0.5, 0.8);
-            world
-                .spawn((
-                    Name::new("Sphere"),
-                    Transform::default(),
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    MeshPrimitive::Sphere,
-                    MeshColor(color),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "plane",
-        display_name: "Plane",
-        icon: regular::SQUARE,
-        category: "rendering",
-        spawn_fn: |world| {
-            let mesh = world
-                .resource_mut::<Assets<Mesh>>()
-                .add(Plane3d::default().mesh().size(10.0, 10.0));
-            let material = world
-                .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial {
-                    base_color: Color::srgb(0.35, 0.35, 0.35),
-                    ..default()
-                });
-            let color = Color::srgb(0.35, 0.35, 0.35);
-            world
-                .spawn((
-                    Name::new("Plane"),
-                    Transform::default(),
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    MeshPrimitive::Plane { width: 10.0, height: 10.0 },
-                    MeshColor(color),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "cylinder",
-        display_name: "Cylinder",
-        icon: regular::CYLINDER,
-        category: "rendering",
-        spawn_fn: |world| {
-            let mesh = world
-                .resource_mut::<Assets<Mesh>>()
-                .add(Cylinder::default());
-            let material = world
-                .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial {
-                    base_color: Color::srgb(0.3, 0.7, 0.4),
-                    ..default()
-                });
-            let color = Color::srgb(0.3, 0.7, 0.4);
-            world
-                .spawn((
-                    Name::new("Cylinder"),
-                    Transform::default(),
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    MeshPrimitive::Cylinder,
-                    MeshColor(color),
-                ))
-                .id()
-        },
-    });
+    // Note: rendering shapes (cube, sphere, etc.) are registered via ShapeRegistry
+    // and shown in both the shape library panel and this overlay.
 
     registry.register(EntityPreset {
         id: "sun",

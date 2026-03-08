@@ -1,0 +1,237 @@
+//! Shape library editor panel.
+
+use std::sync::RwLock;
+
+use bevy::prelude::*;
+use bevy_egui::egui::{self, CursorIcon, Vec2};
+use egui_phosphor::regular;
+use renzora_core::{MeshColor, MeshPrimitive, ShapeEntry, ShapeRegistry};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
+
+#[derive(Default)]
+struct ShapeLibraryState {
+    search_filter: String,
+    active_category: Option<String>,
+}
+
+pub struct ShapeLibraryPanel {
+    state: RwLock<ShapeLibraryState>,
+}
+
+impl Default for ShapeLibraryPanel {
+    fn default() -> Self {
+        Self {
+            state: RwLock::new(ShapeLibraryState::default()),
+        }
+    }
+}
+
+fn categories(registry: &ShapeRegistry) -> Vec<&'static str> {
+    let mut cats = Vec::new();
+    for entry in registry.iter() {
+        if !cats.contains(&entry.category) {
+            cats.push(entry.category);
+        }
+    }
+    cats
+}
+
+impl EditorPanel for ShapeLibraryPanel {
+    fn id(&self) -> &str {
+        "shape_library"
+    }
+
+    fn title(&self) -> &str {
+        "Shapes"
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some(regular::CUBE)
+    }
+
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Left
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let theme = match world.get_resource::<ThemeManager>() {
+            Some(tm) => tm.active_theme.clone(),
+            None => return,
+        };
+        let commands = match world.get_resource::<EditorCommands>() {
+            Some(c) => c,
+            None => return,
+        };
+        let registry = match world.get_resource::<ShapeRegistry>() {
+            Some(r) => r,
+            None => return,
+        };
+
+        let mut state = self.state.write().unwrap();
+
+        let accent = theme.semantic.accent.to_color32();
+        let text_primary = theme.text.primary.to_color32();
+        let text_muted = theme.text.muted.to_color32();
+
+        let panel_padding = 6.0;
+        let spacing = 4.0;
+
+        ui.add_space(panel_padding);
+
+        // Search bar
+        ui.horizontal(|ui| {
+            ui.add_space(panel_padding);
+            let available = ui.available_width() - panel_padding;
+            ui.add_sized(
+                [available, 20.0],
+                egui::TextEdit::singleline(&mut state.search_filter)
+                    .hint_text(format!("{} Search shapes...", regular::MAGNIFYING_GLASS)),
+            );
+        });
+
+        ui.add_space(spacing);
+
+        // Category filter tabs
+        let cats = categories(registry);
+        ui.horizontal(|ui| {
+            ui.add_space(panel_padding);
+            ui.spacing_mut().item_spacing.x = 2.0;
+
+            if ui
+                .selectable_label(state.active_category.is_none(), "All")
+                .clicked()
+            {
+                state.active_category = None;
+            }
+            for cat in &cats {
+                let selected = state.active_category.as_deref() == Some(*cat);
+                if ui.selectable_label(selected, *cat).clicked() {
+                    state.active_category = Some(cat.to_string());
+                }
+            }
+        });
+
+        ui.add_space(spacing);
+
+        // Filter shapes
+        let search_lower = state.search_filter.to_lowercase();
+        let shapes: Vec<&ShapeEntry> = registry
+            .iter()
+            .filter(|s| {
+                state.active_category.is_none()
+                    || state.active_category.as_deref() == Some(s.category)
+            })
+            .filter(|s| search_lower.is_empty() || s.name.to_lowercase().contains(&search_lower))
+            .collect();
+
+        // Responsive grid
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            let available_width = ui.available_width() - panel_padding * 2.0;
+            let min_tile = 56.0;
+            let max_tile = 80.0;
+            let cols =
+                ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
+            let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
+                .clamp(min_tile, max_tile);
+            let label_height = 16.0;
+
+            ui.add_space(2.0);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = spacing;
+
+                let rows = (shapes.len() + cols - 1) / cols;
+                for row in 0..rows {
+                    ui.horizontal(|ui| {
+                        ui.add_space(panel_padding);
+                        ui.spacing_mut().item_spacing.x = spacing;
+                        for col in 0..cols {
+                            let idx = row * cols + col;
+                            if idx >= shapes.len() {
+                                break;
+                            }
+                            let shape = shapes[idx];
+                            let total_height = tile_size + label_height;
+                            let (rect, response) = ui.allocate_exact_size(
+                                Vec2::new(tile_size, total_height),
+                                egui::Sense::click(),
+                            );
+
+                            let hovered = response.hovered();
+                            let bg = if hovered {
+                                theme.widgets.hovered_bg.to_color32()
+                            } else {
+                                theme.surfaces.faint.to_color32()
+                            };
+
+                            ui.painter().rect_filled(rect, 6.0, bg);
+
+                            if hovered {
+                                ui.painter().rect_stroke(
+                                    rect,
+                                    6.0,
+                                    egui::Stroke::new(1.0, accent.linear_multiply(0.6)),
+                                    egui::StrokeKind::Outside,
+                                );
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+
+                            // Icon
+                            let icon_rect = egui::Rect::from_min_size(
+                                rect.min,
+                                Vec2::new(tile_size, tile_size),
+                            );
+                            ui.painter().text(
+                                icon_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                shape.icon,
+                                egui::FontId::proportional(28.0),
+                                if hovered { accent } else { text_primary },
+                            );
+
+                            // Label
+                            ui.painter().text(
+                                egui::pos2(rect.center().x, rect.max.y - label_height / 2.0),
+                                egui::Align2::CENTER_CENTER,
+                                shape.name,
+                                egui::FontId::proportional(9.5),
+                                text_muted,
+                            );
+
+                            response
+                                .clone()
+                                .on_hover_text(format!("Click to spawn {}", shape.name));
+
+                            if response.clicked() {
+                                let create_mesh = shape.create_mesh;
+                                let name = shape.name;
+                                let color = shape.default_color;
+                                let shape_id = shape.id;
+                                commands.push(move |world: &mut World| {
+                                    let mesh =
+                                        create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
+                                    let material = world
+                                        .resource_mut::<Assets<StandardMaterial>>()
+                                        .add(StandardMaterial {
+                                            base_color: color,
+                                            perceptual_roughness: 0.9,
+                                            ..default()
+                                        });
+                                    world.spawn((
+                                        Name::new(name),
+                                        Transform::default(),
+                                        Mesh3d(mesh),
+                                        MeshMaterial3d(material),
+                                        MeshPrimitive(shape_id.to_string()),
+                                        MeshColor(color),
+                                    ));
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+            ui.add_space(panel_padding);
+        });
+    }
+}

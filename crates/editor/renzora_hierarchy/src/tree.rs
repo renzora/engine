@@ -464,7 +464,7 @@ fn context_menu(
         if ui.button(format!("{} Group as Children", regular::FOLDER_SIMPLE)).clicked() {
             let selected = selection.get_all();
             commands.push(move |world: &mut World| {
-                let parent = world.spawn((Name::new("Group"), Transform::default())).id();
+                let parent = world.spawn((Name::new("Group"), Transform::default(), Visibility::default())).id();
                 for entity in &selected {
                     world.entity_mut(*entity).set_parent_in_place(parent);
                 }

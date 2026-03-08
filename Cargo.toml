@@ -40,6 +40,7 @@ editor = [
     "dep:renzora_gamepad",
     "dep:renzora_gizmo",
     "dep:renzora_settings",
+    "renzora_shape_library/editor",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
     "renzora_pixelation/editor",
@@ -76,7 +77,16 @@ editor = [
 ]
 
 [dependencies]
-bevy = { version = "0.18", features = ["jpeg"] }
+# default-features = false to exclude bevy_audio (we use Kira instead).
+# These features are equivalent to Bevy's "3d" preset minus "audio".
+bevy = { version = "0.18", default-features = false, features = [
+    "default_app",
+    "default_platform",
+    "3d_bevy_render",
+    "scene",
+    "picking",
+    "jpeg",
+] }
 renzora_runtime = { path = "crates/core/renzora_runtime" }
 renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_audio = { path = "crates/core/renzora_audio" }
@@ -102,6 +112,7 @@ renzora_debugger = { path = "crates/editor/renzora_debugger", optional = true }
 renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_settings = { path = "crates/editor/renzora_settings", optional = true }
+renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)
 renzora_vignette = { path = "crates/postprocessing/renzora_vignette" }

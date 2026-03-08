@@ -2,7 +2,7 @@
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera};
+use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ShapeRegistry};
 use renzora_lighting::SunData;
 use serde::de::DeserializeSeed;
 use std::path::Path;
@@ -42,6 +42,11 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<InheritedVisibility>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
+        .deny_component::<bevy::transform::components::TransformTreeChanged>()
+        .deny_component::<bevy::camera::primitives::Aabb>()
+        .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
+        .deny_component::<bevy::input::gamepad::Gamepad>()
+        .deny_component::<bevy::input::gamepad::GamepadSettings>()
         .extract_entities(entities.into_iter())
         .build();
 
@@ -140,6 +145,22 @@ pub fn load_scene(world: &mut World, path: &Path) {
     match scene.write_to_world(world, &mut entity_map) {
         Ok(()) => {
             info!("Loaded scene from {} ({} entities mapped)", path.display(), entity_map.len());
+
+            // Bevy's write_to_world inserts ChildOf via reflection, which may not
+            // trigger the on_insert hooks that maintain the parent's Children component.
+            // Re-insert ChildOf on each child to force the hooks to fire.
+            let children_with_parents: Vec<(Entity, Entity)> = entity_map
+                .values()
+                .filter_map(|&entity| {
+                    world.entity(entity).get::<ChildOf>().map(|c| (entity, c.parent()))
+                })
+                .collect();
+
+            for (child, parent) in children_with_parents {
+                // Remove and re-insert ChildOf to trigger hooks
+                world.entity_mut(child).remove::<ChildOf>();
+                world.entity_mut(child).insert(ChildOf(parent));
+            }
         }
         Err(e) => {
             error!("Failed to write scene to world {}: {}", path.display(), e);
@@ -167,17 +188,14 @@ pub fn load_current_scene(world: &mut World) {
 pub fn rehydrate_meshes(
     mut commands: Commands,
     query: Query<(Entity, &MeshPrimitive, Option<&MeshColor>), Without<Mesh3d>>,
+    registry: Res<ShapeRegistry>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for (entity, primitive, color) in &query {
-        let mesh = match primitive {
-            MeshPrimitive::Cube => meshes.add(Cuboid::default()),
-            MeshPrimitive::Sphere => meshes.add(Sphere::default()),
-            MeshPrimitive::Plane { width, height } => {
-                meshes.add(Plane3d::default().mesh().size(*width, *height))
-            }
-            MeshPrimitive::Cylinder => meshes.add(Cylinder::default()),
+        let Some(mesh) = registry.create_mesh(&primitive.0, &mut meshes) else {
+            warn!("Unknown shape ID '{}' — skipping rehydration", primitive.0);
+            continue;
         };
 
         let base_color = color.map_or(Color::WHITE, |c| c.0);
@@ -187,6 +205,17 @@ pub fn rehydrate_meshes(
         });
 
         commands.entity(entity).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+    }
+}
+
+/// Ensure parent entities have `Visibility` so transform/visibility propagation works.
+/// Fixes groups/empty parents that were saved without `Visibility`.
+pub fn rehydrate_visibility(
+    mut commands: Commands,
+    query: Query<Entity, (With<Children>, Without<Visibility>)>,
+) {
+    for entity in &query {
+        commands.entity(entity).insert(Visibility::default());
     }
 }
 

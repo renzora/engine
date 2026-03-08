@@ -52,7 +52,7 @@ impl Plugin for ScenePlugin {
         app.add_systems(OnEnter(SplashState::Editor), load_scene_on_enter)
             .add_systems(
                 Update,
-                (scene_io::rehydrate_meshes, scene_io::rehydrate_cameras, scene_io::rehydrate_suns, scene_io::sync_scene_camera_to_editor_camera, detect_save_keybinding, save_scene_system)
+                (scene_io::rehydrate_meshes, scene_io::rehydrate_cameras, scene_io::rehydrate_suns, scene_io::rehydrate_visibility, scene_io::sync_scene_camera_to_editor_camera, detect_save_keybinding, save_scene_system)
                     .run_if(in_state(SplashState::Editor)),
             );
     }

@@ -78,5 +78,8 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_clouds::CloudsPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
 
+    // Built-in shapes (registers shapes always, adds editor panel when `editor` feature is active)
+    app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
+
     app
 }
