@@ -21,7 +21,6 @@ default = ["editor"]
 dynamic = ["bevy/dynamic_linking"]
 editor = [
     "dep:renzora_editor",
-    "renzora_runtime/editor",
     "dep:renzora_splash",
     "dep:renzora_viewport",
     "dep:renzora_hierarchy",
@@ -40,6 +39,9 @@ editor = [
     "dep:renzora_gamepad",
     "dep:renzora_gizmo",
     "dep:renzora_settings",
+    "renzora_runtime/editor",
+    "renzora_physics/editor",
+    "renzora_stinger/editor",
     "renzora_shape_library/editor",
     "renzora_vignette/editor",
     "renzora_film_grain/editor",
@@ -87,7 +89,9 @@ bevy = { version = "0.18", default-features = false, features = [
     "picking",
     "jpeg",
 ] }
+
 renzora_runtime = { path = "crates/core/renzora_runtime" }
+renzora_physics = { path = "crates/core/renzora_physics" }
 renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_audio = { path = "crates/core/renzora_audio" }
 renzora_core = { path = "crates/core/renzora_core" }

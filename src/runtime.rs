@@ -36,12 +36,9 @@ pub fn build_runtime_app() -> App {
             })
     );
     app.add_plugins(renzora_runtime::RuntimePlugin);
-    app.add_plugins(renzora_audio::KiraPlugin);
-
-    #[cfg(not(feature = "editor"))]
+    app.add_plugins(renzora_physics::PhysicsPlugin);
     app.add_plugins(renzora_stinger::StingerPlugin);
-
-    // Post-process plugins
+    app.add_plugins(renzora_audio::KiraPlugin);
     app.add_plugins(renzora_vignette::VignettePlugin);
     app.add_plugins(renzora_film_grain::FilmGrainPlugin);
     app.add_plugins(renzora_pixelation::PixelationPlugin);
@@ -72,13 +69,9 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_hex_pixelate::HexPixelatePlugin);
     app.add_plugins(renzora_dithering::DitheringPlugin);
     app.add_plugins(renzora_frosted_glass::FrostedGlassPlugin);
-
-    // Environment plugins
     app.add_plugins(renzora_skybox::SkyboxPlugin);
     app.add_plugins(renzora_clouds::CloudsPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
-
-    // Built-in shapes (registers shapes always, adds editor panel when `editor` feature is active)
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
 
     app

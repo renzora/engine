@@ -11,10 +11,21 @@ pub struct StingerPlugin;
 
 impl Plugin for StingerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<StingerState>()
-            .add_systems(Startup, setup_stinger)
-            .add_systems(Update, tick_stinger.run_if(in_state(StingerState::Stinger)))
-            .add_systems(OnExit(StingerState::Stinger), cleanup_stinger);
+        app.init_state::<StingerState>();
+
+        // Only show the stinger splash in standalone/runtime mode
+        #[cfg(not(feature = "editor"))]
+        {
+            app.add_systems(Startup, setup_stinger)
+                .add_systems(Update, tick_stinger.run_if(in_state(StingerState::Stinger)))
+                .add_systems(OnExit(StingerState::Stinger), cleanup_stinger);
+        }
+
+        // In editor mode, skip straight to Game state
+        #[cfg(feature = "editor")]
+        app.add_systems(Startup, |mut next_state: ResMut<NextState<StingerState>>| {
+            next_state.set(StingerState::Game);
+        });
     }
 }
 

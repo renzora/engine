@@ -13,6 +13,8 @@ pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
 pub use renzora_audio;
+// Re-export physics crate for downstream access
+pub use renzora_physics;
 
 use bevy::prelude::*;
 use renzora_lighting::SunData;
