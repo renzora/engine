@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor::{inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -173,47 +173,51 @@ fn fxaa_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
-    let Some(settings) = world.get::<FxaaSettings>(entity) else {
-        return;
-    };
-    let et = settings.edge_threshold as usize;
-    let etm = settings.edge_threshold_min as usize;
-    let mut new_et = et;
-    let mut new_etm = etm;
+    let Some(settings) = world.get::<FxaaSettings>(entity) else { return };
+    let mut row = 0;
 
-    ui.horizontal(|ui| {
-        ui.label("Edge Threshold");
+    // Edge Threshold
+    let et = settings.edge_threshold as usize;
+    inline_property(ui, row, "Edge Threshold", theme, |ui| {
+        let mut new_et = et;
         egui::ComboBox::from_id_salt("fxaa_et")
             .selected_text(*SENSITIVITY_LABELS.get(et).unwrap_or(&"?"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, l) in SENSITIVITY_LABELS.iter().enumerate() {
                     ui.selectable_value(&mut new_et, i, *l);
                 }
             });
+        if new_et != et {
+            let val = new_et as u32;
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) { s.edge_threshold = val; }
+            });
+        }
     });
-    ui.horizontal(|ui| {
-        ui.label("Edge Threshold Min");
+    row += 1;
+
+    // Edge Threshold Min
+    let etm = settings.edge_threshold_min as usize;
+    inline_property(ui, row, "Edge Thr. Min", theme, |ui| {
+        let mut new_etm = etm;
         egui::ComboBox::from_id_salt("fxaa_etm")
             .selected_text(*SENSITIVITY_LABELS.get(etm).unwrap_or(&"?"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, l) in SENSITIVITY_LABELS.iter().enumerate() {
                     ui.selectable_value(&mut new_etm, i, *l);
                 }
             });
+        if new_etm != etm {
+            let val = new_etm as u32;
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) { s.edge_threshold_min = val; }
+            });
+        }
     });
-
-    if new_et != et || new_etm != etm {
-        let et_val = new_et as u32;
-        let etm_val = new_etm as u32;
-        cmds.push(move |world: &mut World| {
-            if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
-                s.edge_threshold = et_val;
-                s.edge_threshold_min = etm_val;
-            }
-        });
-    }
 }
 
 #[cfg(feature = "editor")]
@@ -247,17 +251,16 @@ fn smaa_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
-    let Some(settings) = world.get::<SmaaSettings>(entity) else {
-        return;
-    };
+    let Some(settings) = world.get::<SmaaSettings>(entity) else { return };
+
     let current = settings.preset as usize;
-    let mut new_idx = current;
-    ui.horizontal(|ui| {
-        ui.label("Preset");
+    inline_property(ui, 0, "Preset", theme, |ui| {
+        let mut new_idx = current;
         egui::ComboBox::from_id_salt("smaa_preset")
             .selected_text(*SMAA_LABELS.get(current).unwrap_or(&"?"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, l) in SMAA_LABELS.iter().enumerate() {
                     if ui.selectable_value(&mut new_idx, i, *l).changed() {
@@ -293,40 +296,46 @@ fn cas_entry() -> InspectorEntry {
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.enabled = val; }
         }),
-        fields: vec![
-            FieldDef {
-                name: "Strength",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<CasSettings>(entity).map(|s| FieldValue::Float(s.sharpening_strength)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.sharpening_strength = v; } } },
-            },
-            FieldDef {
-                name: "Denoise",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| world.get::<CasSettings>(entity).map(|s| FieldValue::Bool(s.denoise)),
-                set_fn: |world, entity, val| { if let FieldValue::Bool(v) = val { if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.denoise = v; } } },
-            },
-        ],
-        custom_ui_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(cas_custom_ui),
     }
 }
 
-fn cleanup_fxaa(mut commands: Commands, mut removed: RemovedComponents<FxaaSettings>) {
-    for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) { ec.remove::<Fxaa>(); }
-    }
-}
+#[cfg(feature = "editor")]
+fn cas_custom_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(settings) = world.get::<CasSettings>(entity) else { return };
+    let mut row = 0;
 
-fn cleanup_smaa(mut commands: Commands, mut removed: RemovedComponents<SmaaSettings>) {
-    for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) { ec.remove::<Smaa>(); }
-    }
-}
+    // Strength
+    let mut strength = settings.sharpening_strength;
+    inline_property(ui, row, "Strength", theme, |ui| {
+        let orig = strength;
+        ui.add(egui::DragValue::new(&mut strength).speed(0.01).range(0.0..=1.0));
+        if strength != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.sharpening_strength = strength; }
+            });
+        }
+    });
+    row += 1;
 
-fn cleanup_cas(mut commands: Commands, mut removed: RemovedComponents<CasSettings>) {
-    for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) { ec.remove::<ContrastAdaptiveSharpening>(); }
-    }
+    // Denoise
+    let denoise = settings.denoise;
+    inline_property(ui, row, "Denoise", theme, |ui| {
+        let id = ui.id().with("cas_denoise");
+        if toggle_switch(ui, id, denoise) {
+            let new_val = !denoise;
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.denoise = new_val; }
+            });
+        }
+    });
 }
 
 pub struct AntiAliasingPlugin;
@@ -336,7 +345,7 @@ impl Plugin for AntiAliasingPlugin {
         app.register_type::<FxaaSettings>();
         app.register_type::<SmaaSettings>();
         app.register_type::<CasSettings>();
-        app.add_systems(Update, (sync_fxaa, sync_smaa, sync_cas, cleanup_fxaa, cleanup_smaa, cleanup_cas));
+        app.add_systems(Update, (sync_fxaa, sync_smaa, sync_cas));
         #[cfg(feature = "editor")]
         {
             app.register_inspector(fxaa_entry());

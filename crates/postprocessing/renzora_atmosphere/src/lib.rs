@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -110,32 +110,7 @@ fn inspector_entry() -> InspectorEntry {
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.enabled = val; }
         }),
-        fields: vec![
-            FieldDef {
-                name: "Bottom Radius",
-                field_type: FieldType::Float { speed: 1000.0, min: 0.0, max: 100_000_000.0 },
-                get_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).map(|s| FieldValue::Float(s.bottom_radius)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.bottom_radius = v; } } },
-            },
-            FieldDef {
-                name: "Top Radius",
-                field_type: FieldType::Float { speed: 1000.0, min: 0.0, max: 100_000_000.0 },
-                get_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).map(|s| FieldValue::Float(s.top_radius)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.top_radius = v; } } },
-            },
-            FieldDef {
-                name: "Ground Albedo",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).map(|s| FieldValue::Float(s.ground_albedo)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.ground_albedo = v; } } },
-            },
-            FieldDef {
-                name: "Scene Units → m",
-                field_type: FieldType::Float { speed: 0.1, min: 0.001, max: 10000.0 },
-                get_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).map(|s| FieldValue::Float(s.scene_units_to_m)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.scene_units_to_m = v; } } },
-            },
-        ],
+        fields: vec![],
         custom_ui_fn: Some(atmosphere_custom_ui),
     }
 }
@@ -146,16 +121,18 @@ fn atmosphere_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
     let Some(settings) = world.get::<AtmosphereComponentSettings>(entity) else { return };
-    let current = settings.mode as usize;
-    let mut new_idx = current;
+    let mut row = 0;
 
-    ui.horizontal(|ui| {
-        ui.label("Rendering");
+    // Rendering mode
+    let current = settings.mode as usize;
+    inline_property(ui, row, "Rendering", theme, |ui| {
+        let mut new_idx = current;
         egui::ComboBox::from_id_salt("atmo_mode")
             .selected_text(*ATMO_MODE_LABELS.get(current).unwrap_or(&"Unknown"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, label) in ATMO_MODE_LABELS.iter().enumerate() {
                     if ui.selectable_value(&mut new_idx, i, *label).changed() {
@@ -168,6 +145,58 @@ fn atmosphere_custom_ui(
                     }
                 }
             });
+    });
+    row += 1;
+
+    // Bottom Radius
+    let mut bottom = settings.bottom_radius;
+    inline_property(ui, row, "Bottom Radius", theme, |ui| {
+        let orig = bottom;
+        ui.add(egui::DragValue::new(&mut bottom).speed(1000.0).range(0.0..=100_000_000.0));
+        if bottom != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.bottom_radius = bottom; }
+            });
+        }
+    });
+    row += 1;
+
+    // Top Radius
+    let mut top = settings.top_radius;
+    inline_property(ui, row, "Top Radius", theme, |ui| {
+        let orig = top;
+        ui.add(egui::DragValue::new(&mut top).speed(1000.0).range(0.0..=100_000_000.0));
+        if top != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.top_radius = top; }
+            });
+        }
+    });
+    row += 1;
+
+    // Ground Albedo
+    let mut albedo = settings.ground_albedo;
+    inline_property(ui, row, "Ground Albedo", theme, |ui| {
+        let orig = albedo;
+        ui.add(egui::DragValue::new(&mut albedo).speed(0.01).range(0.0..=1.0));
+        if albedo != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.ground_albedo = albedo; }
+            });
+        }
+    });
+    row += 1;
+
+    // Scene Units to Meters
+    let mut scale = settings.scene_units_to_m;
+    inline_property(ui, row, "Units to m", theme, |ui| {
+        let orig = scale;
+        ui.add(egui::DragValue::new(&mut scale).speed(0.1).range(0.001..=10000.0));
+        if scale != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.scene_units_to_m = scale; }
+            });
+        }
     });
 }
 

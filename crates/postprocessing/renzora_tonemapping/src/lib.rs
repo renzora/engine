@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -119,26 +119,7 @@ fn inspector_entry() -> InspectorEntry {
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) { s.enabled = val; }
         }),
-        fields: vec![FieldDef {
-            name: "EV100",
-            field_type: FieldType::Float {
-                speed: 0.1,
-                min: -16.0,
-                max: 16.0,
-            },
-            get_fn: |world, entity| {
-                world
-                    .get::<TonemappingSettings>(entity)
-                    .map(|s| FieldValue::Float(s.ev100))
-            },
-            set_fn: |world, entity, val| {
-                if let FieldValue::Float(v) = val {
-                    if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) {
-                        s.ev100 = v;
-                    }
-                }
-            },
-        }],
+        fields: vec![],
         custom_ui_fn: Some(tonemapping_custom_ui),
     }
 }
@@ -149,19 +130,21 @@ fn tonemapping_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
     let Some(settings) = world.get::<TonemappingSettings>(entity) else {
         return;
     };
 
-    let current_idx = settings.mode as usize;
-    let mut new_idx = current_idx;
+    let mut row = 0;
 
-    ui.horizontal(|ui| {
-        ui.label("Mode");
+    // Mode combo box
+    let current_idx = settings.mode as usize;
+    inline_property(ui, row, "Mode", theme, |ui| {
+        let mut new_idx = current_idx;
         egui::ComboBox::from_id_salt("tonemapping_mode")
             .selected_text(*MODE_LABELS.get(current_idx).unwrap_or(&"Unknown"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, label) in MODE_LABELS.iter().enumerate() {
                     if ui.selectable_value(&mut new_idx, i, *label).changed() {
@@ -174,6 +157,25 @@ fn tonemapping_custom_ui(
                     }
                 }
             });
+    });
+    row += 1;
+
+    // EV100
+    let mut ev100 = settings.ev100;
+    inline_property(ui, row, "EV100", theme, |ui| {
+        let orig = ev100;
+        ui.add(
+            egui::DragValue::new(&mut ev100)
+                .speed(0.1)
+                .range(-16.0..=16.0),
+        );
+        if ev100 != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) {
+                    s.ev100 = ev100;
+                }
+            });
+        }
     });
 }
 

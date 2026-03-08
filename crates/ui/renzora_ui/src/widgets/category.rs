@@ -147,14 +147,8 @@ pub fn collapsible_section_removable(
                                 (ui.available_width() - 58.0).max(20.0),
                             );
 
-                            ui.label(
-                                RichText::new("⠿")
-                                    .size(10.0)
-                                    .color(dim_color(text_muted, 0.5)),
-                            );
-
                             let caret =
-                                if state.is_open() { "▾" } else { "▸" };
+                                if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
                             ui.label(
                                 RichText::new(caret).size(12.0).color(text_muted),
                             );

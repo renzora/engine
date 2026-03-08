@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -80,26 +80,7 @@ fn inspector_entry() -> InspectorEntry {
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.enabled = val; }
         }),
-        fields: vec![
-            FieldDef {
-                name: "Focal Distance",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 1000.0 },
-                get_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).map(|s| FieldValue::Float(s.focal_distance)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.focal_distance = v; } } },
-            },
-            FieldDef {
-                name: "Aperture (f-stops)",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 64.0 },
-                get_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).map(|s| FieldValue::Float(s.aperture_f_stops)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.aperture_f_stops = v; } } },
-            },
-            FieldDef {
-                name: "Max CoC Diameter",
-                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 256.0 },
-                get_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).map(|s| FieldValue::Float(s.max_circle_of_confusion_diameter)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.max_circle_of_confusion_diameter = v; } } },
-            },
-        ],
+        fields: vec![],
         custom_ui_fn: Some(dof_custom_ui),
     }
 }
@@ -110,17 +91,21 @@ fn dof_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
     let Some(settings) = world.get::<DepthOfFieldSettings>(entity) else {
         return;
     };
+
+    let mut row = 0;
+
+    // Mode
     let current = settings.mode as usize;
-    let mut new_idx = current;
-    ui.horizontal(|ui| {
-        ui.label("Mode");
+    inline_property(ui, row, "Mode", theme, |ui| {
+        let mut new_idx = current;
         egui::ComboBox::from_id_salt("dof_mode")
             .selected_text(*DOF_MODE_LABELS.get(current).unwrap_or(&"Unknown"))
+            .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for (i, label) in DOF_MODE_LABELS.iter().enumerate() {
                     if ui.selectable_value(&mut new_idx, i, *label).changed() {
@@ -133,6 +118,45 @@ fn dof_custom_ui(
                     }
                 }
             });
+    });
+    row += 1;
+
+    // Focal Distance
+    let mut focal = settings.focal_distance;
+    inline_property(ui, row, "Focal Distance", theme, |ui| {
+        let orig = focal;
+        ui.add(egui::DragValue::new(&mut focal).speed(0.1).range(0.1..=1000.0));
+        if focal != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.focal_distance = focal; }
+            });
+        }
+    });
+    row += 1;
+
+    // Aperture
+    let mut aperture = settings.aperture_f_stops;
+    inline_property(ui, row, "Aperture", theme, |ui| {
+        let orig = aperture;
+        ui.add(egui::DragValue::new(&mut aperture).speed(0.1).range(0.1..=64.0));
+        if aperture != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.aperture_f_stops = aperture; }
+            });
+        }
+    });
+    row += 1;
+
+    // Max CoC
+    let mut coc = settings.max_circle_of_confusion_diameter;
+    inline_property(ui, row, "Max CoC", theme, |ui| {
+        let orig = coc;
+        ui.add(egui::DragValue::new(&mut coc).speed(1.0).range(1.0..=256.0));
+        if coc != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.max_circle_of_confusion_diameter = coc; }
+            });
+        }
     });
 }
 
