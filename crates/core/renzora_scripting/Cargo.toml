@@ -1,0 +1,21 @@
+[package]
+name = "renzora_scripting"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["lua", "rhai"]
+lua = ["dep:mlua"]
+rhai = ["dep:rhai"]
+
+[dependencies]
+bevy = { version = "0.18" }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+
+# Lua backend
+# Switch "lua54" to "luajit" for LuaJIT (requires C compiler / MSVC build tools)
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
+
+# Rhai backend
+rhai = { version = "1.21", features = ["sync"], optional = true }

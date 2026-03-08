@@ -59,37 +59,29 @@ impl LayoutManager {
     }
 }
 
-/// Scene: Hierarchy | Viewport+bottom strip | ShapeLibrary+Inspector
+/// Scene: Viewport+bottom strip | Hierarchy(top)+Inspector(bottom)
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec!["viewport".into(), "node_explorer".into()],
-                    active_tab: 0,
-                },
-                DockTree::Leaf {
-                    tabs: vec!["assets".into(), "console".into(), "animation".into(), "mixer".into()],
-                    active_tab: 0,
-                },
-                0.72,
-            ),
-            DockTree::vertical(
-                DockTree::leaf("shape_library"),
-                DockTree::vertical(
-                    DockTree::Leaf {
-                        tabs: vec!["inspector".into(), "history".into()],
-                        active_tab: 0,
-                    },
-                    DockTree::leaf("camera_preview"),
-                    0.65,
-                ),
-                0.4,
-            ),
-            0.82,
+        DockTree::vertical(
+            DockTree::Leaf {
+                tabs: vec!["viewport".into(), "code_editor".into(), "node_explorer".into()],
+                active_tab: 0,
+            },
+            DockTree::Leaf {
+                tabs: vec!["assets".into(), "console".into(), "animation".into(), "mixer".into()],
+                active_tab: 0,
+            },
+            0.72,
         ),
-        0.14,
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::Leaf {
+                tabs: vec!["inspector".into(), "history".into()],
+                active_tab: 0,
+            },
+            0.25,
+        ),
+        0.82,
     )
 }
 

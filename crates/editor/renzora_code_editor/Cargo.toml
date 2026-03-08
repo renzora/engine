@@ -1,0 +1,14 @@
+[package]
+name = "renzora_code_editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+egui_code_editor = "0.2"
+log = "0.4"
+renzora_core = { path = "../../core/renzora_core" }
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }

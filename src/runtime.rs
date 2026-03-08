@@ -35,6 +35,7 @@ pub fn build_runtime_app() -> App {
         })
     );
     app.add_plugins(renzora_runtime::RuntimePlugin);
+    app.add_plugins(renzora_scripting::ScriptingPlugin::new());
     app.add_plugins(renzora_physics::PhysicsPlugin);
     app.add_plugins(renzora_stinger::StingerPlugin);
     app.add_plugins(renzora_audio::KiraPlugin);

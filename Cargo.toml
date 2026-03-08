@@ -92,6 +92,8 @@ editor = [
     "renzora_oit/editor",
     "renzora_forward_decal/editor",
     "dep:renzora_particle_editor",
+    "dep:renzora_code_editor",
+    "dep:renzora_script_variables",
 ]
 
 [dependencies]
@@ -135,6 +137,8 @@ renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_settings = { path = "crates/editor/renzora_settings", optional = true }
 renzora_particle_editor = { path = "crates/editor/renzora_particle_editor", optional = true }
+renzora_code_editor = { path = "crates/editor/renzora_code_editor", optional = true }
+renzora_script_variables = { path = "crates/editor/renzora_script_variables", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)
@@ -184,6 +188,7 @@ renzora_auto_exposure = { path = "crates/postprocessing/renzora_auto_exposure" }
 renzora_oit = { path = "crates/postprocessing/renzora_oit" }
 renzora_forward_decal = { path = "crates/postprocessing/renzora_forward_decal" }
 renzora_lighting = { path = "crates/core/renzora_lighting" }
+renzora_scripting = { path = "crates/core/renzora_scripting" }
 
 # Bevy recommended optimizations
 
