@@ -100,6 +100,10 @@ pub struct HideInHierarchy;
 #[derive(Component)]
 pub struct EditorLocked;
 
+/// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
+#[derive(Component)]
+pub struct IsolatedCamera;
+
 /// Serializable marker for a scene camera entity.
 ///
 /// Stored alongside `Camera3d` so the camera can be recreated on scene load

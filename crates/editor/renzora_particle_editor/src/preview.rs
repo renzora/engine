@@ -7,6 +7,8 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
+use renzora_core::IsolatedCamera;
+use renzora_runtime::{EditorLocked, HideInHierarchy};
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;
@@ -112,6 +114,9 @@ fn setup_particle_preview(
         Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
         ParticlePreviewCamera,
+        IsolatedCamera,
+        HideInHierarchy,
+        EditorLocked,
         Name::new("Particle Preview Camera"),
     ));
 
@@ -125,6 +130,8 @@ fn setup_particle_preview(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 0.3, 0.0)),
         RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
         ParticlePreviewLight,
+        HideInHierarchy,
+        EditorLocked,
         Name::new("Particle Preview Light"),
     ));
 }
@@ -155,6 +162,8 @@ fn spawn_preview_effect(
         ViewVisibility::default(),
         RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
         ParticlePreviewEffect,
+        HideInHierarchy,
+        EditorLocked,
         Name::new("Particle Preview Effect"),
     ));
 }
@@ -197,6 +206,8 @@ fn update_preview_effect(
         ViewVisibility::default(),
         RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
         ParticlePreviewEffect,
+        HideInHierarchy,
+        EditorLocked,
         Name::new("Particle Preview Effect"),
     ));
 }

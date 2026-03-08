@@ -338,8 +338,8 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
 fn sync_skybox(
     mut commands: Commands,
     skybox_query: Query<&SkyboxData>,
-    cameras: Query<Entity, With<Camera3d>>,
-    mut camera_query: Query<&mut Camera, With<Camera3d>>,
+    cameras: Query<Entity, (With<Camera3d>, Without<renzora_core::IsolatedCamera>)>,
+    mut camera_query: Query<&mut Camera, (With<Camera3d>, Without<renzora_core::IsolatedCamera>)>,
     asset_server: Res<AssetServer>,
     mut skybox_state: ResMut<SkyboxState>,
     mut images: ResMut<Assets<Image>>,
