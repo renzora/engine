@@ -1,0 +1,54 @@
+[package]
+name = "bevy_hanabi"
+version = "0.18.0"
+edition = "2021"
+publish = false
+
+[features]
+2d = []
+3d = []
+default = ["2d", "3d", "serde", "gpu_tests"]
+gpu_tests = []
+serde = ["typetag"]
+trace = []
+
+[lib]
+name = "bevy_hanabi"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+bitflags = "2.3"
+bytemuck = { version = "1.5", features = ["derive", "must_cast"] }
+fixedbitset = "0.5"
+naga = { version = "27", features = ["wgsl-in"] }
+naga_oil = { version = "0.20", default-features = false, features = ["test_shader"] }
+rand = "0.9"
+rand_pcg = "0.9"
+ron = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2"
+typetag = { version = "0.2", optional = true }
+
+[dependencies.bevy]
+version = "0.18"
+default-features = false
+features = [
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_asset",
+    "bevy_log",
+    "x11",
+]
+
+[dependencies.wgpu]
+version = "27"
+default-features = false
+features = [
+    "wgsl",
+    "dx12",
+    "metal",
+    "vulkan",
+    "naga-ir",
+    "fragile-send-sync-non-atomic-wasm",
+]
