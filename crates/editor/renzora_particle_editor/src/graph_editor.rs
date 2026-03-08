@@ -168,7 +168,7 @@ pub fn render_graph_editor(
         node_bg: theme.surfaces.panel.to_color32(),
         node_border: theme.widgets.border.to_color32(),
         selected_border: Color32::from_rgb(100, 150, 255),
-        grid_dot: Color32::from_rgba_premultiplied(255, 255, 255, 3),
+        grid_dot: Color32::from_rgb(35, 35, 35),
         canvas_bg: Color32::from_rgb(25, 25, 25),
         text_color: theme.text.primary.to_color32(),
         text_muted: theme.text.muted.to_color32(),
