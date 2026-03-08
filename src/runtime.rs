@@ -80,6 +80,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin);
     app.add_plugins(renzora_antialiasing::AntiAliasingPlugin);
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin);
+    app.add_plugins(renzora_atmosphere::AtmospherePlugin);
 
     app
 }

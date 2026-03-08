@@ -1,5 +1,5 @@
 [package]
-name = "renzora_distance_fog"
+name = "renzora_atmosphere"
 version = "0.1.0"
 edition = "2021"
 

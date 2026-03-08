@@ -85,6 +85,7 @@ editor = [
     "renzora_motion_blur/editor",
     "renzora_antialiasing/editor",
     "renzora_distance_fog/editor",
+    "renzora_atmosphere/editor",
     "dep:renzora_particle_editor",
 ]
 
@@ -171,6 +172,7 @@ renzora_dof = { path = "crates/postprocessing/renzora_dof" }
 renzora_motion_blur = { path = "crates/postprocessing/renzora_motion_blur" }
 renzora_antialiasing = { path = "crates/postprocessing/renzora_antialiasing" }
 renzora_distance_fog = { path = "crates/postprocessing/renzora_distance_fog" }
+renzora_atmosphere = { path = "crates/postprocessing/renzora_atmosphere" }
 renzora_lighting = { path = "crates/core/renzora_lighting" }
 
 # Bevy recommended optimizations
