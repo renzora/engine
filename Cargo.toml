@@ -77,6 +77,8 @@ editor = [
     "renzora_skybox/editor",
     "renzora_clouds/editor",
     "renzora_lighting/editor",
+    "renzora_hanabi/editor",
+    "dep:renzora_particle_editor",
 ]
 
 [dependencies]
@@ -96,6 +98,7 @@ renzora_physics = { path = "crates/core/renzora_physics" }
 renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_audio = { path = "crates/core/renzora_audio" }
 renzora_core = { path = "crates/core/renzora_core" }
+renzora_hanabi = { path = "crates/core/renzora_hanabi" }
 
 # Editor plugins (optional, enabled by `editor` feature)
 renzora_editor = { path = "crates/editor/renzora_editor", optional = true }
@@ -118,6 +121,7 @@ renzora_physics_playground = { path = "crates/editor/renzora_physics_playground"
 renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_settings = { path = "crates/editor/renzora_settings", optional = true }
+renzora_particle_editor = { path = "crates/editor/renzora_particle_editor", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)

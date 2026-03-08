@@ -21,6 +21,7 @@ fn main() {
         app.add_plugins(renzora_gamepad::GamepadPlugin);
         app.add_plugins(renzora_gizmo::GizmoPlugin);
         app.add_plugins(renzora_settings::SettingsPlugin);
+        app.add_plugins(renzora_particle_editor::ParticleEditorPlugin);
     }
 
     app.run();

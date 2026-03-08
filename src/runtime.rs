@@ -29,11 +29,10 @@ pub fn build_runtime_app() -> App {
     let mut app = App::new();
 
     app.add_plugins(
-        DefaultPlugins
-            .set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
-                ..default()
-            })
+        DefaultPlugins.set(RenderPlugin {
+            render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+            ..default()
+        })
     );
     app.add_plugins(renzora_runtime::RuntimePlugin);
     app.add_plugins(renzora_physics::PhysicsPlugin);
@@ -73,6 +72,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_clouds::CloudsPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
+    app.add_plugins(renzora_hanabi::HanabiParticlePlugin);
 
     app
 }
