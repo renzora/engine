@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::anti_alias::fxaa::{Fxaa, Sensitivity};
 use bevy::anti_alias::smaa::{Smaa, SmaaPreset};
+use bevy::anti_alias::taa::TemporalAntiAliasing;
 use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +94,46 @@ fn sync_smaa(
             commands.entity(entity).insert(Smaa { preset });
         } else {
             commands.entity(entity).remove::<Smaa>();
+        }
+    }
+}
+
+// ── TAA Settings ──
+
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct TaaSettings {
+    pub reset: bool,
+    pub enabled: bool,
+}
+
+impl Default for TaaSettings {
+    fn default() -> Self {
+        Self { reset: false, enabled: true }
+    }
+}
+
+fn sync_taa(
+    mut commands: Commands,
+    query: Query<(Entity, &TaaSettings), Changed<TaaSettings>>,
+) {
+    for (entity, settings) in &query {
+        if settings.enabled {
+            commands.entity(entity)
+                .insert(Msaa::Off)
+                .insert(TemporalAntiAliasing {
+                    reset: settings.reset,
+                });
+        } else {
+            commands.entity(entity).remove::<TemporalAntiAliasing>();
+        }
+    }
+}
+
+fn cleanup_taa(mut commands: Commands, mut removed: RemovedComponents<TaaSettings>) {
+    for entity in removed.read() {
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.remove::<TemporalAntiAliasing>();
         }
     }
 }
@@ -277,6 +318,53 @@ fn smaa_custom_ui(
 }
 
 #[cfg(feature = "editor")]
+fn taa_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "taa",
+        display_name: "TAA",
+        icon: regular::GRID_FOUR,
+        category: "rendering",
+        has_fn: |world, entity| world.get::<TaaSettings>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(TaaSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<(TaaSettings, TemporalAntiAliasing)>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world.get::<TaaSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<TaaSettings>(entity) { s.enabled = val; }
+        }),
+        fields: vec![],
+        custom_ui_fn: Some(taa_custom_ui),
+    }
+}
+
+#[cfg(feature = "editor")]
+fn taa_custom_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(settings) = world.get::<TaaSettings>(entity) else { return };
+
+    let reset = settings.reset;
+    inline_property(ui, 0, "Reset", theme, |ui| {
+        let id = ui.id().with("taa_reset");
+        if toggle_switch(ui, id, reset) {
+            let new_val = !reset;
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<TaaSettings>(entity) { s.reset = new_val; }
+            });
+        }
+    });
+}
+
+#[cfg(feature = "editor")]
 fn cas_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "cas",
@@ -344,12 +432,14 @@ impl Plugin for AntiAliasingPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<FxaaSettings>();
         app.register_type::<SmaaSettings>();
+        app.register_type::<TaaSettings>();
         app.register_type::<CasSettings>();
-        app.add_systems(Update, (sync_fxaa, sync_smaa, sync_cas));
+        app.add_systems(Update, (sync_fxaa, sync_smaa, sync_taa, sync_cas, cleanup_taa));
         #[cfg(feature = "editor")]
         {
             app.register_inspector(fxaa_entry());
             app.register_inspector(smaa_entry());
+            app.register_inspector(taa_entry());
             app.register_inspector(cas_entry());
         }
     }

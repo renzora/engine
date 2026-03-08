@@ -81,6 +81,9 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_antialiasing::AntiAliasingPlugin);
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin);
     app.add_plugins(renzora_atmosphere::AtmospherePlugin);
+    app.add_plugins(renzora_ssao::SsaoPlugin);
+    app.add_plugins(renzora_ssr::SsrPlugin);
+    app.add_plugins(renzora_auto_exposure::AutoExposurePlugin);
 
     app
 }
