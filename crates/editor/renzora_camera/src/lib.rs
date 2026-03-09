@@ -139,6 +139,7 @@ impl Plugin for CameraPlugin {
                 handle_view_angle_keys,
                 camera_controller,
                 update_camera_projection,
+                sync_orbit_snapshot,
             ).chain().run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
@@ -432,5 +433,16 @@ fn update_camera_projection(
                 ortho.scale = orbit.distance / 5.0;
             }
         }
+    }
+}
+
+/// Copy orbit yaw/pitch into the shared snapshot so the viewport axis gizmo can read it.
+fn sync_orbit_snapshot(
+    orbit: Res<OrbitCameraState>,
+    mut snapshot: ResMut<renzora_viewport::CameraOrbitSnapshot>,
+) {
+    if orbit.is_changed() {
+        snapshot.yaw = orbit.yaw;
+        snapshot.pitch = orbit.pitch;
     }
 }

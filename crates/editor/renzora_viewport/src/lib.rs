@@ -23,8 +23,8 @@ use renzora_theme::ThemeManager;
 
 pub use camera_preview::CameraPreviewState;
 pub use settings::{
-    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, RenderToggles, SnapSettings,
-    ViewAngleCommand, ViewportSettings, VisualizationMode,
+    CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, ProjectionMode,
+    RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings, VisualizationMode,
 };
 
 const DEFAULT_WIDTH: u32 = 1280;
@@ -43,6 +43,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<ViewportSettings>()
+            .init_resource::<CameraOrbitSnapshot>()
             .init_resource::<renzora_runtime::PlayModeState>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastRenderState>()
@@ -274,6 +275,18 @@ impl EditorPanel for ViewportPanel {
                 info_color,
             );
         }
+
+        // Overlay: axis orientation gizmo
+        let show_axis = world
+            .get_resource::<ViewportSettings>()
+            .map_or(true, |s| s.show_axis_gizmo);
+        let play_mode = world.get_resource::<renzora_runtime::PlayModeState>();
+        let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
+        if show_axis && !in_play {
+            if let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() {
+                render_axis_gizmo(ui, orbit, rect);
+            }
+        }
     }
 
     fn closable(&self) -> bool {
@@ -458,4 +471,99 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
 
         y += 16.0;
     }
+}
+
+// ── Axis orientation gizmo (top-right corner) ───────────────────────────────
+
+const AXIS_GIZMO_SIZE: f32 = 100.0;
+const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
+
+fn render_axis_gizmo(
+    ui: &mut egui::Ui,
+    orbit: &CameraOrbitSnapshot,
+    viewport_rect: egui::Rect,
+) {
+    let center = egui::Pos2::new(
+        viewport_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
+        viewport_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,
+    );
+
+    let cos_yaw = orbit.yaw.cos();
+    let sin_yaw = orbit.yaw.sin();
+    let cos_pitch = orbit.pitch.cos();
+    let sin_pitch = orbit.pitch.sin();
+
+    // Axes: (world dir, color, label, target_yaw, target_pitch, is_positive)
+    let axes: [(Vec3, egui::Color32, &str, f32, f32, bool); 6] = [
+        (Vec3::X,  egui::Color32::from_rgb(237, 76, 92),   "X",  std::f32::consts::FRAC_PI_2, 0.0, true),
+        (Vec3::Y,  egui::Color32::from_rgb(139, 201, 63),  "Y",  0.0, std::f32::consts::FRAC_PI_2, true),
+        (Vec3::Z,  egui::Color32::from_rgb(68, 138, 255),  "Z",  0.0, 0.0, true),
+        (-Vec3::X, egui::Color32::from_rgb(150, 50, 60),   "-X", -std::f32::consts::FRAC_PI_2, 0.0, false),
+        (-Vec3::Y, egui::Color32::from_rgb(80, 120, 40),   "-Y", 0.0, -std::f32::consts::FRAC_PI_2, false),
+        (-Vec3::Z, egui::Color32::from_rgb(40, 80, 150),   "-Z", std::f32::consts::PI, 0.0, false),
+    ];
+
+    let axis_length = AXIS_GIZMO_SIZE / 2.0 - 12.0;
+
+    // Project each axis to screen space, collecting (depth, offset, color, label, yaw, pitch, positive)
+    let mut projected: Vec<(f32, egui::Vec2, egui::Color32, &str, f32, f32, bool)> = axes
+        .iter()
+        .map(|(dir, color, label, yaw, pitch, positive)| {
+            // Rotate by yaw
+            let r = Vec3::new(
+                dir.x * cos_yaw + dir.z * sin_yaw,
+                dir.y,
+                -dir.x * sin_yaw + dir.z * cos_yaw,
+            );
+            // Rotate by pitch
+            let v = Vec3::new(
+                r.x,
+                r.y * cos_pitch + r.z * sin_pitch,
+                -r.y * sin_pitch + r.z * cos_pitch,
+            );
+            let offset = egui::Vec2::new(v.x * axis_length, -v.y * axis_length);
+            (v.z, offset, *color, *label, *yaw, *pitch, *positive)
+        })
+        .collect();
+
+    // Sort back-to-front
+    projected.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    let painter = ui.painter();
+
+    for &(depth, offset, color, label, _yaw, _pitch, is_positive) in &projected {
+        let end = egui::Pos2::new(center.x + offset.x, center.y + offset.y);
+
+        // Fade axes pointing away
+        let alpha = if depth < -0.1 { 100 } else { 255 };
+        let c = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+
+        let line_width = if is_positive {
+            if depth < -0.1 { 2.0 } else { 3.0 }
+        } else {
+            if depth < -0.1 { 1.0 } else { 1.5 }
+        };
+
+        if is_positive {
+            painter.line_segment([center, end], egui::Stroke::new(line_width, c));
+        }
+
+        let cap_size = if is_positive { 9.0 } else { 6.0 };
+
+        if is_positive {
+            painter.circle_filled(end, cap_size, c);
+            painter.text(
+                end,
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(11.0),
+                egui::Color32::WHITE,
+            );
+        } else {
+            painter.circle_stroke(end, cap_size, egui::Stroke::new(2.0, c));
+        }
+    }
+
+    // Center dot
+    painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
 }

@@ -138,6 +138,13 @@ pub struct ViewAngleCommand {
     pub pitch: f32,
 }
 
+/// Camera orbit orientation, written by the camera system and read by the axis gizmo overlay.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct CameraOrbitSnapshot {
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
 /// Viewport overlay and rendering settings.
 ///
 /// This resource is the single source of truth for the viewport header UI.
