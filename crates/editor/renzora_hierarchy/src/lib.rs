@@ -408,6 +408,122 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         },
     });
 
+    // ── Physics ──────────────────────────────────────────────────────────────
+
+    registry.register(EntityPreset {
+        id: "rigid_body",
+        display_name: "Rigid Body",
+        icon: regular::CUBE,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("RigidBody3D"),
+                    Transform::default(),
+                    renzora_physics::PhysicsBodyData::default(),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "static_body",
+        display_name: "Static Body",
+        icon: regular::CUBE,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("StaticBody3D"),
+                    Transform::default(),
+                    renzora_physics::PhysicsBodyData::static_body(),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "kinematic_body",
+        display_name: "Kinematic Body",
+        icon: regular::CUBE,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("KinematicBody3D"),
+                    Transform::default(),
+                    renzora_physics::PhysicsBodyData::kinematic_body(),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "box_collider",
+        display_name: "Box Collider",
+        icon: regular::BOUNDING_BOX,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("BoxShape3D"),
+                    Transform::default(),
+                    renzora_physics::CollisionShapeData::default(),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "sphere_collider",
+        display_name: "Sphere Collider",
+        icon: regular::GLOBE_HEMISPHERE_EAST,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("SphereShape3D"),
+                    Transform::default(),
+                    renzora_physics::CollisionShapeData::sphere(0.5),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "capsule_collider",
+        display_name: "Capsule Collider",
+        icon: regular::PILL,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("CapsuleShape3D"),
+                    Transform::default(),
+                    renzora_physics::CollisionShapeData::capsule(0.5, 0.5),
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "cylinder_collider",
+        display_name: "Cylinder Collider",
+        icon: regular::CYLINDER,
+        category: "physics",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("CylinderShape3D"),
+                    Transform::default(),
+                    renzora_physics::CollisionShapeData::cylinder(0.5, 0.5),
+                ))
+                .id()
+        },
+    });
+
+    // ── Camera ──────────────────────────────────────────────────────────────
+
     registry.register(EntityPreset {
         id: "camera_3d",
         display_name: "Camera 3D",

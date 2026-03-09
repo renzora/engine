@@ -11,3 +11,4 @@ renzora_core = { path = "../../core/renzora_core" }
 renzora_editor = { path = "../renzora_editor" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 renzora_lighting = { path = "../../core/renzora_lighting", features = ["editor"] }
+renzora_physics = { path = "../../core/renzora_physics" }

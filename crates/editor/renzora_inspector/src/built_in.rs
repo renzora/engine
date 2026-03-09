@@ -32,6 +32,8 @@ pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
     registry.register(volumetric_light_entry());
     registry.register(volumetric_fog_entry());
     registry.register(script_component_entry());
+    registry.register(physics_body_entry());
+    registry.register(collision_shape_entry());
 }
 
 fn name_entry() -> InspectorEntry {
@@ -1377,5 +1379,336 @@ fn volumetric_fog_entry() -> InspectorEntry {
         ],
         custom_ui_fn: None,
     }
+}
+
+// ── Physics Body ────────────────────────────────────────────────────────────
+
+fn physics_body_entry() -> InspectorEntry {
+    use renzora_physics::PhysicsBodyData;
+
+    InspectorEntry {
+        type_id: "physics_body",
+        display_name: "Physics Body",
+        icon: regular::CUBE,
+        category: "physics",
+        has_fn: |world, entity| world.get::<PhysicsBodyData>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(PhysicsBodyData::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<PhysicsBodyData>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(physics_body_ui),
+    }
+}
+
+fn physics_body_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    use renzora_physics::{PhysicsBodyData, PhysicsBodyType};
+
+    let Some(body) = world.get::<PhysicsBodyData>(entity) else { return };
+    let body = body.clone();
+
+    // Body type combo
+    inline_property(ui, 0, "Body Type", theme, |ui| {
+        let current = match body.body_type {
+            PhysicsBodyType::RigidBody => "Rigid Body",
+            PhysicsBodyType::StaticBody => "Static Body",
+            PhysicsBodyType::KinematicBody => "Kinematic Body",
+        };
+        egui::ComboBox::from_id_salt("physics_body_type")
+            .selected_text(current)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for (bt, label) in [
+                    (PhysicsBodyType::RigidBody, "Rigid Body"),
+                    (PhysicsBodyType::StaticBody, "Static Body"),
+                    (PhysicsBodyType::KinematicBody, "Kinematic Body"),
+                ] {
+                    if ui.selectable_label(body.body_type == bt, label).clicked() {
+                        cmds.push(move |w: &mut World| {
+                            if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                                b.body_type = bt;
+                            }
+                        });
+                    }
+                }
+            });
+    });
+
+    // Mass
+    inline_property(ui, 1, "Mass", theme, |ui| {
+        let mut v = body.mass;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.1).range(0.001..=f32::MAX)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.mass = v; }
+            });
+        }
+    });
+
+    // Gravity Scale
+    inline_property(ui, 0, "Gravity Scale", theme, |ui| {
+        let mut v = body.gravity_scale;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.05).range(-10.0..=10.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.gravity_scale = v; }
+            });
+        }
+    });
+
+    // Linear Damping
+    inline_property(ui, 1, "Linear Damping", theme, |ui| {
+        let mut v = body.linear_damping;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.linear_damping = v; }
+            });
+        }
+    });
+
+    // Angular Damping
+    inline_property(ui, 0, "Angular Damping", theme, |ui| {
+        let mut v = body.angular_damping;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.angular_damping = v; }
+            });
+        }
+    });
+
+    // Lock axes
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("Lock Axes").size(11.0).color(theme.text.secondary.to_color32()));
+
+    inline_property(ui, 1, "Translation", theme, |ui| {
+        ui.horizontal(|ui| {
+            let locks = [
+                ("X", body.lock_translation_x),
+                ("Y", body.lock_translation_y),
+                ("Z", body.lock_translation_z),
+            ];
+            for (i, (label, current)) in locks.iter().enumerate() {
+                let mut checked = *current;
+                if ui.checkbox(&mut checked, *label).changed() {
+                    let val = checked;
+                    let axis = i;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                            match axis {
+                                0 => b.lock_translation_x = val,
+                                1 => b.lock_translation_y = val,
+                                _ => b.lock_translation_z = val,
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    });
+
+    inline_property(ui, 0, "Rotation", theme, |ui| {
+        ui.horizontal(|ui| {
+            let locks = [
+                ("X", body.lock_rotation_x),
+                ("Y", body.lock_rotation_y),
+                ("Z", body.lock_rotation_z),
+            ];
+            for (i, (label, current)) in locks.iter().enumerate() {
+                let mut checked = *current;
+                if ui.checkbox(&mut checked, *label).changed() {
+                    let val = checked;
+                    let axis = i;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                            match axis {
+                                0 => b.lock_rotation_x = val,
+                                1 => b.lock_rotation_y = val,
+                                _ => b.lock_rotation_z = val,
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    });
+}
+
+// ── Collision Shape ─────────────────────────────────────────────────────────
+
+fn collision_shape_entry() -> InspectorEntry {
+    use renzora_physics::CollisionShapeData;
+
+    InspectorEntry {
+        type_id: "collision_shape",
+        display_name: "Collision Shape",
+        icon: regular::BOUNDING_BOX,
+        category: "physics",
+        has_fn: |world, entity| world.get::<CollisionShapeData>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(CollisionShapeData::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<CollisionShapeData>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(collision_shape_ui),
+    }
+}
+
+fn collision_shape_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    use renzora_physics::{CollisionShapeData, CollisionShapeType};
+
+    let Some(shape) = world.get::<CollisionShapeData>(entity) else { return };
+    let shape = shape.clone();
+
+    // Shape type combo
+    inline_property(ui, 0, "Shape", theme, |ui| {
+        let current = match shape.shape_type {
+            CollisionShapeType::Box => "Box",
+            CollisionShapeType::Sphere => "Sphere",
+            CollisionShapeType::Capsule => "Capsule",
+            CollisionShapeType::Cylinder => "Cylinder",
+        };
+        egui::ComboBox::from_id_salt("collision_shape_type")
+            .selected_text(current)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for (st, label) in [
+                    (CollisionShapeType::Box, "Box"),
+                    (CollisionShapeType::Sphere, "Sphere"),
+                    (CollisionShapeType::Capsule, "Capsule"),
+                    (CollisionShapeType::Cylinder, "Cylinder"),
+                ] {
+                    if ui.selectable_label(shape.shape_type == st, label).clicked() {
+                        cmds.push(move |w: &mut World| {
+                            if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                                s.shape_type = st;
+                            }
+                        });
+                    }
+                }
+            });
+    });
+
+    // Shape-specific parameters
+    match shape.shape_type {
+        CollisionShapeType::Box => {
+            inline_property(ui, 1, "Half Extents", theme, |ui| {
+                let mut v = [shape.half_extents.x, shape.half_extents.y, shape.half_extents.z];
+                let mut changed = false;
+                ui.horizontal(|ui| {
+                    for (i, label) in ["X", "Y", "Z"].iter().enumerate() {
+                        ui.label(egui::RichText::new(*label).size(10.0).color(theme.text.muted.to_color32()));
+                        if ui.add(egui::DragValue::new(&mut v[i]).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                            changed = true;
+                        }
+                    }
+                });
+                if changed {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                            s.half_extents = Vec3::new(v[0], v[1], v[2]);
+                        }
+                    });
+                }
+            });
+        }
+        CollisionShapeType::Sphere => {
+            inline_property(ui, 1, "Radius", theme, |ui| {
+                let mut v = shape.radius;
+                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.radius = v; }
+                    });
+                }
+            });
+        }
+        CollisionShapeType::Capsule | CollisionShapeType::Cylinder => {
+            inline_property(ui, 1, "Radius", theme, |ui| {
+                let mut v = shape.radius;
+                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.radius = v; }
+                    });
+                }
+            });
+            inline_property(ui, 0, "Half Height", theme, |ui| {
+                let mut v = shape.half_height;
+                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.half_height = v; }
+                    });
+                }
+            });
+        }
+    }
+
+    // Offset
+    inline_property(ui, 1, "Offset", theme, |ui| {
+        let mut v = [shape.offset.x, shape.offset.y, shape.offset.z];
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            for (i, label) in ["X", "Y", "Z"].iter().enumerate() {
+                ui.label(egui::RichText::new(*label).size(10.0).color(theme.text.muted.to_color32()));
+                if ui.add(egui::DragValue::new(&mut v[i]).speed(0.01)).changed() {
+                    changed = true;
+                }
+            }
+        });
+        if changed {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.offset = Vec3::new(v[0], v[1], v[2]);
+                }
+            });
+        }
+    });
+
+    // Friction
+    inline_property(ui, 0, "Friction", theme, |ui| {
+        let mut v = shape.friction;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.friction = v; }
+            });
+        }
+    });
+
+    // Restitution
+    inline_property(ui, 1, "Restitution", theme, |ui| {
+        let mut v = shape.restitution;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.restitution = v; }
+            });
+        }
+    });
+
+    // Is Sensor
+    inline_property(ui, 0, "Is Sensor", theme, |ui| {
+        let id = ui.id().with("collision_is_sensor");
+        if toggle_switch(ui, id, shape.is_sensor) {
+            let val = !shape.is_sensor;
+            cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.is_sensor = val; }
+            });
+        }
+    });
 }
 
