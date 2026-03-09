@@ -16,7 +16,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut entities: Vec<Entity> = Vec::new();
-    let mut query = world.query_filtered::<Entity, (With<Name>, Without<HideInHierarchy>, Without<EditorCamera>)>();
+    let mut query = world.query_filtered::<Entity, (With<Name>, Without<HideInHierarchy>, Without<EditorCamera>, Without<bevy::input::gamepad::Gamepad>)>();
     for entity in query.iter(world) {
         entities.push(entity);
     }
