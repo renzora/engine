@@ -94,9 +94,9 @@ editor = [
     "dep:renzora_particle_editor",
     "dep:renzora_code_editor",
     "dep:renzora_script_variables",
-    "renzora_gauges/editor",
-    "renzora_gauges/lua",
-    "renzora_gauges/rhai",
+    # "renzora_gauges/editor",
+    # "renzora_gauges/lua",
+    # "renzora_gauges/rhai",
 ]
 
 [dependencies]
@@ -117,7 +117,7 @@ renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_audio = { path = "crates/core/renzora_audio" }
 renzora_core = { path = "crates/core/renzora_core" }
 renzora_hanabi = { path = "crates/core/renzora_hanabi" }
-renzora_gauges = { path = "crates/core/renzora_gauges" }
+# renzora_gauges = { path = "crates/core/renzora_gauges" }
 
 # Editor plugins (optional, enabled by `editor` feature)
 renzora_editor = { path = "crates/editor/renzora_editor", optional = true }
