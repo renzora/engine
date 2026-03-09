@@ -14,9 +14,15 @@ struct GridEntry {
     is_dir: bool,
 }
 
+/// Result from the grid interaction.
+pub struct GridResult {
+    pub drag_payload: Option<AssetDragPayload>,
+    /// File path if a non-directory file was double-clicked.
+    pub double_clicked_file: Option<PathBuf>,
+}
+
 /// Renders the file grid with click handling.
-/// Returns `Some(AssetDragPayload)` if a file tile drag was initiated this frame.
-pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) -> Option<AssetDragPayload> {
+pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) -> GridResult {
     let folder = match state.current_folder.clone() {
         Some(f) => f,
         None => {
@@ -27,7 +33,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "Select a folder from the tree to browse files.",
                 theme,
             );
-            return None;
+            return GridResult { drag_payload: None, double_clicked_file: None };
         }
     };
 
@@ -57,7 +63,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "The selected folder could not be read.",
                 theme,
             );
-            return None;
+            return GridResult { drag_payload: None, double_clicked_file: None };
         }
     };
 
@@ -80,7 +86,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
             ("Empty folder", "This folder has no files or subfolders.")
         };
         renzora_editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
-        return None;
+        return GridResult { drag_payload: None, double_clicked_file: None };
     }
 
     let text_primary = theme.text.primary.to_color32();
@@ -166,34 +172,35 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         });
 
     // Process interactions after rendering
+    let mut double_clicked_file = None;
     if let Some(idx) = double_clicked_index {
         let entry = &entries[idx];
         if entry.is_dir {
             let path = entry.path.clone();
             state.navigate_to(path.clone());
-            // Also expand in tree
             state.expanded_folders.insert(path);
+        } else {
+            double_clicked_file = Some(entry.path.clone());
         }
-        // Single select on double-click too
         state.selected_path = Some(entries[idx].path.clone());
     } else if let Some(idx) = clicked_index {
         state.selected_path = Some(entries[idx].path.clone());
     }
 
     // Build drag payload if a file drag started
-    if let Some(idx) = drag_started_index {
+    let drag_payload = drag_started_index.map(|idx| {
         let entry = &entries[idx];
         let (icon, color) = file_icon(&entry.path);
         let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-        return Some(AssetDragPayload {
+        AssetDragPayload {
             path: entry.path.clone(),
             name: entry.name.clone(),
             icon: icon.to_string(),
             color,
             origin,
             is_detached: false,
-        });
-    }
+        }
+    });
 
-    None
+    GridResult { drag_payload, double_clicked_file }
 }

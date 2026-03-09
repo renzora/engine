@@ -13,6 +13,7 @@ pub mod panel;
 pub mod status_bar;
 pub mod theme;
 pub mod title_bar;
+pub mod toast;
 pub mod widgets;
 
 // Re-export key types at crate root
@@ -23,6 +24,7 @@ pub use drag_drop::{DragState, DropTarget};
 pub use layouts::{LayoutManager, WorkspaceLayout};
 pub use panel::{EditorPanel, PanelLocation, PanelRegistry};
 pub use title_bar::TitleBarAction;
+pub use toast::Toasts;
 
 // Re-export all widgets at crate root
 pub use widgets::*;

@@ -12,6 +12,7 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 2. [Prerequisites](#prerequisites)
 3. [Building & Running](#building--running)
 4. [Creating Extensions](#creating-extensions)
+5. [Creating Scripting Extensions](#creating-scripting-extensions)
 6. [Creating Components](#creating-components)
 7. [Creating Post-Process Effects](#creating-post-process-effects)
 8. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
@@ -212,6 +213,237 @@ pub trait EditorPanel: Send + Sync + 'static {
     fn default_location(&self) -> PanelLocation { ... } // Left|Right|Bottom|Center
 }
 ```
+
+## Creating Scripting Extensions
+
+Scripting extensions let any crate register custom script functions, inject per-entity data, and process custom commands — without modifying the scripting crate. See `crates/core/renzora_gauges/` for a complete example.
+
+### 1. Create the Crate
+
+```toml
+# crates/core/my_system/Cargo.toml
+[package]
+name = "my_system"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+lua = ["dep:mlua"]
+rhai = ["dep:rhai"]
+
+[dependencies]
+bevy = { version = "0.18" }
+renzora_scripting = { path = "../renzora_scripting" }
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
+rhai = { version = "1.21", features = ["sync"], optional = true }
+```
+
+Enable the lua/rhai features in the root `Cargo.toml`:
+
+```toml
+[features]
+editor = [
+    "my_system/lua",
+    "my_system/rhai",
+]
+```
+
+### 2. Define Extension Data and Commands
+
+Extension data is typed data injected into the script context before execution. Commands are actions scripts can trigger.
+
+```rust
+use renzora_scripting::extension::{ExtensionData, ScriptExtension, ScriptExtensionCommand};
+use renzora_scripting::ScriptCommand;
+use std::collections::HashMap;
+
+/// Data injected into scripts each frame.
+#[derive(Clone, Default)]
+pub struct MyData {
+    pub values: HashMap<String, f32>,
+}
+
+/// Commands scripts can issue.
+#[derive(Debug)]
+pub enum MyCommand {
+    SetValue { key: String, value: f32 },
+    DoAction { target: u64 },
+}
+
+impl ScriptExtensionCommand for MyCommand {
+    fn as_any(&self) -> &dyn std::any::Any { self }
+}
+```
+
+### 3. Implement ScriptExtension
+
+```rust
+pub struct MyScriptExtension;
+
+impl ScriptExtension for MyScriptExtension {
+    fn name(&self) -> &str { "MySystem" }
+
+    fn populate_context(
+        &self,
+        world: &bevy::prelude::World,
+        entity: bevy::prelude::Entity,
+        data: &mut ExtensionData,
+    ) {
+        // Read from world, build typed data for this entity
+        let mut my_data = MyData::default();
+        // ... populate from components/resources ...
+        data.insert(my_data);
+    }
+
+    #[cfg(feature = "lua")]
+    fn register_lua_functions(&self, lua: &mlua::Lua) {
+        let globals = lua.globals();
+
+        // my_get("key") -> number
+        let _ = globals.set("my_get", lua.create_function(|lua, key: String| {
+            let data: mlua::Table = lua.globals().get("_my_data")?;
+            let val: f64 = data.get(key).unwrap_or(0.0);
+            Ok(val)
+        }).unwrap());
+
+        // my_set("key", value)
+        let _ = globals.set("my_set", lua.create_function(|_, (key, value): (String, f64)| {
+            renzora_scripting::backends::push_command(
+                ScriptCommand::Extension(Box::new(
+                    MyCommand::SetValue { key, value: value as f32 }
+                ))
+            );
+            Ok(())
+        }).unwrap());
+    }
+
+    #[cfg(feature = "lua")]
+    fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {
+        let Some(my_data) = data.get::<MyData>() else { return };
+        if let Ok(table) = lua.create_table() {
+            for (k, v) in &my_data.values {
+                let _ = table.set(k.clone(), *v as f64);
+            }
+            let _ = lua.globals().set("_my_data", table);
+        }
+    }
+
+    #[cfg(feature = "rhai")]
+    fn register_rhai_functions(&self, engine: &mut rhai::Engine) {
+        use rhai::{ImmutableString, Map};
+
+        engine.register_fn("my_get", |data: Map, key: ImmutableString| -> f64 {
+            data.get(key.as_str())
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0)
+        });
+
+        engine.register_fn("my_set", |key: ImmutableString, value: f64| {
+            renzora_scripting::backends::push_command(
+                ScriptCommand::Extension(Box::new(
+                    MyCommand::SetValue { key: key.to_string(), value: value as f32 }
+                ))
+            );
+        });
+    }
+
+    #[cfg(feature = "rhai")]
+    fn setup_rhai_scope(&self, scope: &mut rhai::Scope, data: &ExtensionData) {
+        use rhai::{Dynamic, Map};
+        let Some(my_data) = data.get::<MyData>() else { return };
+        let mut map = Map::new();
+        for (k, v) in &my_data.values {
+            map.insert(k.clone().into(), Dynamic::from(*v as f64));
+        }
+        scope.push("_my_data", map);
+    }
+}
+```
+
+### 4. Process Commands
+
+```rust
+use bevy::prelude::*;
+use renzora_scripting::systems::execution::ScriptCommandQueue;
+use renzora_scripting::ScriptCommand;
+
+fn process_my_commands(cmd_queue: Res<ScriptCommandQueue>) {
+    for (_source_entity, cmd) in &cmd_queue.commands {
+        let ScriptCommand::Extension(ext_cmd) = cmd else { continue };
+        let Some(my_cmd) = ext_cmd.as_any().downcast_ref::<MyCommand>() else { continue };
+
+        match my_cmd {
+            MyCommand::SetValue { key, value } => {
+                // Handle the command
+            }
+            MyCommand::DoAction { target } => {
+                // Handle the command
+            }
+        }
+    }
+}
+```
+
+### 5. Register the Plugin
+
+```rust
+use renzora_scripting::{ScriptExtensions, ScriptingSet};
+
+pub struct MySystemPlugin;
+
+impl Plugin for MySystemPlugin {
+    fn build(&self, app: &mut App) {
+        // Register the script extension
+        app.world_mut()
+            .resource_mut::<ScriptExtensions>()
+            .register(MyScriptExtension);
+
+        // Process commands after scripts run
+        app.add_systems(
+            Update,
+            process_my_commands.in_set(ScriptingSet::CommandProcessing),
+        );
+    }
+}
+```
+
+Register in `src/runtime.rs`:
+
+```rust
+app.add_plugins(my_system::MySystemPlugin);
+```
+
+### ScriptExtension Trait Reference
+
+```rust
+pub trait ScriptExtension: Send + Sync + 'static {
+    fn name(&self) -> &str;
+
+    /// Inject per-entity data before script execution (read-only world access).
+    fn populate_context(&self, world: &World, entity: Entity, data: &mut ExtensionData);
+
+    /// Register Lua functions (called once per Lua state creation).
+    fn register_lua_functions(&self, lua: &mlua::Lua) {}
+
+    /// Set up Lua globals from extension data (called per frame per entity).
+    fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {}
+
+    /// Register Rhai functions (called once per engine creation).
+    fn register_rhai_functions(&self, engine: &mut rhai::Engine) {}
+
+    /// Set up Rhai scope from extension data (called per frame per entity).
+    fn setup_rhai_scope(&self, scope: &mut rhai::Scope, data: &ExtensionData) {}
+}
+```
+
+### How It Works
+
+1. **Plugin build** — your plugin registers a `ScriptExtension` on the `ScriptExtensions` resource
+2. **Each frame** — the execution system calls `populate_context()` for each script entity, passing `&World` and `&mut ExtensionData`
+3. **Script execution** — backends call `register_*_functions()` (once) and `setup_*_context()` (per entity) so your functions and data are available in scripts
+4. **Command processing** — scripts call your functions which push `ScriptCommand::Extension(Box::new(MyCommand { ... }))` to the shared command buffer
+5. **After execution** — your system in `ScriptingSet::CommandProcessing` reads commands from `ScriptCommandQueue`, downcasts to your command type, and processes them
 
 ## Creating Components
 

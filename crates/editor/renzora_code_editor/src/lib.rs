@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora_core::CurrentProject;
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::render::render_code_editor_content;
@@ -86,6 +86,33 @@ impl EditorPanel for CodeEditorPanel {
         // Render
         if let Ok(mut local) = self.local.write() {
             render_code_editor_content(ui, &mut local, &theme, scripts_dir);
+        }
+
+        // Accept script file drops
+        if let Some(payload) = world.get_resource::<AssetDragPayload>() {
+            if payload.is_detached {
+                let ext = payload.extension();
+                let is_script = matches!(ext.as_str(),
+                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
+                );
+                if is_script {
+                    let panel_rect = ui.min_rect();
+                    let hovering = ui.ctx().pointer_hover_pos()
+                        .map_or(false, |p| panel_rect.contains(p));
+                    if hovering && !ui.ctx().input(|i| i.pointer.any_down()) {
+                        let path = payload.path.clone();
+                        if let Ok(mut local) = self.local.write() {
+                            local.open_file(path);
+                        }
+                        // Remove the drag payload so the editor system doesn't cancel it
+                        if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                            cmds.push(|world: &mut bevy::prelude::World| {
+                                world.remove_resource::<AssetDragPayload>();
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         // Push back

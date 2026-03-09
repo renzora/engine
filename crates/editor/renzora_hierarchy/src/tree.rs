@@ -554,6 +554,24 @@ fn context_menu(
             });
             ui.close();
         }
+
+        // Snap to Viewport — copy editor camera transform to this scene camera
+        if ui.button(format!("{} Snap to Viewport", regular::FRAME_CORNERS)).clicked() {
+            let entity = node.entity;
+            commands.push(move |world: &mut World| {
+                // Read the editor camera's transform
+                let editor_transform = {
+                    let mut q = world.query_filtered::<&Transform, With<renzora_core::EditorCamera>>();
+                    q.iter(world).next().copied()
+                };
+                if let Some(t) = editor_transform {
+                    if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+                        *transform = t;
+                    }
+                }
+            });
+            ui.close();
+        }
     }
 
     ui.separator();

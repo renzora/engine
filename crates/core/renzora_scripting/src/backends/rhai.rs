@@ -18,22 +18,13 @@ struct CachedScript {
     props: Vec<ScriptVariableDefinition>,
 }
 
-thread_local! {
-    static COMMAND_BUFFER: std::cell::RefCell<Vec<ScriptCommand>> = std::cell::RefCell::new(Vec::new());
-}
-
-fn push_command(cmd: ScriptCommand) {
-    COMMAND_BUFFER.with(|buf| buf.borrow_mut().push(cmd));
-}
-
-fn drain_commands() -> Vec<ScriptCommand> {
-    COMMAND_BUFFER.with(|buf| buf.borrow_mut().drain(..).collect())
-}
+use super::{push_command, drain_commands};
 
 pub struct RhaiBackend {
-    engine: Engine,
+    engine: RwLock<Engine>,
     cache: Arc<RwLock<HashMap<PathBuf, CachedScript>>>,
     scripts_folder: Option<PathBuf>,
+    extensions_registered: std::sync::atomic::AtomicBool,
 }
 
 impl RhaiBackend {
@@ -41,9 +32,10 @@ impl RhaiBackend {
         let mut engine = Engine::new();
         register_api(&mut engine);
         Self {
-            engine,
+            engine: RwLock::new(engine),
             cache: Arc::new(RwLock::new(HashMap::new())),
             scripts_folder: None,
+            extensions_registered: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -63,10 +55,10 @@ impl RhaiBackend {
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read: {}", e))?;
 
-        let ast = self.engine.compile(&source)
+        let ast = self.engine.read().unwrap().compile(&source)
             .map_err(|e| format!("Compile error: {}", e))?;
 
-        let props = parse_script_props(&self.engine, &ast);
+        let props = parse_script_props(&self.engine.read().unwrap(), &ast);
 
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
         let last_modified = std::fs::metadata(path)
@@ -93,11 +85,25 @@ impl RhaiBackend {
             cache.get(path).ok_or("Not cached")?.ast.clone()
         };
 
+        // Register extension functions once (lazily on first execution)
+        if !self.extensions_registered.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Some(extensions) = ctx.extensions() {
+                extensions.register_rhai_functions(&mut self.engine.write().unwrap());
+                self.extensions_registered.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+
         let mut scope = Scope::new();
         setup_scope(&mut scope, ctx, vars);
+
+        // Set up extension scope (per-frame data)
+        if let Some(extensions) = ctx.extensions() {
+            extensions.setup_rhai_scope(&mut scope, &ctx.extension_data);
+        }
+
         drain_commands();
 
-        match self.engine.call_fn::<Dynamic>(&mut scope, &ast, hook, ()) {
+        match self.engine.read().unwrap().call_fn::<Dynamic>(&mut scope, &ast, hook, ()) {
             Ok(_) => {}
             Err(e) => {
                 let err = e.to_string();
@@ -167,7 +173,7 @@ impl ScriptBackend for RhaiBackend {
     fn eval_expression(&self, expr: &str) -> Result<String, String> {
         let mut scope = Scope::new();
         drain_commands();
-        match self.engine.eval_with_scope::<Dynamic>(&mut scope, expr) {
+        match self.engine.read().unwrap().eval_with_scope::<Dynamic>(&mut scope, expr) {
             Ok(result) => {
                 let _ = drain_commands();
                 let s = format!("{}", result);
@@ -388,6 +394,24 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     scope.push("gamepad_left_y", ctx.gamepad_left_stick.y as f64);
     scope.push("gamepad_right_x", ctx.gamepad_right_stick.x as f64);
     scope.push("gamepad_right_y", ctx.gamepad_right_stick.y as f64);
+    scope.push("gamepad_left_trigger", ctx.gamepad_left_trigger as f64);
+    scope.push("gamepad_right_trigger", ctx.gamepad_right_trigger as f64);
+    scope.push("gamepad_south", ctx.gamepad_buttons[0]);
+    scope.push("gamepad_east", ctx.gamepad_buttons[1]);
+    scope.push("gamepad_west", ctx.gamepad_buttons[2]);
+    scope.push("gamepad_north", ctx.gamepad_buttons[3]);
+    scope.push("gamepad_l1", ctx.gamepad_buttons[4]);
+    scope.push("gamepad_r1", ctx.gamepad_buttons[5]);
+    scope.push("gamepad_l2", ctx.gamepad_buttons[6]);
+    scope.push("gamepad_r2", ctx.gamepad_buttons[7]);
+    scope.push("gamepad_select", ctx.gamepad_buttons[8]);
+    scope.push("gamepad_start", ctx.gamepad_buttons[9]);
+    scope.push("gamepad_l3", ctx.gamepad_buttons[10]);
+    scope.push("gamepad_r3", ctx.gamepad_buttons[11]);
+    scope.push("gamepad_dpad_up", ctx.gamepad_buttons[12]);
+    scope.push("gamepad_dpad_down", ctx.gamepad_buttons[13]);
+    scope.push("gamepad_dpad_left", ctx.gamepad_buttons[14]);
+    scope.push("gamepad_dpad_right", ctx.gamepad_buttons[15]);
 
     // Mouse
     scope.push("mouse_left", ctx.mouse_buttons_pressed[0]);
@@ -592,6 +616,7 @@ fn property_value_to_dynamic(value: PropertyValue) -> Dynamic {
         }
     }
 }
+
 
 fn to_display_name(name: &str) -> String {
     name.split('_')

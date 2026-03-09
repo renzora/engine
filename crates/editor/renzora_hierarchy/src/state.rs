@@ -73,6 +73,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             if world.get::<HideInHierarchy>(entity).is_some() {
                 continue;
             }
+            if world.get::<bevy::input::gamepad::Gamepad>(entity).is_some() {
+                continue;
+            }
             if let Some(child_of) = world.get::<ChildOf>(entity) {
                 if world.get::<HideInHierarchy>(child_of.parent()).is_some() {
                     continue;

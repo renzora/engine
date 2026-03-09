@@ -18,17 +18,7 @@ struct CachedScript {
     props: Vec<ScriptVariableDefinition>,
 }
 
-thread_local! {
-    static COMMAND_BUFFER: std::cell::RefCell<Vec<ScriptCommand>> = std::cell::RefCell::new(Vec::new());
-}
-
-fn push_command(cmd: ScriptCommand) {
-    COMMAND_BUFFER.with(|buf| buf.borrow_mut().push(cmd));
-}
-
-fn drain_commands() -> Vec<ScriptCommand> {
-    COMMAND_BUFFER.with(|buf| buf.borrow_mut().drain(..).collect())
-}
+use super::{push_command, drain_commands};
 
 pub struct LuaBackend {
     scripts_folder: Option<PathBuf>,
@@ -161,8 +151,18 @@ impl LuaBackend {
 
         let lua = self.create_lua();
 
+        // Register extension functions (once per state creation)
+        if let Some(extensions) = ctx.extensions() {
+            extensions.register_lua_functions(&lua);
+        }
+
         // Set up globals
         set_context_globals(&lua, ctx, vars);
+
+        // Set up extension context (per-frame data)
+        if let Some(extensions) = ctx.extensions() {
+            extensions.setup_lua_context(&lua, &ctx.extension_data);
+        }
 
         // Drain stale commands
         drain_commands();
@@ -590,6 +590,27 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     let _ = g.set("gamepad_left_y", ctx.gamepad_left_stick.y as f64);
     let _ = g.set("gamepad_right_x", ctx.gamepad_right_stick.x as f64);
     let _ = g.set("gamepad_right_y", ctx.gamepad_right_stick.y as f64);
+    let _ = g.set("gamepad_left_trigger", ctx.gamepad_left_trigger as f64);
+    let _ = g.set("gamepad_right_trigger", ctx.gamepad_right_trigger as f64);
+    // Buttons: South(X/A), East(O/B), West(□/X), North(△/Y),
+    //          L1, R1, L2, R2, Select, Start, L3, R3,
+    //          DPadUp, DPadDown, DPadLeft, DPadRight
+    let _ = g.set("gamepad_south", ctx.gamepad_buttons[0]);
+    let _ = g.set("gamepad_east", ctx.gamepad_buttons[1]);
+    let _ = g.set("gamepad_west", ctx.gamepad_buttons[2]);
+    let _ = g.set("gamepad_north", ctx.gamepad_buttons[3]);
+    let _ = g.set("gamepad_l1", ctx.gamepad_buttons[4]);
+    let _ = g.set("gamepad_r1", ctx.gamepad_buttons[5]);
+    let _ = g.set("gamepad_l2", ctx.gamepad_buttons[6]);
+    let _ = g.set("gamepad_r2", ctx.gamepad_buttons[7]);
+    let _ = g.set("gamepad_select", ctx.gamepad_buttons[8]);
+    let _ = g.set("gamepad_start", ctx.gamepad_buttons[9]);
+    let _ = g.set("gamepad_l3", ctx.gamepad_buttons[10]);
+    let _ = g.set("gamepad_r3", ctx.gamepad_buttons[11]);
+    let _ = g.set("gamepad_dpad_up", ctx.gamepad_buttons[12]);
+    let _ = g.set("gamepad_dpad_down", ctx.gamepad_buttons[13]);
+    let _ = g.set("gamepad_dpad_left", ctx.gamepad_buttons[14]);
+    let _ = g.set("gamepad_dpad_right", ctx.gamepad_buttons[15]);
 
     // Entity
     let _ = g.set("self_entity_id", ctx.self_entity_id as i64);
@@ -775,6 +796,8 @@ fn property_value_to_lua_result(lua: &Lua, value: crate::command::PropertyValue)
         }
     }
 }
+
+/// Extract a string argument from a LuaMultiValue by index.
 
 fn to_display_name(name: &str) -> String {
     name.split('_')

@@ -152,11 +152,30 @@ impl EditorPanel for AssetBrowserPanel {
             egui::UiBuilder::new()
                 .max_rect(grid_rect),
         );
-        if let Some(payload) = grid::grid_ui_interactive(&mut grid_child, &mut state, &theme) {
+        let grid_result = grid::grid_ui_interactive(&mut grid_child, &mut state, &theme);
+        if let Some(payload) = grid_result.drag_payload {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     world.insert_resource(payload);
                 });
+            }
+        }
+        // Double-click on a file opens it in the code editor
+        if let Some(path) = grid_result.double_clicked_file {
+            let is_editable = path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| matches!(e.to_lowercase().as_str(),
+                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
+                ))
+                .unwrap_or(false);
+            if is_editable {
+                if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                    cmds.push(move |world: &mut bevy::prelude::World| {
+                        if let Some(mut editor) = world.get_resource_mut::<renzora_code_editor::CodeEditorState>() {
+                            editor.open_file(path);
+                        }
+                    });
+                }
             }
         }
     }

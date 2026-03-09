@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 
+use crate::extension::ScriptExtensionCommand;
+
 /// Commands that scripts can issue, processed after execution.
 /// Language-agnostic — all backends produce these same commands.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ScriptCommand {
     // === Self-Transform ===
     SetPosition { x: f32, y: f32, z: f32 },
@@ -150,6 +152,11 @@ pub enum ScriptCommand {
         field_path: String,
         value: PropertyValue,
     },
+
+    // === Extension ===
+    /// Custom command from a script extension. Downcasted by the extension's
+    /// command processor via `as_any()`.
+    Extension(Box<dyn ScriptExtensionCommand>),
 }
 
 /// Value types for property writes

@@ -151,6 +151,21 @@ pub fn run_scripts(world: &mut World) {
     let gamepad_left = input.get_gamepad_left_stick(0);
     let gamepad_right = input.get_gamepad_right_stick(0);
 
+    use bevy::input::gamepad::GamepadButton;
+    let gamepad_button_list = [
+        GamepadButton::South, GamepadButton::East, GamepadButton::West, GamepadButton::North,
+        GamepadButton::LeftTrigger, GamepadButton::RightTrigger,
+        GamepadButton::LeftTrigger2, GamepadButton::RightTrigger2,
+        GamepadButton::Select, GamepadButton::Start,
+        GamepadButton::LeftThumb, GamepadButton::RightThumb,
+        GamepadButton::DPadUp, GamepadButton::DPadDown,
+        GamepadButton::DPadLeft, GamepadButton::DPadRight,
+    ];
+    let mut gamepad_buttons = [false; 16];
+    for (i, btn) in gamepad_button_list.iter().enumerate() {
+        gamepad_buttons[i] = input.is_gamepad_button_pressed(0, *btn);
+    }
+
     // Collect all script entities and their data
     struct ScriptEntityData {
         entity: Entity,
@@ -225,6 +240,7 @@ pub fn run_scripts(world: &mut World) {
             ctx.gamepad_right_stick = gamepad_right;
             ctx.gamepad_left_trigger = input.get_gamepad_trigger(0, true);
             ctx.gamepad_right_trigger = input.get_gamepad_trigger(0, false);
+            ctx.gamepad_buttons = gamepad_buttons;
 
             // Timers
             ctx.timers_just_finished = timers_finished.clone();
@@ -249,6 +265,12 @@ pub fn run_scripts(world: &mut World) {
                     rotation: Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees()),
                     scale: child_t.scale,
                 });
+            }
+
+            // Script extensions: populate custom data and set pointer for backends
+            if let Some(extensions) = world.get_resource::<crate::extension::ScriptExtensions>() {
+                extensions.populate_context(world, sed.entity, &mut ctx.extension_data);
+                ctx.extensions_ptr = Some(extensions as *const crate::extension::ScriptExtensions);
             }
 
             // Set up the get handler so scripts can read component fields

@@ -80,11 +80,27 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
             .init_resource::<EditorSettings>()
+            .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
                 editor_ui_system.run_if(in_state(SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                show_script_reload_toasts.run_if(in_state(SplashState::Editor)),
             );
+    }
+}
+
+/// Picks up script hot-reload events and shows toast notifications.
+fn show_script_reload_toasts(
+    reload_events: Option<Res<renzora_scripting::ScriptReloadEvents>>,
+    mut toasts: ResMut<renzora_ui::Toasts>,
+) {
+    let Some(events) = reload_events else { return };
+    for name in &events.reloaded {
+        toasts.success(format!("Reloaded {}", name));
     }
 }
 
@@ -149,6 +165,14 @@ fn editor_ui_system(world: &mut World) {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
                 pm.request_stop = true;
+            }
+        }
+
+        // Toasts
+        {
+            let current_time = world.resource::<bevy::prelude::Time>().elapsed_secs_f64();
+            if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
+                toasts.show(&ctx, current_time);
             }
         }
 
@@ -430,6 +454,14 @@ fn editor_ui_system(world: &mut World) {
             switch_layout_by_name(world, &layout_name);
         }
         DocTabAction::None => {}
+    }
+
+    // Toast notifications
+    {
+        let current_time = world.resource::<bevy::prelude::Time>().elapsed_secs_f64();
+        if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
+            toasts.show(&ctx, current_time);
+        }
     }
 
     // K) Drain and execute deferred editor commands (from inspector, etc.)

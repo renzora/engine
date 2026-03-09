@@ -8,6 +8,12 @@ use crate::resources::ScriptTimers;
 use crate::resources::update_script_timers;
 use crate::systems::execution::{ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptReflectionQueue};
 
+/// Events emitted when scripts are hot-reloaded.
+#[derive(Resource, Default)]
+pub struct ScriptReloadEvents {
+    pub reloaded: Vec<String>,
+}
+
 /// System sets for ordering scripting systems
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScriptingSet {
@@ -69,6 +75,8 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
+            .init_resource::<ScriptReloadEvents>()
+            .init_resource::<crate::extension::ScriptExtensions>()
             .register_type::<ScriptComponent>()
             // Configure system set ordering
             .configure_sets(
@@ -114,6 +122,11 @@ impl Plugin for ScriptingPlugin {
             .add_systems(
                 Update,
                 sync_scripts_folder.in_set(ScriptingSet::PreScript),
+            )
+            // Hot-reload: check for modified script files
+            .add_systems(
+                Update,
+                check_script_hot_reload.in_set(ScriptingSet::PreScript),
             );
     }
 }
@@ -128,6 +141,51 @@ fn scripts_should_run(
     match play_mode {
         Some(pm) => pm.is_scripts_running(),
         None => true, // standalone runtime — always run
+    }
+}
+
+/// Check all active scripts for file changes and reload if modified.
+fn check_script_hot_reload(
+    engine: Res<ScriptEngine>,
+    mut scripts: Query<&mut ScriptComponent>,
+    mut reload_events: ResMut<ScriptReloadEvents>,
+    mut timer: Local<f32>,
+    time: Res<Time>,
+) {
+    // Only check every 0.5 seconds to avoid hammering the filesystem
+    *timer += time.delta_secs();
+    if *timer < 0.5 {
+        return;
+    }
+    *timer = 0.0;
+
+    reload_events.reloaded.clear();
+
+    for mut sc in scripts.iter_mut() {
+        for entry in sc.scripts.iter_mut() {
+            let Some(ref path) = entry.script_path else { continue };
+            if !entry.enabled { continue; }
+
+            if engine.needs_reload(path) {
+                let display_name = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                match engine.reload(path) {
+                    Ok(_) => {
+                        // Re-run on_ready by resetting initialized flag
+                        entry.runtime_state.initialized = false;
+                        entry.runtime_state.has_error = false;
+                        reload_events.reloaded.push(display_name);
+                        info!("[Scripting] Hot-reloaded: {}", path.display());
+                    }
+                    Err(e) => {
+                        warn!("[Scripting] Hot-reload failed for {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
     }
 }
 

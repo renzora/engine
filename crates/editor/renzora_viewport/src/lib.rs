@@ -254,6 +254,9 @@ impl EditorPanel for ViewportPanel {
             );
         }
 
+        // Overlay: on-screen console logs during play mode
+        render_viewport_logs(ui, world, rect);
+
         // Overlay: resolution indicator
         let theme = world
             .get_resource::<ThemeManager>()
@@ -376,5 +379,83 @@ impl EditorPanel for CameraPreviewPanel {
 
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Bottom
+    }
+}
+
+// ── On-screen console log overlay (play mode) ──────────────────────────────
+
+const LOG_MAX_VISIBLE: usize = 12;
+const LOG_DISPLAY_DURATION: f64 = 5.0;
+const LOG_FADE_DURATION: f64 = 1.0;
+
+fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
+    use renzora_console::state::ConsoleState;
+
+    // Only show during play mode
+    let Some(play_mode) = world.get_resource::<renzora_runtime::PlayModeState>() else { return };
+    if !play_mode.is_in_play_mode() && !play_mode.is_scripts_only() { return; }
+
+    let Some(console) = world.get_resource::<ConsoleState>() else { return };
+    let current_time = world.resource::<Time>().elapsed_secs_f64();
+
+    // Collect recent entries (within display duration)
+    let recent: Vec<_> = console.entries.iter().rev()
+        .filter(|e| {
+            let age = current_time - e.timestamp;
+            age < LOG_DISPLAY_DURATION && e.timestamp > 0.0
+        })
+        .take(LOG_MAX_VISIBLE)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    if recent.is_empty() { return; }
+
+    let painter = ui.painter();
+    let mut y = viewport_rect.min.y + 10.0;
+    let x = viewport_rect.min.x + 12.0;
+    let font = egui::FontId::monospace(12.0);
+
+    for entry in &recent {
+        let age = current_time - entry.timestamp;
+        let fade_start = LOG_DISPLAY_DURATION - LOG_FADE_DURATION;
+        let alpha = if age > fade_start {
+            ((LOG_DISPLAY_DURATION - age) / LOG_FADE_DURATION) as f32
+        } else {
+            1.0
+        }.clamp(0.0, 1.0);
+
+        if alpha <= 0.0 { continue; }
+
+        let [r, g, b] = entry.level.color();
+        let color = egui::Color32::from_rgba_unmultiplied(r, g, b, (alpha * 255.0) as u8);
+        let shadow_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, (alpha * 180.0) as u8);
+
+        let prefix = if entry.category.is_empty() {
+            String::new()
+        } else {
+            format!("[{}] ", entry.category)
+        };
+        let text = format!("{}{}", prefix, entry.message);
+
+        // Drop shadow
+        painter.text(
+            egui::Pos2::new(x + 1.0, y + 1.0),
+            egui::Align2::LEFT_TOP,
+            &text,
+            font.clone(),
+            shadow_color,
+        );
+        // Foreground
+        painter.text(
+            egui::Pos2::new(x, y),
+            egui::Align2::LEFT_TOP,
+            &text,
+            font.clone(),
+            color,
+        );
+
+        y += 16.0;
     }
 }
