@@ -12,6 +12,7 @@ editor = []
 [dependencies]
 bevy = { version = "0.18" }
 serde = { version = "1", features = ["derive"] }
+renzora_core = { path = "../renzora_core" }
 
 [dependencies.avian3d]
 version = "0.5"

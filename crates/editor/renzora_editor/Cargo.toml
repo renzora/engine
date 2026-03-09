@@ -14,6 +14,7 @@ renzora_core = { path = "../../core/renzora_core" }
 renzora_postprocess = { path = "../../postprocessing/renzora_postprocess" }
 renzora_scripting = { path = "../../core/renzora_scripting" }
 renzora_macros = { path = "../../macros/renzora_macros" }
+renzora_physics = { path = "../../core/renzora_physics" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

@@ -1,3 +1,5 @@
+pub mod console_log;
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

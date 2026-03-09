@@ -1,136 +1,16 @@
-//! Console state, log types, shared buffer, and convenience logging functions/macros.
+//! Console state — editor-side resource that collects and displays log entries.
+//!
+//! Log types, shared buffer, and global logging functions live in
+//! `renzora_core::console_log` so every crate can use them.
 
 use bevy::prelude::*;
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 
-/// Maximum number of log entries to keep.
-pub const MAX_LOG_ENTRIES: usize = 1000;
-
-/// Log level for console messages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogLevel {
-    Info,
-    Success,
-    Warning,
-    Error,
-}
-
-impl LogLevel {
-    pub fn icon(&self) -> &'static str {
-        match self {
-            LogLevel::Info => "\u{f129}",
-            LogLevel::Success => "\u{f00c}",
-            LogLevel::Warning => "\u{f071}",
-            LogLevel::Error => "\u{f00d}",
-        }
-    }
-
-    pub fn color(&self) -> [u8; 3] {
-        match self {
-            LogLevel::Info => [140, 180, 220],
-            LogLevel::Success => [100, 200, 120],
-            LogLevel::Warning => [230, 180, 80],
-            LogLevel::Error => [220, 80, 80],
-        }
-    }
-}
-
-/// A single log entry.
-#[derive(Debug, Clone)]
-pub struct LogEntry {
-    pub level: LogLevel,
-    pub message: String,
-    pub timestamp: f64,
-    pub category: String,
-}
-
-/// Shared log buffer that can be written to from anywhere.
-#[derive(Clone, Default)]
-pub struct SharedLogBuffer(pub Arc<Mutex<VecDeque<LogEntry>>>);
-
-impl SharedLogBuffer {
-    pub fn push(&self, entry: LogEntry) {
-        if let Ok(mut buffer) = self.0.lock() {
-            buffer.push_back(entry);
-            while buffer.len() > MAX_LOG_ENTRIES {
-                buffer.pop_front();
-            }
-        }
-    }
-}
-
-/// Global log buffer for logging from anywhere.
-static GLOBAL_LOG_BUFFER: std::sync::OnceLock<SharedLogBuffer> = std::sync::OnceLock::new();
-
-/// Initialize the global log buffer (called once at startup).
-pub fn init_global_log_buffer() -> SharedLogBuffer {
-    let buffer = SharedLogBuffer::default();
-    let _ = GLOBAL_LOG_BUFFER.set(buffer.clone());
-    buffer
-}
-
-/// Get the global log buffer.
-pub fn get_global_log_buffer() -> Option<&'static SharedLogBuffer> {
-    GLOBAL_LOG_BUFFER.get()
-}
-
-/// Log a message to the global console (can be called from anywhere).
-pub fn console_log(level: LogLevel, category: &str, message: impl Into<String>) {
-    if let Some(buffer) = get_global_log_buffer() {
-        buffer.push(LogEntry {
-            level,
-            message: message.into(),
-            timestamp: 0.0,
-            category: category.to_string(),
-        });
-    }
-}
-
-/// Convenience macros for logging.
-#[macro_export]
-macro_rules! console_info {
-    ($cat:expr, $($arg:tt)*) => {
-        $crate::state::console_log(
-            $crate::state::LogLevel::Info,
-            $cat,
-            format!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! console_success {
-    ($cat:expr, $($arg:tt)*) => {
-        $crate::state::console_log(
-            $crate::state::LogLevel::Success,
-            $cat,
-            format!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! console_warn {
-    ($cat:expr, $($arg:tt)*) => {
-        $crate::state::console_log(
-            $crate::state::LogLevel::Warning,
-            $cat,
-            format!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! console_error {
-    ($cat:expr, $($arg:tt)*) => {
-        $crate::state::console_log(
-            $crate::state::LogLevel::Error,
-            $cat,
-            format!($($arg)*)
-        )
-    };
-}
+// Re-export core logging types so existing `renzora_console::state::*` imports keep working.
+pub use renzora_core::console_log::{
+    console_log, get_global_log_buffer, init_global_log_buffer, LogEntry, LogLevel,
+    SharedLogBuffer, MAX_LOG_ENTRIES,
+};
 
 /// Resource for the console state.
 #[derive(Resource)]

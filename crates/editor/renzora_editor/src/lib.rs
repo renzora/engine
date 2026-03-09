@@ -563,7 +563,10 @@ fn process_play_mode_requests(world: &mut World) {
     // Only handle ScriptsOnly transitions here.
     // Playing/Paused/Stop are handled by renzora_viewport::play_mode::handle_play_mode_transitions
     // which also does the camera switching.
-    let needs_reset = {
+    // Track what physics action to take after releasing the borrow
+    enum PhysicsAction { None, Unpause, Pause }
+
+    let (needs_reset, physics_action) = {
         let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() else {
             return;
         };
@@ -573,15 +576,15 @@ fn process_play_mode_requests(world: &mut World) {
             match pm.state {
                 PlayState::Editing => {
                     pm.state = PlayState::ScriptsOnly;
-                    info!("[PlayMode] Scripts Only");
-                    true
+                    info!("[PlayMode] Scripts Only — entering scripts mode");
+                    (true, PhysicsAction::Unpause)
                 }
                 PlayState::ScriptsPaused => {
                     pm.state = PlayState::ScriptsOnly;
                     info!("[PlayMode] Scripts Resumed");
-                    false
+                    (false, PhysicsAction::Unpause)
                 }
-                _ => false,
+                _ => (false, PhysicsAction::None),
             }
         } else if pm.is_scripts_only() || matches!(pm.state, PlayState::ScriptsPaused) {
             // Handle stop/pause for scripts-only mode
@@ -589,28 +592,36 @@ fn process_play_mode_requests(world: &mut World) {
                 pm.request_stop = false;
                 pm.state = PlayState::Editing;
                 info!("[PlayMode] Scripts Stopped");
-                false
+                (false, PhysicsAction::Pause)
             } else if pm.request_pause {
                 pm.request_pause = false;
                 match pm.state {
                     PlayState::ScriptsOnly => {
                         pm.state = PlayState::ScriptsPaused;
                         info!("[PlayMode] Scripts Paused");
+                        (false, PhysicsAction::Pause)
                     }
                     PlayState::ScriptsPaused => {
                         pm.state = PlayState::ScriptsOnly;
                         info!("[PlayMode] Scripts Resumed");
+                        (false, PhysicsAction::Unpause)
                     }
-                    _ => {}
+                    _ => (false, PhysicsAction::None),
                 }
-                false
             } else {
-                false
+                (false, PhysicsAction::None)
             }
         } else {
-            false
+            (false, PhysicsAction::None)
         }
     };
+
+    // Apply physics state change (borrow on PlayModeState is released)
+    match physics_action {
+        PhysicsAction::Unpause => renzora_physics::unpause(world),
+        PhysicsAction::Pause => renzora_physics::pause(world),
+        PhysicsAction::None => {}
+    }
 
     if needs_reset {
         reset_script_states(world);

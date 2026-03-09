@@ -13,6 +13,7 @@ use renzora_editor::{
     OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
+use renzora_physics::{CollisionShapeData, PhysicsBodyData};
 use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
@@ -161,14 +162,21 @@ impl EditorPanel for HierarchyPanel {
                                             perceptual_roughness: 0.9,
                                             ..default()
                                         });
-                                    let entity = world.spawn((
+                                    let mut entity_cmds = world.spawn((
                                         Name::new(name),
                                         Transform::default(),
                                         Mesh3d(mesh),
                                         MeshMaterial3d(material),
                                         MeshPrimitive(shape_id.to_string()),
                                         MeshColor(color),
-                                    )).id();
+                                    ));
+                                    if let Some(collider) = default_collider_for_shape(shape_id) {
+                                        entity_cmds.insert((
+                                            PhysicsBodyData::static_body(),
+                                            collider,
+                                        ));
+                                    }
+                                    let entity = entity_cmds.id();
                                     if let Some(sel) = world.get_resource::<EditorSelection>() {
                                         sel.set(Some(entity));
                                     }
@@ -421,6 +429,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                     Name::new("RigidBody3D"),
                     Transform::default(),
                     renzora_physics::PhysicsBodyData::default(),
+                    renzora_physics::CollisionShapeData::default(),
                 ))
                 .id()
         },
@@ -437,6 +446,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                     Name::new("StaticBody3D"),
                     Transform::default(),
                     renzora_physics::PhysicsBodyData::static_body(),
+                    renzora_physics::CollisionShapeData::default(),
                 ))
                 .id()
         },
@@ -453,6 +463,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                     Name::new("KinematicBody3D"),
                     Transform::default(),
                     renzora_physics::PhysicsBodyData::kinematic_body(),
+                    renzora_physics::CollisionShapeData::default(),
                 ))
                 .id()
         },
@@ -468,6 +479,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .spawn((
                     Name::new("BoxShape3D"),
                     Transform::default(),
+                    renzora_physics::PhysicsBodyData::static_body(),
                     renzora_physics::CollisionShapeData::default(),
                 ))
                 .id()
@@ -484,6 +496,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .spawn((
                     Name::new("SphereShape3D"),
                     Transform::default(),
+                    renzora_physics::PhysicsBodyData::static_body(),
                     renzora_physics::CollisionShapeData::sphere(0.5),
                 ))
                 .id()
@@ -500,6 +513,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .spawn((
                     Name::new("CapsuleShape3D"),
                     Transform::default(),
+                    renzora_physics::PhysicsBodyData::static_body(),
                     renzora_physics::CollisionShapeData::capsule(0.5, 0.5),
                 ))
                 .id()
@@ -516,6 +530,7 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .spawn((
                     Name::new("CylinderShape3D"),
                     Transform::default(),
+                    renzora_physics::PhysicsBodyData::static_body(),
                     renzora_physics::CollisionShapeData::cylinder(0.5, 0.5),
                 ))
                 .id()
@@ -555,4 +570,51 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .id()
         },
     });
+}
+
+/// Map a shape ID to a default collision shape. Returns `None` for complex shapes
+/// where an automatic collider wouldn't be a good fit.
+fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
+    Some(match id {
+        // Basic primitives
+        "cube"       => CollisionShapeData::cuboid(Vec3::splat(0.5)),
+        "sphere"     => CollisionShapeData::sphere(0.5),
+        "cylinder"   => CollisionShapeData::cylinder(0.5, 0.5),
+        "capsule"    => CollisionShapeData::capsule(0.5, 0.25),
+        "cone"       => CollisionShapeData::cylinder(0.5, 0.5),
+        "hemisphere" => CollisionShapeData::sphere(0.5),
+
+        // Flat surfaces
+        "plane"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.001, 0.5)),
+
+        // Level geometry — box approximations
+        "wedge"       => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "wall"        => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
+        "ramp"        => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 1.0)),
+        "doorway"     => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
+        "window_wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
+        "pillar"      => CollisionShapeData::cylinder(0.15, 1.0),
+        "l_shape"     => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "t_shape"     => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.5)),
+        "cross_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.75)),
+        "corner"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "stairs"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "half_cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
+        "quarter_pipe"  => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "curved_wall"   => CollisionShapeData::cylinder(0.5, 1.0),
+        "spiral_stairs" => CollisionShapeData::cylinder(0.5, 1.0),
+
+        // Curved shapes
+        "pipe"   => CollisionShapeData::cylinder(0.5, 0.5),
+        "ring"   => CollisionShapeData::cylinder(0.5, 0.1),
+        "funnel" => CollisionShapeData::cylinder(0.5, 0.5),
+        "gutter" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 0.5)),
+        "torus"  => CollisionShapeData::cylinder(0.5, 0.15),
+
+        // Advanced
+        "prism"   => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "pyramid" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+
+        _ => return None,
+    })
 }

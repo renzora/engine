@@ -89,6 +89,9 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
 
     world.entity_mut(cam_entity).insert(PlayModeCamera);
 
+    // Unpause physics simulation
+    renzora_physics::unpause(world);
+
     play_mode.active_game_camera = Some(cam_entity);
     play_mode.state = PlayState::Playing;
 
@@ -126,6 +129,9 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
                 .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
         }
     }
+
+    // Re-pause physics simulation
+    renzora_physics::pause(world);
 
     play_mode.active_game_camera = None;
     play_mode.state = PlayState::Editing;
