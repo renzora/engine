@@ -35,10 +35,12 @@ impl Default for BloomSettings {
 fn sync_bloom(
     mut commands: Commands,
     query: Query<(Entity, &BloomSettings), Changed<BloomSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(Bloom {
+            commands.entity(target).insert(Bloom {
                 intensity: settings.intensity,
                 low_frequency_boost: settings.low_frequency_boost,
                 low_frequency_boost_curvature: 0.95,
@@ -50,7 +52,7 @@ fn sync_bloom(
                 ..Bloom::NATURAL
             });
         } else {
-            commands.entity(entity).remove::<Bloom>();
+            commands.entity(target).remove::<Bloom>();
         }
     }
 }
@@ -111,9 +113,17 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
-fn cleanup_bloom(mut commands: Commands, mut removed: RemovedComponents<BloomSettings>) {
+fn cleanup_bloom(
+    mut commands: Commands,
+    mut removed: RemovedComponents<BloomSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<Bloom>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<Bloom>();
         }
     }

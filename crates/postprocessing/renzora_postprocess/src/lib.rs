@@ -325,12 +325,44 @@ pub struct PostProcessPlugin<T: PostProcessEffect> {
     _marker: PhantomData<T>,
 }
 
+/// Copies a post-process settings component from any entity to the render
+/// target camera, so effects can be placed on non-camera entities.
+fn proxy_effect_to_camera<T: PostProcessEffect>(
+    mut commands: Commands,
+    sources: Query<(Entity, &T), Without<Camera>>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
+    let Some(target) = render_target.0 else { return };
+    // Find the first source (if multiple, first wins)
+    if let Some((_entity, settings)) = sources.iter().next() {
+        commands.entity(target).insert(*settings);
+    }
+}
+
+/// Removes the proxied component from the camera when the source is removed.
+fn cleanup_proxy_effect<T: PostProcessEffect>(
+    mut commands: Commands,
+    sources: Query<(), (With<T>, Without<Camera>)>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
+    if sources.is_empty() {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<T>();
+            }
+        }
+    }
+}
+
 impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
     fn build(&self, app: &mut App) {
         // Ensure the unified node is set up (idempotent check)
         if !app.is_plugin_added::<PostProcessCorePlugin>() {
             app.add_plugins(PostProcessCorePlugin);
         }
+
+        // Proxy effects from any entity to the camera
+        app.add_systems(Update, (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>));
 
         // Extract + uniform plugins handle moving data to the render world
         app.add_plugins((

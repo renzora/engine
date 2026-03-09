@@ -23,19 +23,29 @@ impl Default for SsrSettings {
 fn sync_ssr(
     mut commands: Commands,
     query: Query<(Entity, &SsrSettings), Changed<SsrSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(ScreenSpaceReflections::default());
+            commands.entity(target).insert(ScreenSpaceReflections::default());
         } else {
-            commands.entity(entity).remove::<ScreenSpaceReflections>();
+            commands.entity(target).remove::<ScreenSpaceReflections>();
         }
     }
 }
 
-fn cleanup_ssr(mut commands: Commands, mut removed: RemovedComponents<SsrSettings>) {
+fn cleanup_ssr(
+    mut commands: Commands,
+    mut removed: RemovedComponents<SsrSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<ScreenSpaceReflections>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<ScreenSpaceReflections>();
         }
     }

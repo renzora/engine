@@ -29,15 +29,17 @@ impl Default for MotionBlurSettings {
 fn sync_motion_blur(
     mut commands: Commands,
     query: Query<(Entity, &MotionBlurSettings), Changed<MotionBlurSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(MotionBlur {
+            commands.entity(target).insert(MotionBlur {
                 shutter_angle: settings.shutter_angle,
                 samples: settings.samples as u32,
             });
         } else {
-            commands.entity(entity).remove::<MotionBlur>();
+            commands.entity(target).remove::<MotionBlur>();
         }
     }
 }
@@ -80,9 +82,17 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
-fn cleanup_motion_blur(mut commands: Commands, mut removed: RemovedComponents<MotionBlurSettings>) {
+fn cleanup_motion_blur(
+    mut commands: Commands,
+    mut removed: RemovedComponents<MotionBlurSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<MotionBlur>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<MotionBlur>();
         }
     }

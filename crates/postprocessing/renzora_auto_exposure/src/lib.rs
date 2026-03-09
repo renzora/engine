@@ -35,24 +35,34 @@ impl Default for AutoExposureSettings {
 fn sync_auto_exposure(
     mut commands: Commands,
     query: Query<(Entity, &AutoExposureSettings), Changed<AutoExposureSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(AutoExposure {
+            commands.entity(target).insert(AutoExposure {
                 range: settings.range_min..=settings.range_max,
                 speed_brighten: settings.speed_brighten,
                 speed_darken: settings.speed_darken,
                 ..default()
             });
         } else {
-            commands.entity(entity).remove::<AutoExposure>();
+            commands.entity(target).remove::<AutoExposure>();
         }
     }
 }
 
-fn cleanup_auto_exposure(mut commands: Commands, mut removed: RemovedComponents<AutoExposureSettings>) {
+fn cleanup_auto_exposure(
+    mut commands: Commands,
+    mut removed: RemovedComponents<AutoExposureSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<AutoExposure>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<AutoExposure>();
         }
     }

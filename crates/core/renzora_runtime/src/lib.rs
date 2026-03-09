@@ -8,7 +8,7 @@ pub mod camera;
 pub mod scene_io;
 pub mod vfs;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, RenderTarget, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
@@ -92,6 +92,8 @@ impl Plugin for RuntimePlugin {
 
         app.init_resource::<ViewportRenderTarget>();
         app.init_resource::<ShapeRegistry>();
+        app.init_resource::<renzora_core::RenderTarget>();
+        app.add_systems(Update, renzora_core::update_render_target);
 
         #[cfg(feature = "editor")]
         {

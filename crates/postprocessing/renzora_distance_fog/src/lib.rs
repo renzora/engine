@@ -64,10 +64,12 @@ impl Default for DistanceFogSettings {
 fn sync_distance_fog(
     mut commands: Commands,
     query: Query<(Entity, &DistanceFogSettings), Changed<DistanceFogSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if !settings.enabled {
-            commands.entity(entity).remove::<DistanceFog>();
+            commands.entity(target).remove::<DistanceFog>();
             continue;
         }
         let falloff = match settings.mode {
@@ -82,7 +84,7 @@ fn sync_distance_fog(
                 end: settings.end,
             },
         };
-        commands.entity(entity).insert(DistanceFog {
+        commands.entity(target).insert(DistanceFog {
             color: Color::srgb(settings.color_r, settings.color_g, settings.color_b),
             directional_light_color: Color::srgb(
                 settings.directional_light_color_r,
@@ -279,9 +281,17 @@ fn fog_custom_ui(
     }
 }
 
-fn cleanup_distance_fog(mut commands: Commands, mut removed: RemovedComponents<DistanceFogSettings>) {
+fn cleanup_distance_fog(
+    mut commands: Commands,
+    mut removed: RemovedComponents<DistanceFogSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<DistanceFog>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<DistanceFog>();
         }
     }

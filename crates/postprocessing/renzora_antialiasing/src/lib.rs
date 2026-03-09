@@ -48,16 +48,18 @@ fn idx_to_sensitivity(i: u32) -> Sensitivity {
 fn sync_fxaa(
     mut commands: Commands,
     query: Query<(Entity, &FxaaSettings), Changed<FxaaSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(Fxaa {
+            commands.entity(target).insert(Fxaa {
                 enabled: true,
                 edge_threshold: idx_to_sensitivity(settings.edge_threshold),
                 edge_threshold_min: idx_to_sensitivity(settings.edge_threshold_min),
             });
         } else {
-            commands.entity(entity).remove::<Fxaa>();
+            commands.entity(target).remove::<Fxaa>();
         }
     }
 }
@@ -81,8 +83,10 @@ impl Default for SmaaSettings {
 fn sync_smaa(
     mut commands: Commands,
     query: Query<(Entity, &SmaaSettings), Changed<SmaaSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
             let preset = match settings.preset {
                 0 => SmaaPreset::Low,
@@ -91,9 +95,9 @@ fn sync_smaa(
                 3 => SmaaPreset::Ultra,
                 _ => SmaaPreset::High,
             };
-            commands.entity(entity).insert(Smaa { preset });
+            commands.entity(target).insert(Smaa { preset });
         } else {
-            commands.entity(entity).remove::<Smaa>();
+            commands.entity(target).remove::<Smaa>();
         }
     }
 }
@@ -116,23 +120,33 @@ impl Default for TaaSettings {
 fn sync_taa(
     mut commands: Commands,
     query: Query<(Entity, &TaaSettings), Changed<TaaSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity)
+            commands.entity(target)
                 .insert(Msaa::Off)
                 .insert(TemporalAntiAliasing {
                     reset: settings.reset,
                 });
         } else {
-            commands.entity(entity).remove::<TemporalAntiAliasing>();
+            commands.entity(target).remove::<TemporalAntiAliasing>();
         }
     }
 }
 
-fn cleanup_taa(mut commands: Commands, mut removed: RemovedComponents<TaaSettings>) {
+fn cleanup_taa(
+    mut commands: Commands,
+    mut removed: RemovedComponents<TaaSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<TemporalAntiAliasing>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<TemporalAntiAliasing>();
         }
     }
@@ -161,16 +175,18 @@ impl Default for CasSettings {
 fn sync_cas(
     mut commands: Commands,
     query: Query<(Entity, &CasSettings), Changed<CasSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(ContrastAdaptiveSharpening {
+            commands.entity(target).insert(ContrastAdaptiveSharpening {
                 enabled: true,
                 sharpening_strength: settings.sharpening_strength,
                 denoise: settings.denoise,
             });
         } else {
-            commands.entity(entity).remove::<ContrastAdaptiveSharpening>();
+            commands.entity(target).remove::<ContrastAdaptiveSharpening>();
         }
     }
 }

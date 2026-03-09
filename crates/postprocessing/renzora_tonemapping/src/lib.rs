@@ -73,15 +73,17 @@ const MODE_LABELS: [&str; 8] = [
 fn sync_tonemapping(
     mut commands: Commands,
     query: Query<(Entity, &TonemappingSettings), Changed<TonemappingSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         let tm = if settings.enabled {
             mode_to_tonemapping(settings.mode)
         } else {
             Tonemapping::None
         };
         commands
-            .entity(entity)
+            .entity(target)
             .insert(tm)
             .insert(Exposure { ev100: settings.ev100 });
     }
@@ -196,9 +198,11 @@ impl Default for DebandDitherSettings {
 fn sync_deband_dither(
     mut commands: Commands,
     query: Query<(Entity, &DebandDitherSettings), Changed<DebandDitherSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
-        commands.entity(entity).insert(if settings.enabled {
+        let target = render_target.0.unwrap_or(entity);
+        commands.entity(target).insert(if settings.enabled {
             DebandDither::Enabled
         } else {
             DebandDither::Disabled
@@ -206,9 +210,17 @@ fn sync_deband_dither(
     }
 }
 
-fn cleanup_deband_dither(mut commands: Commands, mut removed: RemovedComponents<DebandDitherSettings>) {
+fn cleanup_deband_dither(
+    mut commands: Commands,
+    mut removed: RemovedComponents<DebandDitherSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.insert(DebandDither::Disabled);
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.insert(DebandDither::Disabled);
         }
     }
@@ -240,9 +252,17 @@ fn deband_dither_entry() -> InspectorEntry {
     }
 }
 
-fn cleanup_tonemapping(mut commands: Commands, mut removed: RemovedComponents<TonemappingSettings>) {
+fn cleanup_tonemapping(
+    mut commands: Commands,
+    mut removed: RemovedComponents<TonemappingSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.insert((Tonemapping::default(), Exposure::default()));
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.insert((Tonemapping::default(), Exposure::default()));
         }
     }

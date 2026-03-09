@@ -43,10 +43,13 @@ fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
     query: Query<(Entity, &AtmosphereComponentSettings, Option<&AtmosphereMediumHandle>), Changed<AtmosphereComponentSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings, existing_handle) in &query {
+        let target = render_target.0.unwrap_or(entity);
+
         if !settings.enabled {
-            commands.entity(entity).remove::<(Atmosphere, AtmosphereSettings)>();
+            commands.entity(target).remove::<(Atmosphere, AtmosphereSettings)>();
             continue;
         }
 
@@ -63,7 +66,7 @@ fn sync_atmosphere(
             _ => AtmosphereMode::LookupTexture,
         };
 
-        commands.entity(entity).insert((
+        commands.entity(target).insert((
             Atmosphere {
                 bottom_radius: settings.bottom_radius,
                 top_radius: settings.top_radius,
@@ -79,10 +82,21 @@ fn sync_atmosphere(
     }
 }
 
-fn cleanup_atmosphere(mut commands: Commands, mut removed: RemovedComponents<AtmosphereComponentSettings>) {
+fn cleanup_atmosphere(
+    mut commands: Commands,
+    mut removed: RemovedComponents<AtmosphereComponentSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
+        // Remove the handle from the source entity
         if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<(Atmosphere, AtmosphereSettings, AtmosphereMediumHandle)>();
+            ec.remove::<AtmosphereMediumHandle>();
+        }
+        // Remove native Bevy components from the camera target
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<(Atmosphere, AtmosphereSettings)>();
+            }
         }
     }
 }

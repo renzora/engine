@@ -129,6 +129,34 @@ pub struct SceneCamera;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DefaultCamera;
 
+/// Cached entity that should receive Bevy-native rendering components
+/// (e.g. `Bloom`, `Atmosphere`, `Fxaa`).
+///
+/// In editor mode this is the `EditorCamera`; in runtime mode it's the active
+/// `SceneCamera`. Updated each frame by [`update_render_target`].
+///
+/// Post-processing sync systems should read this resource to decide where to
+/// insert their native Bevy components, allowing users to place settings
+/// components on any entity in the scene.
+#[derive(Resource, Default)]
+pub struct RenderTarget(pub Option<Entity>);
+
+/// System that updates [`RenderTarget`] each frame.
+pub fn update_render_target(
+    mut target: ResMut<RenderTarget>,
+    editor: Query<Entity, With<EditorCamera>>,
+    scene: Query<(Entity, Option<&DefaultCamera>), With<SceneCamera>>,
+) {
+    target.0 = if let Ok(e) = editor.single() {
+        Some(e)
+    } else {
+        scene.iter()
+            .find(|(_, dc)| dc.is_some())
+            .or_else(|| scene.iter().next())
+            .map(|(e, _)| e)
+    };
+}
+
 /// Serializable shape ID — stored alongside `Mesh3d` so the shape can be recreated on scene load.
 ///
 /// The string must match a shape registered in the [`ShapeRegistry`].

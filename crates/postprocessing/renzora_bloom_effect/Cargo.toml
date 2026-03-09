@@ -12,3 +12,4 @@ bevy = { version = "0.18" }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora_editor = { path = "../../editor/renzora_editor", optional = true }
+renzora_core = { path = "../../core/renzora_core" }

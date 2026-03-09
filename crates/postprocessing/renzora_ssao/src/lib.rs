@@ -23,19 +23,29 @@ impl Default for SsaoSettings {
 fn sync_ssao(
     mut commands: Commands,
     query: Query<(Entity, &SsaoSettings), Changed<SsaoSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
-            commands.entity(entity).insert(ScreenSpaceAmbientOcclusion::default());
+            commands.entity(target).insert(ScreenSpaceAmbientOcclusion::default());
         } else {
-            commands.entity(entity).remove::<ScreenSpaceAmbientOcclusion>();
+            commands.entity(target).remove::<ScreenSpaceAmbientOcclusion>();
         }
     }
 }
 
-fn cleanup_ssao(mut commands: Commands, mut removed: RemovedComponents<SsaoSettings>) {
+fn cleanup_ssao(
+    mut commands: Commands,
+    mut removed: RemovedComponents<SsaoSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<ScreenSpaceAmbientOcclusion>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<ScreenSpaceAmbientOcclusion>();
         }
     }

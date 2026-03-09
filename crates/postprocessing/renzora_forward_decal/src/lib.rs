@@ -99,12 +99,17 @@ fn ensure_depth_prepass(
     mut commands: Commands,
     cameras: Query<Entity, (With<Camera3d>, Without<DepthPrepass>)>,
     decals: Query<(), With<DecalSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     if decals.is_empty() {
         return;
     }
-    for cam in &cameras {
-        commands.entity(cam).insert(DepthPrepass);
+    if let Some(target) = render_target.0 {
+        commands.entity(target).insert(DepthPrepass);
+    } else {
+        for cam in &cameras {
+            commands.entity(cam).insert(DepthPrepass);
+        }
     }
 }
 

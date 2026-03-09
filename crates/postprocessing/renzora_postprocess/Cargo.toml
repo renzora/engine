@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.18" }
+renzora_core = { path = "../../core/renzora_core" }

@@ -36,14 +36,16 @@ impl Default for DepthOfFieldSettings {
 fn sync_dof(
     mut commands: Commands,
     query: Query<(Entity, &DepthOfFieldSettings), Changed<DepthOfFieldSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings) in &query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
             let mode = match settings.mode {
                 1 => DepthOfFieldMode::Bokeh,
                 _ => DepthOfFieldMode::Gaussian,
             };
-            commands.entity(entity).insert(DepthOfField {
+            commands.entity(target).insert(DepthOfField {
                 mode,
                 focal_distance: settings.focal_distance,
                 sensor_height: 0.01866,
@@ -52,7 +54,7 @@ fn sync_dof(
                 max_depth: f32::INFINITY,
             });
         } else {
-            commands.entity(entity).remove::<DepthOfField>();
+            commands.entity(target).remove::<DepthOfField>();
         }
     }
 }
@@ -160,9 +162,17 @@ fn dof_custom_ui(
     });
 }
 
-fn cleanup_dof(mut commands: Commands, mut removed: RemovedComponents<DepthOfFieldSettings>) {
+fn cleanup_dof(
+    mut commands: Commands,
+    mut removed: RemovedComponents<DepthOfFieldSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<DepthOfField>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<DepthOfField>();
         }
     }

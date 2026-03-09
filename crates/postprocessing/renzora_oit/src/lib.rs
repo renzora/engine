@@ -33,28 +33,38 @@ impl Default for OitSettings {
 fn sync_oit(
     mut commands: Commands,
     mut query: Query<(Entity, &OitSettings, &mut Camera3d), Changed<OitSettings>>,
+    render_target: Res<renzora_core::RenderTarget>,
 ) {
     for (entity, settings, mut cam3d) in &mut query {
+        let target = render_target.0.unwrap_or(entity);
         if settings.enabled {
             let mut usages = TextureUsages::from(cam3d.depth_texture_usages);
             usages |= TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING;
             cam3d.depth_texture_usages = usages.into();
 
-            commands.entity(entity)
+            commands.entity(target)
                 .insert(Msaa::Off)
                 .insert(OrderIndependentTransparencySettings {
                     layer_count: settings.layer_count,
                     alpha_threshold: settings.alpha_threshold,
                 });
         } else {
-            commands.entity(entity).remove::<OrderIndependentTransparencySettings>();
+            commands.entity(target).remove::<OrderIndependentTransparencySettings>();
         }
     }
 }
 
-fn cleanup_oit(mut commands: Commands, mut removed: RemovedComponents<OitSettings>) {
+fn cleanup_oit(
+    mut commands: Commands,
+    mut removed: RemovedComponents<OitSettings>,
+    render_target: Res<renzora_core::RenderTarget>,
+) {
     for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
+        if let Some(target) = render_target.0 {
+            if let Ok(mut ec) = commands.get_entity(target) {
+                ec.remove::<OrderIndependentTransparencySettings>();
+            }
+        } else if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<OrderIndependentTransparencySettings>();
         }
     }
