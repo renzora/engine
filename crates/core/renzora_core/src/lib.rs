@@ -144,10 +144,21 @@ pub struct RenderTarget(pub Option<Entity>);
 /// System that updates [`RenderTarget`] each frame.
 pub fn update_render_target(
     mut target: ResMut<RenderTarget>,
+    play_mode: Option<Res<PlayModeState>>,
+    play_cam: Query<Entity, With<PlayModeCamera>>,
     editor: Query<Entity, With<EditorCamera>>,
     scene: Query<(Entity, Option<&DefaultCamera>), With<SceneCamera>>,
 ) {
-    target.0 = if let Ok(e) = editor.single() {
+    let is_playing = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+
+    target.0 = if is_playing {
+        // In play mode, prefer the PlayModeCamera
+        play_cam.iter().next()
+            .or_else(|| scene.iter()
+                .find(|(_, dc)| dc.is_some())
+                .or_else(|| scene.iter().next())
+                .map(|(e, _)| e))
+    } else if let Ok(e) = editor.single() {
         Some(e)
     } else {
         scene.iter()

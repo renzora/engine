@@ -90,7 +90,9 @@ editor = [
     "renzora_ssr/editor",
     "renzora_auto_exposure/editor",
     "renzora_oit/editor",
+    "renzora_specular_tint/editor",
     "renzora_forward_decal/editor",
+    "renzora_render_to_texture/editor",
     "dep:renzora_particle_editor",
     "dep:renzora_code_editor",
     "dep:renzora_script_variables",
@@ -190,8 +192,10 @@ renzora_ssao = { path = "crates/postprocessing/renzora_ssao" }
 renzora_ssr = { path = "crates/postprocessing/renzora_ssr" }
 renzora_auto_exposure = { path = "crates/postprocessing/renzora_auto_exposure" }
 renzora_oit = { path = "crates/postprocessing/renzora_oit" }
+renzora_specular_tint = { path = "crates/postprocessing/renzora_specular_tint" }
 renzora_forward_decal = { path = "crates/postprocessing/renzora_forward_decal" }
 renzora_lighting = { path = "crates/core/renzora_lighting" }
+renzora_render_to_texture = { path = "crates/core/renzora_render_to_texture" }
 renzora_scripting = { path = "crates/core/renzora_scripting" }
 
 # Bevy recommended optimizations
