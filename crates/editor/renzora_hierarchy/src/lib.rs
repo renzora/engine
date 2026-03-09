@@ -10,10 +10,11 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
     icon_button, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
-    OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
+    InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
 use renzora_physics::{CollisionShapeData, PhysicsBodyData};
+use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
@@ -125,6 +126,21 @@ impl EditorPanel for HierarchyPanel {
                 }));
             }
 
+            // Add components from InspectorRegistry (post-processing, rendering, effects, audio)
+            if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
+                let component_categories = &["rendering", "post_process", "effects", "Audio"];
+                for entry in inspector_reg.iter() {
+                    if entry.add_fn.is_some() && component_categories.contains(&entry.category) {
+                        entries.push(OverlayEntry {
+                            id: entry.type_id,
+                            label: entry.display_name,
+                            icon: entry.icon,
+                            category: entry.category,
+                        });
+                    }
+                }
+            }
+
             let ctx = ui.ctx().clone();
             match search_overlay(&ctx, "add_entity_overlay", "Add Entity", &entries, &mut state.add_search, &theme) {
                 OverlayAction::Selected(id) => {
@@ -137,6 +153,7 @@ impl EditorPanel for HierarchyPanel {
                             let spawn_fn = preset.spawn_fn;
                             commands.push(move |world: &mut World| {
                                 let entity = spawn_fn(world);
+                                world.entity_mut(entity).insert(ScriptComponent::new());
                                 if let Some(sel) = world.get_resource::<EditorSelection>() {
                                     sel.set(Some(entity));
                                 }
@@ -170,6 +187,7 @@ impl EditorPanel for HierarchyPanel {
                                         MeshPrimitive(shape_id.to_string()),
                                         MeshColor(color),
                                     ));
+                                    entity_cmds.insert(ScriptComponent::new());
                                     if let Some(collider) = default_collider_for_shape(shape_id) {
                                         entity_cmds.insert((
                                             PhysicsBodyData::static_body(),
@@ -181,6 +199,27 @@ impl EditorPanel for HierarchyPanel {
                                         sel.set(Some(entity));
                                     }
                                 });
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    // Fall back to InspectorRegistry (components as entities)
+                    if !handled {
+                        if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
+                            if let Some(entry) = inspector_reg.iter().find(|e| e.type_id == id) {
+                                if let Some(add_fn) = entry.add_fn {
+                                    let display_name = entry.display_name;
+                                    commands.push(move |world: &mut World| {
+                                        let entity = world
+                                            .spawn((Name::new(display_name), Transform::default(), ScriptComponent::new()))
+                                            .id();
+                                        add_fn(world, entity);
+                                        if let Some(sel) = world.get_resource::<EditorSelection>() {
+                                            sel.set(Some(entity));
+                                        }
+                                    });
+                                }
                             }
                         }
                     }
@@ -318,6 +357,34 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
         spawn_fn: |world| {
             world
                 .spawn((Name::new("Empty Entity"), Transform::default()))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "world_environment",
+        display_name: "World Environment",
+        icon: regular::GLOBE,
+        category: "general",
+        spawn_fn: |world| {
+            let sun = renzora_lighting::Sun::default();
+            let dir = sun.direction();
+            world
+                .spawn((
+                    Name::new("World Environment"),
+                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+                    DirectionalLight {
+                        color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+                        illuminance: sun.illuminance,
+                        shadows_enabled: sun.shadows_enabled,
+                        ..default()
+                    },
+                    sun,
+                    renzora_bloom_effect::BloomSettings::default(),
+                    renzora_atmosphere::AtmosphereComponentSettings::default(),
+                    renzora_clouds::CloudsData::default(),
+                    renzora_distance_fog::DistanceFogSettings::default(),
+                ))
                 .id()
         },
     });
