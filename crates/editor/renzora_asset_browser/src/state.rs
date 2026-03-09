@@ -4,6 +4,14 @@ use std::path::{Path, PathBuf};
 use bevy_egui::egui::Color32;
 use egui_phosphor::regular;
 
+/// View mode for the asset browser content pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewMode {
+    #[default]
+    Grid,
+    List,
+}
+
 /// Internal state for the asset browser panel.
 pub struct AssetBrowserState {
     /// Current folder displayed in the file grid.
@@ -22,6 +30,8 @@ pub struct AssetBrowserState {
     pub project_root: Option<PathBuf>,
     /// Navigation history for back button.
     pub history: Vec<PathBuf>,
+    /// Current view mode (grid or list).
+    pub view_mode: ViewMode,
 }
 
 impl Default for AssetBrowserState {
@@ -35,6 +45,7 @@ impl Default for AssetBrowserState {
             tree_width: 200.0,
             project_root: None,
             history: Vec::new(),
+            view_mode: ViewMode::default(),
         }
     }
 }

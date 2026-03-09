@@ -1,4 +1,5 @@
 mod grid;
+mod list;
 mod state;
 mod toolbar;
 mod tree;
@@ -11,7 +12,7 @@ use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
-use state::AssetBrowserState;
+use state::{AssetBrowserState, ViewMode};
 
 /// Panel that provides the asset browser UI.
 pub struct AssetBrowserPanel {
@@ -152,7 +153,10 @@ impl EditorPanel for AssetBrowserPanel {
             egui::UiBuilder::new()
                 .max_rect(grid_rect),
         );
-        let grid_result = grid::grid_ui_interactive(&mut grid_child, &mut state, &theme);
+        let grid_result = match state.view_mode {
+            ViewMode::Grid => grid::grid_ui_interactive(&mut grid_child, &mut state, &theme),
+            ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
+        };
         if let Some(payload) = grid_result.drag_payload {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 cmds.push(move |world: &mut bevy::prelude::World| {
