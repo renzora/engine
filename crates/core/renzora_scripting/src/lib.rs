@@ -10,6 +10,7 @@ mod plugin;
 
 pub mod api;
 pub mod backends;
+pub mod macros;
 pub mod resources;
 pub mod systems;
 
