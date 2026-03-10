@@ -232,6 +232,7 @@ pub struct AtmospherePlugin;
 
 impl Plugin for AtmospherePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] AtmospherePlugin");
         app.register_type::<AtmosphereComponentSettings>();
         app.add_systems(Update, (sync_atmosphere, cleanup_atmosphere));
         #[cfg(feature = "editor")]

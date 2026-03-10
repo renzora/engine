@@ -14,6 +14,7 @@ pub struct SharpenPlugin;
 
 impl Plugin for SharpenPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] SharpenPlugin");
         bevy::asset::embedded_asset!(app, "sharpen.wgsl");
         app.register_type::<SharpenSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<SharpenSettings>::default());

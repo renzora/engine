@@ -12,6 +12,7 @@ pub struct TerrainEditorPlugin;
 
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] TerrainEditorPlugin");
         app.register_panel(panel::TerrainToolsPanel::new())
             .register_inspector(terrain_data_entry())
             .add_systems(

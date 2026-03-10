@@ -190,6 +190,7 @@ pub struct AssetBrowserPlugin;
 
 impl Plugin for AssetBrowserPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] AssetBrowserPlugin");
         app.register_panel(AssetBrowserPanel::default());
     }
 }

@@ -14,6 +14,7 @@ pub struct HexPixelatePlugin;
 
 impl Plugin for HexPixelatePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] HexPixelatePlugin");
         bevy::asset::embedded_asset!(app, "hex_pixelate.wgsl");
         app.register_type::<HexPixelateSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<HexPixelateSettings>::default());

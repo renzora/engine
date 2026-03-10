@@ -49,6 +49,7 @@ pub struct ScenePlugin;
 
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ScenePlugin");
         app.add_systems(OnEnter(SplashState::Editor), load_scene_on_enter)
             .add_systems(
                 Update,

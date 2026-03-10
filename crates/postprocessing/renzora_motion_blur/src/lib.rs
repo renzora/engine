@@ -116,6 +116,7 @@ pub struct MotionBlurPlugin;
 
 impl Plugin for MotionBlurPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] MotionBlurPlugin");
         app.register_type::<MotionBlurSettings>();
         app.add_systems(Update, (sync_motion_blur, cleanup_motion_blur));
         #[cfg(feature = "editor")]

@@ -20,6 +20,7 @@ pub struct ChromaticAberrationPlugin;
 
 impl Plugin for ChromaticAberrationPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ChromaticAberrationPlugin");
         bevy::asset::embedded_asset!(app, "chromatic_aberration.wgsl");
         app.register_type::<ChromaticAberrationSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ChromaticAberrationSettings>::default());

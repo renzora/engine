@@ -9,6 +9,7 @@ pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] TerrainPlugin");
         app.register_type::<data::TerrainData>()
             .register_type::<data::TerrainChunkData>()
             .register_type::<paint::PaintableSurfaceData>()

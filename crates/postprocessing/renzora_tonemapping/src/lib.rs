@@ -277,6 +277,7 @@ pub struct TonemappingPlugin;
 
 impl Plugin for TonemappingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] TonemappingPlugin");
         app.register_type::<TonemappingSettings>();
         app.register_type::<DebandDitherSettings>();
         app.add_systems(Update, (sync_tonemapping, cleanup_tonemapping, sync_deband_dither, cleanup_deband_dither));

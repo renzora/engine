@@ -214,6 +214,7 @@ pub struct MixerPlugin;
 
 impl Plugin for MixerPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] MixerPlugin");
         let bridge = MixerBridge::default();
         let arc = bridge.pending.clone();
 

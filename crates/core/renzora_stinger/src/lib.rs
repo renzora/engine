@@ -11,6 +11,7 @@ pub struct StingerPlugin;
 
 impl Plugin for StingerPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] StingerPlugin");
         app.init_state::<StingerState>();
 
         // Only show the stinger splash in standalone/runtime mode

@@ -20,6 +20,7 @@ pub struct RadialBlurPlugin;
 
 impl Plugin for RadialBlurPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] RadialBlurPlugin");
         bevy::asset::embedded_asset!(app, "radial_blur.wgsl");
         app.register_type::<RadialBlurSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<RadialBlurSettings>::default());

@@ -53,6 +53,7 @@ pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] GridPlugin");
         app.init_resource::<GridConfig>()
             .add_systems(PostStartup, spawn_grid)
             .add_systems(Update, (

@@ -22,6 +22,7 @@ pub struct ExportPlugin;
 
 impl Plugin for ExportPlugin {
     fn build(&self, _app: &mut App) {
+        info!("[editor] ExportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
             use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};

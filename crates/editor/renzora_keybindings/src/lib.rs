@@ -504,6 +504,7 @@ pub struct KeybindingsPlugin;
 
 impl Plugin for KeybindingsPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] KeybindingsPlugin");
         app.init_resource::<KeyBindings>();
     }
 }

@@ -480,6 +480,7 @@ pub struct AntiAliasingPlugin;
 
 impl Plugin for AntiAliasingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] AntiAliasingPlugin");
         app.register_type::<FxaaSettings>();
         app.register_type::<SmaaSettings>();
         app.register_type::<TaaSettings>();

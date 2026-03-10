@@ -94,6 +94,7 @@ pub struct SsaoPlugin;
 
 impl Plugin for SsaoPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] SsaoPlugin");
         app.register_type::<SsaoSettings>();
         app.add_systems(Update, (sync_ssao, cleanup_ssao));
         #[cfg(feature = "editor")]

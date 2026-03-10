@@ -608,6 +608,7 @@ pub struct CloudsPlugin;
 
 impl Plugin for CloudsPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] CloudsPlugin");
         bevy::asset::embedded_asset!(app, "clouds.wgsl");
         app.register_type::<CloudsData>()
             .add_plugins(MaterialPlugin::<CloudMaterial>::default())

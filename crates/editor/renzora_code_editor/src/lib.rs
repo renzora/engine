@@ -162,6 +162,7 @@ pub struct CodeEditorPlugin;
 
 impl Plugin for CodeEditorPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] CodeEditorPlugin");
         app.insert_resource(CodeEditorState::default());
 
         let bridge = CodeEditorBridge::default();

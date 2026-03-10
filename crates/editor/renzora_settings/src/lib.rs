@@ -26,6 +26,7 @@ pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] SettingsPlugin");
         app.add_systems(
             EguiPrimaryContextPass,
             settings_overlay_system

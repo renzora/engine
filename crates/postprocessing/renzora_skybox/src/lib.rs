@@ -978,6 +978,7 @@ pub struct SkyboxPlugin;
 
 impl Plugin for SkyboxPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] SkyboxPlugin");
         app.register_type::<SkyMode>()
             .register_type::<ProceduralSkyData>()
             .register_type::<PanoramaSkyData>()

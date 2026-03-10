@@ -2126,6 +2126,7 @@ pub struct WidgetGalleryPlugin;
 
 impl Plugin for WidgetGalleryPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] WidgetGalleryPlugin");
         // Register panels
         app.register_panel(ControlsGallery::default());
         app.register_panel(PropertiesGallery::default());

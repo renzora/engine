@@ -24,6 +24,7 @@ pub struct FilmGrainPlugin;
 
 impl Plugin for FilmGrainPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] FilmGrainPlugin");
         bevy::asset::embedded_asset!(app, "film_grain.wgsl");
         app.register_type::<FilmGrainSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<FilmGrainSettings>::default());

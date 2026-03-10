@@ -20,6 +20,7 @@ pub struct SepiaPlugin;
 
 impl Plugin for SepiaPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] SepiaPlugin");
         bevy::asset::embedded_asset!(app, "sepia.wgsl");
         app.register_type::<SepiaSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<SepiaSettings>::default());

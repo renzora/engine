@@ -379,6 +379,7 @@ pub struct ParticlePreviewPlugin;
 
 impl Plugin for ParticlePreviewPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ParticlePreviewPlugin");
         app.init_resource::<ParticlePreviewOrbit>();
         app.init_resource::<ParticlePreviewImage>();
         app.init_resource::<ParticlePreviewTracker>();

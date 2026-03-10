@@ -18,6 +18,7 @@ pub struct RapierBackendPlugin {
 
 impl Plugin for RapierBackendPlugin {
     fn build(&self, _app: &mut App) {
+        info!("[runtime] RapierBackendPlugin");
         // TODO: Add bevy_rapier3d plugins
         // app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
         // app.add_plugins(RapierDebugRenderPlugin::default());

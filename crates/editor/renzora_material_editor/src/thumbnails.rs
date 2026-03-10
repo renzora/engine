@@ -98,6 +98,7 @@ pub struct NodeThumbnailPlugin;
 
 impl Plugin for NodeThumbnailPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] NodeThumbnailPlugin");
         app.init_resource::<NodeThumbnails>()
             .add_systems(Update, update_node_thumbnails);
     }

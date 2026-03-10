@@ -282,6 +282,7 @@ struct PostProcessCorePlugin;
 
 impl Plugin for PostProcessCorePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] PostProcessCorePlugin");
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };

@@ -384,6 +384,7 @@ pub struct TestExtensionPlugin;
 
 impl Plugin for TestExtensionPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] TestExtensionPlugin");
         // Register panels
         app.register_panel(ViewportPanel);
         app.register_panel(InspectorPanel);

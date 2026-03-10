@@ -239,6 +239,7 @@ pub struct InspectorPanelPlugin;
 
 impl Plugin for InspectorPanelPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] InspectorPanelPlugin");
         // Register built-in inspectors
         app.init_resource::<InspectorRegistry>();
         built_in::register_built_in_inspectors(

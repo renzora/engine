@@ -169,6 +169,7 @@ pub struct GizmoPlugin;
 
 impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] GizmoPlugin");
         app.add_plugins(MaterialPlugin::<GizmoMaterial>::default())
             .insert_gizmo_config(
                 OverlayGizmoGroup,

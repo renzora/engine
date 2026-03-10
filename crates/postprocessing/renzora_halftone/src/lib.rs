@@ -18,6 +18,7 @@ pub struct HalftonePlugin;
 
 impl Plugin for HalftonePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] HalftonePlugin");
         bevy::asset::embedded_asset!(app, "halftone.wgsl");
         app.register_type::<HalftoneSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<HalftoneSettings>::default());

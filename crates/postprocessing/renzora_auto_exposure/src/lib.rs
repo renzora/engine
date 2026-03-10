@@ -162,6 +162,7 @@ pub struct AutoExposurePlugin;
 
 impl Plugin for AutoExposurePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] AutoExposurePlugin");
         app.register_type::<AutoExposureSettings>();
         app.add_systems(Update, (sync_auto_exposure, cleanup_auto_exposure));
         #[cfg(feature = "editor")]

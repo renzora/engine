@@ -44,6 +44,7 @@ pub struct TestComponentPlugin;
 
 impl Plugin for TestComponentPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] TestComponentPlugin");
         app.register_inspectable::<Health>();
         app.register_inspectable::<Movement>();
     }

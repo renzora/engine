@@ -21,6 +21,7 @@ pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] PhysicsPlugin");
         let start_paused = cfg!(feature = "editor");
 
         app.register_type::<PhysicsBodyData>()

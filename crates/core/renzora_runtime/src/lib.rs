@@ -26,6 +26,7 @@ pub struct RuntimePlugin;
 
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] RuntimePlugin");
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
             .register_type::<SceneCamera>()

@@ -11,6 +11,7 @@ pub struct AvianBackendPlugin {
 
 impl Plugin for AvianBackendPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] AvianBackendPlugin");
         app.add_plugins(PhysicsPlugins::default());
 
         if self.start_paused {

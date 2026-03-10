@@ -14,6 +14,7 @@ pub struct PixelationPlugin;
 
 impl Plugin for PixelationPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] PixelationPlugin");
         bevy::asset::embedded_asset!(app, "pixelation.wgsl");
         app.register_type::<PixelationSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<PixelationSettings>::default());

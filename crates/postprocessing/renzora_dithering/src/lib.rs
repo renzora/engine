@@ -16,6 +16,7 @@ pub struct DitheringPlugin;
 
 impl Plugin for DitheringPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DitheringPlugin");
         bevy::asset::embedded_asset!(app, "dithering.wgsl");
         app.register_type::<DitheringSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<DitheringSettings>::default());

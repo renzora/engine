@@ -24,6 +24,7 @@ pub struct ColorGradingPlugin;
 
 impl Plugin for ColorGradingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ColorGradingPlugin");
         bevy::asset::embedded_asset!(app, "color_grading.wgsl");
         app.register_type::<ColorGradingSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ColorGradingSettings>::default());

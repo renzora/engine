@@ -74,6 +74,7 @@ pub struct RenzoraEditorPlugin;
 
 impl Plugin for RenzoraEditorPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] RenzoraEditorPlugin");
         if !app.is_plugin_added::<EguiPlugin>() {
             app.add_plugins(EguiPlugin::default());
         }

@@ -20,6 +20,7 @@ pub struct ToonPlugin;
 
 impl Plugin for ToonPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ToonPlugin");
         bevy::asset::embedded_asset!(app, "toon.wgsl");
         app.register_type::<ToonSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ToonSettings>::default());

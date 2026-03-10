@@ -20,6 +20,7 @@ pub struct GrayscalePlugin;
 
 impl Plugin for GrayscalePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] GrayscalePlugin");
         bevy::asset::embedded_asset!(app, "grayscale.wgsl");
         app.register_type::<GrayscaleSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<GrayscaleSettings>::default());

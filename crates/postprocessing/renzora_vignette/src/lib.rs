@@ -104,6 +104,7 @@ pub struct VignettePlugin;
 
 impl Plugin for VignettePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] VignettePlugin");
         bevy::asset::embedded_asset!(app, "vignette.wgsl");
         app.register_type::<VignetteSettings>();
         app.add_plugins(

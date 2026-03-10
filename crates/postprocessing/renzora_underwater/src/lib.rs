@@ -124,6 +124,7 @@ pub struct UnderwaterPlugin;
 
 impl Plugin for UnderwaterPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] UnderwaterPlugin");
         bevy::asset::embedded_asset!(app, "underwater.wgsl");
         app.register_type::<UnderwaterSettings>();
         app.add_plugins(

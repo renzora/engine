@@ -110,6 +110,7 @@ pub struct ScriptVariablesPlugin;
 
 impl Plugin for ScriptVariablesPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ScriptVariablesPlugin");
         app.register_panel(ScriptVariablesPanel::new());
     }
 }

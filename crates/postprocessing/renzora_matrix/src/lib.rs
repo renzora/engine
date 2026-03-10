@@ -26,6 +26,7 @@ pub struct MatrixPlugin;
 
 impl Plugin for MatrixPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] MatrixPlugin");
         bevy::asset::embedded_asset!(app, "matrix.wgsl");
         app.register_type::<MatrixSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<MatrixSettings>::default());

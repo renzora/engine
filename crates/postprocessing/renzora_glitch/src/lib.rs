@@ -28,6 +28,7 @@ pub struct GlitchPlugin;
 
 impl Plugin for GlitchPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] GlitchPlugin");
         bevy::asset::embedded_asset!(app, "glitch.wgsl");
         app.register_type::<GlitchSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<GlitchSettings>::default());

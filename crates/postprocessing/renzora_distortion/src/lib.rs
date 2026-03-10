@@ -26,6 +26,7 @@ pub struct DistortionPlugin;
 
 impl Plugin for DistortionPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DistortionPlugin");
         bevy::asset::embedded_asset!(app, "distortion.wgsl");
         app.register_type::<DistortionSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<DistortionSettings>::default());

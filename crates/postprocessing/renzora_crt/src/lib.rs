@@ -20,6 +20,7 @@ pub struct CrtPlugin;
 
 impl Plugin for CrtPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] CrtPlugin");
         bevy::asset::embedded_asset!(app, "crt.wgsl");
         app.register_type::<CrtSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<CrtSettings>::default());

@@ -22,6 +22,7 @@ pub struct NightVisionPlugin;
 
 impl Plugin for NightVisionPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] NightVisionPlugin");
         bevy::asset::embedded_asset!(app, "night_vision.wgsl");
         app.register_type::<NightVisionSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<NightVisionSettings>::default());

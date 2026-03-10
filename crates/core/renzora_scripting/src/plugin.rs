@@ -55,6 +55,7 @@ impl Default for ScriptingPlugin {
 
 impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ScriptingPlugin");
         // Create the script engine with available backends
         let mut engine = ScriptEngine::new();
 

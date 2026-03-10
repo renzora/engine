@@ -142,6 +142,7 @@ pub struct OitPlugin;
 
 impl Plugin for OitPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] OitPlugin");
         app.register_type::<OitSettings>();
         app.add_systems(Update, (sync_oit, cleanup_oit));
         #[cfg(feature = "editor")]

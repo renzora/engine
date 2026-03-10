@@ -360,6 +360,7 @@ pub struct DebuggerPlugin;
 
 impl Plugin for DebuggerPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] DebuggerPlugin");
         // Add Bevy diagnostic plugins
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),

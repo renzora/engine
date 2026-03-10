@@ -23,6 +23,7 @@ pub struct HanabiParticlePlugin;
 
 impl Plugin for HanabiParticlePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] HanabiParticlePlugin");
         app.add_plugins(HanabiPlugin);
 
         app.init_resource::<ParticleEditorState>();

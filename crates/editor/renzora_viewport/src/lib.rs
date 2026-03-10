@@ -37,6 +37,7 @@ pub struct ViewportPlugin;
 
 impl Plugin for ViewportPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ViewportPlugin");
         app.add_plugins(WireframePlugin::default())
             .insert_resource(WireframeConfig {
                 global: false,

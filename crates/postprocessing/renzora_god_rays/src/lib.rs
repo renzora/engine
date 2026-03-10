@@ -116,6 +116,7 @@ pub struct GodRaysPlugin;
 
 impl Plugin for GodRaysPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] GodRaysPlugin");
         bevy::asset::embedded_asset!(app, "god_rays.wgsl");
         app.register_type::<GodRaysSettings>();
         app.add_plugins(

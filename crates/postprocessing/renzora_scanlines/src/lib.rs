@@ -18,6 +18,7 @@ pub struct ScanlinesPlugin;
 
 impl Plugin for ScanlinesPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ScanlinesPlugin");
         bevy::asset::embedded_asset!(app, "scanlines.wgsl");
         app.register_type::<ScanlinesSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<ScanlinesSettings>::default());

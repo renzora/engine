@@ -14,6 +14,7 @@ pub struct InvertPlugin;
 
 impl Plugin for InvertPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] InvertPlugin");
         bevy::asset::embedded_asset!(app, "invert.wgsl");
         app.register_type::<InvertSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<InvertSettings>::default());

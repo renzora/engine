@@ -316,6 +316,7 @@ pub struct DistanceFogPlugin;
 
 impl Plugin for DistanceFogPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DistanceFogPlugin");
         app.register_type::<DistanceFogSettings>();
         app.add_systems(Update, (sync_distance_fog, cleanup_distance_fog));
         #[cfg(feature = "editor")]

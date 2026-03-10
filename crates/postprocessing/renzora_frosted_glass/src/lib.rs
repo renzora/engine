@@ -16,6 +16,7 @@ pub struct FrostedGlassPlugin;
 
 impl Plugin for FrostedGlassPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] FrostedGlassPlugin");
         bevy::asset::embedded_asset!(app, "frosted_glass.wgsl");
         app.register_type::<FrostedGlassSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<FrostedGlassSettings>::default());

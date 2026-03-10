@@ -229,6 +229,7 @@ pub struct MaterialPreviewPlugin;
 
 impl Plugin for MaterialPreviewPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] MaterialPreviewPlugin");
         app.init_resource::<MaterialPreviewOrbit>()
             .init_resource::<MaterialPreviewImage>()
             .init_resource::<MaterialPreviewTracker>()

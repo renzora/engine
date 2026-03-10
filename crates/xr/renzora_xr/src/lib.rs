@@ -137,6 +137,7 @@ pub struct XrPlugin;
 
 impl Plugin for XrPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] XrPlugin");
         app.init_resource::<VrConfig>()
             .init_resource::<VrControllerState>()
             .init_resource::<VrHandTrackingState>()

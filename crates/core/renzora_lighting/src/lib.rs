@@ -251,6 +251,7 @@ fn apply_script_sun_commands(
 
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] LightingPlugin");
         app.add_systems(Update, (sync_sun, apply_script_sun_commands));
 
         #[cfg(feature = "editor")]

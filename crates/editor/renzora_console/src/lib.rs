@@ -186,6 +186,7 @@ pub struct ConsolePlugin;
 
 impl Plugin for ConsolePlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ConsolePlugin");
         app.insert_resource(ConsoleState::default());
 
         let bridge = ConsoleBridge::default();

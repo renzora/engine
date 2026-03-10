@@ -196,6 +196,7 @@ pub struct DepthOfFieldPlugin;
 
 impl Plugin for DepthOfFieldPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DepthOfFieldPlugin");
         app.register_type::<DepthOfFieldSettings>();
         app.add_systems(Update, (sync_dof, cleanup_dof));
         #[cfg(feature = "editor")]

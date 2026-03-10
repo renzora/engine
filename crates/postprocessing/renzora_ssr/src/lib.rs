@@ -94,6 +94,7 @@ pub struct SsrPlugin;
 
 impl Plugin for SsrPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] SsrPlugin");
         app.register_type::<SsrSettings>();
         app.add_systems(Update, (sync_ssr, cleanup_ssr));
         #[cfg(feature = "editor")]

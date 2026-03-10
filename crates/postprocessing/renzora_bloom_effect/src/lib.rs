@@ -147,6 +147,7 @@ pub struct BloomEffectPlugin;
 
 impl Plugin for BloomEffectPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] BloomEffectPlugin");
         app.register_type::<BloomSettings>();
         app.add_systems(Update, (sync_bloom, cleanup_bloom));
         #[cfg(feature = "editor")]

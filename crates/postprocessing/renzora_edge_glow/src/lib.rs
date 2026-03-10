@@ -98,6 +98,7 @@ pub struct EdgeGlowPlugin;
 
 impl Plugin for EdgeGlowPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] EdgeGlowPlugin");
         bevy::asset::embedded_asset!(app, "edge_glow.wgsl");
         app.register_type::<EdgeGlowSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<EdgeGlowSettings>::default());

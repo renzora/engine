@@ -14,6 +14,7 @@ pub struct PosterizePlugin;
 
 impl Plugin for PosterizePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] PosterizePlugin");
         bevy::asset::embedded_asset!(app, "posterize.wgsl");
         app.register_type::<PosterizeSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<PosterizeSettings>::default());

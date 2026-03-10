@@ -16,6 +16,7 @@ pub struct EmbossPlugin;
 
 impl Plugin for EmbossPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] EmbossPlugin");
         bevy::asset::embedded_asset!(app, "emboss.wgsl");
         app.register_type::<EmbossSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<EmbossSettings>::default());

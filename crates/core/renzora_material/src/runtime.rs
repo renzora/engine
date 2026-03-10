@@ -107,6 +107,7 @@ pub struct GraphMaterialPlugin;
 
 impl Plugin for GraphMaterialPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] GraphMaterialPlugin");
         app.add_plugins(BevyMaterialPlugin::<GraphMaterial>::default())
             .init_resource::<GraphMaterialShaderState>()
             .add_systems(PostStartup, setup_default_shader);

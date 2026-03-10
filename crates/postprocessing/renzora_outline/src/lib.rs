@@ -148,6 +148,7 @@ pub struct OutlinePlugin;
 
 impl Plugin for OutlinePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] OutlinePlugin");
         bevy::asset::embedded_asset!(app, "outline.wgsl");
         app.register_type::<OutlineSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<OutlineSettings>::default());

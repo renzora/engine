@@ -16,6 +16,7 @@ pub struct OilPaintingPlugin;
 
 impl Plugin for OilPaintingPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] OilPaintingPlugin");
         bevy::asset::embedded_asset!(app, "oil_painting.wgsl");
         app.register_type::<OilPaintingSettings>();
         app.add_plugins(renzora_postprocess::PostProcessPlugin::<OilPaintingSettings>::default());

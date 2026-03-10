@@ -200,6 +200,7 @@ pub struct ShapeLibraryPlugin;
 
 impl Plugin for ShapeLibraryPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] ShapeLibraryPlugin");
         register_builtin_shapes(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
         #[cfg(feature = "editor")]

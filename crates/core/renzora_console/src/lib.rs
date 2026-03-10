@@ -282,6 +282,7 @@ pub struct ConsolePlugin;
 
 impl Plugin for ConsolePlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] ConsolePlugin");
         app.init_resource::<ConsoleState>();
         app.add_systems(Update, drain_log_buffer);
     }

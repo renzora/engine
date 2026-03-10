@@ -28,6 +28,7 @@ pub struct KiraPlugin;
 
 impl Plugin for KiraPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] KiraPlugin");
         app.insert_non_send_resource(KiraAudioManager::new())
             .insert_resource(AudioPreviewState::default())
             .insert_resource(MixerState::default())

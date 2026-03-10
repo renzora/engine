@@ -700,6 +700,7 @@ pub struct DebugLogPlugin;
 
 impl Plugin for DebugLogPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DebugLogPlugin");
         app.init_resource::<RenderingDebugLog>();
         app.init_resource::<PostProcessDebugState>();
         app.add_systems(

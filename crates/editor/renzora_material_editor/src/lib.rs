@@ -44,6 +44,7 @@ pub struct MaterialEditorPlugin;
 
 impl Plugin for MaterialEditorPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] MaterialEditorPlugin");
         app.init_resource::<MaterialEditorState>();
         app.add_plugins(preview::MaterialPreviewPlugin);
         app.add_plugins(thumbnails::NodeThumbnailPlugin);

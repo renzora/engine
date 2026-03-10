@@ -311,6 +311,7 @@ pub struct NightStarsPlugin;
 
 impl Plugin for NightStarsPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] NightStarsPlugin");
         bevy::asset::embedded_asset!(app, "night_stars.wgsl");
 
         app.register_type::<NightStarsData>()

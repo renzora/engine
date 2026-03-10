@@ -2708,6 +2708,7 @@ pub struct PhysicsPanelPlugin;
 
 impl Plugin for PhysicsPanelPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] PhysicsPanelPlugin");
         app.init_resource::<PhysicsDebugState>()
             .init_resource::<PlaygroundState>()
             .init_resource::<ForcesState>()

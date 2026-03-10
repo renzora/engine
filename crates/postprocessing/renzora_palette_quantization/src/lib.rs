@@ -92,6 +92,7 @@ pub struct PaletteQuantizationPlugin;
 
 impl Plugin for PaletteQuantizationPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] PaletteQuantizationPlugin");
         bevy::asset::embedded_asset!(app, "palette_quantization.wgsl");
         app.register_type::<PaletteQuantizationSettings>();
         app.add_plugins(

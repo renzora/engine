@@ -92,6 +92,7 @@ pub struct GaussianBlurPlugin;
 
 impl Plugin for GaussianBlurPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] GaussianBlurPlugin");
         bevy::asset::embedded_asset!(app, "gaussian_blur.wgsl");
         app.register_type::<GaussianBlurSettings>();
         app.add_plugins(

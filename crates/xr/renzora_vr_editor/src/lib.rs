@@ -212,6 +212,7 @@ pub struct VrEditorPlugin;
 
 impl Plugin for VrEditorPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] VrEditorPlugin");
         app.init_resource::<VrEditorState>()
             .init_resource::<VrPointerHit>()
             .init_resource::<VrPanelInput>()

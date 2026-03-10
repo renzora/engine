@@ -187,6 +187,7 @@ pub struct DecalPlugin;
 
 impl Plugin for DecalPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] DecalPlugin");
         app.register_type::<DecalSettings>();
         app.add_systems(Update, (sync_decals, cleanup_decals, ensure_depth_prepass));
         #[cfg(feature = "editor")]

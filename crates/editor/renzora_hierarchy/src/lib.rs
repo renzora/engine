@@ -339,6 +339,7 @@ pub struct HierarchyPanelPlugin;
 
 impl Plugin for HierarchyPanelPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] HierarchyPanelPlugin");
         app.register_panel(HierarchyPanel::default());
 
         app.init_resource::<SpawnRegistry>();

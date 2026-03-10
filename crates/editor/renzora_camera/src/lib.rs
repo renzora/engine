@@ -130,6 +130,7 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
+        info!("[editor] CameraPlugin");
         app.init_resource::<OrbitCameraState>()
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
