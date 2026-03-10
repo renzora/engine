@@ -42,59 +42,73 @@ struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
 fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
-    query: Query<(Entity, &AtmosphereComponentSettings, Option<&AtmosphereMediumHandle>), Changed<AtmosphereComponentSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<AtmosphereComponentSettings>, Option<&AtmosphereMediumHandle>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings, existing_handle) in &query {
-        let target = render_target.0.unwrap_or(entity);
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((entity, settings, existing_handle)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if !settings.enabled {
+                    commands.entity(*target).remove::<(Atmosphere, AtmosphereSettings)>();
+                    found = true;
+                    break;
+                }
 
-        if !settings.enabled {
-            commands.entity(target).remove::<(Atmosphere, AtmosphereSettings)>();
-            continue;
+                let handle = if let Some(h) = existing_handle {
+                    h.0.clone()
+                } else {
+                    let h = mediums.add(ScatteringMedium::default());
+                    commands.entity(entity).insert(AtmosphereMediumHandle(h.clone()));
+                    h
+                };
+
+                let rendering_method = match settings.mode {
+                    1 => AtmosphereMode::Raymarched,
+                    _ => AtmosphereMode::LookupTexture,
+                };
+
+                commands.entity(*target).insert((
+                    Atmosphere {
+                        bottom_radius: settings.bottom_radius,
+                        top_radius: settings.top_radius,
+                        ground_albedo: Vec3::splat(settings.ground_albedo),
+                        medium: handle,
+                    },
+                    AtmosphereSettings {
+                        scene_units_to_m: settings.scene_units_to_m,
+                        rendering_method,
+                        ..default()
+                    },
+                ));
+                found = true;
+                break;
+            }
         }
-
-        let handle = if let Some(h) = existing_handle {
-            h.0.clone()
-        } else {
-            let h = mediums.add(ScatteringMedium::default());
-            commands.entity(entity).insert(AtmosphereMediumHandle(h.clone()));
-            h
-        };
-
-        let rendering_method = match settings.mode {
-            1 => AtmosphereMode::Raymarched,
-            _ => AtmosphereMode::LookupTexture,
-        };
-
-        commands.entity(target).insert((
-            Atmosphere {
-                bottom_radius: settings.bottom_radius,
-                top_radius: settings.top_radius,
-                ground_albedo: Vec3::splat(settings.ground_albedo),
-                medium: handle,
-            },
-            AtmosphereSettings {
-                scene_units_to_m: settings.scene_units_to_m,
-                rendering_method,
-                ..default()
-            },
-        ));
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<(Atmosphere, AtmosphereSettings)>();
+            }
+        }
     }
 }
 
 fn cleanup_atmosphere(
     mut commands: Commands,
     mut removed: RemovedComponents<AtmosphereComponentSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
     for entity in removed.read() {
-        // Remove the handle from the source entity
         if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<AtmosphereMediumHandle>();
         }
-        // Remove native Bevy components from the camera target
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<(Atmosphere, AtmosphereSettings)>();
             }
         }

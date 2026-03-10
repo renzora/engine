@@ -63,37 +63,54 @@ impl Default for DistanceFogSettings {
 
 fn sync_distance_fog(
     mut commands: Commands,
-    query: Query<(Entity, &DistanceFogSettings), Changed<DistanceFogSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<DistanceFogSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if !settings.enabled {
-            commands.entity(target).remove::<DistanceFog>();
-            continue;
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if !settings.enabled {
+                    commands.entity(*target).remove::<DistanceFog>();
+                    found = true;
+                    break;
+                }
+                let falloff = match settings.mode {
+                    1 => FogFalloff::Exponential { density: settings.density },
+                    2 => FogFalloff::ExponentialSquared { density: settings.density },
+                    3 => FogFalloff::Atmospheric {
+                        extinction: Vec3::new(settings.extinction_r, settings.extinction_g, settings.extinction_b),
+                        inscattering: Vec3::new(settings.inscattering_r, settings.inscattering_g, settings.inscattering_b),
+                    },
+                    _ => FogFalloff::Linear {
+                        start: settings.start,
+                        end: settings.end,
+                    },
+                };
+                commands.entity(*target).insert(DistanceFog {
+                    color: Color::srgb(settings.color_r, settings.color_g, settings.color_b),
+                    directional_light_color: Color::srgb(
+                        settings.directional_light_color_r,
+                        settings.directional_light_color_g,
+                        settings.directional_light_color_b,
+                    ),
+                    directional_light_exponent: settings.directional_light_exponent,
+                    falloff,
+                });
+                found = true;
+                break;
+            }
         }
-        let falloff = match settings.mode {
-            1 => FogFalloff::Exponential { density: settings.density },
-            2 => FogFalloff::ExponentialSquared { density: settings.density },
-            3 => FogFalloff::Atmospheric {
-                extinction: Vec3::new(settings.extinction_r, settings.extinction_g, settings.extinction_b),
-                inscattering: Vec3::new(settings.inscattering_r, settings.inscattering_g, settings.inscattering_b),
-            },
-            _ => FogFalloff::Linear {
-                start: settings.start,
-                end: settings.end,
-            },
-        };
-        commands.entity(target).insert(DistanceFog {
-            color: Color::srgb(settings.color_r, settings.color_g, settings.color_b),
-            directional_light_color: Color::srgb(
-                settings.directional_light_color_r,
-                settings.directional_light_color_g,
-                settings.directional_light_color_b,
-            ),
-            directional_light_exponent: settings.directional_light_exponent,
-            falloff,
-        });
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<DistanceFog>();
+            }
+        }
     }
 }
 
@@ -284,15 +301,13 @@ fn fog_custom_ui(
 fn cleanup_distance_fog(
     mut commands: Commands,
     mut removed: RemovedComponents<DistanceFogSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<DistanceFog>();
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<DistanceFog>();
         }
     }
 }

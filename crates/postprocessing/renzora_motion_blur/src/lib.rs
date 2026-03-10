@@ -28,18 +28,34 @@ impl Default for MotionBlurSettings {
 
 fn sync_motion_blur(
     mut commands: Commands,
-    query: Query<(Entity, &MotionBlurSettings), Changed<MotionBlurSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<MotionBlurSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(MotionBlur {
-                shutter_angle: settings.shutter_angle,
-                samples: settings.samples as u32,
-            });
-        } else {
-            commands.entity(target).remove::<MotionBlur>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target).insert(MotionBlur {
+                        shutter_angle: settings.shutter_angle,
+                        samples: settings.samples as u32,
+                    });
+                } else {
+                    commands.entity(*target).remove::<MotionBlur>();
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<MotionBlur>();
+            }
         }
     }
 }
@@ -85,15 +101,13 @@ fn inspector_entry() -> InspectorEntry {
 fn cleanup_motion_blur(
     mut commands: Commands,
     mut removed: RemovedComponents<MotionBlurSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<MotionBlur>();
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<MotionBlur>();
         }
     }
 }

@@ -47,19 +47,29 @@ fn idx_to_sensitivity(i: u32) -> Sensitivity {
 
 fn sync_fxaa(
     mut commands: Commands,
-    query: Query<(Entity, &FxaaSettings), Changed<FxaaSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<FxaaSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(Fxaa {
-                enabled: true,
-                edge_threshold: idx_to_sensitivity(settings.edge_threshold),
-                edge_threshold_min: idx_to_sensitivity(settings.edge_threshold_min),
-            });
-        } else {
-            commands.entity(target).remove::<Fxaa>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if settings.enabled {
+                    commands.entity(*target).insert(Fxaa {
+                        enabled: true,
+                        edge_threshold: idx_to_sensitivity(settings.edge_threshold),
+                        edge_threshold_min: idx_to_sensitivity(settings.edge_threshold_min),
+                    });
+                } else {
+                    commands.entity(*target).remove::<Fxaa>();
+                }
+                found = true; break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<Fxaa>(); }
         }
     }
 }
@@ -82,22 +92,32 @@ impl Default for SmaaSettings {
 
 fn sync_smaa(
     mut commands: Commands,
-    query: Query<(Entity, &SmaaSettings), Changed<SmaaSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<SmaaSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            let preset = match settings.preset {
-                0 => SmaaPreset::Low,
-                1 => SmaaPreset::Medium,
-                2 => SmaaPreset::High,
-                3 => SmaaPreset::Ultra,
-                _ => SmaaPreset::High,
-            };
-            commands.entity(target).insert(Smaa { preset });
-        } else {
-            commands.entity(target).remove::<Smaa>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if settings.enabled {
+                    let preset = match settings.preset {
+                        0 => SmaaPreset::Low,
+                        1 => SmaaPreset::Medium,
+                        2 => SmaaPreset::High,
+                        3 => SmaaPreset::Ultra,
+                        _ => SmaaPreset::High,
+                    };
+                    commands.entity(*target).insert(Smaa { preset });
+                } else {
+                    commands.entity(*target).remove::<Smaa>();
+                }
+                found = true; break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<Smaa>(); }
         }
     }
 }
@@ -119,19 +139,27 @@ impl Default for TaaSettings {
 
 fn sync_taa(
     mut commands: Commands,
-    query: Query<(Entity, &TaaSettings), Changed<TaaSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<TaaSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target)
-                .insert(Msaa::Off)
-                .insert(TemporalAntiAliasing {
-                    reset: settings.reset,
-                });
-        } else {
-            commands.entity(target).remove::<TemporalAntiAliasing>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if settings.enabled {
+                    commands.entity(*target)
+                        .insert(Msaa::Off)
+                        .insert(TemporalAntiAliasing { reset: settings.reset });
+                } else {
+                    commands.entity(*target).remove::<TemporalAntiAliasing>();
+                }
+                found = true; break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<TemporalAntiAliasing>(); }
         }
     }
 }
@@ -139,15 +167,11 @@ fn sync_taa(
 fn cleanup_taa(
     mut commands: Commands,
     mut removed: RemovedComponents<TaaSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
-                ec.remove::<TemporalAntiAliasing>();
-            }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<TemporalAntiAliasing>();
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<TemporalAntiAliasing>(); }
         }
     }
 }
@@ -174,19 +198,29 @@ impl Default for CasSettings {
 
 fn sync_cas(
     mut commands: Commands,
-    query: Query<(Entity, &CasSettings), Changed<CasSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<CasSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(ContrastAdaptiveSharpening {
-                enabled: true,
-                sharpening_strength: settings.sharpening_strength,
-                denoise: settings.denoise,
-            });
-        } else {
-            commands.entity(target).remove::<ContrastAdaptiveSharpening>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if settings.enabled {
+                    commands.entity(*target).insert(ContrastAdaptiveSharpening {
+                        enabled: true,
+                        sharpening_strength: settings.sharpening_strength,
+                        denoise: settings.denoise,
+                    });
+                } else {
+                    commands.entity(*target).remove::<ContrastAdaptiveSharpening>();
+                }
+                found = true; break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<ContrastAdaptiveSharpening>(); }
         }
     }
 }

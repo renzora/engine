@@ -325,29 +325,39 @@ pub struct PostProcessPlugin<T: PostProcessEffect> {
     _marker: PhantomData<T>,
 }
 
-/// Copies a post-process settings component from any entity to the render
-/// target camera, so effects can be placed on non-camera entities.
+/// Copies a post-process settings component from source entities to target
+/// cameras based on the EffectRouting table.
 fn proxy_effect_to_camera<T: PostProcessEffect>(
     mut commands: Commands,
     sources: Query<(Entity, &T), Without<Camera>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    let Some(target) = render_target.0 else { return };
-    // Find the first source (if multiple, first wins)
-    if let Some((_entity, settings)) = sources.iter().next() {
-        commands.entity(target).insert(*settings);
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                commands.entity(*target).insert(*settings);
+                found = true;
+                break;
+            }
+        }
+        if !found && routing.is_changed() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<T>();
+            }
+        }
     }
 }
 
-/// Removes the proxied component from the camera when the source is removed.
+/// Removes the proxied component from all routed cameras when all sources are removed.
 fn cleanup_proxy_effect<T: PostProcessEffect>(
     mut commands: Commands,
     sources: Query<(), (With<T>, Without<Camera>)>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
     if sources.is_empty() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<T>();
             }
         }

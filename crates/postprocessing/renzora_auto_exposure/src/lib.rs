@@ -34,20 +34,30 @@ impl Default for AutoExposureSettings {
 
 fn sync_auto_exposure(
     mut commands: Commands,
-    query: Query<(Entity, &AutoExposureSettings), Changed<AutoExposureSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<AutoExposureSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(AutoExposure {
-                range: settings.range_min..=settings.range_max,
-                speed_brighten: settings.speed_brighten,
-                speed_darken: settings.speed_darken,
-                ..default()
-            });
-        } else {
-            commands.entity(target).remove::<AutoExposure>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if settings.enabled {
+                    commands.entity(*target).insert(AutoExposure {
+                        range: settings.range_min..=settings.range_max,
+                        speed_brighten: settings.speed_brighten,
+                        speed_darken: settings.speed_darken,
+                        ..default()
+                    });
+                } else {
+                    commands.entity(*target).remove::<AutoExposure>();
+                }
+                found = true; break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<AutoExposure>(); }
         }
     }
 }
@@ -55,15 +65,11 @@ fn sync_auto_exposure(
 fn cleanup_auto_exposure(
     mut commands: Commands,
     mut removed: RemovedComponents<AutoExposureSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
-                ec.remove::<AutoExposure>();
-            }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<AutoExposure>();
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<AutoExposure>(); }
         }
     }
 }

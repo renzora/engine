@@ -94,21 +94,23 @@ fn cleanup_decals(
     }
 }
 
-/// Ensures all Camera3d entities have DepthPrepass (required for forward decals).
+/// Ensures all routed camera targets have DepthPrepass (required for forward decals).
 fn ensure_depth_prepass(
     mut commands: Commands,
     cameras: Query<Entity, (With<Camera3d>, Without<DepthPrepass>)>,
     decals: Query<(), With<DecalSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
     if decals.is_empty() {
         return;
     }
-    if let Some(target) = render_target.0 {
-        commands.entity(target).insert(DepthPrepass);
-    } else {
+    if routing.routes.is_empty() {
         for cam in &cameras {
             commands.entity(cam).insert(DepthPrepass);
+        }
+    } else {
+        for (target, _) in routing.iter() {
+            commands.entity(*target).insert(DepthPrepass);
         }
     }
 }

@@ -72,20 +72,25 @@ const MODE_LABELS: [&str; 8] = [
 
 fn sync_tonemapping(
     mut commands: Commands,
-    query: Query<(Entity, &TonemappingSettings), Changed<TonemappingSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<TonemappingSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        let tm = if settings.enabled {
-            mode_to_tonemapping(settings.mode)
-        } else {
-            Tonemapping::None
-        };
-        commands
-            .entity(target)
-            .insert(tm)
-            .insert(Exposure { ev100: settings.ev100 });
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { break; }
+                let tm = if settings.enabled {
+                    mode_to_tonemapping(settings.mode)
+                } else {
+                    Tonemapping::None
+                };
+                commands.entity(*target)
+                    .insert(tm)
+                    .insert(Exposure { ev100: settings.ev100 });
+                break;
+            }
+        }
     }
 }
 
@@ -197,31 +202,33 @@ impl Default for DebandDitherSettings {
 
 fn sync_deband_dither(
     mut commands: Commands,
-    query: Query<(Entity, &DebandDitherSettings), Changed<DebandDitherSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<DebandDitherSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        commands.entity(target).insert(if settings.enabled {
-            DebandDither::Enabled
-        } else {
-            DebandDither::Disabled
-        });
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() { break; }
+                commands.entity(*target).insert(if settings.enabled {
+                    DebandDither::Enabled
+                } else {
+                    DebandDither::Disabled
+                });
+                break;
+            }
+        }
     }
 }
 
 fn cleanup_deband_dither(
     mut commands: Commands,
     mut removed: RemovedComponents<DebandDitherSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
-                ec.insert(DebandDither::Disabled);
-            }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.insert(DebandDither::Disabled);
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) { ec.insert(DebandDither::Disabled); }
         }
     }
 }
@@ -255,15 +262,13 @@ fn deband_dither_entry() -> InspectorEntry {
 fn cleanup_tonemapping(
     mut commands: Commands,
     mut removed: RemovedComponents<TonemappingSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.insert((Tonemapping::default(), Exposure::default()));
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.insert((Tonemapping::default(), Exposure::default()));
         }
     }
 }

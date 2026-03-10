@@ -2,9 +2,11 @@
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, SceneCamera, ShapeRegistry};
+use renzora_core::console_log::*;
+use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeState, SceneCamera, ShapeRegistry};
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 // ============================================================================
@@ -27,6 +29,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(path, content)?;
+        console_info("Scene", format!("Saved empty scene to {}", path.display()));
         info!("Saved empty scene to {}", path.display());
         return Ok(());
     }
@@ -75,6 +78,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, &serialized)?;
+    console_info("Scene", format!("Saved scene to {} ({} entities)", path.display(), scene.entities.len()));
     info!("Saved scene to {} ({} entities)", path.display(), scene.entities.len());
     Ok(())
 }
@@ -97,14 +101,21 @@ pub fn save_current_scene(world: &mut World) {
 
 /// Load a scene from a RON file into the world.
 pub fn load_scene(world: &mut World, path: &Path) {
+    console_info("Scene", format!("=== Loading scene from {} ===", path.display()));
+
     if !path.exists() {
+        console_warn("Scene", format!("Scene file does not exist: {}", path.display()));
         info!("Scene file does not exist yet: {}", path.display());
         return;
     }
 
     let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
+        Ok(c) => {
+            console_info("Scene", format!("Read {} bytes from {}", c.len(), path.display()));
+            c
+        }
         Err(e) => {
+            console_error("Scene", format!("Failed to read scene file {}: {}", path.display(), e));
             error!("Failed to read scene file {}: {}", path.display(), e);
             return;
         }
@@ -112,6 +123,7 @@ pub fn load_scene(world: &mut World, path: &Path) {
 
     let trimmed = content.trim();
     if trimmed.is_empty() || trimmed == "(entities: {}, resources: {})" {
+        console_info("Scene", format!("Scene is empty: {}", path.display()));
         info!("Scene is empty: {}", path.display());
         return;
     }
@@ -144,6 +156,28 @@ pub fn load_scene(world: &mut World, path: &Path) {
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     match scene.write_to_world(world, &mut entity_map) {
         Ok(()) => {
+            console_info("Scene", format!(
+                "Scene written to world: {} entities mapped from {}",
+                entity_map.len(), path.display()
+            ));
+
+            // Log each mapped entity
+            for (&scene_entity, &world_entity) in &entity_map {
+                let name = world.get::<Name>(world_entity)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "unnamed".into());
+                let has_scene_cam = world.get::<SceneCamera>(world_entity).is_some();
+                let has_default = world.get::<DefaultCamera>(world_entity).is_some();
+                let mut tags = Vec::new();
+                if has_scene_cam { tags.push("SceneCamera"); }
+                if has_default { tags.push("DefaultCamera"); }
+                let tag_str = if tags.is_empty() { String::new() } else { format!(" [{}]", tags.join(", ")) };
+                console_info("Scene", format!(
+                    "  scene:{:?} -> world:{:?} \"{}\"{}",
+                    scene_entity, world_entity, name, tag_str
+                ));
+            }
+
             info!("Loaded scene from {} ({} entities mapped)", path.display(), entity_map.len());
 
             // Bevy's write_to_world inserts ChildOf via reflection, which may not
@@ -156,13 +190,21 @@ pub fn load_scene(world: &mut World, path: &Path) {
                 })
                 .collect();
 
+            console_info("Scene", format!(
+                "Re-inserting ChildOf on {} entities to trigger hierarchy hooks",
+                children_with_parents.len()
+            ));
+
             for (child, parent) in children_with_parents {
                 // Remove and re-insert ChildOf to trigger hooks
                 world.entity_mut(child).remove::<ChildOf>();
                 world.entity_mut(child).insert(ChildOf(parent));
             }
+
+            console_success("Scene", format!("=== Scene load complete: {} ===", path.display()));
         }
         Err(e) => {
+            console_error("Scene", format!("Failed to write scene to world {}: {}", path.display(), e));
             error!("Failed to write scene to world {}: {}", path.display(), e);
         }
     }
@@ -281,20 +323,33 @@ fn should_sync(type_path: &str) -> bool {
     type_path.ends_with("Settings")
 }
 
-/// Sync post-process (and other reflected) components from SceneCamera entities to the EditorCamera.
+/// Tracks the previous sync state so we only log when something changes.
+#[derive(Resource, Default)]
+struct SceneCameraSyncState {
+    prev_src: Option<Entity>,
+    prev_synced: BTreeSet<&'static str>,
+}
+
+/// Sync post-process (and other reflected) components from the **default**
+/// SceneCamera entity to the EditorCamera.
 ///
 /// In editor mode the viewport renders through the EditorCamera, but users attach
 /// effects to the SceneCamera entity. This system mirrors those components so they
 /// take effect during editing.
+///
+/// Skipped during play mode (the play-mode camera receives effects via
+/// `RenderTarget` + the individual `sync_*` systems).
 pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
-    // Find the scene camera and editor camera entities.
-    let mut scene_cam = None;
-    let mut editor_cam = None;
-    let mut q = world.query_filtered::<Entity, With<SceneCamera>>();
-    for e in q.iter(world) {
-        scene_cam = Some(e);
-        break;
+    // Skip during play mode — effects route through RenderTarget instead.
+    let is_playing = world
+        .get_resource::<PlayModeState>()
+        .is_some_and(|pm| pm.is_in_play_mode());
+    if is_playing {
+        return;
     }
+
+    // Find the editor camera.
+    let mut editor_cam = None;
     let mut q = world.query_filtered::<Entity, With<EditorCamera>>();
     for e in q.iter(world) {
         editor_cam = Some(e);
@@ -303,6 +358,21 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
     let Some(dst) = editor_cam else {
         return;
     };
+
+    // Find the scene camera — prefer DefaultCamera, fall back to first SceneCamera.
+    let mut default_cam = None;
+    let mut first_cam = None;
+    let mut q = world.query_filtered::<(Entity, Option<&DefaultCamera>), With<SceneCamera>>();
+    for (e, dc) in q.iter(world) {
+        if dc.is_some() {
+            default_cam = Some(e);
+            break;
+        }
+        if first_cam.is_none() {
+            first_cam = Some(e);
+        }
+    }
+    let scene_cam = default_cam.or(first_cam);
 
     // If no scene camera exists, remove all synced components from the editor camera.
     let Some(src) = scene_cam else {
@@ -376,7 +446,7 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
 
     // Remove components from editor camera that were removed from scene camera.
     let registry = type_registry.read();
-    let mut to_remove: Vec<bevy::ecs::reflect::ReflectComponent> = Vec::new();
+    let mut to_remove: Vec<(bevy::ecs::reflect::ReflectComponent, &'static str)> = Vec::new();
     let editor_ref = world.entity(dst);
     for reg in registry.iter() {
         let Some(reflect_component) = reg.data::<bevy::ecs::reflect::ReflectComponent>() else {
@@ -389,12 +459,51 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
         if reflect_component.contains(FilteredEntityRef::from(editor_ref))
             && !synced_type_paths.contains(&type_path)
         {
-            to_remove.push(reflect_component.clone());
+            to_remove.push((reflect_component.clone(), type_path));
         }
     }
     drop(registry);
 
-    for reflect_component in &to_remove {
+    // Only log when the source camera or set of synced types actually changes.
+    let current_set: BTreeSet<&'static str> = synced_type_paths.iter().copied().collect();
+    let removed_paths: Vec<&str> = to_remove.iter().map(|(_, p)| *p).collect();
+
+    let mut state = world
+        .remove_resource::<SceneCameraSyncState>()
+        .unwrap_or_default();
+
+    let src_changed = state.prev_src != Some(src);
+    let set_changed = state.prev_synced != current_set;
+    let has_removals = !removed_paths.is_empty();
+
+    if src_changed || set_changed || has_removals {
+        crate::debug_log::log_scene_camera_sync(
+            Some(src),
+            Some(dst),
+            &synced_type_paths,
+            &removed_paths,
+        );
+        if src_changed {
+            let src_name = world
+                .get::<Name>(src)
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "unnamed".into());
+            let has_default = world.get::<DefaultCamera>(src).is_some();
+            renzora_core::console_log::console_info(
+                "PostProcess",
+                format!(
+                    "Sync source camera: {:?} \"{}\" default={}",
+                    src, src_name, has_default
+                ),
+            );
+        }
+        state.prev_src = Some(src);
+        state.prev_synced = current_set;
+    }
+
+    world.insert_resource(state);
+
+    for (reflect_component, _) in &to_remove {
         reflect_component.remove(&mut world.entity_mut(dst));
     }
 }

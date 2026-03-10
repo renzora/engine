@@ -4,6 +4,7 @@
 //! and displays the result as an egui image inside the docking panel system.
 
 pub mod camera_preview;
+pub mod effect_routing;
 pub mod header;
 pub mod play_mode;
 pub mod render_systems;
@@ -48,18 +49,15 @@ impl Plugin for ViewportPlugin {
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastRenderState>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
+            .init_resource::<renzora_core::EffectRouting>()
             .add_systems(Update, (
                 handle_viewport_resize,
                 render_systems::update_render_toggles,
                 render_systems::update_shadow_settings,
                 camera_preview::update_camera_preview,
                 play_mode::handle_play_mode_transitions,
-            ).run_if(in_state(renzora_editor::SplashState::Editor)))
-            .add_systems(Update,
-                camera_preview::sync_preview_post_processing
-                    .after(camera_preview::update_camera_preview)
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
-            );
+                effect_routing::update_effect_routing,
+            ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);

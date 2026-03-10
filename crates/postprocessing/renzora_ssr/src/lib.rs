@@ -22,15 +22,31 @@ impl Default for SsrSettings {
 
 fn sync_ssr(
     mut commands: Commands,
-    query: Query<(Entity, &SsrSettings), Changed<SsrSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<SsrSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(ScreenSpaceReflections::default());
-        } else {
-            commands.entity(target).remove::<ScreenSpaceReflections>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target).insert(ScreenSpaceReflections::default());
+                } else {
+                    commands.entity(*target).remove::<ScreenSpaceReflections>();
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<ScreenSpaceReflections>();
+            }
         }
     }
 }
@@ -38,15 +54,13 @@ fn sync_ssr(
 fn cleanup_ssr(
     mut commands: Commands,
     mut removed: RemovedComponents<SsrSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<ScreenSpaceReflections>();
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<ScreenSpaceReflections>();
         }
     }
 }

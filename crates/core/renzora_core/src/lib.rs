@@ -129,43 +129,23 @@ pub struct SceneCamera;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DefaultCamera;
 
-/// Cached entity that should receive Bevy-native rendering components
-/// (e.g. `Bloom`, `Atmosphere`, `Fxaa`).
+/// Maps each rendering camera to its effect source entities.
 ///
-/// In editor mode this is the `EditorCamera`; in runtime mode it's the active
-/// `SceneCamera`. Updated each frame by [`update_render_target`].
+/// Each route is `(target_camera, [source_entities])`. For a given Settings
+/// type the **first** source entity that has it wins.
 ///
-/// Post-processing sync systems should read this resource to decide where to
-/// insert their native Bevy components, allowing users to place settings
-/// components on any entity in the scene.
-#[derive(Resource, Default)]
-pub struct RenderTarget(pub Option<Entity>);
+/// Updated each frame by the routing system (editor: viewport crate,
+/// runtime: renzora_runtime). Read by per-crate sync systems.
+#[derive(Resource, Default, Debug)]
+pub struct EffectRouting {
+    pub routes: Vec<(Entity, Vec<Entity>)>,
+}
 
-/// System that updates [`RenderTarget`] each frame.
-pub fn update_render_target(
-    mut target: ResMut<RenderTarget>,
-    play_mode: Option<Res<PlayModeState>>,
-    play_cam: Query<Entity, With<PlayModeCamera>>,
-    editor: Query<Entity, With<EditorCamera>>,
-    scene: Query<(Entity, Option<&DefaultCamera>), With<SceneCamera>>,
-) {
-    let is_playing = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-
-    target.0 = if is_playing {
-        // In play mode, prefer the PlayModeCamera
-        play_cam.iter().next()
-            .or_else(|| scene.iter()
-                .find(|(_, dc)| dc.is_some())
-                .or_else(|| scene.iter().next())
-                .map(|(e, _)| e))
-    } else if let Ok(e) = editor.single() {
-        Some(e)
-    } else {
-        scene.iter()
-            .find(|(_, dc)| dc.is_some())
-            .or_else(|| scene.iter().next())
-            .map(|(e, _)| e)
-    };
+impl EffectRouting {
+    /// Iterate all routes.
+    pub fn iter(&self) -> impl Iterator<Item = &(Entity, Vec<Entity>)> {
+        self.routes.iter()
+    }
 }
 
 /// Serializable shape ID — stored alongside `Mesh3d` so the shape can be recreated on scene load.

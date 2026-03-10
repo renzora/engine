@@ -5,10 +5,11 @@
 //! When standalone, it renders directly to the window.
 
 pub mod camera;
+pub mod debug_log;
 pub mod scene_io;
 pub mod vfs;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, RenderTarget, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
@@ -31,6 +32,8 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora_core::DefaultCamera>()
             .register_type::<renzora_core::EntityTag>()
             .register_type::<Sun>();
+
+        app.add_plugins(debug_log::DebugLogPlugin);
 
         #[cfg(not(feature = "editor"))]
         {
@@ -92,8 +95,13 @@ impl Plugin for RuntimePlugin {
 
         app.init_resource::<ViewportRenderTarget>();
         app.init_resource::<ShapeRegistry>();
-        app.init_resource::<renzora_core::RenderTarget>();
-        app.add_systems(Update, renzora_core::update_render_target);
+        app.init_resource::<renzora_core::EffectRouting>();
+
+        // In standalone (non-editor) mode, populate EffectRouting from scene cameras.
+        #[cfg(not(feature = "editor"))]
+        {
+            app.add_systems(Update, update_runtime_effect_routing);
+        }
 
         #[cfg(feature = "editor")]
         {
@@ -109,6 +117,40 @@ fn stinger_done(state: Option<Res<State<renzora_stinger::StingerState>>>) -> boo
     match state {
         Some(s) => *s.get() == renzora_stinger::StingerState::Game,
         None => true, // no stinger plugin
+    }
+}
+
+/// In standalone (non-editor) mode, route effects from the default scene camera
+/// (and all non-camera entities with Settings) to the active rendering camera.
+#[cfg(not(feature = "editor"))]
+fn update_runtime_effect_routing(
+    mut routing: ResMut<renzora_core::EffectRouting>,
+    cameras: Query<(Entity, Option<&DefaultCamera>, &Camera), With<SceneCamera>>,
+    all_entities: Query<Entity, Without<Camera>>,
+) {
+    // Find the active camera (DefaultCamera > first active SceneCamera)
+    let active_cam = cameras
+        .iter()
+        .find(|(_, dc, cam)| dc.is_some() && cam.is_active)
+        .or_else(|| cameras.iter().find(|(_, _, cam)| cam.is_active))
+        .map(|(e, _, _)| e);
+
+    let Some(target) = active_cam else {
+        if !routing.routes.is_empty() {
+            routing.routes.clear();
+        }
+        return;
+    };
+
+    // Sources: default camera entity itself + all non-camera entities (World Environment etc.)
+    let mut sources: Vec<Entity> = vec![target];
+    for entity in &all_entities {
+        sources.push(entity);
+    }
+
+    let new_routes = vec![(target, sources)];
+    if routing.routes != new_routes {
+        routing.routes = new_routes;
     }
 }
 

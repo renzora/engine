@@ -1,7 +1,5 @@
 use bevy::prelude::*;
-use bevy::camera::Camera3d;
 use bevy::core_pipeline::oit::OrderIndependentTransparencySettings;
-use bevy::render::render_resource::TextureUsages;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -32,24 +30,36 @@ impl Default for OitSettings {
 
 fn sync_oit(
     mut commands: Commands,
-    mut query: Query<(Entity, &OitSettings, &mut Camera3d), Changed<OitSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<OitSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings, mut cam3d) in &mut query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            let mut usages = TextureUsages::from(cam3d.depth_texture_usages);
-            usages |= TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING;
-            cam3d.depth_texture_usages = usages.into();
-
-            commands.entity(target)
-                .insert(Msaa::Off)
-                .insert(OrderIndependentTransparencySettings {
-                    layer_count: settings.layer_count,
-                    alpha_threshold: settings.alpha_threshold,
-                });
-        } else {
-            commands.entity(target).remove::<OrderIndependentTransparencySettings>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target)
+                        .insert(Msaa::Off)
+                        .insert(OrderIndependentTransparencySettings {
+                            layer_count: settings.layer_count,
+                            alpha_threshold: settings.alpha_threshold,
+                        });
+                } else {
+                    commands.entity(*target).remove::<OrderIndependentTransparencySettings>();
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<OrderIndependentTransparencySettings>();
+            }
         }
     }
 }
@@ -57,15 +67,13 @@ fn sync_oit(
 fn cleanup_oit(
     mut commands: Commands,
     mut removed: RemovedComponents<OitSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<OrderIndependentTransparencySettings>();
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<OrderIndependentTransparencySettings>();
         }
     }
 }

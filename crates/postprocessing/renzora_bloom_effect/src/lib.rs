@@ -34,25 +34,41 @@ impl Default for BloomSettings {
 
 fn sync_bloom(
     mut commands: Commands,
-    query: Query<(Entity, &BloomSettings), Changed<BloomSettings>>,
-    render_target: Res<renzora_core::RenderTarget>,
+    sources: Query<(Entity, Ref<BloomSettings>)>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for (entity, settings) in &query {
-        let target = render_target.0.unwrap_or(entity);
-        if settings.enabled {
-            commands.entity(target).insert(Bloom {
-                intensity: settings.intensity,
-                low_frequency_boost: settings.low_frequency_boost,
-                low_frequency_boost_curvature: 0.95,
-                high_pass_frequency: settings.high_pass_frequency,
-                prefilter: BloomPrefilter {
-                    threshold: settings.threshold,
-                    threshold_softness: settings.threshold_softness,
-                },
-                ..Bloom::NATURAL
-            });
-        } else {
-            commands.entity(target).remove::<Bloom>();
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target).insert(Bloom {
+                        intensity: settings.intensity,
+                        low_frequency_boost: settings.low_frequency_boost,
+                        low_frequency_boost_curvature: 0.95,
+                        high_pass_frequency: settings.high_pass_frequency,
+                        prefilter: BloomPrefilter {
+                            threshold: settings.threshold,
+                            threshold_softness: settings.threshold_softness,
+                        },
+                        ..Bloom::NATURAL
+                    });
+                } else {
+                    commands.entity(*target).remove::<Bloom>();
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<Bloom>();
+            }
         }
     }
 }
@@ -116,15 +132,13 @@ fn inspector_entry() -> InspectorEntry {
 fn cleanup_bloom(
     mut commands: Commands,
     mut removed: RemovedComponents<BloomSettings>,
-    render_target: Res<renzora_core::RenderTarget>,
+    routing: Res<renzora_core::EffectRouting>,
 ) {
-    for entity in removed.read() {
-        if let Some(target) = render_target.0 {
-            if let Ok(mut ec) = commands.get_entity(target) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<Bloom>();
             }
-        } else if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<Bloom>();
         }
     }
 }
