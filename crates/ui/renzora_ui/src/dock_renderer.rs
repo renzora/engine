@@ -35,6 +35,10 @@ pub struct DockRenderResult {
     pub drop_target: Option<DropTarget>,
     /// A panel was added from the "+" menu: `(sibling_panel_id, new_panel_id)`.
     pub panel_to_add: Option<(String, String)>,
+    /// A tab was Ctrl+dragged to undock it as a floating window.
+    pub ctrl_drag_undock: Option<String>,
+    /// A tab was right-click → "Undock" to float it.
+    pub context_menu_undock: Option<String>,
 }
 
 // ── Public entry point ───────────────────────────────────────────────────────
@@ -360,10 +364,29 @@ fn render_leaf(
             }
         }
 
-        // Drag initiation
+        // Drag initiation — Ctrl+drag undocks immediately, normal drag rearranges
         if tab_response.drag_started() && result.drag_started.is_none() {
-            result.drag_started = Some(panel_id.clone());
+            let ctrl_held = ui.input(|i| i.modifiers.ctrl);
+            if ctrl_held {
+                result.ctrl_drag_undock = Some(panel_id.clone());
+            } else {
+                result.drag_started = Some(panel_id.clone());
+            }
         }
+
+        // Right-click context menu
+        tab_response.context_menu(|ui| {
+            if can_close {
+                if ui.button("Close").clicked() {
+                    result.panel_to_close = Some(panel_id.clone());
+                    ui.close();
+                }
+            }
+            if ui.button("Undock").clicked() {
+                result.context_menu_undock = Some(panel_id.clone());
+                ui.close();
+            }
+        });
 
         tab_x += tab_width + 1.0;
     }

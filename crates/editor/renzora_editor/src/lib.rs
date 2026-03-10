@@ -73,6 +73,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ThemeManager>()
             .init_resource::<PanelRegistry>()
             .init_resource::<DockingState>()
+            .init_resource::<FloatingPanels>()
             .init_resource::<LayoutManager>()
             .init_resource::<DocumentTabState>()
             .init_resource::<EditorSelection>()
@@ -245,6 +246,22 @@ fn editor_ui_system(world: &mut World) {
         })
         .inner;
 
+    // 9b. Render floating panels
+    let floating_result = {
+        let mut floating = world
+            .remove_resource::<FloatingPanels>()
+            .unwrap_or_default();
+        let fr = renzora_ui::floating::render_floating_panels(
+            &ctx,
+            &mut floating,
+            &registry,
+            world,
+            &theme,
+        );
+        world.insert_resource(floating);
+        fr
+    };
+
     // 10. Re-insert the registry
     world.insert_resource(registry);
 
@@ -275,14 +292,17 @@ fn editor_ui_system(world: &mut World) {
         }
     }
 
-    // C) Handle drop — apply tree mutations
+    // C) Handle drop — apply tree mutations (re-dock from floating or rearrange docked)
     if should_drop {
         if let Some(drag) = world.remove_resource::<DragState>() {
             if let Some(target) = render_result.drop_target {
+                // Remove from floating if re-docking
+                if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
+                    floating.remove(&drag.panel_id);
+                }
+                // Apply dock tree mutations
                 if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
-                    // 1. Remove panel from source
                     docking.tree.remove_panel(&drag.panel_id);
-                    // 2. Apply drop based on zone
                     match target.zone {
                         renzora_ui::DropZone::Tab(idx) => {
                             docking.tree.add_tab_at(&target.panel_id, drag.panel_id, idx);
@@ -296,8 +316,20 @@ fn editor_ui_system(world: &mut World) {
                     }
                 }
             }
-            // If no valid target, the tab snaps back (remove_panel was not called)
+            // No target → snap back (no-op)
         }
+    }
+
+    // C2) Handle Ctrl+drag undock — immediately float the panel
+    if let Some(ref panel_id) = render_result.ctrl_drag_undock {
+        let drop_pos = ctx.pointer_latest_pos().unwrap_or_default();
+        undock_panel_to_floating(world, panel_id, drop_pos);
+    }
+
+    // C3) Handle right-click "Undock" context menu action
+    if let Some(ref panel_id) = render_result.context_menu_undock {
+        let drop_pos = ctx.pointer_latest_pos().unwrap_or_default();
+        undock_panel_to_floating(world, panel_id, drop_pos);
     }
 
     // D) Handle cancel (Escape key)
@@ -348,6 +380,29 @@ fn editor_ui_system(world: &mut World) {
                     .unwrap_or_else(|| drag.panel_id.clone());
                 renzora_ui::drag_drop::draw_drag_ghost(&ctx, &title, pos, &theme);
             }
+        }
+    }
+
+    // E2) Handle floating panel close
+    if let Some(ref panel_id) = floating_result.panel_to_close {
+        if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
+            floating.remove(panel_id);
+        }
+    }
+
+    // E3) Handle "Dock" button or right-click "Dock" on a floating panel
+    if let Some(ref panel_id) = floating_result.panel_to_dock {
+        dock_panel_to_default(world, panel_id);
+    }
+
+    // E4) Handle grip drag from floating panel — start a DragState for dock-drop
+    if let Some(ref panel_id) = floating_result.redock_drag_started {
+        if world.get_resource::<DragState>().is_none() {
+            world.insert_resource(DragState {
+                panel_id: panel_id.clone(),
+                origin: ctx.pointer_latest_pos().unwrap_or_default(),
+                is_detached: true,
+            });
         }
     }
 
@@ -489,6 +544,10 @@ fn switch_layout(world: &mut World, index: usize) {
         if let Some(mut layout_mgr) = world.get_resource_mut::<LayoutManager>() {
             layout_mgr.active_index = index;
         }
+        // Clear any floating panels when switching layouts
+        if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
+            floating.panels.clear();
+        }
     }
 }
 
@@ -499,6 +558,46 @@ fn switch_layout_by_name(world: &mut World, name: &str) {
         .and_then(|lm| lm.layouts.iter().position(|l| l.name == name));
     if let Some(i) = index {
         switch_layout(world, i);
+    }
+}
+
+/// Re-dock a floating panel back into the dock tree at a reasonable location.
+fn dock_panel_to_default(world: &mut World, panel_id: &str) {
+    // Remove from floating
+    if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
+        floating.remove(panel_id);
+    }
+
+    // Re-add to the dock tree
+    if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+        let all_panels = docking.tree.all_panels();
+        if let Some(first) = all_panels.first() {
+            // Add as a tab next to the first panel in the tree
+            docking.tree.add_tab(first, panel_id.to_string());
+        } else {
+            // Tree is empty — set as root leaf
+            docking.tree = DockTree::leaf(panel_id);
+        }
+    }
+}
+
+/// Remove a panel from the dock tree and add it as a floating window.
+fn undock_panel_to_floating(world: &mut World, panel_id: &str, pos: egui::Pos2) {
+    let size = world
+        .get_resource::<PanelRegistry>()
+        .and_then(|r| r.get(panel_id))
+        .map(|p| {
+            let min = p.min_size();
+            egui::Vec2::new(min[0].max(400.0), min[1].max(300.0))
+        })
+        .unwrap_or(egui::Vec2::new(400.0, 300.0));
+    let win_pos = egui::Pos2::new(pos.x - size.x / 2.0, pos.y - 14.0);
+
+    if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+        docking.tree.remove_panel(panel_id);
+    }
+    if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
+        floating.add(panel_id.to_string(), win_pos, size);
     }
 }
 
