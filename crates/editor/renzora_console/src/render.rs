@@ -226,19 +226,25 @@ fn render_toolbar(
 
 fn copy_filtered_logs(ui: &mut egui::Ui, console: &ConsoleState) {
     let filtered: Vec<_> = console.filtered_entries().collect();
-    let text = filtered
+    let grouped = group_consecutive_entries(&filtered);
+    let text = grouped
         .iter()
-        .map(|e| {
-            let level = match e.level {
+        .map(|g| {
+            let level = match g.entry.level {
                 LogLevel::Info => "INFO",
                 LogLevel::Success => "SUCCESS",
                 LogLevel::Warning => "WARNING",
                 LogLevel::Error => "ERROR",
             };
-            if e.category.is_empty() {
-                format!("[{}] {}", level, e.message)
+            let count_suffix = if g.count > 1 {
+                format!(" (x{})", g.count)
             } else {
-                format!("[{}] [{}] {}", level, e.category, e.message)
+                String::new()
+            };
+            if g.entry.category.is_empty() {
+                format!("[{}] {}{}", level, g.entry.message, count_suffix)
+            } else {
+                format!("[{}] [{}] {}{}", level, g.entry.category, g.entry.message, count_suffix)
             }
         })
         .collect::<Vec<_>>()
