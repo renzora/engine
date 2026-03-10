@@ -1,7 +1,10 @@
+use bevy::prelude::*;
 use bevy::render::{
-    settings::{Backends, RenderCreation, WgpuSettings},
+    settings::{RenderCreation, WgpuSettings},
     RenderPlugin,
 };
+#[cfg(target_os = "android")]
+use bevy::render::settings::Backends;
 
 
 /// Pick the best GPU backend for the current platform.
