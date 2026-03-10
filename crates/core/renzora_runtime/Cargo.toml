@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = []
+editor = ["dep:bevy_egui"]
 
 [dependencies]
 bevy = { version = "0.18" }
@@ -17,3 +17,7 @@ renzora_stinger = { path = "../renzora_stinger" }
 ron = "0.8"
 serde = "1"
 toml = "0.8"
+arboard = "3"
+dirs = "6"
+rfd = "0.15"
+bevy_egui = { version = "0.39", optional = true }

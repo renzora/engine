@@ -5,6 +5,7 @@
 //! When standalone, it renders directly to the window.
 
 pub mod camera;
+pub mod crash;
 pub mod debug_log;
 pub mod scene_io;
 pub mod vfs;

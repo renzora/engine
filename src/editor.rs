@@ -1,5 +1,9 @@
 fn main() {
+    renzora_runtime::crash::install_panic_hook();
+
     let mut app = renzora::build_runtime_app();
+
+    app.add_plugins(renzora_runtime::crash::CrashReportPlugin);
 
     #[cfg(feature = "editor")] {
         app.add_plugins(renzora_splash::SplashPlugin);
