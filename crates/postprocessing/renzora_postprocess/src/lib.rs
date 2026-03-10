@@ -329,9 +329,11 @@ pub struct PostProcessPlugin<T: PostProcessEffect> {
 /// cameras based on the EffectRouting table.
 fn proxy_effect_to_camera<T: PostProcessEffect>(
     mut commands: Commands,
-    sources: Query<(Entity, &T), Without<Camera>>,
+    sources: Query<(Entity, &T)>,
     routing: Res<renzora_core::EffectRouting>,
+    mut removed: RemovedComponents<T>,
 ) {
+    let any_removed = removed.read().next().is_some();
     for (target, source_list) in routing.iter() {
         let mut found = false;
         for &src in source_list {
@@ -341,7 +343,7 @@ fn proxy_effect_to_camera<T: PostProcessEffect>(
                 break;
             }
         }
-        if !found && routing.is_changed() {
+        if !found && (routing.is_changed() || any_removed) {
             if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.remove::<T>();
             }
@@ -352,7 +354,7 @@ fn proxy_effect_to_camera<T: PostProcessEffect>(
 /// Removes the proxied component from all routed cameras when all sources are removed.
 fn cleanup_proxy_effect<T: PostProcessEffect>(
     mut commands: Commands,
-    sources: Query<(), (With<T>, Without<Camera>)>,
+    sources: Query<(), With<T>>,
     routing: Res<renzora_core::EffectRouting>,
 ) {
     if sources.is_empty() {
