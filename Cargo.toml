@@ -92,6 +92,8 @@ editor = [
     "renzora_oit/editor",
     "renzora_forward_decal/editor",
     "dep:renzora_particle_editor",
+    "dep:renzora_material_editor",
+    "dep:renzora_terrain_editor",
     "dep:renzora_code_editor",
     "dep:renzora_script_variables",
     # "renzora_gauges/editor",
@@ -117,6 +119,8 @@ renzora_stinger = { path = "crates/core/renzora_stinger" }
 renzora_audio = { path = "crates/core/renzora_audio" }
 renzora_core = { path = "crates/core/renzora_core" }
 renzora_hanabi = { path = "crates/core/renzora_hanabi" }
+renzora_material = { path = "crates/core/renzora_material" }
+renzora_terrain = { path = "crates/core/renzora_terrain" }
 # renzora_gauges = { path = "crates/core/renzora_gauges" }
 
 # Editor plugins (optional, enabled by `editor` feature)
@@ -141,6 +145,8 @@ renzora_gamepad = { path = "crates/editor/renzora_gamepad", optional = true }
 renzora_gizmo = { path = "crates/editor/renzora_gizmo", optional = true }
 renzora_settings = { path = "crates/editor/renzora_settings", optional = true }
 renzora_particle_editor = { path = "crates/editor/renzora_particle_editor", optional = true }
+renzora_material_editor = { path = "crates/editor/renzora_material_editor", optional = true }
+renzora_terrain_editor = { path = "crates/editor/renzora_terrain_editor", optional = true }
 renzora_code_editor = { path = "crates/editor/renzora_code_editor", optional = true }
 renzora_script_variables = { path = "crates/editor/renzora_script_variables", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }

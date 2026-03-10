@@ -64,13 +64,7 @@ impl Material for GizmoMaterial {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
-#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GizmoMode {
-    #[default]
-    Translate,
-    Rotate,
-    Scale,
-}
+pub use renzora_editor::GizmoMode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoAxis {

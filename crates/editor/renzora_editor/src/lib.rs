@@ -35,6 +35,15 @@ pub use renzora_core::EntityTag;
 
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
+/// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
+#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GizmoMode {
+    #[default]
+    Translate,
+    Rotate,
+    Scale,
+}
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::prelude::*;

@@ -75,6 +75,8 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
     app.add_plugins(renzora_hanabi::HanabiParticlePlugin);
+    app.add_plugins(renzora_terrain::TerrainPlugin);
+    app.add_plugins(renzora_material::MaterialPlugin);
     app.add_plugins(renzora_tonemapping::TonemappingPlugin);
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin);
     app.add_plugins(renzora_dof::DepthOfFieldPlugin);

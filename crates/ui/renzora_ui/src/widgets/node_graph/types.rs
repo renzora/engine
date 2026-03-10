@@ -56,6 +56,8 @@ pub struct NodeDef {
     /// Position in canvas (logical) coordinates.
     pub position: [f32; 2],
     pub pins: Vec<PinDef>,
+    /// Optional texture thumbnail displayed between header and pins.
+    pub thumbnail: Option<egui::TextureId>,
 }
 
 /// A connection between two pins.

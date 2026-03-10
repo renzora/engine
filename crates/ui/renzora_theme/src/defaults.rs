@@ -18,7 +18,7 @@ impl Theme {
             widgets: WidgetColors::default(),
             panels: PanelColors::default(),
             categories: CategoryColors::default(),
-            blueprint: BlueprintColors::default(),
+            material: MaterialColors::default(),
             viewport: ViewportColors::default(),
         }
     }
@@ -141,7 +141,7 @@ impl Theme {
                     header_bg: ThemeColor::new(245, 238, 245),
                 },
             },
-            blueprint: BlueprintColors {
+            material: MaterialColors {
                 canvas_bg: ThemeColor::new(240, 240, 245),
                 grid_dot: ThemeColor::new(200, 200, 210),
                 node_bg: ThemeColor::new(255, 255, 255),

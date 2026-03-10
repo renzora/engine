@@ -102,7 +102,7 @@ pub fn file_icon(path: &Path) -> (&'static str, Color32) {
     if lower.ends_with(".blueprint") || lower.ends_with(".bp") {
         return (regular::BLUEPRINT, Color32::from_rgb(100, 180, 255));
     }
-    if lower.ends_with(".material_bp") {
+    if lower.ends_with(".material_bp") || lower.ends_with(".material") {
         return (regular::ATOM, Color32::from_rgb(255, 120, 200));
     }
     if lower.ends_with(".ron") {

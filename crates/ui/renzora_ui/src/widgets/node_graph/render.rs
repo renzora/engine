@@ -73,7 +73,9 @@ pub fn draw_node(
     let output_count = node.pins.iter().filter(|p| p.direction == PinDirection::Output).count();
     let max_pins = input_count.max(output_count);
 
-    let node_height = config.header_height + (max_pins as f32 * config.pin_height) + 8.0;
+    // Thumbnail adds extra height between header and pins
+    let thumb_height = if node.thumbnail.is_some() { config.node_width * 0.5 } else { 0.0 };
+    let node_height = config.header_height + thumb_height + (max_pins as f32 * config.pin_height) + 8.0;
     let scaled_w = config.node_width * zoom;
     let scaled_h = node_height * zoom;
 
@@ -107,6 +109,20 @@ pub fn draw_node(
         Color32::WHITE,
     );
 
+    // Thumbnail (between header and pins)
+    let thumb_offset = if let Some(tex_id) = node.thumbnail {
+        let th = thumb_height * zoom;
+        let pad = 4.0 * zoom;
+        let thumb_rect = Rect::from_min_size(
+            Pos2::new(screen_pos.x + pad, screen_pos.y + config.header_height * zoom),
+            Vec2::new(scaled_w - pad * 2.0, th),
+        );
+        painter.image(tex_id, thumb_rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+        th
+    } else {
+        0.0
+    };
+
     // Border
     let (border_color, border_width) = if is_selected {
         (config.selected_border, 2.0 * zoom)
@@ -125,7 +141,7 @@ pub fn draw_node(
     );
 
     // Pins
-    let pin_start_y = screen_pos.y + config.header_height * zoom + 4.0 * zoom;
+    let pin_start_y = screen_pos.y + config.header_height * zoom + thumb_offset + 4.0 * zoom;
     let pin_spacing = config.pin_height * zoom;
     let pin_radius = config.pin_radius * zoom;
     let label_font = egui::FontId::proportional(10.0 * zoom);

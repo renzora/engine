@@ -138,9 +138,10 @@ pub struct Theme {
     #[serde(default)]
     pub categories: CategoryColors,
 
-    /// Blueprint editor colors
+    /// Material editor colors
     #[serde(default)]
-    pub blueprint: BlueprintColors,
+    #[serde(alias = "blueprint")]
+    pub material: MaterialColors,
 
     /// Viewport colors
     #[serde(default)]
@@ -430,10 +431,10 @@ impl Default for CategoryStyle {
     }
 }
 
-/// Blueprint editor colors
+/// Material editor colors
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct BlueprintColors {
+pub struct MaterialColors {
     pub canvas_bg: ThemeColor,
     pub grid_dot: ThemeColor,
     pub node_bg: ThemeColor,
@@ -445,7 +446,7 @@ pub struct BlueprintColors {
     pub selection_rect_stroke: ThemeColor,
 }
 
-impl Default for BlueprintColors {
+impl Default for MaterialColors {
     fn default() -> Self {
         Self {
             canvas_bg: ThemeColor::new(25, 25, 30),

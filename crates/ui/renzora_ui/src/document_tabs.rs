@@ -1,6 +1,6 @@
 //! Document tab bar — renders between title bar and dock tree.
 //!
-//! Each open document (scene, script, blueprint, etc.) gets a tab with a
+//! Each open document (scene, script, material, etc.) gets a tab with a
 //! type-coded accent color, close button, and modified indicator. Clicking
 //! a tab activates it and optionally switches the workspace layout.
 
@@ -30,7 +30,7 @@ pub const DOC_TAB_BAR_HEIGHT: f32 = TAB_HEIGHT + TOP_MARGIN;
 pub enum TabKind {
     Scene,
     Script,
-    Blueprint,
+    Material,
     Image,
     Video,
     Audio,
@@ -48,7 +48,7 @@ impl TabKind {
         match self {
             TabKind::Scene => regular::FILM_SCRIPT,
             TabKind::Script => regular::SCROLL,
-            TabKind::Blueprint => regular::PALETTE,
+            TabKind::Material => regular::PALETTE,
             TabKind::Image => regular::IMAGE,
             TabKind::Video => regular::VIDEO,
             TabKind::Audio => regular::MUSIC_NOTES,
@@ -66,7 +66,7 @@ impl TabKind {
         match self {
             TabKind::Scene => theme.semantic.accent.to_color32(),
             TabKind::Script => theme.categories.scripting.accent.to_color32(),
-            TabKind::Blueprint => Color32::from_rgb(180, 130, 200),
+            TabKind::Material => Color32::from_rgb(180, 130, 200),
             TabKind::Image => Color32::from_rgb(166, 217, 140),
             TabKind::Video => Color32::from_rgb(220, 80, 80),
             TabKind::Audio => Color32::from_rgb(180, 100, 220),
@@ -90,7 +90,7 @@ impl TabKind {
         match self {
             TabKind::Scene => "Scene",
             TabKind::Script => "Scripting",
-            TabKind::Blueprint => "Blueprints",
+            TabKind::Material => "Materials",
             TabKind::Image => "Scene",
             TabKind::Video => "Scene",
             TabKind::Audio => "Scene",
@@ -108,7 +108,7 @@ impl TabKind {
         match self {
             TabKind::Scene => "Scene",
             TabKind::Script => "Script",
-            TabKind::Blueprint => "Blueprint",
+            TabKind::Material => "Material",
             TabKind::Image => "Image",
             TabKind::Video => "Video",
             TabKind::Audio => "Audio",
@@ -498,7 +498,7 @@ pub fn render_document_tabs(
 
                     let doc_types = [
                         TabKind::Scene,
-                        TabKind::Blueprint,
+                        TabKind::Material,
                         TabKind::Script,
                         TabKind::Shader,
                     ];

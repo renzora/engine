@@ -1908,6 +1908,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef { name: "flow_out".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
                 PinDef { name: "delta".into(), label: "Delta".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 2: Branch
         NodeDef {
@@ -1921,6 +1922,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef { name: "true_out".into(), label: "True".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
                 PinDef { name: "false_out".into(), label: "False".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 3: Float constant A
         NodeDef {
@@ -1931,6 +1933,7 @@ fn build_demo_graph() -> NodeGraphState {
             pins: vec![
                 PinDef { name: "value".into(), label: "3.14".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 4: Float constant B
         NodeDef {
@@ -1941,6 +1944,7 @@ fn build_demo_graph() -> NodeGraphState {
             pins: vec![
                 PinDef { name: "value".into(), label: "2.0".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 5: Add
         NodeDef {
@@ -1953,6 +1957,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef { name: "b".into(), label: "B".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
                 PinDef { name: "result".into(), label: "Result".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 6: Multiply
         NodeDef {
@@ -1965,6 +1970,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef { name: "b".into(), label: "B".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
                 PinDef { name: "result".into(), label: "Result".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 7: GetPosition
         NodeDef {
@@ -1975,6 +1981,7 @@ fn build_demo_graph() -> NodeGraphState {
             pins: vec![
                 PinDef { name: "position".into(), label: "XYZ".into(), color: vec3, shape: PinShape::Circle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
         // 8: SetColor
         NodeDef {
@@ -1988,6 +1995,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef { name: "position".into(), label: "Pos".into(), color: vec3, shape: PinShape::Circle, direction: PinDirection::Input },
                 PinDef { name: "flow_out".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
             ],
+            thumbnail: None,
         },
     ];
 
@@ -2058,13 +2066,13 @@ impl EditorPanel for NodeGraphGallery {
         };
 
         let config = NodeGraphConfig {
-            canvas_bg: theme.blueprint.canvas_bg.to_color32(),
-            grid_dot: theme.blueprint.grid_dot.to_color32(),
-            node_bg: theme.blueprint.node_bg.to_color32(),
-            node_border: theme.blueprint.node_border.to_color32(),
-            selected_border: theme.blueprint.node_selected_border.to_color32(),
-            selection_fill: theme.blueprint.selection_rect_fill.to_color32(),
-            selection_stroke: theme.blueprint.selection_rect_stroke.to_color32(),
+            canvas_bg: theme.material.canvas_bg.to_color32(),
+            grid_dot: theme.material.grid_dot.to_color32(),
+            node_bg: theme.material.node_bg.to_color32(),
+            node_border: theme.material.node_border.to_color32(),
+            selected_border: theme.material.node_selected_border.to_color32(),
+            selection_fill: theme.material.selection_rect_fill.to_color32(),
+            selection_stroke: theme.material.selection_rect_stroke.to_color32(),
             text_color: theme.text.primary.to_color32(),
             text_muted: theme.text.muted.to_color32(),
             ..NodeGraphConfig::default()

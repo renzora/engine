@@ -22,8 +22,8 @@ pub const AVAILABLE_PANELS: &[(&str, &str)] = &[
     ("assets", "Assets"),
     ("history", "History"),
     ("settings", "Settings"),
-    // ── Blueprint ──
-    ("blueprint", "Blueprint"),
+    // ── Material ──
+    ("material_graph", "Material Graph"),
     ("node_library", "Node Library"),
     // ── Animation ──
     ("animation", "Animation"),
@@ -229,8 +229,8 @@ fn panel_size_for_type(panel_type: &str) -> (f32, f32) {
         "assets" => (0.7, 0.6),
         "history" => (0.5, 0.6),
         "settings" => (0.6, 0.8),
-        // Blueprint
-        "blueprint" => (0.8, 0.6),
+        // Material
+        "material_graph" => (0.8, 0.6),
         "node_library" => (0.4, 0.7),
         // Animation
         "animation" => (0.7, 0.6),

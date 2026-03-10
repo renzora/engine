@@ -131,7 +131,7 @@ fn all_color_group_defaults_valid() {
     let _ = WidgetColors::default();
     let _ = PanelColors::default();
     let _ = CategoryColors::default();
-    let _ = BlueprintColors::default();
+    let _ = MaterialColors::default();
     let _ = ViewportColors::default();
 }
 

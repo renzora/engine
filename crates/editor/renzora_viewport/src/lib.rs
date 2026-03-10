@@ -9,6 +9,7 @@ pub mod header;
 pub mod play_mode;
 pub mod render_systems;
 pub mod settings;
+pub mod toolbar;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -252,6 +253,9 @@ impl EditorPanel for ViewportPanel {
                 egui::Color32::from_white_alpha(80),
             );
         }
+
+        // Overlay: vertical tool bar (gizmo modes, terrain tools, play button)
+        toolbar::render_tool_overlay(ui.ctx(), world, rect);
 
         // Overlay: on-screen console logs during play mode
         render_viewport_logs(ui, world, rect);

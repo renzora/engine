@@ -22,6 +22,8 @@ fn main() {
         app.add_plugins(renzora_gizmo::GizmoPlugin);
         app.add_plugins(renzora_settings::SettingsPlugin);
         app.add_plugins(renzora_particle_editor::ParticleEditorPlugin);
+        app.add_plugins(renzora_material_editor::MaterialEditorPlugin);
+        app.add_plugins(renzora_terrain_editor::TerrainEditorPlugin);
         app.add_plugins(renzora_code_editor::CodeEditorPlugin);
         app.add_plugins(renzora_script_variables::ScriptVariablesPlugin);
     }

@@ -11,6 +11,8 @@ use crate::settings::*;
 /// Height of the viewport header bar.
 pub const HEADER_HEIGHT: f32 = 28.0;
 
+
+
 /// View angle preset for the camera.
 #[derive(Clone, Copy)]
 enum ViewAngle {

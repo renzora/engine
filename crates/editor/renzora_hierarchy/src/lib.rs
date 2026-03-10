@@ -637,6 +637,16 @@ fn register_builtin_presets(registry: &mut SpawnRegistry) {
                 .id()
         },
     });
+
+    // ── Terrain ────────────────────────────────────────────────────────────
+
+    registry.register(EntityPreset {
+        id: "terrain",
+        display_name: "Terrain",
+        icon: regular::MOUNTAINS,
+        category: "general",
+        spawn_fn: |world| renzora_terrain::mesh::spawn_terrain(world),
+    });
 }
 
 /// Map a shape ID to a default collision shape. Returns `None` for complex shapes

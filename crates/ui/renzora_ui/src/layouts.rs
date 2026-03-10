@@ -24,13 +24,14 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Scene".into(), tree: scene_layout() },
             WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
-            WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
-            WorkspaceLayout { name: "Blueprints".into(), tree: layout_blueprints() },
+            WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
             WorkspaceLayout { name: "Level Design".into(), tree: layout_level_design() },
             WorkspaceLayout { name: "Terrain".into(), tree: layout_terrain() },
             WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
             WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
+            WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
             WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
+            WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
         ];
 
 
@@ -177,24 +178,25 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Blueprints: MaterialPreview+Assets | Blueprint+Console | NodeLibrary
-fn layout_blueprints() -> DockTree {
+/// Materials: [Preview / Properties] | [MaterialGraph / (Assets+Console tabs)]
+fn layout_materials() -> DockTree {
     DockTree::horizontal(
+        // Left column: preview on top, properties below
         DockTree::vertical(
             DockTree::leaf("material_preview"),
-            DockTree::leaf("assets"),
+            DockTree::leaf("material_inspector"),
             0.4,
         ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("blueprint"),
-                DockTree::leaf("console"),
-                0.7,
-            ),
-            DockTree::leaf("node_library"),
-            0.8,
+        // Right column: graph on top, assets+console tabbed below
+        DockTree::vertical(
+            DockTree::leaf("material_graph"),
+            DockTree::Leaf {
+                tabs: vec!["assets".into(), "console".into()],
+                active_tab: 0,
+            },
+            0.7,
         ),
-        0.15,
+        0.25,
     )
 }
 
@@ -219,10 +221,10 @@ fn layout_level_design() -> DockTree {
     )
 }
 
-/// Terrain: LevelTools | Viewport
+/// Terrain: TerrainTools | Viewport
 fn layout_terrain() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("level_tools"),
+        DockTree::leaf("terrain_tools"),
         DockTree::leaf("viewport"),
         0.2,
     )
@@ -268,6 +270,34 @@ fn layout_shaders() -> DockTree {
 }
 
 /// Physics: Hierarchy | Viewport+all physics tabs | Inspector+Shapes
+/// UI: Hierarchy+WidgetLibrary | Viewport+Canvas | Inspector+Assets
+fn layout_ui() -> DockTree {
+    DockTree::horizontal(
+        // Left: hierarchy on top, widget library below
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("widget_library"),
+            0.5,
+        ),
+        DockTree::horizontal(
+            // Center: viewport/canvas on top, console below
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::leaf("console"),
+                0.75,
+            ),
+            // Right: inspector on top, assets below
+            DockTree::vertical(
+                DockTree::leaf("inspector"),
+                DockTree::leaf("assets"),
+                0.6,
+            ),
+            0.75,
+        ),
+        0.15,
+    )
+}
+
 fn layout_physics() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),

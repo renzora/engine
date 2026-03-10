@@ -88,6 +88,7 @@ pub fn sync_graph_to_widget(graph: &ParticleNodeGraph) -> NodeGraphState {
                 header_color: header_color(node.node_type.category()),
                 position: node.position,
                 pins,
+                thumbnail: None,
             }
         })
         .collect();
