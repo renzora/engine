@@ -6,6 +6,8 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 > **Warning:** This engine is in early alpha. You will encounter bugs, incomplete features, and unexpected behavior. APIs and file formats may change without notice between versions.
 
+> **AI-Assisted Development:** This project is built with the assistance of AI code generation tools, including Claude by Anthropic. AI is used throughout the development process for writing code, designing systems, generating documentation, and solving engineering problems. This is a deliberate choice — AI tooling allows a small team to move fast and build an ambitious engine that would otherwise require significantly more time and resources. If the use of AI-generated code is a concern for you, this project may not be the right fit. There are many excellent open-source game engines and frameworks built entirely by hand — [Bevy](https://bevyengine.org/), [Godot](https://godotengine.org/), and [Fyrox](https://fyrox.rs/) are all great alternatives worth exploring.
+
 ## Table of Contents
 
 1. [Documentation](#documentation)
@@ -886,14 +888,6 @@ Build the runtime template and install it:
 cargo dist-runtime
 ```
 Then copy the binary to the templates directory, or use the "Install from file" button in the export overlay.
-
-## AI-Assisted Development
-
-This project is built with the assistance of AI code generation tools, including Claude by Anthropic. AI is used throughout the development process for writing code, designing systems, generating documentation, and solving engineering problems.
-
-This is a deliberate choice — AI tooling allows a small team to move fast and build an ambitious engine that would otherwise require significantly more time and resources.
-
-If the use of AI-generated code is a concern for you, this project may not be the right fit. There are many excellent open-source game engines and frameworks built entirely by hand — [Bevy](https://bevyengine.org/), [Godot](https://godotengine.org/), and [Fyrox](https://fyrox.rs/) are all great alternatives worth exploring.
 
 ## License
 
