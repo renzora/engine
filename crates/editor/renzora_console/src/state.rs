@@ -4,7 +4,7 @@
 //! `renzora_core::console_log` so every crate can use them.
 
 use bevy::prelude::*;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 // Re-export core logging types so existing `renzora_console::state::*` imports keep working.
 pub use renzora_core::console_log::{
@@ -24,6 +24,13 @@ pub struct ConsoleState {
     pub auto_scroll: bool,
     pub search_filter: String,
     pub category_filter: String,
+    /// Categories that have been explicitly hidden by the user.
+    pub hidden_categories: HashSet<String>,
+    /// All categories ever seen (for building the filter UI).
+    pub seen_categories: Vec<String>,
+    pub show_timestamps: bool,
+    pub show_frame: bool,
+    pub frame_counter: u64,
     pub input_buffer: String,
     pub command_history: Vec<String>,
     pub history_index: Option<usize>,
@@ -44,6 +51,11 @@ impl Default for ConsoleState {
             auto_scroll: true,
             search_filter: String::new(),
             category_filter: String::new(),
+            hidden_categories: HashSet::new(),
+            seen_categories: Vec::new(),
+            show_timestamps: false,
+            show_frame: false,
+            frame_counter: 0,
             input_buffer: String::new(),
             command_history: Vec::new(),
             history_index: None,
@@ -56,11 +68,16 @@ impl Default for ConsoleState {
 impl ConsoleState {
     /// Add a log entry directly.
     pub fn log(&mut self, level: LogLevel, category: impl Into<String>, message: impl Into<String>) {
+        let cat = category.into();
+        if !cat.is_empty() && !self.seen_categories.contains(&cat) {
+            self.seen_categories.push(cat.clone());
+        }
         let entry = LogEntry {
             level,
             message: message.into(),
             timestamp: 0.0,
-            category: category.into(),
+            frame: self.frame_counter,
+            category: cat,
         };
         self.entries.push_back(entry);
         while self.entries.len() > MAX_LOG_ENTRIES {
@@ -69,10 +86,16 @@ impl ConsoleState {
     }
 
     /// Drain entries from the shared buffer.
-    pub fn drain_shared_buffer(&mut self, time: f64) {
+    pub fn drain_shared_buffer(&mut self, time: f64, frame: u64) {
+        self.frame_counter = frame;
         if let Ok(mut buffer) = self.shared_buffer.0.lock() {
             for mut entry in buffer.drain(..) {
                 entry.timestamp = time;
+                entry.frame = frame;
+                // Track seen categories
+                if !entry.category.is_empty() && !self.seen_categories.contains(&entry.category) {
+                    self.seen_categories.push(entry.category.clone());
+                }
                 self.entries.push_back(entry);
             }
             while self.entries.len() > MAX_LOG_ENTRIES {
@@ -97,6 +120,11 @@ impl ConsoleState {
             };
 
             if !level_ok {
+                return false;
+            }
+
+            // Hide entries whose category has been explicitly hidden
+            if !entry.category.is_empty() && self.hidden_categories.contains(&entry.category) {
                 return false;
             }
 

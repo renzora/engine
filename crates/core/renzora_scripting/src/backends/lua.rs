@@ -448,6 +448,12 @@ fn register_api(lua: &Lua) {
         Ok(())
     }).unwrap());
 
+    // -- Scene --
+    let _ = globals.set("load_scene", lua.create_function(|_, path: String| {
+        push_command(ScriptCommand::LoadScene { path });
+        Ok(())
+    }).unwrap());
+
     // -- Environment --
     let _ = globals.set("set_sun_angles", lua.create_function(|_, (azimuth, elevation): (f32, f32)| {
         push_command(ScriptCommand::SetSunAngles { azimuth, elevation });

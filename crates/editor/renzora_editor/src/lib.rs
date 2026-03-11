@@ -449,12 +449,18 @@ fn editor_ui_system(world: &mut World) {
         TitleBarAction::SwitchLayout(i) => switch_layout(world, i),
         TitleBarAction::NewProject => handle_new_project(world),
         TitleBarAction::OpenProject => handle_open_project(world),
-        TitleBarAction::NewScene => {} // TODO: scene management
-        TitleBarAction::OpenScene => {} // TODO: scene management
+        TitleBarAction::NewScene => {
+            world.insert_resource(renzora_core::NewSceneRequested);
+        }
+        TitleBarAction::OpenScene => {
+            world.insert_resource(renzora_core::OpenSceneRequested);
+        }
         TitleBarAction::Save => {
             world.insert_resource(renzora_core::SaveSceneRequested);
         }
-        TitleBarAction::SaveAs => {}   // TODO: scene management
+        TitleBarAction::SaveAs => {
+            world.insert_resource(renzora_core::SaveAsSceneRequested);
+        }
         TitleBarAction::Export => {
             world.insert_resource(renzora_core::ExportRequested);
         }

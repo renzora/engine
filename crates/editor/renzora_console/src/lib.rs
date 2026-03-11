@@ -77,6 +77,11 @@ impl EditorPanel for ConsolePanel {
                 local.auto_scroll = console.auto_scroll;
                 local.search_filter = console.search_filter.clone();
                 local.category_filter = console.category_filter.clone();
+                local.hidden_categories = console.hidden_categories.clone();
+                local.seen_categories = console.seen_categories.clone();
+                local.show_timestamps = console.show_timestamps;
+                local.show_frame = console.show_frame;
+                local.frame_counter = console.frame_counter;
                 local.input_buffer = console.input_buffer.clone();
                 local.command_history = console.command_history.clone();
                 local.history_index = console.history_index;
@@ -110,6 +115,11 @@ impl EditorPanel for ConsolePanel {
                 state.auto_scroll = local.auto_scroll;
                 state.search_filter = local.search_filter.clone();
                 state.category_filter = local.category_filter.clone();
+                state.hidden_categories = local.hidden_categories.clone();
+                state.seen_categories = local.seen_categories.clone();
+                state.show_timestamps = local.show_timestamps;
+                state.show_frame = local.show_frame;
+                state.frame_counter = local.frame_counter;
                 state.input_buffer = local.input_buffer.clone();
                 state.command_history = local.command_history.clone();
                 state.history_index = local.history_index;
@@ -138,8 +148,9 @@ impl EditorPanel for ConsolePanel {
 // ---------------------------------------------------------------------------
 
 /// Drain the global shared buffer into ConsoleState each frame.
-fn drain_log_buffer(mut console: ResMut<ConsoleState>, time: Res<Time>) {
-    console.drain_shared_buffer(time.elapsed_secs_f64());
+fn drain_log_buffer(mut console: ResMut<ConsoleState>, time: Res<Time>, mut frame: Local<u64>) {
+    *frame += 1;
+    console.drain_shared_buffer(time.elapsed_secs_f64(), *frame);
 }
 
 /// Drain script log messages into the console.
@@ -169,6 +180,10 @@ fn sync_console_bridge(bridge: Res<ConsoleBridge>, mut console: ResMut<ConsoleSt
             console.auto_scroll = snap.auto_scroll;
             console.search_filter = snap.search_filter;
             console.category_filter = snap.category_filter;
+            console.hidden_categories = snap.hidden_categories;
+            console.seen_categories = snap.seen_categories;
+            console.show_timestamps = snap.show_timestamps;
+            console.show_frame = snap.show_frame;
             console.input_buffer = snap.input_buffer;
             console.command_history = snap.command_history;
             console.history_index = snap.history_index;

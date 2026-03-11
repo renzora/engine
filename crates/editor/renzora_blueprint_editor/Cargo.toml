@@ -1,5 +1,5 @@
 [package]
-name = "renzora_console_panel"
+name = "renzora_blueprint_editor"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,8 @@ edition = "2021"
 bevy = { version = "0.18" }
 bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular"] }
-renzora_console = { path = "../../core/renzora_console" }
 renzora_editor = { path = "../renzora_editor" }
 renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_ui = { path = "../../ui/renzora_ui" }
+renzora_blueprint = { path = "../../core/renzora_blueprint" }
+renzora_core = { path = "../../core/renzora_core" }

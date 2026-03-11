@@ -9,8 +9,8 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke,
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
 use egui_phosphor::regular::{
-    CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, VIDEO_CAMERA, KEYBOARD, PALETTE,
-    TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE,
+    CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD,
+    PALETTE, TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE,
 };
 
 use renzora_editor::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -78,6 +78,28 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     let keybindings = world.get_resource::<KeyBindings>().cloned().unwrap_or_default();
     let viewport_settings = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
 
+    // Project config snapshot + available scene files
+    let (project_config, scene_files) = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+        let scenes_dir = project.resolve_path("scenes");
+        let files: Vec<String> = std::fs::read_dir(&scenes_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("ron") {
+                    Some(format!("scenes/{}", path.file_name()?.to_str()?))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        (Some(project.config.clone()), files)
+    } else {
+        (None, Vec::new())
+    };
+    let mut project_config_mut = project_config.clone();
+
     // Clone theme data for the theme tab
     let (theme_name, available_themes) = world
         .get_resource::<ThemeManager>()
@@ -122,7 +144,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                 ui.set_width(ui.available_width());
 
                 match settings_mut.settings_tab {
-                    SettingsTab::General => render_general_tab(ui, &mut settings_mut, &theme),
+                    SettingsTab::General => render_general_tab(ui, &mut settings_mut, &mut project_config_mut, &scene_files, &theme),
                     SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
                     SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &theme),
                     SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
@@ -152,6 +174,18 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     if viewport_mut != viewport_settings {
         if let Some(mut res) = world.get_resource_mut::<ViewportSettings>() {
             *res = viewport_mut;
+        }
+    }
+
+    // Write back project config changes
+    if project_config_mut != project_config {
+        if let Some(new_config) = project_config_mut {
+            if let Some(mut project) = world.get_resource_mut::<renzora_core::CurrentProject>() {
+                project.config = new_config;
+                if let Err(e) = project.save_config() {
+                    warn!("Failed to save project.toml: {}", e);
+                }
+            }
         }
     }
 
@@ -329,7 +363,53 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
 
 // ── General tab ─────────────────────────────────────────────────────────────
 
-fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
+fn render_general_tab(
+    ui: &mut egui::Ui,
+    settings: &mut EditorSettings,
+    project_config: &mut Option<renzora_core::ProjectConfig>,
+    scene_files: &[String],
+    theme: &Theme,
+) {
+    // Project Section
+    if let Some(config) = project_config {
+        render_category(ui, FOLDER_OPEN, "Project", CategoryStyle::interface(), "settings_project", true, theme, |ui| {
+            settings_row(ui, 0, "Name", theme, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut config.name).desired_width(150.0))
+            });
+
+            settings_row(ui, 1, "Boot Scene", theme, |ui| {
+                egui::ComboBox::from_id_salt("boot_scene_selector")
+                    .selected_text(&config.main_scene)
+                    .width(200.0)
+                    .show_ui(ui, |ui| {
+                        for scene in scene_files {
+                            ui.selectable_value(&mut config.main_scene, scene.clone(), scene);
+                        }
+                    })
+            });
+
+            settings_row(ui, 2, "Window Width", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut config.window.width)
+                    .range(320..=7680)
+                    .speed(1))
+            });
+
+            settings_row(ui, 3, "Window Height", theme, |ui| {
+                ui.add(egui::DragValue::new(&mut config.window.height)
+                    .range(240..=4320)
+                    .speed(1))
+            });
+
+            settings_row(ui, 4, "Resizable", theme, |ui| {
+                ui.checkbox(&mut config.window.resizable, "")
+            });
+
+            settings_row(ui, 5, "Fullscreen", theme, |ui| {
+                ui.checkbox(&mut config.window.fullscreen, "")
+            });
+        });
+    }
+
     // Interface / Font Section
     render_category(ui, TEXT_AA, "Interface", CategoryStyle::interface(), "settings_interface", true, theme, |ui| {
         settings_row(ui, 0, "UI Font", theme, |ui| {

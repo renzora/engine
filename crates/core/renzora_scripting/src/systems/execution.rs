@@ -78,12 +78,9 @@ pub fn run_scripts(world: &mut World) {
     let input = world.resource::<ScriptInput>().clone();
     let timers_finished = world.resource::<ScriptTimers>().get_just_finished();
 
-    // Clear command queue
-    {
-        let mut cmd_queue = world.resource_mut::<ScriptCommandQueue>();
-        cmd_queue.commands.clear();
-        cmd_queue.transform_writes.clear();
-    }
+    // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
+    // may have already pushed writes this frame. The queue is drained by
+    // apply_script_commands in the CommandProcessing set.
 
     // Build entity lookup tables (by Name, then by EntityTag — tags take priority)
     let mut entities_by_name: HashMap<String, u64> = HashMap::new();

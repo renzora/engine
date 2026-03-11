@@ -44,6 +44,7 @@ pub struct LogEntry {
     pub level: LogLevel,
     pub message: String,
     pub timestamp: f64,
+    pub frame: u64,
     pub category: String,
 }
 
@@ -84,6 +85,7 @@ pub fn console_log(level: LogLevel, category: &str, message: impl Into<String>) 
             level,
             message: message.into(),
             timestamp: 0.0,
+            frame: 0,
             category: category.to_string(),
         });
     }

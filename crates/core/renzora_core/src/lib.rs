@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Window configuration for exported/runtime games
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct WindowConfig {
     pub width: u32,
     pub height: u32,
@@ -25,7 +25,7 @@ impl Default for WindowConfig {
 }
 
 /// Project configuration stored in project.toml
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
     pub name: String,
     pub version: String,
@@ -62,6 +62,14 @@ impl CurrentProject {
 
     pub fn main_scene_path(&self) -> PathBuf {
         self.resolve_path(&self.config.main_scene)
+    }
+
+    /// Save the project config back to project.toml.
+    pub fn save_config(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let toml_path = self.path.join("project.toml");
+        let content = toml::to_string_pretty(&self.config)?;
+        std::fs::write(&toml_path, content)?;
+        Ok(())
     }
 
     pub fn make_relative(&self, path: &Path) -> Option<String> {
@@ -278,11 +286,31 @@ impl PlayModeState {
 #[derive(Component)]
 pub struct PlayModeCamera;
 
+/// Resource: request a scene load from scripts/blueprints.
+/// The runtime system drains this each frame.
+#[derive(Resource, Default)]
+pub struct PendingSceneLoad {
+    /// Scene name or relative path to load.
+    pub requests: Vec<String>,
+}
+
 /// Marker resource requesting a scene save.
 ///
 /// Insert this resource to trigger the scene save system next frame.
 #[derive(Resource)]
 pub struct SaveSceneRequested;
+
+/// Request "Save As" — prompts user for a new scene name/path.
+#[derive(Resource)]
+pub struct SaveAsSceneRequested;
+
+/// Request "New Scene" — clears the world and sets up a blank scene.
+#[derive(Resource)]
+pub struct NewSceneRequested;
+
+/// Request "Open Scene" — prompts user to pick a scene file.
+#[derive(Resource)]
+pub struct OpenSceneRequested;
 
 /// Marker resource requesting the export overlay to open.
 ///

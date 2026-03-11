@@ -9,3 +9,4 @@ renzora_core = { path = "../../core/renzora_core" }
 renzora_runtime = { path = "../../core/renzora_runtime" }
 renzora_splash = { path = "../../ui/renzora_splash" }
 renzora_keybindings = { path = "../renzora_keybindings" }
+rfd = "0.15"

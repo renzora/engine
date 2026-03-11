@@ -1,0 +1,11 @@
+[package]
+name = "renzora_blueprint"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+serde = { version = "1", features = ["derive"] }
+renzora_core = { path = "../renzora_core" }
+renzora_scripting = { path = "../renzora_scripting" }
+log = "0.4"

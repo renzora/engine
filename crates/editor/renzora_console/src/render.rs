@@ -4,8 +4,8 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Key, RichText, Sc
 use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
-    ARROW_ELBOW_DOWN_LEFT, CARET_RIGHT, CHECK_CIRCLE, CLIPBOARD, FUNNEL, INFO,
-    MAGNIFYING_GLASS, TRASH, WARNING, X_CIRCLE,
+    ARROW_ELBOW_DOWN_LEFT, CARET_RIGHT, CHECK_CIRCLE, CLIPBOARD, CLOCK, FUNNEL,
+    HASH, INFO, MAGNIFYING_GLASS, TAG, TRASH, WARNING, X_CIRCLE,
 };
 
 use crate::state::{ConsoleState, LogEntry, LogLevel};
@@ -44,6 +44,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
         is_narrow,
     );
     ui.add_space(2.0);
+
+    // --- Category chips ---
+    if !console.seen_categories.is_empty() {
+        render_category_chips(ui, console, theme, muted_color, disabled_color);
+        ui.add_space(2.0);
+    }
+
     ui.separator();
     ui.add_space(2.0);
 
@@ -72,6 +79,8 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, the
                     category_color,
                     theme,
                     is_narrow,
+                    console.show_timestamps,
+                    console.show_frame,
                 );
             }
 
@@ -213,6 +222,28 @@ fn render_toolbar(
                 ui.checkbox(&mut console.auto_scroll, "");
             }
 
+            // Timestamp toggle
+            let ts_color = if console.show_timestamps { info_active } else { disabled_color };
+            let ts_btn = ui.add(
+                egui::Button::new(RichText::new(CLOCK).color(ts_color).size(13.0))
+                    .fill(Color32::TRANSPARENT),
+            );
+            if ts_btn.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+            if ts_btn.on_hover_text("Show timestamps").clicked() {
+                console.show_timestamps = !console.show_timestamps;
+            }
+
+            // Frame toggle
+            let fr_color = if console.show_frame { info_active } else { disabled_color };
+            let fr_btn = ui.add(
+                egui::Button::new(RichText::new(HASH).color(fr_color).size(13.0))
+                    .fill(Color32::TRANSPARENT),
+            );
+            if fr_btn.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+            if fr_btn.on_hover_text("Show frame number").clicked() {
+                console.show_frame = !console.show_frame;
+            }
+
             let total = console.entries.len();
             let filtered: Vec<_> = console.filtered_entries().collect();
             ui.label(
@@ -224,28 +255,83 @@ fn render_toolbar(
     });
 }
 
+/// Render category toggle chips.
+fn render_category_chips(
+    ui: &mut egui::Ui,
+    console: &mut ConsoleState,
+    _theme: &Theme,
+    muted_color: Color32,
+    disabled_color: Color32,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(TAG).size(11.0).color(muted_color));
+
+        let categories: Vec<String> = console.seen_categories.clone();
+        for cat in &categories {
+            let is_hidden = console.hidden_categories.contains(cat);
+            let (text_col, bg) = if is_hidden {
+                (disabled_color, Color32::TRANSPARENT)
+            } else {
+                (muted_color, Color32::from_gray(60))
+            };
+
+            let btn = ui.add(
+                egui::Button::new(RichText::new(cat).size(10.0).color(text_col))
+                    .fill(bg)
+                    .corner_radius(CornerRadius::same(10)),
+            );
+            if btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if btn.on_hover_text(if is_hidden { "Show category" } else { "Hide category" }).clicked() {
+                if is_hidden {
+                    console.hidden_categories.remove(cat);
+                } else {
+                    console.hidden_categories.insert(cat.clone());
+                }
+            }
+        }
+    });
+}
+
 fn copy_filtered_logs(ui: &mut egui::Ui, console: &ConsoleState) {
     let filtered: Vec<_> = console.filtered_entries().collect();
     let grouped = group_consecutive_entries(&filtered);
     let text = grouped
         .iter()
         .map(|g| {
+            let mut parts = Vec::new();
+
+            if console.show_timestamps {
+                let secs = g.entry.timestamp;
+                let mins = (secs / 60.0) as u64;
+                let s = secs % 60.0;
+                parts.push(format!("{:02}:{:05.2}", mins, s));
+            }
+            if console.show_frame && g.entry.frame > 0 {
+                parts.push(format!("f{}", g.entry.frame));
+            }
+
             let level = match g.entry.level {
                 LogLevel::Info => "INFO",
                 LogLevel::Success => "SUCCESS",
                 LogLevel::Warning => "WARNING",
                 LogLevel::Error => "ERROR",
             };
-            let count_suffix = if g.count > 1 {
-                format!(" (x{})", g.count)
-            } else {
-                String::new()
-            };
-            if g.entry.category.is_empty() {
-                format!("[{}] {}{}", level, g.entry.message, count_suffix)
-            } else {
-                format!("[{}] [{}] {}{}", level, g.entry.category, g.entry.message, count_suffix)
+            parts.push(format!("[{}]", level));
+
+            if !g.entry.category.is_empty() {
+                parts.push(format!("[{}]", g.entry.category));
             }
+
+            parts.push(g.entry.message.clone());
+
+            if g.count > 1 {
+                parts.push(format!("(x{})", g.count));
+            }
+
+            parts.join(" ")
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -452,6 +538,8 @@ fn render_log_entry(
     category_color: Color32,
     theme: &Theme,
     is_narrow: bool,
+    show_timestamps: bool,
+    show_frame: bool,
 ) {
     let color = match entry.level {
         LogLevel::Info => theme.semantic.accent.to_color32(),
@@ -460,7 +548,32 @@ fn render_log_entry(
         LogLevel::Error => theme.semantic.error.to_color32(),
     };
 
+    let dim_color = Color32::from_gray(120);
+
     ui.horizontal(|ui| {
+        // Timestamp
+        if show_timestamps {
+            let secs = entry.timestamp;
+            let mins = (secs / 60.0) as u64;
+            let s = secs % 60.0;
+            ui.label(
+                RichText::new(format!("{:02}:{:05.2}", mins, s))
+                    .size(10.0)
+                    .color(dim_color)
+                    .monospace(),
+            );
+        }
+
+        // Frame number
+        if show_frame && entry.frame > 0 {
+            ui.label(
+                RichText::new(format!("f{}", entry.frame))
+                    .size(10.0)
+                    .color(dim_color)
+                    .monospace(),
+            );
+        }
+
         // Count badge
         if count > 1 {
             let badge_text = if count > 999 {

@@ -22,6 +22,7 @@ impl Default for LayoutManager {
     fn default() -> Self {
         let layouts = vec![
             WorkspaceLayout { name: "Scene".into(), tree: scene_layout() },
+            WorkspaceLayout { name: "Blueprints".into(), tree: layout_blueprints() },
             WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
@@ -83,6 +84,27 @@ pub fn scene_layout() -> DockTree {
             0.25,
         ),
         0.82,
+    )
+}
+
+/// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
+fn layout_blueprints() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("blueprint_properties"),
+            0.5,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("blueprint_graph"),
+                DockTree::leaf("console"),
+                0.75,
+            ),
+            DockTree::leaf("inspector"),
+            0.78,
+        ),
+        0.18,
     )
 }
 

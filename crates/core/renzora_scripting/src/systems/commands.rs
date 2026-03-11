@@ -19,10 +19,24 @@ pub fn apply_script_commands(
     mut log_buffer: ResMut<ScriptLogBuffer>,
     mut pending_env: ResMut<ScriptEnvironmentCommands>,
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
+    mut pending_scene: ResMut<renzora_core::PendingSceneLoad>,
+    mut ran_once: Local<bool>,
 ) {
+    if !*ran_once {
+        renzora_core::clog_info!("ScriptCmd", "apply_script_commands is RUNNING (first time)");
+        *ran_once = true;
+    }
     // 1. Apply transform writes
+    let tw_count = cmd_queue.transform_writes.len();
+    if tw_count > 0 {
+        renzora_core::clog_info!("ScriptCmd", "apply_script_commands: {} transform_writes", tw_count);
+    }
     for tw in cmd_queue.transform_writes.drain(..) {
-        let Ok(mut t) = transforms.get_mut(tw.entity) else { continue };
+        renzora_core::clog_info!("ScriptCmd", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
+        let Ok(mut t) = transforms.get_mut(tw.entity) else {
+            renzora_core::clog_warn!("ScriptCmd", "Entity {:?} NOT FOUND in query!", tw.entity);
+            continue;
+        };
 
         if let Some(pos) = tw.new_position {
             t.translation = pos;
@@ -112,9 +126,9 @@ pub fn apply_script_commands(
             // === Debug ===
             ScriptCommand::Log { level, message } => {
                 match level.as_str() {
-                    "warn" => warn!("[Script] {}", message),
-                    "error" => error!("[Script] {}", message),
-                    _ => info!("[Script] {}", message),
+                    "warn" => renzora_core::clog_warn!("Script", "{}", message),
+                    "error" => renzora_core::clog_error!("Script", "{}", message),
+                    _ => renzora_core::clog_info!("Script", "{}", message),
                 }
                 log_buffer.entries.push(ScriptLogEntry {
                     level: level.clone(),
@@ -143,6 +157,12 @@ pub fn apply_script_commands(
                     field_path,
                     value,
                 });
+            }
+
+            // === Scene ===
+            ScriptCommand::LoadScene { path } => {
+                renzora_core::clog_info!("Scene", "LoadScene requested: {}", path);
+                pending_scene.requests.push(path);
             }
 
             // Commands that need additional systems (audio, physics, etc.)

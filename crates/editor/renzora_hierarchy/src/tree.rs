@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
-use renzora_editor::{EditorCommands, EditorSelection, TreeRowConfig};
+use renzora_blueprint::BlueprintGraph;
+use renzora_editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
 use renzora_theme::Theme;
 
 use crate::state::{EntityNode, HierarchyState};
@@ -429,6 +430,39 @@ fn context_menu(
             }
         });
         ui.close();
+    }
+
+    // ── Blueprint ──
+    ui.separator();
+    if node.has_blueprint {
+        if ui.button(format!("{} Edit Blueprint", regular::FLOW_ARROW)).clicked() {
+            let entity = node.entity;
+            commands.push(move |world: &mut World| {
+                if let Some(sel) = world.get_resource::<EditorSelection>() {
+                    sel.set(Some(entity));
+                }
+                if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                    docking.tree.set_active_tab("blueprint_graph");
+                }
+            });
+            ui.close();
+        }
+    } else {
+        if ui.button(format!("{} Add Blueprint", regular::FLOW_ARROW)).clicked() {
+            let entity = node.entity;
+            commands.push(move |world: &mut World| {
+                let mut graph = BlueprintGraph::new();
+                graph.add_node("event/on_update", [0.0, 0.0]);
+                world.entity_mut(entity).insert(graph);
+                if let Some(sel) = world.get_resource::<EditorSelection>() {
+                    sel.set(Some(entity));
+                }
+                if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                    docking.tree.set_active_tab("blueprint_graph");
+                }
+            });
+            ui.close();
+        }
     }
 
     ui.separator();

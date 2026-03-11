@@ -18,3 +18,4 @@ renzora_atmosphere = { path = "../../postprocessing/renzora_atmosphere" }
 renzora_clouds = { path = "../../postprocessing/renzora_clouds" }
 renzora_distance_fog = { path = "../../postprocessing/renzora_distance_fog" }
 renzora_terrain = { path = "../../core/renzora_terrain" }
+renzora_blueprint = { path = "../../core/renzora_blueprint" }

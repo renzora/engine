@@ -10,7 +10,7 @@ pub mod debug_log;
 pub mod scene_io;
 pub mod vfs;
 
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora_core::{CurrentProject, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
@@ -98,6 +98,8 @@ impl Plugin for RuntimePlugin {
         app.init_resource::<ViewportRenderTarget>();
         app.init_resource::<ShapeRegistry>();
         app.init_resource::<renzora_core::EffectRouting>();
+        app.init_resource::<renzora_core::PendingSceneLoad>();
+        app.add_systems(Update, process_pending_scene_loads);
 
         // In standalone (non-editor) mode, populate EffectRouting from scene cameras.
         #[cfg(not(feature = "editor"))]
@@ -154,6 +156,62 @@ fn update_runtime_effect_routing(
     if routing.routes != new_routes {
         routing.routes = new_routes;
     }
+}
+
+/// Process pending scene load requests from scripts/blueprints.
+///
+/// Clears the current scene (despawns all named non-editor entities),
+/// then loads the requested scene.
+fn process_pending_scene_loads(world: &mut World) {
+    let requests = {
+        let mut pending = world.resource_mut::<renzora_core::PendingSceneLoad>();
+        if pending.requests.is_empty() {
+            return;
+        }
+        std::mem::take(&mut pending.requests)
+    };
+
+    // Only process the last request if multiple were queued in one frame
+    let scene_name = requests.last().unwrap();
+
+    let scene_path = if let Some(project) = world.get_resource::<CurrentProject>() {
+        project.resolve_path(scene_name)
+    } else {
+        renzora_core::console_log::console_error("Scene", "No project loaded — cannot load scene");
+        return;
+    };
+
+    renzora_core::console_log::console_info(
+        "Scene",
+        format!("Loading scene '{}' → {}", scene_name, scene_path.display()),
+    );
+
+    // 1. Despawn all named non-editor entities (the current scene)
+    let mut to_despawn = Vec::new();
+    {
+        let mut query = world.query_filtered::<Entity, (
+            With<Name>,
+            Without<EditorCamera>,
+            Without<HideInHierarchy>,
+        )>();
+        for entity in query.iter(world) {
+            to_despawn.push(entity);
+        }
+    }
+
+    renzora_core::console_log::console_info(
+        "Scene",
+        format!("Despawning {} entities from current scene", to_despawn.len()),
+    );
+
+    for entity in to_despawn {
+        if world.get_entity(entity).is_ok() {
+            world.despawn(entity);
+        }
+    }
+
+    // 2. Load the new scene
+    scene_io::load_scene(world, &scene_path);
 }
 
 #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
