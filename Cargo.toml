@@ -97,7 +97,7 @@ editor = [
     "dep:renzora_code_editor",
     "dep:renzora_script_variables",
     "dep:renzora_blueprint_editor",
-    "dep:renzora_ui_editor",
+    "renzora_game_ui/editor",
     # "renzora_gauges/editor",
     # "renzora_gauges/lua",
     # "renzora_gauges/rhai",
@@ -125,6 +125,7 @@ renzora_hanabi = { path = "crates/core/renzora_hanabi" }
 renzora_material = { path = "crates/core/renzora_material" }
 renzora_terrain = { path = "crates/core/renzora_terrain" }
 renzora_blueprint = { path = "crates/core/renzora_blueprint" }
+renzora_game_ui = { path = "crates/core/renzora_game_ui" }
 # renzora_gauges = { path = "crates/core/renzora_gauges" }
 
 # Editor plugins (optional, enabled by `editor` feature)
@@ -154,7 +155,6 @@ renzora_terrain_editor = { path = "crates/editor/renzora_terrain_editor", option
 renzora_code_editor = { path = "crates/editor/renzora_code_editor", optional = true }
 renzora_script_variables = { path = "crates/editor/renzora_script_variables", optional = true }
 renzora_blueprint_editor = { path = "crates/editor/renzora_blueprint_editor", optional = true }
-renzora_ui_editor = { path = "crates/editor/renzora_ui_editor", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)

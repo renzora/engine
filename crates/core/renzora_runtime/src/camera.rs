@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.
@@ -10,7 +11,16 @@ use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 /// If `ViewportRenderTarget` already has an image (editor mode),
 /// the camera renders to it. Otherwise it renders to the window.
 /// The camera is hidden from the hierarchy and locked from editing.
-pub fn spawn_editor_camera(mut commands: Commands, render_target: Res<ViewportRenderTarget>) {
+pub fn spawn_editor_camera(
+    mut commands: Commands,
+    render_target: Res<ViewportRenderTarget>,
+    mut mediums: ResMut<Assets<ScatteringMedium>>,
+) {
+    // Pre-insert Atmosphere so Bevy's mesh view bind group layout always
+    // includes atmosphere bindings. Without this, adding atmosphere at
+    // runtime causes a bind group mismatch crash (20 vs 23 bindings).
+    let default_medium = mediums.add(ScatteringMedium::default());
+
     let mut entity = commands.spawn((
         Camera3d::default(),
         Camera {
@@ -23,6 +33,13 @@ pub fn spawn_editor_camera(mut commands: Commands, render_target: Res<ViewportRe
         EditorLocked,
         RenderLayers::from_layers(&[0, 1]),
         Name::new("Editor Camera"),
+        Atmosphere {
+            bottom_radius: 6_360_000.0,
+            top_radius: 6_460_000.0,
+            ground_albedo: Vec3::splat(0.3),
+            medium: default_medium,
+        },
+        AtmosphereSettings::default(),
     ));
 
     if let Some(ref image) = render_target.image {
