@@ -887,6 +887,14 @@ cargo dist-runtime
 ```
 Then copy the binary to the templates directory, or use the "Install from file" button in the export overlay.
 
+## AI-Assisted Development
+
+This project is built with the assistance of AI code generation tools, including Claude by Anthropic. AI is used throughout the development process for writing code, designing systems, generating documentation, and solving engineering problems.
+
+This is a deliberate choice — AI tooling allows a small team to move fast and build an ambitious engine that would otherwise require significantly more time and resources.
+
+If the use of AI-generated code is a concern for you, this project may not be the right fit. There are many excellent open-source game engines and frameworks built entirely by hand — [Bevy](https://bevyengine.org/), [Godot](https://godotengine.org/), and [Fyrox](https://fyrox.rs/) are all great alternatives worth exploring.
+
 ## License
 
 Dual-licensed under MIT or Apache 2.0, at your option.

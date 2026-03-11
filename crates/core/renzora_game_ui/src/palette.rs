@@ -1,9 +1,9 @@
-//! Widget Palette panel — categorized list of UI widget types to add to the canvas.
+//! Widget Palette panel — tile grid of UI widget types, matching the shapes library design.
 
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use bevy_egui::egui::{self, CursorIcon, Vec2};
 use egui_phosphor::regular;
 use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
@@ -14,9 +14,10 @@ use crate::components::{UiCanvas, UiWidgetType};
 #[derive(Default)]
 struct PaletteState {
     search: String,
+    active_category: Option<usize>,
 }
 
-/// Widget library panel — shows available widget types for drag-and-drop creation.
+/// Widget library panel — shows available widget types as a responsive tile grid.
 pub struct WidgetPalettePanel {
     state: RwLock<PaletteState>,
 }
@@ -87,34 +88,39 @@ impl EditorPanel for WidgetPalettePanel {
 
         let mut state = self.state.write().unwrap();
 
-        let text_muted = theme.text.muted.to_color32();
+        let accent = theme.semantic.accent.to_color32();
         let text_primary = theme.text.primary.to_color32();
-        let text_secondary = theme.text.secondary.to_color32();
-        let surface = theme.surfaces.panel.to_color32();
+        let text_muted = theme.text.muted.to_color32();
+
+        let panel_padding = 6.0;
+        let spacing = 4.0;
+
+        ui.add_space(panel_padding);
 
         // Search bar
-        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.add(
+            ui.add_space(panel_padding);
+            let available = ui.available_width() - panel_padding;
+            ui.add_sized(
+                [available, 20.0],
                 egui::TextEdit::singleline(&mut state.search)
-                    .desired_width(ui.available_width() - 8.0)
                     .hint_text(format!("{} Search widgets...", regular::MAGNIFYING_GLASS)),
             );
         });
-        ui.add_space(4.0);
+
+        ui.add_space(spacing);
 
         // "Add Canvas" button
         ui.horizontal(|ui| {
-            ui.add_space(4.0);
+            ui.add_space(panel_padding);
             let btn = ui.add(
                 egui::Button::new(
                     egui::RichText::new(format!("{} Add Canvas", regular::PLUS))
                         .size(12.0)
                         .color(text_primary),
                 )
-                .fill(surface)
-                .min_size(egui::vec2(ui.available_width() - 8.0, 28.0)),
+                .fill(theme.surfaces.panel.to_color32())
+                .min_size(egui::vec2(ui.available_width() - panel_padding, 28.0)),
             );
             if btn.clicked() {
                 commands.push(move |world: &mut World| {
@@ -136,98 +142,143 @@ impl EditorPanel for WidgetPalettePanel {
                 });
             }
         });
-        ui.add_space(6.0);
 
-        ui.separator();
-        ui.add_space(4.0);
+        ui.add_space(spacing);
 
-        let search_lower = state.search.to_lowercase();
+        // Category filter tabs
+        ui.horizontal(|ui| {
+            ui.add_space(panel_padding);
+            ui.spacing_mut().item_spacing.x = 2.0;
 
-        // Categorized widget list
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.style_mut().spacing.item_spacing.y = 2.0;
-
-                let mut any_visible = false;
-
-                for &(category_name, category_icon, widget_types) in CATEGORIES {
-                    // Filter widgets by search
-                    let visible: Vec<_> = widget_types
-                        .iter()
-                        .filter(|wt| {
-                            search_lower.is_empty()
-                                || wt.label().to_lowercase().contains(&search_lower)
-                                || category_name.to_lowercase().contains(&search_lower)
-                        })
-                        .collect();
-
-                    if visible.is_empty() {
-                        continue;
-                    }
-                    any_visible = true;
-
-                    // Category header
-                    let header_id = ui.make_persistent_id(category_name);
-                    egui::collapsing_header::CollapsingState::load_with_default_open(
-                        ui.ctx(),
-                        header_id,
-                        true,
-                    )
-                    .show_header(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("{}  {}", category_icon, category_name))
-                                    .size(11.0)
-                                    .color(text_secondary),
-                            );
-                        });
-                    })
-                    .body(|ui| {
-                        for wtype in &visible {
-                            let icon = wtype.icon();
-                            let label = wtype.label();
-                            let wtype_clone = (*wtype).clone();
-
-                            ui.horizontal(|ui| {
-                                ui.add_space(8.0);
-                                let btn = ui.add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!("{}  {}", icon, label))
-                                            .size(12.0)
-                                            .color(text_primary),
-                                    )
-                                    .fill(surface)
-                                    .min_size(egui::vec2(ui.available_width() - 12.0, 30.0)),
-                                );
-
-                                if btn.clicked() {
-                                    let wt = wtype_clone.clone();
-                                    commands.push(move |world: &mut World| {
-                                        crate::spawn::spawn_widget(world, &wt, None);
-                                    });
-                                }
-
-                                btn.on_hover_text(format!("Click to add a {} widget", label));
-                            });
-                        }
-                    });
-
-                    ui.add_space(2.0);
+            if ui
+                .selectable_label(state.active_category.is_none(), "All")
+                .clicked()
+            {
+                state.active_category = None;
+            }
+            for (i, &(name, _icon, _types)) in CATEGORIES.iter().enumerate() {
+                let selected = state.active_category == Some(i);
+                if ui.selectable_label(selected, name).clicked() {
+                    state.active_category = Some(i);
                 }
+            }
+        });
 
-                // Empty state
-                if !any_visible {
-                    ui.add_space(8.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new("No matching widgets.")
-                                .size(11.0)
-                                .color(text_muted),
-                        );
+        ui.add_space(spacing);
+
+        // Filter widgets
+        let search_lower = state.search.to_lowercase();
+        let widgets: Vec<&UiWidgetType> = CATEGORIES
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| state.active_category.is_none() || state.active_category == Some(*i))
+            .flat_map(|(_, &(_name, _icon, types))| types.iter())
+            .filter(|wt| {
+                search_lower.is_empty() || wt.label().to_lowercase().contains(&search_lower)
+            })
+            .collect();
+
+        // Responsive tile grid
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if widgets.is_empty() {
+                ui.add_space(8.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new("No matching widgets.")
+                            .size(11.0)
+                            .color(text_muted),
+                    );
+                });
+                return;
+            }
+
+            let available_width = ui.available_width() - panel_padding * 2.0;
+            let min_tile = 56.0;
+            let max_tile = 80.0;
+            let cols =
+                ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
+            let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
+                .clamp(min_tile, max_tile);
+            let label_height = 16.0;
+
+            ui.add_space(2.0);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = spacing;
+
+                let rows = (widgets.len() + cols - 1) / cols;
+                for row in 0..rows {
+                    ui.horizontal(|ui| {
+                        ui.add_space(panel_padding);
+                        ui.spacing_mut().item_spacing.x = spacing;
+                        for col in 0..cols {
+                            let idx = row * cols + col;
+                            if idx >= widgets.len() {
+                                break;
+                            }
+                            let wtype = widgets[idx];
+                            let total_height = tile_size + label_height;
+                            let (rect, response) = ui.allocate_exact_size(
+                                Vec2::new(tile_size, total_height),
+                                egui::Sense::click(),
+                            );
+
+                            let hovered = response.hovered();
+                            let bg = if hovered {
+                                theme.widgets.hovered_bg.to_color32()
+                            } else {
+                                theme.surfaces.faint.to_color32()
+                            };
+
+                            ui.painter().rect_filled(rect, 6.0, bg);
+
+                            if hovered {
+                                ui.painter().rect_stroke(
+                                    rect,
+                                    6.0,
+                                    egui::Stroke::new(1.0, accent.linear_multiply(0.6)),
+                                    egui::StrokeKind::Outside,
+                                );
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+
+                            // Icon
+                            let icon_rect = egui::Rect::from_min_size(
+                                rect.min,
+                                Vec2::new(tile_size, tile_size),
+                            );
+                            ui.painter().text(
+                                icon_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                wtype.icon(),
+                                egui::FontId::proportional(28.0),
+                                if hovered { accent } else { text_primary },
+                            );
+
+                            // Label
+                            ui.painter().text(
+                                egui::pos2(rect.center().x, rect.max.y - label_height / 2.0),
+                                egui::Align2::CENTER_CENTER,
+                                wtype.label(),
+                                egui::FontId::proportional(9.5),
+                                text_muted,
+                            );
+
+                            response
+                                .clone()
+                                .on_hover_text(format!("Click to add a {} widget", wtype.label()));
+
+                            if response.clicked() {
+                                let wt = wtype.clone();
+                                commands.push(move |world: &mut World| {
+                                    crate::spawn::spawn_widget(world, &wt, None);
+                                });
+                            }
+                        }
                     });
                 }
             });
+            ui.add_space(panel_padding);
+        });
     }
 
     fn default_location(&self) -> PanelLocation {

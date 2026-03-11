@@ -302,24 +302,23 @@ fn layout_ui() -> DockTree {
             0.5,
         ),
         DockTree::horizontal(
-            // Center: UI canvas on top, console below
+            // Center: UI canvas on top, assets+console below
             DockTree::vertical(
                 DockTree::Leaf {
                     tabs: vec!["ui_canvas".into(), "viewport".into()],
                     active_tab: 0,
                 },
-                DockTree::leaf("console"),
-                0.75,
-            ),
-            // Right: UI inspector on top, assets below
-            DockTree::vertical(
                 DockTree::Leaf {
-                    tabs: vec!["ui_inspector".into(), "inspector".into()],
+                    tabs: vec!["assets".into(), "console".into()],
                     active_tab: 0,
                 },
-                DockTree::leaf("assets"),
-                0.6,
+                0.75,
             ),
+            // Right: UI inspector + scene inspector
+            DockTree::Leaf {
+                tabs: vec!["ui_inspector".into(), "inspector".into()],
+                active_tab: 0,
+            },
             0.75,
         ),
         0.15,
