@@ -19,6 +19,11 @@ struct InspectorSnapshot {
     is_canvas: bool,
     sort_order: i32,
     visibility_mode: String,
+    reference_width: f32,
+    reference_height: f32,
+    // Reference resolution (from parent canvas or defaults)
+    canvas_ref_w: f32,
+    canvas_ref_h: f32,
     // Widget props (if entity has UiWidget)
     is_widget: bool,
     widget_type: UiWidgetType,
@@ -61,6 +66,15 @@ impl Default for UiInspectorPanel {
         Self {
             state: RwLock::new(UiInspectorState::default()),
         }
+    }
+}
+
+/// Convert a Val to design-space pixels given a reference dimension.
+fn val_to_design_px(v: bevy::ui::Val, reference: f32) -> f32 {
+    match v {
+        bevy::ui::Val::Percent(p) => p * reference / 100.0,
+        bevy::ui::Val::Px(px) => px,
+        _ => 0.0,
     }
 }
 
@@ -206,6 +220,8 @@ impl EditorPanel for UiInspectorPanel {
         if let Some(canvas) = world.get::<UiCanvas>(entity) {
             snap.sort_order = canvas.sort_order;
             snap.visibility_mode = canvas.visibility_mode.clone();
+            snap.reference_width = canvas.reference_width;
+            snap.reference_height = canvas.reference_height;
         }
 
         // Widget
@@ -228,13 +244,28 @@ impl EditorPanel for UiInspectorPanel {
             return;
         }
 
+        // Resolve reference resolution from parent canvas (or self if canvas)
+        snap.canvas_ref_w = 1280.0;
+        snap.canvas_ref_h = 720.0;
+        if snap.is_canvas {
+            snap.canvas_ref_w = snap.reference_width;
+            snap.canvas_ref_h = snap.reference_height;
+        } else if let Some(child_of) = world.get::<ChildOf>(entity) {
+            if let Some(canvas) = world.get::<UiCanvas>(child_of.parent()) {
+                snap.canvas_ref_w = canvas.reference_width;
+                snap.canvas_ref_h = canvas.reference_height;
+            }
+        }
+        let crw = snap.canvas_ref_w;
+        let crh = snap.canvas_ref_h;
+
         // Node
         snap.has_node = world.get::<Node>(entity).is_some();
         if let Some(node) = world.get::<Node>(entity) {
-            snap.left = val_px(node.left);
-            snap.top = val_px(node.top);
-            snap.width = val_px(node.width);
-            snap.height = val_px(node.height);
+            snap.left = val_to_design_px(node.left, crw);
+            snap.top = val_to_design_px(node.top, crh);
+            snap.width = val_to_design_px(node.width, crw);
+            snap.height = val_to_design_px(node.height, crh);
             snap.position_type = position_type_to_u8(node.position_type);
             snap.flex_direction = flex_direction_to_u8(node.flex_direction);
             snap.justify_content = justify_content_to_u8(node.justify_content);
@@ -359,6 +390,34 @@ impl EditorPanel for UiInspectorPanel {
                             });
                         }
                     });
+
+                    section_header(ui, "Reference Resolution", text_muted);
+                    property_row(ui, "Width", text_muted, |ui| {
+                        let mut v = snap.reference_width;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1.0).range(1.0..=7680.0)).changed() {
+                            snap.reference_width = v;
+                            commands.push(move |world: &mut World| {
+                                if let Ok(mut em) = world.get_entity_mut(entity) {
+                                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                                        canvas.reference_width = v;
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    property_row(ui, "Height", text_muted, |ui| {
+                        let mut v = snap.reference_height;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1.0).range(1.0..=4320.0)).changed() {
+                            snap.reference_height = v;
+                            commands.push(move |world: &mut World| {
+                                if let Ok(mut em) = world.get_entity_mut(entity) {
+                                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                                        canvas.reference_height = v;
+                                    }
+                                }
+                            });
+                        }
+                    });
                 }
 
                 // Widget properties
@@ -410,7 +469,7 @@ impl EditorPanel for UiInspectorPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.left = bevy::ui::Val::Px(v);
+                                        node.left = bevy::ui::Val::Percent(v / crw * 100.0);
                                     }
                                 }
                             });
@@ -423,7 +482,7 @@ impl EditorPanel for UiInspectorPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.top = bevy::ui::Val::Px(v);
+                                        node.top = bevy::ui::Val::Percent(v / crh * 100.0);
                                     }
                                 }
                             });
@@ -438,7 +497,7 @@ impl EditorPanel for UiInspectorPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.width = bevy::ui::Val::Px(v);
+                                        node.width = bevy::ui::Val::Percent(v / crw * 100.0);
                                     }
                                 }
                             });
@@ -451,7 +510,7 @@ impl EditorPanel for UiInspectorPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.height = bevy::ui::Val::Px(v);
+                                        node.height = bevy::ui::Val::Percent(v / crh * 100.0);
                                     }
                                 }
                             });

@@ -31,6 +31,7 @@ fn main() {
         app.add_plugins(renzora_code_editor::CodeEditorPlugin);
         app.add_plugins(renzora_script_variables::ScriptVariablesPlugin);
         app.add_plugins(renzora_blueprint_editor::BlueprintEditorPlugin);
+        app.add_plugins(renzora_tutorial::TutorialPlugin);
     }
 
     app.run();

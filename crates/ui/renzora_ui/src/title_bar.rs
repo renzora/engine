@@ -22,6 +22,7 @@ pub enum TitleBarAction {
     Stop,
     Pause,
     ScriptsOnly,
+    StartTutorial,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -129,6 +130,11 @@ pub fn render_title_bar(
                 });
 
                 ui.menu_button("Help", |ui| {
+                    if ui.button("Getting Started Tutorial").clicked() {
+                        action = TitleBarAction::StartTutorial;
+                        ui.close();
+                    }
+                    ui.separator();
                     if ui.button("About Renzora").clicked() {
                         ui.close();
                     }

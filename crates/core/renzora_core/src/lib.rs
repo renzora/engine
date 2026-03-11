@@ -318,6 +318,10 @@ pub struct OpenSceneRequested;
 #[derive(Resource)]
 pub struct ExportRequested;
 
+/// Marker resource requesting the tutorial overlay to start.
+#[derive(Resource)]
+pub struct TutorialRequested;
+
 /// Holds the optional render target for the game camera.
 ///
 /// - `Some(handle)` — camera renders to this image (editor mode).

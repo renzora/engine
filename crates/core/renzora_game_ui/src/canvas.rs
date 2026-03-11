@@ -173,9 +173,13 @@ impl Default for UiCanvasPanel {
     }
 }
 
-/// Extract a px value from Val, returning 0 for non-px values.
-fn val_px(v: bevy::ui::Val) -> f32 {
+/// Convert a Val to design-space pixels given a reference dimension.
+///
+/// Handles `Val::Percent` (converting back using reference) and `Val::Px`
+/// (for backwards compatibility with older scenes).
+fn val_to_design_px(v: bevy::ui::Val, reference: f32) -> f32 {
     match v {
+        bevy::ui::Val::Percent(p) => p * reference / 100.0,
         bevy::ui::Val::Px(px) => px,
         _ => 0.0,
     }
@@ -241,6 +245,18 @@ impl EditorPanel for UiCanvasPanel {
         {
             state.active_canvas = state.canvases.first().map(|(e, _)| *e);
         }
+
+        // Sync canvas size from active canvas component's reference resolution
+        if let Some(active) = state.active_canvas {
+            if let Some(canvas) = world.get::<UiCanvas>(active) {
+                state.canvas_width = canvas.reference_width;
+                state.canvas_height = canvas.reference_height;
+            }
+        }
+
+        // Reference resolution for px↔percent conversion in closures
+        let ref_w = state.canvas_width;
+        let ref_h = state.canvas_height;
 
         // ── Toolbar ─────────────────────────────────────────────────────
         let text_muted = theme.text.muted.to_color32();
@@ -375,8 +391,8 @@ impl EditorPanel for UiCanvasPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.left = bevy::ui::Val::Px(new_x);
-                                        node.top = bevy::ui::Val::Px(new_y);
+                                        node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
+                                        node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
                                         node.position_type = bevy::ui::PositionType::Absolute;
                                     }
                                 }
@@ -410,7 +426,7 @@ impl EditorPanel for UiCanvasPanel {
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
                                 if let Some(mut node) = em.get_mut::<Node>() {
-                                    node.left = bevy::ui::Val::Px(new_x);
+                                    node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
                                     node.position_type = bevy::ui::PositionType::Absolute;
                                 }
                             }
@@ -440,7 +456,7 @@ impl EditorPanel for UiCanvasPanel {
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
                                 if let Some(mut node) = em.get_mut::<Node>() {
-                                    node.top = bevy::ui::Val::Px(new_y);
+                                    node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
                                     node.position_type = bevy::ui::PositionType::Absolute;
                                 }
                             }
@@ -481,10 +497,10 @@ impl EditorPanel for UiCanvasPanel {
                         name,
                         widget_type: widget.widget_type.clone(),
                         locked: widget.locked,
-                        x: val_px(node.left),
-                        y: val_px(node.top),
-                        width: val_px(node.width),
-                        height: val_px(node.height),
+                        x: val_to_design_px(node.left, ref_w),
+                        y: val_to_design_px(node.top, ref_h),
+                        width: val_to_design_px(node.width, ref_w),
+                        height: val_to_design_px(node.height, ref_h),
                         parent,
                         has_bg: bg.is_some(),
                         bg_color: bg
@@ -732,8 +748,8 @@ impl EditorPanel for UiCanvasPanel {
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
                             if let Some(mut node) = em.get_mut::<Node>() {
-                                node.left = bevy::ui::Val::Px(nx);
-                                node.top = bevy::ui::Val::Px(ny);
+                                node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
                                 node.position_type = bevy::ui::PositionType::Absolute;
                             }
                         }
@@ -788,10 +804,10 @@ impl EditorPanel for UiCanvasPanel {
                                             name.set(format!("{} (copy)", entry.name));
                                         }
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            node.left = bevy::ui::Val::Px(offset_x);
-                                            node.top = bevy::ui::Val::Px(offset_y);
-                                            node.width = bevy::ui::Val::Px(entry.width);
-                                            node.height = bevy::ui::Val::Px(entry.height);
+                                            node.left = bevy::ui::Val::Percent(offset_x / ref_w * 100.0);
+                                            node.top = bevy::ui::Val::Percent(offset_y / ref_h * 100.0);
+                                            node.width = bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
+                                            node.height = bevy::ui::Val::Percent(entry.height / ref_h * 100.0);
                                             node.position_type = bevy::ui::PositionType::Absolute;
                                         }
                                         if entry.has_bg {
@@ -845,10 +861,10 @@ impl EditorPanel for UiCanvasPanel {
                                             name.set(format!("{} (copy)", entry.name));
                                         }
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            node.left = bevy::ui::Val::Px(entry.x);
-                                            node.top = bevy::ui::Val::Px(entry.y);
-                                            node.width = bevy::ui::Val::Px(entry.width);
-                                            node.height = bevy::ui::Val::Px(entry.height);
+                                            node.left = bevy::ui::Val::Percent(entry.x / ref_w * 100.0);
+                                            node.top = bevy::ui::Val::Percent(entry.y / ref_h * 100.0);
+                                            node.width = bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
+                                            node.height = bevy::ui::Val::Percent(entry.height / ref_h * 100.0);
                                             node.position_type = bevy::ui::PositionType::Absolute;
                                         }
                                         if entry.has_bg {
@@ -1028,8 +1044,8 @@ impl EditorPanel for UiCanvasPanel {
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(e) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.left = bevy::ui::Val::Px(nx);
-                                        node.top = bevy::ui::Val::Px(ny);
+                                        node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                        node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
                                         node.position_type = bevy::ui::PositionType::Absolute;
                                     }
                                 }
@@ -1087,10 +1103,10 @@ impl EditorPanel for UiCanvasPanel {
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
                             if let Some(mut node) = em.get_mut::<Node>() {
-                                node.width = bevy::ui::Val::Px(nw);
-                                node.height = bevy::ui::Val::Px(nh);
-                                node.left = bevy::ui::Val::Px(nx);
-                                node.top = bevy::ui::Val::Px(ny);
+                                node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
+                                node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
+                                node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
                                 node.position_type = bevy::ui::PositionType::Absolute;
                             }
                         }

@@ -29,6 +29,9 @@ impl Plugin for GameUiPlugin {
         app.register_type::<UiCanvas>();
         app.register_type::<UiWidget>();
 
+        // Scale remaining Val::Px values (text, padding, border-radius) to match viewport
+        app.add_systems(Update, update_ui_scale);
+
         #[cfg(feature = "editor")]
         {
             use renzora_editor::AppEditorExt;
@@ -54,6 +57,58 @@ impl Plugin for GameUiPlugin {
             info!("[runtime] GameUiPlugin");
         }
     }
+}
+
+// ── Canvas scaler ───────────────────────────────────────────────────────────
+
+/// Scales `Val::Px` values (text size, padding, border-radius) uniformly so
+/// they stay proportional to the viewport. Positions and sizes use
+/// `Val::Percent` and scale per-axis automatically.
+fn update_ui_scale(
+    canvases: Query<&UiCanvas>,
+    render_target: Option<Res<renzora_core::ViewportRenderTarget>>,
+    images: Res<Assets<Image>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    mut ui_scale: ResMut<bevy::ui::UiScale>,
+) {
+    let (ref_w, ref_h) = canvases
+        .iter()
+        .next()
+        .map(|c| (c.reference_width, c.reference_height))
+        .unwrap_or((1280.0, 720.0));
+
+    if ref_w <= 0.0 || ref_h <= 0.0 {
+        return;
+    }
+
+    // Determine actual render size: viewport texture (editor) or window (runtime)
+    let actual = render_target
+        .as_ref()
+        .and_then(|rt| rt.image.as_ref())
+        .and_then(|h| images.get(h))
+        .map(|img| {
+            let s = img.size();
+            (s.x as f32, s.y as f32)
+        });
+
+    let (actual_w, actual_h) = match actual {
+        Some(size) => size,
+        None => {
+            if let Ok(window) = windows.single() {
+                (window.width(), window.height())
+            } else {
+                return;
+            }
+        }
+    };
+
+    if actual_w <= 0.0 || actual_h <= 0.0 {
+        return;
+    }
+
+    // Uniform scale for Px values (text, padding, borders)
+    let scale = (actual_w / ref_w).min(actual_h / ref_h);
+    ui_scale.0 = scale;
 }
 
 // ── Editor-only systems ─────────────────────────────────────────────────────

@@ -54,6 +54,10 @@ pub struct UiCanvas {
     pub sort_order: i32,
     /// When to show: "always", "play_only", "editor_only".
     pub visibility_mode: String,
+    /// Reference resolution width for UI scaling (design-time canvas width).
+    pub reference_width: f32,
+    /// Reference resolution height for UI scaling (design-time canvas height).
+    pub reference_height: f32,
 }
 
 impl Default for UiCanvas {
@@ -61,6 +65,8 @@ impl Default for UiCanvas {
         Self {
             sort_order: 0,
             visibility_mode: "always".into(),
+            reference_width: 1280.0,
+            reference_height: 720.0,
         }
     }
 }

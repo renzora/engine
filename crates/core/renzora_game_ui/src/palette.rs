@@ -206,6 +206,13 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
         }
     };
 
+    // Reference resolution for percentage conversion
+    // Use parent canvas's reference if available, otherwise defaults
+    let (ref_w, ref_h) = parent
+        .and_then(|p| world.get::<crate::components::UiCanvas>(p))
+        .map(|c| (c.reference_width, c.reference_height))
+        .unwrap_or((1280.0, 720.0));
+
     let entity_cmds = match widget_type {
         UiWidgetType::Container => {
             world.spawn((
@@ -215,8 +222,8 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
                     locked: false,
                 },
                 Node {
-                    width: bevy::ui::Val::Px(200.0),
-                    height: bevy::ui::Val::Px(100.0),
+                    width: bevy::ui::Val::Percent(200.0 / ref_w * 100.0),
+                    height: bevy::ui::Val::Percent(100.0 / ref_h * 100.0),
                     ..default()
                 },
             ))
@@ -229,8 +236,8 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
                     locked: false,
                 },
                 Node {
-                    width: bevy::ui::Val::Px(300.0),
-                    height: bevy::ui::Val::Px(200.0),
+                    width: bevy::ui::Val::Percent(300.0 / ref_w * 100.0),
+                    height: bevy::ui::Val::Percent(200.0 / ref_h * 100.0),
                     padding: bevy::ui::UiRect::all(bevy::ui::Val::Px(8.0)),
                     border_radius: BorderRadius::all(bevy::ui::Val::Px(6.0)),
                     ..default()
@@ -263,8 +270,8 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
                     locked: false,
                 },
                 Node {
-                    width: bevy::ui::Val::Px(128.0),
-                    height: bevy::ui::Val::Px(128.0),
+                    width: bevy::ui::Val::Percent(128.0 / ref_w * 100.0),
+                    height: bevy::ui::Val::Percent(128.0 / ref_h * 100.0),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 1.0)),
@@ -278,8 +285,8 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
                     locked: false,
                 },
                 Node {
-                    width: bevy::ui::Val::Px(150.0),
-                    height: bevy::ui::Val::Px(40.0),
+                    width: bevy::ui::Val::Percent(150.0 / ref_w * 100.0),
+                    height: bevy::ui::Val::Percent(40.0 / ref_h * 100.0),
                     justify_content: bevy::ui::JustifyContent::Center,
                     align_items: bevy::ui::AlignItems::Center,
                     border_radius: BorderRadius::all(bevy::ui::Val::Px(4.0)),

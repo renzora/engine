@@ -119,7 +119,7 @@ fn show_script_reload_toasts(
 ///
 /// Uses `SystemState` to extract the egui context, clones it (Arc-backed, cheap),
 /// then renders everything with `&World` access for panels.
-fn editor_ui_system(world: &mut World) {
+pub fn editor_ui_system(world: &mut World) {
     // 1. Get egui context (cached to avoid per-frame allocation)
     if !world.contains_resource::<EditorEguiState>() {
         let s = EditorEguiState(SystemState::new(world));
@@ -488,6 +488,9 @@ fn editor_ui_system(world: &mut World) {
             if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
                 pm.request_scripts_only = true;
             }
+        }
+        TitleBarAction::StartTutorial => {
+            world.insert_resource(renzora_core::TutorialRequested);
         }
         TitleBarAction::None => {}
     }
