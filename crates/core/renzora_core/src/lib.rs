@@ -72,6 +72,7 @@ impl CurrentProject {
         Ok(())
     }
 
+    /// Convert an absolute path to a project-relative path (e.g. `assets/textures/foo.png`).
     pub fn make_relative(&self, path: &Path) -> Option<String> {
         if path.is_relative() {
             return Some(path.to_string_lossy().replace('\\', "/"));
@@ -91,6 +92,32 @@ impl CurrentProject {
         }
 
         None
+    }
+
+    /// Convert an absolute path to an asset-relative path for `AssetServer::load()`.
+    ///
+    /// Strips the project's `assets/` directory prefix so the resulting path
+    /// (e.g. `textures/foo.png`) is portable across machines and works with the
+    /// `EmbeddedAssetReader` in both editor and standalone runtime builds.
+    pub fn make_asset_relative(&self, path: &Path) -> String {
+        let assets_dir = self.path.join("assets");
+
+        // Try direct strip first
+        if let Ok(rel) = path.strip_prefix(&assets_dir) {
+            return rel.to_string_lossy().replace('\\', "/");
+        }
+
+        // Try canonicalized paths
+        if let (Ok(canon_assets), Ok(canon_path)) =
+            (assets_dir.canonicalize(), path.canonicalize())
+        {
+            if let Ok(rel) = canon_path.strip_prefix(&canon_assets) {
+                return rel.to_string_lossy().replace('\\', "/");
+            }
+        }
+
+        // Fallback: return the path as-is with normalized slashes
+        path.to_string_lossy().replace('\\', "/")
     }
 }
 

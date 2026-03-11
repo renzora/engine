@@ -91,6 +91,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
             .init_resource::<EditorSettings>()
+            .init_resource::<renzora_auth::AuthState>()
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
@@ -211,7 +212,11 @@ pub fn editor_ui_system(world: &mut World) {
             is_scripts_only: pm.is_scripts_only(),
         })
         .unwrap_or_default();
-    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info);
+    let sign_in_open = world
+        .get_resource::<renzora_auth::AuthState>()
+        .map(|a| a.window_open)
+        .unwrap_or(false);
+    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info, sign_in_open);
 
     // 6. Document tabs (below title bar)
     let doc_tab_state = world
@@ -469,6 +474,11 @@ pub fn editor_ui_system(world: &mut World) {
                 settings.show_settings = !settings.show_settings;
             }
         }
+        TitleBarAction::ToggleSignIn => {
+            if let Some(mut auth) = world.get_resource_mut::<renzora_auth::AuthState>() {
+                auth.window_open = !auth.window_open;
+            }
+        }
         TitleBarAction::Play => {
             if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
                 pm.request_play = true;
@@ -528,6 +538,13 @@ pub fn editor_ui_system(world: &mut World) {
             switch_layout_by_name(world, &layout_name);
         }
         DocTabAction::None => {}
+    }
+
+    // Auth window
+    {
+        if let Some(mut auth) = world.get_resource_mut::<renzora_auth::AuthState>() {
+            renzora_auth::render_auth_window(&ctx, &theme, &mut auth);
+        }
     }
 
     // Toast notifications

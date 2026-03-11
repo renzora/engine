@@ -113,6 +113,7 @@ impl Plugin for GameUiPlugin {
                 (
                     ensure_ui_visibility_components,
                     sync_ui_canvas_visibility,
+                    register_ui_image_textures,
                     debug_ui_tree,
                 )
                     .chain(),
@@ -309,4 +310,21 @@ fn debug_ui_tree(
     }
 
     info!("[ui_editor] === END UI TREE DUMP ===");
+}
+
+/// Registers `ImageNode` handles from UiWidget entities with egui so the canvas
+/// panel can display image previews.
+#[cfg(feature = "editor")]
+fn register_ui_image_textures(
+    widgets: Query<&ImageNode, With<UiWidget>>,
+    images: Res<Assets<Image>>,
+    mut user_textures: ResMut<bevy_egui::EguiUserTextures>,
+) {
+    for image_node in &widgets {
+        let handle = &image_node.image;
+        // Only register once the image is loaded, and only if not already registered
+        if images.contains(handle) && user_textures.image_id(handle.id()).is_none() {
+            user_textures.add_image(bevy_egui::EguiTextureHandle::Strong(handle.clone()));
+        }
+    }
 }

@@ -824,7 +824,11 @@ fn skybox_custom_ui(
             }
 
             if let Some(dropped_path) = drop_result.dropped_path {
-                pano.panorama_path = dropped_path.to_string_lossy().to_string();
+                pano.panorama_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    project.make_asset_relative(&dropped_path)
+                } else {
+                    dropped_path.to_string_lossy().to_string()
+                };
                 changed = true;
             }
 
@@ -835,7 +839,11 @@ fn skybox_custom_ui(
                     .set_title("Select Sky Texture")
                     .pick_file()
                 {
-                    pano.panorama_path = texture_path.to_string_lossy().to_string();
+                    pano.panorama_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                        project.make_asset_relative(&texture_path)
+                    } else {
+                        texture_path.to_string_lossy().to_string()
+                    };
                     changed = true;
                 }
             }

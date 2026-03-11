@@ -18,6 +18,7 @@ pub enum TitleBarAction {
     SaveAs,
     Export,
     ToggleSettings,
+    ToggleSignIn,
     Play,
     Stop,
     Pause,
@@ -52,6 +53,7 @@ pub fn render_title_bar(
     registry: &PanelRegistry,
     layout_manager: &LayoutManager,
     play_mode: &PlayModeInfo,
+    sign_in_open: bool,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
 
@@ -245,9 +247,10 @@ pub fn render_title_bar(
                     ui.add_space(tw + tab_spacing);
                 }
 
-                // --- Right: play controls + settings gear ---
+                // --- Right: play controls + sign-in + settings gear ---
                 let btn_size = 20.0;
                 let gear_size = 20.0;
+                let sign_in_width = 80.0;
                 let right_margin = 8.0;
                 let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
                 let play_controls_width = if in_any_play {
@@ -255,7 +258,7 @@ pub fn render_title_bar(
                 } else {
                     btn_size * 2.0 + 4.0 // play + scripts
                 };
-                let remaining = ui.available_width() - play_controls_width - 8.0 - gear_size - right_margin;
+                let remaining = ui.available_width() - play_controls_width - 8.0 - sign_in_width - 8.0 - gear_size - right_margin;
                 if remaining > 0.0 {
                     ui.add_space(remaining);
                 }
@@ -404,6 +407,58 @@ pub fn render_title_bar(
                 if gear_resp.clicked() {
                     action = TitleBarAction::ToggleSettings;
                 }
+
+                ui.add_space(8.0);
+
+                // Sign In button
+                let sign_in_size = Vec2::new(sign_in_width, 20.0);
+                let sign_in_rect = Rect::from_min_size(
+                    Pos2::new(ui.cursor().left(), tab_y + (tab_h - 20.0) / 2.0),
+                    sign_in_size,
+                );
+                let sign_in_id = ui.id().with("sign_in_btn");
+                let sign_in_resp = ui.interact(sign_in_rect, sign_in_id, Sense::click());
+
+                if sign_in_resp.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+
+                let bg = if sign_in_open {
+                    brighten(theme.surfaces.window.to_color32(), 25)
+                } else if sign_in_resp.hovered() {
+                    brighten(theme.surfaces.window.to_color32(), 15)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                ui.painter().rect_filled(
+                    sign_in_rect,
+                    egui::CornerRadius::same(3),
+                    bg,
+                );
+
+                // User icon
+                ui.painter().text(
+                    Pos2::new(sign_in_rect.left() + 14.0, sign_in_rect.center().y),
+                    egui::Align2::CENTER_CENTER,
+                    egui_phosphor::regular::USER,
+                    egui::FontId::proportional(12.0),
+                    theme.text.secondary.to_color32(),
+                );
+
+                // "Sign In" text
+                ui.painter().text(
+                    Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "Sign In",
+                    egui::FontId::proportional(11.0),
+                    theme.text.secondary.to_color32(),
+                );
+
+                if sign_in_resp.clicked() {
+                    action = TitleBarAction::ToggleSignIn;
+                }
+
+                ui.add_space(sign_in_width);
             });
         });
 

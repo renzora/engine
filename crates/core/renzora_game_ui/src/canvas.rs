@@ -7,11 +7,15 @@ use std::sync::RwLock;
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
+use bevy_egui::EguiUserTextures;
 use egui_phosphor::regular;
-use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::components::{UiCanvas, UiWidget, UiWidgetType};
+
+/// Image file extensions accepted for drag-and-drop onto the canvas.
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "tga", "webp"];
 
 // ── Snapshot types ────────────────────────────────────────────────────────────
 
@@ -31,6 +35,8 @@ struct WidgetSnapshot {
     bg_color: [f32; 4],
     has_border: bool,
     border_color: [f32; 4],
+    /// Egui texture id for Image widgets (looked up from ImageNode handle).
+    image_texture_id: Option<egui::TextureId>,
 }
 
 /// Canvas editor state.
@@ -469,6 +475,7 @@ impl EditorPanel for UiCanvasPanel {
         ui.separator();
 
         // ── Snapshot widgets for active canvas ───────────────────────────
+        let user_textures = world.get_resource::<EguiUserTextures>();
         state.widgets.clear();
         if let Some(active_canvas) = state.active_canvas {
             for archetype in world.archetypes().iter() {
@@ -492,6 +499,13 @@ impl EditorPanel for UiCanvasPanel {
                     let border = world.get::<BorderColor>(entity);
                     let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
 
+                    // Look up egui texture for Image widgets
+                    let image_texture_id = world
+                        .get::<ImageNode>(entity)
+                        .and_then(|img| {
+                            user_textures.and_then(|ut| ut.image_id(img.image.id()))
+                        });
+
                     state.widgets.push(WidgetSnapshot {
                         entity,
                         name,
@@ -510,6 +524,7 @@ impl EditorPanel for UiCanvasPanel {
                         border_color: border
                             .map(|b| b.top.to_srgba().to_f32_array())
                             .unwrap_or([0.0; 4]),
+                        image_texture_id,
                     });
                 }
             }
@@ -605,18 +620,28 @@ impl EditorPanel for UiCanvasPanel {
         for ws in &widget_snapshots {
             let rect = ws_screen_rect(ws, canvas_rect, z);
 
-            // Background
-            let bg = if ws.has_bg {
-                Color32::from_rgba_unmultiplied(
-                    (ws.bg_color[0] * 255.0) as u8,
-                    (ws.bg_color[1] * 255.0) as u8,
-                    (ws.bg_color[2] * 255.0) as u8,
-                    (ws.bg_color[3] * 255.0) as u8,
-                )
+            // Image texture (render actual image for Image widgets)
+            if let Some(tex_id) = ws.image_texture_id {
+                painter.image(
+                    tex_id,
+                    rect,
+                    egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
             } else {
-                Color32::from_rgba_unmultiplied(50, 50, 60, 40)
-            };
-            painter.rect_filled(rect, 2.0, bg);
+                // Background
+                let bg = if ws.has_bg {
+                    Color32::from_rgba_unmultiplied(
+                        (ws.bg_color[0] * 255.0) as u8,
+                        (ws.bg_color[1] * 255.0) as u8,
+                        (ws.bg_color[2] * 255.0) as u8,
+                        (ws.bg_color[3] * 255.0) as u8,
+                    )
+                } else {
+                    Color32::from_rgba_unmultiplied(50, 50, 60, 40)
+                };
+                painter.rect_filled(rect, 2.0, bg);
+            }
 
             // Border / selection highlight
             let is_sel = all_sel.contains(&ws.entity);
@@ -679,6 +704,64 @@ impl EditorPanel for UiCanvasPanel {
                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 150, 255, 120)),
                 egui::StrokeKind::Outside,
             );
+        }
+
+        // ── Asset drag-and-drop (images from asset browser) ─────────────
+        if let Some(payload) = world.get_resource::<AssetDragPayload>() {
+            if payload.is_detached && payload.matches_extensions(IMAGE_EXTENSIONS) {
+                let pointer_pos = ui.ctx().pointer_hover_pos();
+                let pointer_in_canvas = pointer_pos.map_or(false, |p| canvas_rect.contains(p));
+
+                if pointer_in_canvas {
+                    // Draw drop-zone highlight on the canvas
+                    painter.rect_filled(
+                        canvas_rect,
+                        0.0,
+                        Color32::from_rgba_unmultiplied(100, 200, 100, 15),
+                    );
+                    painter.rect_stroke(
+                        canvas_rect,
+                        0.0,
+                        Stroke::new(2.0, Color32::from_rgba_unmultiplied(100, 200, 100, 180)),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    // Show "Drop to add Image" text at pointer
+                    if let Some(pos) = pointer_pos {
+                        painter.text(
+                            Pos2::new(pos.x, pos.y - 16.0),
+                            egui::Align2::CENTER_BOTTOM,
+                            format!("{} Drop to add image", regular::IMAGE),
+                            egui::FontId::proportional(11.0),
+                            Color32::from_rgb(100, 200, 100),
+                        );
+                    }
+
+                    // Detect drop (pointer released)
+                    if !ui.ctx().input(|i| i.pointer.any_down()) {
+                        if let Some(pos) = pointer_pos {
+                            // Convert screen position to canvas logical coordinates
+                            let lx = (pos.x - canvas_rect.min.x) / z;
+                            let ly = (pos.y - canvas_rect.min.y) / z;
+
+                            let asset_path = payload.path.clone();
+                            let active_canvas = state.active_canvas;
+                            let snap_on = state.snap_enabled;
+                            let grid = state.grid_size;
+
+                            commands.push(move |world: &mut World| {
+                                crate::spawn::spawn_image_at(
+                                    world,
+                                    &asset_path,
+                                    lx, ly,
+                                    snap_on, grid,
+                                    active_canvas,
+                                );
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         // ── Keyboard shortcuts ───────────────────────────────────────────
@@ -1166,7 +1249,7 @@ impl EditorPanel for UiCanvasPanel {
             painter.text(
                 canvas_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "Click widgets in the palette to add them here",
+                "Click widgets in the palette or drag images from the asset browser",
                 egui::FontId::proportional(12.0),
                 text_muted,
             );

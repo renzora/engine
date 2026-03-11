@@ -1,5 +1,7 @@
 //! Widget spawn functions — each creates the correct entity hierarchy for a widget type.
 
+use std::path::Path;
+
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
@@ -528,4 +530,99 @@ fn spawn_spinner(world: &mut World, r: &Ref) -> Entity {
             BackgroundColor(Color::NONE),
         ))
         .id()
+}
+
+/// Spawn an Image widget at a specific canvas position, loading the image from an asset path.
+///
+/// Called when an image file is drag-dropped from the asset browser onto the UI canvas.
+pub fn spawn_image_at(
+    world: &mut World,
+    asset_path: &Path,
+    x: f32,
+    y: f32,
+    snap: bool,
+    grid: f32,
+    parent: Option<Entity>,
+) {
+    // Find or create canvas
+    let canvas_entity = {
+        let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
+        match parent.or_else(|| q.iter(world).next()) {
+            Some(e) => e,
+            None => world
+                .spawn((
+                    Name::new("UI Canvas"),
+                    UiCanvas::default(),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                ))
+                .id(),
+        }
+    };
+
+    let r = parent
+        .and_then(|p| world.get::<UiCanvas>(p))
+        .map(|c| Ref {
+            w: c.reference_width,
+            h: c.reference_height,
+        })
+        .unwrap_or(Ref {
+            w: 1280.0,
+            h: 720.0,
+        });
+
+    // Convert to asset-relative path (e.g. "textures/player.png") for portability.
+    // Works in editor via EmbeddedAssetReader and in standalone runtime.
+    let load_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+        project.make_asset_relative(asset_path)
+    } else {
+        asset_path.to_string_lossy().replace('\\', "/")
+    };
+
+    let image_handle: Handle<Image> = world.resource::<AssetServer>().load(load_path);
+
+    // Snap position if enabled
+    let mut px = x;
+    let mut py = y;
+    if snap {
+        px = (px / grid).round() * grid;
+        py = (py / grid).round() * grid;
+    }
+
+    let name = asset_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Image")
+        .to_string();
+
+    let entity = world
+        .spawn((
+            Name::new(name),
+            UiWidget {
+                widget_type: UiWidgetType::Image,
+                locked: false,
+            },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(px / r.w * 100.0),
+                top: Val::Percent(py / r.h * 100.0),
+                width: pct_w(128.0, &r),
+                height: pct_h(128.0, &r),
+                ..default()
+            },
+            ImageNode::new(image_handle),
+            UiThemed,
+        ))
+        .id();
+
+    world.entity_mut(entity).set_parent_in_place(canvas_entity);
+
+    #[cfg(feature = "editor")]
+    if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
+        sel.set(Some(entity));
+    }
 }

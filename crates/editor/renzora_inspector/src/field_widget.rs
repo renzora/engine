@@ -153,7 +153,11 @@ pub fn render_field(
                 );
 
                 if let Some(path) = drop_result.dropped_path {
-                    let path_str = path.to_string_lossy().to_string();
+                    let path_str = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                        project.make_asset_relative(&path)
+                    } else {
+                        path.to_string_lossy().to_string()
+                    };
                     cmds.push(move |w| (set_fn)(w, entity, FieldValue::Asset(Some(path_str))));
                 }
                 if drop_result.cleared {

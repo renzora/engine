@@ -214,7 +214,11 @@ impl EditorPanel for MaterialInspectorPanel {
                                 .add_filter("Image", &["png", "jpg", "jpeg", "ktx2"])
                                 .pick_file()
                             {
-                                let new_path = file.to_string_lossy().to_string();
+                                let new_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                                    project.make_asset_relative(&file)
+                                } else {
+                                    file.to_string_lossy().to_string()
+                                };
                                 node_mut.input_values.insert(pin.name.clone(), PinValue::TexturePath(new_path));
                                 any_changed = true;
                             }
