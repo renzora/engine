@@ -233,6 +233,14 @@ If `cargo build --release` fails with OS error 4551, **Windows Smart App Control
 
 Ensure the runtime binary exists at `runtimes/windows/renzora_runtime.exe`. Build it with `cargo release-runtime` and copy it there.
 
+## AI-Assisted Development
+
+This project is built with the assistance of AI code generation tools, including Claude by Anthropic. AI is used throughout the development process for writing code, designing systems, generating documentation, and solving engineering problems.
+
+This is a deliberate choice — AI tooling allows a small team to move fast and build an ambitious engine that would otherwise require significantly more time and resources.
+
+If the use of AI-generated code is a concern for you, this project may not be the right fit. There are many excellent open-source game engines and frameworks built entirely by hand — [Bevy](https://bevyengine.org/), [Godot](https://godotengine.org/), and [Fyrox](https://fyrox.rs/) are all great alternatives worth exploring.
+
 ## License
 
 Apache License 2.0 — see [LICENSE.md](LICENSE.md)
