@@ -8,7 +8,7 @@ use egui_phosphor::regular;
 use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
-use crate::components::{UiCanvas, UiWidget, UiWidgetType};
+use crate::components::{self, UiCanvas, UiWidget, UiWidgetType};
 
 /// Snapshot of the selected widget's properties for editing.
 #[derive(Default, Clone)]
@@ -50,6 +50,21 @@ struct InspectorSnapshot {
     text_content: String,
     text_size: f32,
     text_color: [f32; 4],
+    // Widget-specific data snapshots
+    progress_bar: Option<components::ProgressBarData>,
+    health_bar: Option<components::HealthBarData>,
+    slider: Option<components::SliderData>,
+    checkbox: Option<components::CheckboxData>,
+    toggle: Option<components::ToggleData>,
+    radio_button: Option<components::RadioButtonData>,
+    dropdown: Option<components::DropdownData>,
+    text_input: Option<components::TextInputData>,
+    scroll_view: Option<components::ScrollViewData>,
+    tab_bar: Option<components::TabBarData>,
+    spinner: Option<components::SpinnerData>,
+    tooltip: Option<components::TooltipData>,
+    modal: Option<components::ModalData>,
+    draggable_window: Option<components::DraggableWindowData>,
 }
 
 #[derive(Default)]
@@ -157,6 +172,16 @@ fn u8_to_align_items(v: u8) -> bevy::ui::AlignItems {
         3 => bevy::ui::AlignItems::Stretch,
         _ => bevy::ui::AlignItems::Start,
     }
+}
+
+/// Helper: convert a `Color` to `[f32; 4]` RGBA.
+fn color_to_arr(c: Color) -> [f32; 4] {
+    c.to_srgba().to_f32_array()
+}
+
+/// Helper: convert `[f32; 4]` RGBA to `Color`.
+fn arr_to_color(c: [f32; 4]) -> Color {
+    Color::srgba(c[0], c[1], c[2], c[3])
 }
 
 impl EditorPanel for UiInspectorPanel {
@@ -308,6 +333,22 @@ impl EditorPanel for UiInspectorPanel {
             snap.text_color = tc.0.to_srgba().to_f32_array();
         }
 
+        // Widget-specific data snapshots
+        snap.progress_bar = world.get::<components::ProgressBarData>(entity).cloned();
+        snap.health_bar = world.get::<components::HealthBarData>(entity).cloned();
+        snap.slider = world.get::<components::SliderData>(entity).cloned();
+        snap.checkbox = world.get::<components::CheckboxData>(entity).cloned();
+        snap.toggle = world.get::<components::ToggleData>(entity).cloned();
+        snap.radio_button = world.get::<components::RadioButtonData>(entity).cloned();
+        snap.dropdown = world.get::<components::DropdownData>(entity).cloned();
+        snap.text_input = world.get::<components::TextInputData>(entity).cloned();
+        snap.scroll_view = world.get::<components::ScrollViewData>(entity).cloned();
+        snap.tab_bar = world.get::<components::TabBarData>(entity).cloned();
+        snap.spinner = world.get::<components::SpinnerData>(entity).cloned();
+        snap.tooltip = world.get::<components::TooltipData>(entity).cloned();
+        snap.modal = world.get::<components::ModalData>(entity).cloned();
+        snap.draggable_window = world.get::<components::DraggableWindowData>(entity).cloned();
+
         // ── Render property sections ─────────────────────────────────────
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -418,6 +459,31 @@ impl EditorPanel for UiInspectorPanel {
                             });
                         }
                     });
+                    // Theme selector (global, shown in canvas inspector)
+                    section_header(ui, "Theme", text_muted);
+                    let current_theme_name = world
+                        .get_resource::<components::UiTheme>()
+                        .map(|t| t.name.clone())
+                        .unwrap_or_default();
+                    property_row(ui, "Preset", text_muted, |ui| {
+                        let themes = ["Dark", "Light", "High Contrast"];
+                        let mut idx = themes.iter().position(|t| *t == current_theme_name).unwrap_or(0);
+                        if egui::ComboBox::from_id_salt("ui_theme")
+                            .width(ui.available_width())
+                            .show_index(ui, &mut idx, themes.len(), |i| themes[i].to_string())
+                            .changed()
+                        {
+                            let theme_idx = idx;
+                            commands.push(move |world: &mut World| {
+                                let new_theme = match theme_idx {
+                                    1 => components::UiTheme::light(),
+                                    2 => components::UiTheme::high_contrast(),
+                                    _ => components::UiTheme::dark(),
+                                };
+                                world.insert_resource(new_theme);
+                            });
+                        }
+                    });
                 }
 
                 // Widget properties
@@ -436,6 +502,9 @@ impl EditorPanel for UiInspectorPanel {
                         }
                     });
                 }
+
+                // ── Widget-specific properties ────────────────────────────
+                widget_data_section(ui, snap, entity, commands, text_muted);
 
                 // Layout
                 if snap.has_node {
@@ -721,6 +790,709 @@ impl EditorPanel for UiInspectorPanel {
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Right
     }
+}
+
+// ── Widget-specific property sections ────────────────────────────────────────
+
+fn widget_data_section(
+    ui: &mut egui::Ui,
+    snap: &mut InspectorSnapshot,
+    entity: Entity,
+    commands: &EditorCommands,
+    text_muted: egui::Color32,
+) {
+    // Progress Bar
+    if let Some(ref mut data) = snap.progress_bar {
+        section_header(ui, "Progress Bar", text_muted);
+        property_row(ui, "Value", text_muted, |ui| {
+            let mut v = data.value;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=data.max)).changed() {
+                data.value = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
+                            d.value = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Max", text_muted, |ui| {
+            let mut v = data.max;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                data.max = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
+                            d.max = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Direction", text_muted, |ui| {
+            let labels = ["Left→Right", "Right→Left", "Bottom→Top", "Top→Bottom"];
+            let mut idx = data.direction as usize;
+            if egui::ComboBox::from_id_salt("prog_dir")
+                .width(ui.available_width())
+                .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
+                .changed()
+            {
+                let dir = match idx {
+                    1 => components::ProgressDirection::RightToLeft,
+                    2 => components::ProgressDirection::BottomToTop,
+                    3 => components::ProgressDirection::TopToBottom,
+                    _ => components::ProgressDirection::LeftToRight,
+                };
+                data.direction = dir;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
+                            d.direction = dir;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Fill Color", text_muted, &mut data.fill_color, entity, commands,
+            |d, c| d.get_mut::<components::ProgressBarData>().map(|mut p| p.fill_color = c));
+        color_property(ui, "Bg Color", text_muted, &mut data.bg_color, entity, commands,
+            |d, c| d.get_mut::<components::ProgressBarData>().map(|mut p| p.bg_color = c));
+    }
+
+    // Health Bar
+    if let Some(ref mut data) = snap.health_bar {
+        section_header(ui, "Health Bar", text_muted);
+        property_row(ui, "Current", text_muted, |ui| {
+            let mut v = data.current;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(0.0..=data.max)).changed() {
+                data.current = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
+                            d.current = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Max", text_muted, |ui| {
+            let mut v = data.max;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(0.001..=f32::MAX)).changed() {
+                data.max = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
+                            d.max = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Low Threshold", text_muted, |ui| {
+            let mut v = data.low_threshold;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0)).changed() {
+                data.low_threshold = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
+                            d.low_threshold = v;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Fill Color", text_muted, &mut data.fill_color, entity, commands,
+            |d, c| d.get_mut::<components::HealthBarData>().map(|mut p| p.fill_color = c));
+        color_property(ui, "Low Color", text_muted, &mut data.low_color, entity, commands,
+            |d, c| d.get_mut::<components::HealthBarData>().map(|mut p| p.low_color = c));
+        color_property(ui, "Bg Color", text_muted, &mut data.bg_color, entity, commands,
+            |d, c| d.get_mut::<components::HealthBarData>().map(|mut p| p.bg_color = c));
+    }
+
+    // Slider
+    if let Some(ref mut data) = snap.slider {
+        section_header(ui, "Slider", text_muted);
+        property_row(ui, "Value", text_muted, |ui| {
+            let mut v = data.value;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(data.min..=data.max)).changed() {
+                data.value = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                            d.value = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Min", text_muted, |ui| {
+            let mut v = data.min;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
+                data.min = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                            d.min = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Max", text_muted, |ui| {
+            let mut v = data.max;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
+                data.max = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                            d.max = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Step", text_muted, |ui| {
+            let mut v = data.step;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=f32::MAX)).changed() {
+                data.step = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                            d.step = v;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Track Color", text_muted, &mut data.track_color, entity, commands,
+            |d, c| d.get_mut::<components::SliderData>().map(|mut p| p.track_color = c));
+        color_property(ui, "Fill Color", text_muted, &mut data.fill_color, entity, commands,
+            |d, c| d.get_mut::<components::SliderData>().map(|mut p| p.fill_color = c));
+        color_property(ui, "Thumb Color", text_muted, &mut data.thumb_color, entity, commands,
+            |d, c| d.get_mut::<components::SliderData>().map(|mut p| p.thumb_color = c));
+    }
+
+    // Checkbox
+    if let Some(ref mut data) = snap.checkbox {
+        section_header(ui, "Checkbox", text_muted);
+        property_row(ui, "Checked", text_muted, |ui| {
+            let mut v = data.checked;
+            if ui.checkbox(&mut v, "").changed() {
+                data.checked = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
+                            d.checked = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Label", text_muted, |ui| {
+            let mut v = data.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.label = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
+                            d.label = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Check Color", text_muted, &mut data.check_color, entity, commands,
+            |d, c| d.get_mut::<components::CheckboxData>().map(|mut p| p.check_color = c));
+        color_property(ui, "Box Color", text_muted, &mut data.box_color, entity, commands,
+            |d, c| d.get_mut::<components::CheckboxData>().map(|mut p| p.box_color = c));
+    }
+
+    // Toggle
+    if let Some(ref mut data) = snap.toggle {
+        section_header(ui, "Toggle", text_muted);
+        property_row(ui, "On", text_muted, |ui| {
+            let mut v = data.on;
+            if ui.checkbox(&mut v, "").changed() {
+                data.on = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ToggleData>() {
+                            d.on = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Label", text_muted, |ui| {
+            let mut v = data.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.label = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ToggleData>() {
+                            d.label = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "On Color", text_muted, &mut data.on_color, entity, commands,
+            |d, c| d.get_mut::<components::ToggleData>().map(|mut p| p.on_color = c));
+        color_property(ui, "Off Color", text_muted, &mut data.off_color, entity, commands,
+            |d, c| d.get_mut::<components::ToggleData>().map(|mut p| p.off_color = c));
+        color_property(ui, "Knob Color", text_muted, &mut data.knob_color, entity, commands,
+            |d, c| d.get_mut::<components::ToggleData>().map(|mut p| p.knob_color = c));
+    }
+
+    // Radio Button
+    if let Some(ref mut data) = snap.radio_button {
+        section_header(ui, "Radio Button", text_muted);
+        property_row(ui, "Group", text_muted, |ui| {
+            let mut v = data.group.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.group = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                            d.group = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Selected", text_muted, |ui| {
+            let mut v = data.selected;
+            if ui.checkbox(&mut v, "").changed() {
+                data.selected = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                            d.selected = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Label", text_muted, |ui| {
+            let mut v = data.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.label = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                            d.label = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Active Color", text_muted, &mut data.active_color, entity, commands,
+            |d, c| d.get_mut::<components::RadioButtonData>().map(|mut p| p.active_color = c));
+    }
+
+    // Dropdown
+    if let Some(ref mut data) = snap.dropdown {
+        section_header(ui, "Dropdown", text_muted);
+        property_row(ui, "Placeholder", text_muted, |ui| {
+            let mut v = data.placeholder.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.placeholder = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::DropdownData>() {
+                            d.placeholder = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Selected", text_muted, |ui| {
+            let mut v = data.selected;
+            let options = &data.options;
+            let label = if v >= 0 && (v as usize) < options.len() {
+                options[v as usize].clone()
+            } else {
+                data.placeholder.clone()
+            };
+            if egui::ComboBox::from_id_salt("dropdown_sel")
+                .width(ui.available_width())
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    for (i, opt) in options.iter().enumerate() {
+                        ui.selectable_value(&mut v, i as i32, opt);
+                    }
+                })
+                .inner
+                .is_some()
+            {
+                if v != data.selected {
+                    data.selected = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::DropdownData>() {
+                                d.selected = v;
+                            }
+                        }
+                    });
+                }
+            }
+        });
+        // Options list editor
+        let mut options_changed = false;
+        let mut new_options = data.options.clone();
+        section_header(ui, "Options", text_muted);
+        for i in 0..new_options.len() {
+            property_row(ui, &format!("#{}", i + 1), text_muted, |ui| {
+                if ui.add(egui::TextEdit::singleline(&mut new_options[i]).desired_width(ui.available_width())).changed() {
+                    options_changed = true;
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            if ui.small_button(format!("{} Add", regular::PLUS)).clicked() {
+                new_options.push(format!("Option {}", new_options.len() + 1));
+                options_changed = true;
+            }
+            if new_options.len() > 1 {
+                if ui.small_button(format!("{} Remove", regular::MINUS)).clicked() {
+                    new_options.pop();
+                    options_changed = true;
+                }
+            }
+        });
+        if options_changed {
+            data.options = new_options.clone();
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut d) = em.get_mut::<components::DropdownData>() {
+                        d.options = new_options.clone();
+                    }
+                }
+            });
+        }
+    }
+
+    // Text Input
+    if let Some(ref mut data) = snap.text_input {
+        section_header(ui, "Text Input", text_muted);
+        property_row(ui, "Text", text_muted, |ui| {
+            let mut v = data.text.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.text = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                            d.text = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Placeholder", text_muted, |ui| {
+            let mut v = data.placeholder.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.placeholder = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                            d.placeholder = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Max Length", text_muted, |ui| {
+            let mut v = data.max_length as i32;
+            if ui.add(egui::DragValue::new(&mut v).range(1..=10000)).changed() {
+                data.max_length = v as usize;
+                let len = v as usize;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                            d.max_length = len;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Password", text_muted, |ui| {
+            let mut v = data.password;
+            if ui.checkbox(&mut v, "").changed() {
+                data.password = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                            d.password = v;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    // Scroll View
+    if let Some(ref mut data) = snap.scroll_view {
+        section_header(ui, "Scroll View", text_muted);
+        property_row(ui, "Scroll Speed", text_muted, |ui| {
+            let mut v = data.scroll_speed;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(1.0..=200.0)).changed() {
+                data.scroll_speed = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                            d.scroll_speed = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Horizontal", text_muted, |ui| {
+            let mut v = data.show_horizontal;
+            if ui.checkbox(&mut v, "").changed() {
+                data.show_horizontal = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                            d.show_horizontal = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Vertical", text_muted, |ui| {
+            let mut v = data.show_vertical;
+            if ui.checkbox(&mut v, "").changed() {
+                data.show_vertical = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                            d.show_vertical = v;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    // Tab Bar
+    if let Some(ref mut data) = snap.tab_bar {
+        section_header(ui, "Tab Bar", text_muted);
+        property_row(ui, "Active Tab", text_muted, |ui| {
+            let mut v = data.active as i32;
+            if ui.add(egui::DragValue::new(&mut v).range(0..=(data.tabs.len() as i32 - 1).max(0))).changed() {
+                data.active = v as usize;
+                let active = v as usize;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TabBarData>() {
+                            d.active = active;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Tab Color", text_muted, &mut data.tab_color, entity, commands,
+            |d, c| d.get_mut::<components::TabBarData>().map(|mut p| p.tab_color = c));
+        color_property(ui, "Active Color", text_muted, &mut data.active_color, entity, commands,
+            |d, c| d.get_mut::<components::TabBarData>().map(|mut p| p.active_color = c));
+        // Tab list editor
+        let mut tabs_changed = false;
+        let mut new_tabs = data.tabs.clone();
+        section_header(ui, "Tabs", text_muted);
+        for i in 0..new_tabs.len() {
+            property_row(ui, &format!("#{}", i + 1), text_muted, |ui| {
+                if ui.add(egui::TextEdit::singleline(&mut new_tabs[i]).desired_width(ui.available_width())).changed() {
+                    tabs_changed = true;
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            if ui.small_button(format!("{} Add", regular::PLUS)).clicked() {
+                new_tabs.push(format!("Tab {}", new_tabs.len() + 1));
+                tabs_changed = true;
+            }
+            if new_tabs.len() > 1 {
+                if ui.small_button(format!("{} Remove", regular::MINUS)).clicked() {
+                    new_tabs.pop();
+                    tabs_changed = true;
+                }
+            }
+        });
+        if tabs_changed {
+            data.tabs = new_tabs.clone();
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut d) = em.get_mut::<components::TabBarData>() {
+                        d.tabs = new_tabs.clone();
+                    }
+                }
+            });
+        }
+    }
+
+    // Spinner
+    if let Some(ref mut data) = snap.spinner {
+        section_header(ui, "Spinner", text_muted);
+        property_row(ui, "Speed", text_muted, |ui| {
+            let mut v = data.speed;
+            if ui.add(egui::DragValue::new(&mut v).speed(0.1).range(0.1..=20.0)).changed() {
+                data.speed = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::SpinnerData>() {
+                            d.speed = v;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Color", text_muted, &mut data.color, entity, commands,
+            |d, c| d.get_mut::<components::SpinnerData>().map(|mut p| p.color = c));
+    }
+
+    // Tooltip
+    if let Some(ref mut data) = snap.tooltip {
+        section_header(ui, "Tooltip", text_muted);
+        property_row(ui, "Text", text_muted, |ui| {
+            let mut v = data.text.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.text = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TooltipData>() {
+                            d.text = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Delay (ms)", text_muted, |ui| {
+            let mut v = data.delay_ms as i32;
+            if ui.add(egui::DragValue::new(&mut v).range(0..=5000)).changed() {
+                data.delay_ms = v as u32;
+                let delay = v as u32;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::TooltipData>() {
+                            d.delay_ms = delay;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Bg Color", text_muted, &mut data.bg_color, entity, commands,
+            |d, c| d.get_mut::<components::TooltipData>().map(|mut p| p.bg_color = c));
+        color_property(ui, "Text Color", text_muted, &mut data.text_color, entity, commands,
+            |d, c| d.get_mut::<components::TooltipData>().map(|mut p| p.text_color = c));
+    }
+
+    // Modal
+    if let Some(ref mut data) = snap.modal {
+        section_header(ui, "Modal", text_muted);
+        property_row(ui, "Title", text_muted, |ui| {
+            let mut v = data.title.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.title = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ModalData>() {
+                            d.title = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Closable", text_muted, |ui| {
+            let mut v = data.closable;
+            if ui.checkbox(&mut v, "").changed() {
+                data.closable = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::ModalData>() {
+                            d.closable = v;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Backdrop", text_muted, &mut data.backdrop_color, entity, commands,
+            |d, c| d.get_mut::<components::ModalData>().map(|mut p| p.backdrop_color = c));
+    }
+
+    // Draggable Window
+    if let Some(ref mut data) = snap.draggable_window {
+        section_header(ui, "Draggable Window", text_muted);
+        property_row(ui, "Title", text_muted, |ui| {
+            let mut v = data.title.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width())).changed() {
+                data.title = v.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                            d.title = v.clone();
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Closable", text_muted, |ui| {
+            let mut v = data.closable;
+            if ui.checkbox(&mut v, "").changed() {
+                data.closable = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                            d.closable = v;
+                        }
+                    }
+                });
+            }
+        });
+        property_row(ui, "Minimizable", text_muted, |ui| {
+            let mut v = data.minimizable;
+            if ui.checkbox(&mut v, "").changed() {
+                data.minimizable = v;
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                            d.minimizable = v;
+                        }
+                    }
+                });
+            }
+        });
+        color_property(ui, "Title Bar", text_muted, &mut data.title_bar_color, entity, commands,
+            |d, c| d.get_mut::<components::DraggableWindowData>().map(|mut p| p.title_bar_color = c));
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Color property editor that writes back to a component field via closure.
+fn color_property(
+    ui: &mut egui::Ui,
+    label: &str,
+    label_color: egui::Color32,
+    color: &mut Color,
+    entity: Entity,
+    commands: &EditorCommands,
+    apply: impl Fn(&mut bevy::ecs::world::EntityWorldMut, Color) -> Option<()> + Send + Sync + 'static,
+) {
+    property_row(ui, label, label_color, |ui| {
+        let mut arr = color_to_arr(*color);
+        if ui.color_edit_button_rgba_unmultiplied(&mut arr).changed() {
+            let new_color = arr_to_color(arr);
+            *color = new_color;
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    apply(&mut em, new_color);
+                }
+            });
+        }
+    });
 }
 
 fn section_header(ui: &mut egui::Ui, label: &str, color: egui::Color32) {

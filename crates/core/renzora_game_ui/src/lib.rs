@@ -2,6 +2,8 @@
 //!
 //! **Runtime** (always available):
 //! - `UiCanvas`, `UiWidget`, `UiWidgetType` — serializable marker components
+//! - Widget data components (`ProgressBarData`, `SliderData`, etc.)
+//! - Runtime systems that drive widget behavior
 //! - `GameUiPlugin` — registers types for reflection + runtime systems
 //!
 //! **Editor** (behind `editor` feature):
@@ -9,6 +11,9 @@
 //! - Play-mode visibility sync, debug tree logging
 
 pub mod components;
+pub mod script_extension;
+pub mod spawn;
+pub mod systems;
 
 #[cfg(feature = "editor")]
 pub mod canvas;
@@ -19,19 +24,81 @@ pub mod palette;
 
 use bevy::prelude::*;
 
-pub use components::{UiCanvas, UiWidget, UiWidgetType};
+pub use components::{UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
+pub use script_extension::{GameUiScriptExtension, UiScriptCommand};
 
 pub struct GameUiPlugin;
 
 impl Plugin for GameUiPlugin {
     fn build(&self, app: &mut App) {
-        // Register components for reflection (scene serialization) — always needed
-        app.register_type::<UiCanvas>();
-        app.register_type::<UiWidget>();
+        // ── Reflection registration ─────────────────────────────────────
+        app.register_type::<components::UiCanvas>();
+        app.register_type::<components::UiWidget>();
+        app.register_type::<components::UiWidgetPart>();
+        // Widget data
+        app.register_type::<components::ProgressBarData>();
+        app.register_type::<components::HealthBarData>();
+        app.register_type::<components::SliderData>();
+        app.register_type::<components::CheckboxData>();
+        app.register_type::<components::ToggleData>();
+        app.register_type::<components::RadioButtonData>();
+        app.register_type::<components::DropdownData>();
+        app.register_type::<components::TextInputData>();
+        app.register_type::<components::ScrollViewData>();
+        app.register_type::<components::TabBarData>();
+        app.register_type::<components::SpinnerData>();
+        app.register_type::<components::TooltipData>();
+        app.register_type::<components::ModalData>();
+        app.register_type::<components::DraggableWindowData>();
+        // Interaction & animation
+        app.register_type::<components::UiInteractionStyle>();
+        app.register_type::<components::UiTransition>();
+        app.register_type::<components::UiTween>();
+        // Theming
+        app.register_type::<components::UiTheme>();
+        app.register_type::<components::UiThemed>();
 
-        // Scale remaining Val::Px values (text, padding, border-radius) to match viewport
+        // ── Default theme resource ────────────────────────────────────
+        app.init_resource::<components::UiTheme>();
+
+        // ── Script extension ──────────────────────────────────────────
+        app.world_mut()
+            .resource_mut::<renzora_scripting::ScriptExtensions>()
+            .register(script_extension::GameUiScriptExtension);
+
+        app.add_systems(
+            Update,
+            script_extension::process_ui_script_commands
+                .in_set(renzora_scripting::ScriptingSet::CommandProcessing),
+        );
+
+        // ── Canvas scaler ───────────────────────────────────────────────
         app.add_systems(Update, update_ui_scale);
 
+        // ── Runtime widget systems ──────────────────────────────────────
+        app.add_systems(
+            Update,
+            (
+                systems::progress_bar_system,
+                systems::health_bar_system,
+                systems::slider_system,
+                systems::checkbox_system,
+                systems::toggle_system,
+                systems::radio_button_system,
+                systems::tab_bar_system,
+                systems::spinner_system,
+                systems::tooltip_system,
+                systems::dropdown_system,
+                systems::dropdown_option_system,
+                systems::modal_system,
+                systems::draggable_window_system,
+                systems::interaction_style_system,
+                systems::ui_theme_system,
+                systems::ui_tween_system,
+            ),
+        );
+
+        // ── Editor panels & systems ─────────────────────────────────────
         #[cfg(feature = "editor")]
         {
             use renzora_editor::AppEditorExt;
@@ -62,8 +129,7 @@ impl Plugin for GameUiPlugin {
 // ── Canvas scaler ───────────────────────────────────────────────────────────
 
 /// Scales `Val::Px` values (text size, padding, border-radius) uniformly so
-/// they stay proportional to the viewport. Positions and sizes use
-/// `Val::Percent` and scale per-axis automatically.
+/// they stay proportional to the viewport.
 fn update_ui_scale(
     canvases: Query<&UiCanvas>,
     render_target: Option<Res<renzora_core::ViewportRenderTarget>>,
@@ -81,7 +147,6 @@ fn update_ui_scale(
         return;
     }
 
-    // Determine actual render size: viewport texture (editor) or window (runtime)
     let actual = render_target
         .as_ref()
         .and_then(|rt| rt.image.as_ref())
@@ -106,7 +171,6 @@ fn update_ui_scale(
         return;
     }
 
-    // Uniform scale for Px values (text, padding, borders)
     let scale = (actual_w / ref_w).min(actual_h / ref_h);
     ui_scale.0 = scale;
 }
@@ -120,10 +184,6 @@ fn ensure_ui_visibility_components(
     widgets_no_iv: Query<Entity, (With<UiWidget>, Without<InheritedVisibility>)>,
 ) {
     for entity in canvases_no_iv.iter().chain(widgets_no_iv.iter()) {
-        info!(
-            "[ui_editor] Inserting missing visibility components on {:?}",
-            entity
-        );
         commands.entity(entity).insert((
             InheritedVisibility::default(),
             ViewVisibility::default(),
@@ -156,10 +216,6 @@ fn sync_ui_canvas_visibility(
 
     for (entity, mut vis, name, existing_target_cam) in &mut canvases {
         if *vis != target {
-            info!(
-                "[ui_editor] Canvas {:?} ({}) visibility: {:?} -> {:?} (play_mode={})",
-                entity, name, *vis, target, in_play
-            );
             *vis = target;
         }
 
@@ -170,34 +226,15 @@ fn sync_ui_canvas_visibility(
                     None => true,
                 };
                 if needs_insert {
-                    info!(
-                        "[ui_editor] Setting UiTargetCamera on {:?} ({}) -> game camera {:?}",
-                        entity, name, cam_entity
-                    );
                     commands
                         .entity(entity)
                         .insert(bevy::ui::UiTargetCamera(cam_entity));
                 }
             }
         } else if existing_target_cam.is_some() {
-            info!(
-                "[ui_editor] Removing UiTargetCamera from {:?} ({})",
-                entity, name
-            );
             commands
                 .entity(entity)
                 .remove::<bevy::ui::UiTargetCamera>();
-        }
-    }
-
-    if canvases.is_empty() {
-        static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if count % 300 == 0 {
-            warn!(
-                "[ui_editor] No UiCanvas entities found in scene (play_mode={})",
-                in_play
-            );
         }
     }
 }

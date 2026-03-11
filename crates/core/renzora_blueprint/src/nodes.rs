@@ -937,6 +937,125 @@ pub static SET_UI_PROGRESS: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_UI,
 };
 
+pub static SET_UI_HEALTH: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_health",
+    display_name: "Set UI Health",
+    category: CAT_UI,
+    description: "Update a health bar's current and max values",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("current", "Current", PinType::Float)
+            .with_default(PinValue::Float(75.0)),
+        PinTemplate::input("max", "Max", PinType::Float)
+            .with_default(PinValue::Float(100.0)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_SLIDER: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_slider",
+    display_name: "Set UI Slider",
+    category: CAT_UI,
+    description: "Set a slider's value",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("value", "Value", PinType::Float)
+            .with_default(PinValue::Float(0.5)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_CHECKBOX: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_checkbox",
+    display_name: "Set UI Checkbox",
+    category: CAT_UI,
+    description: "Set a checkbox's checked state",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("checked", "Checked", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_TOGGLE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_toggle",
+    display_name: "Set UI Toggle",
+    category: CAT_UI,
+    description: "Set a toggle switch's on/off state",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("on", "On", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_VISIBLE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_visible",
+    display_name: "Set UI Visible",
+    category: CAT_UI,
+    description: "Show or hide a named UI widget",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("visible", "Visible", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static TOGGLE_UI: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/toggle",
+    display_name: "Toggle UI",
+    category: CAT_UI,
+    description: "Toggle a UI canvas visibility on/off",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Canvas Name", PinType::String),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_THEME: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_theme",
+    display_name: "Set UI Theme",
+    category: CAT_UI,
+    description: "Switch the active UI theme (dark, light, high_contrast)",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("theme", "Theme", PinType::String)
+            .with_default(PinValue::String("dark".into())),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
+pub static SET_UI_COLOR: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "ui/set_color",
+    display_name: "Set UI Color",
+    category: CAT_UI,
+    description: "Set the background color of a named UI widget",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("color", "Color", PinType::Color)
+            .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_UI,
+};
+
 // =============================================================================
 // SCENE NODES
 // =============================================================================
@@ -1146,7 +1265,9 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     // Audio
     &PLAY_SOUND, &PLAY_MUSIC, &STOP_MUSIC,
     // UI
-    &SHOW_UI, &HIDE_UI, &SET_UI_TEXT, &SET_UI_PROGRESS,
+    &SHOW_UI, &HIDE_UI, &TOGGLE_UI, &SET_UI_TEXT, &SET_UI_PROGRESS,
+    &SET_UI_HEALTH, &SET_UI_SLIDER, &SET_UI_CHECKBOX, &SET_UI_TOGGLE,
+    &SET_UI_VISIBLE, &SET_UI_THEME, &SET_UI_COLOR,
     // Scene
     &LOAD_SCENE,
     // Debug

@@ -1,4 +1,4 @@
-//! Widget Palette panel — draggable list of UI widget types to add to the canvas.
+//! Widget Palette panel — categorized list of UI widget types to add to the canvas.
 
 use std::sync::RwLock;
 
@@ -8,7 +8,7 @@ use egui_phosphor::regular;
 use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
-use crate::components::{UiCanvas, UiWidget, UiWidgetType};
+use crate::components::{UiCanvas, UiWidgetType};
 
 /// Palette panel state.
 #[derive(Default)]
@@ -29,13 +29,37 @@ impl Default for WidgetPalettePanel {
     }
 }
 
-/// All widget types available in the palette.
-const WIDGET_TYPES: &[UiWidgetType] = &[
-    UiWidgetType::Container,
-    UiWidgetType::Panel,
-    UiWidgetType::Text,
-    UiWidgetType::Image,
-    UiWidgetType::Button,
+/// All widget types available in the palette, grouped by category.
+const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
+    ("Layout", regular::LAYOUT, &[
+        UiWidgetType::Container,
+        UiWidgetType::Panel,
+        UiWidgetType::ScrollView,
+    ]),
+    ("Basic", regular::CUBE, &[
+        UiWidgetType::Text,
+        UiWidgetType::Image,
+        UiWidgetType::Button,
+    ]),
+    ("Input", regular::TEXTBOX, &[
+        UiWidgetType::Slider,
+        UiWidgetType::Checkbox,
+        UiWidgetType::Toggle,
+        UiWidgetType::RadioButton,
+        UiWidgetType::Dropdown,
+        UiWidgetType::TextInput,
+    ]),
+    ("Display", regular::CHART_BAR, &[
+        UiWidgetType::ProgressBar,
+        UiWidgetType::HealthBar,
+        UiWidgetType::Spinner,
+        UiWidgetType::TabBar,
+    ]),
+    ("Overlay", regular::STACK, &[
+        UiWidgetType::Tooltip,
+        UiWidgetType::Modal,
+        UiWidgetType::DraggableWindow,
+    ]),
 ];
 
 impl EditorPanel for WidgetPalettePanel {
@@ -65,7 +89,7 @@ impl EditorPanel for WidgetPalettePanel {
 
         let text_muted = theme.text.muted.to_color32();
         let text_primary = theme.text.primary.to_color32();
-        let _accent = theme.semantic.accent.to_color32();
+        let text_secondary = theme.text.secondary.to_color32();
         let surface = theme.surfaces.panel.to_color32();
 
         // Search bar
@@ -117,51 +141,83 @@ impl EditorPanel for WidgetPalettePanel {
         ui.separator();
         ui.add_space(4.0);
 
-        // Widget type cards
         let search_lower = state.search.to_lowercase();
 
+        // Categorized widget list
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.style_mut().spacing.item_spacing.y = 2.0;
 
-                for wtype in WIDGET_TYPES {
-                    let label = wtype.label();
-                    if !search_lower.is_empty() && !label.to_lowercase().contains(&search_lower) {
+                let mut any_visible = false;
+
+                for &(category_name, category_icon, widget_types) in CATEGORIES {
+                    // Filter widgets by search
+                    let visible: Vec<_> = widget_types
+                        .iter()
+                        .filter(|wt| {
+                            search_lower.is_empty()
+                                || wt.label().to_lowercase().contains(&search_lower)
+                                || category_name.to_lowercase().contains(&search_lower)
+                        })
+                        .collect();
+
+                    if visible.is_empty() {
                         continue;
                     }
+                    any_visible = true;
 
-                    let icon = wtype.icon();
-                    let wtype_clone = wtype.clone();
+                    // Category header
+                    let header_id = ui.make_persistent_id(category_name);
+                    egui::collapsing_header::CollapsingState::load_with_default_open(
+                        ui.ctx(),
+                        header_id,
+                        true,
+                    )
+                    .show_header(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{}  {}", category_icon, category_name))
+                                    .size(11.0)
+                                    .color(text_secondary),
+                            );
+                        });
+                    })
+                    .body(|ui| {
+                        for wtype in &visible {
+                            let icon = wtype.icon();
+                            let label = wtype.label();
+                            let wtype_clone = (*wtype).clone();
 
-                    ui.horizontal(|ui| {
-                        ui.add_space(4.0);
-                        let btn = ui.add(
-                            egui::Button::new(
-                                egui::RichText::new(format!("{}  {}", icon, label))
-                                    .size(12.0)
-                                    .color(text_primary),
-                            )
-                            .fill(surface)
-                            .min_size(egui::vec2(ui.available_width() - 8.0, 32.0)),
-                        );
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                let btn = ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new(format!("{}  {}", icon, label))
+                                            .size(12.0)
+                                            .color(text_primary),
+                                    )
+                                    .fill(surface)
+                                    .min_size(egui::vec2(ui.available_width() - 12.0, 30.0)),
+                                );
 
-                        if btn.clicked() {
-                            let wt = wtype_clone.clone();
-                            commands.push(move |world: &mut World| {
-                                spawn_widget(world, &wt, None);
+                                if btn.clicked() {
+                                    let wt = wtype_clone.clone();
+                                    commands.push(move |world: &mut World| {
+                                        crate::spawn::spawn_widget(world, &wt, None);
+                                    });
+                                }
+
+                                btn.on_hover_text(format!("Click to add a {} widget", label));
                             });
                         }
-
-                        // Tooltip
-                        btn.on_hover_text(format!("Click to add a {} widget", label));
                     });
+
+                    ui.add_space(2.0);
                 }
 
                 // Empty state
-                if WIDGET_TYPES.iter().all(|w| {
-                    !search_lower.is_empty() && !w.label().to_lowercase().contains(&search_lower)
-                }) {
+                if !any_visible {
                     ui.add_space(8.0);
                     ui.vertical_centered(|ui| {
                         ui.label(
@@ -176,139 +232,5 @@ impl EditorPanel for WidgetPalettePanel {
 
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Left
-    }
-}
-
-/// Spawn a UI widget entity and optionally parent it to a canvas.
-pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Option<Entity>) {
-    let name = widget_type.label();
-
-    // Find or create a canvas to parent the widget to
-    let first_canvas = {
-        let mut canvas_query = world.query_filtered::<Entity, With<UiCanvas>>();
-        match canvas_query.iter(world).next() {
-            Some(e) => Some(e),
-            None => {
-                let canvas = world
-                    .spawn((
-                        Name::new("UI Canvas"),
-                        UiCanvas::default(),
-                        Node {
-                            width: bevy::ui::Val::Percent(100.0),
-                            height: bevy::ui::Val::Percent(100.0),
-                            position_type: bevy::ui::PositionType::Absolute,
-                            ..default()
-                        },
-                    ))
-                    .id();
-                Some(canvas)
-            }
-        }
-    };
-
-    // Reference resolution for percentage conversion
-    // Use parent canvas's reference if available, otherwise defaults
-    let (ref_w, ref_h) = parent
-        .and_then(|p| world.get::<crate::components::UiCanvas>(p))
-        .map(|c| (c.reference_width, c.reference_height))
-        .unwrap_or((1280.0, 720.0));
-
-    let entity_cmds = match widget_type {
-        UiWidgetType::Container => {
-            world.spawn((
-                Name::new(name),
-                UiWidget {
-                    widget_type: widget_type.clone(),
-                    locked: false,
-                },
-                Node {
-                    width: bevy::ui::Val::Percent(200.0 / ref_w * 100.0),
-                    height: bevy::ui::Val::Percent(100.0 / ref_h * 100.0),
-                    ..default()
-                },
-            ))
-        }
-        UiWidgetType::Panel => {
-            world.spawn((
-                Name::new(name),
-                UiWidget {
-                    widget_type: widget_type.clone(),
-                    locked: false,
-                },
-                Node {
-                    width: bevy::ui::Val::Percent(300.0 / ref_w * 100.0),
-                    height: bevy::ui::Val::Percent(200.0 / ref_h * 100.0),
-                    padding: bevy::ui::UiRect::all(bevy::ui::Val::Px(8.0)),
-                    border_radius: BorderRadius::all(bevy::ui::Val::Px(6.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.15, 0.15, 0.18, 0.9)),
-                BorderColor::all(Color::srgba(0.3, 0.3, 0.35, 1.0)),
-            ))
-        }
-        UiWidgetType::Text => {
-            world.spawn((
-                Name::new(name),
-                UiWidget {
-                    widget_type: widget_type.clone(),
-                    locked: false,
-                },
-                Node::default(),
-                bevy::ui::widget::Text::new("Hello World"),
-                TextColor(Color::WHITE),
-                TextFont {
-                    font_size: 16.0,
-                    ..default()
-                },
-            ))
-        }
-        UiWidgetType::Image => {
-            world.spawn((
-                Name::new(name),
-                UiWidget {
-                    widget_type: widget_type.clone(),
-                    locked: false,
-                },
-                Node {
-                    width: bevy::ui::Val::Percent(128.0 / ref_w * 100.0),
-                    height: bevy::ui::Val::Percent(128.0 / ref_h * 100.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 1.0)),
-            ))
-        }
-        UiWidgetType::Button => {
-            world.spawn((
-                Name::new(name),
-                UiWidget {
-                    widget_type: widget_type.clone(),
-                    locked: false,
-                },
-                Node {
-                    width: bevy::ui::Val::Percent(150.0 / ref_w * 100.0),
-                    height: bevy::ui::Val::Percent(40.0 / ref_h * 100.0),
-                    justify_content: bevy::ui::JustifyContent::Center,
-                    align_items: bevy::ui::AlignItems::Center,
-                    border_radius: BorderRadius::all(bevy::ui::Val::Px(4.0)),
-                    ..default()
-                },
-                Button,
-                BackgroundColor(Color::srgba(0.25, 0.25, 0.8, 1.0)),
-                BorderColor::all(Color::srgba(0.4, 0.4, 0.9, 1.0)),
-            ))
-        }
-    };
-
-    let entity = entity_cmds.id();
-
-    // Parent to canvas if specified
-    if let Some(parent_entity) = parent {
-        world.entity_mut(entity).set_parent_in_place(parent_entity);
-    } else if let Some(canvas) = first_canvas {
-        world.entity_mut(entity).set_parent_in_place(canvas);
-    }
-
-    if let Some(sel) = world.get_resource::<EditorSelection>() {
-        sel.set(Some(entity));
     }
 }

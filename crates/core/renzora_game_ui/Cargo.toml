@@ -15,6 +15,7 @@ editor = [
 bevy = { version = "0.18" }
 serde = { version = "1", features = ["derive"] }
 renzora_core = { path = "../renzora_core" }
+renzora_scripting = { path = "../renzora_scripting" }
 
 # Editor-only dependencies
 bevy_egui = { version = "0.39", optional = true }

@@ -794,7 +794,7 @@ impl EditorPanel for UiCanvasPanel {
                             let offset_x = entry.x + 20.0; // Paste offset
                             let offset_y = entry.y + 20.0;
                             let wt = entry.widget_type.clone();
-                            crate::palette::spawn_widget(world, &wt, active_canvas);
+                            crate::spawn::spawn_widget(world, &wt, active_canvas);
                             // After spawn, update position/size on the last spawned entity
                             // spawn_widget selects the entity, so we can find it via selection
                             if let Some(sel) = world.get_resource::<EditorSelection>() {
@@ -853,7 +853,7 @@ impl EditorPanel for UiCanvasPanel {
                     commands.push(move |world: &mut World| {
                         for entry in &sel_widgets {
                             let wt = entry.widget_type.clone();
-                            crate::palette::spawn_widget(world, &wt, active_canvas);
+                            crate::spawn::spawn_widget(world, &wt, active_canvas);
                             if let Some(sel) = world.get_resource::<EditorSelection>() {
                                 if let Some(entity) = sel.get() {
                                     if let Ok(mut em) = world.get_entity_mut(entity) {

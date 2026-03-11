@@ -608,6 +608,103 @@ impl<'a> EvalContext<'a> {
                 self.follow_exec(node_id, "then");
             }
 
+            // ── UI ──────────────────────────────────────────────────
+            "ui/show" => {
+                let name = self.resolve_input(node_id, "path").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::Show { name },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/hide" => {
+                let name = self.resolve_input(node_id, "path").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::Hide { name },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/toggle" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::Toggle { name },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_text" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let text = self.resolve_input(node_id, "text").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetText { name, text },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_progress" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let value = self.resolve_input(node_id, "value").as_float();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetProgress { name, value },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_health" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let current = self.resolve_input(node_id, "current").as_float();
+                let max = self.resolve_input(node_id, "max").as_float();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetHealth { name, current, max },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_slider" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let value = self.resolve_input(node_id, "value").as_float();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetSlider { name, value },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_checkbox" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let checked = self.resolve_input(node_id, "checked").as_bool();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetCheckbox { name, checked },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_toggle" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let on = self.resolve_input(node_id, "on").as_bool();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetToggle { name, on },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_visible" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let visible = self.resolve_input(node_id, "visible").as_bool();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetVisible { name, visible },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_theme" => {
+                let theme_name = self.resolve_input(node_id, "theme").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetTheme { theme_name },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "ui/set_color" => {
+                let name = self.resolve_input(node_id, "element").as_string();
+                let color = self.resolve_input(node_id, "color").as_color();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_game_ui::UiScriptCommand::SetColor {
+                        name, r: color[0], g: color[1], b: color[2], a: color[3],
+                    },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+
             // ── Scene ────────────────────────────────────────────────
             "scene/load" => {
                 let path = self.resolve_input(node_id, "path").as_string();
