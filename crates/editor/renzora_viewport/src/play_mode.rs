@@ -65,11 +65,6 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     let cam_name = world.get::<Name>(cam_entity).map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
     console_info("PlayMode", format!("Selected game camera: {:?} \"{}\"", cam_entity, cam_name));
 
-    // Get viewport render target
-    let render_target: Option<Handle<Image>> = world.get_resource::<ViewportRenderTarget>()
-        .and_then(|vrt| vrt.image.clone());
-    console_info("PlayMode", format!("Viewport render target image: {}", render_target.is_some()));
-
     // Disable editor camera
     let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
     let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
@@ -110,6 +105,8 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     }
 
     // Point at viewport render target
+    let render_target: Option<Handle<Image>> = world.get_resource::<ViewportRenderTarget>()
+        .and_then(|vrt| vrt.image.clone());
     if let Some(ref img) = render_target {
         let rt = RenderTarget::Image(Handle::<Image>::clone(img).into());
         world.entity_mut(cam_entity).insert(rt);

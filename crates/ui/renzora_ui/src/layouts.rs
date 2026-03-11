@@ -292,25 +292,31 @@ fn layout_shaders() -> DockTree {
 }
 
 /// Physics: Hierarchy | Viewport+all physics tabs | Inspector+Shapes
-/// UI: Hierarchy+WidgetLibrary | Viewport+Canvas | Inspector+Assets
+/// UI: Hierarchy+WidgetLibrary | Canvas+Console | UiInspector+Assets
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
-        // Left: hierarchy on top, widget library below
+        // Left: hierarchy on top, widget palette below
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
             DockTree::leaf("widget_library"),
             0.5,
         ),
         DockTree::horizontal(
-            // Center: viewport/canvas on top, console below
+            // Center: UI canvas on top, console below
             DockTree::vertical(
-                DockTree::leaf("viewport"),
+                DockTree::Leaf {
+                    tabs: vec!["ui_canvas".into(), "viewport".into()],
+                    active_tab: 0,
+                },
                 DockTree::leaf("console"),
                 0.75,
             ),
-            // Right: inspector on top, assets below
+            // Right: UI inspector on top, assets below
             DockTree::vertical(
-                DockTree::leaf("inspector"),
+                DockTree::Leaf {
+                    tabs: vec!["ui_inspector".into(), "inspector".into()],
+                    active_tab: 0,
+                },
                 DockTree::leaf("assets"),
                 0.6,
             ),
