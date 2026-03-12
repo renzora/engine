@@ -112,11 +112,27 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     let mut root_indices: Vec<usize> = Vec::new();
 
     for (i, &(_, _, _, _, ref parent, _, _, _, _, _, _)) in entries.iter().enumerate() {
-        match parent {
-            Some(p) if named_entities.contains(p) => {
-                children_map.entry(*p).or_default().push(i);
+        // Walk up the ancestor chain to find the nearest named parent.
+        // This handles unnamed intermediaries (e.g. SceneRoot entities in GLTF
+        // hierarchies) by reparenting children to the closest visible ancestor.
+        let mut resolved_parent = None;
+        if let Some(mut p) = *parent {
+            loop {
+                if named_entities.contains(&p) {
+                    resolved_parent = Some(p);
+                    break;
+                }
+                match world.get::<ChildOf>(p) {
+                    Some(child_of) => p = child_of.parent(),
+                    None => break,
+                }
             }
-            _ => {
+        }
+        match resolved_parent {
+            Some(p) => {
+                children_map.entry(p).or_default().push(i);
+            }
+            None => {
                 root_indices.push(i);
             }
         }

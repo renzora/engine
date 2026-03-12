@@ -179,6 +179,19 @@ fn open_scene_system(world: &mut World) {
 
 fn load_scene_on_enter(world: &mut World) {
     info!("load_scene_on_enter triggered");
+
+    // Ensure the asset reader knows the project path before loading the scene.
+    // OnEnter fires before Update, so sync_project_asset_path may not have run
+    // yet — without this, rehydration asset loads (e.g. GLB models) fail with
+    // "Path not found" because the reader's project path is still None.
+    if let Some(project) = world.get_resource::<CurrentProject>() {
+        let path = project.path.clone();
+        if let Some(asset_path) = world.get_resource::<renzora_runtime::ProjectAssetPath>() {
+            info!("[scene] Syncing project asset path: {}", path.display());
+            asset_path.set(path);
+        }
+    }
+
     scene_io::load_current_scene(world);
 }
 
@@ -199,6 +212,8 @@ impl Plugin for ScenePlugin {
                     scene_io::rehydrate_cameras,
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_visibility,
+                    scene_io::rehydrate_mesh_instances,
+                    scene_io::finish_mesh_instance_rehydrate,
                     detect_save_keybinding,
                     save_scene_system,
                     save_as_scene_system,

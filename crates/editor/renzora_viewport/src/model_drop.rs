@@ -194,6 +194,7 @@ pub fn spawn_loaded_gltfs(
 
         // Spawn the GLTF scene as a child
         commands.spawn((
+            Name::new("SceneRoot"),
             bevy::scene::SceneRoot(scene),
             Transform::default(),
             Visibility::default(),
