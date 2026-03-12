@@ -41,7 +41,7 @@ pub struct GizmoMaterial {
 
 impl Material for GizmoMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("shaders/gizmo_material.wgsl".into())
+        "embedded://renzora_gizmo/shaders/gizmo_material.wgsl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -170,6 +170,7 @@ pub struct GizmoPlugin;
 impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GizmoPlugin");
+        bevy::asset::embedded_asset!(app, "shaders/gizmo_material.wgsl");
         app.add_plugins(MaterialPlugin::<GizmoMaterial>::default())
             .insert_gizmo_config(
                 OverlayGizmoGroup,
