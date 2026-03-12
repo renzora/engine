@@ -29,7 +29,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "Select a folder from the tree to browse files.",
                 theme,
             );
-            return GridResult { drag_payload: None, double_clicked_file: None };
+            return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new() };
         }
     };
 
@@ -59,7 +59,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "The selected folder could not be read.",
                 theme,
             );
-            return GridResult { drag_payload: None, double_clicked_file: None };
+            return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new() };
         }
     };
 
@@ -82,7 +82,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
             ("Empty folder", "This folder has no files or subfolders.")
         };
         renzora_editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
-        return GridResult { drag_payload: None, double_clicked_file: None };
+        return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new() };
     }
 
     let text_primary = theme.text.primary.to_color32();
@@ -202,5 +202,5 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         }
     });
 
-    GridResult { drag_payload, double_clicked_file }
+    GridResult { drag_payload, double_clicked_file, thumbnail_requests: Vec::new() }
 }

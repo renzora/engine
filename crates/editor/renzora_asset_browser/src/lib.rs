@@ -1,6 +1,7 @@
 mod grid;
 mod list;
 mod state;
+pub mod thumbnails;
 mod toolbar;
 mod tree;
 
@@ -148,15 +149,40 @@ impl EditorPanel for AssetBrowserPanel {
         );
         tree::tree_ui(&mut tree_ui, &mut state, &theme);
 
+        // Build thumbnail lookup from the cache resource
+        let thumb_lookup = {
+            let cache = world.get_resource::<thumbnails::ThumbnailCache>();
+            grid::ThumbnailLookup {
+                ids: cache
+                    .map(|c| c.texture_id_map())
+                    .unwrap_or_default(),
+            }
+        };
+
         // Grid pane
         let mut grid_child = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(grid_rect),
         );
         let grid_result = match state.view_mode {
-            ViewMode::Grid => grid::grid_ui_interactive(&mut grid_child, &mut state, &theme),
+            ViewMode::Grid => grid::grid_ui_interactive(&mut grid_child, &mut state, &theme, &thumb_lookup),
             ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
         };
+
+        // Submit thumbnail load requests via EditorCommands
+        if !grid_result.thumbnail_requests.is_empty() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                let requests = grid_result.thumbnail_requests;
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    let asset_server = world.resource::<bevy::prelude::AssetServer>().clone();
+                    let project = world.get_resource::<renzora_core::CurrentProject>().cloned();
+                    let mut cache = world.resource_mut::<thumbnails::ThumbnailCache>();
+                    for path in requests {
+                        cache.request(path, &asset_server, project.as_ref());
+                    }
+                });
+            }
+        }
         if let Some(payload) = grid_result.drag_payload {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 cmds.push(move |world: &mut bevy::prelude::World| {
@@ -212,6 +238,8 @@ pub struct AssetBrowserPlugin;
 impl Plugin for AssetBrowserPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] AssetBrowserPlugin");
-        app.register_panel(AssetBrowserPanel::default());
+        app.init_resource::<thumbnails::ThumbnailCache>()
+            .add_systems(Update, thumbnails::update_thumbnail_cache)
+            .register_panel(AssetBrowserPanel::default());
     }
 }

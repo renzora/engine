@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
-use bevy_egui::egui::{self, Align2, FontId};
+use bevy_egui::egui::{self, Align2, FontId, TextureId};
 use egui_phosphor::regular;
 use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
 use renzora_theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
+use crate::thumbnails::supports_thumbnail;
 
 /// Entry in the file grid (folder or file).
 struct GridEntry {
@@ -19,10 +20,29 @@ pub struct GridResult {
     pub drag_payload: Option<AssetDragPayload>,
     /// File path if a non-directory file was double-clicked.
     pub double_clicked_file: Option<PathBuf>,
+    /// Image files that need thumbnails loaded (collected during render).
+    pub thumbnail_requests: Vec<PathBuf>,
+}
+
+/// Lookup for available thumbnails, passed in from the panel.
+pub struct ThumbnailLookup {
+    /// Returns egui texture ID for a path, if loaded.
+    pub ids: std::collections::HashMap<PathBuf, TextureId>,
+}
+
+impl ThumbnailLookup {
+    pub fn get(&self, path: &PathBuf) -> Option<TextureId> {
+        self.ids.get(path).copied()
+    }
 }
 
 /// Renders the file grid with click handling.
-pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) -> GridResult {
+pub fn grid_ui_interactive(
+    ui: &mut egui::Ui,
+    state: &mut AssetBrowserState,
+    theme: &Theme,
+    thumbnails: &ThumbnailLookup,
+) -> GridResult {
     let folder = match state.current_folder.clone() {
         Some(f) => f,
         None => {
@@ -33,7 +53,11 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "Select a folder from the tree to browse files.",
                 theme,
             );
-            return GridResult { drag_payload: None, double_clicked_file: None };
+            return GridResult {
+                drag_payload: None,
+                double_clicked_file: None,
+                thumbnail_requests: Vec::new(),
+            };
         }
     };
 
@@ -63,7 +87,11 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 "The selected folder could not be read.",
                 theme,
             );
-            return GridResult { drag_payload: None, double_clicked_file: None };
+            return GridResult {
+                drag_payload: None,
+                double_clicked_file: None,
+                thumbnail_requests: Vec::new(),
+            };
         }
     };
 
@@ -86,7 +114,11 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
             ("Empty folder", "This folder has no files or subfolders.")
         };
         renzora_editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
-        return GridResult { drag_payload: None, double_clicked_file: None };
+        return GridResult {
+            drag_payload: None,
+            double_clicked_file: None,
+            thumbnail_requests: Vec::new(),
+        };
     }
 
     let text_primary = theme.text.primary.to_color32();
@@ -98,6 +130,7 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     let mut clicked_index: Option<usize> = None;
     let mut double_clicked_index: Option<usize> = None;
     let mut drag_started_index: Option<usize> = None;
+    let mut thumbnail_requests: Vec<PathBuf> = Vec::new();
 
     egui::ScrollArea::vertical()
         .id_salt("asset_grid")
@@ -134,14 +167,38 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                     file_icon(&entry.path)
                 };
 
-                // Draw icon
-                ui.painter().text(
-                    tile.icon_rect.center(),
-                    Align2::CENTER_CENTER,
-                    icon,
-                    FontId::proportional(tile.icon_size),
-                    color,
-                );
+                // Try to render an image thumbnail for supported file types
+                let mut drew_thumbnail = false;
+                if !entry.is_dir && supports_thumbnail(&entry.name) {
+                    if let Some(tex_id) = thumbnails.get(&entry.path) {
+                        // Paint the image thumbnail into the thumbnail rect
+                        let uv = egui::Rect::from_min_max(
+                            egui::pos2(0.0, 0.0),
+                            egui::pos2(1.0, 1.0),
+                        );
+                        ui.painter().image(
+                            tex_id,
+                            tile.thumbnail_rect,
+                            uv,
+                            egui::Color32::WHITE,
+                        );
+                        drew_thumbnail = true;
+                    } else {
+                        // Request this thumbnail to be loaded
+                        thumbnail_requests.push(entry.path.clone());
+                    }
+                }
+
+                if !drew_thumbnail {
+                    // Draw icon fallback
+                    ui.painter().text(
+                        tile.icon_rect.center(),
+                        Align2::CENTER_CENTER,
+                        icon,
+                        FontId::proportional(tile.icon_size),
+                        color,
+                    );
+                }
 
                 // Draw label
                 let (line1, line2) =
@@ -202,5 +259,9 @@ pub fn grid_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         }
     });
 
-    GridResult { drag_payload, double_clicked_file }
+    GridResult {
+        drag_payload,
+        double_clicked_file,
+        thumbnail_requests,
+    }
 }
