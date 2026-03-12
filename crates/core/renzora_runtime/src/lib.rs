@@ -11,7 +11,7 @@ pub mod debug_log;
 pub mod scene_io;
 pub mod vfs;
 
-pub use asset_reader::{setup_asset_reader, ProjectAssetPath};
+pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
 pub use renzora_core::{CurrentProject, MeshInstanceData, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
@@ -46,17 +46,21 @@ impl Plugin for RuntimePlugin {
             let vfs = Vfs::detect();
 
             if vfs.has_archive() {
+                // Share the archive with the asset reader so it can serve
+                // assets directly from memory (no temp extraction needed).
+                if let Some(archive_arc) = vfs.archive_arc() {
+                    if let Some(shared) = app.world().get_resource::<SharedArchive>() {
+                        shared.set(archive_arc);
+                    }
+                }
+
                 // Load project config from the rpak archive
                 if let Some(toml_str) = vfs.read_string("project.toml") {
                     match toml::from_str::<ProjectConfig>(&toml_str) {
                         Ok(config) => {
-                            // Extract archive to temp so scene_io can read scene files from disk
-                            #[cfg(not(target_arch = "wasm32"))]
-                            let project_path = vfs.extract_to_temp()
-                                .unwrap_or_else(|| std::path::PathBuf::from("."));
-                            #[cfg(target_arch = "wasm32")]
+                            info!("Loaded project from rpak: {}", config.name);
+                            // Use a sentinel path — scene_io reads from Vfs, not disk.
                             let project_path = std::path::PathBuf::from(".");
-                            info!("Loaded project from rpak: {} (extracted to {})", config.name, project_path.display());
                             app.insert_resource(CurrentProject { path: project_path, config });
                         }
                         Err(e) => {

@@ -1,10 +1,11 @@
-//! Custom asset reader with project-local override support.
+//! Custom asset reader with project-local override and rpak archive support.
 //!
 //! Lookup order:
 //! 1. Absolute paths — pass through directly
-//! 2. Project-local `assets/` override (when a project is open)
-//! 3. Exe-adjacent `assets/` directory (exported runtime builds)
-//! 4. CWD `assets/` directory (development fallback)
+//! 2. Rpak archive (packed runtime binary — embedded or adjacent `.rpak`)
+//! 3. Project-local `assets/` override (when a project is open)
+//! 4. Exe-adjacent `assets/` directory (exported runtime builds)
+//! 5. CWD `assets/` directory (development fallback)
 //!
 //! Must be registered **before** `DefaultPlugins` via [`setup_asset_reader`].
 
@@ -13,6 +14,7 @@ use bevy::asset::io::{
     VecReader,
 };
 use bevy::prelude::*;
+use renzora_rpak::RpakArchive;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
@@ -40,6 +42,26 @@ impl ProjectAssetPath {
     pub fn set(&self, path: PathBuf) {
         if let Ok(mut lock) = self.0.write() {
             *lock = Some(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared rpak archive handle
+// ---------------------------------------------------------------------------
+
+/// Shared handle to an in-memory rpak archive for the asset reader.
+///
+/// Populated by `RuntimePlugin` when a packed binary is detected (embedded
+/// or adjacent `.rpak`). The asset reader serves files directly from the
+/// archive without extracting to disk.
+#[derive(Resource, Clone, Default)]
+pub struct SharedArchive(pub Arc<RwLock<Option<Arc<RpakArchive>>>>);
+
+impl SharedArchive {
+    pub fn set(&self, archive: Arc<RpakArchive>) {
+        if let Ok(mut lock) = self.0.write() {
+            *lock = Some(archive);
         }
     }
 }
@@ -75,6 +97,7 @@ impl Unpin for VecPathStream {}
 
 struct EmbeddedAssetReader {
     project_path: Arc<RwLock<Option<PathBuf>>>,
+    archive: Arc<RwLock<Option<Arc<RpakArchive>>>>,
     /// Directory containing the executable (cached at startup).
     exe_dir: Option<PathBuf>,
 }
@@ -85,6 +108,15 @@ impl EmbeddedAssetReader {
         // Strip leading "assets/" if present (Bevy passes relative-to-source paths)
         let s = s.strip_prefix("assets/").unwrap_or(&s);
         s.replace('\\', "/")
+    }
+
+    /// Try reading a file from the rpak archive.
+    /// Archive paths are stored relative to the project root (e.g. `assets/models/foo.glb`).
+    fn try_read_from_archive(&self, normalized: &str) -> Option<Vec<u8>> {
+        let lock = self.archive.read().ok()?;
+        let archive = lock.as_ref()?;
+        let archive_path = format!("assets/{}", normalized);
+        archive.get(&archive_path).map(|data| data.to_vec())
     }
 
     /// Try reading a file from the project's assets directory.
@@ -101,6 +133,44 @@ impl EmbeddedAssetReader {
         let full_path = exe_dir.join("assets").join(normalized);
         std::fs::read(&full_path).ok()
     }
+
+    /// List direct children in the archive under a directory prefix.
+    fn list_archive_dir(&self, normalized: &str) -> Option<Vec<PathBuf>> {
+        let lock = self.archive.read().ok()?;
+        let archive = lock.as_ref()?;
+        let prefix = if normalized.is_empty() || normalized == "." {
+            "assets/".to_string()
+        } else {
+            format!("assets/{}/", normalized)
+        };
+        let entries: Vec<PathBuf> = archive
+            .paths()
+            .filter(|p| p.starts_with(&prefix))
+            .filter_map(|p| {
+                let relative = p.strip_prefix(&prefix)?;
+                // Only direct children
+                if relative.contains('/') {
+                    None
+                } else {
+                    Some(PathBuf::from(relative))
+                }
+            })
+            .collect();
+        if entries.is_empty() { None } else { Some(entries) }
+    }
+
+    /// Check if the archive contains any files under a directory prefix.
+    fn archive_has_dir(&self, normalized: &str) -> bool {
+        let Ok(lock) = self.archive.read() else { return false };
+        let Some(archive) = lock.as_ref() else { return false };
+        let prefix = if normalized.is_empty() || normalized == "." {
+            "assets/".to_string()
+        } else {
+            format!("assets/{}/", normalized)
+        };
+        let result = archive.paths().any(|p| p.starts_with(&prefix));
+        result
+    }
 }
 
 impl AssetReader for EmbeddedAssetReader {
@@ -114,17 +184,22 @@ impl AssetReader for EmbeddedAssetReader {
 
         let normalized = Self::normalize(path);
 
-        // 2. Project-local override (checked when a project is open)
+        // 2. Rpak archive (packed runtime binary)
+        if let Some(bytes) = self.try_read_from_archive(&normalized) {
+            return Ok(VecReader::new(bytes));
+        }
+
+        // 3. Project-local override (checked when a project is open)
         if let Some(bytes) = self.try_read_from_project(&normalized) {
             return Ok(VecReader::new(bytes));
         }
 
-        // 3. Exe-adjacent assets (exported runtime builds)
+        // 4. Exe-adjacent assets (exported runtime builds)
         if let Some(bytes) = self.try_read_from_exe(&normalized) {
             return Ok(VecReader::new(bytes));
         }
 
-        // 4. Fall back to CWD assets (development)
+        // 5. Fall back to CWD assets (development)
         {
             let local_path = PathBuf::from("assets").join(&normalized);
             if let Ok(bytes) = std::fs::read(&local_path) {
@@ -144,6 +219,11 @@ impl AssetReader for EmbeddedAssetReader {
         path: &'a Path,
     ) -> Result<Box<PathStream>, AssetReaderError> {
         let normalized = Self::normalize(path);
+
+        // Rpak archive
+        if let Some(entries) = self.list_archive_dir(&normalized) {
+            return Ok(Box::new(VecPathStream { entries, index: 0 }));
+        }
 
         // Project assets
         if let Ok(lock) = self.project_path.read() {
@@ -196,6 +276,11 @@ impl AssetReader for EmbeddedAssetReader {
             return Ok(true);
         }
 
+        // Rpak archive
+        if self.archive_has_dir(&normalized) {
+            return Ok(true);
+        }
+
         // Project assets
         if let Ok(lock) = self.project_path.read() {
             if let Some(project_path) = lock.as_ref() {
@@ -228,17 +313,21 @@ impl AssetReader for EmbeddedAssetReader {
 /// picks up our custom reader instead of the default filesystem reader.
 pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
     let project_asset_path = ProjectAssetPath::default();
+    let shared_archive = SharedArchive::default();
     let reader_path = project_asset_path.0.clone();
+    let reader_archive = shared_archive.0.clone();
 
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
     app.insert_resource(project_asset_path.clone());
+    app.insert_resource(shared_archive);
     app.register_asset_source(
         AssetSourceId::Default,
         AssetSourceBuilder::new(move || Box::new(EmbeddedAssetReader {
             project_path: reader_path.clone(),
+            archive: reader_archive.clone(),
             exe_dir: exe_dir.clone(),
         })),
     );

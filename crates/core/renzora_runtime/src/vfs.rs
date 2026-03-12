@@ -8,13 +8,15 @@
 use bevy::prelude::*;
 use renzora_rpak::RpakArchive;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Bevy resource providing a virtual filesystem backed by an `.rpak` archive.
 ///
 /// When no archive is loaded, all reads go through the normal filesystem.
-#[derive(Resource, Default)]
+/// The archive is wrapped in `Arc` so it can be shared with the asset reader.
+#[derive(Resource, Clone, Default)]
 pub struct Vfs {
-    archive: Option<RpakArchive>,
+    archive: Option<Arc<RpakArchive>>,
     /// If archive was loaded, this is the "virtual project root" (temp dir where
     /// project.toml etc. are extracted, or empty if we read directly from archive).
     project_root: Option<PathBuf>,
@@ -38,7 +40,7 @@ impl Vfs {
                 Ok(Some(archive)) => {
                     info!("Loaded embedded .rpak ({} files)", archive.len());
                     return Self {
-                        archive: Some(archive),
+                        archive: Some(Arc::new(archive)),
                         project_root: None,
                     };
                 }
@@ -62,7 +64,7 @@ impl Vfs {
                                     archive.len()
                                 );
                                 return Self {
-                                    archive: Some(archive),
+                                    archive: Some(Arc::new(archive)),
                                     project_root: None,
                                 };
                             }
@@ -98,7 +100,7 @@ impl Vfs {
                     Ok(archive) => {
                         info!("Loaded Android rpak from {} ({} files)", path_str, archive.len());
                         return Some(Self {
-                            archive: Some(archive),
+                            archive: Some(Arc::new(archive)),
                             project_root: None,
                         });
                     }
@@ -142,7 +144,7 @@ impl Vfs {
             Ok(archive) => {
                 info!("Loaded rpak from APK assets ({} files)", archive.len());
                 Some(Self {
-                    archive: Some(archive),
+                    archive: Some(Arc::new(archive)),
                     project_root: None,
                 })
             }
@@ -186,7 +188,12 @@ impl Vfs {
 
     /// Get the underlying archive, if any.
     pub fn archive(&self) -> Option<&RpakArchive> {
-        self.archive.as_ref()
+        self.archive.as_deref()
+    }
+
+    /// Get a shared handle to the archive (for passing to the asset reader).
+    pub fn archive_arc(&self) -> Option<Arc<RpakArchive>> {
+        self.archive.clone()
     }
 
     /// Extract the entire archive to a temporary directory and return the path.

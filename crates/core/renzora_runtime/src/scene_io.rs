@@ -136,24 +136,46 @@ pub fn save_current_scene(world: &mut World) {
 // ============================================================================
 
 /// Load a scene from a RON file into the world.
+///
+/// Tries the Vfs (rpak archive) first, then falls back to disk.
 pub fn load_scene(world: &mut World, path: &Path) {
     console_info("Scene", format!("=== Loading scene from {} ===", path.display()));
 
-    if !path.exists() {
-        console_warn("Scene", format!("Scene file does not exist: {}", path.display()));
-        info!("Scene file does not exist yet: {}", path.display());
-        return;
-    }
-
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => {
-            console_info("Scene", format!("Read {} bytes from {}", c.len(), path.display()));
-            c
+    // Try reading from Vfs (rpak archive) first.
+    let content = if let Some(vfs) = world.get_resource::<crate::Vfs>() {
+        // Normalize to forward-slash archive-relative path, stripping leading "./" or ".\"
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        let archive_key = path_str.strip_prefix("./").unwrap_or(&path_str);
+        if let Some(s) = vfs.read_string(archive_key) {
+            console_info("Scene", format!("Read {} bytes from rpak: {}", s.len(), archive_key));
+            Some(s)
+        } else {
+            None
         }
-        Err(e) => {
-            console_error("Scene", format!("Failed to read scene file {}: {}", path.display(), e));
-            error!("Failed to read scene file {}: {}", path.display(), e);
-            return;
+    } else {
+        None
+    };
+
+    // Fall back to disk if Vfs didn't have it.
+    let content = match content {
+        Some(c) => c,
+        None => {
+            if !path.exists() {
+                console_warn("Scene", format!("Scene file does not exist: {}", path.display()));
+                info!("Scene file does not exist yet: {}", path.display());
+                return;
+            }
+            match std::fs::read_to_string(path) {
+                Ok(c) => {
+                    console_info("Scene", format!("Read {} bytes from {}", c.len(), path.display()));
+                    c
+                }
+                Err(e) => {
+                    console_error("Scene", format!("Failed to read scene file {}: {}", path.display(), e));
+                    error!("Failed to read scene file {}: {}", path.display(), e);
+                    return;
+                }
+            }
         }
     };
 
