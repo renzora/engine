@@ -86,6 +86,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_terrain::TerrainPlugin);
     app.add_plugins(renzora_material::MaterialPlugin);
     app.add_plugins(renzora_rt::RtPlugin);
+    app.add_plugins(renzora_animation::AnimationPlugin);
     app.add_plugins(renzora_game_ui::GameUiPlugin);
     app.add_plugins(renzora_tonemapping::TonemappingPlugin);
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin);

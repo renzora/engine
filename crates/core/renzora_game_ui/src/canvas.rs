@@ -6,14 +6,164 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
+use bevy::camera::RenderTarget;
+use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
-use bevy_egui::EguiUserTextures;
+use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
 use renzora_editor::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
-use crate::components::{UiCanvas, UiWidget, UiWidgetType};
+use crate::components::*;
 use crate::palette::WidgetDragPayload;
+
+// ── Canvas Preview (render selected camera behind UI canvas) ─────────────────
+
+const CANVAS_PREVIEW_WIDTH: u32 = 1280;
+const CANVAS_PREVIEW_HEIGHT: u32 = 720;
+
+/// Resource holding the canvas preview render target and camera.
+#[derive(Resource)]
+pub struct UiCanvasPreview {
+    pub image_handle: Handle<Image>,
+    pub texture_id: Option<egui::TextureId>,
+    /// The preview camera entity we spawned.
+    pub camera_entity: Option<Entity>,
+    /// The scene camera entity we're currently previewing.
+    pub previewing: Option<Entity>,
+}
+
+use renzora_core::UiCanvasPreviewCamera;
+
+/// Sets up the canvas preview render target. Called once from GameUiPlugin build.
+pub fn setup_canvas_preview(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut user_textures: ResMut<EguiUserTextures>,
+) {
+    let size = Extent3d {
+        width: CANVAS_PREVIEW_WIDTH,
+        height: CANVAS_PREVIEW_HEIGHT,
+        depth_or_array_layers: 1,
+    };
+
+    let mut image = Image {
+        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        ..default()
+    };
+    image.texture_descriptor.size = size;
+    image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+    image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+
+    let image_handle = images.add(image);
+    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
+    let texture_id = user_textures.image_id(image_handle.id());
+
+    commands.insert_resource(UiCanvasPreview {
+        image_handle,
+        texture_id,
+        camera_entity: None,
+        previewing: None,
+    });
+}
+
+/// Updates the canvas preview camera to match the selected/default scene camera.
+///
+/// Priority: selected Camera3d in hierarchy → DefaultCamera → first scene Camera3d → nothing.
+pub fn update_canvas_preview(
+    mut commands: Commands,
+    selection: Res<EditorSelection>,
+    mut preview: ResMut<UiCanvasPreview>,
+    scene_cameras: Query<
+        (Entity, &GlobalTransform, &Projection, Option<&renzora_core::DefaultCamera>),
+        (With<Camera3d>, Without<UiCanvasPreviewCamera>, Without<renzora_core::EditorCamera>),
+    >,
+    mut preview_cameras: Query<
+        (Entity, &mut Transform, &mut Projection),
+        With<UiCanvasPreviewCamera>,
+    >,
+    editor_cameras: Query<
+        (Option<&bevy::core_pipeline::Skybox>, &Camera),
+        (With<renzora_core::EditorCamera>, Without<UiCanvasPreviewCamera>),
+    >,
+) {
+    let selected = selection.get();
+
+    // Pick target camera: selected Camera3d → DefaultCamera → first scene Camera3d
+    let target = selected
+        .and_then(|e| scene_cameras.get(e).ok())
+        .map(|(e, gt, p, _)| (e, gt, p))
+        .or_else(|| {
+            scene_cameras
+                .iter()
+                .find(|(_, _, _, dc)| dc.is_some())
+                .map(|(e, gt, p, _)| (e, gt, p))
+        })
+        .or_else(|| {
+            scene_cameras
+                .iter()
+                .next()
+                .map(|(e, gt, p, _)| (e, gt, p))
+        });
+
+    let existing = preview_cameras.iter_mut().next();
+
+    let (editor_skybox, editor_clear) = editor_cameras
+        .iter()
+        .next()
+        .map(|(skybox, cam)| (skybox.cloned(), cam.clear_color.clone()))
+        .unwrap_or((None, ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12))));
+
+    if let Some((cam_entity, cam_gt, cam_proj)) = target {
+        preview.previewing = Some(cam_entity);
+        let (scale, rotation, translation) = cam_gt.to_scale_rotation_translation();
+        let cam_transform = Transform { translation, rotation, scale };
+
+        match existing {
+            Some((entity, mut t, mut p)) => {
+                *t = cam_transform;
+                *p = cam_proj.clone();
+                if let Some(ref skybox) = editor_skybox {
+                    commands.entity(entity).insert(skybox.clone());
+                } else {
+                    commands.entity(entity).remove::<bevy::core_pipeline::Skybox>();
+                }
+            }
+            None => {
+                let mut ecmds = commands.spawn((
+                    Camera3d::default(),
+                    Msaa::Off,
+                    Camera {
+                        clear_color: editor_clear,
+                        order: -3,
+                        is_active: false,
+                        ..default()
+                    },
+                    RenderTarget::Image(preview.image_handle.clone().into()),
+                    cam_proj.clone(),
+                    cam_transform,
+                    UiCanvasPreviewCamera,
+                    renzora_core::IsolatedCamera,
+                    renzora_core::HideInHierarchy,
+                    renzora_core::EditorLocked,
+                    Name::new("UI Canvas Preview Camera"),
+                ));
+                if let Some(skybox) = editor_skybox {
+                    ecmds.insert(skybox);
+                }
+                preview.camera_entity = Some(ecmds.id());
+            }
+        }
+    } else {
+        preview.previewing = None;
+        if let Some((entity, _, _)) = existing {
+            commands.entity(entity).despawn();
+            preview.camera_entity = None;
+        }
+    }
+}
+
 
 /// Image file extensions accepted for drag-and-drop onto the canvas.
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "tga", "webp"];
@@ -38,6 +188,90 @@ struct WidgetSnapshot {
     border_color: [f32; 4],
     /// Egui texture id for Image widgets (looked up from ImageNode handle).
     image_texture_id: Option<egui::TextureId>,
+
+    // ── Style data (from UiWidgetStyle) ─────────────────────────────
+    border_radius: [f32; 4],
+    stroke_width: f32,
+    opacity: f32,
+    shadow: Option<[f32; 6]>, // [r, g, b, a, blur, spread] (offset baked into rect)
+
+    // ── Text content ────────────────────────────────────────────────
+    text_content: Option<String>,
+    text_size: f32,
+    text_color: [f32; 4],
+    text_bold: bool,
+
+    // ── Per-widget-type data ────────────────────────────────────────
+    widget_data: WidgetDataSnapshot,
+}
+
+/// Per-widget-type visual data needed for faithful preview rendering.
+#[derive(Clone, Debug, Default)]
+enum WidgetDataSnapshot {
+    #[default]
+    None,
+    Slider {
+        value: f32,
+        min: f32,
+        max: f32,
+        track_color: [f32; 4],
+        fill_color: [f32; 4],
+        thumb_color: [f32; 4],
+    },
+    ProgressBar {
+        value: f32,
+        max: f32,
+        fill_color: [f32; 4],
+    },
+    HealthBar {
+        current: f32,
+        max: f32,
+        low_threshold: f32,
+        fill_color: [f32; 4],
+        low_color: [f32; 4],
+    },
+    Checkbox {
+        checked: bool,
+        label: String,
+        check_color: [f32; 4],
+        box_color: [f32; 4],
+    },
+    Toggle {
+        on: bool,
+        label: String,
+        on_color: [f32; 4],
+        off_color: [f32; 4],
+        knob_color: [f32; 4],
+    },
+    Dropdown {
+        selected_text: String,
+        open: bool,
+    },
+    TextInput {
+        text: String,
+        placeholder: String,
+    },
+    TabBar {
+        tabs: Vec<String>,
+        active: usize,
+        tab_color: [f32; 4],
+        active_color: [f32; 4],
+    },
+    Spinner {
+        color: [f32; 4],
+    },
+    RadioButton {
+        selected: bool,
+        label: String,
+        active_color: [f32; 4],
+    },
+    Modal {
+        title: String,
+    },
+    DraggableWindow {
+        title: String,
+        title_bar_color: [f32; 4],
+    },
 }
 
 /// Canvas editor state.
@@ -69,6 +303,8 @@ struct CanvasState {
     grid_size: f32,
     /// Show grid lines on canvas.
     show_grid: bool,
+    /// Show the game camera render behind the canvas.
+    show_preview: bool,
     /// Clipboard for copy/paste (widget type + offset from first widget).
     clipboard: Vec<ClipboardEntry>,
 }
@@ -137,6 +373,7 @@ impl CanvasState {
             snap_enabled: true,
             grid_size: 10.0,
             show_grid: true,
+            show_preview: false,
             clipboard: Vec::new(),
         }
     }
@@ -268,49 +505,128 @@ impl EditorPanel for UiCanvasPanel {
         // ── Toolbar ─────────────────────────────────────────────────────
         let text_muted = theme.text.muted.to_color32();
         let accent = theme.semantic.accent.to_color32();
-        let surface = theme.surfaces.panel.to_color32();
 
+        let selected_entity = selection.get();
+        let all_sel = state.all_selected(selected_entity);
+
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(4.0);
-            ui.label(
-                egui::RichText::new(format!("{} Canvas:", regular::FRAME_CORNERS))
-                    .size(11.0)
-                    .color(text_muted),
-            );
 
-            if state.canvases.is_empty() {
-                ui.label(
-                    egui::RichText::new("No canvases — add one from Widgets")
-                        .size(11.0)
-                        .color(text_muted),
-                );
-            } else {
-                let mut clicked_canvas = None;
-                for (entity, name) in &state.canvases {
-                    let is_active = state.active_canvas == Some(*entity);
-                    let color = if is_active { accent } else { text_muted };
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new(name).size(11.0).color(color),
-                            )
-                            .fill(if is_active {
-                                surface
-                            } else {
-                                Color32::TRANSPARENT
-                            }),
+            // Alignment buttons (dim when nothing selected)
+            let has_sel = !all_sel.is_empty();
+            let btn_color = if has_sel { text_muted } else { Color32::from_white_alpha(30) };
+
+            let align_buttons: &[(&str, &str, AlignAction)] = &[
+                (regular::ALIGN_LEFT, "Align left", AlignAction::Left),
+                (regular::ALIGN_CENTER_HORIZONTAL, "Align center H", AlignAction::CenterH),
+                (regular::ALIGN_RIGHT, "Align right", AlignAction::Right),
+                (regular::ALIGN_TOP, "Align top", AlignAction::Top),
+                (regular::ALIGN_CENTER_VERTICAL, "Align center V", AlignAction::CenterV),
+                (regular::ALIGN_BOTTOM, "Align bottom", AlignAction::Bottom),
+            ];
+            for (icon, tooltip, action) in align_buttons {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(*icon).size(13.0).color(btn_color),
                         )
-                        .clicked()
-                    {
-                        clicked_canvas = Some(*entity);
+                        .fill(Color32::TRANSPARENT),
+                    )
+                    .on_hover_text(*tooltip)
+                    .clicked()
+                    && has_sel
+                {
+                    let snapshots: Vec<_> = state
+                        .widgets
+                        .iter()
+                        .filter(|w| all_sel.contains(&w.entity))
+                        .cloned()
+                        .collect();
+                    let moves = compute_align(&snapshots, *action);
+                    for (entity, new_x, new_y) in moves {
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                if let Some(mut node) = em.get_mut::<Node>() {
+                                    node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
+                                    node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
+                                    node.position_type = bevy::ui::PositionType::Absolute;
+                                }
+                            }
+                        });
                     }
-                }
-                if let Some(e) = clicked_canvas {
-                    state.active_canvas = Some(e);
                 }
             }
 
-            // Right side: grid toggle, snap toggle, zoom
+            ui.separator();
+
+            // Distribute (dim when < 3 selected)
+            let dist_color = if all_sel.len() >= 3 { text_muted } else { Color32::from_white_alpha(30) };
+
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(regular::ARROWS_OUT_LINE_HORIZONTAL)
+                            .size(13.0)
+                            .color(dist_color),
+                    )
+                    .fill(Color32::TRANSPARENT),
+                )
+                .on_hover_text("Distribute horizontally")
+                .clicked()
+                && all_sel.len() >= 3
+            {
+                let snapshots: Vec<_> = state
+                    .widgets
+                    .iter()
+                    .filter(|w| all_sel.contains(&w.entity))
+                    .cloned()
+                    .collect();
+                let moves = compute_distribute_h(&snapshots);
+                for (entity, new_x) in moves {
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut node) = em.get_mut::<Node>() {
+                                node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
+                                node.position_type = bevy::ui::PositionType::Absolute;
+                            }
+                        }
+                    });
+                }
+            }
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(regular::ARROWS_OUT_LINE_VERTICAL)
+                            .size(13.0)
+                            .color(dist_color),
+                    )
+                    .fill(Color32::TRANSPARENT),
+                )
+                .on_hover_text("Distribute vertically")
+                .clicked()
+                && all_sel.len() >= 3
+            {
+                let snapshots: Vec<_> = state
+                    .widgets
+                    .iter()
+                    .filter(|w| all_sel.contains(&w.entity))
+                    .cloned()
+                    .collect();
+                let moves = compute_distribute_v(&snapshots);
+                for (entity, new_y) in moves {
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut node) = em.get_mut::<Node>() {
+                                node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
+                                node.position_type = bevy::ui::PositionType::Absolute;
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Right side: selection info, grid, snap, zoom
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(4.0);
 
@@ -351,127 +667,30 @@ impl EditorPanel for UiCanvasPanel {
                 {
                     state.show_grid = !state.show_grid;
                 }
+
+                // Preview toggle (show viewport render behind canvas)
+                let preview_color = if state.show_preview { accent } else { text_muted };
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(regular::MONITOR).size(14.0).color(preview_color),
+                    ).fill(Color32::TRANSPARENT))
+                    .on_hover_text("Toggle game viewport preview")
+                    .clicked()
+                {
+                    state.show_preview = !state.show_preview;
+                }
+
+                // Selection count
+                if !all_sel.is_empty() {
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(format!("{} selected", all_sel.len()))
+                            .size(10.0)
+                            .color(text_muted),
+                    );
+                }
             });
         });
-
-        // ── Align toolbar (visible when multi-selected) ─────────────────
-        let selected_entity = selection.get();
-        let all_sel = state.all_selected(selected_entity);
-
-        if all_sel.len() >= 2 {
-            ui.horizontal(|ui| {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new(format!("{} selected", all_sel.len()))
-                        .size(10.0)
-                        .color(text_muted),
-                );
-                ui.separator();
-
-                let align_buttons: &[(&str, &str, AlignAction)] = &[
-                    (regular::ALIGN_LEFT, "Align left", AlignAction::Left),
-                    (regular::ALIGN_CENTER_HORIZONTAL, "Align center H", AlignAction::CenterH),
-                    (regular::ALIGN_RIGHT, "Align right", AlignAction::Right),
-                    (regular::ALIGN_TOP, "Align top", AlignAction::Top),
-                    (regular::ALIGN_CENTER_VERTICAL, "Align center V", AlignAction::CenterV),
-                    (regular::ALIGN_BOTTOM, "Align bottom", AlignAction::Bottom),
-                ];
-                for (icon, tooltip, action) in align_buttons {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new(*icon).size(13.0).color(text_muted),
-                            )
-                            .fill(Color32::TRANSPARENT),
-                        )
-                        .on_hover_text(*tooltip)
-                        .clicked()
-                    {
-                        let snapshots: Vec<_> = state
-                            .widgets
-                            .iter()
-                            .filter(|w| all_sel.contains(&w.entity))
-                            .cloned()
-                            .collect();
-                        let moves = compute_align(&snapshots, *action);
-                        for (entity, new_x, new_y) in moves {
-                            commands.push(move |world: &mut World| {
-                                if let Ok(mut em) = world.get_entity_mut(entity) {
-                                    if let Some(mut node) = em.get_mut::<Node>() {
-                                        node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
-                                        node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
-                                        node.position_type = bevy::ui::PositionType::Absolute;
-                                    }
-                                }
-                            });
-                        }
-                    }
-                }
-
-                // Distribute
-                ui.separator();
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(regular::ARROWS_OUT_LINE_HORIZONTAL)
-                                .size(13.0)
-                                .color(text_muted),
-                        )
-                        .fill(Color32::TRANSPARENT),
-                    )
-                    .on_hover_text("Distribute horizontally")
-                    .clicked()
-                {
-                    let snapshots: Vec<_> = state
-                        .widgets
-                        .iter()
-                        .filter(|w| all_sel.contains(&w.entity))
-                        .cloned()
-                        .collect();
-                    let moves = compute_distribute_h(&snapshots);
-                    for (entity, new_x) in moves {
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut node) = em.get_mut::<Node>() {
-                                    node.left = bevy::ui::Val::Percent(new_x / ref_w * 100.0);
-                                    node.position_type = bevy::ui::PositionType::Absolute;
-                                }
-                            }
-                        });
-                    }
-                }
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(regular::ARROWS_OUT_LINE_VERTICAL)
-                                .size(13.0)
-                                .color(text_muted),
-                        )
-                        .fill(Color32::TRANSPARENT),
-                    )
-                    .on_hover_text("Distribute vertically")
-                    .clicked()
-                {
-                    let snapshots: Vec<_> = state
-                        .widgets
-                        .iter()
-                        .filter(|w| all_sel.contains(&w.entity))
-                        .cloned()
-                        .collect();
-                    let moves = compute_distribute_v(&snapshots);
-                    for (entity, new_y) in moves {
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut node) = em.get_mut::<Node>() {
-                                    node.top = bevy::ui::Val::Percent(new_y / ref_h * 100.0);
-                                    node.position_type = bevy::ui::PositionType::Absolute;
-                                }
-                            }
-                        });
-                    }
-                }
-            });
-        }
 
         ui.separator();
 
@@ -507,6 +726,36 @@ impl EditorPanel for UiCanvasPanel {
                             user_textures.and_then(|ut| ut.image_id(img.image.id()))
                         });
 
+                    // Read UiWidgetStyle
+                    let wstyle = world.get::<UiWidgetStyle>(entity);
+                    let border_radius = wstyle
+                        .map(|s| [s.border_radius.top_left, s.border_radius.top_right, s.border_radius.bottom_right, s.border_radius.bottom_left])
+                        .unwrap_or([0.0; 4]);
+                    let stroke_width = wstyle.map(|s| s.stroke.width).unwrap_or(0.0);
+                    let opacity = wstyle.map(|s| s.opacity).unwrap_or(1.0);
+                    let shadow = wstyle.and_then(|s| s.shadow.as_ref().map(|sh| {
+                        let c = sh.color.to_srgba().to_f32_array();
+                        [c[0], c[1], c[2], c[3], sh.blur, sh.spread]
+                    }));
+
+                    // Read text content
+                    let text_content = world
+                        .get::<bevy::ui::widget::Text>(entity)
+                        .map(|t| t.0.clone());
+                    let text_font = world.get::<TextFont>(entity);
+                    let text_color_comp = world.get::<TextColor>(entity);
+                    let text_size = wstyle.map(|s| s.text.size)
+                        .or_else(|| text_font.map(|f| f.font_size))
+                        .unwrap_or(14.0);
+                    let text_color = wstyle
+                        .map(|s| s.text.color.to_srgba().to_f32_array())
+                        .or_else(|| text_color_comp.map(|c| c.0.to_srgba().to_f32_array()))
+                        .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+                    let text_bold = wstyle.map(|s| s.text.bold).unwrap_or(false);
+
+                    // Read per-widget-type data
+                    let widget_data = snapshot_widget_data(world, entity, &widget.widget_type);
+
                     state.widgets.push(WidgetSnapshot {
                         entity,
                         name,
@@ -526,13 +775,152 @@ impl EditorPanel for UiCanvasPanel {
                             .map(|b| b.top.to_srgba().to_f32_array())
                             .unwrap_or([0.0; 4]),
                         image_texture_id,
+                        border_radius,
+                        stroke_width,
+                        opacity,
+                        shadow,
+                        text_content,
+                        text_size,
+                        text_color,
+                        text_bold,
+                        widget_data,
                     });
                 }
             }
         }
 
-        // ── Canvas area ──────────────────────────────────────────────────
-        let available = ui.available_rect_before_wrap();
+        // ── Vertical toolbar + Canvas area ──────────────────────────────
+        let full_available = ui.available_rect_before_wrap();
+        let toolbar_width = 40.0;
+        let surface = theme.surfaces.panel.to_color32();
+        let text_primary = theme.text.primary.to_color32();
+
+        // Toolbar strip on the left
+        let toolbar_rect = Rect::from_min_size(
+            full_available.min,
+            Vec2::new(toolbar_width, full_available.height()),
+        );
+        let tb_response = ui.allocate_rect(toolbar_rect, egui::Sense::hover());
+        let tb_painter = ui.painter_at(toolbar_rect);
+
+        // Toolbar background
+        tb_painter.rect_filled(toolbar_rect, 0.0, Color32::from_rgb(35, 35, 40));
+        // Right edge separator
+        tb_painter.line_segment(
+            [
+                Pos2::new(toolbar_rect.max.x, toolbar_rect.min.y),
+                Pos2::new(toolbar_rect.max.x, toolbar_rect.max.y),
+            ],
+            Stroke::new(1.0, Color32::from_rgb(50, 50, 55)),
+        );
+
+        // Toolbar widget buttons (categorized)
+        let active_canvas = state.active_canvas;
+        {
+            const ICON_SIZE: f32 = 18.0;
+            const BTN_SIZE: f32 = 32.0;
+            const BTN_PAD: f32 = 4.0;
+
+            // Widget types grouped by category with separators
+            let tool_groups: &[&[UiWidgetType]] = &[
+                // Layout
+                &[UiWidgetType::Container, UiWidgetType::Panel, UiWidgetType::ScrollView],
+                // Basic
+                &[UiWidgetType::Text, UiWidgetType::Image, UiWidgetType::Button],
+                // Input
+                &[UiWidgetType::Slider, UiWidgetType::Checkbox, UiWidgetType::Toggle, UiWidgetType::Dropdown, UiWidgetType::TextInput],
+                // Display
+                &[UiWidgetType::ProgressBar, UiWidgetType::HealthBar],
+                // Overlay
+                &[UiWidgetType::Modal, UiWidgetType::DraggableWindow],
+            ];
+
+            let mut y_offset = toolbar_rect.min.y + BTN_PAD;
+            let btn_x = toolbar_rect.min.x + (toolbar_width - BTN_SIZE) / 2.0;
+
+            for (gi, group) in tool_groups.iter().enumerate() {
+                for wtype in *group {
+                    let btn_rect = Rect::from_min_size(
+                        Pos2::new(btn_x, y_offset),
+                        Vec2::new(BTN_SIZE, BTN_SIZE),
+                    );
+
+                    // Hover detection
+                    let hovered = tb_response.hovered()
+                        && ui.ctx().pointer_latest_pos().map_or(false, |p| btn_rect.contains(p));
+                    let bg = if hovered { surface } else { Color32::TRANSPARENT };
+                    tb_painter.rect_filled(btn_rect, 3.0, bg);
+
+                    // Icon
+                    let icon_color = if hovered { text_primary } else { text_muted };
+                    tb_painter.text(
+                        btn_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        wtype.icon(),
+                        egui::FontId::proportional(ICON_SIZE),
+                        icon_color,
+                    );
+
+                    // Tooltip (painted to the right of the button)
+                    if hovered {
+                        let tip_pos = Pos2::new(toolbar_rect.max.x + 6.0, btn_rect.center().y);
+                        let tip_text = wtype.label();
+                        let tip_galley = tb_painter.layout_no_wrap(
+                            tip_text.to_string(),
+                            egui::FontId::proportional(11.0),
+                            text_primary,
+                        );
+                        let tip_rect = Rect::from_min_size(
+                            Pos2::new(tip_pos.x - 4.0, tip_pos.y - tip_galley.size().y / 2.0 - 3.0),
+                            Vec2::new(tip_galley.size().x + 8.0, tip_galley.size().y + 6.0),
+                        );
+                        // Use a foreground painter so it draws on top of everything
+                        let fg = ui.ctx().layer_painter(egui::LayerId::new(
+                            egui::Order::Tooltip,
+                            ui.id().with("vtoolbar_tip"),
+                        ));
+                        fg.rect_filled(tip_rect, 4.0, Color32::from_rgb(50, 50, 55));
+                        fg.text(
+                            Pos2::new(tip_pos.x, tip_pos.y),
+                            egui::Align2::LEFT_CENTER,
+                            tip_text,
+                            egui::FontId::proportional(11.0),
+                            text_primary,
+                        );
+                    }
+
+                    // Click to add widget
+                    if hovered && ui.ctx().input(|i| i.pointer.any_click()) {
+                        let wt = wtype.clone();
+                        commands.push(move |world: &mut World| {
+                            crate::spawn::spawn_widget(world, &wt, active_canvas);
+                        });
+                    }
+
+                    y_offset += BTN_SIZE + 2.0;
+                }
+
+                // Separator between groups (except after the last)
+                if gi < tool_groups.len() - 1 {
+                    y_offset += 2.0;
+                    let sep_y = y_offset;
+                    tb_painter.line_segment(
+                        [
+                            Pos2::new(toolbar_rect.min.x + 6.0, sep_y),
+                            Pos2::new(toolbar_rect.max.x - 6.0, sep_y),
+                        ],
+                        Stroke::new(1.0, Color32::from_rgb(55, 55, 60)),
+                    );
+                    y_offset += 6.0;
+                }
+            }
+        }
+
+        // Canvas area (right of the toolbar)
+        let available = Rect::from_min_max(
+            Pos2::new(full_available.min.x + toolbar_width, full_available.min.y),
+            full_available.max,
+        );
         let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
         let painter = ui.painter_at(available);
 
@@ -568,6 +956,49 @@ impl EditorPanel for UiCanvasPanel {
             Vec2::new(cw, ch),
         );
         painter.rect_filled(canvas_rect, 0.0, Color32::from_rgb(20, 20, 24));
+
+        // ── Camera preview (game render behind the canvas) ─────────────
+        if state.show_preview {
+            // Activate the preview camera
+            if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
+                if preview.previewing.is_some() {
+                    // Use the preview texture
+                    let tex_id = preview.texture_id;
+                    if let Some(tex_id) = tex_id {
+                        let uv = egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
+                        painter.image(tex_id, canvas_rect, uv, Color32::WHITE);
+                    }
+                    // Ensure camera is active
+                    if let Some(cam_entity) = preview.camera_entity {
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(cam_entity) {
+                                if let Some(mut cam) = em.get_mut::<Camera>() {
+                                    if !cam.is_active {
+                                        cam.is_active = true;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        } else {
+            // Deactivate the preview camera when not showing
+            if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
+                if let Some(cam_entity) = preview.camera_entity {
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(cam_entity) {
+                            if let Some(mut cam) = em.get_mut::<Camera>() {
+                                if cam.is_active {
+                                    cam.is_active = false;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
         painter.rect_stroke(
             canvas_rect,
             0.0,
@@ -620,58 +1051,9 @@ impl EditorPanel for UiCanvasPanel {
         let widget_snapshots = state.widgets.clone();
         for ws in &widget_snapshots {
             let rect = ws_screen_rect(ws, canvas_rect, z);
-
-            // Image texture (render actual image for Image widgets)
-            if let Some(tex_id) = ws.image_texture_id {
-                painter.image(
-                    tex_id,
-                    rect,
-                    egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-            } else {
-                // Background
-                let bg = if ws.has_bg {
-                    Color32::from_rgba_unmultiplied(
-                        (ws.bg_color[0] * 255.0) as u8,
-                        (ws.bg_color[1] * 255.0) as u8,
-                        (ws.bg_color[2] * 255.0) as u8,
-                        (ws.bg_color[3] * 255.0) as u8,
-                    )
-                } else {
-                    Color32::from_rgba_unmultiplied(50, 50, 60, 40)
-                };
-                painter.rect_filled(rect, 2.0, bg);
-            }
-
-            // Border / selection highlight
             let is_sel = all_sel.contains(&ws.entity);
-            let border_c = if is_sel {
-                accent
-            } else if ws.has_border {
-                Color32::from_rgba_unmultiplied(
-                    (ws.border_color[0] * 255.0) as u8,
-                    (ws.border_color[1] * 255.0) as u8,
-                    (ws.border_color[2] * 255.0) as u8,
-                    (ws.border_color[3] * 255.0) as u8,
-                )
-            } else {
-                Color32::from_rgba_unmultiplied(80, 80, 90, 100)
-            };
-            let sw = if is_sel { 2.0 } else { 1.0 };
-            painter.rect_stroke(rect, 2.0, Stroke::new(sw, border_c), egui::StrokeKind::Outside);
 
-            // Widget label
-            if rect.height() > 16.0 && rect.width() > 30.0 {
-                let label = format!("{} {}", ws.widget_type.icon(), ws.name);
-                painter.text(
-                    Pos2::new(rect.min.x + 4.0, rect.min.y + 2.0),
-                    egui::Align2::LEFT_TOP,
-                    &label,
-                    egui::FontId::proportional(10.0 * z.min(1.5)),
-                    if is_sel { accent } else { text_muted },
-                );
-            }
+            paint_widget_preview(&painter, &ws, rect, z, is_sel, accent, text_muted);
 
             // Resize handles for selected widget (single selection only)
             if is_sel && all_sel.len() == 1 && !ws.locked {
@@ -1462,4 +1844,557 @@ fn compute_distribute_v(widgets: &[WidgetSnapshot]) -> Vec<(Entity, f32)> {
         .enumerate()
         .map(|(i, w)| (w.entity, first_y + step * i as f32))
         .collect()
+}
+
+// ── Widget data snapshot extraction ─────────────────────────────────────────
+
+fn c2a(c: Color) -> [f32; 4] {
+    c.to_srgba().to_f32_array()
+}
+
+fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> WidgetDataSnapshot {
+    match wtype {
+        UiWidgetType::Slider => {
+            if let Some(d) = world.get::<SliderData>(entity) {
+                WidgetDataSnapshot::Slider {
+                    value: d.value, min: d.min, max: d.max,
+                    track_color: c2a(d.track_color),
+                    fill_color: c2a(d.fill_color),
+                    thumb_color: c2a(d.thumb_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::ProgressBar => {
+            if let Some(d) = world.get::<ProgressBarData>(entity) {
+                WidgetDataSnapshot::ProgressBar {
+                    value: d.value, max: d.max, fill_color: c2a(d.fill_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::HealthBar => {
+            if let Some(d) = world.get::<HealthBarData>(entity) {
+                WidgetDataSnapshot::HealthBar {
+                    current: d.current, max: d.max, low_threshold: d.low_threshold,
+                    fill_color: c2a(d.fill_color), low_color: c2a(d.low_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Checkbox => {
+            if let Some(d) = world.get::<CheckboxData>(entity) {
+                WidgetDataSnapshot::Checkbox {
+                    checked: d.checked, label: d.label.clone(),
+                    check_color: c2a(d.check_color), box_color: c2a(d.box_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Toggle => {
+            if let Some(d) = world.get::<ToggleData>(entity) {
+                WidgetDataSnapshot::Toggle {
+                    on: d.on, label: d.label.clone(),
+                    on_color: c2a(d.on_color), off_color: c2a(d.off_color),
+                    knob_color: c2a(d.knob_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Dropdown => {
+            if let Some(d) = world.get::<DropdownData>(entity) {
+                let text = if d.selected >= 0 && (d.selected as usize) < d.options.len() {
+                    d.options[d.selected as usize].clone()
+                } else {
+                    d.placeholder.clone()
+                };
+                WidgetDataSnapshot::Dropdown { selected_text: text, open: d.open }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::TextInput => {
+            if let Some(d) = world.get::<TextInputData>(entity) {
+                WidgetDataSnapshot::TextInput {
+                    text: d.text.clone(), placeholder: d.placeholder.clone(),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::TabBar => {
+            if let Some(d) = world.get::<TabBarData>(entity) {
+                WidgetDataSnapshot::TabBar {
+                    tabs: d.tabs.clone(), active: d.active,
+                    tab_color: c2a(d.tab_color), active_color: c2a(d.active_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Spinner => {
+            if let Some(d) = world.get::<SpinnerData>(entity) {
+                WidgetDataSnapshot::Spinner { color: c2a(d.color) }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::RadioButton => {
+            if let Some(d) = world.get::<RadioButtonData>(entity) {
+                WidgetDataSnapshot::RadioButton {
+                    selected: d.selected, label: d.label.clone(),
+                    active_color: c2a(d.active_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Modal => {
+            if let Some(d) = world.get::<ModalData>(entity) {
+                WidgetDataSnapshot::Modal { title: d.title.clone() }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::DraggableWindow => {
+            if let Some(d) = world.get::<DraggableWindowData>(entity) {
+                WidgetDataSnapshot::DraggableWindow {
+                    title: d.title.clone(), title_bar_color: c2a(d.title_bar_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        _ => WidgetDataSnapshot::None,
+    }
+}
+
+// ── Per-widget-type painting ────────────────────────────────────────────────
+
+fn arr_to_c32(c: &[f32; 4]) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        (c[0] * 255.0) as u8,
+        (c[1] * 255.0) as u8,
+        (c[2] * 255.0) as u8,
+        (c[3] * 255.0) as u8,
+    )
+}
+
+/// Per-corner border radius scaled by zoom, converted for egui.
+fn avg_radius(r: &[f32; 4], z: f32) -> egui::Rounding {
+    egui::Rounding {
+        nw: (r[0] * z) as u8,
+        ne: (r[1] * z) as u8,
+        se: (r[2] * z) as u8,
+        sw: (r[3] * z) as u8,
+    }
+}
+
+fn round_f(v: f32) -> egui::Rounding {
+    egui::Rounding::same(v as u8)
+}
+
+/// Paint a widget preview on the canvas. Called instead of the old flat-rect code.
+fn paint_widget_preview(
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    is_sel: bool,
+    accent: Color32,
+    text_muted: Color32,
+) {
+    let rounding = avg_radius(&ws.border_radius, z);
+
+    // ── Drop shadow ──────────────────────────────────────────────────
+    if let Some(ref sh) = ws.shadow {
+        let [r, g, b, a, blur, _spread] = *sh;
+        // Approximate shadow with a larger, semi-transparent rect behind the widget
+        let expand = blur * z * 0.5;
+        let shadow_rect = rect.expand(expand);
+        let shadow_color = Color32::from_rgba_premultiplied(
+            (r * a * 80.0) as u8,
+            (g * a * 80.0) as u8,
+            (b * a * 80.0) as u8,
+            (a * 80.0) as u8,
+        );
+        painter.rect_filled(shadow_rect, rounding, shadow_color);
+    }
+
+    // Dispatch to per-type painter, or fall back to generic
+    match &ws.widget_data {
+        WidgetDataSnapshot::Slider { value, min, max, track_color, fill_color, thumb_color } => {
+            paint_slider(painter, rect, z, rounding, *value, *min, *max, track_color, fill_color, thumb_color);
+        }
+        WidgetDataSnapshot::ProgressBar { value, max, fill_color } => {
+            paint_progress_bar(painter, ws, rect, z, rounding, *value, *max, fill_color);
+        }
+        WidgetDataSnapshot::HealthBar { current, max, low_threshold, fill_color, low_color } => {
+            let ratio = if *max > 0.0 { *current / *max } else { 0.0 };
+            let color = if ratio < *low_threshold { low_color } else { fill_color };
+            paint_progress_bar(painter, ws, rect, z, rounding, *current, *max, color);
+        }
+        WidgetDataSnapshot::Checkbox { checked, label, check_color, box_color } => {
+            paint_checkbox(painter, ws, rect, z, *checked, label, check_color, box_color);
+        }
+        WidgetDataSnapshot::Toggle { on, label, on_color, off_color, knob_color } => {
+            paint_toggle(painter, ws, rect, z, *on, label, on_color, off_color, knob_color);
+        }
+        WidgetDataSnapshot::Dropdown { selected_text, .. } => {
+            paint_dropdown(painter, ws, rect, z, rounding, selected_text);
+        }
+        WidgetDataSnapshot::TextInput { text, placeholder } => {
+            paint_text_input(painter, ws, rect, z, rounding, text, placeholder);
+        }
+        WidgetDataSnapshot::TabBar { tabs, active, tab_color, active_color } => {
+            paint_tab_bar(painter, ws, rect, z, tabs, *active, tab_color, active_color);
+        }
+        WidgetDataSnapshot::Spinner { color } => {
+            paint_spinner(painter, rect, z, color);
+        }
+        WidgetDataSnapshot::RadioButton { selected, label, active_color } => {
+            paint_radio_button(painter, ws, rect, z, *selected, label, active_color);
+        }
+        WidgetDataSnapshot::Modal { title } => {
+            paint_window_like(painter, ws, rect, z, rounding, title, &ws.bg_color);
+        }
+        WidgetDataSnapshot::DraggableWindow { title, title_bar_color } => {
+            paint_window_like(painter, ws, rect, z, rounding, title, title_bar_color);
+        }
+        WidgetDataSnapshot::None => {
+            // Generic: text widget, container, panel, image
+            paint_generic(painter, ws, rect, z, rounding);
+        }
+    }
+
+    // ── Selection highlight (always on top) ──────────────────────────
+    if is_sel {
+        painter.rect_stroke(rect, rounding, Stroke::new(2.0, accent), egui::StrokeKind::Outside);
+    } else if ws.stroke_width > 0.0 && ws.has_border {
+        let sc = arr_to_c32(&ws.border_color);
+        painter.rect_stroke(rect, rounding, Stroke::new(ws.stroke_width * z, sc), egui::StrokeKind::Outside);
+    }
+
+    // ── Resize handles ──────────────────────────────────────────────
+    // (handled by the caller)
+}
+
+// ── Individual widget painters ──────────────────────────────────────────────
+
+fn paint_generic(painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding) {
+    // Image widget with texture
+    if let Some(tex_id) = ws.image_texture_id {
+        painter.image(
+            tex_id, rect,
+            egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        return;
+    }
+
+    // Background fill
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgba_unmultiplied(50, 50, 60, 40)
+    };
+    painter.rect_filled(rect, rounding, bg);
+
+    // Text content (for Text / Button widgets)
+    if let Some(ref text) = ws.text_content {
+        if !text.is_empty() && rect.width() > 10.0 && rect.height() > 8.0 {
+            let tc = arr_to_c32(&ws.text_color);
+            let font_size = ws.text_size * z;
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::proportional(font_size.clamp(6.0, 40.0)),
+                tc,
+            );
+        }
+    } else if rect.height() > 16.0 && rect.width() > 30.0 {
+        // Fallback: icon + name label for containers/panels
+        let label = format!("{} {}", ws.widget_type.icon(), ws.name);
+        painter.text(
+            Pos2::new(rect.min.x + 4.0 * z, rect.min.y + 2.0 * z),
+            egui::Align2::LEFT_TOP,
+            &label,
+            egui::FontId::proportional(10.0 * z.min(1.5)),
+            Color32::from_rgba_unmultiplied(180, 180, 180, 160),
+        );
+    }
+}
+
+fn paint_slider(
+    painter: &egui::Painter, rect: Rect, z: f32, _rounding: egui::Rounding,
+    value: f32, min: f32, max: f32,
+    track_color: &[f32; 4], fill_color: &[f32; 4], thumb_color: &[f32; 4],
+) {
+    let track_h = (6.0 * z).max(2.0);
+    let track_y = rect.center().y - track_h / 2.0;
+    let track_rect = Rect::from_min_size(
+        Pos2::new(rect.min.x, track_y),
+        Vec2::new(rect.width(), track_h),
+    );
+    let track_round = round_f(track_h / 2.0);
+
+    // Track background
+    painter.rect_filled(track_rect, track_round, arr_to_c32(track_color));
+
+    // Fill
+    let ratio = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+    let fill_w = rect.width() * ratio;
+    if fill_w > 0.5 {
+        let fill_rect = Rect::from_min_size(track_rect.min, Vec2::new(fill_w, track_h));
+        painter.rect_filled(fill_rect, track_round, arr_to_c32(fill_color));
+    }
+
+    // Thumb
+    let thumb_r = (8.0 * z).max(3.0);
+    let thumb_x = rect.min.x + fill_w;
+    painter.circle_filled(
+        Pos2::new(thumb_x, rect.center().y),
+        thumb_r,
+        arr_to_c32(thumb_color),
+    );
+}
+
+fn paint_progress_bar(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    value: f32, max: f32, fill_color: &[f32; 4],
+) {
+    // Background
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(40, 40, 45) };
+    painter.rect_filled(rect, rounding, bg);
+
+    // Fill bar
+    let ratio = if max > 0.0 { (value / max).clamp(0.0, 1.0) } else { 0.0 };
+    let fill_w = rect.width() * ratio;
+    if fill_w > 0.5 {
+        let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, rect.height()));
+        painter.rect_filled(fill_rect, rounding, arr_to_c32(fill_color));
+    }
+}
+
+fn paint_checkbox(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    checked: bool, label: &str, check_color: &[f32; 4], box_color: &[f32; 4],
+) {
+    let box_size = (18.0 * z).max(8.0);
+    let box_y = rect.center().y - box_size / 2.0;
+    let box_rect = Rect::from_min_size(Pos2::new(rect.min.x, box_y), Vec2::splat(box_size));
+    let box_round = round_f(3.0 * z);
+
+    // Box
+    painter.rect_filled(box_rect, box_round, arr_to_c32(box_color));
+    painter.rect_stroke(box_rect, box_round, Stroke::new(1.5 * z, Color32::from_rgb(120, 120, 130)), egui::StrokeKind::Outside);
+
+    // Checkmark
+    if checked {
+        let cc = arr_to_c32(check_color);
+        let inner = box_rect.shrink(4.0 * z);
+        painter.rect_filled(inner, round_f(2.0 * z), cc);
+    }
+
+    // Label
+    if !label.is_empty() {
+        let tc = arr_to_c32(&ws.text_color);
+        painter.text(
+            Pos2::new(box_rect.max.x + 6.0 * z, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_toggle(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    on: bool, label: &str,
+    on_color: &[f32; 4], off_color: &[f32; 4], knob_color: &[f32; 4],
+) {
+    let track_w = (44.0 * z).max(20.0);
+    let track_h = (24.0 * z).max(12.0);
+    let track_y = rect.center().y - track_h / 2.0;
+    let track_rect = Rect::from_min_size(Pos2::new(rect.min.x, track_y), Vec2::new(track_w, track_h));
+    let track_round = round_f(track_h / 2.0);
+
+    let track_color = if on { arr_to_c32(on_color) } else { arr_to_c32(off_color) };
+    painter.rect_filled(track_rect, track_round, track_color);
+
+    // Knob
+    let knob_r = (track_h - 4.0 * z) / 2.0;
+    let knob_x = if on {
+        track_rect.max.x - knob_r - 2.0 * z
+    } else {
+        track_rect.min.x + knob_r + 2.0 * z
+    };
+    painter.circle_filled(Pos2::new(knob_x, rect.center().y), knob_r, arr_to_c32(knob_color));
+
+    // Label
+    if !label.is_empty() {
+        let tc = arr_to_c32(&ws.text_color);
+        painter.text(
+            Pos2::new(track_rect.max.x + 8.0 * z, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_dropdown(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    selected_text: &str,
+) {
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(45, 45, 50) };
+    painter.rect_filled(rect, rounding, bg);
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+
+    // Text
+    let tc = arr_to_c32(&ws.text_color);
+    let pad = 8.0 * z;
+    painter.text(
+        Pos2::new(rect.min.x + pad, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        selected_text,
+        egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+        tc,
+    );
+
+    // Down arrow
+    let arrow_x = rect.max.x - pad - 6.0 * z;
+    painter.text(
+        Pos2::new(arrow_x, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        egui_phosphor::regular::CARET_DOWN,
+        egui::FontId::proportional(12.0 * z),
+        tc,
+    );
+}
+
+fn paint_text_input(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    text: &str, placeholder: &str,
+) {
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(35, 35, 40) };
+    painter.rect_filled(rect, rounding, bg);
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+
+    let pad = 8.0 * z;
+    let (display_text, color) = if text.is_empty() {
+        (placeholder, Color32::from_rgb(120, 120, 130))
+    } else {
+        (text.as_ref(), arr_to_c32(&ws.text_color))
+    };
+    painter.text(
+        Pos2::new(rect.min.x + pad, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        display_text,
+        egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+        color,
+    );
+
+    // Cursor line
+    if !text.is_empty() {
+        let galley = painter.layout_no_wrap(
+            text.to_string(),
+            egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+            arr_to_c32(&ws.text_color),
+        );
+        let cursor_x = (rect.min.x + pad + galley.size().x).min(rect.max.x - 2.0);
+        painter.line_segment(
+            [
+                Pos2::new(cursor_x, rect.min.y + 4.0 * z),
+                Pos2::new(cursor_x, rect.max.y - 4.0 * z),
+            ],
+            Stroke::new(z, Color32::from_rgb(180, 180, 200)),
+        );
+    }
+}
+
+fn paint_tab_bar(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    tabs: &[String], active: usize, tab_color: &[f32; 4], active_color: &[f32; 4],
+) {
+    if tabs.is_empty() { return; }
+    let tab_w = rect.width() / tabs.len() as f32;
+    let tc = arr_to_c32(&ws.text_color);
+
+    for (i, tab) in tabs.iter().enumerate() {
+        let x = rect.min.x + tab_w * i as f32;
+        let tab_rect = Rect::from_min_size(Pos2::new(x, rect.min.y), Vec2::new(tab_w, rect.height()));
+        let color = if i == active { arr_to_c32(active_color) } else { arr_to_c32(tab_color) };
+        painter.rect_filled(tab_rect, 0.0, color);
+
+        painter.text(
+            tab_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            tab,
+            egui::FontId::proportional((11.0 * z).clamp(6.0, 24.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_spinner(painter: &egui::Painter, rect: Rect, z: f32, color: &[f32; 4]) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let sw = (3.0 * z).max(1.0);
+    let c = arr_to_c32(color);
+
+    // Draw 3/4 of a circle arc (approximated with line segments)
+    let segments = 24;
+    let start_angle = 0.0_f32;
+    let sweep = std::f32::consts::PI * 1.5;
+    for i in 0..segments {
+        let a0 = start_angle + sweep * (i as f32 / segments as f32);
+        let a1 = start_angle + sweep * ((i + 1) as f32 / segments as f32);
+        let p0 = Pos2::new(center.x + radius * a0.cos(), center.y + radius * a0.sin());
+        let p1 = Pos2::new(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+        painter.line_segment([p0, p1], Stroke::new(sw, c));
+    }
+}
+
+fn paint_radio_button(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    selected: bool, label: &str, active_color: &[f32; 4],
+) {
+    let circle_r = (9.0 * z).max(4.0);
+    let cx = rect.min.x + circle_r;
+    let cy = rect.center().y;
+
+    // Outer circle
+    painter.circle_stroke(
+        Pos2::new(cx, cy), circle_r,
+        Stroke::new(1.5 * z, Color32::from_rgb(120, 120, 130)),
+    );
+
+    // Inner dot if selected
+    if selected {
+        painter.circle_filled(Pos2::new(cx, cy), circle_r * 0.5, arr_to_c32(active_color));
+    }
+
+    // Label
+    if !label.is_empty() {
+        let tc = arr_to_c32(&ws.text_color);
+        painter.text(
+            Pos2::new(cx + circle_r + 6.0 * z, cy),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional((ws.text_size * z).clamp(6.0, 30.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_window_like(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    title: &str, title_bar_color: &[f32; 4],
+) {
+    // Body
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(40, 40, 48) };
+    painter.rect_filled(rect, rounding, bg);
+
+    // Title bar
+    let tb_h = (28.0 * z).max(12.0);
+    let tb_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), tb_h));
+    let tb_round = egui::Rounding { nw: rounding.nw, ne: rounding.ne, se: 0, sw: 0 };
+    painter.rect_filled(tb_rect, tb_round, arr_to_c32(title_bar_color));
+
+    // Title text
+    painter.text(
+        Pos2::new(tb_rect.min.x + 8.0 * z, tb_rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional((12.0 * z).clamp(6.0, 24.0)),
+        Color32::WHITE,
+    );
+
+    // Border
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
 }

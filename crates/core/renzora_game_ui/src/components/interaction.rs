@@ -3,31 +3,36 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::style::{UiFill, UiStateStyle};
+
 // ── Interaction Styles ──────────────────────────────────────────────────────
 
 /// Per-state style overrides for interactive widgets.
+///
+/// Each state can override any field from `UiWidgetStyle` via `UiStateStyle`.
+/// At runtime, the active state's overrides are merged on top of the base style.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct UiInteractionStyle {
-    pub normal: UiStyleOverrides,
-    pub hovered: UiStyleOverrides,
-    pub pressed: UiStyleOverrides,
-    pub disabled: UiStyleOverrides,
+    pub normal: UiStateStyle,
+    pub hovered: UiStateStyle,
+    pub pressed: UiStateStyle,
+    pub disabled: UiStateStyle,
 }
 
 impl Default for UiInteractionStyle {
     fn default() -> Self {
         Self {
-            normal: UiStyleOverrides::default(),
-            hovered: UiStyleOverrides {
-                bg_color: Some(Color::srgba(0.35, 0.35, 0.9, 1.0)),
+            normal: UiStateStyle::default(),
+            hovered: UiStateStyle {
+                fill: Some(UiFill::Solid(Color::srgba(0.35, 0.35, 0.9, 1.0))),
                 ..default()
             },
-            pressed: UiStyleOverrides {
-                bg_color: Some(Color::srgba(0.2, 0.2, 0.7, 1.0)),
+            pressed: UiStateStyle {
+                fill: Some(UiFill::Solid(Color::srgba(0.2, 0.2, 0.7, 1.0))),
                 ..default()
             },
-            disabled: UiStyleOverrides {
+            disabled: UiStateStyle {
                 opacity: Some(0.5),
                 ..default()
             },
@@ -35,15 +40,8 @@ impl Default for UiInteractionStyle {
     }
 }
 
-/// Style properties that can be overridden per interaction state.
-#[derive(Clone, Debug, Default, Reflect, Serialize, Deserialize)]
-pub struct UiStyleOverrides {
-    pub bg_color: Option<Color>,
-    pub border_color: Option<Color>,
-    pub text_color: Option<Color>,
-    pub scale: Option<f32>,
-    pub opacity: Option<f32>,
-}
+/// Legacy alias — use `UiStateStyle` for new code.
+pub type UiStyleOverrides = UiStateStyle;
 
 /// Duration for interpolating between interaction states.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]

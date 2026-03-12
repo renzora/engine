@@ -50,6 +50,9 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::TooltipData>();
         app.register_type::<components::ModalData>();
         app.register_type::<components::DraggableWindowData>();
+        app.register_type::<components::UiImagePath>();
+        // Widget style
+        app.register_type::<components::UiWidgetStyle>();
         // Interaction & animation
         app.register_type::<components::UiInteractionStyle>();
         app.register_type::<components::UiTransition>();
@@ -73,7 +76,7 @@ impl Plugin for GameUiPlugin {
         );
 
         // ── Canvas scaler ───────────────────────────────────────────────
-        app.add_systems(Update, update_ui_scale);
+        app.add_systems(Update, (update_ui_scale, rehydrate_ui_images));
 
         // ── Runtime widget systems ──────────────────────────────────────
         app.add_systems(
@@ -95,6 +98,8 @@ impl Plugin for GameUiPlugin {
                 systems::interaction_style_system,
                 systems::ui_theme_system,
                 systems::ui_tween_system,
+                systems::ensure_style_components,
+                systems::apply_widget_style_system,
             ),
         );
 
@@ -108,9 +113,11 @@ impl Plugin for GameUiPlugin {
             app.register_panel(canvas::UiCanvasPanel::default());
             app.register_panel(inspector::UiInspectorPanel::default());
 
+            app.add_systems(Startup, canvas::setup_canvas_preview);
             app.add_systems(
                 Update,
                 (
+                    canvas::update_canvas_preview,
                     ensure_ui_visibility_components,
                     sync_ui_canvas_visibility,
                     register_ui_image_textures,
@@ -174,6 +181,26 @@ fn update_ui_scale(
 
     let scale = (actual_w / ref_w).min(actual_h / ref_h);
     ui_scale.0 = scale;
+}
+
+// ── Image rehydration ───────────────────────────────────────────────────────
+
+/// Rehydrates `ImageNode` for UI image widgets after scene deserialization.
+///
+/// `ImageNode` contains a `Handle<Image>` which fails serialization and gets
+/// stripped on save. `UiImagePath` stores the asset-relative path and survives.
+/// This system re-loads the image and inserts `ImageNode` on any entity that
+/// has `UiImagePath` but no `ImageNode`.
+fn rehydrate_ui_images(
+    mut commands: Commands,
+    query: Query<(Entity, &components::UiImagePath), (Without<ImageNode>, Added<components::UiImagePath>)>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, img_path) in &query {
+        let path = img_path.path.clone();
+        let handle: Handle<Image> = asset_server.load(path);
+        commands.entity(entity).insert(ImageNode::new(handle));
+    }
 }
 
 // ── Editor-only systems ─────────────────────────────────────────────────────

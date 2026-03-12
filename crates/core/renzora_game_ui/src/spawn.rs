@@ -91,6 +91,12 @@ fn spawn_container(world: &mut World, r: &Ref) -> Entity {
                 height: pct_h(100.0, r),
                 ..default()
             },
+            UiWidgetStyle {
+                fill: UiFill::None,
+                stroke: UiStroke::new(Color::srgba(0.3, 0.3, 0.35, 0.5), 1.0),
+                border_radius: UiBorderRadius::all(2.0),
+                ..default()
+            },
         ))
         .id()
 }
@@ -106,8 +112,13 @@ fn spawn_panel(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(300.0, r),
                 height: pct_h(200.0, r),
-                padding: UiRect::all(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            UiWidgetStyle {
+                fill: UiFill::solid(Color::srgba(0.15, 0.15, 0.18, 0.9)),
+                stroke: UiStroke::new(Color::srgba(0.3, 0.3, 0.35, 1.0), 1.0),
+                border_radius: UiBorderRadius::all(6.0),
+                padding: UiPadding::all(8.0),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.15, 0.15, 0.18, 0.9)),
@@ -131,6 +142,14 @@ fn spawn_text(world: &mut World) -> Entity {
                 font_size: 16.0,
                 ..default()
             },
+            UiWidgetStyle {
+                text: UiTextStyle {
+                    color: Color::WHITE,
+                    size: 16.0,
+                    ..default()
+                },
+                ..default()
+            },
         ))
         .id()
 }
@@ -149,6 +168,11 @@ fn spawn_image(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 1.0)),
+            UiWidgetStyle {
+                fill: UiFill::solid(Color::srgba(0.3, 0.3, 0.3, 1.0)),
+                border_radius: UiBorderRadius::all(2.0),
+                ..default()
+            },
         ))
         .id()
 }
@@ -166,13 +190,26 @@ fn spawn_button(world: &mut World, r: &Ref) -> Entity {
                 height: pct_h(40.0, r),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
             Button,
             Interaction::default(),
             BackgroundColor(Color::srgba(0.25, 0.25, 0.8, 1.0)),
             BorderColor::all(Color::srgba(0.4, 0.4, 0.9, 1.0)),
+            UiWidgetStyle {
+                fill: UiFill::solid(Color::srgba(0.25, 0.25, 0.8, 1.0)),
+                stroke: UiStroke::new(Color::srgba(0.4, 0.4, 0.9, 1.0), 1.0),
+                border_radius: UiBorderRadius::all(4.0),
+                cursor: UiCursor::Pointer,
+                text: UiTextStyle {
+                    color: Color::WHITE,
+                    size: 14.0,
+                    bold: true,
+                    ..default()
+                },
+                padding: UiPadding::symmetric(6.0, 16.0),
+                ..default()
+            },
             UiInteractionStyle::default(),
             UiTransition::default(),
         ))
@@ -194,12 +231,16 @@ fn spawn_progress_bar(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(200.0, r),
                 height: pct_h(24.0, r),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                overflow: Overflow::clip(),
                 ..default()
             },
             data,
             BackgroundColor(bg_color),
+            UiWidgetStyle {
+                fill: UiFill::solid(bg_color),
+                border_radius: UiBorderRadius::all(4.0),
+                clip_content: true,
+                ..default()
+            },
         ))
         .id();
 
@@ -235,12 +276,16 @@ fn spawn_health_bar(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(200.0, r),
                 height: pct_h(20.0, r),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                overflow: Overflow::clip(),
                 ..default()
             },
             data,
             BackgroundColor(bg_color),
+            UiWidgetStyle {
+                fill: UiFill::solid(bg_color),
+                border_radius: UiBorderRadius::all(3.0),
+                clip_content: true,
+                ..default()
+            },
         ))
         .id();
 
@@ -279,6 +324,10 @@ fn spawn_slider(world: &mut World, r: &Ref) -> Entity {
             data.clone(),
             Interaction::default(),
             RelativeCursorPosition::default(),
+            UiWidgetStyle {
+                cursor: UiCursor::Pointer,
+                ..default()
+            },
         ))
         .id();
 
@@ -353,6 +402,15 @@ fn spawn_checkbox(world: &mut World, r: &Ref) -> Entity {
             data.clone(),
             Button,
             Interaction::default(),
+            UiWidgetStyle {
+                cursor: UiCursor::Pointer,
+                text: UiTextStyle {
+                    color: Color::WHITE,
+                    size: 14.0,
+                    ..default()
+                },
+                ..default()
+            },
         ))
         .id();
 
@@ -433,6 +491,15 @@ fn spawn_toggle(world: &mut World, r: &Ref) -> Entity {
             data.clone(),
             Button,
             Interaction::default(),
+            UiWidgetStyle {
+                cursor: UiCursor::Pointer,
+                text: UiTextStyle {
+                    color: Color::WHITE,
+                    size: 14.0,
+                    ..default()
+                },
+                ..default()
+            },
         ))
         .id();
 
@@ -497,14 +564,19 @@ fn spawn_scroll_view(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(300.0, r),
                 height: pct_h(200.0, r),
-                overflow: Overflow::clip(),
                 flex_direction: FlexDirection::Column,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
             ScrollViewData::default(),
             BackgroundColor(Color::srgba(0.12, 0.12, 0.15, 0.9)),
             BorderColor::all(Color::srgba(0.3, 0.3, 0.35, 1.0)),
+            UiWidgetStyle {
+                fill: UiFill::solid(Color::srgba(0.12, 0.12, 0.15, 0.9)),
+                stroke: UiStroke::new(Color::srgba(0.3, 0.3, 0.35, 1.0), 1.0),
+                border_radius: UiBorderRadius::all(4.0),
+                clip_content: true,
+                ..default()
+            },
         ))
         .id()
 }
@@ -521,13 +593,20 @@ fn spawn_spinner(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(32.0, r),
                 height: pct_h(32.0, r),
-                border: UiRect::new(Val::Px(3.0), Val::Px(3.0), Val::Px(3.0), Val::Px(0.0)),
-                border_radius: BorderRadius::all(Val::Percent(50.0)),
                 ..default()
             },
             data,
             BorderColor::all(Color::WHITE),
             BackgroundColor(Color::NONE),
+            UiWidgetStyle {
+                stroke: UiStroke {
+                    color: Color::WHITE,
+                    width: 3.0,
+                    sides: UiSides { top: true, right: true, bottom: true, left: false },
+                },
+                border_radius: UiBorderRadius::all(999.0),
+                ..default()
+            },
         ))
         .id()
 }
@@ -583,7 +662,7 @@ pub fn spawn_image_at(
         asset_path.to_string_lossy().replace('\\', "/")
     };
 
-    let image_handle: Handle<Image> = world.resource::<AssetServer>().load(load_path);
+    let image_handle: Handle<Image> = world.resource::<AssetServer>().load(load_path.clone());
 
     // Read actual image dimensions from disk; fall back to 128×128 if unreadable
     #[cfg(feature = "editor")]
@@ -623,6 +702,7 @@ pub fn spawn_image_at(
                 ..default()
             },
             ImageNode::new(image_handle),
+            UiImagePath { path: load_path },
             UiThemed,
         ))
         .id();

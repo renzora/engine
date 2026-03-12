@@ -309,6 +309,19 @@ impl Default for ModalData {
     }
 }
 
+// ── Image ────────────────────────────────────────────────────────────
+
+/// Serializable asset path for UI image widgets.
+///
+/// `ImageNode` contains a `Handle<Image>` which can't be serialized.
+/// This component stores the asset-relative path so the image can be
+/// rehydrated after scene deserialization.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct UiImagePath {
+    pub path: String,
+}
+
 // ── Draggable Window ────────────────────────────────────────────────────────
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]

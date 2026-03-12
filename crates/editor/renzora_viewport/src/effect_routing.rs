@@ -3,11 +3,13 @@
 //! Routes:
 //! - **Editing**: EditorCamera ← [DefaultCamera entity, all non-camera entities]
 //! - **Editing + preview**: CameraPreviewMarker ← [previewing entity, all non-camera entities]
+//! - **UI canvas preview**: UiCanvasPreviewCamera ← same sources as camera preview
 //! - **Play mode**: PlayModeCamera ← [play mode source camera, all non-camera entities]
 
 use bevy::prelude::*;
 use renzora_core::{
     DefaultCamera, EditorCamera, EffectRouting, PlayModeCamera, PlayModeState, SceneCamera,
+    UiCanvasPreviewCamera,
 };
 
 use crate::camera_preview::{CameraPreviewMarker, CameraPreviewState};
@@ -29,6 +31,7 @@ pub fn update_effect_routing(
     preview_cameras: Query<Entity, With<CameraPreviewMarker>>,
     preview_state: Option<Res<CameraPreviewState>>,
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
+    canvas_preview_cameras: Query<Entity, With<UiCanvasPreviewCamera>>,
     non_camera_entities: Query<Entity, (Without<Camera>, With<Name>)>,
 ) {
     let mut routes: Vec<(Entity, Vec<Entity>)> = Vec::new();
@@ -81,7 +84,12 @@ pub fn update_effect_routing(
             sources.push(src);
         }
         sources.extend(&global_sources);
-        routes.push((preview_cam, sources));
+        routes.push((preview_cam, sources.clone()));
+
+        // UI canvas preview camera: same sources as the camera preview
+        if let Ok(canvas_cam) = canvas_preview_cameras.single() {
+            routes.push((canvas_cam, sources));
+        }
     }
 
     if routing.routes != routes {

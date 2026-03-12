@@ -53,7 +53,7 @@ impl ViewNode for RtLightingNode {
         &'static RtLighting,
         &'static RtLightingResources,
         &'static ViewTarget,
-        &'static ViewPrepassTextures,
+        Option<&'static ViewPrepassTextures>,
         &'static ViewUniformOffset,
         Option<&'static PreviousViewUniformOffset>,
     );
@@ -72,6 +72,10 @@ impl ViewNode for RtLightingNode {
         ): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
+        // ViewPrepassTextures requires DepthPrepass on the camera; skip if not yet available
+        let Some(view_prepass_textures) = view_prepass_textures else {
+            return Ok(());
+        };
         let pipeline_cache = world.resource::<PipelineCache>();
         let view_uniforms = world.resource::<ViewUniforms>();
         let previous_view_uniforms = world.resource::<PreviousViewUniforms>();

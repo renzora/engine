@@ -2,16 +2,16 @@
 
 use bevy::prelude::*;
 
-use crate::components::{TweenComplete, UiTween, UiTweenProperty};
+use crate::components::{TweenComplete, UiTween, UiTweenProperty, UiWidgetStyle, UiFill};
 
 pub fn ui_tween_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut tweens: Query<(Entity, &mut UiTween, &mut Node, Option<&mut BackgroundColor>)>,
+    mut tweens: Query<(Entity, &mut UiTween, &mut Node, Option<&mut UiWidgetStyle>)>,
 ) {
     let dt = time.delta_secs();
 
-    for (entity, mut tween, mut node, bg) in &mut tweens {
+    for (entity, mut tween, mut node, mut style) in &mut tweens {
         tween.elapsed += dt;
         let t = (tween.elapsed / tween.duration).clamp(0.0, 1.0);
         let eased = tween.easing.evaluate(t);
@@ -30,35 +30,28 @@ pub fn ui_tween_system(
             UiTweenProperty::Height => {
                 node.height = Val::Px(value);
             }
-            UiTweenProperty::BgColorA => {
-                if let Some(mut bg) = bg {
-                    let mut srgba = bg.0.to_srgba();
-                    srgba.alpha = value;
-                    bg.0 = srgba.into();
+            UiTweenProperty::Opacity => {
+                if let Some(ref mut style) = style {
+                    style.opacity = value;
                 }
             }
-            UiTweenProperty::BgColorR => {
-                if let Some(mut bg) = bg {
-                    let mut srgba = bg.0.to_srgba();
-                    srgba.red = value;
-                    bg.0 = srgba.into();
+            UiTweenProperty::BgColorR
+            | UiTweenProperty::BgColorG
+            | UiTweenProperty::BgColorB
+            | UiTweenProperty::BgColorA => {
+                if let Some(ref mut style) = style {
+                    let mut srgba = style.fill.primary_color().to_srgba();
+                    match &tween.property {
+                        UiTweenProperty::BgColorR => srgba.red = value,
+                        UiTweenProperty::BgColorG => srgba.green = value,
+                        UiTweenProperty::BgColorB => srgba.blue = value,
+                        UiTweenProperty::BgColorA => srgba.alpha = value,
+                        _ => {}
+                    }
+                    style.fill = UiFill::Solid(srgba.into());
                 }
             }
-            UiTweenProperty::BgColorG => {
-                if let Some(mut bg) = bg {
-                    let mut srgba = bg.0.to_srgba();
-                    srgba.green = value;
-                    bg.0 = srgba.into();
-                }
-            }
-            UiTweenProperty::BgColorB => {
-                if let Some(mut bg) = bg {
-                    let mut srgba = bg.0.to_srgba();
-                    srgba.blue = value;
-                    bg.0 = srgba.into();
-                }
-            }
-            _ => {} // Opacity, Scale, Rotation handled by transform systems
+            _ => {} // Scale, Rotation handled by transform systems
         }
 
         if t >= 1.0 {

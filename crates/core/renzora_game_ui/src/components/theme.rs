@@ -209,6 +209,83 @@ impl UiTheme {
     }
 }
 
+impl UiTheme {
+    /// Generate a `UiWidgetStyle` from theme tokens for the given widget type.
+    pub fn widget_style(&self, widget_type: &super::UiWidgetType) -> super::style::UiWidgetStyle {
+        use super::style::*;
+        use super::UiWidgetType;
+
+        let (fill, text_color) = match widget_type {
+            UiWidgetType::Button => (UiFill::Solid(self.accent), self.text_on_accent),
+            UiWidgetType::Image => (UiFill::Solid(self.surface_raised), self.text_primary),
+            UiWidgetType::Panel | UiWidgetType::Container | UiWidgetType::ScrollView => {
+                (UiFill::Solid(self.surface), self.text_primary)
+            }
+            UiWidgetType::Modal | UiWidgetType::DraggableWindow => {
+                (UiFill::Solid(self.surface_raised), self.text_primary)
+            }
+            _ => (UiFill::Solid(self.surface), self.text_primary),
+        };
+
+        let stroke = UiStroke::new(self.border, self.border_width);
+        let border_radius = UiBorderRadius::all(self.border_radius);
+
+        UiWidgetStyle {
+            fill,
+            stroke,
+            border_radius,
+            shadow: None,
+            opacity: 1.0,
+            cursor: match widget_type {
+                UiWidgetType::Button | UiWidgetType::Checkbox | UiWidgetType::Toggle
+                | UiWidgetType::RadioButton | UiWidgetType::Slider | UiWidgetType::Dropdown => {
+                    UiCursor::Pointer
+                }
+                UiWidgetType::TextInput => UiCursor::Text,
+                _ => UiCursor::Default,
+            },
+            clip_content: matches!(
+                widget_type,
+                UiWidgetType::ProgressBar | UiWidgetType::HealthBar | UiWidgetType::ScrollView
+            ),
+            text: UiTextStyle {
+                color: text_color,
+                size: self.font_size_md,
+                bold: matches!(widget_type, UiWidgetType::Button),
+                italic: false,
+                align: UiTextAlign::Center,
+            },
+            padding: match widget_type {
+                UiWidgetType::Button => UiPadding::symmetric(4.0, 16.0),
+                UiWidgetType::Panel | UiWidgetType::Container => UiPadding::all(self.spacing),
+                _ => UiPadding::default(),
+            },
+        }
+    }
+
+    /// Generate themed `UiInteractionStyle` for interactive widgets.
+    pub fn interaction_style(&self) -> super::UiInteractionStyle {
+        use super::style::UiFill;
+        use super::UiInteractionStyle;
+
+        UiInteractionStyle {
+            normal: Default::default(),
+            hovered: super::style::UiStateStyle {
+                fill: Some(UiFill::Solid(self.accent_hovered)),
+                ..Default::default()
+            },
+            pressed: super::style::UiStateStyle {
+                fill: Some(UiFill::Solid(self.accent_pressed)),
+                ..Default::default()
+            },
+            disabled: super::style::UiStateStyle {
+                opacity: Some(0.5),
+                ..Default::default()
+            },
+        }
+    }
+}
+
 /// Marker component: this widget's colors should follow the active `UiTheme`.
 ///
 /// When the theme resource changes, all entities with `UiThemed` will have

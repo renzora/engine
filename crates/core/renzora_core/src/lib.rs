@@ -324,6 +324,10 @@ impl PlayModeState {
 #[derive(Component)]
 pub struct PlayModeCamera;
 
+/// Marker component for the UI canvas preview camera.
+#[derive(Component)]
+pub struct UiCanvasPreviewCamera;
+
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]
