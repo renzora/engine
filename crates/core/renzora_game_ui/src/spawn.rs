@@ -56,7 +56,7 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
     let entity = match widget_type {
         UiWidgetType::Container => spawn_container(world, &r),
         UiWidgetType::Panel => spawn_panel(world, &r),
-        UiWidgetType::Text => spawn_text(world),
+        UiWidgetType::Text => spawn_text(world, &r),
         UiWidgetType::Image => spawn_image(world, &r),
         UiWidgetType::Button => spawn_button(world, &r),
         UiWidgetType::ProgressBar => spawn_progress_bar(world, &r),
@@ -127,7 +127,7 @@ fn spawn_panel(world: &mut World, r: &Ref) -> Entity {
         .id()
 }
 
-fn spawn_text(world: &mut World) -> Entity {
+fn spawn_text(world: &mut World, r: &Ref) -> Entity {
     world
         .spawn((
             Name::new("Text"),
@@ -135,7 +135,13 @@ fn spawn_text(world: &mut World) -> Entity {
                 widget_type: UiWidgetType::Text,
                 locked: false,
             },
-            Node::default(),
+            Node {
+                width: pct_w(150.0, r),
+                height: pct_h(30.0, r),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
             bevy::ui::widget::Text::new("Hello World"),
             TextColor(Color::WHITE),
             TextFont {
@@ -143,6 +149,7 @@ fn spawn_text(world: &mut World) -> Entity {
                 ..default()
             },
             UiWidgetStyle {
+                stroke: UiStroke::new(Color::srgba(0.4, 0.4, 0.45, 1.0), 1.0),
                 text: UiTextStyle {
                     color: Color::WHITE,
                     size: 16.0,
