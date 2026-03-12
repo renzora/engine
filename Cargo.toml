@@ -98,6 +98,8 @@ editor = [
     "dep:renzora_script_variables",
     "dep:renzora_blueprint_editor",
     "dep:renzora_tutorial",
+    "dep:renzora_network_editor",
+    "dep:renzora_daw",
     "renzora_game_ui/editor",
     # "renzora_gauges/editor",
     # "renzora_gauges/lua",
@@ -157,6 +159,8 @@ renzora_code_editor = { path = "crates/editor/renzora_code_editor", optional = t
 renzora_script_variables = { path = "crates/editor/renzora_script_variables", optional = true }
 renzora_blueprint_editor = { path = "crates/editor/renzora_blueprint_editor", optional = true }
 renzora_tutorial = { path = "crates/editor/renzora_tutorial", optional = true }
+renzora_network_editor = { path = "crates/editor/renzora_network_editor", optional = true }
+renzora_daw = { path = "crates/editor/renzora_daw", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)

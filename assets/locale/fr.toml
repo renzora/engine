@@ -1160,6 +1160,14 @@ version = "1.0"
 "layout.particles" = "Particules"
 "layout.shaders" = "Shaders"
 "layout.physics" = "Physique"
+"layout.audio" = "Audio"
+"layout.networking" = "Réseau"
+
+# ─── Networking & Audio panels ───────────────────────────────────────────────
+"panel.daw" = "Audio"
+"panel.network_monitor" = "Moniteur Réseau"
+"panel.network_entities" = "Entités Réseau"
+"panel.network_settings" = "Paramètres Réseau"
 
 "inspector.category.transform" = "Transformation"
 "inspector.component.enable" = "Activer le composant"

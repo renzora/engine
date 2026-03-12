@@ -32,6 +32,8 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
             WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
+            WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
+            WorkspaceLayout { name: "Networking".into(), tree: layout_networking() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
         ];
 
@@ -322,6 +324,63 @@ fn layout_ui() -> DockTree {
             0.75,
         ),
         0.15,
+    )
+}
+
+/// Audio: DAW timeline + Mixer + Assets
+fn layout_audio() -> DockTree {
+    DockTree::vertical(
+        // Top: hierarchy | DAW timeline | inspector
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(
+                DockTree::leaf("daw"),
+                DockTree::leaf("inspector"),
+                0.78,
+            ),
+            0.15,
+        ),
+        // Bottom: mixer | assets + console
+        DockTree::horizontal(
+            DockTree::leaf("mixer"),
+            DockTree::Leaf {
+                tabs: vec!["assets".into(), "console".into()],
+                active_tab: 0,
+            },
+            0.6,
+        ),
+        0.6,
+    )
+}
+
+/// Networking: Hierarchy | Viewport+NetworkMonitor | Inspector+NetworkEntities
+fn layout_networking() -> DockTree {
+    DockTree::horizontal(
+        // Left: hierarchy + network entities
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("network_entities"),
+            0.5,
+        ),
+        DockTree::horizontal(
+            // Center: viewport on top, network monitor + console below
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::Leaf {
+                    tabs: vec!["network_monitor".into(), "console".into()],
+                    active_tab: 0,
+                },
+                0.65,
+            ),
+            // Right: inspector + network settings
+            DockTree::vertical(
+                DockTree::leaf("inspector"),
+                DockTree::leaf("network_settings"),
+                0.5,
+            ),
+            0.75,
+        ),
+        0.18,
     )
 }
 

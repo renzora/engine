@@ -1161,6 +1161,14 @@ version = "1.0"
 "layout.particles" = "パーティクル"
 "layout.shaders" = "シェーダー"
 "layout.physics" = "物理"
+"layout.audio" = "オーディオ"
+"layout.networking" = "ネットワーク"
+
+# ─── Networking & Audio panels ───────────────────────────────────────────────
+"panel.daw" = "オーディオ"
+"panel.network_monitor" = "ネットワークモニター"
+"panel.network_entities" = "ネットワークエンティティ"
+"panel.network_settings" = "ネットワーク設定"
 
 "inspector.category.transform" = "トランスフォーム"
 "inspector.component.enable" = "コンポーネントを有効化"
