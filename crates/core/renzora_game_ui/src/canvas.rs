@@ -13,6 +13,7 @@ use renzora_editor::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelect
 use renzora_theme::ThemeManager;
 
 use crate::components::{UiCanvas, UiWidget, UiWidgetType};
+use crate::palette::WidgetDragPayload;
 
 /// Image file extensions accepted for drag-and-drop onto the canvas.
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "tga", "webp"];
@@ -1236,6 +1237,87 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
+        // ── Widget palette drag-and-drop ────────────────────────────────
+        if let Some(widget_drag) = world.get_resource::<WidgetDragPayload>() {
+            let pointer = ui.ctx().pointer_latest_pos();
+
+            // Update detach state
+            if !widget_drag.is_detached {
+                if let Some(pos) = pointer {
+                    if pos.distance(widget_drag.origin) > 5.0 {
+                        commands.push(|world: &mut World| {
+                            if let Some(mut drag) = world.get_resource_mut::<WidgetDragPayload>() {
+                                drag.is_detached = true;
+                            }
+                        });
+                    }
+                }
+            }
+
+            if widget_drag.is_detached {
+                // Draw ghost
+                if let Some(pos) = pointer {
+                    crate::palette::draw_widget_drag_ghost(ui.ctx(), widget_drag, pos, &theme);
+
+                    // Highlight canvas drop zone
+                    if canvas_rect.contains(pos) {
+                        painter.rect_stroke(
+                            canvas_rect,
+                            0.0,
+                            Stroke::new(2.0, accent),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+
+                // Drop on pointer release
+                if !ui.ctx().input(|i| i.pointer.any_down()) {
+                    let over_canvas = pointer.map_or(false, |p| canvas_rect.contains(p));
+                    if over_canvas && state.active_canvas.is_some() {
+                        // Convert screen position to canvas-local coordinates
+                        let pos = pointer.unwrap();
+                        let mut canvas_x = (pos.x - canvas_rect.min.x) / z;
+                        let mut canvas_y = (pos.y - canvas_rect.min.y) / z;
+                        if state.snap_enabled {
+                            canvas_x = snap(canvas_x, state.grid_size);
+                            canvas_y = snap(canvas_y, state.grid_size);
+                        }
+                        let wt = widget_drag.widget_type.clone();
+                        let active = state.active_canvas;
+                        commands.push(move |world: &mut World| {
+                            crate::spawn::spawn_widget(world, &wt, active);
+                            // Set position on the newly spawned widget
+                            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                                if let Some(entity) = sel.get() {
+                                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                                        if let Some(mut node) = em.get_mut::<Node>() {
+                                            node.left = bevy::ui::Val::Px(canvas_x);
+                                            node.top = bevy::ui::Val::Px(canvas_y);
+                                            node.position_type =
+                                                bevy::ui::PositionType::Absolute;
+                                        }
+                                    }
+                                }
+                            }
+                            world.remove_resource::<WidgetDragPayload>();
+                        });
+                    } else {
+                        // Released outside canvas — cancel
+                        commands.push(|world: &mut World| {
+                            world.remove_resource::<WidgetDragPayload>();
+                        });
+                    }
+                }
+            }
+
+            // Cancel on Escape
+            if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+                commands.push(|world: &mut World| {
+                    world.remove_resource::<WidgetDragPayload>();
+                });
+            }
+        }
+
         // ── Empty state ──────────────────────────────────────────────────
         if state.canvases.is_empty() {
             painter.text(
@@ -1245,11 +1327,11 @@ impl EditorPanel for UiCanvasPanel {
                 egui::FontId::proportional(13.0),
                 text_muted,
             );
-        } else if widget_snapshots.is_empty() {
+        } else if widget_snapshots.is_empty() && world.get_resource::<WidgetDragPayload>().is_none() {
             painter.text(
                 canvas_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "Click widgets in the palette or drag images from the asset browser",
+                "Drag widgets from the palette or click to add them here",
                 egui::FontId::proportional(12.0),
                 text_muted,
             );

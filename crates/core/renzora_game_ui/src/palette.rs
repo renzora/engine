@@ -10,6 +10,58 @@ use renzora_theme::ThemeManager;
 
 use crate::components::{UiCanvas, UiWidgetType};
 
+/// Active widget drag state — inserted as a resource when a palette drag begins,
+/// removed on drop or cancel.
+#[derive(Resource, Clone, Debug)]
+pub struct WidgetDragPayload {
+    /// The widget type being dragged.
+    pub widget_type: UiWidgetType,
+    /// Screen position where the drag started.
+    pub origin: egui::Pos2,
+    /// True once the pointer moves >5px from origin.
+    pub is_detached: bool,
+}
+
+/// Draw a floating ghost showing the dragged widget type following the cursor.
+pub fn draw_widget_drag_ghost(
+    ctx: &egui::Context,
+    payload: &WidgetDragPayload,
+    pointer: egui::Pos2,
+    theme: &renzora_theme::Theme,
+) {
+    let offset = Vec2::new(14.0, -10.0);
+    let pos = pointer + offset;
+
+    let accent = theme.semantic.accent.to_color32();
+
+    egui::Area::new(egui::Id::new("widget_drag_ghost"))
+        .fixed_pos(pos)
+        .order(egui::Order::Tooltip)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let frame = egui::Frame::NONE
+                .fill(theme.surfaces.panel.to_color32())
+                .stroke(egui::Stroke::new(1.5, accent))
+                .inner_margin(egui::Margin::symmetric(8, 5))
+                .corner_radius(egui::CornerRadius::same(6));
+            frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(
+                        egui::RichText::new(payload.widget_type.icon())
+                            .font(egui::FontId::proportional(14.0))
+                            .color(accent),
+                    );
+                    ui.label(
+                        egui::RichText::new(payload.widget_type.label())
+                            .font(egui::FontId::proportional(11.0))
+                            .color(theme.text.primary.to_color32()),
+                    );
+                });
+            });
+        });
+}
+
 /// Palette panel state.
 #[derive(Default)]
 struct PaletteState {
@@ -219,7 +271,7 @@ impl EditorPanel for WidgetPalettePanel {
                             let total_height = tile_size + label_height;
                             let (rect, response) = ui.allocate_exact_size(
                                 Vec2::new(tile_size, total_height),
-                                egui::Sense::click(),
+                                egui::Sense::click_and_drag(),
                             );
 
                             let hovered = response.hovered();
@@ -265,8 +317,23 @@ impl EditorPanel for WidgetPalettePanel {
 
                             response
                                 .clone()
-                                .on_hover_text(format!("Click to add a {} widget", wtype.label()));
+                                .on_hover_text(format!("Drag onto canvas or click to add a {} widget", wtype.label()));
 
+                            // Drag to canvas: start drag payload
+                            if response.drag_started() {
+                                if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                                    let wt = wtype.clone();
+                                    commands.push(move |world: &mut World| {
+                                        world.insert_resource(WidgetDragPayload {
+                                            widget_type: wt,
+                                            origin: pos,
+                                            is_detached: false,
+                                        });
+                                    });
+                                }
+                            }
+
+                            // Click fallback: add at default position
                             if response.clicked() {
                                 let wt = wtype.clone();
                                 commands.push(move |world: &mut World| {
