@@ -3,10 +3,10 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, CursorIcon, Vec2};
+use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 use egui_phosphor::regular;
 use renzora_core::{MeshColor, MeshPrimitive, ShapeEntry, ShapeRegistry};
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
 use renzora_theme::ThemeManager;
 
 #[derive(Default)]
@@ -67,6 +67,8 @@ impl EditorPanel for ShapeLibraryPanel {
             Some(r) => r,
             None => return,
         };
+        let drag_state = world.get_resource::<ShapeDragState>();
+        let current_dragging = drag_state.and_then(|s| s.dragging_shape);
 
         let mut state = self.state.write().unwrap();
 
@@ -151,14 +153,18 @@ impl EditorPanel for ShapeLibraryPanel {
                                 break;
                             }
                             let shape = shapes[idx];
+                            let is_this_dragging = current_dragging == Some(shape.id);
                             let total_height = tile_size + label_height;
                             let (rect, response) = ui.allocate_exact_size(
                                 Vec2::new(tile_size, total_height),
-                                egui::Sense::click(),
+                                egui::Sense::click_and_drag(),
                             );
 
                             let hovered = response.hovered();
-                            let bg = if hovered {
+                            let dragging = response.dragged();
+                            let bg = if dragging || is_this_dragging {
+                                accent.linear_multiply(0.3)
+                            } else if hovered {
                                 theme.widgets.hovered_bg.to_color32()
                             } else {
                                 theme.surfaces.faint.to_color32()
@@ -166,14 +172,21 @@ impl EditorPanel for ShapeLibraryPanel {
 
                             ui.painter().rect_filled(rect, 6.0, bg);
 
-                            if hovered {
+                            if hovered || dragging || is_this_dragging {
+                                let border_color = if dragging || is_this_dragging {
+                                    accent
+                                } else {
+                                    accent.linear_multiply(0.6)
+                                };
                                 ui.painter().rect_stroke(
                                     rect,
                                     6.0,
-                                    egui::Stroke::new(1.0, accent.linear_multiply(0.6)),
+                                    egui::Stroke::new(1.0, border_color),
                                     egui::StrokeKind::Outside,
                                 );
-                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                if !dragging && !is_this_dragging {
+                                    ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                                }
                             }
 
                             // Icon
@@ -186,7 +199,11 @@ impl EditorPanel for ShapeLibraryPanel {
                                 egui::Align2::CENTER_CENTER,
                                 shape.icon,
                                 egui::FontId::proportional(28.0),
-                                if hovered { accent } else { text_primary },
+                                if hovered || dragging || is_this_dragging {
+                                    accent
+                                } else {
+                                    text_primary
+                                },
                             );
 
                             // Label
@@ -200,9 +217,41 @@ impl EditorPanel for ShapeLibraryPanel {
 
                             response
                                 .clone()
-                                .on_hover_text(format!("Click to spawn {}", shape.name));
+                                .on_hover_text(format!("Drag to place {}", shape.name));
 
-                            if response.clicked() {
+                            // Drag started — set dragging_shape on ShapeDragState
+                            if response.drag_started() {
+                                let shape_id = shape.id;
+                                commands.push(move |world: &mut World| {
+                                    world.resource_mut::<ShapeDragState>().dragging_shape =
+                                        Some(shape_id);
+                                });
+                            }
+
+                            // Show floating drag indicator
+                            if dragging || is_this_dragging {
+                                if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
+                                    let tooltip_rect = egui::Rect::from_center_size(
+                                        egui::pos2(pointer_pos.x + 20.0, pointer_pos.y - 10.0),
+                                        Vec2::new(80.0, 22.0),
+                                    );
+                                    ui.painter().rect_filled(
+                                        tooltip_rect,
+                                        4.0,
+                                        Color32::from_rgba_premultiplied(30, 30, 35, 220),
+                                    );
+                                    ui.painter().text(
+                                        tooltip_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        shape.name,
+                                        egui::FontId::proportional(11.0),
+                                        accent,
+                                    );
+                                }
+                            }
+
+                            // Click to spawn at origin (fallback)
+                            if response.clicked() && current_dragging.is_none() {
                                 let create_mesh = shape.create_mesh;
                                 let name = shape.name;
                                 let color = shape.default_color;

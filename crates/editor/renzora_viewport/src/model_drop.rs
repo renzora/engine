@@ -54,21 +54,6 @@ pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect
         return;
     }
 
-    // Draw a highlight hint on the viewport
-    let painter = ui.painter();
-    painter.rect_filled(
-        viewport_rect,
-        0.0,
-        egui::Color32::from_rgba_premultiplied(30, 200, 80, 20),
-    );
-    painter.text(
-        egui::Pos2::new(viewport_rect.center().x, viewport_rect.min.y + 30.0),
-        egui::Align2::CENTER_TOP,
-        format!("Drop to spawn: {}", payload.name),
-        egui::FontId::proportional(14.0),
-        egui::Color32::from_rgb(150, 230, 150),
-    );
-
     // Check if the pointer was just released (= drop)
     let pointer_released = !ui.ctx().input(|i| i.pointer.any_down());
     if !pointer_released {

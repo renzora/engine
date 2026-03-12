@@ -8,6 +8,7 @@ pub mod effect_routing;
 pub mod header;
 pub mod model_drop;
 pub mod play_mode;
+pub mod shape_drop;
 pub mod render_systems;
 pub mod settings;
 pub mod toolbar;
@@ -54,6 +55,8 @@ impl Plugin for ViewportPlugin {
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
             .init_resource::<renzora_core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
+            .init_resource::<renzora_ui::ShapeDragState>()
+            .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .add_systems(Update, (
                 handle_viewport_resize,
                 render_systems::update_render_toggles,
@@ -63,6 +66,12 @@ impl Plugin for ViewportPlugin {
                 effect_routing::update_effect_routing,
                 model_drop::spawn_loaded_gltfs,
                 model_drop::align_models_to_ground,
+                shape_drop::shape_drag_ground_tracking
+                    .before(shape_drop::shape_drag_raycast_system),
+                shape_drop::shape_drag_raycast_system
+                    .before(shape_drop::update_shape_drag_preview),
+                shape_drop::update_shape_drag_preview,
+                shape_drop::handle_shape_spawn,
             ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
@@ -261,6 +270,9 @@ impl EditorPanel for ViewportPanel {
 
         // Check for model asset drops on the viewport
         model_drop::check_viewport_model_drop(ui, world, rect);
+
+        // Check for shape library drops on the viewport
+        shape_drop::check_viewport_shape_drop(ui, world, rect);
 
         // Overlay: vertical tool bar (gizmo modes, terrain tools, play button)
         toolbar::render_tool_overlay(ui.ctx(), world, rect);

@@ -4,6 +4,7 @@
 //! title bar, status bar, theme application, and all reusable widgets.
 
 pub mod asset_drag;
+pub mod shape_drag;
 pub mod dock_renderer;
 pub mod dock_tree;
 pub mod document_tabs;
@@ -21,6 +22,7 @@ pub mod widgets;
 pub use dock_tree::{DockTree, DockingState, DropZone, SplitDirection};
 pub use document_tabs::{DocTabAction, DocumentTab, DocumentTabState, TabKind};
 pub use asset_drag::{AssetDragPayload, AssetDropResult, asset_drop_target, draw_asset_drag_ghost};
+pub use shape_drag::{ShapeDragState, ShapeDragPreview, ShapeDragPreviewState, PendingShapeDrop};
 pub use drag_drop::{DragState, DropTarget};
 pub use floating::{FloatingPanel, FloatingPanels, FloatingRenderResult};
 pub use layouts::{LayoutManager, WorkspaceLayout};
