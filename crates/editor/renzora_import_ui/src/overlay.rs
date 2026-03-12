@@ -1,0 +1,573 @@
+//! Import overlay UI — modal dialog for importing 3D models.
+
+use std::path::PathBuf;
+
+use bevy::prelude::*;
+use bevy_egui::egui;
+use egui_phosphor::regular;
+use renzora_core::CurrentProject;
+use renzora_import::settings::{ImportSettings, UpAxis};
+use renzora_theme::ThemeManager;
+
+/// Import progress state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImportProgress {
+    Idle,
+    Converting { current: usize, total: usize },
+    Done(String),
+    Error(String),
+}
+
+/// Resource holding the import overlay state.
+#[derive(Resource)]
+pub struct ImportOverlayState {
+    pub visible: bool,
+    pub pending_files: Vec<PathBuf>,
+    pub target_directory: String,
+    pub settings: ImportSettings,
+    pub progress: ImportProgress,
+}
+
+impl Default for ImportOverlayState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            pending_files: Vec::new(),
+            target_directory: "models".to_string(),
+            settings: ImportSettings::default(),
+            progress: ImportProgress::Idle,
+        }
+    }
+}
+
+pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
+    // Dim background
+    let screen = ctx.input(|i| i.viewport_rect());
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("import_overlay_bg"),
+    ));
+    painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
+
+    // Read theme
+    let (panel_bg, text_primary, text_secondary, accent, error_color, border_color, surface_mid, success_color) = {
+        let theme_mgr = world.resource::<ThemeManager>();
+        let t = &theme_mgr.active_theme;
+        (
+            t.surfaces.panel.0,
+            t.text.primary.0,
+            t.text.secondary.0,
+            t.semantic.accent.0,
+            t.semantic.error.0,
+            t.widgets.border.0,
+            t.surfaces.faint.0,
+            egui::Color32::from_rgb(89, 191, 115),
+        )
+    };
+
+    let has_project = world.get_resource::<CurrentProject>().is_some();
+
+    let window_width = 520.0;
+    let window_id = egui::Id::new("import_overlay_window");
+
+    egui::Area::new(window_id)
+        .fixed_pos(egui::pos2(
+            (screen.width() - window_width) / 2.0,
+            screen.height() * 0.1,
+        ))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            let frame = egui::Frame::new()
+                .fill(panel_bg)
+                .stroke(egui::Stroke::new(1.0, border_color))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::same(20));
+
+            frame.show(ui, |ui| {
+                ui.set_width(window_width);
+
+                // Header
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{} Import 3D Models", regular::CUBE))
+                            .size(18.0)
+                            .color(text_primary),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(regular::X)
+                                        .size(16.0)
+                                        .color(text_secondary),
+                                )
+                                .frame(false),
+                            )
+                            .clicked()
+                        {
+                            close_overlay(world);
+                        }
+                    });
+                });
+
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                if !has_project {
+                    ui.label(
+                        egui::RichText::new("No project open. Open a project before importing.")
+                            .color(error_color),
+                    );
+                    return;
+                }
+
+                // --- Files ---
+                section_label(ui, regular::FILES, "Files", text_primary);
+                ui.add_space(4.0);
+
+                // File list
+                let file_frame = egui::Frame::new()
+                    .fill(surface_mid)
+                    .stroke(egui::Stroke::new(1.0, border_color))
+                    .corner_radius(4.0)
+                    .inner_margin(egui::Margin::same(8));
+
+                file_frame.show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+
+                    let mut remove_idx = None;
+
+                    let file_count = world.resource::<ImportOverlayState>().pending_files.len();
+
+                    if file_count == 0 {
+                        ui.label(
+                            egui::RichText::new("No files added yet")
+                                .size(11.0)
+                                .color(text_secondary),
+                        );
+                    } else {
+                        // Show scrollable file list (max 5 visible)
+                        let max_height = 120.0;
+                        egui::ScrollArea::vertical()
+                            .max_height(max_height)
+                            .show(ui, |ui| {
+                                let state = world.resource::<ImportOverlayState>();
+                                for (i, path) in state.pending_files.iter().enumerate() {
+                                    ui.horizontal(|ui| {
+                                        let name = path
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("unknown");
+                                        let ext = path
+                                            .extension()
+                                            .and_then(|e| e.to_str())
+                                            .unwrap_or("")
+                                            .to_uppercase();
+
+                                        ui.label(
+                                            egui::RichText::new(regular::CUBE)
+                                                .size(12.0)
+                                                .color(egui::Color32::from_rgb(255, 170, 100)),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(name)
+                                                .size(11.0)
+                                                .color(text_primary),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(format!("({})", ext))
+                                                .size(10.0)
+                                                .color(text_secondary),
+                                        );
+
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui
+                                                    .add(
+                                                        egui::Button::new(
+                                                            egui::RichText::new(regular::X)
+                                                                .size(11.0)
+                                                                .color(text_secondary),
+                                                        )
+                                                        .frame(false),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    remove_idx = Some(i);
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
+                            });
+                    }
+
+                    if let Some(idx) = remove_idx {
+                        world.resource_mut::<ImportOverlayState>().pending_files.remove(idx);
+                    }
+
+                    ui.add_space(4.0);
+
+                    // Drop zone hint + browse button
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} Drop files here or",
+                                regular::CLOUD_ARROW_DOWN
+                            ))
+                            .size(11.0)
+                            .color(text_secondary),
+                        );
+
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(format!("{} Browse...", regular::FOLDER_OPEN))
+                                        .size(11.0),
+                                )
+                                .fill(surface_mid),
+                            )
+                            .clicked()
+                        {
+                            let extensions: Vec<&str> =
+                                renzora_import::supported_extensions().to_vec();
+                            if let Some(paths) = rfd::FileDialog::new()
+                                .set_title("Select 3D model files")
+                                .add_filter("3D Models", &extensions)
+                                .pick_files()
+                            {
+                                let mut state = world.resource_mut::<ImportOverlayState>();
+                                for path in paths {
+                                    if !state.pending_files.contains(&path) {
+                                        state.pending_files.push(path);
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Handle drops inside the overlay
+                    let dropped_in_zone: Vec<PathBuf> = ui.input(|i| {
+                        i.raw
+                            .dropped_files
+                            .iter()
+                            .filter_map(|f| f.path.clone())
+                            .filter(|p| renzora_import::formats::is_supported(p))
+                            .collect()
+                    });
+                    if !dropped_in_zone.is_empty() {
+                        let mut state = world.resource_mut::<ImportOverlayState>();
+                        for path in dropped_in_zone {
+                            if !state.pending_files.contains(&path) {
+                                state.pending_files.push(path);
+                            }
+                        }
+                    }
+                });
+
+                ui.add_space(12.0);
+
+                // --- Import Settings ---
+                section_label(ui, regular::GEAR, "Import Settings", text_primary);
+                ui.add_space(4.0);
+
+                {
+                    let mut state = world.resource_mut::<ImportOverlayState>();
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Scale:")
+                                .size(12.0)
+                                .color(text_secondary),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut state.settings.scale)
+                                .speed(0.01)
+                                .range(0.001..=1000.0)
+                                .suffix("x"),
+                        );
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Up Axis:")
+                                .size(12.0)
+                                .color(text_secondary),
+                        );
+
+                        let axis_label = match state.settings.up_axis {
+                            UpAxis::Auto => "Auto",
+                            UpAxis::YUp => "Y-Up",
+                            UpAxis::ZUp => "Z-Up",
+                        };
+
+                        egui::ComboBox::from_id_salt("import_up_axis")
+                            .selected_text(axis_label)
+                            .width(100.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut state.settings.up_axis,
+                                    UpAxis::Auto,
+                                    "Auto",
+                                );
+                                ui.selectable_value(
+                                    &mut state.settings.up_axis,
+                                    UpAxis::YUp,
+                                    "Y-Up (GLTF/Bevy)",
+                                );
+                                ui.selectable_value(
+                                    &mut state.settings.up_axis,
+                                    UpAxis::ZUp,
+                                    "Z-Up (Blender/CAD)",
+                                );
+                            });
+                    });
+
+                    ui.checkbox(
+                        &mut state.settings.flip_uvs,
+                        egui::RichText::new("Flip UVs").color(text_primary),
+                    );
+
+                    ui.checkbox(
+                        &mut state.settings.generate_normals,
+                        egui::RichText::new("Generate normals if missing").color(text_primary),
+                    );
+                }
+
+                ui.add_space(12.0);
+
+                // --- Destination ---
+                section_label(ui, regular::FOLDER_OPEN, "Destination", text_primary);
+                ui.add_space(4.0);
+
+                {
+                    let mut state = world.resource_mut::<ImportOverlayState>();
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("assets/")
+                                .size(12.0)
+                                .color(text_secondary),
+                        );
+                        let text_edit = egui::TextEdit::singleline(&mut state.target_directory)
+                            .hint_text("e.g. models/imported")
+                            .desired_width(ui.available_width() - 80.0);
+                        ui.add(text_edit);
+                    });
+                }
+
+                let browse_clicked = ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("{} Browse", regular::FOLDER))
+                                .size(11.0),
+                        )
+                        .fill(surface_mid),
+                    )
+                    .clicked();
+
+                if browse_clicked {
+                    let project = world.resource::<CurrentProject>();
+                    let assets_dir = project.path.join("assets");
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Select destination folder")
+                        .set_directory(&assets_dir)
+                        .pick_folder()
+                    {
+                        if let Ok(rel) = path.strip_prefix(&assets_dir) {
+                            world.resource_mut::<ImportOverlayState>().target_directory =
+                                rel.to_string_lossy().replace('\\', "/");
+                        }
+                    }
+                }
+
+                let (progress, can_import) = {
+                    let state = world.resource::<ImportOverlayState>();
+                    let progress = state.progress.clone();
+                    let can = !state.pending_files.is_empty()
+                        && matches!(
+                            progress,
+                            ImportProgress::Idle | ImportProgress::Done(_) | ImportProgress::Error(_)
+                        );
+                    (progress, can)
+                };
+
+                ui.add_space(16.0);
+
+                // --- Progress / status ---
+                match &progress {
+                    ImportProgress::Idle => {}
+                    ImportProgress::Converting { current, total } => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "Converting {}/{}...",
+                                    current, total
+                                ))
+                                .color(text_secondary),
+                            );
+                        });
+                        let frac = *current as f32 / (*total as f32).max(1.0);
+                        ui.add(
+                            egui::ProgressBar::new(frac)
+                                .show_percentage(),
+                        );
+                    }
+                    ImportProgress::Done(msg) => {
+                        ui.label(
+                            egui::RichText::new(format!("{} {}", regular::CHECK_CIRCLE, msg))
+                                .color(success_color),
+                        );
+                    }
+                    ImportProgress::Error(msg) => {
+                        ui.label(
+                            egui::RichText::new(format!("{} {}", regular::WARNING, msg))
+                                .color(error_color),
+                        );
+                    }
+                }
+
+                ui.add_space(8.0);
+
+                // --- Buttons ---
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Import button
+                        let button = egui::Button::new(
+                            egui::RichText::new(format!("{} Import", regular::DOWNLOAD_SIMPLE))
+                                .size(14.0)
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(if can_import { accent } else { surface_mid })
+                        .min_size(egui::vec2(100.0, 32.0));
+
+                        if ui.add_enabled(can_import, button).clicked() {
+                            run_import(world);
+                        }
+
+                        // Cancel button
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("Cancel")
+                                        .size(13.0)
+                                        .color(text_primary),
+                                )
+                                .fill(surface_mid)
+                                .min_size(egui::vec2(80.0, 32.0)),
+                            )
+                            .clicked()
+                        {
+                            close_overlay(world);
+                        }
+                    });
+                });
+            });
+        });
+}
+
+fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color32) {
+    ui.label(
+        egui::RichText::new(format!("{} {}", icon, label))
+            .size(13.0)
+            .color(color)
+            .strong(),
+    );
+}
+
+fn close_overlay(world: &mut World) {
+    let mut state = world.resource_mut::<ImportOverlayState>();
+    state.visible = false;
+    state.pending_files.clear();
+    state.progress = ImportProgress::Idle;
+}
+
+fn run_import(world: &mut World) {
+    let project = world.resource::<CurrentProject>().clone();
+    let state = world.resource::<ImportOverlayState>();
+    let files = state.pending_files.clone();
+    let settings = state.settings.clone();
+    let target_dir = state.target_directory.clone();
+
+    let total = files.len();
+
+    // Ensure destination directory exists
+    let dest = project.path.join("assets").join(&target_dir);
+    if let Err(e) = std::fs::create_dir_all(&dest) {
+        world.resource_mut::<ImportOverlayState>().progress =
+            ImportProgress::Error(format!("Failed to create directory: {}", e));
+        return;
+    }
+
+    let mut imported = 0;
+    let mut errors = Vec::new();
+    let mut all_warnings = Vec::new();
+
+    for (i, source_path) in files.iter().enumerate() {
+        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Converting {
+            current: i + 1,
+            total,
+        };
+
+        match renzora_import::convert_to_glb(source_path, &settings) {
+            Ok(result) => {
+                // Write GLB to destination
+                let stem = source_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("model");
+                let output_path = dest.join(format!("{}.glb", stem));
+
+                match std::fs::write(&output_path, &result.glb_bytes) {
+                    Ok(()) => {
+                        imported += 1;
+                        info!(
+                            "Imported {} → {}",
+                            source_path.display(),
+                            output_path.display()
+                        );
+                    }
+                    Err(e) => {
+                        errors.push(format!("{}: write failed: {}", stem, e));
+                    }
+                }
+
+                all_warnings.extend(result.warnings);
+            }
+            Err(e) => {
+                let name = source_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+                errors.push(format!("{}: {}", name, e));
+            }
+        }
+    }
+
+    // Set final status
+    if errors.is_empty() {
+        let warn_suffix = if all_warnings.is_empty() {
+            String::new()
+        } else {
+            format!(" ({} warnings)", all_warnings.len())
+        };
+        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Done(format!(
+            "Imported {} file{} to assets/{}{}",
+            imported,
+            if imported == 1 { "" } else { "s" },
+            target_dir,
+            warn_suffix,
+        ));
+        // Clear the file list on success
+        world.resource_mut::<ImportOverlayState>().pending_files.clear();
+    } else {
+        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Error(format!(
+            "Imported {}/{} — errors: {}",
+            imported,
+            total,
+            errors.join("; ")
+        ));
+    }
+}

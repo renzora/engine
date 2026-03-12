@@ -164,6 +164,27 @@ impl EditorPanel for AssetBrowserPanel {
                 });
             }
         }
+        // Import button clicked — request import overlay
+        if state.import_clicked {
+            state.import_clicked = false;
+            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+                let target_dir = state.current_folder.as_ref().and_then(|folder| {
+                    let project = world.get_resource::<renzora_core::CurrentProject>()?;
+                    let assets_dir = project.path.join("assets");
+                    folder.strip_prefix(&assets_dir).ok().map(|rel| {
+                        rel.to_string_lossy().replace('\\', "/")
+                    })
+                }).unwrap_or_default();
+
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    world.insert_resource(renzora_core::ImportRequested);
+                    if !target_dir.is_empty() {
+                        world.insert_resource(renzora_core::ImportTargetDir(target_dir));
+                    }
+                });
+            }
+        }
+
         // Double-click on a file opens it in the code editor
         if let Some(path) = grid_result.double_clicked_file {
             let is_editable = path.extension()

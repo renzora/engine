@@ -86,6 +86,13 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
 
             ui.add_space(8.0);
 
+            // Import button
+            if icon_button(ui, regular::DOWNLOAD_SIMPLE, "Import 3D model", text_primary) {
+                state.import_clicked = true;
+            }
+
+            ui.add_space(8.0);
+
             // Search bar
             ui.add(
                 egui::TextEdit::singleline(&mut state.search)

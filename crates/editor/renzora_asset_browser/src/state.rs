@@ -32,6 +32,8 @@ pub struct AssetBrowserState {
     pub history: Vec<PathBuf>,
     /// Current view mode (grid or list).
     pub view_mode: ViewMode,
+    /// Set to `true` when the import button is clicked (consumed by the panel).
+    pub import_clicked: bool,
 }
 
 impl Default for AssetBrowserState {
@@ -46,6 +48,7 @@ impl Default for AssetBrowserState {
             project_root: None,
             history: Vec::new(),
             view_mode: ViewMode::default(),
+            import_clicked: false,
         }
     }
 }

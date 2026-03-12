@@ -18,6 +18,7 @@ fn main() {
         app.add_plugins(renzora_test_component::TestComponentPlugin);
         app.add_plugins(renzora_scene::ScenePlugin);
         app.add_plugins(renzora_export::ExportPlugin);
+        app.add_plugins(renzora_import_ui::ImportPlugin);
         app.add_plugins(renzora_mixer::MixerPlugin);
         app.add_plugins(renzora_console::ConsolePlugin);
         app.add_plugins(renzora_debugger::DebuggerPlugin);

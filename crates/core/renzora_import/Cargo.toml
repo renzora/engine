@@ -1,0 +1,23 @@
+[package]
+name = "renzora_import"
+version = "0.1.0"
+edition = "2021"
+description = "3D model import and GLB conversion for Renzora"
+
+[dependencies]
+# GLB output
+gltf-json = "1.4"
+
+# Format parsers (pure Rust)
+tobj = "4"
+stl_io = "0.10"
+ply-rs = "0.1"
+
+# FBX (pure Rust)
+fbxcel-dom = "0.0.10"
+fbxcel = "0.9"
+
+# Utility
+thiserror = "2"
+log = "0.4"
+serde_json = "1"

@@ -33,6 +33,7 @@ editor = [
     "dep:renzora_keybindings",
     "dep:renzora_scene",
     "dep:renzora_export",
+    "dep:renzora_import_ui",
     "dep:renzora_mixer",
     "dep:renzora_console",
     "dep:renzora_debugger",
@@ -145,6 +146,7 @@ renzora_camera = { path = "crates/editor/renzora_camera", optional = true }
 renzora_keybindings = { path = "crates/editor/renzora_keybindings", optional = true }
 renzora_scene = { path = "crates/editor/renzora_scene", optional = true }
 renzora_export = { path = "crates/editor/renzora_export", optional = true }
+renzora_import_ui = { path = "crates/editor/renzora_import_ui", optional = true }
 renzora_mixer = { path = "crates/editor/renzora_mixer", optional = true }
 renzora_console = { path = "crates/editor/renzora_console", optional = true }
 renzora_debugger = { path = "crates/editor/renzora_debugger", optional = true }

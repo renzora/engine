@@ -345,6 +345,16 @@ pub struct OpenSceneRequested;
 #[derive(Resource)]
 pub struct ExportRequested;
 
+/// Marker resource requesting the import overlay to open.
+///
+/// Insert this resource to trigger the import overlay next frame.
+#[derive(Resource)]
+pub struct ImportRequested;
+
+/// Optional: carries the suggested target directory from the asset browser.
+#[derive(Resource)]
+pub struct ImportTargetDir(pub String);
+
 /// Marker resource requesting the tutorial overlay to start.
 #[derive(Resource)]
 pub struct TutorialRequested;
