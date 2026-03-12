@@ -98,7 +98,7 @@ impl CurrentProject {
     ///
     /// Strips the project's `assets/` directory prefix so the resulting path
     /// (e.g. `textures/foo.png`) is portable across machines and works with the
-    /// `EmbeddedAssetReader` in both editor and standalone runtime builds.
+    /// asset reader in both editor and standalone runtime builds.
     pub fn make_asset_relative(&self, path: &Path) -> String {
         let assets_dir = self.path.join("assets");
 
@@ -189,6 +189,17 @@ impl EffectRouting {
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize, PartialEq)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MeshPrimitive(pub String);
+
+/// Serializable marker for an imported 3D model (GLTF/GLB).
+///
+/// Stored on the parent entity; the actual `SceneRoot` is a child.
+/// On scene load, the runtime rehydrates by re-loading the model from `model_path`.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct MeshInstanceData {
+    /// Asset-relative path to the GLB/GLTF file (e.g. `models/chair.glb`).
+    pub model_path: Option<String>,
+}
 
 // ============================================================================
 // Shape Registry

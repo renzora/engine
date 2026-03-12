@@ -4,13 +4,15 @@
 //! When the editor is present, it renders to an offscreen image.
 //! When standalone, it renders directly to the window.
 
+pub mod asset_reader;
 pub mod camera;
 pub mod crash;
 pub mod debug_log;
 pub mod scene_io;
 pub mod vfs;
 
-pub use renzora_core::{CurrentProject, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use asset_reader::{setup_asset_reader, ProjectAssetPath};
+pub use renzora_core::{CurrentProject, MeshInstanceData, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_runtime::audio types
@@ -30,6 +32,7 @@ impl Plugin for RuntimePlugin {
         info!("[runtime] RuntimePlugin");
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
+            .register_type::<MeshInstanceData>()
             .register_type::<SceneCamera>()
             .register_type::<renzora_core::DefaultCamera>()
             .register_type::<renzora_core::EntityTag>()
@@ -90,10 +93,20 @@ impl Plugin for RuntimePlugin {
             }
 
             app.add_systems(Startup, scene_io::load_current_scene)
-                .add_systems(Update, (scene_io::rehydrate_meshes, scene_io::rehydrate_suns, scene_io::rehydrate_visibility))
+                .add_systems(Update, (
+                    scene_io::rehydrate_meshes,
+                    scene_io::rehydrate_suns,
+                    scene_io::rehydrate_visibility,
+                    scene_io::rehydrate_mesh_instances,
+                    scene_io::finish_mesh_instance_rehydrate,
+                ))
                 .add_systems(Update, (scene_io::rehydrate_cameras, scene_io::enforce_single_active_camera)
                     .run_if(stinger_done));
         }
+
+        // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
+        // always resolves from the correct project directory.
+        app.add_systems(Update, sync_project_asset_path);
 
         app.init_resource::<ViewportRenderTarget>();
         app.init_resource::<ShapeRegistry>();
@@ -212,6 +225,21 @@ fn process_pending_scene_loads(world: &mut World) {
 
     // 2. Load the new scene
     scene_io::load_scene(world, &scene_path);
+}
+
+/// Keep `ProjectAssetPath` in sync whenever `CurrentProject` changes.
+fn sync_project_asset_path(
+    project: Option<Res<CurrentProject>>,
+    asset_path: Option<Res<ProjectAssetPath>>,
+) {
+    let (Some(project), Some(asset_path)) = (project, asset_path) else {
+        return;
+    };
+    if !project.is_changed() {
+        return;
+    }
+    info!("[asset_reader] Project path set: {}", project.path.display());
+    asset_path.set(project.path.clone());
 }
 
 #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]

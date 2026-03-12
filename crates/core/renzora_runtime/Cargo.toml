@@ -14,6 +14,7 @@ renzora_lighting = { path = "../renzora_lighting" }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_audio = { path = "../renzora_audio" }
 renzora_stinger = { path = "../renzora_stinger" }
+futures-lite = "2"
 ron = "0.8"
 serde = "1"
 toml = "0.8"

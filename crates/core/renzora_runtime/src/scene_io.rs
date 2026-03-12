@@ -3,7 +3,7 @@
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use renzora_core::console_log::*;
-use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshPrimitive, PlayModeState, SceneCamera, ShapeRegistry};
+use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeState, SceneCamera, ShapeRegistry};
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
 use std::collections::BTreeSet;
@@ -505,6 +505,58 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
 
     for (reflect_component, _) in &to_remove {
         reflect_component.remove(&mut world.entity_mut(dst));
+    }
+}
+
+/// Rehydrate mesh instances — loads GLTF scenes for entities with `MeshInstanceData` but no children yet.
+pub fn rehydrate_mesh_instances(
+    mut commands: Commands,
+    query: Query<(Entity, &MeshInstanceData), (Without<Children>, Added<MeshInstanceData>)>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, instance) in &query {
+        let Some(ref model_path) = instance.model_path else {
+            continue;
+        };
+
+        let gltf_handle: Handle<Gltf> = asset_server.load(model_path.clone());
+
+        // We need to wait for the GLTF to load before spawning the scene.
+        // Insert a pending-load marker so a follow-up system can spawn the scene child.
+        commands.entity(entity).insert(PendingMeshInstanceRehydrate(gltf_handle));
+    }
+}
+
+/// Marker: waiting for GLTF to finish loading so we can attach the scene child.
+#[derive(Component)]
+pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
+
+/// Finishes mesh-instance rehydration once the GLTF asset is ready.
+pub fn finish_mesh_instance_rehydrate(
+    mut commands: Commands,
+    query: Query<(Entity, &PendingMeshInstanceRehydrate)>,
+    gltf_assets: Res<Assets<Gltf>>,
+) {
+    for (entity, pending) in &query {
+        let Some(gltf) = gltf_assets.get(&pending.0) else {
+            continue;
+        };
+
+        let scene_handle = gltf
+            .default_scene
+            .clone()
+            .or_else(|| gltf.scenes.first().cloned());
+
+        if let Some(scene) = scene_handle {
+            commands.spawn((
+                bevy::scene::SceneRoot(scene),
+                Transform::default(),
+                Visibility::default(),
+                ChildOf(entity),
+            ));
+        }
+
+        commands.entity(entity).remove::<PendingMeshInstanceRehydrate>();
     }
 }
 

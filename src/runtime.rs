@@ -30,6 +30,9 @@ fn platform_wgpu_settings() -> WgpuSettings {
 pub fn build_runtime_app() -> App {
     let mut app = App::new();
 
+    // Register custom asset reader BEFORE DefaultPlugins so AssetPlugin uses it.
+    renzora_runtime::setup_asset_reader(&mut app);
+
     app.add_plugins(
         DefaultPlugins.set(RenderPlugin {
             render_creation: RenderCreation::Automatic(platform_wgpu_settings()),

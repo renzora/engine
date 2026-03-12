@@ -6,6 +6,7 @@
 pub mod camera_preview;
 pub mod effect_routing;
 pub mod header;
+pub mod model_drop;
 pub mod play_mode;
 pub mod render_systems;
 pub mod settings;
@@ -52,6 +53,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<render_systems::LastRenderState>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
             .init_resource::<renzora_core::EffectRouting>()
+            .init_resource::<model_drop::PendingGltfLoads>()
             .add_systems(Update, (
                 handle_viewport_resize,
                 render_systems::update_render_toggles,
@@ -59,6 +61,8 @@ impl Plugin for ViewportPlugin {
                 camera_preview::update_camera_preview,
                 play_mode::handle_play_mode_transitions,
                 effect_routing::update_effect_routing,
+                model_drop::spawn_loaded_gltfs,
+                model_drop::align_models_to_ground,
             ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
@@ -254,6 +258,9 @@ impl EditorPanel for ViewportPanel {
                 egui::Color32::from_white_alpha(80),
             );
         }
+
+        // Check for model asset drops on the viewport
+        model_drop::check_viewport_model_drop(ui, world, rect);
 
         // Overlay: vertical tool bar (gizmo modes, terrain tools, play button)
         toolbar::render_tool_overlay(ui.ctx(), world, rect);
