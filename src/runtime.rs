@@ -68,6 +68,8 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_toon::ToonPlugin);
     app.add_plugins(renzora_sepia::SepiaPlugin);
     app.add_plugins(renzora_invert::InvertPlugin);
+    app.add_plugins(renzora_pillowbox::PillowboxPlugin);
+    app.add_plugins(renzora_letterbox::LetterboxPlugin);
     app.add_plugins(renzora_night_vision::NightVisionPlugin);
     app.add_plugins(renzora_glitch::GlitchPlugin);
     app.add_plugins(renzora_radial_blur::RadialBlurPlugin);

@@ -68,6 +68,8 @@ editor = [
     "renzora_toon/editor",
     "renzora_sepia/editor",
     "renzora_invert/editor",
+    "renzora_pillowbox/editor",
+    "renzora_letterbox/editor",
     "renzora_night_vision/editor",
     "renzora_glitch/editor",
     "renzora_radial_blur/editor",
@@ -189,6 +191,8 @@ renzora_outline = { path = "crates/postprocessing/renzora_outline" }
 renzora_toon = { path = "crates/postprocessing/renzora_toon" }
 renzora_sepia = { path = "crates/postprocessing/renzora_sepia" }
 renzora_invert = { path = "crates/postprocessing/renzora_invert" }
+renzora_pillowbox = { path = "crates/postprocessing/renzora_pillowbox" }
+renzora_letterbox = { path = "crates/postprocessing/renzora_letterbox" }
 renzora_night_vision = { path = "crates/postprocessing/renzora_night_vision" }
 renzora_glitch = { path = "crates/postprocessing/renzora_glitch" }
 renzora_radial_blur = { path = "crates/postprocessing/renzora_radial_blur" }
