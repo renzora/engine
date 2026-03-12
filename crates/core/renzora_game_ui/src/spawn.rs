@@ -585,6 +585,14 @@ pub fn spawn_image_at(
 
     let image_handle: Handle<Image> = world.resource::<AssetServer>().load(load_path);
 
+    // Read actual image dimensions from disk; fall back to 128×128 if unreadable
+    #[cfg(feature = "editor")]
+    let (img_w, img_h) = ::image::image_dimensions(asset_path)
+        .map(|(w, h)| (w as f32, h as f32))
+        .unwrap_or((128.0, 128.0));
+    #[cfg(not(feature = "editor"))]
+    let (img_w, img_h) = (128.0_f32, 128.0_f32);
+
     // Snap position if enabled
     let mut px = x;
     let mut py = y;
@@ -610,8 +618,8 @@ pub fn spawn_image_at(
                 position_type: PositionType::Absolute,
                 left: Val::Percent(px / r.w * 100.0),
                 top: Val::Percent(py / r.h * 100.0),
-                width: pct_w(128.0, &r),
-                height: pct_h(128.0, &r),
+                width: pct_w(img_w, &r),
+                height: pct_h(img_h, &r),
                 ..default()
             },
             ImageNode::new(image_handle),

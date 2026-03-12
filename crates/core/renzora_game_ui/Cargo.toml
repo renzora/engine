@@ -9,6 +9,7 @@ editor = [
     "dep:egui-phosphor",
     "dep:renzora_editor",
     "dep:renzora_theme",
+    "dep:image",
 ]
 
 [dependencies]
@@ -22,3 +23,4 @@ bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora_editor = { path = "../../editor/renzora_editor", optional = true }
 renzora_theme = { path = "../../ui/renzora_theme", optional = true }
+image = { version = "0.25", default-features = false, optional = true }
