@@ -2,6 +2,8 @@
 #import bevy_pbr::view_transformations::position_world_to_clip
 #import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings::view
+#import bevy_pbr::pbr_functions
+#import bevy_pbr::pbr_types::{PbrInput, pbr_input_new}
 
 // ── Uniform buffer ─────────────────────────────────────────────────────────
 
@@ -239,9 +241,8 @@ fn get_obj(index: u32) -> vec4<f32> {
     }
 }
 
-// Compute ripple + shadow contribution from all active objects
+// Compute ripple + shadow + foam contribution from all active objects
 fn object_effects(world_xz: vec2<f32>, time: f32) -> vec3<f32> {
-    // Returns (ripple_brightness, shadow_darkness, foam_amount)
     var ripple = 0.0;
     var shadow = 0.0;
     var foam = 0.0;
@@ -252,27 +253,60 @@ fn object_effects(world_xz: vec2<f32>, time: f32) -> vec3<f32> {
         let radius = obj.z;
         let intensity = obj.w;
 
-        let dist = distance(world_xz, obj_xz);
+        let to_obj = world_xz - obj_xz;
+        let dist = length(to_obj);
 
-        // Shadow — darkening directly under the object
-        let shadow_radius = radius * 0.8;
+        // ── Shadow — soft darkening under the object ──
+        let shadow_radius = radius * 1.0;
         let s = 1.0 - smoothstep(0.0, shadow_radius, dist);
-        shadow = max(shadow, s * intensity * 0.35);
+        let shadow_noise = noise_water(world_xz * 3.0 + vec2<f32>(time * 0.1)) * 0.3;
+        shadow = max(shadow, s * intensity * (0.25 + shadow_noise));
 
-        // Ripples — concentric rings expanding outward from object
-        let ripple_zone = smoothstep(radius * 3.0, radius * 0.5, dist);
-        let ripple_wave = sin(dist * 8.0 - time * 4.0) * 0.5 + 0.5;
-        let ripple_decay = 1.0 / (1.0 + dist * 0.5);
-        ripple = max(ripple, ripple_wave * ripple_zone * ripple_decay * intensity * 0.3);
+        // ── Ripples — animated, outward-propagating, organic ──
+        let falloff = smoothstep(radius * 6.0, radius * 0.3, dist);
+        if falloff > 0.001 {
+            // Animated noise distortion — shifts over time so pattern never freezes
+            let noise_uv = to_obj * 1.5 + vec2<f32>(time * 0.8, time * 0.6);
+            let angle_noise = (noise_water(noise_uv) - 0.5) * 0.5;
+            let dist_warped = dist + angle_noise;
 
-        // Foam ring around object at waterline
-        let foam_ring = smoothstep(radius * 1.2, radius * 0.6, dist)
-                      * smoothstep(radius * 0.2, radius * 0.5, dist);
-        let foam_noise_val = noise_water(world_xz * 5.0 + vec2<f32>(time * 0.5));
-        foam = max(foam, foam_ring * foam_noise_val * intensity * 0.6);
+            // Waves propagate outward (-time means expanding from center)
+            // Different speeds and frequencies prevent bullseye pattern
+            let phase = f32(i) * 1.7; // per-object phase offset
+            let w1 = sin(dist_warped * 10.0 - time * 6.0 + phase) * 0.45;
+            let w2 = sin(dist_warped * 6.5 - time * 4.5 + phase + 2.0) * 0.3;
+            let w3 = sin(dist_warped * 15.0 - time * 8.0 + phase + 4.5) * 0.15;
+
+            // Time-varying amplitude — pulses of ripple energy
+            let pulse = 0.7 + 0.3 * sin(time * 2.0 + phase);
+            let wave_sum = (w1 + w2 + w3) * pulse;
+
+            // Energy falls off with distance
+            let energy = 1.0 / (1.0 + dist * dist * 0.2);
+
+            // Animated break-up noise — constantly shifts
+            let break_uv = world_xz * 6.0 + vec2<f32>(time * 1.2, -time * 0.8);
+            let break_noise = noise_water(break_uv) * 0.7 + 0.3;
+            let modulated = wave_sum * energy * falloff * break_noise;
+
+            ripple += modulated * intensity * 0.2;
+        }
+
+        // ── Foam — patchy, noisy ring around waterline contact ──
+        let foam_inner = smoothstep(radius * 0.15, radius * 0.5, dist);
+        let foam_outer = smoothstep(radius * 1.5, radius * 0.7, dist);
+        let foam_ring = foam_inner * foam_outer;
+        if foam_ring > 0.001 {
+            let fn1 = noise_water(world_xz * 6.0 + vec2<f32>(time * 0.4, time * 0.3));
+            let fn2 = noise_water(world_xz * 12.0 + vec2<f32>(-time * 0.3, time * 0.5));
+            let foam_pattern = fn1 * 0.6 + fn2 * 0.4;
+            // Only show foam where noise is above threshold — creates patchy look
+            let foam_val = foam_ring * smoothstep(0.3, 0.6, foam_pattern) * intensity;
+            foam = max(foam, foam_val * 0.7);
+        }
     }
 
-    return vec3<f32>(ripple, shadow, foam);
+    return vec3<f32>(clamp(ripple, -0.15, 0.15), shadow, foam);
 }
 
 // ── Fragment shader ────────────────────────────────────────────────────────
@@ -280,34 +314,20 @@ fn object_effects(world_xz: vec2<f32>, time: f32) -> vec3<f32> {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let N = normalize(in.world_normal);
-    let V = normalize(view.world_position.xyz - in.world_position.xyz);
-    let L = normalize(-water.sun_direction.xyz);
-    let H = normalize(V + L);
-
+    let V = pbr_functions::calculate_view(in.world_position, false);
     let N_dot_V = max(dot(N, V), 0.001);
-    let N_dot_L = max(dot(N, L), 0.0);
-    let N_dot_H = max(dot(N, H), 0.0);
-
-    // ── Fresnel ──
-    // Water IOR ~1.33 → F0 ≈ 0.02
-    let fresnel = fresnel_schlick(N_dot_V, 0.02);
 
     // ── Water body color ──
-    // Blend deep → shallow based on view angle (steep = deep, head-on = shallow)
     let depth_factor = 1.0 - N_dot_V;
-    var water_color = mix(water.shallow_color.rgb, water.deep_color.rgb, depth_factor);
+    var base_color = mix(water.shallow_color.rgb, water.deep_color.rgb, depth_factor);
 
-    // Beer's law tint — deeper areas shift toward blue
+    // Beer's law tint
     let optical_depth = depth_factor * 4.0 + 1.0;
     let absorbed = beer_absorption(optical_depth, water.absorption);
-    water_color *= absorbed + 0.4;
+    base_color *= absorbed + 0.4;
 
-    // ── Subsurface scattering ──
-    let sss_dot = max(dot(V, -L), 0.0);
-    let sss = water.subsurface_strength * pow(sss_dot, 4.0) * water.shallow_color.rgb * 0.4;
-    water_color += sss;
-
-    // ── Sky reflection (simplified) ──
+    // Fresnel — blend in sky reflection
+    let fresnel = fresnel_schlick(N_dot_V, 0.02);
     let reflect_dir = reflect(-V, N);
     let sky_grad = smoothstep(-0.1, 0.8, reflect_dir.y);
     let sky_color = mix(
@@ -315,31 +335,34 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         vec3<f32>(0.5, 0.7, 0.9),
         sky_grad
     );
+    base_color = mix(base_color, sky_color, fresnel);
 
-    // Blend body + reflection via fresnel
-    water_color = mix(water_color, sky_color, fresnel);
+    // ── PBR lighting with shadows ──
+    var pbr = pbr_input_new();
+    pbr.material.base_color = vec4<f32>(base_color, 1.0);
+    pbr.material.metallic = 0.0;
+    pbr.material.perceptual_roughness = water.roughness;
+    pbr.world_normal = N;
+    pbr.world_position = in.world_position;
+    pbr.N = N;
+    pbr.V = V;
 
-    // ── Diffuse lighting ──
-    water_color *= 0.35 + N_dot_L * 0.65;
+    var water_color = pbr_functions::apply_pbr_lighting(pbr).rgb;
 
-    // ── Specular (GGX) ──
-    let D = ggx_distribution(N_dot_H, water.roughness);
-    let spec_fresnel = fresnel_schlick(max(dot(H, V), 0.0), 0.02);
-    let specular = D * spec_fresnel;
-    water_color += vec3<f32>(1.0, 0.95, 0.85) * specular;
-
-    // Broader secondary lobe
-    let D2 = ggx_distribution(N_dot_H, water.roughness * 4.0);
-    water_color += vec3<f32>(1.0, 0.95, 0.85) * D2 * spec_fresnel * 0.08;
+    // ── Subsurface scattering (additive, post-PBR) ──
+    let L = normalize(-water.sun_direction.xyz);
+    let sss_dot = max(dot(V, -L), 0.0);
+    let sss = water.subsurface_strength * pow(sss_dot, 4.0) * water.shallow_color.rgb * 0.4;
+    water_color += sss;
 
     // ── Foam ──
     let crest_height = in.world_position.y;
     let foam_noise = noise_water(in.uv * 40.0 + vec2<f32>(water.time * 0.3, water.time * 0.2));
     let foam_crest = smoothstep(water.foam_threshold, water.foam_threshold + 0.3, crest_height + foam_noise * 0.1);
 
-    // Foam dissolve pattern
     let dissolve = noise_water(in.uv * 80.0 + vec2<f32>(water.time * 0.15, -water.time * 0.1));
     let foam_masked = foam_crest * smoothstep(0.2, 0.5, dissolve);
+    let N_dot_L = max(dot(N, L), 0.0);
     let foam_lit = water.foam_color.rgb * (0.8 + N_dot_L * 0.2);
     water_color = mix(water_color, foam_lit, clamp(foam_masked * 0.85, 0.0, 1.0));
 
@@ -356,13 +379,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let obj_shadow = fx.y;
     let obj_foam = fx.z;
 
-    // Ripple highlights
-    water_color += vec3<f32>(1.0, 0.97, 0.9) * obj_ripple;
-
-    // Shadow darkening under objects
+    // Ripples — signed value creates natural bright/dark disturbance
+    water_color += water_color * obj_ripple;
+    // Shadow — soft darkening under objects
     water_color *= 1.0 - obj_shadow;
-
-    // Foam ring around objects
+    // Foam — patchy white around waterline
     water_color = mix(water_color, water.foam_color.rgb * (0.8 + N_dot_L * 0.2), obj_foam);
 
     // ── Atmospheric haze at glancing angles ──
