@@ -1,8 +1,9 @@
-//! Universal widget styling — fill, stroke, border radius, shadow, opacity, cursor.
+//! Universal widget styling — individual components for fill, stroke, border radius, etc.
 //!
-//! `UiWidgetStyle` is the single source of truth for a widget's visual appearance.
-//! It maps to bevy_ui components at runtime via `apply_widget_style_system`.
-//! The inspector exposes these fields in Figma-like Fill / Stroke / Effects sections.
+//! Each visual property is its own ECS component, making them directly accessible
+//! via reflection for scripting: `set("UiStroke.color", ...)`, `get("UiTextStyle.size")`.
+//!
+//! `UiWidgetStyle` remains as a convenience construction helper (not a Component).
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,8 @@ pub struct GradientStop {
 }
 
 /// How a widget's background is filled.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub enum UiFill {
     /// No fill (fully transparent).
     None,
@@ -117,7 +119,8 @@ impl UiSides {
 }
 
 /// Border / outline stroke around the widget.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct UiStroke {
     pub color: Color,
     pub width: f32,
@@ -152,7 +155,8 @@ impl UiStroke {
 // ── Border Radius ───────────────────────────────────────────────────────────
 
 /// Per-corner border radius in logical pixels.
-#[derive(Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct UiBorderRadius {
     pub top_left: f32,
     pub top_right: f32,
@@ -196,7 +200,8 @@ impl UiBorderRadius {
 // ── Box Shadow ──────────────────────────────────────────────────────────────
 
 /// Drop shadow effect.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct UiBoxShadow {
     pub color: Color,
     pub offset_x: f32,
@@ -220,7 +225,8 @@ impl Default for UiBoxShadow {
 // ── Cursor ──────────────────────────────────────────────────────────────────
 
 /// Cursor icon to show when hovering this widget.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub enum UiCursor {
     #[default]
     Default,
@@ -235,10 +241,31 @@ pub enum UiCursor {
     Move,
 }
 
+// ── Opacity ─────────────────────────────────────────────────────────────────
+
+/// Overall opacity (0.0 = invisible, 1.0 = fully opaque).
+#[derive(Component, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct UiOpacity(pub f32);
+
+impl Default for UiOpacity {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+// ── Clip Content ────────────────────────────────────────────────────────────
+
+/// Whether child content is clipped to the widget bounds.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct UiClipContent(pub bool);
+
 // ── Text Style ──────────────────────────────────────────────────────────────
 
 /// Text appearance properties for widgets that display text.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct UiTextStyle {
     pub color: Color,
     pub size: f32,
@@ -272,7 +299,8 @@ pub enum UiTextAlign {
 // ── Padding ─────────────────────────────────────────────────────────────────
 
 /// Padding in logical pixels (inner spacing between border and content).
-#[derive(Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct UiPadding {
     pub top: f32,
     pub right: f32,
@@ -300,84 +328,48 @@ impl UiPadding {
     }
 }
 
-// ── Widget Style (main component) ───────────────────────────────────────────
+// ── Widget Style (construction helper — NOT a Component) ────────────────────
 
-/// Universal visual style for any UI widget. This is the Figma-like styling layer.
+/// Convenience struct for constructing style components in one shot.
+/// Use `into_components()` to get a tuple of individual components for insertion.
 ///
-/// Attached to every `UiWidget` entity. The runtime `apply_widget_style_system`
-/// converts these fields into actual bevy_ui components (`BackgroundColor`,
-/// `BorderRadius`, `BoxShadow`, etc.).
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+/// This is NOT an ECS component — each field is its own component on the entity.
+#[derive(Clone, Debug, Default)]
 pub struct UiWidgetStyle {
-    /// Background fill (solid, gradient, or none).
     pub fill: UiFill,
-    /// Border / outline.
     pub stroke: UiStroke,
-    /// Per-corner border radius.
     pub border_radius: UiBorderRadius,
-    /// Drop shadow (None = no shadow).
     pub shadow: Option<UiBoxShadow>,
-    /// Overall opacity (0.0 = invisible, 1.0 = fully opaque).
     pub opacity: f32,
-    /// Cursor to show on hover.
     pub cursor: UiCursor,
-    /// Whether child content is clipped to the widget bounds.
     pub clip_content: bool,
-    /// Text style (for widgets that display text).
     pub text: UiTextStyle,
-    /// Inner padding.
     pub padding: UiPadding,
 }
 
-impl Default for UiWidgetStyle {
-    fn default() -> Self {
-        Self {
-            fill: UiFill::None,
-            stroke: UiStroke::default(),
-            border_radius: UiBorderRadius::default(),
-            shadow: None,
-            opacity: 1.0,
-            cursor: UiCursor::Default,
-            clip_content: false,
-            text: UiTextStyle::default(),
-            padding: UiPadding::default(),
-        }
-    }
-}
-
 impl UiWidgetStyle {
-    /// Merge a state override on top of this base style, returning the result.
-    pub fn with_overrides(&self, overrides: &UiStateStyle) -> Self {
-        let mut result = self.clone();
-        if let Some(ref fill) = overrides.fill {
-            result.fill = fill.clone();
+    /// Convert into individual ECS components for entity insertion.
+    /// Shadow is returned separately since it's optional.
+    pub fn into_components(self) -> (UiFill, UiStroke, UiBorderRadius, UiOpacity, UiClipContent, UiCursor, UiTextStyle, UiPadding) {
+        (
+            self.fill,
+            self.stroke,
+            self.border_radius,
+            UiOpacity(self.opacity),
+            UiClipContent(self.clip_content),
+            self.cursor,
+            self.text,
+            self.padding,
+        )
+    }
+
+    /// Insert all style components onto an entity, including optional shadow.
+    pub fn insert_into(self, cmds: &mut EntityWorldMut) {
+        let shadow = self.shadow.clone();
+        cmds.insert(self.into_components());
+        if let Some(shadow) = shadow {
+            cmds.insert(shadow);
         }
-        if let Some(ref stroke) = overrides.stroke {
-            result.stroke = stroke.clone();
-        }
-        if let Some(radius) = overrides.border_radius {
-            result.border_radius = radius;
-        }
-        if let Some(ref shadow) = overrides.shadow {
-            result.shadow = shadow.clone();
-        }
-        if let Some(opacity) = overrides.opacity {
-            result.opacity = opacity;
-        }
-        if let Some(cursor) = overrides.cursor {
-            result.cursor = cursor;
-        }
-        if let Some(color) = overrides.text_color {
-            result.text.color = color;
-        }
-        if let Some(size) = overrides.text_size {
-            result.text.size = size;
-        }
-        if let Some(padding) = overrides.padding {
-            result.padding = padding;
-        }
-        result
     }
 }
 
@@ -385,7 +377,7 @@ impl UiWidgetStyle {
 
 /// Optional overrides applied per interaction state (hover, pressed, disabled).
 ///
-/// Only `Some` fields override the base `UiWidgetStyle`; `None` fields inherit.
+/// Only `Some` fields override the base style; `None` fields inherit.
 #[derive(Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 pub struct UiStateStyle {
     pub fill: Option<UiFill>,

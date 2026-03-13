@@ -16,6 +16,7 @@ use renzora_theme::ThemeManager;
 
 use crate::components::*;
 use crate::palette::WidgetDragPayload;
+use crate::shapes::*;
 
 // ── Canvas Preview (render selected camera behind UI canvas) ─────────────────
 
@@ -189,7 +190,7 @@ struct WidgetSnapshot {
     /// Egui texture id for Image widgets (looked up from ImageNode handle).
     image_texture_id: Option<egui::TextureId>,
 
-    // ── Style data (from UiWidgetStyle) ─────────────────────────────
+    // ── Style data (from individual style components) ─────────────────
     border_radius: [f32; 4],
     stroke_width: f32,
     opacity: f32,
@@ -271,6 +272,142 @@ enum WidgetDataSnapshot {
     DraggableWindow {
         title: String,
         title_bar_color: [f32; 4],
+    },
+    // ── HUD ──
+    Crosshair {
+        style: String,  // "Cross", "Dot", "CircleDot", "CrossDot"
+        color: [f32; 4],
+        size: f32,
+        thickness: f32,
+    },
+    AmmoCounter {
+        current: u32,
+        max: u32,
+        color: [f32; 4],
+        low_color: [f32; 4],
+        low_threshold: u32,
+    },
+    Compass {
+        heading: f32,
+        color: [f32; 4],
+    },
+    StatusEffectBar {
+        effect_count: usize,
+        color: [f32; 4],
+    },
+    NotificationFeed {
+        count: usize,
+        color: [f32; 4],
+    },
+    RadialMenu {
+        item_count: usize,
+        color: [f32; 4],
+    },
+    Minimap {
+        shape: String,  // "Circle" or "Square"
+        bg_color: [f32; 4],
+        border_color: [f32; 4],
+    },
+    // ── Shapes ──
+    ShapeCircle {
+        color: [f32; 4],
+        stroke_color: [f32; 4],
+        stroke_width: f32,
+    },
+    ShapeArc {
+        color: [f32; 4],
+        start_angle: f32,
+        end_angle: f32,
+    },
+    ShapeTriangle {
+        color: [f32; 4],
+        stroke_color: [f32; 4],
+    },
+    ShapeLine {
+        color: [f32; 4],
+        thickness: f32,
+    },
+    ShapePolygon {
+        color: [f32; 4],
+        stroke_color: [f32; 4],
+        sides: u32,
+    },
+    ShapeWedge {
+        color: [f32; 4],
+        start_angle: f32,
+        end_angle: f32,
+    },
+    ShapeRadialProgress {
+        color: [f32; 4],
+        track_color: [f32; 4],
+        value: f32,
+    },
+    // ── Menu ──
+    InventoryGrid {
+        columns: u32,
+        rows: u32,
+        slot_size: f32,
+        slot_bg_color: [f32; 4],
+        slot_border_color: [f32; 4],
+    },
+    DialogBox {
+        speaker: String,
+        text: String,
+        bg_color: [f32; 4],
+        speaker_color: [f32; 4],
+    },
+    ObjectiveTracker {
+        title: String,
+        objective_count: usize,
+        title_color: [f32; 4],
+    },
+    LoadingScreen {
+        progress: f32,
+        message: String,
+        bar_color: [f32; 4],
+        bg_color: [f32; 4],
+    },
+    KeybindRow {
+        action: String,
+        binding: String,
+        key_bg_color: [f32; 4],
+    },
+    SettingsRow {
+        label: String,
+        value: String,
+    },
+    // ── Extra ──
+    Separator {
+        horizontal: bool,
+        color: [f32; 4],
+        thickness: f32,
+    },
+    NumberInput {
+        value: f64,
+        precision: u32,
+        bg_color: [f32; 4],
+        button_color: [f32; 4],
+    },
+    VerticalSlider {
+        value: f32,
+        min: f32,
+        max: f32,
+        track_color: [f32; 4],
+        fill_color: [f32; 4],
+        thumb_color: [f32; 4],
+    },
+    Scrollbar {
+        vertical: bool,
+        viewport_fraction: f32,
+        position: f32,
+        track_color: [f32; 4],
+        thumb_color: [f32; 4],
+    },
+    ListWidget {
+        item_count: usize,
+        bg_color: [f32; 4],
+        selected_bg_color: [f32; 4],
+        item_height: f32,
     },
 }
 
@@ -726,17 +863,22 @@ impl EditorPanel for UiCanvasPanel {
                             user_textures.and_then(|ut| ut.image_id(img.image.id()))
                         });
 
-                    // Read UiWidgetStyle
-                    let wstyle = world.get::<UiWidgetStyle>(entity);
-                    let border_radius = wstyle
-                        .map(|s| [s.border_radius.top_left, s.border_radius.top_right, s.border_radius.bottom_right, s.border_radius.bottom_left])
+                    // Read individual style components
+                    let border_radius_comp = world.get::<UiBorderRadius>(entity);
+                    let stroke_comp = world.get::<UiStroke>(entity);
+                    let opacity_comp = world.get::<UiOpacity>(entity);
+                    let shadow_comp = world.get::<UiBoxShadow>(entity);
+                    let text_style_comp = world.get::<UiTextStyle>(entity);
+
+                    let border_radius = border_radius_comp
+                        .map(|s| [s.top_left, s.top_right, s.bottom_right, s.bottom_left])
                         .unwrap_or([0.0; 4]);
-                    let stroke_width = wstyle.map(|s| s.stroke.width).unwrap_or(0.0);
-                    let opacity = wstyle.map(|s| s.opacity).unwrap_or(1.0);
-                    let shadow = wstyle.and_then(|s| s.shadow.as_ref().map(|sh| {
+                    let stroke_width = stroke_comp.map(|s| s.width).unwrap_or(0.0);
+                    let opacity = opacity_comp.map(|s| s.0).unwrap_or(1.0);
+                    let shadow = shadow_comp.map(|sh| {
                         let c = sh.color.to_srgba().to_f32_array();
                         [c[0], c[1], c[2], c[3], sh.blur, sh.spread]
-                    }));
+                    });
 
                     // Read text content
                     let text_content = world
@@ -744,14 +886,14 @@ impl EditorPanel for UiCanvasPanel {
                         .map(|t| t.0.clone());
                     let text_font = world.get::<TextFont>(entity);
                     let text_color_comp = world.get::<TextColor>(entity);
-                    let text_size = wstyle.map(|s| s.text.size)
+                    let text_size = text_style_comp.map(|s| s.size)
                         .or_else(|| text_font.map(|f| f.font_size))
                         .unwrap_or(14.0);
-                    let text_color = wstyle
-                        .map(|s| s.text.color.to_srgba().to_f32_array())
+                    let text_color = text_style_comp
+                        .map(|s| s.color.to_srgba().to_f32_array())
                         .or_else(|| text_color_comp.map(|c| c.0.to_srgba().to_f32_array()))
                         .unwrap_or([1.0, 1.0, 1.0, 1.0]);
-                    let text_bold = wstyle.map(|s| s.text.bold).unwrap_or(false);
+                    let text_bold = text_style_comp.map(|s| s.bold).unwrap_or(false);
 
                     // Read per-widget-type data
                     let widget_data = snapshot_widget_data(world, entity, &widget.widget_type);
@@ -1965,6 +2107,227 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 }
             } else { WidgetDataSnapshot::None }
         }
+        // ── HUD ──
+        UiWidgetType::Crosshair => {
+            if let Some(d) = world.get::<CrosshairData>(entity) {
+                WidgetDataSnapshot::Crosshair {
+                    style: format!("{:?}", d.style),
+                    color: c2a(d.color),
+                    size: d.size,
+                    thickness: d.thickness,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::AmmoCounter => {
+            if let Some(d) = world.get::<AmmoCounterData>(entity) {
+                WidgetDataSnapshot::AmmoCounter {
+                    current: d.current, max: d.max,
+                    color: c2a(d.color), low_color: c2a(d.low_color),
+                    low_threshold: d.low_threshold,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Compass => {
+            if let Some(d) = world.get::<CompassData>(entity) {
+                WidgetDataSnapshot::Compass {
+                    heading: d.heading,
+                    color: c2a(d.text_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::StatusEffectBar => {
+            if let Some(d) = world.get::<StatusEffectBarData>(entity) {
+                WidgetDataSnapshot::StatusEffectBar {
+                    effect_count: d.effects.len(),
+                    color: [0.3, 0.7, 1.0, 1.0],
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::NotificationFeed => {
+            if let Some(d) = world.get::<NotificationFeedData>(entity) {
+                WidgetDataSnapshot::NotificationFeed {
+                    count: d.max_visible,
+                    color: [0.9, 0.9, 0.9, 1.0],
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::RadialMenu => {
+            if let Some(d) = world.get::<RadialMenuData>(entity) {
+                WidgetDataSnapshot::RadialMenu {
+                    item_count: d.items.len().max(1),
+                    color: c2a(d.bg_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Minimap => {
+            if let Some(d) = world.get::<MinimapData>(entity) {
+                WidgetDataSnapshot::Minimap {
+                    shape: format!("{:?}", d.shape),
+                    bg_color: c2a(d.bg_color),
+                    border_color: c2a(d.border_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        // ── Shapes ──
+        UiWidgetType::Circle => {
+            if let Some(d) = world.get::<CircleShape>(entity) {
+                WidgetDataSnapshot::ShapeCircle {
+                    color: c2a(d.color),
+                    stroke_color: c2a(d.stroke_color),
+                    stroke_width: d.stroke_width,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Arc => {
+            if let Some(d) = world.get::<ArcShape>(entity) {
+                WidgetDataSnapshot::ShapeArc {
+                    color: c2a(d.color),
+                    start_angle: d.start_angle,
+                    end_angle: d.end_angle,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Triangle => {
+            if let Some(d) = world.get::<TriangleShape>(entity) {
+                WidgetDataSnapshot::ShapeTriangle {
+                    color: c2a(d.color),
+                    stroke_color: c2a(d.stroke_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Line => {
+            if let Some(d) = world.get::<LineShape>(entity) {
+                WidgetDataSnapshot::ShapeLine {
+                    color: c2a(d.color),
+                    thickness: d.thickness,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Polygon => {
+            if let Some(d) = world.get::<PolygonShape>(entity) {
+                WidgetDataSnapshot::ShapePolygon {
+                    color: c2a(d.color),
+                    stroke_color: c2a(d.stroke_color),
+                    sides: d.sides,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Wedge => {
+            if let Some(d) = world.get::<WedgeShape>(entity) {
+                WidgetDataSnapshot::ShapeWedge {
+                    color: c2a(d.color),
+                    start_angle: d.start_angle,
+                    end_angle: d.end_angle,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::RadialProgress => {
+            if let Some(d) = world.get::<RadialProgressShape>(entity) {
+                WidgetDataSnapshot::ShapeRadialProgress {
+                    color: c2a(d.color),
+                    track_color: c2a(d.bg_color),
+                    value: d.value,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        // ── Menu ──
+        UiWidgetType::InventoryGrid => {
+            if let Some(d) = world.get::<InventoryGridData>(entity) {
+                WidgetDataSnapshot::InventoryGrid {
+                    columns: d.columns, rows: d.rows, slot_size: d.slot_size,
+                    slot_bg_color: c2a(d.slot_bg_color),
+                    slot_border_color: c2a(d.slot_border_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::DialogBox => {
+            if let Some(d) = world.get::<DialogBoxData>(entity) {
+                WidgetDataSnapshot::DialogBox {
+                    speaker: d.speaker.clone(), text: d.text.clone(),
+                    bg_color: c2a(d.bg_color), speaker_color: c2a(d.speaker_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::ObjectiveTracker => {
+            if let Some(d) = world.get::<ObjectiveTrackerData>(entity) {
+                WidgetDataSnapshot::ObjectiveTracker {
+                    title: d.title.clone(),
+                    objective_count: d.objectives.len(),
+                    title_color: c2a(d.title_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::LoadingScreen => {
+            if let Some(d) = world.get::<LoadingScreenData>(entity) {
+                WidgetDataSnapshot::LoadingScreen {
+                    progress: d.progress, message: d.message.clone(),
+                    bar_color: c2a(d.bar_color), bg_color: c2a(d.bg_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::KeybindRow => {
+            if let Some(d) = world.get::<KeybindRowData>(entity) {
+                WidgetDataSnapshot::KeybindRow {
+                    action: d.action.clone(), binding: d.binding.clone(),
+                    key_bg_color: c2a(d.key_bg_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::SettingsRow => {
+            if let Some(d) = world.get::<SettingsRowData>(entity) {
+                WidgetDataSnapshot::SettingsRow {
+                    label: d.label.clone(), value: d.value.clone(),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        // ── Extra ──
+        UiWidgetType::Separator => {
+            if let Some(d) = world.get::<SeparatorData>(entity) {
+                WidgetDataSnapshot::Separator {
+                    horizontal: matches!(d.direction, SeparatorDirection::Horizontal),
+                    color: c2a(d.color), thickness: d.thickness,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::NumberInput => {
+            if let Some(d) = world.get::<NumberInputData>(entity) {
+                WidgetDataSnapshot::NumberInput {
+                    value: d.value, precision: d.precision,
+                    bg_color: c2a(d.bg_color), button_color: c2a(d.button_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::VerticalSlider => {
+            if let Some(d) = world.get::<VerticalSliderData>(entity) {
+                WidgetDataSnapshot::VerticalSlider {
+                    value: d.value, min: d.min, max: d.max,
+                    track_color: c2a(d.track_color),
+                    fill_color: c2a(d.fill_color),
+                    thumb_color: c2a(d.thumb_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::Scrollbar => {
+            if let Some(d) = world.get::<ScrollbarData>(entity) {
+                WidgetDataSnapshot::Scrollbar {
+                    vertical: matches!(d.orientation, ScrollbarOrientation::Vertical),
+                    viewport_fraction: d.viewport_fraction,
+                    position: d.position,
+                    track_color: c2a(d.track_color),
+                    thumb_color: c2a(d.thumb_color),
+                }
+            } else { WidgetDataSnapshot::None }
+        }
+        UiWidgetType::List => {
+            if let Some(d) = world.get::<ListData>(entity) {
+                WidgetDataSnapshot::ListWidget {
+                    item_count: d.items.len(),
+                    bg_color: c2a(d.bg_color),
+                    selected_bg_color: c2a(d.selected_bg_color),
+                    item_height: d.item_height,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
         _ => WidgetDataSnapshot::None,
     }
 }
@@ -2060,6 +2423,85 @@ fn paint_widget_preview(
         }
         WidgetDataSnapshot::DraggableWindow { title, title_bar_color } => {
             paint_window_like(painter, ws, rect, z, rounding, title, title_bar_color);
+        }
+        // ── HUD ──
+        WidgetDataSnapshot::Crosshair { style, color, size, thickness } => {
+            paint_crosshair(painter, rect, z, style, color, *size, *thickness);
+        }
+        WidgetDataSnapshot::AmmoCounter { current, max, color, low_color, low_threshold } => {
+            paint_ammo_counter(painter, rect, z, *current, *max, color, low_color, *low_threshold);
+        }
+        WidgetDataSnapshot::Compass { heading, color } => {
+            paint_compass(painter, rect, z, *heading, color);
+        }
+        WidgetDataSnapshot::StatusEffectBar { effect_count, color } => {
+            paint_status_effect_bar(painter, rect, z, *effect_count, color);
+        }
+        WidgetDataSnapshot::NotificationFeed { count, color } => {
+            paint_notification_feed(painter, rect, z, *count, color);
+        }
+        WidgetDataSnapshot::RadialMenu { item_count, color } => {
+            paint_radial_menu(painter, rect, z, *item_count, color);
+        }
+        WidgetDataSnapshot::Minimap { shape, bg_color, border_color } => {
+            paint_minimap(painter, rect, z, shape, bg_color, border_color);
+        }
+        // ── Shapes ──
+        WidgetDataSnapshot::ShapeCircle { color, stroke_color, stroke_width } => {
+            paint_shape_circle(painter, rect, z, color, stroke_color, *stroke_width);
+        }
+        WidgetDataSnapshot::ShapeArc { color, start_angle, end_angle } => {
+            paint_shape_arc(painter, rect, z, color, *start_angle, *end_angle);
+        }
+        WidgetDataSnapshot::ShapeTriangle { color, stroke_color } => {
+            paint_shape_triangle(painter, rect, z, color, stroke_color);
+        }
+        WidgetDataSnapshot::ShapeLine { color, thickness } => {
+            paint_shape_line(painter, rect, z, color, *thickness);
+        }
+        WidgetDataSnapshot::ShapePolygon { color, stroke_color, sides } => {
+            paint_shape_polygon(painter, rect, z, color, stroke_color, *sides);
+        }
+        WidgetDataSnapshot::ShapeWedge { color, start_angle, end_angle } => {
+            paint_shape_wedge(painter, rect, z, color, *start_angle, *end_angle);
+        }
+        WidgetDataSnapshot::ShapeRadialProgress { color, track_color, value } => {
+            paint_shape_radial_progress(painter, rect, z, color, track_color, *value);
+        }
+        // ── Menu ──
+        WidgetDataSnapshot::InventoryGrid { columns, rows, slot_size, slot_bg_color, slot_border_color } => {
+            paint_inventory_grid(painter, ws, rect, z, *columns, *rows, *slot_size, slot_bg_color, slot_border_color);
+        }
+        WidgetDataSnapshot::DialogBox { speaker, text, bg_color, speaker_color } => {
+            paint_dialog_box(painter, ws, rect, z, rounding, speaker, text, bg_color, speaker_color);
+        }
+        WidgetDataSnapshot::ObjectiveTracker { title, objective_count, title_color } => {
+            paint_objective_tracker(painter, ws, rect, z, rounding, title, *objective_count, title_color);
+        }
+        WidgetDataSnapshot::LoadingScreen { progress, message, bar_color, bg_color } => {
+            paint_loading_screen(painter, rect, z, *progress, message, bar_color, bg_color);
+        }
+        WidgetDataSnapshot::KeybindRow { action, binding, key_bg_color } => {
+            paint_keybind_row(painter, ws, rect, z, action, binding, key_bg_color);
+        }
+        WidgetDataSnapshot::SettingsRow { label, value } => {
+            paint_settings_row(painter, ws, rect, z, label, value);
+        }
+        // ── Extra ──
+        WidgetDataSnapshot::Separator { horizontal, color, thickness } => {
+            paint_separator(painter, rect, z, *horizontal, color, *thickness);
+        }
+        WidgetDataSnapshot::NumberInput { value, precision, bg_color, button_color } => {
+            paint_number_input(painter, ws, rect, z, rounding, *value, *precision, bg_color, button_color);
+        }
+        WidgetDataSnapshot::VerticalSlider { value, min, max, track_color, fill_color, thumb_color } => {
+            paint_vertical_slider(painter, rect, z, *value, *min, *max, track_color, fill_color, thumb_color);
+        }
+        WidgetDataSnapshot::Scrollbar { vertical, viewport_fraction, position, track_color, thumb_color } => {
+            paint_scrollbar(painter, rect, z, *vertical, *viewport_fraction, *position, track_color, thumb_color);
+        }
+        WidgetDataSnapshot::ListWidget { item_count, bg_color, selected_bg_color, item_height } => {
+            paint_list_widget(painter, ws, rect, z, rounding, *item_count, bg_color, selected_bg_color, *item_height);
         }
         WidgetDataSnapshot::None => {
             // Generic: text widget, container, panel, image
@@ -2415,5 +2857,754 @@ fn paint_window_like(
     );
 
     // Border
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+}
+
+// ── HUD widget painters ────────────────────────────────────────────────────
+
+fn paint_crosshair(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    style: &str, color: &[f32; 4], _size: f32, thickness: f32,
+) {
+    let center = rect.center();
+    let c = arr_to_c32(color);
+    let sw = (thickness * z).max(1.0);
+    let arm = rect.width().min(rect.height()) / 2.0 - 4.0 * z;
+
+    match style {
+        "Dot" => {
+            painter.circle_filled(center, (3.0 * z).max(1.5), c);
+        }
+        "CircleDot" => {
+            painter.circle_stroke(center, arm * 0.6, Stroke::new(sw, c));
+            painter.circle_filled(center, (2.0 * z).max(1.0), c);
+        }
+        "CrossDot" => {
+            // Cross lines
+            painter.line_segment(
+                [Pos2::new(center.x - arm, center.y), Pos2::new(center.x + arm, center.y)],
+                Stroke::new(sw, c),
+            );
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - arm), Pos2::new(center.x, center.y + arm)],
+                Stroke::new(sw, c),
+            );
+            painter.circle_filled(center, (2.0 * z).max(1.0), c);
+        }
+        _ => {
+            // "Cross" (default)
+            painter.line_segment(
+                [Pos2::new(center.x - arm, center.y), Pos2::new(center.x + arm, center.y)],
+                Stroke::new(sw, c),
+            );
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - arm), Pos2::new(center.x, center.y + arm)],
+                Stroke::new(sw, c),
+            );
+        }
+    }
+}
+
+fn paint_ammo_counter(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    current: u32, max: u32, color: &[f32; 4], low_color: &[f32; 4], low_threshold: u32,
+) {
+    // Background
+    painter.rect_filled(rect, round_f(4.0 * z), Color32::from_rgba_unmultiplied(20, 20, 25, 200));
+
+    let c = if current <= low_threshold { arr_to_c32(low_color) } else { arr_to_c32(color) };
+    let text = format!("{}/{}", current, max);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        &text,
+        egui::FontId::proportional((16.0 * z).clamp(8.0, 36.0)),
+        c,
+    );
+}
+
+fn paint_compass(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    heading: f32, color: &[f32; 4],
+) {
+    // Background bar
+    painter.rect_filled(rect, round_f(2.0 * z), Color32::from_rgba_unmultiplied(20, 20, 25, 180));
+
+    let c = arr_to_c32(color);
+    let tick_c = Color32::from_rgba_unmultiplied(100, 100, 110, 200);
+    let dirs = ["N", "E", "S", "W"];
+    let center_x = rect.center().x;
+    let w = rect.width();
+
+    for (i, dir) in dirs.iter().enumerate() {
+        let deg = i as f32 * 90.0;
+        // Offset from heading, wrapped to -180..180
+        let mut diff = deg - heading;
+        while diff > 180.0 { diff -= 360.0; }
+        while diff < -180.0 { diff += 360.0; }
+        let frac = diff / 180.0; // -1..1
+        let x = center_x + frac * w * 0.5;
+        if x >= rect.min.x && x <= rect.max.x {
+            // Tick line
+            painter.line_segment(
+                [Pos2::new(x, rect.max.y - 4.0 * z), Pos2::new(x, rect.max.y)],
+                Stroke::new(z, tick_c),
+            );
+            // Direction label
+            painter.text(
+                Pos2::new(x, rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                *dir,
+                egui::FontId::proportional((12.0 * z).clamp(6.0, 24.0)),
+                c,
+            );
+        }
+    }
+
+    // Center indicator triangle
+    painter.line_segment(
+        [Pos2::new(center_x, rect.min.y), Pos2::new(center_x, rect.min.y + 4.0 * z)],
+        Stroke::new(2.0 * z, c),
+    );
+}
+
+fn paint_status_effect_bar(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    effect_count: usize, color: &[f32; 4],
+) {
+    let count = effect_count.max(3); // show at least 3 placeholder slots
+    let slot_size = (rect.height() * 0.8).min(rect.width() / count as f32 - 2.0 * z).max(8.0);
+    let spacing = 2.0 * z;
+    let total_w = count as f32 * (slot_size + spacing) - spacing;
+    let start_x = rect.center().x - total_w / 2.0;
+    let y = rect.center().y - slot_size / 2.0;
+
+    let c = arr_to_c32(color);
+    let empty_c = Color32::from_rgba_unmultiplied(50, 50, 60, 120);
+
+    for i in 0..count {
+        let x = start_x + i as f32 * (slot_size + spacing);
+        let r = Rect::from_min_size(Pos2::new(x, y), Vec2::splat(slot_size));
+        let fill = if i < effect_count { c } else { empty_c };
+        painter.rect_filled(r, round_f(3.0 * z), fill);
+    }
+}
+
+fn paint_notification_feed(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    count: usize, color: &[f32; 4],
+) {
+    let n = count.max(1).min(5);
+    let card_h = ((rect.height() - (n as f32 - 1.0) * 2.0 * z) / n as f32).max(12.0);
+    let c = arr_to_c32(color);
+    let pad = 4.0 * z;
+
+    for i in 0..n {
+        let y = rect.min.y + i as f32 * (card_h + 2.0 * z);
+        let card_rect = Rect::from_min_size(
+            Pos2::new(rect.min.x, y),
+            Vec2::new(rect.width(), card_h),
+        );
+        let alpha = (255 - (i as u16 * 40).min(180)) as u8;
+        let bg = Color32::from_rgba_unmultiplied(40, 42, 48, alpha);
+        painter.rect_filled(card_rect, round_f(3.0 * z), bg);
+
+        // Placeholder text line
+        let line_w = rect.width() * 0.6;
+        let line_h = (3.0 * z).max(1.0);
+        let line_rect = Rect::from_min_size(
+            Pos2::new(card_rect.min.x + pad, card_rect.center().y - line_h / 2.0),
+            Vec2::new(line_w, line_h),
+        );
+        painter.rect_filled(line_rect, round_f(1.0), Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha));
+    }
+}
+
+fn paint_radial_menu(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    item_count: usize, color: &[f32; 4],
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let c = arr_to_c32(color);
+    let n = item_count.max(1);
+
+    // Background circle
+    painter.circle_filled(center, radius, c);
+
+    // Divider lines
+    let line_c = Color32::from_rgba_unmultiplied(200, 200, 210, 150);
+    let angle_step = std::f32::consts::TAU / n as f32;
+    for i in 0..n {
+        let angle = angle_step * i as f32 - std::f32::consts::FRAC_PI_2;
+        let outer = Pos2::new(center.x + radius * angle.cos(), center.y + radius * angle.sin());
+        let inner_r = radius * 0.3;
+        let inner = Pos2::new(center.x + inner_r * angle.cos(), center.y + inner_r * angle.sin());
+        painter.line_segment([inner, outer], Stroke::new(z, line_c));
+    }
+
+    // Inner circle
+    painter.circle_filled(center, radius * 0.3, Color32::from_rgba_unmultiplied(30, 30, 35, 220));
+}
+
+fn paint_minimap(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    shape: &str, bg_color: &[f32; 4], border_color: &[f32; 4],
+) {
+    let center = rect.center();
+    let size = rect.width().min(rect.height());
+    let radius = size / 2.0 - 2.0 * z;
+    let bg = arr_to_c32(bg_color);
+    let border = arr_to_c32(border_color);
+    let grid_c = Color32::from_rgba_unmultiplied(60, 65, 60, 80);
+
+    if shape == "Square" {
+        let sq = Rect::from_center_size(center, Vec2::splat(size - 4.0 * z));
+        painter.rect_filled(sq, round_f(2.0 * z), bg);
+        // Grid lines
+        let step = (size - 4.0 * z) / 4.0;
+        for i in 1..4 {
+            let offset = step * i as f32;
+            painter.line_segment(
+                [Pos2::new(sq.min.x + offset, sq.min.y), Pos2::new(sq.min.x + offset, sq.max.y)],
+                Stroke::new(z * 0.5, grid_c),
+            );
+            painter.line_segment(
+                [Pos2::new(sq.min.x, sq.min.y + offset), Pos2::new(sq.max.x, sq.min.y + offset)],
+                Stroke::new(z * 0.5, grid_c),
+            );
+        }
+        painter.rect_stroke(sq, round_f(2.0 * z), Stroke::new(2.0 * z, border), egui::StrokeKind::Outside);
+    } else {
+        // Circle
+        painter.circle_filled(center, radius, bg);
+        // Grid lines (horizontal + vertical through center)
+        let step = radius / 2.0;
+        for i in [-1.0_f32, 0.0, 1.0] {
+            let offset = step * i;
+            // Approximate chord-clipped lines
+            let half_chord = (radius * radius - offset * offset).max(0.0).sqrt();
+            painter.line_segment(
+                [Pos2::new(center.x - half_chord, center.y + offset), Pos2::new(center.x + half_chord, center.y + offset)],
+                Stroke::new(z * 0.5, grid_c),
+            );
+            painter.line_segment(
+                [Pos2::new(center.x + offset, center.y - half_chord), Pos2::new(center.x + offset, center.y + half_chord)],
+                Stroke::new(z * 0.5, grid_c),
+            );
+        }
+        painter.circle_stroke(center, radius, Stroke::new(2.0 * z, border));
+    }
+
+    // Player indicator dot at center
+    painter.circle_filled(center, (3.0 * z).max(1.5), Color32::from_rgb(60, 180, 255));
+}
+
+// ── Shape widget painters ──────────────────────────────────────────────────
+
+fn paint_shape_circle(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], stroke_color: &[f32; 4], stroke_width: f32,
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 1.0;
+    let c = arr_to_c32(color);
+
+    painter.circle_filled(center, radius, c);
+
+    if stroke_width > 0.0 {
+        let sc = arr_to_c32(stroke_color);
+        painter.circle_stroke(center, radius, Stroke::new(stroke_width * z, sc));
+    }
+}
+
+fn paint_shape_arc(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], start_angle: f32, end_angle: f32,
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let c = arr_to_c32(color);
+    let sw = (3.0 * z).max(1.0);
+
+    let start_rad = start_angle.to_radians();
+    let end_rad = end_angle.to_radians();
+    let segments = 32;
+    let sweep = end_rad - start_rad;
+
+    for i in 0..segments {
+        let a0 = start_rad + sweep * (i as f32 / segments as f32);
+        let a1 = start_rad + sweep * ((i + 1) as f32 / segments as f32);
+        let p0 = Pos2::new(center.x + radius * a0.cos(), center.y + radius * a0.sin());
+        let p1 = Pos2::new(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+        painter.line_segment([p0, p1], Stroke::new(sw, c));
+    }
+}
+
+fn paint_shape_triangle(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], stroke_color: &[f32; 4],
+) {
+    let center = rect.center();
+    let half_w = rect.width() / 2.0 - 2.0 * z;
+    let half_h = rect.height() / 2.0 - 2.0 * z;
+    let c = arr_to_c32(color);
+
+    let top = Pos2::new(center.x, center.y - half_h);
+    let bl = Pos2::new(center.x - half_w, center.y + half_h);
+    let br = Pos2::new(center.x + half_w, center.y + half_h);
+
+    // Filled triangle via PathShape
+    let path = egui::epaint::PathShape::convex_polygon(vec![top, bl, br], c, Stroke::NONE);
+    painter.add(path);
+
+    let sc = arr_to_c32(stroke_color);
+    if sc.a() > 0 {
+        painter.line_segment([top, bl], Stroke::new(z, sc));
+        painter.line_segment([bl, br], Stroke::new(z, sc));
+        painter.line_segment([br, top], Stroke::new(z, sc));
+    }
+}
+
+fn paint_shape_line(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], thickness: f32,
+) {
+    let c = arr_to_c32(color);
+    let sw = (thickness * z).max(1.0);
+    // Diagonal from top-left to bottom-right
+    painter.line_segment(
+        [rect.left_top(), rect.right_bottom()],
+        Stroke::new(sw, c),
+    );
+}
+
+fn paint_shape_polygon(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], stroke_color: &[f32; 4], sides: u32,
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let c = arr_to_c32(color);
+    let n = sides.max(3) as usize;
+
+    let mut points = Vec::with_capacity(n);
+    for i in 0..n {
+        let angle = std::f32::consts::TAU * i as f32 / n as f32 - std::f32::consts::FRAC_PI_2;
+        points.push(Pos2::new(center.x + radius * angle.cos(), center.y + radius * angle.sin()));
+    }
+
+    let path = egui::epaint::PathShape::convex_polygon(points.clone(), c, Stroke::NONE);
+    painter.add(path);
+
+    let sc = arr_to_c32(stroke_color);
+    if sc.a() > 0 {
+        for i in 0..n {
+            painter.line_segment([points[i], points[(i + 1) % n]], Stroke::new(z, sc));
+        }
+    }
+}
+
+fn paint_shape_wedge(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], start_angle: f32, end_angle: f32,
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let c = arr_to_c32(color);
+
+    let start_rad = start_angle.to_radians();
+    let end_rad = end_angle.to_radians();
+    let segments = 24;
+    let sweep = end_rad - start_rad;
+
+    let mut points = Vec::with_capacity(segments + 2);
+    points.push(center);
+    for i in 0..=segments {
+        let a = start_rad + sweep * (i as f32 / segments as f32);
+        points.push(Pos2::new(center.x + radius * a.cos(), center.y + radius * a.sin()));
+    }
+
+    let path = egui::epaint::PathShape::convex_polygon(points, c, Stroke::NONE);
+    painter.add(path);
+}
+
+fn paint_shape_radial_progress(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    color: &[f32; 4], track_color: &[f32; 4], value: f32,
+) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
+    let sw = (4.0 * z).max(2.0);
+
+    // Track (full circle)
+    let tc = arr_to_c32(track_color);
+    painter.circle_stroke(center, radius, Stroke::new(sw, tc));
+
+    // Filled arc
+    let c = arr_to_c32(color);
+    let start_angle = -std::f32::consts::FRAC_PI_2; // top
+    let sweep = std::f32::consts::TAU * value.clamp(0.0, 1.0);
+    let segments = 32;
+
+    for i in 0..segments {
+        let frac0 = i as f32 / segments as f32;
+        let frac1 = (i + 1) as f32 / segments as f32;
+        if frac0 >= value { break; }
+        let a0 = start_angle + sweep * frac0;
+        let a1 = start_angle + sweep * (frac1.min(value));
+        let p0 = Pos2::new(center.x + radius * a0.cos(), center.y + radius * a0.sin());
+        let p1 = Pos2::new(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+        painter.line_segment([p0, p1], Stroke::new(sw, c));
+    }
+}
+
+// ── Menu widget painters ────────────────────────────────────────────────────
+
+fn paint_inventory_grid(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    columns: u32, rows: u32, slot_size: f32,
+    slot_bg_color: &[f32; 4], slot_border_color: &[f32; 4],
+) {
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(30, 30, 35) };
+    painter.rect_filled(rect, round_f(4.0 * z), bg);
+
+    let slot = (slot_size * z).max(8.0);
+    let gap = (4.0 * z).max(1.0);
+    let pad = 6.0 * z;
+    let slot_bg = arr_to_c32(slot_bg_color);
+    let slot_border = arr_to_c32(slot_border_color);
+    let slot_round = round_f(3.0 * z);
+
+    for row in 0..rows {
+        for col in 0..columns {
+            let x = rect.min.x + pad + (slot + gap) * col as f32;
+            let y = rect.min.y + pad + (slot + gap) * row as f32;
+            if x + slot > rect.max.x || y + slot > rect.max.y { continue; }
+            let slot_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::splat(slot));
+            painter.rect_filled(slot_rect, slot_round, slot_bg);
+            painter.rect_stroke(slot_rect, slot_round, Stroke::new(z, slot_border), egui::StrokeKind::Outside);
+        }
+    }
+}
+
+fn paint_dialog_box(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    speaker: &str, text: &str,
+    bg_color: &[f32; 4], speaker_color: &[f32; 4],
+) {
+    painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+
+    let pad = 10.0 * z;
+
+    if !speaker.is_empty() {
+        painter.text(
+            Pos2::new(rect.min.x + pad, rect.min.y + pad),
+            egui::Align2::LEFT_TOP,
+            speaker,
+            egui::FontId::proportional((13.0 * z).clamp(6.0, 26.0)),
+            arr_to_c32(speaker_color),
+        );
+    }
+
+    if !text.is_empty() {
+        let text_y = rect.min.y + pad + 18.0 * z;
+        let tc = arr_to_c32(&ws.text_color);
+        painter.text(
+            Pos2::new(rect.min.x + pad, text_y),
+            egui::Align2::LEFT_TOP,
+            text,
+            egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_objective_tracker(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    title: &str, objective_count: usize, title_color: &[f32; 4],
+) {
+    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgba_unmultiplied(20, 20, 25, 180) };
+    painter.rect_filled(rect, rounding, bg);
+
+    let pad = 8.0 * z;
+
+    painter.text(
+        Pos2::new(rect.min.x + pad, rect.min.y + pad),
+        egui::Align2::LEFT_TOP,
+        title,
+        egui::FontId::proportional((13.0 * z).clamp(6.0, 26.0)),
+        arr_to_c32(title_color),
+    );
+
+    let line_h = (16.0 * z).max(8.0);
+    let bullet_y_start = rect.min.y + pad + 20.0 * z;
+    let tc = arr_to_c32(&ws.text_color);
+    let display_count = objective_count.min(6);
+    for i in 0..display_count {
+        let y = bullet_y_start + line_h * i as f32;
+        if y + line_h > rect.max.y { break; }
+        let bullet_r = (2.5 * z).max(1.0);
+        painter.circle_filled(
+            Pos2::new(rect.min.x + pad + bullet_r, y + line_h / 2.0),
+            bullet_r, tc,
+        );
+        painter.text(
+            Pos2::new(rect.min.x + pad + bullet_r * 2.0 + 6.0 * z, y + line_h / 2.0),
+            egui::Align2::LEFT_CENTER,
+            &format!("Objective {}", i + 1),
+            egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0)),
+            tc,
+        );
+    }
+}
+
+fn paint_loading_screen(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    progress: f32, message: &str,
+    bar_color: &[f32; 4], bg_color: &[f32; 4],
+) {
+    painter.rect_filled(rect, 0.0, arr_to_c32(bg_color));
+
+    let center = rect.center();
+
+    if !message.is_empty() {
+        painter.text(
+            Pos2::new(center.x, center.y - 20.0 * z),
+            egui::Align2::CENTER_CENTER,
+            message,
+            egui::FontId::proportional((14.0 * z).clamp(6.0, 28.0)),
+            Color32::WHITE,
+        );
+    }
+
+    let bar_w = (rect.width() * 0.6).max(40.0);
+    let bar_h = (8.0 * z).max(3.0);
+    let bar_x = center.x - bar_w / 2.0;
+    let bar_y = center.y + 4.0 * z;
+    let bar_rect = Rect::from_min_size(Pos2::new(bar_x, bar_y), Vec2::new(bar_w, bar_h));
+    let bar_round = round_f(bar_h / 2.0);
+
+    painter.rect_filled(bar_rect, bar_round, Color32::from_rgb(50, 50, 55));
+
+    let fill_w = bar_w * progress.clamp(0.0, 1.0);
+    if fill_w > 0.5 {
+        let fill_rect = Rect::from_min_size(bar_rect.min, Vec2::new(fill_w, bar_h));
+        painter.rect_filled(fill_rect, bar_round, arr_to_c32(bar_color));
+    }
+}
+
+fn paint_keybind_row(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    action: &str, binding: &str, key_bg_color: &[f32; 4],
+) {
+    let pad = 8.0 * z;
+    let tc = arr_to_c32(&ws.text_color);
+
+    painter.text(
+        Pos2::new(rect.min.x + pad, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        action,
+        egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0)),
+        tc,
+    );
+
+    let key_font = egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0));
+    let key_galley = painter.layout_no_wrap(binding.to_string(), key_font.clone(), tc);
+    let key_w = key_galley.size().x + 12.0 * z;
+    let key_h = (22.0 * z).max(12.0);
+    let key_x = rect.max.x - pad - key_w;
+    let key_y = rect.center().y - key_h / 2.0;
+    let key_rect = Rect::from_min_size(Pos2::new(key_x, key_y), Vec2::new(key_w, key_h));
+    let key_round = round_f(4.0 * z);
+
+    painter.rect_filled(key_rect, key_round, arr_to_c32(key_bg_color));
+    painter.rect_stroke(key_rect, key_round, Stroke::new(z, Color32::from_rgb(90, 90, 100)), egui::StrokeKind::Outside);
+    painter.text(
+        key_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        binding,
+        key_font,
+        tc,
+    );
+}
+
+fn paint_settings_row(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
+    label: &str, value: &str,
+) {
+    let pad = 8.0 * z;
+    let tc = arr_to_c32(&ws.text_color);
+
+    painter.text(
+        Pos2::new(rect.min.x + pad, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0)),
+        tc,
+    );
+
+    painter.text(
+        Pos2::new(rect.max.x - pad, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        value,
+        egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0)),
+        Color32::from_rgb(160, 160, 170),
+    );
+}
+
+// ── Extra widget painters ───────────────────────────────────────────────────
+
+fn paint_separator(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    horizontal: bool, color: &[f32; 4], thickness: f32,
+) {
+    let c = arr_to_c32(color);
+    let t = (thickness * z).max(1.0);
+
+    if horizontal {
+        let y = rect.center().y;
+        painter.line_segment(
+            [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
+            Stroke::new(t, c),
+        );
+    } else {
+        let x = rect.center().x;
+        painter.line_segment(
+            [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+            Stroke::new(t, c),
+        );
+    }
+}
+
+fn paint_number_input(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    value: f64, precision: u32,
+    bg_color: &[f32; 4], button_color: &[f32; 4],
+) {
+    painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
+    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+
+    let btn_w = (28.0 * z).max(14.0);
+    let btn_c = arr_to_c32(button_color);
+    let tc = arr_to_c32(&ws.text_color);
+    let btn_font = egui::FontId::proportional((14.0 * z).clamp(6.0, 28.0));
+    let val_font = egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0));
+
+    let left_rect = Rect::from_min_size(rect.min, Vec2::new(btn_w, rect.height()));
+    let left_round = egui::Rounding { nw: rounding.nw, ne: 0, se: 0, sw: rounding.sw };
+    painter.rect_filled(left_rect, left_round, btn_c);
+    painter.text(left_rect.center(), egui::Align2::CENTER_CENTER, "\u{2212}", btn_font.clone(), tc);
+
+    let right_rect = Rect::from_min_max(
+        Pos2::new(rect.max.x - btn_w, rect.min.y),
+        rect.max,
+    );
+    let right_round = egui::Rounding { nw: 0, ne: rounding.ne, se: rounding.se, sw: 0 };
+    painter.rect_filled(right_rect, right_round, btn_c);
+    painter.text(right_rect.center(), egui::Align2::CENTER_CENTER, "+", btn_font, tc);
+
+    let value_text = format!("{:.prec$}", value, prec = precision as usize);
+    painter.text(rect.center(), egui::Align2::CENTER_CENTER, &value_text, val_font, tc);
+}
+
+fn paint_vertical_slider(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    value: f32, min: f32, max: f32,
+    track_color: &[f32; 4], fill_color: &[f32; 4], thumb_color: &[f32; 4],
+) {
+    let track_w = (6.0 * z).max(2.0);
+    let track_x = rect.center().x - track_w / 2.0;
+    let track_rect = Rect::from_min_size(
+        Pos2::new(track_x, rect.min.y),
+        Vec2::new(track_w, rect.height()),
+    );
+    let track_round = round_f(track_w / 2.0);
+
+    painter.rect_filled(track_rect, track_round, arr_to_c32(track_color));
+
+    let ratio = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+    let fill_h = rect.height() * ratio;
+    if fill_h > 0.5 {
+        let fill_rect = Rect::from_min_size(
+            Pos2::new(track_x, rect.max.y - fill_h),
+            Vec2::new(track_w, fill_h),
+        );
+        painter.rect_filled(fill_rect, track_round, arr_to_c32(fill_color));
+    }
+
+    let thumb_r = (8.0 * z).max(3.0);
+    let thumb_y = rect.max.y - fill_h;
+    painter.circle_filled(
+        Pos2::new(rect.center().x, thumb_y),
+        thumb_r,
+        arr_to_c32(thumb_color),
+    );
+}
+
+fn paint_scrollbar(
+    painter: &egui::Painter, rect: Rect, z: f32,
+    vertical: bool, viewport_fraction: f32, position: f32,
+    track_color: &[f32; 4], thumb_color: &[f32; 4],
+) {
+    let track_round = round_f(3.0 * z);
+
+    painter.rect_filled(rect, track_round, arr_to_c32(track_color));
+
+    let vf = viewport_fraction.clamp(0.05, 1.0);
+    let pos = position.clamp(0.0, 1.0);
+
+    if vertical {
+        let thumb_h = rect.height() * vf;
+        let available = rect.height() - thumb_h;
+        let thumb_y = rect.min.y + available * pos;
+        let thumb_rect = Rect::from_min_size(
+            Pos2::new(rect.min.x, thumb_y),
+            Vec2::new(rect.width(), thumb_h),
+        );
+        painter.rect_filled(thumb_rect, track_round, arr_to_c32(thumb_color));
+    } else {
+        let thumb_w = rect.width() * vf;
+        let available = rect.width() - thumb_w;
+        let thumb_x = rect.min.x + available * pos;
+        let thumb_rect = Rect::from_min_size(
+            Pos2::new(thumb_x, rect.min.y),
+            Vec2::new(thumb_w, rect.height()),
+        );
+        painter.rect_filled(thumb_rect, track_round, arr_to_c32(thumb_color));
+    }
+}
+
+fn paint_list_widget(
+    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    item_count: usize, bg_color: &[f32; 4], selected_bg_color: &[f32; 4], item_height: f32,
+) {
+    painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
+
+    let row_h = (item_height * z).max(10.0);
+    let pad = 8.0 * z;
+    let tc = arr_to_c32(&ws.text_color);
+    let sel_bg = arr_to_c32(selected_bg_color);
+    let display_count = item_count.min(20);
+
+    for i in 0..display_count {
+        let y = rect.min.y + row_h * i as f32;
+        if y + row_h > rect.max.y { break; }
+        let row_rect = Rect::from_min_size(Pos2::new(rect.min.x, y), Vec2::new(rect.width(), row_h));
+
+        if i == 0 {
+            painter.rect_filled(row_rect, 0.0, sel_bg);
+        }
+
+        painter.text(
+            Pos2::new(row_rect.min.x + pad, row_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &format!("Item {}", i + 1),
+            egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0)),
+            tc,
+        );
+    }
+
     painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
 }

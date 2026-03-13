@@ -10,10 +10,17 @@ pub fn ui_theme_system(
     mut styled_widgets: Query<
         (
             &UiWidget,
-            &UiThemed,
-            Option<&mut UiWidgetStyle>,
+            Option<&mut UiFill>,
+            Option<&mut UiStroke>,
+            Option<&mut UiBorderRadius>,
+            Option<&mut UiOpacity>,
+            Option<&mut UiClipContent>,
+            Option<&mut UiCursor>,
+            Option<&mut UiTextStyle>,
+            Option<&mut UiPadding>,
             Option<&mut UiInteractionStyle>,
         ),
+        With<UiThemed>,
     >,
     mut progress_bars: Query<(&mut ProgressBarData, &UiThemed)>,
     mut health_bars: Query<(&mut HealthBarData, &UiThemed)>,
@@ -31,17 +38,40 @@ pub fn ui_theme_system(
         return;
     }
 
-    // ── UiWidgetStyle + UiInteractionStyle from theme tokens ──
-    for (widget, _themed, ws, is) in &mut styled_widgets {
-        if let Some(mut ws) = ws {
-            *ws = theme.widget_style(&widget.widget_type);
+    // ── Only update style components that already exist on the entity ──
+    for (widget, fill, stroke, border_radius, opacity, clip_content, cursor, text, padding, is) in &mut styled_widgets {
+        let style = theme.widget_style(&widget.widget_type);
+
+        if let Some(mut fill) = fill {
+            *fill = style.fill.clone();
+        }
+        if let Some(mut stroke) = stroke {
+            *stroke = style.stroke.clone();
+        }
+        if let Some(mut border_radius) = border_radius {
+            *border_radius = style.border_radius;
+        }
+        if let Some(mut opacity) = opacity {
+            opacity.0 = style.opacity;
+        }
+        if let Some(mut clip_content) = clip_content {
+            clip_content.0 = style.clip_content;
+        }
+        if let Some(mut cursor) = cursor {
+            *cursor = style.cursor;
+        }
+        if let Some(mut text) = text {
+            *text = style.text.clone();
+        }
+        if let Some(mut padding) = padding {
+            *padding = style.padding;
         }
         if let Some(mut is) = is {
             *is = theme.interaction_style();
         }
     }
 
-    // ── Widget data component colors (not covered by UiWidgetStyle) ──
+    // ── Widget data component colors (not covered by style components) ──
 
     for (mut data, _themed) in &mut progress_bars {
         data.fill_color = theme.progress_fill;

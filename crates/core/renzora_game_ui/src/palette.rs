@@ -113,6 +113,39 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
         UiWidgetType::Modal,
         UiWidgetType::DraggableWindow,
     ]),
+    ("HUD", regular::CROSSHAIR, &[
+        UiWidgetType::Crosshair,
+        UiWidgetType::AmmoCounter,
+        UiWidgetType::Compass,
+        UiWidgetType::StatusEffectBar,
+        UiWidgetType::NotificationFeed,
+        UiWidgetType::RadialMenu,
+        UiWidgetType::Minimap,
+    ]),
+    ("Menu", regular::LIST_BULLETS, &[
+        UiWidgetType::InventoryGrid,
+        UiWidgetType::DialogBox,
+        UiWidgetType::ObjectiveTracker,
+        UiWidgetType::LoadingScreen,
+        UiWidgetType::KeybindRow,
+        UiWidgetType::SettingsRow,
+    ]),
+    ("Extra", regular::PUZZLE_PIECE, &[
+        UiWidgetType::Separator,
+        UiWidgetType::NumberInput,
+        UiWidgetType::VerticalSlider,
+        UiWidgetType::Scrollbar,
+        UiWidgetType::List,
+    ]),
+    ("Shapes", regular::SHAPES, &[
+        UiWidgetType::Circle,
+        UiWidgetType::Arc,
+        UiWidgetType::RadialProgress,
+        UiWidgetType::Line,
+        UiWidgetType::Triangle,
+        UiWidgetType::Polygon,
+        UiWidgetType::Wedge,
+    ]),
 ];
 
 impl EditorPanel for WidgetPalettePanel {

@@ -45,9 +45,17 @@ struct InspectorSnapshot {
     flex_direction: u8,    // 0=Row, 1=Column, 2=RowReverse, 3=ColumnReverse
     justify_content: u8,   // 0=Start, 1=Center, 2=End, 3=SpaceBetween, 4=SpaceAround, 5=SpaceEvenly
     align_items: u8,       // 0=Start, 1=Center, 2=End, 3=Stretch
-    // Widget style (UiWidgetStyle)
-    widget_style: Option<components::UiWidgetStyle>,
-    // Text (content lives on bevy Text component, style props on UiWidgetStyle)
+    // Widget style (individual components, formerly UiWidgetStyle)
+    fill: Option<components::UiFill>,
+    stroke: Option<components::UiStroke>,
+    border_radius: Option<components::UiBorderRadius>,
+    shadow: Option<components::UiBoxShadow>,
+    opacity: Option<components::UiOpacity>,
+    clip_content: Option<components::UiClipContent>,
+    cursor: Option<components::UiCursor>,
+    text_style: Option<components::UiTextStyle>,
+    padding: Option<components::UiPadding>,
+    // Text (content lives on bevy Text component, style props on UiTextStyle)
     has_text: bool,
     text_content: String,
     // Interaction style
@@ -307,8 +315,16 @@ impl EditorPanel for UiInspectorPanel {
             ];
         }
 
-        // Widget style
-        snap.widget_style = world.get::<components::UiWidgetStyle>(entity).cloned();
+        // Widget style (individual components)
+        snap.fill = world.get::<components::UiFill>(entity).cloned();
+        snap.stroke = world.get::<components::UiStroke>(entity).cloned();
+        snap.border_radius = world.get::<components::UiBorderRadius>(entity).cloned();
+        snap.shadow = world.get::<components::UiBoxShadow>(entity).cloned();
+        snap.opacity = world.get::<components::UiOpacity>(entity).cloned();
+        snap.clip_content = world.get::<components::UiClipContent>(entity).cloned();
+        snap.cursor = world.get::<components::UiCursor>(entity).cloned();
+        snap.text_style = world.get::<components::UiTextStyle>(entity).cloned();
+        snap.padding = world.get::<components::UiPadding>(entity).cloned();
 
         // Text
         snap.has_text = world.get::<bevy::ui::widget::Text>(entity).is_some();
@@ -661,37 +677,41 @@ impl EditorPanel for UiInspectorPanel {
                 }
 
                 // ── Fill section ──
-                if let Some(ref mut style) = snap.widget_style {
-                    fill_section(ui, style, entity, commands, &theme);
+                if let Some(ref mut fill) = snap.fill {
+                    fill_section(ui, fill, entity, commands, &theme);
                 }
 
                 // ── Stroke section ──
-                if let Some(ref mut style) = snap.widget_style {
-                    stroke_section(ui, style, entity, commands, &theme);
+                if let Some(ref mut stroke) = snap.stroke {
+                    stroke_section(ui, stroke, entity, commands, &theme);
                 }
 
                 // ── Border Radius section ──
-                if let Some(ref mut style) = snap.widget_style {
-                    border_radius_section(ui, style, entity, commands, &theme);
+                if let Some(ref mut border_radius) = snap.border_radius {
+                    border_radius_section(ui, border_radius, entity, commands, &theme);
                 }
 
                 // ── Text section ──
-                if snap.has_text || snap.widget_style.is_some() {
+                if snap.has_text || snap.text_style.is_some() {
                     text_section(ui, snap, entity, commands, &theme);
                 }
 
                 // ── Padding section ──
-                if let Some(ref mut style) = snap.widget_style {
-                    padding_section(ui, style, entity, commands, &theme);
+                if let Some(ref mut padding) = snap.padding {
+                    padding_section(ui, padding, entity, commands, &theme);
                 }
 
                 // ── Effects section (opacity, shadow, clip, cursor) ──
-                if let Some(ref mut style) = snap.widget_style {
-                    effects_section(ui, style, entity, commands, &theme);
+                {
+                    let has_effects = snap.opacity.is_some() || snap.clip_content.is_some()
+                        || snap.cursor.is_some() || snap.shadow.is_some();
+                    if has_effects {
+                        effects_section(ui, snap, entity, commands, &theme);
+                    }
                 }
 
                 // ── Interaction States section ──
-                if snap.interaction_style.is_some() || snap.widget_style.is_some() {
+                if snap.interaction_style.is_some() || snap.fill.is_some() {
                     interaction_states_section(ui, snap, entity, commands, &theme);
                 }
 
@@ -738,7 +758,7 @@ impl EditorPanel for UiInspectorPanel {
 
 fn fill_section(
     ui: &mut egui::Ui,
-    style: &mut components::UiWidgetStyle,
+    fill: &mut components::UiFill,
     entity: Entity,
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
@@ -747,7 +767,7 @@ fn fill_section(
         ui, regular::DROP_HALF, "Fill", "rendering", theme,
         "ui_insp_fill", true,
         |ui| {
-            let fill_type_idx = match &style.fill {
+            let fill_type_idx = match fill {
                 components::UiFill::None => 0,
                 components::UiFill::Solid(_) => 1,
                 components::UiFill::LinearGradient { .. } => 2,
@@ -761,7 +781,7 @@ fn fill_section(
                     .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
                     .changed()
                 {
-                    style.fill = match idx {
+                    *fill = match idx {
                         0 => components::UiFill::None,
                         1 => components::UiFill::Solid(Color::srgba(0.2, 0.2, 0.2, 1.0)),
                         2 => components::UiFill::linear(
@@ -778,18 +798,18 @@ fn fill_section(
                         },
                         _ => components::UiFill::None,
                     };
-                    let new_fill = style.fill.clone();
+                    let new_fill = fill.clone();
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.fill = new_fill;
+                            if let Some(mut f) = em.get_mut::<components::UiFill>() {
+                                *f = new_fill;
                             }
                         }
                     });
                 }
             });
 
-            match &mut style.fill {
+            match fill {
                 components::UiFill::Solid(ref mut color) => {
                     inline_property(ui, 1, "Color", theme, |ui| {
                         let mut arr = color_to_arr(*color);
@@ -798,8 +818,8 @@ fn fill_section(
                             let c = *color;
                             commands.push(move |world: &mut World| {
                                 if let Ok(mut em) = world.get_entity_mut(entity) {
-                                    if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                        s.fill = components::UiFill::Solid(c);
+                                    if let Some(mut f) = em.get_mut::<components::UiFill>() {
+                                        *f = components::UiFill::Solid(c);
                                     }
                                 }
                             });
@@ -819,11 +839,11 @@ fn fill_section(
                         fill_changed = true;
                     }
                     if fill_changed {
-                        let new_fill = style.fill.clone();
+                        let new_fill = fill.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.fill = new_fill;
+                                if let Some(mut f) = em.get_mut::<components::UiFill>() {
+                                    *f = new_fill;
                                 }
                             }
                         });
@@ -849,11 +869,11 @@ fn fill_section(
                         fill_changed = true;
                     }
                     if fill_changed {
-                        let new_fill = style.fill.clone();
+                        let new_fill = fill.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.fill = new_fill;
+                                if let Some(mut f) = em.get_mut::<components::UiFill>() {
+                                    *f = new_fill;
                                 }
                             }
                         });
@@ -915,7 +935,7 @@ fn gradient_stops_editor(
 
 fn stroke_section(
     ui: &mut egui::Ui,
-    style: &mut components::UiWidgetStyle,
+    stroke: &mut components::UiStroke,
     entity: Entity,
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
@@ -925,28 +945,28 @@ fn stroke_section(
         "ui_insp_stroke", false,
         |ui| {
             inline_property(ui, 0, "Color", theme, |ui| {
-                let mut arr = color_to_arr(style.stroke.color);
+                let mut arr = color_to_arr(stroke.color);
                 if ui.color_edit_button_rgba_unmultiplied(&mut arr).changed() {
-                    style.stroke.color = arr_to_color(arr);
-                    let stroke = style.stroke.clone();
+                    stroke.color = arr_to_color(arr);
+                    let new_stroke = stroke.clone();
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.stroke = stroke;
+                            if let Some(mut s) = em.get_mut::<components::UiStroke>() {
+                                *s = new_stroke;
                             }
                         }
                     });
                 }
             });
             inline_property(ui, 1, "Width", theme, |ui| {
-                let mut v = style.stroke.width;
+                let mut v = stroke.width;
                 if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(0.0..=50.0).suffix("px")).changed() {
-                    style.stroke.width = v;
-                    let stroke = style.stroke.clone();
+                    stroke.width = v;
+                    let new_stroke = stroke.clone();
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.stroke = stroke;
+                            if let Some(mut s) = em.get_mut::<components::UiStroke>() {
+                                *s = new_stroke;
                             }
                         }
                     });
@@ -955,10 +975,10 @@ fn stroke_section(
             inline_property(ui, 2, "Sides", theme, |ui| {
                 ui.horizontal(|ui| {
                     let mut changed = false;
-                    let side_labels = [("T", &mut style.stroke.sides.top),
-                                       ("R", &mut style.stroke.sides.right),
-                                       ("B", &mut style.stroke.sides.bottom),
-                                       ("L", &mut style.stroke.sides.left)];
+                    let side_labels = [("T", &mut stroke.sides.top),
+                                       ("R", &mut stroke.sides.right),
+                                       ("B", &mut stroke.sides.bottom),
+                                       ("L", &mut stroke.sides.left)];
                     for (label, val) in side_labels {
                         if ui.selectable_label(*val, label).clicked() {
                             *val = !*val;
@@ -966,11 +986,11 @@ fn stroke_section(
                         }
                     }
                     if changed {
-                        let stroke = style.stroke.clone();
+                        let new_stroke = stroke.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.stroke = stroke;
+                                if let Some(mut s) = em.get_mut::<components::UiStroke>() {
+                                    *s = new_stroke;
                                 }
                             }
                         });
@@ -985,7 +1005,7 @@ fn stroke_section(
 
 fn border_radius_section(
     ui: &mut egui::Ui,
-    style: &mut components::UiWidgetStyle,
+    border_radius: &mut components::UiBorderRadius,
     entity: Entity,
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
@@ -998,24 +1018,24 @@ fn border_radius_section(
             for (i, label) in labels.iter().enumerate() {
                 inline_property(ui, i, label, theme, |ui| {
                     let cur = match i {
-                        0 => style.border_radius.top_left,
-                        1 => style.border_radius.top_right,
-                        2 => style.border_radius.bottom_right,
-                        _ => style.border_radius.bottom_left,
+                        0 => border_radius.top_left,
+                        1 => border_radius.top_right,
+                        2 => border_radius.bottom_right,
+                        _ => border_radius.bottom_left,
                     };
                     let mut v = cur;
                     if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(0.0..=500.0).suffix("px")).changed() {
                         match i {
-                            0 => style.border_radius.top_left = v,
-                            1 => style.border_radius.top_right = v,
-                            2 => style.border_radius.bottom_right = v,
-                            _ => style.border_radius.bottom_left = v,
+                            0 => border_radius.top_left = v,
+                            1 => border_radius.top_right = v,
+                            2 => border_radius.bottom_right = v,
+                            _ => border_radius.bottom_left = v,
                         }
-                        let radius = style.border_radius;
+                        let new_radius = *border_radius;
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.border_radius = radius;
+                                if let Some(mut r) = em.get_mut::<components::UiBorderRadius>() {
+                                    *r = new_radius;
                                 }
                             }
                         });
@@ -1062,17 +1082,17 @@ fn text_section(
                 row += 1;
             }
 
-            // Style props from UiWidgetStyle.text
-            if let Some(ref mut style) = snap.widget_style {
+            // Style props from UiTextStyle component
+            if let Some(ref mut text_style) = snap.text_style {
                 inline_property(ui, row, "Color", theme, |ui| {
-                    let mut arr = color_to_arr(style.text.color);
+                    let mut arr = color_to_arr(text_style.color);
                     if ui.color_edit_button_rgba_unmultiplied(&mut arr).changed() {
-                        style.text.color = arr_to_color(arr);
-                        let ts = style.text.clone();
+                        text_style.color = arr_to_color(arr);
+                        let ts = text_style.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.text = ts;
+                                if let Some(mut s) = em.get_mut::<components::UiTextStyle>() {
+                                    *s = ts;
                                 }
                             }
                         });
@@ -1080,14 +1100,14 @@ fn text_section(
                 });
                 row += 1;
                 inline_property(ui, row, "Size", theme, |ui| {
-                    let mut v = style.text.size;
+                    let mut v = text_style.size;
                     if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(1.0..=200.0).suffix("px")).changed() {
-                        style.text.size = v;
-                        let ts = style.text.clone();
+                        text_style.size = v;
+                        let ts = text_style.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.text = ts;
+                                if let Some(mut s) = em.get_mut::<components::UiTextStyle>() {
+                                    *s = ts;
                                 }
                             }
                         });
@@ -1095,14 +1115,14 @@ fn text_section(
                 });
                 row += 1;
                 inline_property(ui, row, "Bold", theme, |ui| {
-                    let mut v = style.text.bold;
+                    let mut v = text_style.bold;
                     if ui.checkbox(&mut v, "").changed() {
-                        style.text.bold = v;
-                        let ts = style.text.clone();
+                        text_style.bold = v;
+                        let ts = text_style.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.text = ts;
+                                if let Some(mut s) = em.get_mut::<components::UiTextStyle>() {
+                                    *s = ts;
                                 }
                             }
                         });
@@ -1110,14 +1130,14 @@ fn text_section(
                 });
                 row += 1;
                 inline_property(ui, row, "Italic", theme, |ui| {
-                    let mut v = style.text.italic;
+                    let mut v = text_style.italic;
                     if ui.checkbox(&mut v, "").changed() {
-                        style.text.italic = v;
-                        let ts = style.text.clone();
+                        text_style.italic = v;
+                        let ts = text_style.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.text = ts;
+                                if let Some(mut s) = em.get_mut::<components::UiTextStyle>() {
+                                    *s = ts;
                                 }
                             }
                         });
@@ -1126,7 +1146,7 @@ fn text_section(
                 row += 1;
                 inline_property(ui, row, "Align", theme, |ui| {
                     let labels = ["Left", "Center", "Right"];
-                    let mut idx = match style.text.align {
+                    let mut idx = match text_style.align {
                         components::UiTextAlign::Left => 0,
                         components::UiTextAlign::Center => 1,
                         components::UiTextAlign::Right => 2,
@@ -1136,16 +1156,16 @@ fn text_section(
                         .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
                         .changed()
                     {
-                        style.text.align = match idx {
+                        text_style.align = match idx {
                             0 => components::UiTextAlign::Left,
                             2 => components::UiTextAlign::Right,
                             _ => components::UiTextAlign::Center,
                         };
-                        let ts = style.text.clone();
+                        let ts = text_style.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.text = ts;
+                                if let Some(mut s) = em.get_mut::<components::UiTextStyle>() {
+                                    *s = ts;
                                 }
                             }
                         });
@@ -1160,7 +1180,7 @@ fn text_section(
 
 fn padding_section(
     ui: &mut egui::Ui,
-    style: &mut components::UiWidgetStyle,
+    padding: &mut components::UiPadding,
     entity: Entity,
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
@@ -1173,24 +1193,24 @@ fn padding_section(
             for (i, label) in labels.iter().enumerate() {
                 inline_property(ui, i, label, theme, |ui| {
                     let cur = match i {
-                        0 => style.padding.top,
-                        1 => style.padding.right,
-                        2 => style.padding.bottom,
-                        _ => style.padding.left,
+                        0 => padding.top,
+                        1 => padding.right,
+                        2 => padding.bottom,
+                        _ => padding.left,
                     };
                     let mut v = cur;
                     if ui.add(egui::DragValue::new(&mut v).speed(0.5).range(0.0..=500.0).suffix("px")).changed() {
                         match i {
-                            0 => style.padding.top = v,
-                            1 => style.padding.right = v,
-                            2 => style.padding.bottom = v,
-                            _ => style.padding.left = v,
+                            0 => padding.top = v,
+                            1 => padding.right = v,
+                            2 => padding.bottom = v,
+                            _ => padding.left = v,
                         }
-                        let padding = style.padding;
+                        let new_padding = *padding;
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.padding = padding;
+                                if let Some(mut p) = em.get_mut::<components::UiPadding>() {
+                                    *p = new_padding;
                                 }
                             }
                         });
@@ -1205,7 +1225,7 @@ fn padding_section(
 
 fn effects_section(
     ui: &mut egui::Ui,
-    style: &mut components::UiWidgetStyle,
+    snap: &mut InspectorSnapshot,
     entity: Entity,
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
@@ -1216,107 +1236,116 @@ fn effects_section(
         |ui| {
             let mut row = 0;
             // Opacity
-            inline_property(ui, row, "Opacity", theme, |ui| {
-                let mut v = style.opacity;
-                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0)).changed() {
-                    style.opacity = v;
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.opacity = v;
+            if let Some(ref mut opacity) = snap.opacity {
+                inline_property(ui, row, "Opacity", theme, |ui| {
+                    let mut v = opacity.0;
+                    if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0)).changed() {
+                        opacity.0 = v;
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                if let Some(mut o) = em.get_mut::<components::UiOpacity>() {
+                                    o.0 = v;
+                                }
                             }
-                        }
-                    });
-                }
-            });
-            row += 1;
+                        });
+                    }
+                });
+                row += 1;
+            }
 
             // Clip Content
-            inline_property(ui, row, "Clip Content", theme, |ui| {
-                let mut v = style.clip_content;
-                if ui.checkbox(&mut v, "").changed() {
-                    style.clip_content = v;
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.clip_content = v;
+            if let Some(ref mut clip) = snap.clip_content {
+                inline_property(ui, row, "Clip Content", theme, |ui| {
+                    let mut v = clip.0;
+                    if ui.checkbox(&mut v, "").changed() {
+                        clip.0 = v;
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                if let Some(mut c) = em.get_mut::<components::UiClipContent>() {
+                                    c.0 = v;
+                                }
                             }
-                        }
-                    });
-                }
-            });
-            row += 1;
+                        });
+                    }
+                });
+                row += 1;
+            }
 
             // Cursor
-            inline_property(ui, row, "Cursor", theme, |ui| {
-                let cursor_labels = [
-                    "Default", "Pointer", "Text", "Grab", "Grabbing",
-                    "Not Allowed", "Crosshair", "EW Resize", "NS Resize", "Move",
-                ];
-                let mut idx = match style.cursor {
-                    components::UiCursor::Default => 0,
-                    components::UiCursor::Pointer => 1,
-                    components::UiCursor::Text => 2,
-                    components::UiCursor::Grab => 3,
-                    components::UiCursor::Grabbing => 4,
-                    components::UiCursor::NotAllowed => 5,
-                    components::UiCursor::Crosshair => 6,
-                    components::UiCursor::EwResize => 7,
-                    components::UiCursor::NsResize => 8,
-                    components::UiCursor::Move => 9,
-                };
-                if egui::ComboBox::from_id_salt("cursor_type")
-                    .width(ui.available_width())
-                    .show_index(ui, &mut idx, cursor_labels.len(), |i| cursor_labels[i].to_string())
-                    .changed()
-                {
-                    style.cursor = match idx {
-                        1 => components::UiCursor::Pointer,
-                        2 => components::UiCursor::Text,
-                        3 => components::UiCursor::Grab,
-                        4 => components::UiCursor::Grabbing,
-                        5 => components::UiCursor::NotAllowed,
-                        6 => components::UiCursor::Crosshair,
-                        7 => components::UiCursor::EwResize,
-                        8 => components::UiCursor::NsResize,
-                        9 => components::UiCursor::Move,
-                        _ => components::UiCursor::Default,
+            if let Some(ref mut cursor) = snap.cursor {
+                inline_property(ui, row, "Cursor", theme, |ui| {
+                    let cursor_labels = [
+                        "Default", "Pointer", "Text", "Grab", "Grabbing",
+                        "Not Allowed", "Crosshair", "EW Resize", "NS Resize", "Move",
+                    ];
+                    let mut idx = match cursor {
+                        components::UiCursor::Default => 0,
+                        components::UiCursor::Pointer => 1,
+                        components::UiCursor::Text => 2,
+                        components::UiCursor::Grab => 3,
+                        components::UiCursor::Grabbing => 4,
+                        components::UiCursor::NotAllowed => 5,
+                        components::UiCursor::Crosshair => 6,
+                        components::UiCursor::EwResize => 7,
+                        components::UiCursor::NsResize => 8,
+                        components::UiCursor::Move => 9,
                     };
-                    let cursor = style.cursor;
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.cursor = cursor;
+                    if egui::ComboBox::from_id_salt("cursor_type")
+                        .width(ui.available_width())
+                        .show_index(ui, &mut idx, cursor_labels.len(), |i| cursor_labels[i].to_string())
+                        .changed()
+                    {
+                        *cursor = match idx {
+                            1 => components::UiCursor::Pointer,
+                            2 => components::UiCursor::Text,
+                            3 => components::UiCursor::Grab,
+                            4 => components::UiCursor::Grabbing,
+                            5 => components::UiCursor::NotAllowed,
+                            6 => components::UiCursor::Crosshair,
+                            7 => components::UiCursor::EwResize,
+                            8 => components::UiCursor::NsResize,
+                            9 => components::UiCursor::Move,
+                            _ => components::UiCursor::Default,
+                        };
+                        let new_cursor = *cursor;
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                if let Some(mut c) = em.get_mut::<components::UiCursor>() {
+                                    *c = new_cursor;
+                                }
                             }
-                        }
-                    });
-                }
-            });
-            row += 1;
+                        });
+                    }
+                });
+                row += 1;
+            }
 
             // Shadow toggle + properties
-            let has_shadow = style.shadow.is_some();
+            let has_shadow = snap.shadow.is_some();
             inline_property(ui, row, "Shadow", theme, |ui| {
                 let mut v = has_shadow;
                 if ui.checkbox(&mut v, "").changed() {
                     if v {
-                        style.shadow = Some(components::UiBoxShadow::default());
-                    } else {
-                        style.shadow = None;
-                    }
-                    let shadow = style.shadow.clone();
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                s.shadow = shadow;
+                        snap.shadow = Some(components::UiBoxShadow::default());
+                        let shadow = snap.shadow.clone().unwrap();
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                em.insert(shadow);
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        snap.shadow = None;
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                em.remove::<components::UiBoxShadow>();
+                            }
+                        });
+                    }
                 }
             });
             row += 1;
 
-            if let Some(ref mut shadow) = style.shadow {
+            if let Some(ref mut shadow) = snap.shadow {
                 inline_property(ui, row, "Shadow Color", theme, |ui| {
                     let mut arr = color_to_arr(shadow.color);
                     if ui.color_edit_button_rgba_unmultiplied(&mut arr).changed() {
@@ -1324,8 +1353,8 @@ fn effects_section(
                         let sh = shadow.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.shadow = Some(sh);
+                                if let Some(mut s) = em.get_mut::<components::UiBoxShadow>() {
+                                    *s = sh;
                                 }
                             }
                         });
@@ -1339,8 +1368,8 @@ fn effects_section(
                         let sh = shadow.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.shadow = Some(sh);
+                                if let Some(mut s) = em.get_mut::<components::UiBoxShadow>() {
+                                    *s = sh;
                                 }
                             }
                         });
@@ -1354,8 +1383,8 @@ fn effects_section(
                         let sh = shadow.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.shadow = Some(sh);
+                                if let Some(mut s) = em.get_mut::<components::UiBoxShadow>() {
+                                    *s = sh;
                                 }
                             }
                         });
@@ -1369,8 +1398,8 @@ fn effects_section(
                         let sh = shadow.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.shadow = Some(sh);
+                                if let Some(mut s) = em.get_mut::<components::UiBoxShadow>() {
+                                    *s = sh;
                                 }
                             }
                         });
@@ -1384,8 +1413,8 @@ fn effects_section(
                         let sh = shadow.clone();
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut s) = em.get_mut::<components::UiWidgetStyle>() {
-                                    s.shadow = Some(sh);
+                                if let Some(mut s) = em.get_mut::<components::UiBoxShadow>() {
+                                    *s = sh;
                                 }
                             }
                         });

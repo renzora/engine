@@ -12,6 +12,7 @@
 
 pub mod components;
 pub mod script_extension;
+pub mod shapes;
 pub mod spawn;
 pub mod systems;
 
@@ -51,8 +52,52 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::ModalData>();
         app.register_type::<components::DraggableWindowData>();
         app.register_type::<components::UiImagePath>();
-        // Widget style
-        app.register_type::<components::UiWidgetStyle>();
+        // HUD widget data
+        app.register_type::<components::CrosshairData>();
+        app.register_type::<components::CrosshairStyle>();
+        app.register_type::<components::AmmoCounterData>();
+        app.register_type::<components::AmmoDisplayMode>();
+        app.register_type::<components::CompassData>();
+        app.register_type::<components::CompassMarker>();
+        app.register_type::<components::StatusEffectBarData>();
+        app.register_type::<components::StatusEffect>();
+        app.register_type::<components::NotificationFeedData>();
+        app.register_type::<components::Notification>();
+        app.register_type::<components::RadialMenuData>();
+        app.register_type::<components::RadialMenuItem>();
+        app.register_type::<components::MinimapData>();
+        app.register_type::<components::MinimapRotation>();
+        app.register_type::<components::MinimapShape>();
+        // Menu widget data
+        app.register_type::<components::InventoryGridData>();
+        app.register_type::<components::InventorySlot>();
+        app.register_type::<components::DialogBoxData>();
+        app.register_type::<components::ObjectiveTrackerData>();
+        app.register_type::<components::ObjectiveStatus>();
+        app.register_type::<components::Objective>();
+        app.register_type::<components::LoadingScreenData>();
+        app.register_type::<components::KeybindRowData>();
+        app.register_type::<components::SettingsRowData>();
+        app.register_type::<components::SettingsControlType>();
+        // Extra widget data
+        app.register_type::<components::SeparatorData>();
+        app.register_type::<components::SeparatorDirection>();
+        app.register_type::<components::NumberInputData>();
+        app.register_type::<components::VerticalSliderData>();
+        app.register_type::<components::ScrollbarData>();
+        app.register_type::<components::ScrollbarOrientation>();
+        app.register_type::<components::ListData>();
+        app.register_type::<components::ListItem>();
+        // Widget style components
+        app.register_type::<components::UiFill>();
+        app.register_type::<components::UiStroke>();
+        app.register_type::<components::UiBorderRadius>();
+        app.register_type::<components::UiBoxShadow>();
+        app.register_type::<components::UiOpacity>();
+        app.register_type::<components::UiClipContent>();
+        app.register_type::<components::UiCursor>();
+        app.register_type::<components::UiTextStyle>();
+        app.register_type::<components::UiPadding>();
         // Interaction & animation
         app.register_type::<components::UiInteractionStyle>();
         app.register_type::<components::UiTransition>();
@@ -75,6 +120,9 @@ impl Plugin for GameUiPlugin {
                 .in_set(renzora_scripting::ScriptingSet::CommandProcessing),
         );
 
+        // ── Shape primitives ────────────────────────────────────────────
+        app.add_plugins(shapes::ShapesPlugin);
+
         // ── Canvas scaler ───────────────────────────────────────────────
         app.add_systems(Update, (update_ui_scale, rehydrate_ui_images, sync_ui_zindex));
 
@@ -95,6 +143,23 @@ impl Plugin for GameUiPlugin {
                 systems::dropdown_option_system,
                 systems::modal_system,
                 systems::draggable_window_system,
+                systems::dialog_box_system,
+                systems::loading_screen_system,
+                systems::objective_tracker_system,
+            ),
+        );
+        app.add_systems(
+            Update,
+            (
+                systems::ammo_counter_system,
+                systems::compass_system,
+                systems::status_effect_system,
+                systems::notification_system,
+                systems::separator_system,
+                systems::number_input_system,
+                systems::vertical_slider_system,
+                systems::scrollbar_system,
+                systems::list_system,
                 systems::interaction_style_system,
                 systems::ui_theme_system,
                 systems::ui_tween_system,

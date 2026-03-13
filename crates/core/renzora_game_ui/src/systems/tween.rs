@@ -2,16 +2,16 @@
 
 use bevy::prelude::*;
 
-use crate::components::{TweenComplete, UiTween, UiTweenProperty, UiWidgetStyle, UiFill};
+use crate::components::{TweenComplete, UiTween, UiTweenProperty, UiFill, UiOpacity};
 
 pub fn ui_tween_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut tweens: Query<(Entity, &mut UiTween, &mut Node, Option<&mut UiWidgetStyle>)>,
+    mut tweens: Query<(Entity, &mut UiTween, &mut Node, Option<&mut UiOpacity>, Option<&mut UiFill>)>,
 ) {
     let dt = time.delta_secs();
 
-    for (entity, mut tween, mut node, mut style) in &mut tweens {
+    for (entity, mut tween, mut node, mut opacity, mut fill) in &mut tweens {
         tween.elapsed += dt;
         let t = (tween.elapsed / tween.duration).clamp(0.0, 1.0);
         let eased = tween.easing.evaluate(t);
@@ -31,16 +31,16 @@ pub fn ui_tween_system(
                 node.height = Val::Px(value);
             }
             UiTweenProperty::Opacity => {
-                if let Some(ref mut style) = style {
-                    style.opacity = value;
+                if let Some(ref mut opacity) = opacity {
+                    opacity.0 = value;
                 }
             }
             UiTweenProperty::BgColorR
             | UiTweenProperty::BgColorG
             | UiTweenProperty::BgColorB
             | UiTweenProperty::BgColorA => {
-                if let Some(ref mut style) = style {
-                    let mut srgba = style.fill.primary_color().to_srgba();
+                if let Some(ref mut fill) = fill {
+                    let mut srgba = fill.primary_color().to_srgba();
                     match &tween.property {
                         UiTweenProperty::BgColorR => srgba.red = value,
                         UiTweenProperty::BgColorG => srgba.green = value,
@@ -48,7 +48,7 @@ pub fn ui_tween_system(
                         UiTweenProperty::BgColorA => srgba.alpha = value,
                         _ => {}
                     }
-                    style.fill = UiFill::Solid(srgba.into());
+                    **fill = UiFill::Solid(srgba.into());
                 }
             }
             _ => {} // Scale, Rotation handled by transform systems
