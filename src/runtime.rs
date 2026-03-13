@@ -84,7 +84,9 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin);
     app.add_plugins(renzora_hanabi::HanabiParticlePlugin);
     app.add_plugins(renzora_terrain::TerrainPlugin);
+    app.add_plugins(renzora_water::WaterPlugin);
     app.add_plugins(renzora_material::MaterialPlugin);
+    app.add_plugins(renzora_shader::ShaderPlugin);
     app.add_plugins(renzora_rt::RtPlugin);
     app.add_plugins(renzora_animation::AnimationPlugin);
     app.add_plugins(renzora_game_ui::GameUiPlugin);
