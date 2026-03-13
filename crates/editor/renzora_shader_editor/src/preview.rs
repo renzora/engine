@@ -9,13 +9,71 @@ use bevy_egui::egui::{self, RichText, TextureId};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora_core::{IsolatedCamera, HideInHierarchy, EditorLocked};
-use renzora_editor::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::runtime::{CodeShaderMaterial, CodeShaderState, ShaderCache};
 use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
 
 pub const SHADER_PREVIEW_LAYER: usize = 9;
+
+// ── Preview mesh selection ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreviewMesh {
+    Quad,
+    #[default]
+    Sphere,
+    Cube,
+    Cylinder,
+    Capsule,
+    Torus,
+    Cone,
+    Tetrahedron,
+    Plane,
+}
+
+impl PreviewMesh {
+    pub const ALL: &[PreviewMesh] = &[
+        PreviewMesh::Quad,
+        PreviewMesh::Sphere,
+        PreviewMesh::Cube,
+        PreviewMesh::Cylinder,
+        PreviewMesh::Capsule,
+        PreviewMesh::Torus,
+        PreviewMesh::Cone,
+        PreviewMesh::Tetrahedron,
+        PreviewMesh::Plane,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            PreviewMesh::Quad => "Quad",
+            PreviewMesh::Sphere => "Sphere",
+            PreviewMesh::Cube => "Cube",
+            PreviewMesh::Cylinder => "Cylinder",
+            PreviewMesh::Capsule => "Capsule",
+            PreviewMesh::Torus => "Torus",
+            PreviewMesh::Cone => "Cone",
+            PreviewMesh::Tetrahedron => "Tetrahedron",
+            PreviewMesh::Plane => "Plane",
+        }
+    }
+
+    pub fn to_mesh(&self) -> Mesh {
+        match self {
+            PreviewMesh::Quad => Mesh::from(Rectangle::new(2.0, 2.0)),
+            PreviewMesh::Sphere => Sphere::new(1.0).mesh().ico(5).unwrap(),
+            PreviewMesh::Cube => Mesh::from(Cuboid::new(1.5, 1.5, 1.5)),
+            PreviewMesh::Cylinder => Mesh::from(Cylinder::new(0.8, 1.5)),
+            PreviewMesh::Capsule => Mesh::from(Capsule3d::new(0.5, 1.0)),
+            PreviewMesh::Torus => Mesh::from(Torus::new(0.4, 1.0)),
+            PreviewMesh::Cone => Mesh::from(Cone { radius: 0.8, height: 1.5 }),
+            PreviewMesh::Tetrahedron => Mesh::from(Tetrahedron::default()),
+            PreviewMesh::Plane => Plane3d::default().mesh().size(2.0, 2.0).build(),
+        }
+    }
+}
 
 // ── Resources ────────────────────────────────────────────────────────────────
 
@@ -139,7 +197,7 @@ fn sync_shader_preview_camera(
     editor_state: Res<ShaderEditorState>,
     mut camera: Query<&mut Camera, With<ShaderPreviewCamera>>,
 ) {
-    let should_be_active = editor_state.compiled_wgsl.is_some();
+    let should_be_active = editor_state.compiled_wgsl.is_some() && editor_state.preview_compatible;
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;
@@ -160,6 +218,12 @@ fn update_shader_preview(
         return;
     }
 
+    // Only apply to preview if the shader is compatible with CodeShaderMaterial's
+    // bind group layout. Shaders with custom textures/samplers would crash the pipeline.
+    if !editor_state.preview_compatible {
+        return;
+    }
+
     if let Some(ref wgsl) = editor_state.compiled_wgsl {
         let handle = shader_cache.get_or_insert(wgsl, "code_shader://preview", &mut shaders);
 
@@ -169,6 +233,37 @@ fn update_shader_preview(
                 mat.shader_handle = handle.clone();
             }
         }
+    }
+}
+
+// ── Mesh swap ────────────────────────────────────────────────────────────────
+
+fn swap_preview_mesh(
+    editor_state: Res<ShaderEditorState>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut preview_quad: Query<&mut Mesh3d, With<ShaderPreviewQuad>>,
+    mut preview_camera: Query<&mut Transform, With<ShaderPreviewCamera>>,
+    mut current_mesh: Local<Option<PreviewMesh>>,
+) {
+    let wanted = editor_state.preview_mesh;
+    if *current_mesh == Some(wanted) {
+        return;
+    }
+    *current_mesh = Some(wanted);
+
+    let mesh = meshes.add(wanted.to_mesh());
+    for mut mesh3d in preview_quad.iter_mut() {
+        mesh3d.0 = mesh.clone();
+    }
+
+    // Adjust camera for 3D meshes vs flat quad
+    let (pos, look_at) = match wanted {
+        PreviewMesh::Quad => (Vec3::new(0.0, 0.0, 2.0), Vec3::ZERO),
+        PreviewMesh::Plane => (Vec3::new(0.0, 2.0, 1.5), Vec3::ZERO),
+        _ => (Vec3::new(1.5, 1.0, 2.5), Vec3::ZERO),
+    };
+    for mut transform in preview_camera.iter_mut() {
+        *transform = Transform::from_translation(pos).looking_at(look_at, Vec3::Y);
     }
 }
 
@@ -184,6 +279,7 @@ impl Plugin for ShaderPreviewPlugin {
             .add_systems(Update, (
                 sync_shader_preview_camera,
                 update_shader_preview,
+                swap_preview_mesh,
             ));
     }
 }
@@ -231,6 +327,52 @@ impl EditorPanel for ShaderPreviewPanel {
             });
             return;
         }
+
+        let preview_ok = editor_state.map_or(true, |s| s.preview_compatible);
+        if !preview_ok {
+            let msg = match editor_state.map(|s| s.shader_file.shader_type) {
+                Some(renzora_shader::file::ShaderType::Material) =>
+                    "Material shaders use custom bind groups — preview in scene viewport",
+                Some(renzora_shader::file::ShaderType::PostProcess) =>
+                    "Post-process preview not yet supported",
+                _ =>
+                    "Preview unavailable — shader uses custom material bindings",
+            };
+            ui.centered_and_justified(|ui| {
+                ui.label(RichText::new(msg).size(11.0).color(muted));
+            });
+            return;
+        }
+
+        // ── Mesh selector toolbar ──
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(8, 2))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(RichText::new("Mesh").size(11.0).color(muted));
+                    let current_mesh = editor_state.map_or(PreviewMesh::default(), |s| s.preview_mesh);
+                    egui::ComboBox::from_id_salt("preview_mesh_select")
+                        .selected_text(current_mesh.label())
+                        .width(90.0)
+                        .show_ui(ui, |ui| {
+                            for mesh in PreviewMesh::ALL {
+                                if ui.selectable_label(current_mesh == *mesh, mesh.label()).clicked() {
+                                    let m = *mesh;
+                                    if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                                        cmds.push(move |world: &mut World| {
+                                            if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                                s.preview_mesh = m;
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        });
+                });
+            });
+
+        ui.separator();
 
         // Render preview filling available space
         let available = ui.available_size();

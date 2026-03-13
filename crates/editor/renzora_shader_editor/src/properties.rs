@@ -11,6 +11,7 @@ use renzora_shader::file::{ParamType, ParamValue};
 use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
+use crate::code_panel::reapply_params;
 
 pub struct ShaderPropertiesPanel;
 
@@ -191,6 +192,8 @@ fn render_float_param(
                         p.default_value = ParamValue::Float(val);
                     }
                     s.is_modified = true;
+                    drop(s);
+                    reapply_params(world);
                 });
             }
         }
@@ -218,6 +221,8 @@ fn render_color_param(
                         p.default_value = ParamValue::Color([color[0], color[1], color[2], 1.0]);
                     }
                     s.is_modified = true;
+                    drop(s);
+                    reapply_params(world);
                 });
             }
         }
@@ -252,6 +257,8 @@ fn render_vec_param(
                                 p.default_value = ParamValue::Vec2(val);
                             }
                             s.is_modified = true;
+                            drop(s);
+                            reapply_params(world);
                         });
                     }
                 }
@@ -278,6 +285,8 @@ fn render_vec_param(
                                 p.default_value = ParamValue::Vec3(val);
                             }
                             s.is_modified = true;
+                            drop(s);
+                            reapply_params(world);
                         });
                     }
                 }
@@ -306,6 +315,8 @@ fn render_vec_param(
                                 p.default_value = ParamValue::Vec4(val);
                             }
                             s.is_modified = true;
+                            drop(s);
+                            reapply_params(world);
                         });
                     }
                 }
@@ -336,6 +347,8 @@ fn render_int_param(
                         p.default_value = ParamValue::Int(val);
                     }
                     s.is_modified = true;
+                    drop(s);
+                    reapply_params(world);
                 });
             }
         }
@@ -363,6 +376,8 @@ fn render_bool_param(
                         p.default_value = ParamValue::Bool(val);
                     }
                     s.is_modified = true;
+                    drop(s);
+                    reapply_params(world);
                 });
             }
         }

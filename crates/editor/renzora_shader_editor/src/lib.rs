@@ -19,12 +19,20 @@ pub struct ShaderEditorState {
     pub file_path: Option<String>,
     /// Dirty flag — source has been modified since last save.
     pub is_modified: bool,
-    /// Last compiled WGSL output (for preview).
+    /// Transpiled WGSL before `@param` constant injection.
+    /// Stored so param value changes can re-inject without re-transpiling.
+    pub base_wgsl: Option<String>,
+    /// Last compiled WGSL output (for preview), with `@param` constants injected.
     pub compiled_wgsl: Option<String>,
+    /// Whether the compiled shader is compatible with CodeShaderMaterial preview.
+    /// Shaders with custom material bindings (textures, samplers) can't preview.
+    pub preview_compatible: bool,
     /// Compilation errors (shown in UI).
     pub compile_errors: Vec<ShaderCompileError>,
     /// Whether to auto-compile on every keystroke.
     pub auto_compile: bool,
+    /// Which mesh to display in the shader preview.
+    pub preview_mesh: preview::PreviewMesh,
 }
 
 impl Default for ShaderEditorState {
@@ -33,9 +41,12 @@ impl Default for ShaderEditorState {
             shader_file: ShaderFile::default(),
             file_path: None,
             is_modified: false,
+            base_wgsl: None,
             compiled_wgsl: None,
             compile_errors: Vec::new(),
             auto_compile: true,
+            preview_compatible: true,
+            preview_mesh: preview::PreviewMesh::default(),
         }
     }
 }

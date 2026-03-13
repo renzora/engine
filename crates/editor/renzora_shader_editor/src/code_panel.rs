@@ -8,7 +8,7 @@ use egui_phosphor::regular::{
 };
 
 use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora_shader::file::ShaderFile;
+use renzora_shader::file::{ShaderFile, ShaderType};
 use renzora_shader::registry::ShaderBackendRegistry;
 use renzora_theme::ThemeManager;
 
@@ -166,6 +166,27 @@ impl EditorPanel for ShaderCodePanel {
                             }
                         });
 
+                    // Shader type dropdown
+                    let current_type = state.shader_file.shader_type;
+                    egui::ComboBox::from_id_salt("shader_type")
+                        .selected_text(current_type.label())
+                        .width(90.0)
+                        .show_ui(ui, |ui| {
+                            for st in ShaderType::ALL {
+                                if ui.selectable_label(current_type == *st, st.label()).clicked() {
+                                    let new_type = *st;
+                                    if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                                        cmds.push(move |world: &mut World| {
+                                            if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                                s.shader_file.shader_type = new_type;
+                                                s.is_modified = true;
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        });
+
                     ui.add_space(4.0);
                     ui.separator();
                     ui.add_space(4.0);
@@ -204,16 +225,20 @@ impl EditorPanel for ShaderCodePanel {
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // New
+                    // New — use type-specific template
                     if ui.button(RichText::new(format!("{}", FILE_PLUS)).size(12.0)).clicked() {
+                        let shader_type = state.shader_file.shader_type;
+                        let template = renzora_shader::file::default_source_for_type(shader_type);
                         if let Ok(mut local) = self.local_source.write() {
-                            let default_file = ShaderFile::default();
-                            *local = default_file.shader_source.clone();
+                            *local = template.to_string();
                         }
                         if let Some(cmds) = world.get_resource::<EditorCommands>() {
-                            cmds.push(|world: &mut World| {
+                            cmds.push(move |world: &mut World| {
                                 if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                    let st = s.shader_file.shader_type;
                                     *s = ShaderEditorState::default();
+                                    s.shader_file.shader_type = st;
+                                    s.shader_file.shader_source = renzora_shader::file::default_source_for_type(st).to_string();
                                 }
                             });
                         }
@@ -318,26 +343,38 @@ impl EditorPanel for ShaderCodePanel {
 
 // ── Helper functions ─────────────────────────────────────────────────────────
 
-fn compile_shader(world: &mut World, language: &str, source: &str) {
+fn compile_shader(world: &mut World, _language: &str, source: &str) {
+    let shader_type = world.resource::<ShaderEditorState>().shader_file.shader_type;
+
+    // Auto-detect language from source content
+    let detected = renzora_shader::file::detect_language(source);
+
     // Extract @param annotations from source before compilation
     let extracted_params = renzora_shader::file::extract_params(source);
 
+    // For Material/PostProcess types, use the Bevy backend passthrough (no uniform injection).
+    // For Fragment types, transpile and inject ShaderUniforms.
     let result = {
         let registry = world.resource::<ShaderBackendRegistry>();
-        registry.compile(language, source)
+        match shader_type {
+            ShaderType::Fragment => registry.transpile(detected, source),
+            ShaderType::Material | ShaderType::PostProcess => {
+                // Pass through as-is via Bevy backend (no ShaderUniforms injection)
+                registry.transpile("Bevy", source)
+            }
+        }
     };
 
     match result {
-        Ok(wgsl) => {
+        Ok(base_wgsl) => {
             let mut state = world.resource_mut::<ShaderEditorState>();
-            state.compiled_wgsl = Some(wgsl);
             state.compile_errors.clear();
+            state.shader_file.language = detected.to_string();
 
             // Merge extracted params — keep user-edited values for existing params,
             // add new ones, remove params no longer in source
             let old_params = std::mem::take(&mut state.shader_file.params);
             for (name, mut param) in extracted_params {
-                // Preserve user-edited value if the param already existed with same type
                 if let Some(old) = old_params.get(&name) {
                     if old.param_type == param.param_type {
                         param.default_value = old.default_value.clone();
@@ -345,12 +382,48 @@ fn compile_shader(world: &mut World, language: &str, source: &str) {
                 }
                 state.shader_file.params.insert(name, param);
             }
+
+            // Inject param constants from the merged (user-edited) values
+            let final_wgsl = inject_params_into_wgsl(&base_wgsl, &state.shader_file.params);
+
+            let compatible = match shader_type {
+                ShaderType::Fragment => !renzora_shader::registry::has_custom_material_bindings(&final_wgsl),
+                ShaderType::Material => false,
+                ShaderType::PostProcess => false,
+            };
+
+            state.base_wgsl = Some(base_wgsl);
+            state.compiled_wgsl = Some(final_wgsl);
+            state.preview_compatible = compatible;
         }
         Err(err) => {
             let mut state = world.resource_mut::<ShaderEditorState>();
+            state.base_wgsl = None;
             state.compiled_wgsl = None;
             state.compile_errors = vec![err];
+            state.shader_file.language = detected.to_string();
         }
+    }
+}
+
+/// Re-inject `@param` constants into the base WGSL using current param values.
+/// Called when properties panel edits a value (avoids full re-transpilation).
+pub fn reapply_params(world: &mut World) {
+    let mut state = world.resource_mut::<ShaderEditorState>();
+    let Some(ref base_wgsl) = state.base_wgsl else { return };
+    let final_wgsl = inject_params_into_wgsl(base_wgsl, &state.shader_file.params);
+    state.compiled_wgsl = Some(final_wgsl);
+}
+
+fn inject_params_into_wgsl(
+    base_wgsl: &str,
+    params: &std::collections::HashMap<String, renzora_shader::file::ShaderParam>,
+) -> String {
+    let param_block = renzora_shader::file::params_to_wgsl(params);
+    if param_block.is_empty() {
+        base_wgsl.to_string()
+    } else {
+        renzora_shader::registry::inject_param_constants(base_wgsl.to_string(), &param_block)
     }
 }
 
@@ -368,6 +441,7 @@ fn open_shader_file(world: &mut World) {
                         state.shader_file = shader_file;
                         state.file_path = Some(path.display().to_string());
                         state.is_modified = false;
+                        state.base_wgsl = None;
                         state.compiled_wgsl = None;
                         state.compile_errors.clear();
                     }

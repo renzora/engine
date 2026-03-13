@@ -68,15 +68,15 @@ impl ShaderBackend for ShaderToyBackend {
 }
 
 /// Wrap ShaderToy `mainImage(out vec4 fragColor, in vec2 fragCoord)` into proper GLSL.
+///
+/// Instead of calling `mainImage` via an `out` parameter (which naga's IR validator
+/// struggles with for scalar-to-vector operations), we inline the body of `mainImage`
+/// directly into `main()` so `fragColor` is a plain local variable.
 fn wrap_shadertoy(source: &str) -> String {
-    // ShaderToy shaders use bare globals like `iTime`, `iResolution` etc.
-    // GLSL 450 requires uniforms in a block with layout(binding=X).
-    // We put them in a UBO and use the same names as ShaderToy expects,
-    // accessed via the block instance name.
-    //
-    // naga doesn't support #define, so we use a text-level rewrite:
-    // replace bare `iTime` etc. in user code with `_st.iTime` before parsing.
     let rewritten = preprocess_shadertoy(source);
+
+    // Split into helper functions (before mainImage) and mainImage body
+    let (helpers, main_body) = extract_main_image_body(&rewritten);
 
     format!(
         r#"#version 450
@@ -94,27 +94,182 @@ layout(set = 0, binding = 0) uniform ShaderToyUniforms {{
 
 layout(location = 0) out vec4 outColor;
 
-// ---------- User code ----------
-{rewritten}
-// ---------- End user code ----------
+{helpers}
 
 void main() {{
     vec4 fragColor = vec4(0.0);
     vec2 fragCoord = gl_FragCoord.xy;
-    mainImage(fragColor, fragCoord);
+
+{main_body}
+
     outColor = fragColor;
 }}
 "#
     )
 }
 
+/// Extract the body of `mainImage(out vec4 fragColor, in vec2 fragCoord)` from the source.
+/// Returns (helper_functions, mainImage_body).
+/// If `mainImage` isn't found, returns the whole source as the body (best-effort).
+fn extract_main_image_body(source: &str) -> (String, String) {
+    // Find `void mainImage(` — may have varying whitespace
+    let main_image_pat = "void mainImage";
+    let Some(sig_start) = source.find(main_image_pat) else {
+        // No mainImage found — wrap everything as the body
+        return (String::new(), source.to_string());
+    };
+
+    let helpers = source[..sig_start].to_string();
+
+    // Find the opening brace of mainImage
+    let after_sig = &source[sig_start..];
+    let Some(brace_offset) = after_sig.find('{') else {
+        return (helpers, String::new());
+    };
+
+    let body_start = sig_start + brace_offset + 1;
+
+    // Find matching closing brace
+    let mut depth = 1;
+    let mut body_end = body_start;
+    for (i, ch) in source[body_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    body_end = body_start + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let body = source[body_start..body_end].to_string();
+
+    // Anything after mainImage's closing brace (unusual but handle it)
+    let remainder = source[body_end + 1..].trim();
+    let full_helpers = if remainder.is_empty() {
+        helpers
+    } else {
+        format!("{}\n{}", helpers, remainder)
+    };
+
+    (full_helpers, body)
+}
+
 /// Run all ShaderToy-specific source preprocessing:
 /// 1. Expand `#define` macros (naga has no C preprocessor)
-/// 2. Rewrite uniform references to use the UBO instance
+/// 2. Fix naga-incompatible GLSL patterns
+/// 3. Rewrite uniform references to use the UBO instance
 fn preprocess_shadertoy(source: &str) -> String {
     let expanded = expand_defines(source);
     let stripped = strip_float_suffixes(&expanded);
-    preprocess_shadertoy_uniforms(&stripped)
+    let fixed = fix_mat2_from_vec4(&stripped);
+    preprocess_shadertoy_uniforms(&fixed)
+}
+
+/// Rewrite `mat2(<single_expr>)` → `mat2((<single_expr>).xy, (<single_expr>).zw)`.
+///
+/// GLSL allows `mat2(vec4)` to construct a 2×2 matrix from 4 components,
+/// but naga's GLSL frontend doesn't support this constructor form.
+/// This is extremely common in code-golfed ShaderToy shaders.
+fn fix_mat2_from_vec4(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let chars: Vec<char> = source.chars().collect();
+    let len = chars.len();
+    let pat: Vec<char> = "mat2(".chars().collect();
+    let pat_len = pat.len();
+    let mut i = 0;
+
+    while i < len {
+        if i + pat_len <= len && &chars[i..i + pat_len] == pat.as_slice() {
+            // Check word boundary before `mat2(`
+            let before_ok = if i == 0 {
+                true
+            } else {
+                let c = chars[i - 1];
+                !c.is_alphanumeric() && c != '_'
+            };
+
+            if before_ok {
+                // Parse the argument list
+                let args_start = i + pat_len; // position right after '('
+                if let Some((args, end)) = parse_mat2_args(&chars, args_start) {
+                    if args.len() == 1 && looks_like_vec4_expr(&args[0]) {
+                        // Single argument that's likely a vec4 → rewrite
+                        let expr = args[0].trim();
+                        result.push_str(&format!("mat2(({expr}).xy, ({expr}).zw)"));
+                        i = end;
+                        continue;
+                    }
+                }
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    result
+}
+
+/// Parse comma-separated arguments inside `mat2(...)`, respecting nested parens.
+/// `start` is the position right after the opening `(`.
+/// Returns (vec_of_args, position_after_closing_paren).
+fn parse_mat2_args(chars: &[char], start: usize) -> Option<(Vec<String>, usize)> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut depth = 1;
+    let mut i = start;
+
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '(' => {
+                depth += 1;
+                current.push(c);
+            }
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    args.push(current.trim().to_string());
+                    return Some((args, i + 1));
+                }
+                current.push(c);
+            }
+            ',' if depth == 1 => {
+                args.push(current.trim().to_string());
+                current = String::new();
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Heuristic: does this expression likely produce a vec4?
+/// Matches common ShaderToy patterns like `cos(...)`, `sin(...)`, `vec4(...)`, etc.
+fn looks_like_vec4_expr(expr: &str) -> bool {
+    let trimmed = expr.trim();
+    // If it contains `vec4` anywhere, it's likely vec4-producing
+    if trimmed.contains("vec4") {
+        return true;
+    }
+    // If it's a function call wrapping something with vec4 inside
+    // e.g. cos(a+vec4(...))
+    if trimmed.starts_with("cos(") || trimmed.starts_with("sin(")
+        || trimmed.starts_with("abs(") || trimmed.starts_with("floor(")
+        || trimmed.starts_with("ceil(") || trimmed.starts_with("fract(")
+    {
+        return true;
+    }
+    // If it's a single identifier, it might be anything — don't rewrite
+    // If it has multiple args (contains comma at depth 0), it's not a single vec4
+    false
 }
 
 /// Remove `f` suffixes from float literals (e.g. `0.5f` → `0.5`).
