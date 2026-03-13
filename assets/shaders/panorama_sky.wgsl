@@ -3,10 +3,10 @@
 
 #import bevy_pbr::forward_io::VertexOutput
 
-@group(2) @binding(0) var panorama_texture: texture_2d<f32>;
-@group(2) @binding(1) var panorama_sampler: sampler;
-@group(2) @binding(2) var<uniform> brightness: f32;
-@group(2) @binding(3) var<uniform> rotation: f32;
+@group(3) @binding(0) var panorama_texture: texture_2d<f32>;
+@group(3) @binding(1) var panorama_sampler: sampler;
+@group(3) @binding(2) var<uniform> brightness: f32;
+@group(3) @binding(3) var<uniform> rotation: f32;
 
 const PI: f32 = 3.14159265359;
 const TWO_PI: f32 = 6.28318530718;

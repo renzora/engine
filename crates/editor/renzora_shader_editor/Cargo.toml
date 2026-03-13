@@ -1,0 +1,18 @@
+[package]
+name = "renzora_shader_editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18" }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+egui_code_editor = "0.2"
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_ui = { path = "../../ui/renzora_ui" }
+renzora_core = { path = "../../core/renzora_core" }
+renzora_shader = { path = "../../core/renzora_shader" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rfd = "0.15"

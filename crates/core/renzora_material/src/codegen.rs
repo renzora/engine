@@ -808,11 +808,11 @@ fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     let mut s = String::new();
     for tb in &ctx.texture_bindings {
         s.push_str(&format!(
-            "@group(2) @binding({}) var {}: texture_2d<f32>;\n",
+            "@group(3) @binding({}) var {}: texture_2d<f32>;\n",
             tb.binding, tb.name
         ));
         s.push_str(&format!(
-            "@group(2) @binding({}) var {}_sampler: sampler;\n",
+            "@group(3) @binding({}) var {}_sampler: sampler;\n",
             tb.binding + 1,
             tb.name
         ));
