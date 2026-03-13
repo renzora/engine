@@ -76,7 +76,7 @@ impl Plugin for GameUiPlugin {
         );
 
         // ── Canvas scaler ───────────────────────────────────────────────
-        app.add_systems(Update, (update_ui_scale, rehydrate_ui_images));
+        app.add_systems(Update, (update_ui_scale, rehydrate_ui_images, sync_ui_zindex));
 
         // ── Runtime widget systems ──────────────────────────────────────
         app.add_systems(
@@ -120,6 +120,8 @@ impl Plugin for GameUiPlugin {
                     canvas::update_canvas_preview,
                     ensure_ui_visibility_components,
                     sync_ui_canvas_visibility,
+                    sync_canvas_sort_order_from_hierarchy,
+                    sync_hierarchy_filter_for_ui_workspace,
                     register_ui_image_textures,
                     debug_ui_tree,
                 )
@@ -203,7 +205,105 @@ fn rehydrate_ui_images(
     }
 }
 
+// ── Z-index sync ────────────────────────────────────────────────────────────
+
+/// Syncs `ZIndex` on UI canvas and widget entities so that items higher in the
+/// hierarchy (top of the list) render on top — matching the layer order convention
+/// used by most editors (Photoshop, Unity, etc.).
+fn sync_ui_zindex(
+    canvas_entities: Query<Entity, With<UiCanvas>>,
+    canvas_data: Query<(&UiCanvas, Option<&GlobalZIndex>)>,
+    widgets: Query<Entity, With<UiWidget>>,
+    zindex_query: Query<Option<&ZIndex>>,
+    children_query: Query<&Children>,
+    child_of_query: Query<&ChildOf>,
+    mut commands: Commands,
+) {
+    let mut processed_parents = std::collections::HashSet::new();
+
+    for entity in canvas_entities.iter().chain(widgets.iter()) {
+        let parent = match child_of_query.get(entity) {
+            Ok(c) => c.parent(),
+            Err(_) => continue,
+        };
+
+        if !processed_parents.insert(parent) {
+            continue;
+        }
+
+        let Ok(children) = children_query.get(parent) else {
+            continue;
+        };
+
+        // Count only UI entities among siblings for correct reverse indexing.
+        let ui_count = children
+            .iter()
+            .filter(|c| canvas_entities.contains(*c) || widgets.contains(*c))
+            .count() as i32;
+
+        let mut ui_idx = 0i32;
+        for child in children.iter() {
+            if canvas_entities.contains(child) || widgets.contains(child) {
+                // First child (top of hierarchy) gets highest ZIndex → renders on top.
+                let desired = ZIndex(ui_count - 1 - ui_idx);
+                let current = zindex_query.get(child).ok().flatten().copied();
+                if current != Some(desired) {
+                    commands.entity(child).insert(desired);
+                }
+                ui_idx += 1;
+            }
+        }
+    }
+
+    // Root-level canvases (no parent) use GlobalZIndex from sort_order.
+    for entity in &canvas_entities {
+        if child_of_query.contains(entity) {
+            continue;
+        }
+        if let Ok((canvas, current_gz)) = canvas_data.get(entity) {
+            let desired = GlobalZIndex(canvas.sort_order);
+            if current_gz.copied() != Some(desired) {
+                commands.entity(entity).insert(desired);
+            }
+        }
+    }
+}
+
 // ── Editor-only systems ─────────────────────────────────────────────────────
+
+/// When the UI workspace is active, filter the hierarchy to only show cameras
+/// and UI canvas entities. Reset to show all when switching away.
+#[cfg(feature = "editor")]
+fn sync_hierarchy_filter_for_ui_workspace(
+    layout_mgr: Res<renzora_editor::LayoutManager>,
+    mut filter: ResMut<renzora_editor::HierarchyFilter>,
+) {
+    let is_ui = layout_mgr.active_name() == "UI";
+    let desired = if is_ui {
+        renzora_editor::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas", "Camera3d"])
+    } else {
+        renzora_editor::HierarchyFilter::All
+    };
+    if *filter != desired {
+        *filter = desired;
+    }
+}
+
+/// In the editor, sync `UiCanvas::sort_order` from `HierarchyOrder` so that
+/// reordering canvases in the hierarchy panel updates their z-index.
+/// Top of hierarchy (lowest HierarchyOrder) gets the highest sort_order → renders on top.
+#[cfg(feature = "editor")]
+fn sync_canvas_sort_order_from_hierarchy(
+    mut canvases: Query<(&mut UiCanvas, &renzora_editor::HierarchyOrder), Without<ChildOf>>,
+) {
+    let max_order = canvases.iter().map(|(_, h)| h.0).max().unwrap_or(0) as i32;
+    for (mut canvas, order) in &mut canvases {
+        let new_order = max_order - order.0 as i32;
+        if canvas.sort_order != new_order {
+            canvas.sort_order = new_order;
+        }
+    }
+}
 
 #[cfg(feature = "editor")]
 fn ensure_ui_visibility_components(

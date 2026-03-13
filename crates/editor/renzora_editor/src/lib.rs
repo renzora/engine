@@ -38,6 +38,18 @@ pub struct HierarchyOrder(pub u32);
 
 pub use renzora_core::EntityTag;
 
+/// Filter mode for the hierarchy panel. Other panels can set this to restrict
+/// which entities are shown (e.g. UI workspace only shows cameras + canvases).
+#[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
+pub enum HierarchyFilter {
+    /// Show all entities (default).
+    #[default]
+    All,
+    /// Show only entities that have at least one of the listed component type names.
+    /// Component names are matched via Bevy's `AppTypeRegistry`.
+    OnlyWithComponents(Vec<&'static str>),
+}
+
 pub use spawn_registry::{EntityPreset, SpawnRegistry};
 
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
@@ -96,6 +108,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
             .init_resource::<EditorSettings>()
+            .init_resource::<HierarchyFilter>()
             .init_resource::<renzora_auth::AuthState>()
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)

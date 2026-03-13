@@ -789,6 +789,25 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
+        // Sort widgets by sibling order (reversed): last child in hierarchy
+        // draws first so that the top item in the hierarchy renders on top.
+        if let Some(active_canvas) = state.active_canvas {
+            if let Some(children) = world.get::<Children>(active_canvas) {
+                let order_map: std::collections::HashMap<Entity, usize> = children
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| (e, i))
+                    .collect();
+                // Reverse sort: higher sibling index first → drawn first → behind.
+                // Lower sibling index (top of hierarchy) drawn last → on top.
+                state.widgets.sort_by(|a, b| {
+                    let oa = order_map.get(&a.entity).copied().unwrap_or(usize::MAX);
+                    let ob = order_map.get(&b.entity).copied().unwrap_or(usize::MAX);
+                    ob.cmp(&oa)
+                });
+            }
+        }
+
         // ── Vertical toolbar + Canvas area ──────────────────────────────
         let full_available = ui.available_rect_before_wrap();
         let toolbar_width = 40.0;

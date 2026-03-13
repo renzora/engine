@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::Color32;
 use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyOrder};
+use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
 use renzora_editor::TreeDropZone;
 
 /// Persistent UI state for the hierarchy panel.
@@ -63,6 +63,27 @@ pub struct EntityNode {
 
 /// Build the entity tree from the world.
 pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
+    // Resolve hierarchy filter — map component type names to ComponentIds.
+    let filter_component_ids: Vec<bevy::ecs::component::ComponentId> = world
+        .get_resource::<HierarchyFilter>()
+        .and_then(|f| match f {
+            HierarchyFilter::All => None,
+            HierarchyFilter::OnlyWithComponents(names) => {
+                let registry = world.get_resource::<AppTypeRegistry>()?;
+                let registry = registry.read();
+                Some(
+                    names
+                        .iter()
+                        .filter_map(|name| {
+                            let reg = registry.iter().find(|r| r.type_info().type_path_table().short_path() == *name)?;
+                            world.components().get_id(reg.type_id())
+                        })
+                        .collect(),
+                )
+            }
+        })
+        .unwrap_or_default();
+
     let mut entries: Vec<(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool, bool)> = Vec::new();
     let mut named_entities: HashSet<Entity> = HashSet::new();
 
@@ -72,6 +93,27 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             let Some(name) = world.get::<Name>(entity) else {
                 continue;
             };
+            // Apply component filter: skip entities unless they or an ancestor
+            // have one of the required components (so children of matching
+            // entities still appear in the hierarchy).
+            if !filter_component_ids.is_empty() {
+                let mut found = false;
+                let mut check = entity;
+                loop {
+                    let er = world.entity(check);
+                    if filter_component_ids.iter().any(|id| er.contains_id(*id)) {
+                        found = true;
+                        break;
+                    }
+                    match world.get::<ChildOf>(check) {
+                        Some(c) => check = c.parent(),
+                        None => break,
+                    }
+                }
+                if !found {
+                    continue;
+                }
+            }
             if world.get::<HideInHierarchy>(entity).is_some() {
                 continue;
             }
