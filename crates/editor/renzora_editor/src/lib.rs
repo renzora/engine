@@ -31,6 +31,11 @@ pub use renzora_splash::SplashState;
 #[derive(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
 
+/// Sort order for root-level entities in the hierarchy panel.
+/// Lower values appear first. Entities without this component sort last.
+#[derive(Component, Clone, Copy)]
+pub struct HierarchyOrder(pub u32);
+
 pub use renzora_core::EntityTag;
 
 pub use spawn_registry::{EntityPreset, SpawnRegistry};

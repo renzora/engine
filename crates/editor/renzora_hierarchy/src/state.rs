@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::Color32;
 use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy};
+use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyOrder};
 use renzora_editor::TreeDropZone;
 
 /// Persistent UI state for the hierarchy panel.
@@ -138,7 +138,26 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         }
     }
 
-    root_indices.sort_by(|a, b| entries[*a].1.to_lowercase().cmp(&entries[*b].1.to_lowercase()));
+    // Sort root entities by HierarchyOrder component
+    root_indices.sort_by_key(|&idx| {
+        let entity = entries[idx].0;
+        world.get::<HierarchyOrder>(entity).map(|h| h.0).unwrap_or(u32::MAX)
+    });
+
+    // Sort children by their order in the parent's Children component
+    for (parent_entity, child_indices) in &mut children_map {
+        if let Some(children_component) = world.get::<Children>(*parent_entity) {
+            let child_order: HashMap<Entity, usize> = children_component
+                .iter()
+                .enumerate()
+                .map(|(pos, e)| (e, pos))
+                .collect();
+            child_indices.sort_by_key(|&idx| {
+                let child_entity = entries[idx].0;
+                child_order.get(&child_entity).copied().unwrap_or(usize::MAX)
+            });
+        }
+    }
 
     fn build_node(
         index: usize,
@@ -149,11 +168,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         let mut children = Vec::new();
 
         if let Some(child_indices) = children_map.get(entity) {
-            let mut sorted = child_indices.clone();
-            sorted.sort_by(|a, b| {
-                entries[*a].1.to_lowercase().cmp(&entries[*b].1.to_lowercase())
-            });
-            for &ci in &sorted {
+            for &ci in child_indices {
                 children.push(build_node(ci, entries, children_map));
             }
         }

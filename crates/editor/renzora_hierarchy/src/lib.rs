@@ -10,7 +10,7 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
     icon_button, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
-    InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
+    HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
 use renzora_physics::{CollisionShapeData, PhysicsBodyData};
@@ -288,13 +288,100 @@ impl EditorPanel for HierarchyPanel {
                         match zone {
                             TreeDropZone::AsChild => {
                                 world.entity_mut(*entity).set_parent_in_place(target);
+                                info!("[hierarchy] Moved {:?} as child of {:?}", entity, target);
                             }
                             TreeDropZone::Before | TreeDropZone::After => {
                                 let parent = world.get::<ChildOf>(target).map(|c| c.parent());
-                                world.entity_mut(*entity).remove_parent_in_place();
                                 if let Some(p) = parent {
-                                    world.entity_mut(*entity).set_parent_in_place(p);
+                                    // Read target index BEFORE detaching the dragged entity
+                                    let target_idx = world
+                                        .get::<Children>(p)
+                                        .and_then(|children| {
+                                            children.iter().position(|c| c == target)
+                                        });
+                                    // Now detach
+                                    world.entity_mut(*entity).remove_parent_in_place();
+                                    if let Some(idx) = target_idx {
+                                        // Adjust index: if the dragged entity was before the target
+                                        // in the same parent, removing it shifted indices down by 1
+                                        let was_sibling_before = world
+                                            .get::<Children>(p)
+                                            .and_then(|children| {
+                                                children.iter().position(|c| c == target)
+                                            });
+                                        let final_idx = if let Some(new_target_idx) = was_sibling_before {
+                                            if matches!(zone, TreeDropZone::After) {
+                                                new_target_idx + 1
+                                            } else {
+                                                new_target_idx
+                                            }
+                                        } else if matches!(zone, TreeDropZone::After) {
+                                            idx + 1
+                                        } else {
+                                            idx
+                                        };
+                                        world.entity_mut(p).insert_child(final_idx, *entity);
+                                        info!("[hierarchy] Inserted {:?} at index {} under {:?} ({:?} target {:?})",
+                                            entity, final_idx, p, zone, target);
+                                    } else {
+                                        world.entity_mut(*entity).set_parent_in_place(p);
+                                        info!("[hierarchy] Fallback: set_parent {:?} under {:?}", entity, p);
+                                    }
+                                } else {
+                                    // Root-level reorder: assign HierarchyOrder values
+                                    world.entity_mut(*entity).remove_parent_in_place();
+
+                                    // Collect all root named entities with their current order
+                                    let mut roots: Vec<(Entity, u32)> = Vec::new();
+                                    for archetype in world.archetypes().iter() {
+                                        for arch_entity in archetype.entities() {
+                                            let e = arch_entity.id();
+                                            if world.get::<Name>(e).is_none() { continue; }
+                                            if world.get::<ChildOf>(e).is_some() { continue; }
+                                            if world.get::<renzora_core::HideInHierarchy>(e).is_some() { continue; }
+                                            let order = world.get::<HierarchyOrder>(e).map(|h| h.0).unwrap_or(u32::MAX);
+                                            roots.push((e, order));
+                                        }
+                                    }
+                                    roots.sort_by_key(|&(_, o)| o);
+
+                                    // Remove the dragged entity from roots list
+                                    roots.retain(|&(e, _)| e != *entity);
+
+                                    // Find target position and insert
+                                    let target_pos = roots.iter().position(|&(e, _)| e == target).unwrap_or(0);
+                                    let insert_pos = if matches!(zone, TreeDropZone::After) {
+                                        target_pos + 1
+                                    } else {
+                                        target_pos
+                                    };
+                                    roots.insert(insert_pos, (*entity, 0));
+
+                                    // Reassign HierarchyOrder to all roots
+                                    for (i, &(e, _)) in roots.iter().enumerate() {
+                                        world.entity_mut(e).insert(HierarchyOrder(i as u32));
+                                    }
+
+                                    let names: Vec<String> = roots.iter().map(|&(e, _)| {
+                                        world.get::<Name>(e)
+                                            .map(|n| n.as_str().to_string())
+                                            .unwrap_or_else(|| format!("{e:?}"))
+                                    }).collect();
+                                    info!("[hierarchy] Root reorder ({:?} target {:?}): {:?}", zone, target, names);
                                 }
+                            }
+                        }
+
+                        // Log final children order for debugging
+                        let parent = world.get::<ChildOf>(*entity).map(|c| c.parent());
+                        if let Some(p) = parent {
+                            if let Some(children) = world.get::<Children>(p) {
+                                let names: Vec<String> = children.into_iter().map(|c| {
+                                    world.get::<Name>(*c)
+                                        .map(|n| n.as_str().to_string())
+                                        .unwrap_or_else(|| format!("{c:?}"))
+                                }).collect();
+                                info!("[hierarchy] Children order of parent {:?}: {:?}", p, names);
                             }
                         }
                     }
@@ -304,21 +391,35 @@ impl EditorPanel for HierarchyPanel {
             }
         }
 
-        // Drag tooltip
+        // Drag tooltip — show target info
         if !state.drag_entities.is_empty() {
             if let Some(pos) = ui.ctx().pointer_latest_pos() {
-                let count = state.drag_entities.len();
-                let label = if count == 1 {
-                    "Moving 1 entity".to_string()
+                let label = if let Some((target_entity, ref zone)) = state.drop_target {
+                    // Find target name from the tree
+                    let target_name = find_node_name(&nodes, target_entity)
+                        .unwrap_or_else(|| format!("{:?}", target_entity));
+                    match zone {
+                        renzora_editor::TreeDropZone::Before => format!("Move above {}", target_name),
+                        renzora_editor::TreeDropZone::After => format!("Move below {}", target_name),
+                        renzora_editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
+                    }
                 } else {
-                    format!("Moving {} entities", count)
+                    let count = state.drag_entities.len();
+                    if count == 1 {
+                        "Moving 1 entity".to_string()
+                    } else {
+                        format!("Moving {} entities", count)
+                    }
                 };
                 egui::Area::new(egui::Id::new("hierarchy_drag_tooltip"))
                     .fixed_pos(pos + egui::vec2(12.0, 4.0))
                     .interactable(false)
                     .show(ui.ctx(), |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
-                            ui.label(egui::RichText::new(label).size(11.0));
+                            ui.set_max_width(400.0);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(label).size(11.0));
+                            });
                         });
                     });
             }
@@ -695,4 +796,17 @@ fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
 
         _ => return None,
     })
+}
+
+/// Find an entity's name in the tree nodes (for drag tooltip).
+fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String> {
+    for node in nodes {
+        if node.entity == target {
+            return Some(node.name.clone());
+        }
+        if let Some(name) = find_node_name(&node.children, target) {
+            return Some(name);
+        }
+    }
+    None
 }
