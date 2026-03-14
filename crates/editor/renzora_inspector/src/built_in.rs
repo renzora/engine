@@ -10,7 +10,7 @@ use renzora_editor::{
     EditorCommands, EntityLabelColor, EntityTag, FieldDef, FieldType, FieldValue,
     InspectorEntry, InspectorRegistry, OverlayAction, OverlayEntry,
 };
-use renzora_animation::{AnimClipSlot, AnimatorComponent};
+// use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora_scripting::ScriptComponent;
 use renzora_theme::Theme;
 
@@ -35,7 +35,7 @@ pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
     registry.register(script_component_entry());
     registry.register(physics_body_entry());
     registry.register(collision_shape_entry());
-    registry.register(animator_entry());
+    // registry.register(animator_entry());
 }
 
 fn name_entry() -> InspectorEntry {
@@ -1716,6 +1716,7 @@ fn collision_shape_ui(
 
 // ── Animator ────────────────────────────────────────────────────────────────
 
+#[cfg(any())]
 fn animator_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "animator",
@@ -1736,6 +1737,7 @@ fn animator_entry() -> InspectorEntry {
     }
 }
 
+#[cfg(any())]
 fn animator_ui(
     ui: &mut egui::Ui,
     world: &World,
