@@ -65,7 +65,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::egui;
 use renzora_theme::ThemeManager;
 
@@ -95,6 +95,13 @@ impl Plugin for RenzoraEditorPlugin {
         if !app.is_plugin_added::<EguiPlugin>() {
             app.add_plugins(EguiPlugin::default());
         }
+
+        // Disable auto-creation of the primary Egui context on the first camera.
+        // We explicitly attach PrimaryEguiContext to the UI camera so egui renders
+        // to the window, not to the editor's offscreen 3D camera.
+        app.world_mut()
+            .resource_mut::<EguiGlobalSettings>()
+            .auto_create_primary_context = false;
 
         app.init_state::<EditorState>()
             .init_resource::<ThemeManager>()
@@ -139,6 +146,7 @@ fn show_script_reload_toasts(
 /// Uses `SystemState` to extract the egui context, clones it (Arc-backed, cheap),
 /// then renders everything with `&World` access for panels.
 pub fn editor_ui_system(world: &mut World) {
+    info!("[editor] editor_ui_system running (SplashState::Editor reached)");
     // 1. Get egui context (cached to avoid per-frame allocation)
     if !world.contains_resource::<EditorEguiState>() {
         let s = EditorEguiState(SystemState::new(world));

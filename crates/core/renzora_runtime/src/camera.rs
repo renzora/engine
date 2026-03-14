@@ -43,7 +43,10 @@ pub fn spawn_editor_camera(
     ));
 
     if let Some(ref image) = render_target.image {
+        info!("[camera] Editor camera spawned with offscreen render target");
         entity.insert(RenderTarget::Image(image.clone().into()));
+    } else {
+        info!("[camera] Editor camera spawned rendering to window (no viewport image yet)");
     }
 }
 
@@ -61,10 +64,13 @@ pub fn sync_camera_render_target(
     }
 
     if let Some(ref image) = render_target.image {
+        info!("[camera] ViewportRenderTarget changed — redirecting editor camera to offscreen image");
         for entity in &cameras {
             commands
                 .entity(entity)
                 .insert(RenderTarget::Image(image.clone().into()));
         }
+    } else {
+        info!("[camera] ViewportRenderTarget changed — but image is None");
     }
 }

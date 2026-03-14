@@ -36,7 +36,6 @@ fn main() {
         app.add_plugins(renzora_network_editor::NetworkEditorPlugin);
         app.add_plugins(renzora_daw::DawPlugin);
         app.add_plugins(renzora_level_presets::LevelPresetsPlugin);
-        // app.add_plugins(renzora_animation_editor::AnimationEditorPlugin);
     }
 
     app.run();

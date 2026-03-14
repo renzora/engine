@@ -136,6 +136,7 @@ fn setup_viewport(
     mut user_textures: ResMut<EguiUserTextures>,
     mut viewport_state: ResMut<ViewportState>,
 ) {
+    bevy::log::info!("[viewport] setup_viewport running — creating render target image");
     let size = Extent3d {
         width: DEFAULT_WIDTH,
         height: DEFAULT_HEIGHT,
