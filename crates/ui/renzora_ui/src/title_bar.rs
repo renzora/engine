@@ -112,25 +112,6 @@ pub fn render_title_bar(
                     }
                 });
 
-                ui.menu_button("Window", |ui| {
-                    for panel in registry.iter() {
-                        let label = if let Some(icon) = panel.icon() {
-                            format!("{} {}", icon, panel.title())
-                        } else {
-                            panel.title().to_string()
-                        };
-                        if ui.button(label).clicked() {
-                            ui.close();
-                        }
-                    }
-                    if registry.iter().next().is_none() {
-                        ui.label(
-                            egui::RichText::new("No panels registered")
-                                .color(theme.text.muted.to_color32()),
-                        );
-                    }
-                });
-
                 ui.menu_button("Help", |ui| {
                     if ui.button("Getting Started Tutorial").clicked() {
                         action = TitleBarAction::StartTutorial;
