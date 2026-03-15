@@ -208,6 +208,7 @@ impl Plugin for GizmoPlugin {
                     draw_line_gizmos,
                     selection_visuals::update_selection_outlines,
                     selection_visuals::draw_selection_bounding_box,
+                    selection_visuals::update_selection_gizmo_depth,
                     camera_gizmo::draw_camera_gizmo,
                     skeleton_gizmo::draw_skeleton_gizmo,
                     entity_pick_system,

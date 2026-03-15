@@ -6,6 +6,8 @@
 
 use bevy::prelude::*;
 use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::RenderLayers;
+use bevy::gizmos::config::GizmoConfigStore;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
 
 use renzora_editor::{EditorSelection, EditorSettings, SelectionHighlightMode, HideInHierarchy};
@@ -236,4 +238,23 @@ fn draw_wireframe_box(gizmos: &mut Gizmos<OverlayGizmoGroup>, center: Vec3, size
     gizmos.line(corners[1], corners[5], color);
     gizmos.line(corners[2], corners[6], color);
     gizmos.line(corners[3], corners[7], color);
+}
+
+/// Dynamically switch OverlayGizmoGroup between on-top (render layer 1) and
+/// depth-tested (render layer 0) based on `selection_boundary_on_top`.
+pub fn update_selection_gizmo_depth(
+    settings: Res<EditorSettings>,
+    mut config_store: ResMut<GizmoConfigStore>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    let (config, _) = config_store.config_mut::<OverlayGizmoGroup>();
+    if settings.selection_boundary_on_top {
+        config.render_layers = RenderLayers::layer(1);
+        config.depth_bias = -1.0;
+    } else {
+        config.render_layers = RenderLayers::layer(0);
+        config.depth_bias = 0.0;
+    }
 }
