@@ -5,6 +5,7 @@
 //! and scale (lines + cube caps) modes.
 
 mod camera_gizmo;
+pub mod modal_transform;
 pub mod skeleton_gizmo;
 
 use bevy::camera::visibility::RenderLayers;
@@ -186,12 +187,18 @@ impl Plugin for GizmoPlugin {
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
+            .init_resource::<modal_transform::ModalTransformState>()
             .add_systems(PostStartup, setup_gizmo_meshes)
             .add_systems(
                 Update,
                 (
                     handle_selection_shortcuts,
+                    handle_file_shortcuts,
                     switch_gizmo_mode,
+                    modal_transform::modal_transform_input_system,
+                    modal_transform::modal_transform_keyboard_system,
+                    modal_transform::modal_transform_apply_system,
+                    modal_transform::modal_transform_overlay_system,
                     update_gizmo_transforms,
                     update_gizmo_materials,
                     gizmo_hover_detect,
@@ -313,6 +320,7 @@ fn setup_gizmo_meshes(
 fn update_gizmo_transforms(
     selection: Res<EditorSelection>,
     mode: Res<GizmoMode>,
+    modal: Res<modal_transform::ModalTransformState>,
     mut gizmo_state: ResMut<GizmoState>,
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
@@ -322,7 +330,10 @@ fn update_gizmo_transforms(
     let Ok((mut root_transform, mut root_vis)) = gizmo_root.single_mut() else { return };
 
     let selected = selection.get();
-    let show_meshes = selected.is_some() && matches!(*mode, GizmoMode::Translate | GizmoMode::Scale);
+    // Hide mesh gizmos during modal transform and when in Scale mode (drawn via immediate gizmos)
+    let show_meshes = selected.is_some()
+        && !modal.active
+        && matches!(*mode, GizmoMode::Translate);
     *root_vis = if show_meshes { Visibility::Visible } else { Visibility::Hidden };
 
     // Toggle cone heads vs scale cubes based on mode
@@ -454,7 +465,39 @@ fn draw_line_gizmos(
             gizmos.circle(Isometry3d::new(pos, Quat::IDENTITY), radius, z_color);
         }
         GizmoMode::Scale => {
-            // Meshes handle the shafts and cubes; nothing extra needed here
+            let scale_size = GIZMO_SIZE * gs;
+            let x_color = if matches!(active, Some(GizmoAxis::X)) { highlight } else { x_base };
+            let y_color = if matches!(active, Some(GizmoAxis::Y)) { highlight } else { y_base };
+            let z_color = if matches!(active, Some(GizmoAxis::Z)) { highlight } else { z_base };
+
+            // Lines from center to cube tips
+            gizmos.line(pos, pos + Vec3::X * scale_size, x_color);
+            gizmos.line(pos, pos + Vec3::Y * scale_size, y_color);
+            gizmos.line(pos, pos + Vec3::Z * scale_size, z_color);
+
+            // Cube wireframes at tips
+            let cube_half = 0.075 * gs;
+            for (axis_dir, color) in [(Vec3::X, x_color), (Vec3::Y, y_color), (Vec3::Z, z_color)] {
+                let c = pos + axis_dir * scale_size;
+                let h = Vec3::splat(cube_half);
+                // Draw 12 edges of the cube
+                for &(a, b) in &[
+                    (Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, -1.0, -1.0)),
+                    (Vec3::new(1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, -1.0)),
+                    (Vec3::new(1.0, 1.0, -1.0), Vec3::new(-1.0, 1.0, -1.0)),
+                    (Vec3::new(-1.0, 1.0, -1.0), Vec3::new(-1.0, -1.0, -1.0)),
+                    (Vec3::new(-1.0, -1.0, 1.0), Vec3::new(1.0, -1.0, 1.0)),
+                    (Vec3::new(1.0, -1.0, 1.0), Vec3::new(1.0, 1.0, 1.0)),
+                    (Vec3::new(1.0, 1.0, 1.0), Vec3::new(-1.0, 1.0, 1.0)),
+                    (Vec3::new(-1.0, 1.0, 1.0), Vec3::new(-1.0, -1.0, 1.0)),
+                    (Vec3::new(-1.0, -1.0, -1.0), Vec3::new(-1.0, -1.0, 1.0)),
+                    (Vec3::new(1.0, -1.0, -1.0), Vec3::new(1.0, -1.0, 1.0)),
+                    (Vec3::new(1.0, 1.0, -1.0), Vec3::new(1.0, 1.0, 1.0)),
+                    (Vec3::new(-1.0, 1.0, -1.0), Vec3::new(-1.0, 1.0, 1.0)),
+                ] {
+                    gizmos.line(c + a * h, c + b * h, color);
+                }
+            }
         }
     }
 }
@@ -471,11 +514,16 @@ fn handle_selection_shortcuts(
     selection: Res<EditorSelection>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     gizmo_state: Res<GizmoState>,
+    modal: Res<modal_transform::ModalTransformState>,
+    names: Query<&Name>,
+    transforms: Query<&Transform>,
+    parents: Query<&ChildOf>,
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
     if gizmo_state.active_axis.is_some() { return; }
+    if modal.active { return; }
 
     if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
         let entities = selection.get_all();
@@ -494,6 +542,97 @@ fn handle_selection_shortcuts(
     if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
         commands.insert_resource(renzora_core::CreateNodeRequested);
     }
+
+    // Duplicate (Ctrl+D)
+    if keybindings.just_pressed(EditorAction::Duplicate, &keyboard) {
+        let entities = selection.get_all();
+        for entity in entities {
+            let name = names
+                .get(entity)
+                .map(|n| format!("{} (Copy)", n.as_str()))
+                .unwrap_or_else(|_| "Entity (Copy)".to_string());
+            let transform = transforms.get(entity).copied().unwrap_or_default();
+            let parent = parents.get(entity).ok().map(|c| c.parent());
+            let new_entity = commands.spawn((Name::new(name), transform)).id();
+            if let Some(p) = parent {
+                commands.entity(new_entity).set_parent_in_place(p);
+            }
+            selection.set(Some(new_entity));
+        }
+    }
+
+    // Duplicate & Move (Alt+D) — duplicate then enter grab mode
+    if keybindings.just_pressed(EditorAction::DuplicateAndMove, &keyboard) {
+        let entities = selection.get_all();
+        let has_entities = !entities.is_empty();
+        for entity in entities {
+            let name = names
+                .get(entity)
+                .map(|n| format!("{} (Copy)", n.as_str()))
+                .unwrap_or_else(|_| "Entity (Copy)".to_string());
+            let transform = transforms.get(entity).copied().unwrap_or_default();
+            let parent = parents.get(entity).ok().map(|c| c.parent());
+            let new_entity = commands.spawn((Name::new(name), transform)).id();
+            if let Some(p) = parent {
+                commands.entity(new_entity).set_parent_in_place(p);
+            }
+            selection.set(Some(new_entity));
+        }
+        if has_entities {
+            commands.insert_resource(PendingModalGrab);
+        }
+    }
+}
+
+/// One-shot resource to signal pending modal grab from duplicate-and-move.
+#[derive(Resource)]
+struct PendingModalGrab;
+
+/// Handle file & edit keyboard shortcuts (save, open, settings, etc.).
+fn handle_file_shortcuts(
+    mut commands: Commands,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut modal: ResMut<modal_transform::ModalTransformState>,
+    pending_grab: Option<Res<PendingModalGrab>>,
+) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+    if modal.active { return; }
+
+    // Consume pending grab from duplicate-and-move
+    if pending_grab.is_some() {
+        commands.remove_resource::<PendingModalGrab>();
+        modal.pending_grab = true;
+    }
+
+    // Save (Ctrl+S)
+    if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
+        commands.insert_resource(renzora_core::SaveSceneRequested);
+    }
+
+    // Save As (Ctrl+Shift+S)
+    if keybindings.just_pressed(EditorAction::SaveSceneAs, &keyboard) {
+        commands.insert_resource(renzora_core::SaveAsSceneRequested);
+    }
+
+    // Open Scene (Ctrl+O)
+    if keybindings.just_pressed(EditorAction::OpenScene, &keyboard) {
+        commands.insert_resource(renzora_core::OpenSceneRequested);
+    }
+
+    // New Scene (Ctrl+N)
+    if keybindings.just_pressed(EditorAction::NewScene, &keyboard) {
+        commands.insert_resource(renzora_core::NewSceneRequested);
+    }
+
+    // Settings (Ctrl+,)
+    if keybindings.just_pressed(EditorAction::OpenSettings, &keyboard) {
+        commands.insert_resource(renzora_core::ToggleSettingsRequested);
+    }
 }
 
 // ── Mode switching ──────────────────────────────────────────────────────────
@@ -503,11 +642,13 @@ fn switch_gizmo_mode(
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    modal: Res<modal_transform::ModalTransformState>,
     mut mode: ResMut<GizmoMode>,
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
+    if modal.active { return; }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) { *mode = GizmoMode::Translate; }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) { *mode = GizmoMode::Rotate; }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) { *mode = GizmoMode::Scale; }
@@ -631,7 +772,9 @@ fn gizmo_hover_detect(
     transform_q: Query<&GlobalTransform, Without<EditorCamera>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    modal: Res<modal_transform::ModalTransformState>,
 ) {
+    if modal.active { gizmo_state.hovered_axis = None; return; }
     if gizmo_state.active_axis.is_some() { return; }
     gizmo_state.hovered_axis = None;
 
@@ -867,6 +1010,7 @@ fn screen_delta_to_scale(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransf
 
 fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
+    modal: Res<modal_transform::ModalTransformState>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -879,6 +1023,7 @@ fn entity_pick_system(
     hidden_entities: Query<(), With<HideInHierarchy>>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) { return; }
+    if modal.active { return; }
     if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() { return; }
 
     let Some(viewport) = viewport.as_ref() else { return };
