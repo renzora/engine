@@ -111,9 +111,9 @@ editor = [
     "renzora_animation/editor",
     "renzora_water/editor",
     "renzora_game_ui/editor",
-    # "renzora_gauges/editor",
-    # "renzora_gauges/lua",
-    # "renzora_gauges/rhai",
+    "renzora_gauges/editor",
+    "renzora_gauges/lua",
+    "renzora_gauges/rhai",
 ]
 
 [dependencies]
@@ -142,7 +142,7 @@ renzora_water = { path = "crates/core/renzora_water" }
 renzora_blueprint = { path = "crates/core/renzora_blueprint" }
 renzora_animation = { path = "crates/core/renzora_animation" }
 renzora_game_ui = { path = "crates/core/renzora_game_ui" }
-# renzora_gauges = { path = "crates/core/renzora_gauges" }
+renzora_gauges = { path = "crates/core/renzora_gauges" }
 
 # Editor plugins (optional, enabled by `editor` feature)
 renzora_editor = { path = "crates/editor/renzora_editor", optional = true }

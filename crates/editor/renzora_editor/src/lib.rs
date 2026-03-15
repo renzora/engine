@@ -7,6 +7,7 @@ pub mod camera;
 pub mod commands;
 pub mod ext;
 pub mod inspector_registry;
+pub mod plugin_integration;
 pub mod selection;
 pub mod settings;
 pub mod spawn_registry;
@@ -128,7 +129,8 @@ impl Plugin for RenzoraEditorPlugin {
             .add_systems(
                 Update,
                 show_script_reload_toasts.run_if(in_state(SplashState::Editor)),
-            );
+            )
+            .add_plugins(plugin_integration::PluginCorePlugin);
     }
 }
 
@@ -252,8 +254,8 @@ pub fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
     let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
-    // 7. Status bar (bottom)
-    renzora_ui::status_bar::render_status_bar(&ctx, &theme);
+    // 7. Status bar (bottom) — render plugin status items directly from PluginHost
+    render_plugin_status_bar(&ctx, &theme, world);
 
     // 8. Get current drag state (read-only snapshot for rendering)
     let drag_snapshot = world.get_resource::<DragState>().map(|d| DragState {
@@ -566,6 +568,9 @@ pub fn editor_ui_system(world: &mut World) {
         }
         DocTabAction::None => {}
     }
+
+    // Plugin floating panels
+    render_plugin_floating_panels(&ctx, &theme, world);
 
     // Auth window
     {
@@ -911,4 +916,150 @@ fn render_play_mode_overlay(
                 });
             });
         });
+}
+
+/// Render the status bar with plugin items read directly from PluginHost.
+/// Matches legacy layout: left items on left, right items + version on right.
+fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
+    use editor_plugin_api::api::StatusBarAlign;
+
+    let plugin_host = world.get_resource::<plugin_host::PluginHost>();
+
+    let text_color = theme.text.secondary.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let panel_fill = theme.surfaces.panel.to_color32();
+
+    egui::TopBottomPanel::bottom("renzora_status_bar")
+        .exact_height(22.0)
+        .frame(
+            egui::Frame::NONE
+                .fill(panel_fill)
+                .stroke(egui::Stroke::new(1.0, border_color)),
+        )
+        .show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+
+                if let Some(host) = plugin_host {
+                    let api = host.api();
+
+                    // Left-aligned items
+                    let mut left_items: Vec<_> = api
+                        .status_bar_items
+                        .values()
+                        .filter(|(item, _)| item.align == StatusBarAlign::Left)
+                        .map(|(item, _)| item)
+                        .collect();
+                    left_items.sort_by_key(|i| i.priority);
+
+                    // Right-aligned items
+                    let mut right_items: Vec<_> = api
+                        .status_bar_items
+                        .values()
+                        .filter(|(item, _)| item.align == StatusBarAlign::Right)
+                        .map(|(item, _)| item)
+                        .collect();
+                    right_items.sort_by_key(|i| -i.priority);
+
+                    // Render left items
+                    for item in &left_items {
+                        render_status_item(ui, item, text_color);
+                    }
+
+                    if left_items.is_empty() && right_items.is_empty() {
+                        ui.label(
+                            egui::RichText::new("Ready").size(11.0).color(text_color),
+                        );
+                    }
+
+                    // Right section
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 16.0;
+
+                            // Right-aligned plugin items (reversed for right-to-left)
+                            for item in right_items.iter().rev() {
+                                render_status_item(ui, item, text_color);
+                            }
+                        },
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new("Ready").size(11.0).color(text_color),
+                    );
+                }
+            });
+        });
+}
+
+/// Render a single status bar item — icon and text as one label (legacy pattern).
+fn render_status_item(
+    ui: &mut egui::Ui,
+    item: &editor_plugin_api::api::StatusBarItem,
+    text_color: egui::Color32,
+) {
+    let display_text = if let Some(ref icon) = item.icon {
+        format!("{} {}", icon, item.text)
+    } else {
+        item.text.clone()
+    };
+
+    let label = ui.label(egui::RichText::new(&display_text).size(11.0).color(text_color));
+    if let Some(ref tooltip) = item.tooltip {
+        label.on_hover_text(tooltip);
+    }
+}
+
+/// Render plugin-registered panels as floating egui windows.
+fn render_plugin_floating_panels(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
+    let Some(host) = world.get_resource::<plugin_host::PluginHost>() else {
+        return;
+    };
+    let api = host.api();
+
+    if api.panels.is_empty() {
+        return;
+    }
+
+    let text_color = theme.text.primary.to_color32();
+    let muted_color = theme.text.muted.to_color32();
+
+    for (panel, _plugin_id) in &api.panels {
+        // Check visibility
+        let visible = api.panel_visible.get(&panel.id).copied().unwrap_or(true);
+        if !visible {
+            continue;
+        }
+
+        let title = if let Some(ref icon) = panel.icon {
+            format!("{} {}", icon, panel.title)
+        } else {
+            panel.title.clone()
+        };
+
+        egui::Window::new(&title)
+            .id(egui::Id::new(&panel.id))
+            .default_size(panel.min_size)
+            .show(ctx, |ui| {
+                if let Some(json) = api.panel_contents.get(&panel.id) {
+                    // Panel content is JSON — render as code for now
+                    // (full widget rendering requires a UiRenderer port)
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(json)
+                                .size(11.0)
+                                .color(text_color)
+                                .monospace(),
+                        );
+                    });
+                } else {
+                    ui.label(
+                        egui::RichText::new("No content")
+                            .size(11.0)
+                            .color(muted_color),
+                    );
+                }
+            });
+    }
 }

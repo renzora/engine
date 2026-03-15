@@ -28,6 +28,9 @@ pub struct AppConfig {
     /// Update checker settings
     #[serde(default)]
     pub update_config: UpdateConfig,
+    /// Plugin IDs the user has persistently disabled
+    #[serde(default)]
+    pub disabled_plugins: Vec<String>,
 }
 
 impl AppConfig {
