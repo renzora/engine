@@ -11,6 +11,7 @@ use bevy::gizmos::config::GizmoConfigStore;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
 
 use renzora_editor::{EditorSelection, EditorSettings, SelectionHighlightMode, HideInHierarchy};
+use renzora_terrain::data::{TerrainData, TerrainChunkData, TerrainChunkOf};
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
 
@@ -29,6 +30,8 @@ pub fn update_selection_outlines(
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
     hidden: Query<(), With<HideInHierarchy>>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
+    terrain_parents: Query<(), With<TerrainData>>,
 ) {
     let primary_color = Color::srgb(1.0, 0.5, 0.0);
     let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8);
@@ -64,6 +67,11 @@ pub fn update_selection_outlines(
 
     for &entity in &all_selected {
         if hidden.get(entity).is_ok() {
+            continue;
+        }
+
+        // Skip terrain chunks and terrain parents — they use border highlight instead
+        if terrain_chunks.get(entity).is_ok() || terrain_parents.get(entity).is_ok() {
             continue;
         }
 
@@ -138,6 +146,8 @@ pub fn draw_selection_bounding_box(
     mesh_aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_query: Query<&Children>,
     hidden: Query<(), With<HideInHierarchy>>,
+    terrain_chunks: Query<(), With<TerrainChunkData>>,
+    terrain_parents: Query<(), With<TerrainData>>,
 ) {
     if modal.active {
         return;
@@ -162,6 +172,11 @@ pub fn draw_selection_bounding_box(
 
     for &entity in &all_selected {
         if hidden.get(entity).is_ok() {
+            continue;
+        }
+
+        // Skip terrain — uses dedicated border highlight
+        if terrain_chunks.get(entity).is_ok() || terrain_parents.get(entity).is_ok() {
             continue;
         }
 
@@ -238,6 +253,181 @@ fn draw_wireframe_box(gizmos: &mut Gizmos<OverlayGizmoGroup>, center: Vec3, size
     gizmos.line(corners[1], corners[5], color);
     gizmos.line(corners[2], corners[6], color);
     gizmos.line(corners[3], corners[7], color);
+}
+
+/// Draw yellow border around selected terrain chunks or entire terrain.
+pub fn terrain_chunk_selection_system(
+    selection: Res<EditorSelection>,
+    modal: Res<ModalTransformState>,
+    play_mode: Option<Res<renzora_core::PlayModeState>>,
+    terrain_chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+    terrain_query: Query<(Entity, &TerrainData, &GlobalTransform)>,
+    mut gizmos: Gizmos<OverlayGizmoGroup>,
+) {
+    let in_play = play_mode
+        .as_ref()
+        .map_or(false, |pm| pm.is_in_play_mode());
+    if modal.active || in_play {
+        return;
+    }
+
+    let all_selected = selection.get_all();
+    let primary = selection.get();
+
+    // Draw outer border when the parent terrain entity is selected
+    for (terrain_entity, terrain_data, terrain_transform) in terrain_query.iter() {
+        if !all_selected.contains(&terrain_entity) {
+            continue;
+        }
+
+        let is_primary = primary == Some(terrain_entity);
+        let color = if is_primary {
+            Color::srgb(1.0, 1.0, 0.0)
+        } else {
+            Color::srgba(1.0, 1.0, 0.0, 0.8)
+        };
+
+        let chunks: Vec<_> = terrain_chunks
+            .iter()
+            .filter(|(_, _, chunk_of, _)| chunk_of.0 == terrain_entity)
+            .collect();
+
+        draw_terrain_outer_border(&mut gizmos, terrain_data, &chunks, color);
+    }
+
+    // Draw per-chunk borders for individually selected chunks
+    for (entity, chunk_data, chunk_of, global_transform) in terrain_chunks.iter() {
+        if !all_selected.contains(&entity) {
+            continue;
+        }
+
+        // Skip if the parent terrain is already selected (full border drawn above)
+        if all_selected.contains(&chunk_of.0) {
+            continue;
+        }
+
+        let Ok((_, terrain_data, _)) = terrain_query.get(chunk_of.0) else {
+            continue;
+        };
+
+        let is_primary = primary == Some(entity);
+        let color = if is_primary {
+            Color::srgb(1.0, 1.0, 0.0)
+        } else {
+            Color::srgba(1.0, 1.0, 0.0, 0.8)
+        };
+
+        draw_terrain_chunk_border(&mut gizmos, chunk_data, terrain_data, global_transform, color);
+    }
+}
+
+/// Draw the outer border of the entire terrain (only exterior edges of boundary chunks).
+fn draw_terrain_outer_border(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    terrain_data: &TerrainData,
+    chunks: &[(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)],
+    color: Color,
+) {
+    let resolution = terrain_data.chunk_resolution;
+    let spacing = terrain_data.vertex_spacing();
+    let height_range = terrain_data.height_range();
+    let min_height = terrain_data.min_height;
+    let y_offset = 0.15;
+
+    let get_vertex_pos = |chunk: &TerrainChunkData, chunk_transform: &GlobalTransform, vx: u32, vz: u32| -> Vec3 {
+        let height_normalized = chunk.get_height(vx, vz, resolution);
+        let height = min_height + height_normalized * height_range;
+        let pos = chunk_transform.translation();
+        Vec3::new(
+            pos.x + vx as f32 * spacing,
+            pos.y + height + y_offset,
+            pos.z + vz as f32 * spacing,
+        )
+    };
+
+    for &(_, chunk_data, _, chunk_transform) in chunks {
+        let cx = chunk_data.chunk_x;
+        let cz = chunk_data.chunk_z;
+
+        // Front edge (chunk_z == 0)
+        if cz == 0 {
+            for vx in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, vx, 0);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, vx + 1, 0);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Back edge (chunk_z == chunks_z-1)
+        if cz == terrain_data.chunks_z - 1 {
+            for vx in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, vx, resolution - 1);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, vx + 1, resolution - 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Left edge (chunk_x == 0)
+        if cx == 0 {
+            for vz in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, 0, vz);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, 0, vz + 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
+
+        // Right edge (chunk_x == chunks_x-1)
+        if cx == terrain_data.chunks_x - 1 {
+            for vz in 0..(resolution - 1) {
+                let p1 = get_vertex_pos(chunk_data, chunk_transform, resolution - 1, vz);
+                let p2 = get_vertex_pos(chunk_data, chunk_transform, resolution - 1, vz + 1);
+                gizmos.line(p1, p2, color);
+            }
+        }
+    }
+}
+
+/// Draw a border around a single terrain chunk.
+fn draw_terrain_chunk_border(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    chunk_data: &TerrainChunkData,
+    terrain_data: &TerrainData,
+    global_transform: &GlobalTransform,
+    color: Color,
+) {
+    let resolution = terrain_data.chunk_resolution;
+    let spacing = terrain_data.vertex_spacing();
+    let height_range = terrain_data.height_range();
+    let min_height = terrain_data.min_height;
+    let pos = global_transform.translation();
+    let y_offset = 0.15;
+
+    let get_vertex_pos = |vx: u32, vz: u32| -> Vec3 {
+        let height_normalized = chunk_data.get_height(vx, vz, resolution);
+        let height = min_height + height_normalized * height_range;
+        Vec3::new(
+            pos.x + vx as f32 * spacing,
+            pos.y + height + y_offset,
+            pos.z + vz as f32 * spacing,
+        )
+    };
+
+    // Front edge (z = 0)
+    for vx in 0..(resolution - 1) {
+        gizmos.line(get_vertex_pos(vx, 0), get_vertex_pos(vx + 1, 0), color);
+    }
+    // Back edge (z = max)
+    for vx in 0..(resolution - 1) {
+        gizmos.line(get_vertex_pos(vx, resolution - 1), get_vertex_pos(vx + 1, resolution - 1), color);
+    }
+    // Left edge (x = 0)
+    for vz in 0..(resolution - 1) {
+        gizmos.line(get_vertex_pos(0, vz), get_vertex_pos(0, vz + 1), color);
+    }
+    // Right edge (x = max)
+    for vz in 0..(resolution - 1) {
+        gizmos.line(get_vertex_pos(resolution - 1, vz), get_vertex_pos(resolution - 1, vz + 1), color);
+    }
 }
 
 /// Dynamically switch OverlayGizmoGroup between on-top (render layer 1) and

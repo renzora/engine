@@ -267,6 +267,7 @@ fn camera_controller(
     settings: Res<CameraSettings>,
     mut drag: ResMut<CameraDragState>,
     viewport: Option<Res<ViewportState>>,
+    terrain_tool: Option<Res<renzora_terrain::data::TerrainToolState>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -335,15 +336,22 @@ fn camera_controller(
         return;
     }
 
+    // Skip scroll zoom when terrain tool is active — scroll controls brush radius instead
+    let terrain_active = terrain_tool.as_ref().map_or(false, |t| t.active);
+
     let mut scroll_changed = false;
-    for ev in scroll_events.read() {
-        let forward = Vec3::new(
-            orbit.pitch.cos() * orbit.yaw.sin(),
-            orbit.pitch.sin(),
-            orbit.pitch.cos() * orbit.yaw.cos(),
-        );
-        orbit.focus -= forward * ev.y * zoom_speed;
-        scroll_changed = true;
+    if !terrain_active {
+        for ev in scroll_events.read() {
+            let forward = Vec3::new(
+                orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.pitch.sin(),
+                orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+            orbit.focus -= forward * ev.y * zoom_speed;
+            scroll_changed = true;
+        }
+    } else {
+        scroll_events.clear();
     }
 
     if scroll_changed && !drag.dragging {

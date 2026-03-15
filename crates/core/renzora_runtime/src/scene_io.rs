@@ -74,6 +74,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_all_resources()
         .deny_component::<Mesh3d>()
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
+        .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
         .deny_component::<GlobalTransform>()

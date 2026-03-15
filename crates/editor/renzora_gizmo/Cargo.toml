@@ -14,3 +14,4 @@ renzora_viewport = { path = "../renzora_viewport" }
 renzora_runtime = { path = "../../core/renzora_runtime" }
 renzora_splash = { path = "../../ui/renzora_splash" }
 renzora_animation = { path = "../../core/renzora_animation" }
+renzora_terrain = { path = "../../core/renzora_terrain" }

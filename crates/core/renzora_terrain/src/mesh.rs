@@ -6,7 +6,10 @@ use bevy::asset::RenderAssetUsages;
 use std::collections::HashMap;
 use renzora_core::console_log::console_info;
 
+use avian3d::prelude::{Collider, RigidBody};
+
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
+use crate::material::TerrainCheckerboardMaterial;
 
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {
@@ -90,41 +93,68 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
     mesh
 }
 
+/// Generate a trimesh collider for a terrain chunk.
+pub fn generate_chunk_collider(terrain: &TerrainData, chunk: &TerrainChunkData) -> Collider {
+    let resolution = terrain.chunk_resolution;
+    let spacing = terrain.vertex_spacing();
+    let height_range = terrain.height_range();
+
+    let mut vertices = Vec::with_capacity((resolution * resolution) as usize);
+    for z in 0..resolution {
+        for x in 0..resolution {
+            let h = terrain.min_height + chunk.get_height(x, z, resolution) * height_range;
+            vertices.push(Vec3::new(x as f32 * spacing, h, z as f32 * spacing));
+        }
+    }
+
+    let mut indices = Vec::with_capacity(((resolution - 1) * (resolution - 1) * 2) as usize);
+    for z in 0..(resolution - 1) {
+        for x in 0..(resolution - 1) {
+            let tl = z * resolution + x;
+            let tr = tl + 1;
+            let bl = tl + resolution;
+            let br = bl + 1;
+            indices.push([tl, bl, tr]);
+            indices.push([tr, bl, br]);
+        }
+    }
+
+    Collider::trimesh(vertices, indices)
+}
+
 /// Spawn a complete terrain entity with chunk children.
 ///
 /// Returns the root terrain entity. Each chunk is spawned as a child with
-/// its own mesh and a default `StandardMaterial`.
+/// the checkerboard material and a trimesh collider.
 pub fn spawn_terrain(world: &mut World) -> Entity {
     let terrain_data = TerrainData::default();
 
     let material = {
-        let mut mats = world.resource_mut::<Assets<StandardMaterial>>();
-        mats.add(StandardMaterial {
-            base_color: Color::srgb(0.45, 0.55, 0.35),
-            perceptual_roughness: 0.9,
-            ..default()
-        })
+        let mut mats = world.resource_mut::<Assets<TerrainCheckerboardMaterial>>();
+        mats.add(TerrainCheckerboardMaterial::default())
     };
 
-    // Build chunk data + meshes
-    let mut chunks: Vec<(TerrainChunkData, Handle<Mesh>, Vec3)> = Vec::new();
+    // Build chunk data + meshes + colliders
+    let mut chunks: Vec<(TerrainChunkData, Handle<Mesh>, Vec3, Collider)> = Vec::new();
     {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
         for cz in 0..terrain_data.chunks_z {
             for cx in 0..terrain_data.chunks_x {
                 let chunk = TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
                 let mesh = generate_chunk_mesh(&terrain_data, &chunk);
+                let collider = generate_chunk_collider(&terrain_data, &chunk);
                 let mesh_handle = meshes.add(mesh);
                 let origin = terrain_data.chunk_world_origin(cx, cz);
-                chunks.push((chunk, mesh_handle, origin));
+                chunks.push((chunk, mesh_handle, origin, collider));
             }
         }
     }
 
+    // Y=-2.0 so terrain surface sits on the grid at default 20% height
     let terrain_entity = world
         .spawn((
             Name::new("Terrain"),
-            Transform::default(),
+            Transform::from_xyz(0.0, -2.0, 0.0),
             Visibility::default(),
             terrain_data,
         ))
@@ -132,7 +162,7 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
 
     console_info("Terrain", format!("Spawning terrain with {} chunks", chunks.len()));
 
-    for (mut chunk_data, mesh_handle, origin) in chunks {
+    for (mut chunk_data, mesh_handle, origin, collider) in chunks {
         chunk_data.dirty = false;
         let cx = chunk_data.chunk_x;
         let cz = chunk_data.chunk_z;
@@ -142,6 +172,8 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
                 Mesh3d(mesh_handle),
                 MeshMaterial3d(material.clone()),
                 Transform::from_translation(origin),
+                RigidBody::Static,
+                collider,
                 chunk_data,
                 TerrainChunkOf(terrain_entity),
             ))
@@ -154,13 +186,63 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
     terrain_entity
 }
 
-/// System that regenerates meshes for dirty chunks.
+/// Rehydrate terrain chunks after scene load — spawns mesh, material, collider,
+/// and `TerrainChunkOf` for chunks that have `TerrainChunkData` but no `Mesh3d`.
+pub fn rehydrate_terrain_chunks(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
+    terrain_query: Query<&TerrainData>,
+    chunk_query: Query<
+        (Entity, &TerrainChunkData, Option<&TerrainChunkOf>, Option<&ChildOf>),
+        Without<Mesh3d>,
+    >,
+) {
+    if chunk_query.is_empty() {
+        return;
+    }
+
+    let material = materials.add(TerrainCheckerboardMaterial::default());
+
+    for (entity, chunk_data, chunk_of, child_of) in chunk_query.iter() {
+        // Resolve parent terrain: prefer TerrainChunkOf, fall back to ChildOf parent
+        let parent = chunk_of
+            .map(|c| c.0)
+            .or_else(|| child_of.map(|c| c.0));
+        let Some(parent_entity) = parent else {
+            continue;
+        };
+        let Ok(terrain_data) = terrain_query.get(parent_entity) else {
+            continue;
+        };
+
+        let mesh = generate_chunk_mesh(terrain_data, chunk_data);
+        let collider = generate_chunk_collider(terrain_data, chunk_data);
+        let mesh_handle = meshes.add(mesh);
+
+        let mut ec = commands.entity(entity);
+        ec.insert((
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(material.clone()),
+            RigidBody::Static,
+            collider,
+        ));
+
+        // Restore TerrainChunkOf if missing (scene load doesn't serialize it)
+        if chunk_of.is_none() {
+            ec.insert(TerrainChunkOf(parent_entity));
+        }
+    }
+}
+
+/// System that regenerates meshes and colliders for dirty chunks.
 pub fn terrain_chunk_mesh_update_system(
+    mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_query: Query<&TerrainData>,
-    mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &Mesh3d)>,
+    mut chunk_query: Query<(Entity, &mut TerrainChunkData, &TerrainChunkOf, &Mesh3d)>,
 ) {
-    for (mut chunk, chunk_of, mesh_handle) in chunk_query.iter_mut() {
+    for (entity, mut chunk, chunk_of, mesh_handle) in chunk_query.iter_mut() {
         if !chunk.dirty {
             continue;
         }
@@ -171,6 +253,8 @@ pub fn terrain_chunk_mesh_update_system(
         if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
             *mesh = new_mesh;
         }
+        let new_collider = generate_chunk_collider(terrain, &chunk);
+        commands.entity(entity).insert(new_collider);
         chunk.dirty = false;
     }
 }
@@ -219,7 +303,7 @@ fn resample_heights(old_heights: &[f32], old_res: u32, new_res: u32) -> Vec<f32>
 pub fn terrain_data_changed_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut std_materials: ResMut<Assets<StandardMaterial>>,
+    mut terrain_materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     changed_terrain: Query<(Entity, &TerrainData), Changed<TerrainData>>,
     added: Query<Entity, Added<TerrainData>>,
     chunk_query: Query<(Entity, &TerrainChunkOf, &TerrainChunkData)>,
@@ -258,11 +342,7 @@ pub fn terrain_data_changed_system(
             commands.entity(*chunk_entity).despawn();
         }
 
-        let material = std_materials.add(StandardMaterial {
-            base_color: Color::srgb(0.7, 0.7, 0.7),
-            perceptual_roughness: 0.9,
-            ..default()
-        });
+        let material = terrain_materials.add(TerrainCheckerboardMaterial::default());
 
         let new_res = terrain_data.chunk_resolution;
 
@@ -287,6 +367,7 @@ pub fn terrain_data_changed_system(
                 };
 
                 let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
+                let collider = generate_chunk_collider(terrain_data, &chunk_data);
                 let mesh_handle = meshes.add(mesh);
                 let origin = terrain_data.chunk_world_origin(cx, cz);
 
@@ -295,6 +376,8 @@ pub fn terrain_data_changed_system(
                     MeshMaterial3d(material.clone()),
                     Transform::from_translation(origin),
                     Visibility::default(),
+                    RigidBody::Static,
+                    collider,
                     chunk_data,
                     TerrainChunkOf(terrain_entity),
                 ));

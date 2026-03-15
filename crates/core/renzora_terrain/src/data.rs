@@ -123,8 +123,8 @@ impl Default for TerrainData {
             chunks_x: 4,
             chunks_z: 4,
             chunk_size: 64.0,
-            chunk_resolution: 65,
-            max_height: 100.0,
+            chunk_resolution: 33,
+            max_height: 50.0,
             min_height: -10.0,
         }
     }

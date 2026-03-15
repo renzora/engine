@@ -257,6 +257,11 @@ impl Plugin for GizmoPlugin {
                 render_box_selection
                     .after(box_selection_system)
                     .run_if(in_state(renzora_splash::SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                selection_visuals::terrain_chunk_selection_system
+                    .run_if(in_state(renzora_splash::SplashState::Editor)),
             );
     }
 }
