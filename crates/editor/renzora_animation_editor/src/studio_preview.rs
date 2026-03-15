@@ -17,6 +17,27 @@ use crate::AnimationEditorState;
 
 pub const STUDIO_PREVIEW_LAYER: usize = 10;
 
+/// Toggle settings for the studio preview viewport.
+#[derive(Resource)]
+pub struct StudioPreviewSettings {
+    /// Show skeleton bone gizmos.
+    pub show_skeleton: bool,
+    /// Show the checkerboard floor.
+    pub show_floor: bool,
+    /// Show the wireframe overlay.
+    pub show_wireframe: bool,
+}
+
+impl Default for StudioPreviewSettings {
+    fn default() -> Self {
+        Self {
+            show_skeleton: true,
+            show_floor: true,
+            show_wireframe: false,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Resources
 // ---------------------------------------------------------------------------
@@ -89,6 +110,8 @@ pub fn setup_studio_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut user_textures: ResMut<EguiUserTextures>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let size = Extent3d {
         width: 512,
@@ -122,7 +145,7 @@ pub fn setup_studio_preview(
         Camera3d::default(),
         Msaa::Off,
         Camera {
-            clear_color: ClearColorConfig::Custom(Color::srgba(0.15, 0.05, 0.2, 1.0)),
+            clear_color: ClearColorConfig::Custom(Color::srgba(0.12, 0.12, 0.14, 1.0)),
             order: -5,
             is_active: true,
             ..default()
@@ -137,15 +160,17 @@ pub fn setup_studio_preview(
         Name::new("Studio Preview Camera"),
     ));
 
-    // Key light
+    // ── 3-point lighting rig ──
+
+    // Key light — warm, strong, upper-right front
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(1.0, 0.98, 0.95),
-            illuminance: 8000.0,
-            shadows_enabled: false,
+            color: Color::srgb(1.0, 0.97, 0.92),
+            illuminance: 6000.0,
+            shadows_enabled: true,
             ..default()
         },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.7, 0.4, 0.0)),
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.5, 0.0)),
         RenderLayers::layer(STUDIO_PREVIEW_LAYER),
         StudioPreviewLight,
         HideInHierarchy,
@@ -153,20 +178,130 @@ pub fn setup_studio_preview(
         Name::new("Studio Preview Key Light"),
     ));
 
-    // Fill light (softer, opposite side)
+    // Fill light — cool, softer, opposite side to reduce harsh shadows
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(0.7, 0.8, 1.0),
-            illuminance: 3000.0,
+            color: Color::srgb(0.75, 0.82, 1.0),
+            illuminance: 2500.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.3, -0.8, 0.0)),
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.3, -0.9, 0.0)),
         RenderLayers::layer(STUDIO_PREVIEW_LAYER),
         StudioPreviewLight,
         HideInHierarchy,
         EditorLocked,
         Name::new("Studio Preview Fill Light"),
+    ));
+
+    // Rim/back light — subtle edge highlight from behind
+    commands.spawn((
+        DirectionalLight {
+            color: Color::srgb(0.85, 0.9, 1.0),
+            illuminance: 1800.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.2, 3.0, 0.0)),
+        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+        StudioPreviewLight,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Studio Preview Rim Light"),
+    ));
+
+    // Ambient light — gentle fill to lift dark areas
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.9, 0.9, 0.95),
+            intensity: 50_000.0,
+            range: 30.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 4.0, 0.0),
+        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+        StudioPreviewLight,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Studio Preview Ambient"),
+    ));
+
+    // ── Backdrop — large curved wall behind the model ──
+    // A half-cylinder behind the subject for a studio-like environment
+    let backdrop_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.14, 0.14, 0.16),
+        perceptual_roughness: 1.0,
+        metallic: 0.0,
+        reflectance: 0.0,
+        unlit: false,
+        ..default()
+    });
+
+    // Back wall — tall plane behind the model
+    let wall_mesh = meshes.add(Plane3d::new(Vec3::Z, Vec2::new(8.0, 5.0)));
+    commands.spawn((
+        Mesh3d(wall_mesh),
+        MeshMaterial3d(backdrop_material.clone()),
+        Transform::from_xyz(0.0, 5.0, -6.0),
+        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Studio Preview Backdrop"),
+    ));
+
+    // Checkerboard floor
+    let checker_size = 16u32;
+    let checker_tiles = 8u32; // 8x8 checker pattern
+    let tex_dim = checker_size * checker_tiles;
+    let mut checker_data = vec![0u8; (tex_dim * tex_dim * 4) as usize];
+    for y in 0..tex_dim {
+        for x in 0..tex_dim {
+            let tx = x / checker_size;
+            let ty = y / checker_size;
+            let is_light = (tx + ty) % 2 == 0;
+            let (r, g, b) = if is_light { (55, 55, 60) } else { (35, 35, 40) };
+            let idx = ((y * tex_dim + x) * 4) as usize;
+            checker_data[idx] = b; // BGRA
+            checker_data[idx + 1] = g;
+            checker_data[idx + 2] = r;
+            checker_data[idx + 3] = 255;
+        }
+    }
+
+    let mut checker_image = Image {
+        data: Some(checker_data),
+        ..default()
+    };
+    checker_image.texture_descriptor.size = Extent3d {
+        width: tex_dim,
+        height: tex_dim,
+        depth_or_array_layers: 1,
+    };
+    checker_image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+    checker_image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+
+    let checker_tex = images.add(checker_image);
+
+    let floor_material = materials.add(StandardMaterial {
+        base_color_texture: Some(checker_tex),
+        perceptual_roughness: 0.9,
+        metallic: 0.0,
+        reflectance: 0.1,
+        ..default()
+    });
+
+    let floor_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(5.0)));
+
+    commands.spawn((
+        Mesh3d(floor_mesh),
+        MeshMaterial3d(floor_material),
+        Transform::from_translation(Vec3::ZERO),
+        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+        StudioPreviewFloor,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Studio Preview Floor"),
     ));
 }
 
@@ -395,5 +530,110 @@ pub fn update_studio_preview_camera(
 
         transform.translation = orbit.target + Vec3::new(x, y, z);
         transform.look_at(orbit.target, Vec3::Y);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton gizmo — draws bone hierarchy on the preview model
+// ---------------------------------------------------------------------------
+
+use bevy::animation::AnimationTargetId;
+use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup, GizmoLineConfig};
+use bevy::gizmos::AppGizmoBuilder;
+
+/// Gizmo group that renders on the studio preview layer.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct StudioPreviewGizmoGroup;
+
+/// Register the studio preview gizmo config.
+pub fn register_preview_gizmos(app: &mut bevy::app::App) {
+    app.insert_gizmo_config(
+        StudioPreviewGizmoGroup,
+        GizmoConfig {
+            depth_bias: -1.0,
+            line: GizmoLineConfig { width: 2.0, ..default() },
+            render_layers: RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+            ..default()
+        },
+    );
+}
+
+/// Draw skeleton bones on the preview model using gizmos.
+pub fn draw_preview_skeleton(
+    mut gizmos: Gizmos<StudioPreviewGizmoGroup>,
+    settings: Res<StudioPreviewSettings>,
+    preview_roots: Query<Entity, With<StudioPreviewModel>>,
+    children_q: Query<&Children>,
+    parent_q: Query<&ChildOf>,
+    target_q: Query<(), With<AnimationTargetId>>,
+    global_transforms: Query<&GlobalTransform>,
+) {
+    if !settings.show_skeleton {
+        return;
+    }
+
+    let Some(root) = preview_roots.iter().next() else {
+        return;
+    };
+
+    let bone_color = Color::srgba(0.9, 0.9, 0.9, 0.6);
+    let joint_color = Color::srgba(0.4, 0.85, 1.0, 0.8);
+
+    // Collect all animation target entities
+    let mut bones = Vec::new();
+    collect_bones_recursive(root, &children_q, &target_q, &mut bones);
+
+    for &bone in &bones {
+        let Ok(bone_gt) = global_transforms.get(bone) else { continue };
+        let bone_pos = bone_gt.translation();
+
+        // Joint sphere
+        gizmos.sphere(Isometry3d::from_translation(bone_pos), 0.015, joint_color);
+
+        // Line to parent if parent is also a bone
+        if let Ok(child_of) = parent_q.get(bone) {
+            let parent = child_of.parent();
+            if target_q.get(parent).is_ok() {
+                if let Ok(parent_gt) = global_transforms.get(parent) {
+                    gizmos.line(parent_gt.translation(), bone_pos, bone_color);
+                }
+            }
+        }
+    }
+}
+
+fn collect_bones_recursive(
+    entity: Entity,
+    children_q: &Query<&Children>,
+    target_q: &Query<(), With<AnimationTargetId>>,
+    out: &mut Vec<Entity>,
+) {
+    if target_q.get(entity).is_ok() {
+        out.push(entity);
+    }
+    if let Ok(children) = children_q.get(entity) {
+        for child in children.iter() {
+            collect_bones_recursive(child, children_q, target_q, out);
+        }
+    }
+}
+
+/// Marker for the preview floor entity.
+#[derive(Component)]
+pub struct StudioPreviewFloor;
+
+/// Toggle floor visibility based on settings.
+pub fn sync_floor_visibility(
+    settings: Res<StudioPreviewSettings>,
+    mut floor_q: Query<&mut Visibility, With<StudioPreviewFloor>>,
+) {
+    let target = if settings.show_floor {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut vis in floor_q.iter_mut() {
+        *vis = target;
     }
 }
