@@ -63,29 +63,36 @@ impl LayoutManager {
     }
 }
 
-/// Scene: Viewport+bottom strip | Hierarchy(top)+Inspector(bottom)
+/// Scene: Hierarchy+Shapes | Viewport+BottomTabs | Inspector+History
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::Leaf {
-                tabs: vec!["viewport".into(), "code_editor".into(), "node_explorer".into()],
-                active_tab: 0,
-            },
-            DockTree::Leaf {
-                tabs: vec!["assets".into(), "console".into(), "animation".into(), "mixer".into()],
-                active_tab: 0,
-            },
-            0.72,
-        ),
+        // Left column: hierarchy on top, shape library below
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
+            DockTree::leaf("shape_library"),
+            0.6,
+        ),
+        DockTree::horizontal(
+            // Center: viewport on top, assets/console/properties/mixer tabbed below
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec!["viewport".into(), "code_editor".into(), "node_explorer".into()],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec!["assets".into(), "console".into(), "properties".into(), "mixer".into()],
+                    active_tab: 0,
+                },
+                0.72,
+            ),
+            // Right column: inspector with history tab
             DockTree::Leaf {
                 tabs: vec!["inspector".into(), "history".into()],
                 active_tab: 0,
             },
-            0.25,
+            0.78,
         ),
-        0.82,
+        0.15,
     )
 }
 
