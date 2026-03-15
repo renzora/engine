@@ -408,7 +408,7 @@ pub fn render_title_bar(
                     action = TitleBarAction::ToggleSettings;
                 }
 
-                ui.add_space(8.0);
+                ui.add_space(gear_size + 8.0);
 
                 // Sign In button
                 let sign_in_size = Vec2::new(sign_in_width, 20.0);

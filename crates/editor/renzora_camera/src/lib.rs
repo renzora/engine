@@ -16,7 +16,7 @@ use renzora_core::InputFocusState;
 use renzora_editor::EditorSelection;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_runtime::EditorCamera;
-use renzora_viewport::{ViewportSettings, ViewportState};
+use renzora_viewport::{NavOverlayState, ViewportSettings, ViewportState};
 
 /// Orbit camera state for the editor viewport.
 #[derive(Resource)]
@@ -136,12 +136,14 @@ impl Plugin for CameraPlugin {
         app.init_resource::<OrbitCameraState>()
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
+            .init_resource::<NavDragPrev>()
             .add_systems(PostStartup, apply_initial_orbit)
             .add_systems(Update, (
                 sync_viewport_settings,
                 handle_view_angle_keys,
                 focus_selected,
                 camera_controller,
+                apply_nav_overlay,
                 update_camera_projection,
                 sync_orbit_snapshot,
             ).chain().run_if(in_state(renzora_splash::SplashState::Editor)));
@@ -423,6 +425,75 @@ fn camera_controller(
     // Apply orbit to transform
     let t = orbit.calculate_transform();
     *transform = t;
+}
+
+/// Apply pan/zoom from the viewport nav overlay buttons.
+/// Tracks whether the nav overlay was dragging last frame (for cursor show/hide edges).
+#[derive(Resource, Default)]
+struct NavDragPrev {
+    was_dragging: bool,
+}
+
+/// Apply pan/zoom from the viewport nav overlay buttons.
+fn apply_nav_overlay(
+    nav: Option<Res<NavOverlayState>>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut camera_query: Query<&mut Transform, With<EditorCamera>>,
+    mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut prev: ResMut<NavDragPrev>,
+) {
+    let Some(nav) = nav else { return };
+
+    let dragging = nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
+        || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed);
+
+    // Confine + hide cursor when drag starts, release when it stops
+    if dragging && !prev.was_dragging {
+        if let Ok(mut cursor) = window_query.single_mut() {
+            cursor.visible = false;
+            cursor.grab_mode = CursorGrabMode::Confined;
+        }
+    } else if !dragging && prev.was_dragging {
+        if let Ok(mut cursor) = window_query.single_mut() {
+            cursor.visible = true;
+            cursor.grab_mode = CursorGrabMode::None;
+        }
+    }
+    prev.was_dragging = dragging;
+
+    let pan_dx = nav.pan_delta_x.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let pan_dy = nav.pan_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let zoom_dy = nav.zoom_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+
+    let has_pan = pan_dx != 0.0 || pan_dy != 0.0;
+    let has_zoom = zoom_dy != 0.0;
+
+    if !has_pan && !has_zoom {
+        return;
+    }
+
+    if has_pan {
+        let pan_speed = 0.003 * orbit.distance.max(0.5);
+        let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
+        let up_dir = Vec3::new(
+            -orbit.pitch.sin() * orbit.yaw.sin(),
+            orbit.pitch.cos(),
+            -orbit.pitch.sin() * orbit.yaw.cos(),
+        )
+        .normalize();
+        orbit.focus -= right_dir * pan_dx * pan_speed;
+        orbit.focus += up_dir * pan_dy * pan_speed;
+    }
+
+    if has_zoom {
+        let zoom_speed = 0.02 * orbit.distance.max(0.5);
+        orbit.distance -= zoom_dy * zoom_speed;
+        orbit.distance = orbit.distance.clamp(0.5, 100.0);
+    }
+
+    if let Ok(mut transform) = camera_query.single_mut() {
+        *transform = orbit.calculate_transform();
+    }
 }
 
 /// Update camera projection based on orbit state (perspective/orthographic).

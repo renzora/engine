@@ -55,7 +55,9 @@ pub use spawn_registry::{EntityPreset, SpawnRegistry};
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
 #[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoMode {
+    /// Select mode — click to select, drag for box/marquee selection.
     #[default]
+    Select,
     Translate,
     Rotate,
     Scale,

@@ -13,7 +13,7 @@ pub mod render_systems;
 pub mod settings;
 pub mod toolbar;
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
 use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
@@ -48,6 +48,7 @@ impl Plugin for ViewportPlugin {
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
+            .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
             .init_resource::<CameraOrbitSnapshot>()
             .init_resource::<renzora_core::InputFocusState>()
@@ -131,6 +132,36 @@ impl Default for ViewportResizeRequest {
             hovered: AtomicBool::new(false),
             screen_x: AtomicU32::new(0),
             screen_y: AtomicU32::new(0),
+        }
+    }
+}
+
+/// Atomically-writable nav overlay drag state from the panel's `ui()` method.
+///
+/// The nav overlay buttons write drag deltas here (from `&World`), and the
+/// camera controller system reads + consumes them each frame.
+#[derive(Resource)]
+pub struct NavOverlayState {
+    /// Whether the pan button is currently being dragged.
+    pub pan_dragging: AtomicBool,
+    /// Whether the zoom button is currently being dragged.
+    pub zoom_dragging: AtomicBool,
+    /// Pan drag delta X (scaled by 1000 to preserve fractional part).
+    pub pan_delta_x: AtomicI32,
+    /// Pan drag delta Y (scaled by 1000 to preserve fractional part).
+    pub pan_delta_y: AtomicI32,
+    /// Zoom drag delta Y (scaled by 1000 to preserve fractional part).
+    pub zoom_delta_y: AtomicI32,
+}
+
+impl Default for NavOverlayState {
+    fn default() -> Self {
+        Self {
+            pan_dragging: AtomicBool::new(false),
+            zoom_dragging: AtomicBool::new(false),
+            pan_delta_x: AtomicI32::new(0),
+            pan_delta_y: AtomicI32::new(0),
+            zoom_delta_y: AtomicI32::new(0),
         }
     }
 }
@@ -318,6 +349,11 @@ impl EditorPanel for ViewportPanel {
             if let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() {
                 render_axis_gizmo(ui, orbit, rect);
             }
+        }
+
+        // Overlay: nav pan/zoom buttons (right side, below axis gizmo)
+        if !in_play {
+            toolbar::render_nav_overlay(ui.ctx(), world, rect);
         }
     }
 
@@ -675,8 +711,8 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
 
 // ── Axis orientation gizmo (top-right corner) ───────────────────────────────
 
-const AXIS_GIZMO_SIZE: f32 = 100.0;
-const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
+pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
+pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
 
 fn render_axis_gizmo(
     ui: &mut egui::Ui,

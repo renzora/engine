@@ -167,6 +167,38 @@ pub struct GizmoState {
     pub gizmo_scale: f32,
 }
 
+/// State for box/marquee selection (drag to select multiple entities).
+#[derive(Resource, Default, Clone, Copy)]
+pub struct BoxSelectionState {
+    /// Whether box selection is currently active.
+    pub active: bool,
+    /// Start position in screen coordinates.
+    pub start_pos: Vec2,
+    /// Current position in screen coordinates.
+    pub current_pos: Vec2,
+}
+
+impl BoxSelectionState {
+    /// Get the selection rectangle as (min, max) screen positions.
+    pub fn get_rect(&self) -> (Vec2, Vec2) {
+        let min = Vec2::new(
+            self.start_pos.x.min(self.current_pos.x),
+            self.start_pos.y.min(self.current_pos.y),
+        );
+        let max = Vec2::new(
+            self.start_pos.x.max(self.current_pos.x),
+            self.start_pos.y.max(self.current_pos.y),
+        );
+        (min, max)
+    }
+
+    /// Check if the box is large enough to be considered a drag (not just a click).
+    pub fn is_drag(&self) -> bool {
+        let d = (self.current_pos - self.start_pos).abs();
+        d.x > 5.0 || d.y > 5.0
+    }
+}
+
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
 pub struct GizmoPlugin;
@@ -188,6 +220,7 @@ impl Plugin for GizmoPlugin {
             )
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoState>()
+            .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora_core::ModalTransformHud>()
@@ -214,8 +247,15 @@ impl Plugin for GizmoPlugin {
                     camera_gizmo::draw_camera_gizmo,
                     skeleton_gizmo::draw_skeleton_gizmo,
                     entity_pick_system,
+                    box_selection_system,
                 )
                     .chain()
+                    .run_if(in_state(renzora_splash::SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                render_box_selection
+                    .after(box_selection_system)
                     .run_if(in_state(renzora_splash::SplashState::Editor)),
             );
     }
@@ -424,6 +464,8 @@ fn draw_line_gizmos(
     let pos = sel_t.translation;
     let gs = gizmo_state.gizmo_scale;
 
+    if *mode == GizmoMode::Select { return; }
+
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
     let highlight = Color::srgb(1.0, 1.0, 0.3);
     let x_base = Color::srgb(1.0, 0.15, 0.15);
@@ -431,6 +473,7 @@ fn draw_line_gizmos(
     let z_base = Color::srgb(0.2, 0.3, 1.0);
 
     match *mode {
+        GizmoMode::Select => unreachable!(),
         GizmoMode::Translate => {
             // Plane squares
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
@@ -656,6 +699,7 @@ fn switch_gizmo_mode(
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
     if modal.active { return; }
+    if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) { *mode = GizmoMode::Select; }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) { *mode = GizmoMode::Translate; }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) { *mode = GizmoMode::Rotate; }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) { *mode = GizmoMode::Scale; }
@@ -782,6 +826,7 @@ fn gizmo_hover_detect(
     modal: Res<modal_transform::ModalTransformState>,
 ) {
     if modal.active { gizmo_state.hovered_axis = None; return; }
+    if *mode == GizmoMode::Select { gizmo_state.hovered_axis = None; return; }
     if gizmo_state.active_axis.is_some() { return; }
     gizmo_state.hovered_axis = None;
 
@@ -803,6 +848,7 @@ fn gizmo_hover_detect(
     let mut best: Option<(GizmoAxis, f32)> = None;
 
     match *mode {
+        GizmoMode::Select => unreachable!(),
         GizmoMode::Translate => {
             // Plane squares first
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
@@ -863,6 +909,11 @@ fn gizmo_drag(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
 ) {
+    if *mode == GizmoMode::Select {
+        mouse_motion.clear();
+        return;
+    }
+
     let selected_entities = selection.get_all();
     if selected_entities.is_empty() {
         gizmo_state.active_axis = None;
@@ -928,6 +979,7 @@ fn gizmo_drag(
     let distance = (cam_gt.translation() - center).length();
 
     match *mode {
+        GizmoMode::Select => unreachable!(),
         GizmoMode::Translate => {
             let scale = match projection {
                 Projection::Perspective(persp) => distance * (persp.fov * 0.5).tan() * 2.0 / viewport.screen_size.y,
@@ -1017,10 +1069,12 @@ fn screen_delta_to_scale(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransf
 
 fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
+    mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
@@ -1028,6 +1082,7 @@ fn entity_pick_system(
     parent_query: Query<&ChildOf>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
     hidden_entities: Query<(), With<HideInHierarchy>>,
+    mut box_sel: ResMut<BoxSelectionState>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) { return; }
     if modal.active { return; }
@@ -1045,6 +1100,9 @@ fn entity_pick_system(
         || vp_local.x > viewport.screen_size.x || vp_local.y > viewport.screen_size.y
     { return; }
 
+    let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
     let Ok(ray) = camera.viewport_to_world(cam_gt, vp_local) else { return };
 
     let hits = mesh_ray_cast.cast_ray(ray, &default());
@@ -1053,18 +1111,127 @@ fn entity_pick_system(
         if gizmo_meshes.get(*entity).is_ok() { continue; }
         if hidden_entities.get(*entity).is_ok() { continue; }
 
-        // Walk parent chain to find the nearest named ancestor (the "real" entity)
         let selectable = find_named_ancestor(*entity, &named_entities, &parent_query);
         if let Some(target) = selectable {
             if hidden_entities.get(target).is_ok() { continue; }
             info!("[pick] Selected {:?} (hit {:?})", target, entity);
-            selection.set(Some(target));
+            if ctrl {
+                selection.toggle(target);
+            } else if shift {
+                // Add to selection (only if not already selected)
+                if !selection.is_selected(target) {
+                    selection.toggle(target);
+                }
+            } else {
+                selection.set(Some(target));
+            }
             return;
         }
     }
 
-    // Clicked empty space — deselect
-    selection.set(None);
+    // Clicked empty space — start box selection in Select mode, else just deselect
+    if *mode == GizmoMode::Select {
+        box_sel.active = true;
+        box_sel.start_pos = cursor;
+        box_sel.current_pos = cursor;
+    } else if !shift && !ctrl {
+        selection.set(None);
+    }
+}
+
+// ── Box selection system ─────────────────────────────────────────────────────
+
+fn box_selection_system(
+    mut box_sel: ResMut<BoxSelectionState>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    window_q: Query<&Window, With<PrimaryWindow>>,
+    viewport: Option<Res<ViewportState>>,
+    camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    selection: Res<EditorSelection>,
+    named_entities: Query<(Entity, &GlobalTransform), With<Name>>,
+    hidden_entities: Query<(), With<HideInHierarchy>>,
+    gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
+) {
+    if !box_sel.active { return; }
+
+    let Ok(window) = window_q.single() else { return; };
+    let Some(cursor) = window.cursor_position() else { return; };
+
+    // Update current position while dragging
+    if mouse_button.pressed(MouseButton::Left) {
+        box_sel.current_pos = cursor;
+        return;
+    }
+
+    // Mouse released — finalize box selection
+    box_sel.active = false;
+
+    let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
+    if !box_sel.is_drag() {
+        // Was just a click on empty space, not a drag
+        if !shift && !ctrl {
+            selection.set(None);
+        }
+        return;
+    }
+
+    let Some(viewport) = viewport.as_ref() else { return; };
+    let Ok((camera, cam_gt)) = camera_q.single() else { return; };
+
+    let (box_min, box_max) = box_sel.get_rect();
+
+    // Find all named entities whose screen projection falls within the box
+    let mut entities_in_box = Vec::new();
+
+    for (entity, global_transform) in named_entities.iter() {
+        if hidden_entities.get(entity).is_ok() { continue; }
+        if gizmo_meshes.get(entity).is_ok() { continue; }
+
+        let world_pos = global_transform.translation();
+        let Some(ndc) = camera.world_to_ndc(cam_gt, world_pos) else { continue; };
+
+        // Must be in front of camera
+        if ndc.z < 0.0 || ndc.z > 1.0 { continue; }
+
+        // Convert NDC to screen coordinates
+        let screen_x = viewport.screen_position.x + (ndc.x + 1.0) * 0.5 * viewport.screen_size.x;
+        let screen_y = viewport.screen_position.y + (1.0 - ndc.y) * 0.5 * viewport.screen_size.y;
+
+        if screen_x >= box_min.x && screen_x <= box_max.x
+            && screen_y >= box_min.y && screen_y <= box_max.y
+        {
+            entities_in_box.push(entity);
+        }
+    }
+
+    if entities_in_box.is_empty() {
+        if !shift && !ctrl {
+            selection.set(None);
+        }
+        return;
+    }
+
+    if shift {
+        // Add to existing selection
+        let mut current = selection.get_all();
+        for e in entities_in_box {
+            if !current.contains(&e) {
+                current.push(e);
+            }
+        }
+        selection.set_multiple(current);
+    } else if ctrl {
+        // Toggle each entity
+        for e in entities_in_box {
+            selection.toggle(e);
+        }
+    } else {
+        // Replace selection
+        selection.set_multiple(entities_in_box);
+    }
 }
 
 fn find_named_ancestor(
@@ -1084,4 +1251,40 @@ fn find_named_ancestor(
         current = parent;
     }
     None
+}
+
+// ── Box selection overlay ────────────────────────────────────────────────────
+
+fn render_box_selection(
+    box_sel: Res<BoxSelectionState>,
+    mut ctx: bevy_egui::EguiContexts,
+) {
+    if !box_sel.active || !box_sel.is_drag() { return; }
+
+    let Some(ctx) = ctx.ctx_mut().ok() else { return; };
+    let (min, max) = box_sel.get_rect();
+
+    let rect = bevy_egui::egui::Rect::from_min_max(
+        bevy_egui::egui::Pos2::new(min.x, min.y),
+        bevy_egui::egui::Pos2::new(max.x, max.y),
+    );
+
+    bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("box_selection"))
+        .fixed_pos(rect.min)
+        .order(bevy_egui::egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+            painter.rect_filled(
+                rect,
+                bevy_egui::egui::CornerRadius::ZERO,
+                bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
+            );
+            painter.rect_stroke(
+                rect,
+                bevy_egui::egui::CornerRadius::ZERO,
+                bevy_egui::egui::Stroke::new(1.0, bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
+                bevy_egui::egui::StrokeKind::Outside,
+            );
+        });
 }
