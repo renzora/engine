@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use bevy_egui::egui::Color32;
+use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
 
 /// View mode for the asset browser content pane.
@@ -18,7 +18,7 @@ pub struct AssetBrowserState {
     pub current_folder: Option<PathBuf>,
     /// Set of expanded folders in the tree.
     pub expanded_folders: HashSet<PathBuf>,
-    /// Currently selected file or folder.
+    /// Currently selected file or folder (kept for compatibility).
     pub selected_path: Option<PathBuf>,
     /// Search/filter text.
     pub search: String,
@@ -34,6 +34,68 @@ pub struct AssetBrowserState {
     pub view_mode: ViewMode,
     /// Set to `true` when the import button is clicked (consumed by the panel).
     pub import_clicked: bool,
+
+    // === Multi-selection ===
+    /// All selected items (for multi-selection).
+    pub selected_assets: HashSet<PathBuf>,
+    /// Anchor for Shift+click range selection.
+    pub selection_anchor: Option<PathBuf>,
+    /// Item order in current view for range selection.
+    pub visible_item_order: Vec<PathBuf>,
+
+    // === Inline rename ===
+    /// Asset being renamed.
+    pub renaming_asset: Option<PathBuf>,
+    /// Text input buffer for rename.
+    pub rename_buffer: String,
+    /// Track focus request for rename TextEdit.
+    pub rename_focus_set: bool,
+
+    // === Marquee/drag selection ===
+    /// Start position of drag selection.
+    pub marquee_start: Option<egui::Pos2>,
+    /// Current drag position.
+    pub marquee_current: Option<egui::Pos2>,
+    /// Item positions for hit testing.
+    pub item_rects: Vec<(PathBuf, egui::Rect)>,
+    /// Selection state saved when marquee started (so items leaving the marquee get deselected).
+    pub pre_marquee_selection: HashSet<PathBuf>,
+
+    // === Context menu ===
+    /// Context menu open position (None = closed).
+    pub context_menu_pos: Option<egui::Pos2>,
+
+    // === File drops from desktop ===
+    /// Files dropped from the OS that need to be copied into the target folder.
+    pub pending_file_imports: Vec<PathBuf>,
+    /// True when OS files are hovering over the panel.
+    pub drop_hover: bool,
+    /// Target folder for file drops (set when hovering over a tree folder).
+    pub drop_target_folder: Option<PathBuf>,
+    /// Rects of tree folder rows for drop hit-testing.
+    pub tree_folder_rects: Vec<(PathBuf, egui::Rect)>,
+
+    // === Pending operations ===
+    /// Pending rename operation (old_path, new_name).
+    pub pending_rename: Option<(PathBuf, String)>,
+    /// Pending delete operation.
+    pub pending_delete: Vec<PathBuf>,
+    /// Last error message.
+    pub last_error: Option<String>,
+    /// Error auto-clear timer.
+    pub error_timeout: f32,
+
+    // === Create dialogs ===
+    pub show_create_folder_dialog: bool,
+    pub new_folder_name: String,
+    pub show_create_script_dialog: bool,
+    pub new_script_name: String,
+    pub show_create_scene_dialog: bool,
+    pub new_scene_name: String,
+    pub show_create_material_dialog: bool,
+    pub new_material_name: String,
+    pub show_create_shader_dialog: bool,
+    pub new_shader_name: String,
 }
 
 impl Default for AssetBrowserState {
@@ -49,6 +111,35 @@ impl Default for AssetBrowserState {
             history: Vec::new(),
             view_mode: ViewMode::default(),
             import_clicked: false,
+            selected_assets: HashSet::new(),
+            selection_anchor: None,
+            visible_item_order: Vec::new(),
+            renaming_asset: None,
+            rename_buffer: String::new(),
+            rename_focus_set: false,
+            marquee_start: None,
+            marquee_current: None,
+            item_rects: Vec::new(),
+            pre_marquee_selection: HashSet::new(),
+            context_menu_pos: None,
+            pending_file_imports: Vec::new(),
+            drop_hover: false,
+            drop_target_folder: None,
+            tree_folder_rects: Vec::new(),
+            pending_rename: None,
+            pending_delete: Vec::new(),
+            last_error: None,
+            error_timeout: 0.0,
+            show_create_folder_dialog: false,
+            new_folder_name: String::new(),
+            show_create_script_dialog: false,
+            new_script_name: String::new(),
+            show_create_scene_dialog: false,
+            new_scene_name: String::new(),
+            show_create_material_dialog: false,
+            new_material_name: String::new(),
+            show_create_shader_dialog: false,
+            new_shader_name: String::new(),
         }
     }
 }
@@ -70,6 +161,63 @@ impl AssetBrowserState {
             self.history.push(current.clone());
         }
         self.current_folder = Some(folder);
+        self.selected_assets.clear();
+        self.selected_path = None;
+        self.selection_anchor = None;
+    }
+
+    /// Returns true if the given path is selected.
+    pub fn is_selected(&self, path: &Path) -> bool {
+        self.selected_assets.contains(path)
+    }
+
+    /// Handle click on an item with modifier key support.
+    pub fn handle_click(&mut self, path: &Path, ctrl: bool, shift: bool) {
+        if ctrl {
+            // Toggle selection
+            let p = path.to_path_buf();
+            if self.selected_assets.contains(&p) {
+                self.selected_assets.remove(&p);
+                self.selected_path = self.selected_assets.iter().next().cloned();
+            } else {
+                self.selected_assets.insert(p.clone());
+                self.selected_path = Some(p);
+            }
+        } else if shift {
+            // Range selection using visible_item_order
+            if let Some(ref anchor) = self.selection_anchor.clone() {
+                let anchor_idx = self.visible_item_order.iter().position(|p| p == anchor);
+                let current_idx = self.visible_item_order.iter().position(|p| p == path);
+                if let (Some(start), Some(end)) = (anchor_idx, current_idx) {
+                    let (start, end) = if start <= end { (start, end) } else { (end, start) };
+                    self.selected_assets.clear();
+                    for idx in start..=end {
+                        if let Some(p) = self.visible_item_order.get(idx) {
+                            self.selected_assets.insert(p.clone());
+                        }
+                    }
+                    self.selected_path = Some(path.to_path_buf());
+                }
+            } else {
+                self.selected_assets.clear();
+                self.selected_assets.insert(path.to_path_buf());
+                self.selection_anchor = Some(path.to_path_buf());
+                self.selected_path = Some(path.to_path_buf());
+            }
+        } else {
+            // Single select — clear others
+            self.selected_assets.clear();
+            self.selected_assets.insert(path.to_path_buf());
+            self.selection_anchor = Some(path.to_path_buf());
+            self.selected_path = Some(path.to_path_buf());
+        }
+    }
+
+    /// Clear all selection.
+    pub fn clear_selection(&mut self) {
+        self.selected_assets.clear();
+        self.selected_path = None;
+        self.selection_anchor = None;
     }
 
     /// Go back to the previous folder.
@@ -184,9 +332,66 @@ pub fn folder_icon_color(name: &str) -> Color32 {
     }
 }
 
-pub fn is_hidden(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.starts_with('.'))
+/// File extensions that can be imported by simple copy (non-3D assets).
+/// 3D models (gltf, glb, obj, fbx, etc.) are handled by `renzora_import_ui`.
+const COPYABLE_EXTENSIONS: &[&str] = &[
+    // Images
+    "png", "jpg", "jpeg", "bmp", "tga", "webp", "hdr", "exr",
+    // Audio
+    "wav", "ogg", "mp3", "flac", "opus",
+    // Video
+    "mp4", "avi", "mov", "webm",
+    // Scripts
+    "rhai", "lua", "js", "ts",
+    // Shaders
+    "wgsl", "glsl", "vert", "frag",
+    // Data
+    "json", "toml", "yaml", "yml", "ron", "txt", "md",
+    // Engine formats
+    "blueprint", "bp", "material", "material_bp", "anim",
+    "video", "particle", "level", "terrain", "texture",
+];
+
+/// Returns true if this file extension can be imported by simple copy.
+pub fn is_copyable_asset(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| {
+            let lower = ext.to_lowercase();
+            COPYABLE_EXTENSIONS.contains(&lower.as_str())
+        })
         .unwrap_or(false)
+}
+
+/// Returns true if this file is any kind of importable asset (copy or 3D model).
+pub fn is_droppable_file(path: &Path) -> bool {
+    if is_copyable_asset(path) {
+        return true;
+    }
+    // 3D model formats handled by renzora_import
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| matches!(ext.to_lowercase().as_str(),
+            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
+        ))
+        .unwrap_or(false)
+}
+
+/// Returns true if this file is a 3D model that needs conversion (not a simple copy).
+pub fn is_3d_model(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| matches!(ext.to_lowercase().as_str(),
+            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
+        ))
+        .unwrap_or(false)
+}
+
+/// Files that should be hidden from the asset browser.
+const HIDDEN_FILES: &[&str] = &["project.toml"];
+
+pub fn is_hidden(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    name.starts_with('.')
+        || HIDDEN_FILES.iter().any(|&h| name.eq_ignore_ascii_case(h))
 }

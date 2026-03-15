@@ -54,8 +54,6 @@ impl Plugin for SplashPlugin {
 pub struct PendingProjectReopen;
 
 fn splash_ui_system(world: &mut World) {
-    info!("[splash] splash_ui_system running");
-
     // If a project was opened from the editor File menu, skip splash and go straight back
     if world.remove_resource::<PendingProjectReopen>().is_some() {
         world
@@ -77,10 +75,7 @@ fn splash_ui_system(world: &mut World) {
     let mut states = world.remove_resource::<SplashSystemStates>().unwrap();
     let mut contexts = states.egui.get_mut(world);
     let ctx = match contexts.ctx_mut() {
-        Ok(c) => {
-            info!("[splash] Got egui context successfully");
-            c.clone()
-        }
+        Ok(c) => c.clone(),
         Err(e) => {
             warn!("[splash] Failed to get egui context: {:?}", e);
             world.insert_resource(states);
@@ -94,9 +89,7 @@ fn splash_ui_system(world: &mut World) {
 
     let (mut commands, mut next_state) = states.commands.get_mut(world);
 
-    info!("[splash] About to render splash UI");
     ui::render_splash(&ctx, &mut app_config, &mut commands, &mut next_state);
-    info!("[splash] Splash UI rendered successfully");
 
     states.commands.apply(world);
     world.insert_resource(app_config);

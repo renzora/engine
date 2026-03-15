@@ -20,6 +20,9 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
         .unwrap_or("Project")
         .to_string();
 
+    // Clear tree folder rects for drop hit-testing
+    state.tree_folder_rects.clear();
+
     egui::ScrollArea::vertical()
         .id_salt("asset_tree")
         .auto_shrink([false, false])
@@ -29,21 +32,25 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
             // Root node
             let is_expanded = state.expanded_folders.contains(&root);
             let is_current = state.current_folder.as_ref() == Some(&root);
+            let is_drop_target = state.drop_target_folder.as_ref() == Some(&root);
 
             let icon = if is_expanded { FOLDER_OPEN } else { HOUSE };
             let color = folder_icon_color(&root_name);
 
-            let clicked = render_folder_row(
+            let (clicked, row_rect) = render_folder_row(
                 ui,
                 &root_name,
                 icon,
                 color,
                 is_expanded,
                 is_current,
+                is_drop_target,
                 0,
                 &root,
                 theme,
             );
+
+            state.tree_folder_rects.push((root.clone(), row_rect));
 
             if clicked {
                 toggle_expanded(&mut state.expanded_folders, &root);
@@ -111,19 +118,23 @@ fn render_folder_children(
 
         let is_expanded = state.expanded_folders.contains(folder);
         let is_current = state.current_folder.as_ref() == Some(folder);
+        let is_drop_target = state.drop_target_folder.as_ref() == Some(folder);
         let (icon, color) = get_folder_icon(is_expanded, &name);
 
-        let clicked = render_folder_row(
+        let (clicked, row_rect) = render_folder_row(
             ui,
             &name,
             icon,
             color,
             is_expanded,
             is_current,
+            is_drop_target,
             depth,
             folder,
             theme,
         );
+
+        state.tree_folder_rects.push((folder.clone(), row_rect));
 
         if clicked {
             toggle_expanded(&mut state.expanded_folders, folder);
@@ -136,7 +147,7 @@ fn render_folder_children(
     }
 }
 
-/// Render a single folder row. Returns true if clicked.
+/// Render a single folder row. Returns (clicked, row_rect).
 fn render_folder_row(
     ui: &mut egui::Ui,
     name: &str,
@@ -144,14 +155,16 @@ fn render_folder_row(
     icon_color: Color32,
     is_expanded: bool,
     is_current: bool,
+    is_drop_target: bool,
     depth: usize,
     path: &PathBuf,
     theme: &Theme,
-) -> bool {
+) -> (bool, egui::Rect) {
     let selection_bg = theme.semantic.selection.to_color32();
     let item_hover = theme.panels.item_hover.to_color32();
     let text_secondary = theme.text.secondary.to_color32();
     let text_muted = theme.text.muted.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
 
     let indent = depth as f32 * INDENT;
 
@@ -167,8 +180,18 @@ fn render_folder_row(
 
     let painter = ui.painter();
 
-    // Background — transparent by default, selection or hover fill with rounded corners
-    if is_current {
+    // Background — drop target highlight, selection, hover, or transparent
+    if is_drop_target {
+        painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(
+            accent_color.r(), accent_color.g(), accent_color.b(), 60,
+        ));
+        painter.rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0, accent_color),
+            egui::StrokeKind::Inside,
+        );
+    } else if is_current {
         painter.rect_filled(rect, 2.0, selection_bg);
     } else if is_hovered {
         painter.rect_filled(rect, 2.0, item_hover);
@@ -215,8 +238,8 @@ fn render_folder_row(
         text_secondary,
     );
 
-    // Return true if arrow or row was clicked
-    arrow_resp.clicked() || response.clicked()
+    // Return (clicked, row_rect)
+    (arrow_resp.clicked() || response.clicked(), rect)
 }
 
 fn get_folder_icon(is_expanded: bool, name: &str) -> (&'static str, Color32) {

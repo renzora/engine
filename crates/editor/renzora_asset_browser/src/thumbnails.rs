@@ -5,7 +5,7 @@
 //! HDR/EXR are excluded (often use texture formats incompatible with egui).
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::asset::LoadState;
 use bevy::prelude::*;
@@ -54,9 +54,19 @@ impl ThumbnailCache {
         if self.handles.len() + self.loading.len() >= MAX_LOADED {
             return false;
         }
-        // Convert absolute path → asset-relative (e.g. "ui/Action_panel.png")
+        // Convert absolute path → asset-relative (e.g. "ui/Action_panel.png").
+        // If the file isn't under the project's assets/ directory,
+        // make_asset_relative falls back to the full absolute path which the
+        // asset server will reject. Skip those files.
         let load_path = match project {
-            Some(p) => p.make_asset_relative(&path),
+            Some(p) => {
+                let rel = p.make_asset_relative(&path);
+                if Path::new(&rel).is_absolute() {
+                    self.failed.insert(path);
+                    return false;
+                }
+                rel
+            }
             None => path.to_string_lossy().replace('\\', "/"),
         };
         let handle: Handle<Image> = asset_server.load(load_path);

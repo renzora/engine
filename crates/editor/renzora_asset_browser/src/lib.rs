@@ -8,7 +8,7 @@ mod tree;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Stroke};
+use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
@@ -169,6 +169,289 @@ impl EditorPanel for AssetBrowserPanel {
             ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
         };
 
+        // --- File drops from desktop ---
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let ctx = ui.ctx().clone();
+
+            // Check if OS is dragging files over the window
+            let has_file_hover = ctx.input(|i| !i.raw.hovered_files.is_empty());
+
+            // Collect dropped files early so we can use `has_drops` in position logic
+            let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+                i.raw.dropped_files
+                    .iter()
+                    .filter_map(|f| f.path.clone())
+                    .collect()
+            });
+            let has_drops = !dropped.is_empty();
+
+            // During OS file drags, pointer position is stale (frozen at pre-drag
+            // location) and unreliable for hit-testing. Only trust it on the
+            // actual drop frame when the OS sends a fresh cursor position.
+            let drag_pos = if has_file_hover {
+                None // stale — ignore
+            } else {
+                ctx.input(|i| i.pointer.hover_pos())
+            };
+
+            let over_tree = drag_pos.map(|p| tree_rect.contains(p)).unwrap_or(false);
+            let over_grid = drag_pos.map(|p| grid_rect.contains(p)).unwrap_or(false);
+            let over_panel = drag_pos.map(|p| available.contains(p))
+                .unwrap_or(has_file_hover || has_drops);
+
+            state.drop_hover = has_file_hover && over_panel;
+
+            // Update drop target folder only while files are hovering.
+            // Don't clear it when hover ends — the drop handler needs the last
+            // hovered folder. It gets cleared after the drop is processed.
+            if has_file_hover && over_tree {
+                state.drop_target_folder = drag_pos.and_then(|pos| {
+                    state.tree_folder_rects.iter()
+                        .find(|(_, rect)| rect.contains(pos))
+                        .map(|(path, _)| path.clone())
+                });
+            } else if !has_file_hover && !has_drops {
+                // Drag cancelled or ended without a drop — clear target
+                state.drop_target_folder = None;
+            }
+
+            // Draw drop zone overlays
+            if state.drop_hover {
+                let painter = ctx.layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    egui::Id::new("asset_drop_hint"),
+                ));
+
+                if over_tree {
+                    // === Tree drop zone ===
+                    // Light tint on the tree pane
+                    painter.rect_filled(
+                        tree_rect,
+                        0.0,
+                        Color32::from_rgba_premultiplied(30, 80, 200, 25),
+                    );
+                    painter.rect_stroke(
+                        tree_rect.shrink(1.0),
+                        4.0,
+                        Stroke::new(2.0, Color32::from_rgb(80, 140, 255)),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    // Highlight the specific folder row being hovered
+                    if let Some(ref target) = state.drop_target_folder {
+                        if let Some((_, rect)) = state.tree_folder_rects.iter()
+                            .find(|(p, _)| p == target)
+                        {
+                            painter.rect_filled(
+                                *rect,
+                                2.0,
+                                Color32::from_rgba_premultiplied(80, 140, 255, 60),
+                            );
+                            painter.rect_stroke(
+                                *rect,
+                                2.0,
+                                Stroke::new(1.5, Color32::from_rgb(80, 140, 255)),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+
+                        let target_name = target.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("folder");
+                        painter.text(
+                            egui::pos2(tree_rect.center().x, tree_rect.max.y - 14.0),
+                            egui::Align2::CENTER_CENTER,
+                            format!("{} \"{}\"", regular::DOWNLOAD_SIMPLE, target_name),
+                            FontId::proportional(11.0),
+                            Color32::from_rgb(180, 210, 255),
+                        );
+                    }
+                } else {
+                    // === Grid/list drop zone — border only, no filled overlay ===
+                    // When pointer position is unknown, show overlay on the whole content area
+                    let overlay_rect = if over_grid { grid_rect } else { content_rect };
+                    painter.rect_stroke(
+                        overlay_rect.shrink(3.0),
+                        6.0,
+                        Stroke::new(2.0, Color32::from_rgb(80, 140, 255)),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    // Label at the bottom so it doesn't cover content
+                    let folder_name = state.current_folder.as_ref()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("current folder");
+                    let label_rect = egui::Rect::from_min_size(
+                        egui::pos2(overlay_rect.min.x + 8.0, overlay_rect.max.y - 28.0),
+                        egui::vec2(overlay_rect.width() - 16.0, 24.0),
+                    );
+                    painter.rect_filled(
+                        label_rect,
+                        4.0,
+                        Color32::from_rgba_premultiplied(20, 60, 160, 200),
+                    );
+                    painter.text(
+                        label_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        format!("{} Drop files into \"{}\"", regular::DOWNLOAD_SIMPLE, folder_name),
+                        FontId::proportional(12.0),
+                        Color32::from_rgb(200, 220, 255),
+                    );
+                }
+            }
+
+            if has_drops && over_panel {
+                // Use the drop target folder (tree folder hover) or fall back to current folder
+                let import_target = state.drop_target_folder.clone()
+                    .or_else(|| state.current_folder.clone());
+
+                let mut model_files = Vec::new();
+                let mut copy_files = Vec::new();
+
+                for path in dropped {
+                    if state::is_3d_model(&path) {
+                        model_files.push(path);
+                    } else if state::is_copyable_asset(&path) {
+                        copy_files.push(path);
+                    }
+                }
+
+                // Copy non-model files directly to target folder
+                if !copy_files.is_empty() {
+                    if let Some(ref folder) = import_target {
+                        let mut imported = 0usize;
+                        for source_path in &copy_files {
+                            let Some(file_name) = source_path.file_name() else {
+                                continue;
+                            };
+                            let dest_path = folder.join(file_name);
+
+                            if source_path == &dest_path {
+                                continue;
+                            }
+
+                            match std::fs::copy(source_path, &dest_path) {
+                                Ok(_) => {
+                                    imported += 1;
+                                    info!("Imported to assets: {}", dest_path.display());
+                                }
+                                Err(e) => {
+                                    state.last_error = Some(format!(
+                                        "Failed to import {}: {}",
+                                        source_path.display(),
+                                        e
+                                    ));
+                                    state.error_timeout = 3.0;
+                                }
+                            }
+                        }
+                        if imported > 0 {
+                            info!("Imported {} file(s) to {}", imported, folder.display());
+                        }
+                    } else {
+                        state.last_error = Some("No folder selected for import".to_string());
+                        state.error_timeout = 3.0;
+                    }
+                }
+
+                // Route 3D model files to the import overlay
+                if !model_files.is_empty() {
+                    if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                        let target_dir = import_target.as_ref().and_then(|folder| {
+                            let project = world.get_resource::<renzora_core::CurrentProject>()?;
+                            let assets_dir = project.path.join("assets");
+                            folder.strip_prefix(&assets_dir).ok().map(|rel| {
+                                rel.to_string_lossy().replace('\\', "/")
+                            })
+                        }).unwrap_or_default();
+
+                        cmds.push(move |world: &mut bevy::prelude::World| {
+                            world.insert_resource(renzora_core::ImportRequested);
+                            if !target_dir.is_empty() {
+                                world.insert_resource(renzora_core::ImportTargetDir(target_dir));
+                            }
+                        });
+                    }
+                }
+
+                state.drop_target_folder = None;
+            }
+        }
+
+        // --- Context menu ---
+        if let Some(pos) = state.context_menu_pos {
+            render_context_menu(ui, &mut state, &theme, pos);
+        }
+
+        // --- Create dialogs ---
+        render_create_dialogs(ui.ctx(), &mut state);
+
+        // --- Process pending rename ---
+        if let Some((old_path, new_name)) = state.pending_rename.take() {
+            if let Some(parent) = old_path.parent() {
+                let new_path = parent.join(&new_name);
+                match std::fs::rename(&old_path, &new_path) {
+                    Ok(_) => {
+                        // Update selection to new path
+                        state.selected_assets.remove(&old_path);
+                        state.selected_assets.insert(new_path.clone());
+                        if state.selected_path.as_ref() == Some(&old_path) {
+                            state.selected_path = Some(new_path);
+                        }
+                    }
+                    Err(e) => {
+                        state.last_error = Some(format!("Rename failed: {}", e));
+                        state.error_timeout = 3.0;
+                    }
+                }
+            }
+        }
+
+        // --- Process pending delete ---
+        if !state.pending_delete.is_empty() {
+            let to_delete: Vec<_> = state.pending_delete.drain(..).collect();
+            for path in &to_delete {
+                let result = if path.is_dir() {
+                    std::fs::remove_dir_all(path)
+                } else {
+                    std::fs::remove_file(path)
+                };
+                if let Err(e) = result {
+                    state.last_error = Some(format!("Delete failed: {}", e));
+                    state.error_timeout = 3.0;
+                }
+                state.selected_assets.remove(path);
+            }
+            state.selected_path = state.selected_assets.iter().next().cloned();
+        }
+
+        // --- Process create folder ---
+        if state.show_create_folder_dialog {
+            // handled by render_create_dialogs
+        }
+
+        // --- Error display ---
+        if let Some(ref error) = state.last_error {
+            let error_rect = egui::Rect::from_min_size(
+                egui::pos2(grid_rect.min.x + 8.0, grid_rect.max.y - 28.0),
+                egui::vec2(grid_rect.width() - 16.0, 24.0),
+            );
+            ui.painter().rect_filled(
+                error_rect,
+                4.0,
+                theme.semantic.error.to_color32().linear_multiply(0.2),
+            );
+            ui.painter().text(
+                error_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                error,
+                FontId::proportional(11.0),
+                theme.semantic.error.to_color32(),
+            );
+        }
+
         // Submit thumbnail load requests via EditorCommands
         if !grid_result.thumbnail_requests.is_empty() {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -229,6 +512,268 @@ impl EditorPanel for AssetBrowserPanel {
                 }
             }
         }
+    }
+}
+
+// ── Context menu ────────────────────────────────────────────────────────────
+
+fn render_context_menu(
+    ui: &mut egui::Ui,
+    state: &mut AssetBrowserState,
+    theme: &renzora_theme::Theme,
+    pos: egui::Pos2,
+) {
+    let ctx = ui.ctx().clone();
+    let menu_width = 160.0;
+    let item_height = 20.0;
+    let item_font = 11.0;
+
+    let text_primary = theme.text.primary.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let folder_color = Color32::from_rgb(255, 196, 0);
+    let material_color = Color32::from_rgb(0, 200, 83);
+    let scene_color = Color32::from_rgb(115, 191, 242);
+    let script_color = Color32::from_rgb(255, 128, 0);
+    let shader_color = Color32::from_rgb(220, 120, 255);
+
+    let area_resp = egui::Area::new(egui::Id::new("asset_context_menu"))
+        .fixed_pos(pos)
+        .order(egui::Order::Foreground)
+        .constrain(true)
+        .show(&ctx, |ui| {
+            egui::Frame::popup(ui.style())
+                .show(ui, |ui| {
+                    ui.set_min_width(menu_width);
+                    ui.set_max_width(menu_width);
+
+                    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+                        let desired_size = Vec2::new(menu_width, item_height);
+                        let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
+
+                        if response.hovered() {
+                            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+                        }
+
+                        ui.painter().text(
+                            egui::pos2(rect.min.x + 14.0, rect.center().y),
+                            egui::Align2::CENTER_CENTER, icon,
+                            FontId::proportional(item_font), color,
+                        );
+                        ui.painter().text(
+                            egui::pos2(rect.min.x + 28.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER, label,
+                            FontId::proportional(item_font), text_primary,
+                        );
+
+                        response.clicked()
+                    };
+
+                    // Section header
+                    let section_header = |ui: &mut egui::Ui, label: &str| {
+                        let desired_size = Vec2::new(menu_width, 14.0);
+                        let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
+                        ui.painter().text(
+                            egui::pos2(rect.min.x + 8.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER, label,
+                            FontId::proportional(9.0), text_secondary,
+                        );
+                    };
+
+                    ui.add_space(2.0);
+                    section_header(ui, "CREATE");
+                    ui.add_space(1.0);
+
+                    if menu_item(ui, regular::FOLDER_PLUS, "New Folder", folder_color) {
+                        state.show_create_folder_dialog = true;
+                        state.new_folder_name = "New Folder".to_string();
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::PALETTE, "Material", material_color) {
+                        state.show_create_material_dialog = true;
+                        state.new_material_name = "NewMaterial".to_string();
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::FILM_SCRIPT, "Scene", scene_color) {
+                        state.show_create_scene_dialog = true;
+                        state.new_scene_name = "NewScene".to_string();
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::SCROLL, "Script", script_color) {
+                        state.show_create_script_dialog = true;
+                        state.new_script_name = "new_script".to_string();
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::GRAPHICS_CARD, "Shader", shader_color) {
+                        state.show_create_shader_dialog = true;
+                        state.new_shader_name = "new_shader".to_string();
+                        state.context_menu_pos = None;
+                    }
+
+                    // Selection actions (when items are selected)
+                    if !state.selected_assets.is_empty() {
+                        ui.add_space(2.0);
+                        ui.separator();
+                        ui.add_space(2.0);
+
+                        section_header(ui, "SELECTION");
+                        ui.add_space(1.0);
+
+                        if state.selected_assets.len() == 1 {
+                            if menu_item(ui, regular::PENCIL, "Rename  F2", text_primary) {
+                                if let Some(path) = state.selected_assets.iter().next() {
+                                    state.renaming_asset = Some(path.clone());
+                                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                                        state.rename_buffer = name.to_string();
+                                    }
+                                    state.rename_focus_set = false;
+                                }
+                                state.context_menu_pos = None;
+                            }
+                        }
+
+                        let delete_label = if state.selected_assets.len() > 1 {
+                            format!("Delete ({})  Del", state.selected_assets.len())
+                        } else {
+                            "Delete  Del".to_string()
+                        };
+                        if menu_item(ui, regular::TRASH, &delete_label, theme.semantic.error.to_color32()) {
+                            state.pending_delete = state.selected_assets.iter().cloned().collect();
+                            state.context_menu_pos = None;
+                        }
+                    }
+
+                    ui.add_space(2.0);
+                    ui.separator();
+                    ui.add_space(2.0);
+
+                    if menu_item(ui, regular::DOWNLOAD_SIMPLE, "Import", text_primary) {
+                        state.import_clicked = true;
+                        state.context_menu_pos = None;
+                    }
+
+                    ui.add_space(2.0);
+                });
+        });
+
+    // Close context menu on click outside
+    if ctx.input(|i| i.pointer.primary_clicked() || i.pointer.secondary_clicked()) {
+        if let Some(pointer_pos) = ctx.pointer_latest_pos() {
+            if !area_resp.response.rect.contains(pointer_pos) {
+                state.context_menu_pos = None;
+            }
+        }
+    }
+}
+
+// ── Create dialogs ──────────────────────────────────────────────────────────
+
+fn render_create_dialogs(ctx: &egui::Context, state: &mut AssetBrowserState) {
+    render_create_dialog(
+        ctx,
+        "Create Folder",
+        &mut state.show_create_folder_dialog,
+        &mut state.new_folder_name,
+        |folder, name| {
+            let path = folder.join(name);
+            std::fs::create_dir_all(&path).ok();
+        },
+        state.current_folder.clone(),
+    );
+
+    render_create_dialog(
+        ctx,
+        "Create Script",
+        &mut state.show_create_script_dialog,
+        &mut state.new_script_name,
+        |folder, name| {
+            let name = if name.ends_with(".rhai") { name.to_string() } else { format!("{}.rhai", name) };
+            let path = folder.join(&name);
+            std::fs::write(&path, "// New script\n").ok();
+        },
+        state.current_folder.clone(),
+    );
+
+    render_create_dialog(
+        ctx,
+        "Create Scene",
+        &mut state.show_create_scene_dialog,
+        &mut state.new_scene_name,
+        |folder, name| {
+            let name = if name.ends_with(".ron") { name.to_string() } else { format!("{}.ron", name) };
+            let path = folder.join(&name);
+            std::fs::write(&path, "(resources: {}, entities: {})").ok();
+        },
+        state.current_folder.clone(),
+    );
+
+    render_create_dialog(
+        ctx,
+        "Create Material",
+        &mut state.show_create_material_dialog,
+        &mut state.new_material_name,
+        |folder, name| {
+            let name = if name.ends_with(".material") { name.to_string() } else { format!("{}.material", name) };
+            let path = folder.join(&name);
+            std::fs::write(&path, "{}").ok();
+        },
+        state.current_folder.clone(),
+    );
+
+    render_create_dialog(
+        ctx,
+        "Create Shader",
+        &mut state.show_create_shader_dialog,
+        &mut state.new_shader_name,
+        |folder, name| {
+            let name = if name.ends_with(".wgsl") { name.to_string() } else { format!("{}.wgsl", name) };
+            let path = folder.join(&name);
+            std::fs::write(&path, "// New shader\n").ok();
+        },
+        state.current_folder.clone(),
+    );
+}
+
+fn render_create_dialog(
+    ctx: &egui::Context,
+    title: &str,
+    show: &mut bool,
+    name_buf: &mut String,
+    on_create: impl FnOnce(&std::path::Path, &str),
+    current_folder: Option<std::path::PathBuf>,
+) {
+    if !*show {
+        return;
+    }
+
+    let mut open = true;
+    egui::Window::new(title)
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(name_buf);
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Create").clicked() {
+                    let trimmed = name_buf.trim().to_string();
+                    if !trimmed.is_empty() {
+                        if let Some(ref folder) = current_folder {
+                            on_create(folder, &trimmed);
+                        }
+                    }
+                    *show = false;
+                }
+                if ui.button("Cancel").clicked() {
+                    *show = false;
+                }
+            });
+        });
+    if !open {
+        *show = false;
     }
 }
 
