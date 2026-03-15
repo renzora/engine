@@ -6,6 +6,7 @@
 
 mod camera_gizmo;
 pub mod modal_transform;
+pub mod selection_visuals;
 pub mod skeleton_gizmo;
 
 use bevy::camera::visibility::RenderLayers;
@@ -174,7 +175,8 @@ impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GizmoPlugin");
         bevy::asset::embedded_asset!(app, "shaders/gizmo_material.wgsl");
-        app.add_plugins(MaterialPlugin::<GizmoMaterial>::default())
+        app.add_plugins(bevy_mod_outline::OutlinePlugin)
+            .add_plugins(MaterialPlugin::<GizmoMaterial>::default())
             .insert_gizmo_config(
                 OverlayGizmoGroup,
                 GizmoConfig {
@@ -204,6 +206,8 @@ impl Plugin for GizmoPlugin {
                     gizmo_hover_detect,
                     gizmo_drag,
                     draw_line_gizmos,
+                    selection_visuals::update_selection_outlines,
+                    selection_visuals::draw_selection_bounding_box,
                     camera_gizmo::draw_camera_gizmo,
                     skeleton_gizmo::draw_skeleton_gizmo,
                     entity_pick_system,
