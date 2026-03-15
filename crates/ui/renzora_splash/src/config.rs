@@ -2,11 +2,32 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Persisted update configuration
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UpdateConfig {
+    /// Whether to automatically check for updates on startup
+    pub auto_check: bool,
+    /// Version that the user has chosen to skip (won't be notified again)
+    pub skipped_version: Option<String>,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            skipped_version: None,
+        }
+    }
+}
+
 /// Application-wide configuration stored in user's config directory
 #[derive(Resource, Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     /// List of recently opened project paths
     pub recent_projects: Vec<PathBuf>,
+    /// Update checker settings
+    #[serde(default)]
+    pub update_config: UpdateConfig,
 }
 
 impl AppConfig {

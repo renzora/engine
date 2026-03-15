@@ -13,3 +13,4 @@ renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_viewport = { path = "../renzora_viewport" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 renzora_splash = { path = "../../ui/renzora_splash" }
+renzora_update = { path = "../renzora_update" }

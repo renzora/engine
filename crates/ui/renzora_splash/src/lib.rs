@@ -4,7 +4,7 @@ mod ui;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
 
-pub use config::AppConfig;
+pub use config::{AppConfig, UpdateConfig};
 pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;

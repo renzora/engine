@@ -24,7 +24,7 @@ use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 use renzora_core::InputFocusState;
 use renzora_editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_viewport::ViewportState;
+use renzora_viewport::{NavOverlayState, ViewportState};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1073,6 +1073,7 @@ fn entity_pick_system(
     modal: Res<modal_transform::ModalTransformState>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
+    nav_overlay: Option<Res<NavOverlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
@@ -1087,6 +1088,14 @@ fn entity_pick_system(
     if !mouse_button.just_pressed(MouseButton::Left) { return; }
     if modal.active { return; }
     if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() { return; }
+    // Don't pick while nav overlay pan/zoom buttons are being dragged
+    if let Some(ref nav) = nav_overlay {
+        if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
+    }
 
     let Some(viewport) = viewport.as_ref() else { return };
     if !viewport.hovered { return; }
@@ -1147,6 +1156,7 @@ fn box_selection_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     viewport: Option<Res<ViewportState>>,
+    nav_overlay: Option<Res<NavOverlayState>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     selection: Res<EditorSelection>,
     named_entities: Query<(Entity, &GlobalTransform), With<Name>>,
@@ -1154,6 +1164,15 @@ fn box_selection_system(
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
 ) {
     if !box_sel.active { return; }
+    // Cancel box selection if nav overlay is being used
+    if let Some(ref nav) = nav_overlay {
+        if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            box_sel.active = false;
+            return;
+        }
+    }
 
     let Ok(window) = window_q.single() else { return; };
     let Some(cursor) = window.cursor_position() else { return; };

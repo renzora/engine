@@ -9,8 +9,9 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke,
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
 use egui_phosphor::regular::{
-    CARET_DOWN, CARET_RIGHT, CODE, DESKTOP, FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD,
-    PALETTE, TEXT_AA, GAUGE, WRENCH, GRID_FOUR, CUBE,
+    ARROW_CLOCKWISE, CARET_DOWN, CARET_RIGHT, CHECK, CHECK_CIRCLE, CODE, DESKTOP,
+    DOWNLOAD_SIMPLE, FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
+    WARNING, WRENCH, GRID_FOUR, CUBE,
 };
 
 use renzora_editor::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -112,6 +113,24 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
         save_requested: false,
     };
 
+    // Update system snapshots
+    let mut app_config = world.get_resource::<renzora_splash::AppConfig>().cloned().unwrap_or_default();
+    let app_config_orig = app_config.clone();
+    let update_state_exists = world.contains_resource::<renzora_update::UpdateState>();
+    let mut update_checking = false;
+    let mut update_check_result: Option<renzora_update::UpdateCheckResult> = None;
+    let mut update_error: Option<String> = None;
+    let mut trigger_check = false;
+    let mut open_update_dialog = false;
+    let mut clear_skipped = false;
+
+    if update_state_exists {
+        let us = world.get_resource::<renzora_update::UpdateState>().unwrap();
+        update_checking = us.checking;
+        update_check_result = us.check_result.clone();
+        update_error = us.error.clone();
+    }
+
     let mut settings_mut = settings.clone();
     let mut keybindings_mut = keybindings.clone();
     let mut viewport_mut = viewport_settings.clone();
@@ -149,7 +168,17 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                     SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &theme),
                     SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
                     SettingsTab::Plugins => render_placeholder_tab(ui, &theme, "Plugins", "Plugin management coming soon."),
-                    SettingsTab::Updates => render_placeholder_tab(ui, &theme, "Updates", "Update checking coming soon."),
+                    SettingsTab::Updates => render_updates_tab(
+                        ui,
+                        &mut app_config,
+                        update_checking,
+                        &update_check_result,
+                        &update_error,
+                        &mut trigger_check,
+                        &mut open_update_dialog,
+                        &mut clear_skipped,
+                        &theme,
+                    ),
                 }
             });
         });
@@ -207,6 +236,35 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
             tm.save_theme(&name);
         }
     }
+
+    // Write back update-related mutations
+    if app_config.update_config.auto_check != app_config_orig.update_config.auto_check
+        || app_config.update_config.skipped_version != app_config_orig.update_config.skipped_version
+    {
+        if let Some(mut res) = world.get_resource_mut::<renzora_splash::AppConfig>() {
+            res.update_config = app_config.update_config;
+            let _ = res.save();
+        }
+    }
+
+    if clear_skipped {
+        if let Some(mut res) = world.get_resource_mut::<renzora_splash::AppConfig>() {
+            res.update_config.skipped_version = None;
+            let _ = res.save();
+        }
+    }
+
+    if trigger_check {
+        if let Some(mut us) = world.get_resource_mut::<renzora_update::UpdateState>() {
+            us.start_check();
+        }
+    }
+
+    if open_update_dialog {
+        if let Some(mut ds) = world.get_resource_mut::<renzora_update::UpdateDialogState>() {
+            ds.open = true;
+        }
+    }
 }
 
 // ── Category + row helpers ──────────────────────────────────────────────────
@@ -225,6 +283,7 @@ impl CategoryStyle {
     fn shortcuts() -> Self { Self { accent_color: Color32::from_rgb(247, 207, 100), header_bg: Color32::from_rgb(50, 45, 35) } }
     fn theme() -> Self { Self { accent_color: Color32::from_rgb(191, 166, 242), header_bg: Color32::from_rgb(42, 40, 52) } }
     fn scripting() -> Self { Self { accent_color: Color32::from_rgb(100, 200, 140), header_bg: Color32::from_rgb(35, 50, 42) } }
+    fn updates() -> Self { Self { accent_color: Color32::from_rgb(120, 180, 240), header_bg: Color32::from_rgb(35, 42, 55) } }
 }
 
 fn render_category(
@@ -335,10 +394,11 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     let tab_inactive_bg = theme.panels.tab_inactive.to_color32();
 
     let tabs: &[(SettingsTab, &str, &str)] = &[
-        (SettingsTab::General,   DESKTOP,  "General"),
-        (SettingsTab::Viewport,  CUBE,     "Viewport"),
-        (SettingsTab::Shortcuts, KEYBOARD, "Shortcuts"),
-        (SettingsTab::Theme,     PALETTE,  "Theme"),
+        (SettingsTab::General,   DESKTOP,          "General"),
+        (SettingsTab::Viewport,  CUBE,             "Viewport"),
+        (SettingsTab::Shortcuts, KEYBOARD,         "Shortcuts"),
+        (SettingsTab::Theme,     PALETTE,          "Theme"),
+        (SettingsTab::Updates,   ARROW_CLOCKWISE,  "Updates"),
     ];
 
     ui.horizontal(|ui| {
@@ -854,6 +914,132 @@ fn theme_color_row_mut(
                 });
             });
         });
+}
+
+// ── Updates tab ─────────────────────────────────────────────────────────────
+
+fn render_updates_tab(
+    ui: &mut egui::Ui,
+    app_config: &mut renzora_splash::AppConfig,
+    checking: bool,
+    check_result: &Option<renzora_update::UpdateCheckResult>,
+    error: &Option<String>,
+    trigger_check: &mut bool,
+    open_update_dialog: &mut bool,
+    clear_skipped: &mut bool,
+    theme: &Theme,
+) {
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+    let success = theme.semantic.success.to_color32();
+    let item_bg = theme.panels.item_bg.to_color32();
+    let border = theme.widgets.border.to_color32();
+
+    // Update Settings
+    render_category(
+        ui,
+        ARROW_CLOCKWISE,
+        "Update Settings",
+        CategoryStyle::updates(),
+        "settings_updates",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Auto-check", theme, |ui| {
+                ui.checkbox(&mut app_config.update_config.auto_check, "Check on startup")
+            });
+
+            settings_row(ui, 1, "Current Version", theme, |ui| {
+                ui.label(RichText::new(renzora_update::current_version()).size(12.0).color(text_primary))
+            });
+        },
+    );
+
+    // Check for Updates section
+    render_category(
+        ui,
+        DOWNLOAD_SIMPLE,
+        "Check for Updates",
+        CategoryStyle::updates(),
+        "settings_check_updates",
+        true,
+        theme,
+        |ui| {
+            // Status display
+            if checking {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new().size(14.0).color(accent));
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Checking for updates...").size(12.0).color(text_muted));
+                });
+            } else if let Some(ref result) = check_result {
+                if result.update_available {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(CHECK_CIRCLE).size(14.0).color(success));
+                        ui.add_space(4.0);
+                        if let Some(ref version) = result.latest_version {
+                            ui.label(RichText::new(format!("Version {} available!", version)).size(12.0).color(success));
+                        } else {
+                            ui.label(RichText::new("Update available!").size(12.0).color(success));
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(CHECK).size(14.0).color(success));
+                        ui.add_space(4.0);
+                        ui.label(RichText::new("You're up to date").size(12.0).color(text_muted));
+                    });
+                }
+            } else if let Some(ref err) = error {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(WARNING).size(14.0).color(theme.semantic.error.to_color32()));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(err).size(12.0).color(theme.semantic.error.to_color32()));
+                });
+            }
+
+            ui.add_space(8.0);
+
+            // Buttons
+            ui.horizontal(|ui| {
+                let check_enabled = !checking;
+                if ui.add_enabled(check_enabled,
+                    egui::Button::new(RichText::new("Check for Updates").size(12.0).color(text_primary))
+                        .fill(item_bg)
+                        .stroke(Stroke::new(1.0, border))
+                        .corner_radius(CornerRadius::same(4))
+                        .min_size(Vec2::new(130.0, 26.0))
+                ).clicked() {
+                    *trigger_check = true;
+                }
+
+                if let Some(ref result) = check_result {
+                    if result.update_available {
+                        if ui.add(
+                            egui::Button::new(RichText::new("View Details").size(12.0).color(Color32::WHITE))
+                                .fill(accent)
+                                .corner_radius(CornerRadius::same(4))
+                                .min_size(Vec2::new(100.0, 26.0))
+                        ).clicked() {
+                            *open_update_dialog = true;
+                        }
+                    }
+                }
+            });
+
+            // Skipped version info
+            if let Some(ref skipped) = app_config.update_config.skipped_version {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("Skipped version: {}", skipped)).size(11.0).color(text_muted));
+                    if ui.small_button("Reset").clicked() {
+                        *clear_skipped = true;
+                    }
+                });
+            }
+        },
+    );
 }
 
 // ── Placeholder tab ─────────────────────────────────────────────────────────
