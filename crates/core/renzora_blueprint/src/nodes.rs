@@ -210,6 +210,27 @@ pub static DELAY: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_FLOW,
 };
 
+pub static COUNTER: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/counter",
+    display_name: "Counter",
+    category: CAT_FLOW,
+    description: "Increments a value each time it executes. Outputs current count.",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("step", "Step", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::input("min", "Min", PinType::Float)
+            .with_default(PinValue::Float(0.0)),
+        PinTemplate::input("max", "Max", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::input("loop", "Loop", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+        PinTemplate::output("value", "Value", PinType::Float),
+    ],
+    color: CLR_FLOW,
+};
+
 // =============================================================================
 // MATH NODES — pure data, no exec pins
 // =============================================================================
@@ -434,6 +455,245 @@ pub static SPLIT_VEC3: BlueprintNodeDef = BlueprintNodeDef {
         PinTemplate::output("z", "Z", PinType::Float),
     ],
     color: CLR_MATH,
+};
+
+pub static MIN: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/min",
+    display_name: "Min",
+    category: CAT_MATH,
+    description: "Return the smaller of two values",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static MAX: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/max",
+    display_name: "Max",
+    category: CAT_MATH,
+    description: "Return the larger of two values",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static FLOOR: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/floor",
+    display_name: "Floor",
+    category: CAT_MATH,
+    description: "Round down to nearest integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static CEIL: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/ceil",
+    display_name: "Ceil",
+    category: CAT_MATH,
+    description: "Round up to nearest integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static ROUND: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/round",
+    display_name: "Round",
+    category: CAT_MATH,
+    description: "Round to nearest integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static MODULO: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/modulo",
+    display_name: "Modulo",
+    category: CAT_MATH,
+    description: "Remainder of A / B",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static DISTANCE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/distance",
+    display_name: "Distance",
+    category: CAT_MATH,
+    description: "Distance between two Vec3 points",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::output("distance", "Distance", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static DOT_PRODUCT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/dot",
+    display_name: "Dot Product",
+    category: CAT_MATH,
+    description: "Dot product of two Vec3",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+pub static CROSS_PRODUCT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/cross",
+    display_name: "Cross Product",
+    category: CAT_MATH,
+    description: "Cross product of two Vec3",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::output("result", "Result", PinType::Vec3),
+    ],
+    color: CLR_MATH,
+};
+
+pub static NORMALIZE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/normalize",
+    display_name: "Normalize",
+    category: CAT_MATH,
+    description: "Normalize a Vec3 to unit length",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::output("result", "Result", PinType::Vec3),
+    ],
+    color: CLR_MATH,
+};
+
+// =============================================================================
+// STRING NODES
+// =============================================================================
+
+const CAT_STRING: &str = "String";
+const CLR_STRING: [u8; 3] = [180, 130, 200];
+
+pub static STRING_CONCAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/concat",
+    display_name: "Concat",
+    category: CAT_STRING,
+    description: "Concatenate two strings",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::String).with_default(PinValue::String(String::new())),
+        PinTemplate::input("b", "B", PinType::String).with_default(PinValue::String(String::new())),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_STRING,
+};
+
+pub static STRING_FORMAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/format",
+    display_name: "Format",
+    category: CAT_STRING,
+    description: "Replace {0} in template with value",
+    pins: || vec![
+        PinTemplate::input("template", "Template", PinType::String)
+            .with_default(PinValue::String("Value: {0}".into())),
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_STRING,
+};
+
+pub static STRING_TO_FLOAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/to_float",
+    display_name: "String to Float",
+    category: CAT_STRING,
+    description: "Parse a string as a float",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::String).with_default(PinValue::String("0".into())),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_STRING,
+};
+
+pub static STRING_TO_INT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/to_int",
+    display_name: "String to Int",
+    category: CAT_STRING,
+    description: "Parse a string as an integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::String).with_default(PinValue::String("0".into())),
+        PinTemplate::output("result", "Result", PinType::Int),
+    ],
+    color: CLR_STRING,
+};
+
+// =============================================================================
+// CONVERSION NODES
+// =============================================================================
+
+const CAT_CONVERT: &str = "Convert";
+const CLR_CONVERT: [u8; 3] = [150, 150, 180];
+
+pub static TO_STRING: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_string",
+    display_name: "To String",
+    category: CAT_CONVERT,
+    description: "Convert any value to a string",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_CONVERT,
+};
+
+pub static TO_FLOAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_float",
+    display_name: "To Float",
+    category: CAT_CONVERT,
+    description: "Convert a value to float",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_CONVERT,
+};
+
+pub static TO_INT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_int",
+    display_name: "To Int",
+    category: CAT_CONVERT,
+    description: "Convert a value to integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Int),
+    ],
+    color: CLR_CONVERT,
+};
+
+pub static TO_BOOL: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_bool",
+    display_name: "To Bool",
+    category: CAT_CONVERT,
+    description: "Convert a value to boolean",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Bool),
+    ],
+    color: CLR_CONVERT,
 };
 
 // =============================================================================
@@ -1003,10 +1263,11 @@ pub static SET_UI_VISIBLE: BlueprintNodeDef = BlueprintNodeDef {
     node_type: "ui/set_visible",
     display_name: "Set UI Visible",
     category: CAT_UI,
-    description: "Show or hide a named UI widget",
+    description: "Show or hide a UI widget (leave Element Name empty to target self)",
     pins: || vec![
         PinTemplate::exec_in("exec", ""),
-        PinTemplate::input("element", "Element Name", PinType::String),
+        PinTemplate::input("element", "Element Name", PinType::String)
+            .with_default(PinValue::String(String::new())),
         PinTemplate::input("visible", "Visible", PinType::Bool)
             .with_default(PinValue::Bool(true)),
         PinTemplate::exec_out("then", ""),
@@ -1212,6 +1473,165 @@ pub static TWEEN_POSITION: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_ANIMATION,
 };
 
+pub static STOP_ANIMATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/stop",
+    display_name: "Stop Animation",
+    category: CAT_ANIMATION,
+    description: "Stop all animations on this entity",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static PAUSE_ANIMATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/pause",
+    display_name: "Pause Animation",
+    category: CAT_ANIMATION,
+    description: "Pause animation playback on this entity",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static RESUME_ANIMATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/resume",
+    display_name: "Resume Animation",
+    category: CAT_ANIMATION,
+    description: "Resume paused animation on this entity",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static SET_ANIMATION_SPEED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/set_speed",
+    display_name: "Set Animation Speed",
+    category: CAT_ANIMATION,
+    description: "Set the playback speed of the current animation",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("speed", "Speed", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static CROSSFADE_ANIMATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/crossfade",
+    display_name: "Crossfade Animation",
+    category: CAT_ANIMATION,
+    description: "Crossfade to a different animation clip",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Name", PinType::String),
+        PinTemplate::input("duration", "Duration", PinType::Float)
+            .with_default(PinValue::Float(0.3)),
+        PinTemplate::input("looping", "Loop", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static SET_ANIM_PARAM: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/set_param",
+    display_name: "Set Anim Param",
+    category: CAT_ANIMATION,
+    description: "Set a float parameter on the animation state machine",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Param", PinType::String),
+        PinTemplate::input("value", "Value", PinType::Float)
+            .with_default(PinValue::Float(0.0)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static SET_ANIM_BOOL_PARAM: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/set_bool_param",
+    display_name: "Set Anim Bool",
+    category: CAT_ANIMATION,
+    description: "Set a bool parameter on the animation state machine",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Param", PinType::String),
+        PinTemplate::input("value", "Value", PinType::Bool)
+            .with_default(PinValue::Bool(false)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static TRIGGER_ANIM: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/trigger",
+    display_name: "Trigger Anim",
+    category: CAT_ANIMATION,
+    description: "Fire a one-shot trigger on the animation state machine",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Trigger", PinType::String),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static SET_LAYER_WEIGHT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/set_layer_weight",
+    display_name: "Set Layer Weight",
+    category: CAT_ANIMATION,
+    description: "Set the weight of an animation layer",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("layer", "Layer", PinType::String),
+        PinTemplate::input("weight", "Weight", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static GET_ANIMATION_TIME: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/get_time",
+    display_name: "Get Animation Time",
+    category: CAT_ANIMATION,
+    description: "Get the current playback time of the active animation",
+    pins: || vec![
+        PinTemplate::output("time", "Time", PinType::Float),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static IS_ANIMATION_PLAYING: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/is_playing",
+    display_name: "Is Animation Playing",
+    category: CAT_ANIMATION,
+    description: "Check if an animation is currently playing",
+    pins: || vec![
+        PinTemplate::output("playing", "Playing", PinType::Bool),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static ON_ANIMATION_FINISHED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/on_finished",
+    display_name: "On Animation Finished",
+    category: CAT_ANIMATION,
+    description: "Fires when a non-looping animation finishes playing",
+    pins: || vec![
+        PinTemplate::exec_out("exec", ""),
+        PinTemplate::output("name", "Clip Name", PinType::String),
+    ],
+    color: CLR_ANIMATION,
+};
+
 // =============================================================================
 // TIMER NODES
 // =============================================================================
@@ -1244,11 +1664,13 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &ON_READY, &ON_UPDATE, &ON_COLLISION_ENTER, &ON_COLLISION_EXIT,
     &ON_TIMER, &ON_MESSAGE,
     // Flow
-    &BRANCH, &SEQUENCE, &DO_ONCE, &FLIP_FLOP, &GATE, &DELAY, &START_TIMER,
+    &BRANCH, &SEQUENCE, &DO_ONCE, &FLIP_FLOP, &GATE, &DELAY, &COUNTER, &START_TIMER,
     // Math
     &ADD, &SUBTRACT, &MULTIPLY, &DIVIDE, &NEGATE, &ABS, &CLAMP, &LERP,
     &RANDOM_RANGE, &SIN, &COS, &COMPARE, &AND, &OR, &NOT,
     &COMBINE_VEC3, &SPLIT_VEC3,
+    &MIN, &MAX, &FLOOR, &CEIL, &ROUND, &MODULO,
+    &DISTANCE, &DOT_PRODUCT, &CROSS_PRODUCT, &NORMALIZE,
     // Transform
     &GET_POSITION, &SET_POSITION, &TRANSLATE,
     &GET_ROTATION, &SET_ROTATION, &ROTATE, &LOOK_AT,
@@ -1274,16 +1696,25 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &LOG, &DRAW_LINE,
     // Variable
     &GET_VARIABLE, &SET_VARIABLE,
+    // String
+    &STRING_CONCAT, &STRING_FORMAT, &STRING_TO_FLOAT, &STRING_TO_INT,
+    // Convert
+    &TO_STRING, &TO_FLOAT, &TO_INT, &TO_BOOL,
     // Rendering
     &SET_VISIBILITY, &SET_MATERIAL_COLOR,
     // Animation
-    &PLAY_ANIMATION, &TWEEN_POSITION,
+    &PLAY_ANIMATION, &STOP_ANIMATION, &PAUSE_ANIMATION, &RESUME_ANIMATION,
+    &SET_ANIMATION_SPEED, &CROSSFADE_ANIMATION, &SET_ANIM_PARAM,
+    &SET_ANIM_BOOL_PARAM, &TRIGGER_ANIM, &SET_LAYER_WEIGHT,
+    &GET_ANIMATION_TIME, &IS_ANIMATION_PLAYING, &ON_ANIMATION_FINISHED,
+    &TWEEN_POSITION,
 ];
 
 /// Get all unique categories in display order.
 pub fn categories() -> Vec<&'static str> {
     vec![
-        CAT_EVENT, CAT_FLOW, CAT_MATH, CAT_TRANSFORM, CAT_INPUT,
+        CAT_EVENT, CAT_FLOW, CAT_MATH, CAT_STRING, CAT_CONVERT,
+        CAT_TRANSFORM, CAT_INPUT,
         CAT_ENTITY, CAT_COMPONENT, CAT_PHYSICS, CAT_AUDIO, CAT_UI,
         CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_DEBUG,
     ]

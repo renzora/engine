@@ -6,13 +6,16 @@
 mod convert;
 pub mod formats;
 pub mod settings;
+pub mod anim_extract;
 
 mod gltf_pass;
 mod obj;
 mod stl;
 mod ply;
 mod fbx;
+mod fbx_ascii;
 
 pub use convert::{convert_to_glb, ImportError, ImportResult};
 pub use formats::{detect_format, supported_extensions, ModelFormat};
 pub use settings::{ImportSettings, UpAxis};
+pub use anim_extract::extract_animations_from_glb;

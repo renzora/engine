@@ -12,6 +12,8 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use renzora_core::InputFocusState;
+use renzora_editor::EditorSelection;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_runtime::EditorCamera;
 use renzora_viewport::{ViewportSettings, ViewportState};
@@ -138,6 +140,7 @@ impl Plugin for CameraPlugin {
             .add_systems(Update, (
                 sync_viewport_settings,
                 handle_view_angle_keys,
+                focus_selected,
                 camera_controller,
                 update_camera_projection,
                 sync_orbit_snapshot,
@@ -190,10 +193,16 @@ fn sync_viewport_settings(
 fn handle_view_angle_keys(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
     mut orbit: ResMut<OrbitCameraState>,
     mut vp: ResMut<ViewportSettings>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
     use std::f32::consts::{FRAC_PI_2, PI};
+
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
 
     if keybindings.just_pressed(EditorAction::ViewFront, &keyboard) {
         orbit.yaw = 0.0;
@@ -226,6 +235,29 @@ fn handle_view_angle_keys(
             ProjectionMode::Perspective => renzora_viewport::ProjectionMode::Perspective,
             ProjectionMode::Orthographic => renzora_viewport::ProjectionMode::Orthographic,
         };
+    }
+}
+
+/// Focus the camera on the currently selected entity (F key).
+fn focus_selected(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    selection: Res<EditorSelection>,
+    mut orbit: ResMut<OrbitCameraState>,
+    transforms: Query<&Transform, Without<EditorCamera>>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+
+    if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
+        if let Some(entity) = selection.get() {
+            if let Ok(transform) = transforms.get(entity) {
+                orbit.focus_on(transform.translation);
+            }
+        }
     }
 }
 

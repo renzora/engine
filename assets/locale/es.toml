@@ -336,7 +336,9 @@ version = "1.0"
 # ─── Títulos de panel (faltantes) ─────────────────────────────────────────────
 "panel.console" = "Consola"
 "panel.viewport" = "Ventana gráfica"
+"panel.shader_editor" = "Editor de Shaders"
 "panel.shader_preview" = "Vista previa de shader"
+"panel.shader_properties" = "Propiedades del Shader"
 "panel.history" = "Historial"
 "panel.material_graph" = "Grafo de Material"
 "panel.node_library" = "Biblioteca de nodos"
@@ -703,6 +705,19 @@ version = "1.0"
 "mat_preview.plane" = "Plano"
 "mat_preview.rotate" = "Rotación auto"
 
+# ─── Editor de Shaders ────────────────────────────────────────────────────────
+"shader_editor.title" = "Editor de Shaders"
+"shader_editor.compile" = "Compilar"
+"shader_editor.auto_compile" = "Compilación automática"
+"shader_editor.new" = "Nuevo Shader"
+"shader_editor.open" = "Abrir"
+"shader_editor.save" = "Guardar"
+"shader_editor.unsaved" = "sin guardar"
+"shader_editor.language" = "Idioma"
+"shader_editor.no_shader" = "Ningún shader compilado"
+"shader_editor.error" = "Error de compilación"
+"shader_editor.warnings" = "Advertencias"
+
 # ─── Vista previa de shader ───────────────────────────────────────────────────
 "shader_preview.compile" = "Compilar"
 "shader_preview.error" = "Error de compilación"
@@ -710,6 +725,16 @@ version = "1.0"
 "shader_preview.vertex" = "Vértice"
 "shader_preview.fragment" = "Fragmento"
 "shader_preview.compute" = "Compute"
+"shader_preview.no_compiled" = "Ningún shader compilado"
+
+# ─── Propiedades del Shader ──────────────────────────────────────────────────
+"shader_props.title" = "Propiedades del Shader"
+"shader_props.parameters" = "Parámetros"
+"shader_props.no_params" = "Sin parámetros definidos"
+"shader_props.add_param" = "Agregar parámetro"
+"shader_props.type" = "Tipo"
+"shader_props.value" = "Valor"
+"shader_props.description" = "Descripción"
 
 # ─── Variables de script ──────────────────────────────────────────────────────
 "script_vars.no_selection" = "Ningún script seleccionado"

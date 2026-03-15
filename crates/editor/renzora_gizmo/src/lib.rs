@@ -5,6 +5,7 @@
 //! and scale (lines + cube caps) modes.
 
 mod camera_gizmo;
+pub mod skeleton_gizmo;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
@@ -18,6 +19,7 @@ use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::window::PrimaryWindow;
 use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 
+use renzora_core::InputFocusState;
 use renzora_editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_viewport::ViewportState;
@@ -183,10 +185,12 @@ impl Plugin for GizmoPlugin {
             )
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoState>()
+            .init_resource::<skeleton_gizmo::BoneSelection>()
             .add_systems(PostStartup, setup_gizmo_meshes)
             .add_systems(
                 Update,
                 (
+                    handle_selection_shortcuts,
                     switch_gizmo_mode,
                     update_gizmo_transforms,
                     update_gizmo_materials,
@@ -194,6 +198,7 @@ impl Plugin for GizmoPlugin {
                     gizmo_drag,
                     draw_line_gizmos,
                     camera_gizmo::draw_camera_gizmo,
+                    skeleton_gizmo::draw_skeleton_gizmo,
                     entity_pick_system,
                 )
                     .chain()
@@ -456,12 +461,52 @@ fn draw_line_gizmos(
 
 // ── Mode switching ──────────────────────────────────────────────────────────
 
+// ── Selection shortcuts (Delete, Deselect, CreateNode) ───────────────────────
+
+fn handle_selection_shortcuts(
+    mut commands: Commands,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    selection: Res<EditorSelection>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    gizmo_state: Res<GizmoState>,
+) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+    if gizmo_state.active_axis.is_some() { return; }
+
+    if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
+        let entities = selection.get_all();
+        if !entities.is_empty() {
+            selection.clear();
+            for entity in entities {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+
+    if keybindings.just_pressed(EditorAction::Deselect, &keyboard) {
+        selection.clear();
+    }
+
+    if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
+        commands.insert_resource(renzora_core::CreateNodeRequested);
+    }
+}
+
+// ── Mode switching ──────────────────────────────────────────────────────────
+
 fn switch_gizmo_mode(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mode: ResMut<GizmoMode>,
 ) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) { *mode = GizmoMode::Translate; }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) { *mode = GizmoMode::Rotate; }
@@ -860,6 +905,7 @@ fn entity_pick_system(
         let selectable = find_named_ancestor(*entity, &named_entities, &parent_query);
         if let Some(target) = selectable {
             if hidden_entities.get(target).is_ok() { continue; }
+            info!("[pick] Selected {:?} (hit {:?})", target, entity);
             selection.set(Some(target));
             return;
         }

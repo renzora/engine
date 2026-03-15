@@ -7,6 +7,7 @@ use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 use bevy_egui::egui;
 
+use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora_core::{CurrentProject, EditorCamera, MeshInstanceData};
 use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
@@ -158,6 +159,7 @@ pub fn spawn_loaded_gltfs(
     mut pending: ResMut<PendingGltfLoads>,
     gltf_assets: Res<Assets<Gltf>>,
     selection: Res<EditorSelection>,
+    project: Option<Res<CurrentProject>>,
 ) {
     let mut completed = Vec::new();
 
@@ -192,6 +194,16 @@ pub fn spawn_loaded_gltfs(
             ))
             .id();
 
+        // Auto-discover .anim files and attach AnimatorComponent
+        if let Some(animator) = discover_animation_clips(&load.asset_path, project.as_deref()) {
+            let clip_count = animator.clips.len();
+            commands.entity(parent).insert(animator);
+            info!(
+                "Attached AnimatorComponent with {} clip(s) to '{}'",
+                clip_count, load.name
+            );
+        }
+
         // Spawn the GLTF scene as a child
         commands.spawn((
             Name::new("SceneRoot"),
@@ -217,6 +229,77 @@ pub fn spawn_loaded_gltfs(
     for index in completed.into_iter().rev() {
         pending.loads.remove(index);
     }
+}
+
+/// Look for `.anim` files in an `animations/` directory next to the model and build
+/// an `AnimatorComponent` from them. Returns `None` if no `.anim` files are found.
+fn discover_animation_clips(
+    asset_path: &str,
+    project: Option<&CurrentProject>,
+) -> Option<AnimatorComponent> {
+    let project = project?;
+    let assets_dir = project.path.join("assets");
+
+    // Model is e.g. "models/Man.glb" → look in "models/animations/"
+    let model_dir = std::path::Path::new(asset_path).parent().unwrap_or(std::path::Path::new(""));
+    let anim_dir_abs = assets_dir.join(model_dir).join("animations");
+
+    if !anim_dir_abs.is_dir() {
+        return None;
+    }
+
+    let mut clips = Vec::new();
+    let mut entries: Vec<_> = std::fs::read_dir(&anim_dir_abs)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map_or(false, |ext| ext == "anim")
+        })
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let file_path = entry.path();
+        let stem = file_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("clip")
+            .to_string();
+
+        // Asset-relative path: e.g. "models/animations/HumanArmature_Man_Idle.anim"
+        let anim_asset_path = model_dir
+            .join("animations")
+            .join(entry.file_name())
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        clips.push(AnimClipSlot {
+            name: stem,
+            path: anim_asset_path,
+            looping: true,
+            speed: 1.0,
+        });
+    }
+
+    if clips.is_empty() {
+        return None;
+    }
+
+    let default_clip = clips
+        .iter()
+        .find(|c| c.name.to_lowercase().contains("idle"))
+        .or(clips.first())
+        .map(|c| c.name.clone());
+
+    Some(AnimatorComponent {
+        clips,
+        default_clip,
+        blend_duration: 0.2,
+        state_machine: None,
+        layers: Vec::new(),
+    })
 }
 
 /// System: once child meshes have AABBs, offset the parent so its bottom sits on the ground.
@@ -260,6 +343,34 @@ pub fn align_models_to_ground(
                 transform.translation.y += offset;
             }
             commands.entity(entity).remove::<NeedsGroundAlignment>();
+        }
+    }
+}
+
+/// System: auto-discover `.anim` files for entities loaded from scenes that have
+/// `MeshInstanceData` (a model) but no `AnimatorComponent` yet.
+pub fn auto_discover_animations(
+    mut commands: Commands,
+    query: Query<
+        (Entity, &MeshInstanceData),
+        (Without<AnimatorComponent>, Without<renzora_animation::AnimatorState>),
+    >,
+    project: Option<Res<CurrentProject>>,
+) {
+    let Some(ref project) = project else { return };
+
+    for (entity, mesh_data) in query.iter() {
+        let Some(ref model_path) = mesh_data.model_path else {
+            continue;
+        };
+
+        if let Some(animator) = discover_animation_clips(model_path, Some(project)) {
+            let clip_count = animator.clips.len();
+            commands.entity(entity).insert(animator);
+            info!(
+                "Auto-discovered {} animation clip(s) for '{}'",
+                clip_count, model_path
+            );
         }
     }
 }

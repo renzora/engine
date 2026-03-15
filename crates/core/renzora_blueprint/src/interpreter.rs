@@ -12,6 +12,21 @@ use renzora_scripting::{PropertyValue, ScriptCommand, ScriptInput};
 use crate::graph::{BlueprintGraph, NodeId, PinValue};
 use crate::nodes;
 
+/// Look up an entity by its `Name` component.
+fn resolve_entity_by_name(world: &World, name: &str) -> Option<Entity> {
+    for archetype in world.archetypes().iter() {
+        for arch_entity in archetype.entities() {
+            let entity = arch_entity.id();
+            if let Some(n) = world.get::<Name>(entity) {
+                if n.as_str() == name {
+                    return Some(entity);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Per-entity runtime state for flow control nodes (DoOnce, FlipFlop, Gate, Delay).
 #[derive(Component, Default)]
 pub struct BlueprintRuntimeState {
@@ -22,6 +37,13 @@ pub struct BlueprintRuntimeState {
     pub flip_flop_state: HashMap<NodeId, bool>,
     /// Gate: open/closed per node.
     pub gate_open: HashMap<NodeId, bool>,
+    /// Set by the animation system when a non-looping clip finishes.
+    /// Consumed by the interpreter for `animation/on_finished` events.
+    pub anim_finished_clip: Option<String>,
+    /// User-defined variables stored per blueprint instance.
+    pub variables: HashMap<String, PinValue>,
+    /// Counter node accumulated values.
+    pub counter_values: HashMap<NodeId, f32>,
 }
 
 /// Context passed through the graph during evaluation.
@@ -32,6 +54,8 @@ struct EvalContext<'a> {
     cache: HashMap<(NodeId, String), PinValue>,
     /// The graph being evaluated.
     graph: &'a BlueprintGraph,
+    /// Read-only world reference for reflection queries.
+    world: &'a World,
     /// Transform of this entity.
     transform: &'a Transform,
     /// Input state.
@@ -312,6 +336,156 @@ impl<'a> EvalContext<'a> {
                 _ => PinValue::None,
             },
 
+            // ── Animation data queries ──────────────────────────────
+            // These return placeholder values; the actual runtime values
+            // are filled in by the animation system when it provides
+            // query context to the blueprint interpreter.
+            "animation/get_time" => match pin_name {
+                "time" => PinValue::Float(self.elapsed as f32),
+                _ => PinValue::None,
+            },
+            "animation/is_playing" => match pin_name {
+                "playing" => PinValue::Bool(false),
+                _ => PinValue::None,
+            },
+
+            // ── Component reflection read ─────────────────────────────
+            "component/get_field" => {
+                let entity_val = self.resolve_input(node_id, "entity").as_string();
+                let component = self.resolve_input(node_id, "component").as_string();
+                let field = self.resolve_input(node_id, "field").as_string();
+
+                // Resolve target entity: empty = self, otherwise look up by name.
+                let target = if entity_val.is_empty() {
+                    Some(self.entity)
+                } else {
+                    resolve_entity_by_name(self.world, &entity_val)
+                };
+
+                match target {
+                    Some(e) => {
+                        let result = renzora_scripting::systems::get_reflected_field(
+                            self.world, e, &component, &field,
+                        );
+                        match result {
+                            Some(PropertyValue::Float(v)) => PinValue::Float(v),
+                            Some(PropertyValue::Int(v)) => PinValue::Int(v as i32),
+                            Some(PropertyValue::Bool(v)) => PinValue::Bool(v),
+                            Some(PropertyValue::String(v)) => PinValue::String(v),
+                            Some(PropertyValue::Vec3(v)) => PinValue::Vec3(v),
+                            Some(PropertyValue::Color(v)) => PinValue::Color(v),
+                            _ => PinValue::None,
+                        }
+                    }
+                    None => PinValue::None,
+                }
+            }
+
+            // ── Variable read ─────────────────────────────────────────
+            "variable/get" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                self.runtime.variables.get(&name).cloned().unwrap_or(PinValue::None)
+            }
+
+            // ── Counter read ──────────────────────────────────────────
+            "flow/counter" => {
+                let val = self.runtime.counter_values.get(&node_id).copied().unwrap_or(0.0);
+                PinValue::Float(val)
+            }
+
+            // ── Entity self ───────────────────────────────────────────
+            "entity/get_self" => match pin_name {
+                "entity" => PinValue::Entity(self.entity_name.clone()),
+                _ => PinValue::None,
+            },
+
+            // ── Entity by name ────────────────────────────────────────
+            "entity/get_entity" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                PinValue::Entity(name)
+            }
+
+            // ── Additional math ───────────────────────────────────────
+            "math/min" => {
+                let a = self.resolve_input(node_id, "a").as_float();
+                let b = self.resolve_input(node_id, "b").as_float();
+                PinValue::Float(a.min(b))
+            }
+            "math/max" => {
+                let a = self.resolve_input(node_id, "a").as_float();
+                let b = self.resolve_input(node_id, "b").as_float();
+                PinValue::Float(a.max(b))
+            }
+            "math/floor" => PinValue::Float(self.resolve_input(node_id, "value").as_float().floor()),
+            "math/ceil" => PinValue::Float(self.resolve_input(node_id, "value").as_float().ceil()),
+            "math/round" => PinValue::Float(self.resolve_input(node_id, "value").as_float().round()),
+            "math/modulo" => {
+                let a = self.resolve_input(node_id, "a").as_float();
+                let b = self.resolve_input(node_id, "b").as_float();
+                PinValue::Float(if b != 0.0 { a % b } else { 0.0 })
+            }
+            "math/distance" => {
+                let a = self.resolve_input(node_id, "a").as_vec3();
+                let b = self.resolve_input(node_id, "b").as_vec3();
+                let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+                PinValue::Float((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())
+            }
+            "math/dot" => {
+                let a = self.resolve_input(node_id, "a").as_vec3();
+                let b = self.resolve_input(node_id, "b").as_vec3();
+                PinValue::Float(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+            }
+            "math/cross" => {
+                let a = self.resolve_input(node_id, "a").as_vec3();
+                let b = self.resolve_input(node_id, "b").as_vec3();
+                PinValue::Vec3([
+                    a[1] * b[2] - a[2] * b[1],
+                    a[2] * b[0] - a[0] * b[2],
+                    a[0] * b[1] - a[1] * b[0],
+                ])
+            }
+            "math/normalize" => {
+                let v = self.resolve_input(node_id, "value").as_vec3();
+                let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                if len > 0.0 {
+                    PinValue::Vec3([v[0] / len, v[1] / len, v[2] / len])
+                } else {
+                    PinValue::Vec3([0.0, 0.0, 0.0])
+                }
+            }
+
+            // ── String ops ────────────────────────────────────────────
+            "string/concat" => {
+                let a = self.resolve_input(node_id, "a").as_string();
+                let b = self.resolve_input(node_id, "b").as_string();
+                PinValue::String(format!("{}{}", a, b))
+            }
+            "string/format" => {
+                let template = self.resolve_input(node_id, "template").as_string();
+                let value = self.resolve_input(node_id, "value");
+                // Simple {0} replacement.
+                let replacement = match value {
+                    PinValue::Float(v) => format!("{:.2}", v),
+                    PinValue::Int(v) => format!("{}", v),
+                    PinValue::Bool(v) => format!("{}", v),
+                    PinValue::String(v) => v,
+                    PinValue::Vec3([x, y, z]) => format!("{:.1}, {:.1}, {:.1}", x, y, z),
+                    _ => String::new(),
+                };
+                PinValue::String(template.replace("{0}", &replacement))
+            }
+            "string/to_float" => PinValue::Float(self.resolve_input(node_id, "value").as_string().parse().unwrap_or(0.0)),
+            "string/to_int" => PinValue::Int(self.resolve_input(node_id, "value").as_string().parse().unwrap_or(0)),
+
+            // ── Type conversion ───────────────────────────────────────
+            "convert/to_string" => {
+                let val = self.resolve_input(node_id, "value");
+                PinValue::String(val.as_string())
+            }
+            "convert/to_float" => PinValue::Float(self.resolve_input(node_id, "value").as_float()),
+            "convert/to_int" => PinValue::Int(self.resolve_input(node_id, "value").as_int()),
+            "convert/to_bool" => PinValue::Bool(self.resolve_input(node_id, "value").as_bool()),
+
             _ => PinValue::None,
         }
     }
@@ -387,6 +561,19 @@ impl<'a> EvalContext<'a> {
                     }
                     _ => {}
                 }
+            }
+
+            "flow/counter" => {
+                let step = self.resolve_input(node_id, "step").as_float();
+                let min = self.resolve_input(node_id, "min").as_float();
+                let max = self.resolve_input(node_id, "max").as_float();
+                let do_loop = self.resolve_input(node_id, "loop").as_bool();
+                let val = self.runtime.counter_values.entry(node_id).or_insert(min);
+                *val += step * self.delta;
+                if *val > max {
+                    if do_loop { *val = min + (*val - max); } else { *val = max; }
+                }
+                self.follow_exec(node_id, "then");
             }
 
             // ── Transform writes ─────────────────────────────────────
@@ -572,6 +759,76 @@ impl<'a> EvalContext<'a> {
                 });
                 self.follow_exec(node_id, "then");
             }
+            "animation/stop" => {
+                self.commands.push(ScriptCommand::StopAnimation { entity_id: None });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/pause" => {
+                self.commands.push(ScriptCommand::PauseAnimation { entity_id: None });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/resume" => {
+                self.commands.push(ScriptCommand::ResumeAnimation { entity_id: None });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/set_speed" => {
+                let speed = self.resolve_input(node_id, "speed").as_float();
+                self.commands.push(ScriptCommand::SetAnimationSpeed {
+                    entity_id: None,
+                    speed,
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/crossfade" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let duration = self.resolve_input(node_id, "duration").as_float();
+                let looping = self.resolve_input(node_id, "looping").as_bool();
+                self.commands.push(ScriptCommand::CrossfadeAnimation {
+                    entity_id: None,
+                    name,
+                    duration,
+                    looping,
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/set_param" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let value = self.resolve_input(node_id, "value").as_float();
+                self.commands.push(ScriptCommand::SetAnimationParam {
+                    entity_id: None,
+                    name,
+                    value,
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/set_bool_param" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let value = self.resolve_input(node_id, "value").as_bool();
+                self.commands.push(ScriptCommand::SetAnimationBoolParam {
+                    entity_id: None,
+                    name,
+                    value,
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/trigger" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                self.commands.push(ScriptCommand::TriggerAnimation {
+                    entity_id: None,
+                    name,
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "animation/set_layer_weight" => {
+                let layer_name = self.resolve_input(node_id, "layer").as_string();
+                let weight = self.resolve_input(node_id, "weight").as_float();
+                self.commands.push(ScriptCommand::SetAnimationLayerWeight {
+                    entity_id: None,
+                    layer_name,
+                    weight,
+                });
+                self.follow_exec(node_id, "then");
+            }
             "animation/tween_position" => {
                 let target = self.resolve_input(node_id, "target").as_vec3();
                 let duration = self.resolve_input(node_id, "duration").as_float();
@@ -681,6 +938,8 @@ impl<'a> EvalContext<'a> {
             }
             "ui/set_visible" => {
                 let name = self.resolve_input(node_id, "element").as_string();
+                // If no element name given, target the entity this blueprint is on.
+                let name = if name.is_empty() { self.entity_name.clone() } else { name };
                 let visible = self.resolve_input(node_id, "visible").as_bool();
                 self.commands.push(ScriptCommand::Extension(Box::new(
                     renzora_game_ui::UiScriptCommand::SetVisible { name, visible },
@@ -734,8 +993,17 @@ impl<'a> EvalContext<'a> {
                 // TODO: wire delay completion through timer system.
             }
 
+            // ── Variable set ─────────────────────────────────────────
+            "variable/set" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let value = self.resolve_input(node_id, "value");
+                self.runtime.variables.insert(name, value);
+                self.follow_exec(node_id, "then");
+            }
+
             // ── Component reflection ─────────────────────────────────
             "component/set_field" => {
+                let entity_val = self.resolve_input(node_id, "entity").as_string();
                 let component = self.resolve_input(node_id, "component").as_string();
                 let field = self.resolve_input(node_id, "field").as_string();
                 let value = self.resolve_input(node_id, "value");
@@ -748,9 +1016,15 @@ impl<'a> EvalContext<'a> {
                     PinValue::Color(v) => PropertyValue::Color(v),
                     _ => PropertyValue::Float(0.0),
                 };
+                // Empty entity = self, otherwise look up by name.
+                let (entity_id, entity_name) = if entity_val.is_empty() {
+                    (None, None)
+                } else {
+                    (None, Some(entity_val))
+                };
                 self.commands.push(ScriptCommand::SetComponentField {
-                    entity_id: None,
-                    entity_name: None,
+                    entity_id,
+                    entity_name,
                     component_type: component,
                     field_path: field,
                     value: prop_value,
@@ -785,13 +1059,13 @@ pub fn run_blueprints(world: &mut World) {
     }
     let mut bp_entities: Vec<BpEntity> = Vec::new();
     {
-        let mut query = world.query::<(Entity, &BlueprintGraph, &Transform, Option<&Name>)>();
+        let mut query = world.query::<(Entity, &BlueprintGraph, Option<&Transform>, Option<&Name>)>();
         for (entity, _graph, transform, name) in query.iter(world) {
             bp_entities.push(BpEntity {
                 entity,
                 entity_name: name.map(|n| n.as_str().to_string())
                     .unwrap_or_else(|| format!("Entity_{}", entity.index())),
-                transform: *transform,
+                transform: transform.copied().unwrap_or_default(),
             });
         }
     }
@@ -810,6 +1084,9 @@ pub fn run_blueprints(world: &mut World) {
 
         let was_initialized = runtime.initialized;
 
+        // Check if the animation system flagged a clip as finished this frame.
+        let anim_finished_clip: Option<String> = runtime.anim_finished_clip.take();
+
         // Find event nodes before creating the eval context.
         let event_nodes: Vec<(NodeId, String)> = graph.event_nodes()
             .iter()
@@ -821,6 +1098,7 @@ pub fn run_blueprints(world: &mut World) {
                 entity: bpe.entity,
                 cache: HashMap::new(),
                 graph: &graph,
+                world: &world,
                 transform: &bpe.transform,
                 input: &input,
                 delta: time_delta,
@@ -840,6 +1118,13 @@ pub fn run_blueprints(world: &mut World) {
                     }
                     "event/on_update" => {
                         ctx.follow_exec(*node_id, "exec");
+                    }
+                    "animation/on_finished" => {
+                        if let Some(ref clip_name) = anim_finished_clip {
+                            // Set the output pin value so downstream nodes can read the clip name
+                            ctx.cache.insert((*node_id, "name".to_string()), PinValue::String(clip_name.clone()));
+                            ctx.follow_exec(*node_id, "exec");
+                        }
                     }
                     // TODO: on_collision, on_timer, on_message
                     _ => {}

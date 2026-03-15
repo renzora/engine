@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use renzora_core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, HideInHierarchy, EditorCamera};
+use renzora_core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera};
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_runtime::scene_io;
 use renzora_splash::SplashState;
@@ -16,13 +16,27 @@ pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scen
 // Keybinding-driven save
 // ============================================================================
 
-fn detect_save_keybinding(
+fn detect_file_keybindings(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
 ) {
+    if keybindings.rebinding.is_some() { return; }
+
     if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
         commands.insert_resource(SaveSceneRequested);
+    }
+    if keybindings.just_pressed(EditorAction::SaveSceneAs, &keyboard) {
+        commands.insert_resource(SaveAsSceneRequested);
+    }
+    if keybindings.just_pressed(EditorAction::OpenScene, &keyboard) {
+        commands.insert_resource(OpenSceneRequested);
+    }
+    if keybindings.just_pressed(EditorAction::NewScene, &keyboard) {
+        commands.insert_resource(NewSceneRequested);
+    }
+    if keybindings.just_pressed(EditorAction::OpenSettings, &keyboard) {
+        commands.insert_resource(ToggleSettingsRequested);
     }
 }
 
@@ -214,7 +228,7 @@ impl Plugin for ScenePlugin {
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
-                    detect_save_keybinding,
+                    detect_file_keybindings,
                     save_scene_system,
                     save_as_scene_system,
                     new_scene_system,

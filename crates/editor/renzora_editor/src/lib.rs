@@ -146,7 +146,6 @@ fn show_script_reload_toasts(
 /// Uses `SystemState` to extract the egui context, clones it (Arc-backed, cheap),
 /// then renders everything with `&World` access for panels.
 pub fn editor_ui_system(world: &mut World) {
-    info!("[editor] editor_ui_system running (SplashState::Editor reached)");
     // 1. Get egui context (cached to avoid per-frame allocation)
     if !world.contains_resource::<EditorEguiState>() {
         let s = EditorEguiState(SystemState::new(world));
@@ -578,6 +577,13 @@ pub fn editor_ui_system(world: &mut World) {
         let current_time = world.resource::<bevy::prelude::Time>().elapsed_secs_f64();
         if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
             toasts.show(&ctx, current_time);
+        }
+    }
+
+    // J2) Handle one-shot shortcut resources
+    if world.remove_resource::<renzora_core::ToggleSettingsRequested>().is_some() {
+        if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
+            settings.show_settings = !settings.show_settings;
         }
     }
 

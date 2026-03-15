@@ -431,6 +431,38 @@ fn register_api(lua: &Lua) {
         push_command(ScriptCommand::StopAnimation { entity_id: None });
         Ok(())
     }).unwrap());
+    let _ = globals.set("pause_animation", lua.create_function(|_, ()| {
+        push_command(ScriptCommand::PauseAnimation { entity_id: None });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("resume_animation", lua.create_function(|_, ()| {
+        push_command(ScriptCommand::ResumeAnimation { entity_id: None });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("set_animation_speed", lua.create_function(|_, speed: f32| {
+        push_command(ScriptCommand::SetAnimationSpeed { entity_id: None, speed });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("crossfade_animation", lua.create_function(|_, (name, duration, looping): (String, f32, Option<bool>)| {
+        push_command(ScriptCommand::CrossfadeAnimation { entity_id: None, name, duration, looping: looping.unwrap_or(true) });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("set_anim_param", lua.create_function(|_, (name, value): (String, f32)| {
+        push_command(ScriptCommand::SetAnimationParam { entity_id: None, name, value });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("set_anim_bool", lua.create_function(|_, (name, value): (String, bool)| {
+        push_command(ScriptCommand::SetAnimationBoolParam { entity_id: None, name, value });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("trigger_anim", lua.create_function(|_, name: String| {
+        push_command(ScriptCommand::TriggerAnimation { entity_id: None, name });
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("set_layer_weight", lua.create_function(|_, (layer_name, weight): (String, f32)| {
+        push_command(ScriptCommand::SetAnimationLayerWeight { entity_id: None, layer_name, weight });
+        Ok(())
+    }).unwrap());
 
     // -- Camera --
     let _ = globals.set("screen_shake", lua.create_function(|_, (intensity, duration): (f32, f32)| {
@@ -768,10 +800,21 @@ fn lua_to_property_value(value: &LuaValue) -> crate::command::PropertyValue {
         LuaValue::Table(t) => {
             // Check for vec3 {x, y, z}
             if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f64>("x"), t.get::<f64>("y"), t.get::<f64>("z")) {
-                PropertyValue::Vec3([x as f32, y as f32, z as f32])
-            } else {
-                PropertyValue::Float(0.0)
+                return PropertyValue::Vec3([x as f32, y as f32, z as f32]);
             }
+            // Check for color {r, g, b, a}
+            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b")) {
+                let a: f64 = t.get("a").unwrap_or(1.0);
+                return PropertyValue::Color([r as f32, g as f32, b as f32, a as f32]);
+            }
+            // Check for array-style {r, g, b, a} or {x, y, z}
+            if let (Ok(v1), Ok(v2), Ok(v3)) = (t.get::<f64>(1), t.get::<f64>(2), t.get::<f64>(3)) {
+                if let Ok(v4) = t.get::<f64>(4) {
+                    return PropertyValue::Color([v1 as f32, v2 as f32, v3 as f32, v4 as f32]);
+                }
+                return PropertyValue::Vec3([v1 as f32, v2 as f32, v3 as f32]);
+            }
+            PropertyValue::Float(0.0)
         }
         _ => PropertyValue::Float(0.0),
     }

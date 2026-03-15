@@ -8,18 +8,45 @@ use crate::convert::{ImportError, ImportResult};
 use crate::obj::build_glb;
 use crate::settings::{ImportSettings, UpAxis};
 
+/// FBX binary magic header.
+const FBX_BINARY_MAGIC: &[u8; 23] = b"Kaydara FBX Binary  \x00\x1a\x00";
+
+/// Returns `true` if the file starts with the FBX binary magic bytes.
+fn is_binary_fbx(path: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut buf = [0u8; 23];
+    let n = file.read(&mut buf)?;
+    Ok(n == 23 && buf == *FBX_BINARY_MAGIC)
+}
+
 pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+
+    // Detect ASCII vs Binary and dispatch
+    if !is_binary_fbx(path)? {
+        log::info!("[import] {}: detected FBX ASCII format, using ASCII parser", file_name);
+        return crate::fbx_ascii::convert(path, settings);
+    }
+
+    log::info!("[import] {}: detected FBX Binary format", file_name);
+
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
 
     let doc = match fbxcel_dom::any::AnyDocument::from_seekable_reader(reader) {
-        Ok(fbxcel_dom::any::AnyDocument::V7400(_ver, doc)) => doc,
+        Ok(fbxcel_dom::any::AnyDocument::V7400(ver, doc)) => {
+            log::info!("[import] {}: FBX version {:?}", file_name, ver);
+            doc
+        }
         Ok(_) => {
+            log::error!("[import] {}: unsupported FBX binary version", file_name);
             return Err(ImportError::ParseError(
                 "unsupported FBX version (only FBX 7.4+ binary is supported)".into(),
             ))
         }
         Err(e) => {
+            log::error!("[import] {}: FBX parse error: {}", file_name, e);
             return Err(ImportError::ParseError(format!("FBX parse error: {}", e)))
         }
     };
@@ -191,12 +218,25 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     }
 
     if all_positions.is_empty() {
+        log::error!("[import] {}: no geometry found in FBX binary file", file_name);
         return Err(ImportError::ParseError(
             "no geometry found in FBX file".into(),
         ));
     }
 
+    let vertex_count = all_positions.len() / 3;
+    let tri_count = all_indices.len() / 3;
+    log::info!(
+        "[import] {}: {} vertices, {} triangles, {} warnings",
+        file_name, vertex_count, tri_count, warnings.len()
+    );
+    for w in &warnings {
+        log::warn!("[import] {}: {}", file_name, w);
+    }
+
     let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices)?;
+
+    log::info!("[import] {}: GLB output {} bytes", file_name, glb_bytes.len());
 
     Ok(ImportResult {
         glb_bytes,

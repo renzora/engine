@@ -334,7 +334,9 @@ version = "1.0"
 # ─── Panel-Titel (fehlend) ────────────────────────────────────────────────────
 "panel.console" = "Konsole"
 "panel.viewport" = "Ansichtsfenster"
+"panel.shader_editor" = "Shader-Editor"
 "panel.shader_preview" = "Shader-Vorschau"
+"panel.shader_properties" = "Shader-Eigenschaften"
 "panel.history" = "Verlauf"
 "panel.material_graph" = "Materialgraph"
 "panel.node_library" = "Knotenbibliothek"
@@ -701,6 +703,19 @@ version = "1.0"
 "mat_preview.plane" = "Ebene"
 "mat_preview.rotate" = "Auto-Rotation"
 
+# ─── Shader-Editor ────────────────────────────────────────────────────────────
+"shader_editor.title" = "Shader-Editor"
+"shader_editor.compile" = "Kompilieren"
+"shader_editor.auto_compile" = "Automatisch kompilieren"
+"shader_editor.new" = "Neuer Shader"
+"shader_editor.open" = "Öffnen"
+"shader_editor.save" = "Speichern"
+"shader_editor.unsaved" = "ungespeichert"
+"shader_editor.language" = "Sprache"
+"shader_editor.no_shader" = "Kein Shader kompiliert"
+"shader_editor.error" = "Kompilierungsfehler"
+"shader_editor.warnings" = "Warnungen"
+
 # ─── Shader-Vorschau ──────────────────────────────────────────────────────────
 "shader_preview.compile" = "Kompilieren"
 "shader_preview.error" = "Kompilierungsfehler"
@@ -708,6 +723,16 @@ version = "1.0"
 "shader_preview.vertex" = "Vertex"
 "shader_preview.fragment" = "Fragment"
 "shader_preview.compute" = "Compute"
+"shader_preview.no_compiled" = "Kein Shader kompiliert"
+
+# ─── Shader-Eigenschaften ────────────────────────────────────────────────────
+"shader_props.title" = "Shader-Eigenschaften"
+"shader_props.parameters" = "Parameter"
+"shader_props.no_params" = "Keine Parameter definiert"
+"shader_props.add_param" = "Parameter hinzufügen"
+"shader_props.type" = "Typ"
+"shader_props.value" = "Wert"
+"shader_props.description" = "Beschreibung"
 
 # ─── Skriptvariablen ──────────────────────────────────────────────────────────
 "script_vars.no_selection" = "Kein Skript ausgewählt"

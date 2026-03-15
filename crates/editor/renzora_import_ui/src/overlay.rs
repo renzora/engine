@@ -18,6 +18,14 @@ pub enum ImportProgress {
     Error(String),
 }
 
+/// Per-file import result for the output log.
+#[derive(Debug, Clone)]
+pub struct ImportLogEntry {
+    pub file_name: String,
+    pub success: bool,
+    pub message: String,
+}
+
 /// Resource holding the import overlay state.
 #[derive(Resource)]
 pub struct ImportOverlayState {
@@ -26,6 +34,8 @@ pub struct ImportOverlayState {
     pub target_directory: String,
     pub settings: ImportSettings,
     pub progress: ImportProgress,
+    /// Per-file import results shown in the output log.
+    pub log_entries: Vec<ImportLogEntry>,
 }
 
 impl Default for ImportOverlayState {
@@ -36,6 +46,7 @@ impl Default for ImportOverlayState {
             target_directory: "models".to_string(),
             settings: ImportSettings::default(),
             progress: ImportProgress::Idle,
+            log_entries: Vec::new(),
         }
     }
 }
@@ -382,7 +393,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     }
                 }
 
-                let (progress, can_import) = {
+                let (progress, can_import, log_entries) = {
                     let state = world.resource::<ImportOverlayState>();
                     let progress = state.progress.clone();
                     let can = !state.pending_files.is_empty()
@@ -390,7 +401,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                             progress,
                             ImportProgress::Idle | ImportProgress::Done(_) | ImportProgress::Error(_)
                         );
-                    (progress, can)
+                    (progress, can, state.log_entries.clone())
                 };
 
                 ui.add_space(16.0);
@@ -427,6 +438,54 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                                 .color(error_color),
                         );
                     }
+                }
+
+                // --- Output log ---
+                if !log_entries.is_empty() {
+                    ui.add_space(8.0);
+                    section_label(ui, regular::LIST_BULLETS, "Output", text_primary);
+                    ui.add_space(4.0);
+
+                    let log_frame = egui::Frame::new()
+                        .fill(surface_mid)
+                        .stroke(egui::Stroke::new(1.0, border_color))
+                        .corner_radius(4.0)
+                        .inner_margin(egui::Margin::same(8));
+
+                    log_frame.show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        egui::ScrollArea::vertical()
+                            .max_height(120.0)
+                            .show(ui, |ui| {
+                                for entry in &log_entries {
+                                    ui.horizontal(|ui| {
+                                        if entry.success {
+                                            ui.label(
+                                                egui::RichText::new(regular::CHECK_CIRCLE)
+                                                    .size(11.0)
+                                                    .color(success_color),
+                                            );
+                                        } else {
+                                            ui.label(
+                                                egui::RichText::new(regular::WARNING)
+                                                    .size(11.0)
+                                                    .color(error_color),
+                                            );
+                                        }
+                                        ui.label(
+                                            egui::RichText::new(&entry.file_name)
+                                                .size(11.0)
+                                                .color(text_primary),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(&entry.message)
+                                                .size(11.0)
+                                                .color(if entry.success { text_secondary } else { error_color }),
+                                        );
+                                    });
+                                }
+                            });
+                    });
                 }
 
                 ui.add_space(8.0);
@@ -482,6 +541,7 @@ fn close_overlay(world: &mut World) {
     state.visible = false;
     state.pending_files.clear();
     state.progress = ImportProgress::Idle;
+    state.log_entries.clear();
 }
 
 fn run_import(world: &mut World) {
@@ -493,23 +553,36 @@ fn run_import(world: &mut World) {
 
     let total = files.len();
 
+    info!("[import] Starting import of {} file(s) to assets/{}", total, target_dir);
+
     // Ensure destination directory exists
     let dest = project.path.join("assets").join(&target_dir);
     if let Err(e) = std::fs::create_dir_all(&dest) {
+        let msg = format!("Failed to create directory: {}", e);
+        error!("[import] {}", msg);
         world.resource_mut::<ImportOverlayState>().progress =
-            ImportProgress::Error(format!("Failed to create directory: {}", e));
+            ImportProgress::Error(msg);
         return;
     }
 
     let mut imported = 0;
     let mut errors = Vec::new();
     let mut all_warnings = Vec::new();
+    let mut log_entries = Vec::new();
 
     for (i, source_path) in files.iter().enumerate() {
+        let file_name = source_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
         world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Converting {
             current: i + 1,
             total,
         };
+
+        info!("[import] [{}/{}] Converting {}", i + 1, total, file_name);
 
         match renzora_import::convert_to_glb(source_path, &settings) {
             Ok(result) => {
@@ -520,31 +593,91 @@ fn run_import(world: &mut World) {
                     .unwrap_or("model");
                 let output_path = dest.join(format!("{}.glb", stem));
 
+                let size_kb = result.glb_bytes.len() as f64 / 1024.0;
+                let warn_count = result.warnings.len();
+
                 match std::fs::write(&output_path, &result.glb_bytes) {
                     Ok(()) => {
                         imported += 1;
+                        let msg = if warn_count > 0 {
+                            format!("{:.1} KB ({} warnings)", size_kb, warn_count)
+                        } else {
+                            format!("{:.1} KB", size_kb)
+                        };
                         info!(
-                            "Imported {} → {}",
+                            "[import] {} → {} ({})",
                             source_path.display(),
-                            output_path.display()
+                            output_path.display(),
+                            msg,
                         );
+                        log_entries.push(ImportLogEntry {
+                            file_name: file_name.clone(),
+                            success: true,
+                            message: msg,
+                        });
+
+                        // Extract animations from the GLB into .anim files
+                        let anim_dir = dest.join("animations");
+                        match renzora_import::extract_animations_from_glb(
+                            &result.glb_bytes,
+                            &anim_dir,
+                        ) {
+                            Ok(anim_result) => {
+                                for anim_path in &anim_result.written_files {
+                                    info!("[import] Extracted animation: {}", anim_path);
+                                    log_entries.push(ImportLogEntry {
+                                        file_name: std::path::Path::new(anim_path)
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("animation")
+                                            .to_string(),
+                                        success: true,
+                                        message: "animation extracted".to_string(),
+                                    });
+                                }
+                                for w in &anim_result.warnings {
+                                    warn!("[import] Animation warning: {}", w);
+                                    all_warnings.push(w.clone());
+                                }
+                            }
+                            Err(e) => {
+                                warn!("[import] Animation extraction failed: {}", e);
+                                all_warnings.push(format!("animation extraction: {}", e));
+                            }
+                        }
                     }
                     Err(e) => {
-                        errors.push(format!("{}: write failed: {}", stem, e));
+                        let msg = format!("write failed: {}", e);
+                        error!("[import] {}: {}", file_name, msg);
+                        errors.push(format!("{}: {}", stem, msg));
+                        log_entries.push(ImportLogEntry {
+                            file_name: file_name.clone(),
+                            success: false,
+                            message: msg,
+                        });
                     }
                 }
 
+                for w in &result.warnings {
+                    warn!("[import] {}: {}", file_name, w);
+                }
                 all_warnings.extend(result.warnings);
             }
             Err(e) => {
-                let name = source_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown");
-                errors.push(format!("{}: {}", name, e));
+                let msg = format!("{}", e);
+                error!("[import] {}: {}", file_name, msg);
+                errors.push(format!("{}: {}", file_name, msg));
+                log_entries.push(ImportLogEntry {
+                    file_name: file_name.clone(),
+                    success: false,
+                    message: msg,
+                });
             }
         }
     }
+
+    // Store log entries
+    world.resource_mut::<ImportOverlayState>().log_entries = log_entries;
 
     // Set final status
     if errors.is_empty() {
@@ -553,21 +686,23 @@ fn run_import(world: &mut World) {
         } else {
             format!(" ({} warnings)", all_warnings.len())
         };
-        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Done(format!(
+        let msg = format!(
             "Imported {} file{} to assets/{}{}",
             imported,
             if imported == 1 { "" } else { "s" },
             target_dir,
             warn_suffix,
-        ));
+        );
+        info!("[import] {}", msg);
+        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Done(msg);
         // Clear the file list on success
         world.resource_mut::<ImportOverlayState>().pending_files.clear();
     } else {
-        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Error(format!(
-            "Imported {}/{} — errors: {}",
-            imported,
-            total,
-            errors.join("; ")
-        ));
+        let msg = format!(
+            "Imported {}/{} — {} error(s)",
+            imported, total, errors.len()
+        );
+        error!("[import] {}", msg);
+        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Error(msg);
     }
 }

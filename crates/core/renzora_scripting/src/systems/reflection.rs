@@ -175,6 +175,10 @@ fn apply_value_to_reflect(
                 *current = *v as u32;
                 return true;
             }
+            if let Some(current) = field.try_downcast_mut::<usize>() {
+                *current = *v as usize;
+                return true;
+            }
             if let Some(current) = field.try_downcast_mut::<f32>() {
                 *current = *v as f32;
                 return true;
@@ -203,6 +207,10 @@ fn apply_value_to_reflect(
             false
         }
         PropertyValue::Color(v) => {
+            if let Some(current) = field.try_downcast_mut::<Color>() {
+                *current = Color::srgba(v[0], v[1], v[2], v[3]);
+                return true;
+            }
             if let Some(current) = field.try_downcast_mut::<Vec4>() {
                 *current = Vec4::new(v[0], v[1], v[2], v[3]);
                 return true;
@@ -280,6 +288,9 @@ fn read_value_from_reflect(field: &dyn bevy::reflect::PartialReflect) -> Option<
     if let Some(v) = field.try_downcast_ref::<u32>() {
         return Some(PropertyValue::Int(*v as i64));
     }
+    if let Some(v) = field.try_downcast_ref::<usize>() {
+        return Some(PropertyValue::Int(*v as i64));
+    }
     if let Some(v) = field.try_downcast_ref::<bool>() {
         return Some(PropertyValue::Bool(*v));
     }
@@ -291,6 +302,10 @@ fn read_value_from_reflect(field: &dyn bevy::reflect::PartialReflect) -> Option<
     }
     if let Some(v) = field.try_downcast_ref::<Vec4>() {
         return Some(PropertyValue::Color([v.x, v.y, v.z, v.w]));
+    }
+    if let Some(v) = field.try_downcast_ref::<Color>() {
+        let c = v.to_srgba();
+        return Some(PropertyValue::Color([c.red, c.green, c.blue, c.alpha]));
     }
     None
 }

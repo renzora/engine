@@ -348,7 +348,9 @@ version = "1.0"
 "common.preview" = "プレビュー"
 
 # ─── パネルタイトル (不足) ────────────────────────────────────────────────────
+"panel.shader_editor" = "シェーダーエディター"
 "panel.shader_preview" = "シェーダープレビュー"
+"panel.shader_properties" = "シェーダープロパティ"
 "panel.history" = "履歴"
 "panel.material_graph" = "マテリアルグラフ"
 "panel.node_library" = "ノードライブラリ"
@@ -705,6 +707,19 @@ version = "1.0"
 "mat_preview.plane" = "プレーン"
 "mat_preview.rotate" = "自動回転"
 
+# ─── シェーダーエディター ─────────────────────────────────────────────────────
+"shader_editor.title" = "シェーダーエディター"
+"shader_editor.compile" = "コンパイル"
+"shader_editor.auto_compile" = "自動コンパイル"
+"shader_editor.new" = "新規シェーダー"
+"shader_editor.open" = "開く"
+"shader_editor.save" = "保存"
+"shader_editor.unsaved" = "未保存"
+"shader_editor.language" = "言語"
+"shader_editor.no_shader" = "コンパイル済みシェーダーなし"
+"shader_editor.error" = "コンパイルエラー"
+"shader_editor.warnings" = "警告"
+
 # ─── シェーダープレビュー ─────────────────────────────────────────────────────
 "shader_preview.compile" = "コンパイル"
 "shader_preview.error" = "コンパイルエラー"
@@ -712,6 +727,16 @@ version = "1.0"
 "shader_preview.vertex" = "頂点"
 "shader_preview.fragment" = "フラグメント"
 "shader_preview.compute" = "コンピュート"
+"shader_preview.no_compiled" = "コンパイル済みシェーダーなし"
+
+# ─── シェーダープロパティ ─────────────────────────────────────────────────────
+"shader_props.title" = "シェーダープロパティ"
+"shader_props.parameters" = "パラメーター"
+"shader_props.no_params" = "パラメーター未定義"
+"shader_props.add_param" = "パラメーター追加"
+"shader_props.type" = "タイプ"
+"shader_props.value" = "値"
+"shader_props.description" = "説明"
 
 # ─── スクリプト変数 ───────────────────────────────────────────────────────────
 "script_vars.no_selection" = "スクリプトが選択されていません"

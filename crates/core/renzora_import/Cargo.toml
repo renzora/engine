@@ -7,6 +7,7 @@ description = "3D model import and GLB conversion for Renzora"
 [dependencies]
 # GLB output
 gltf-json = "1.4"
+gltf = "1.4"
 
 # Format parsers (pure Rust)
 tobj = "4"
@@ -16,6 +17,9 @@ ply-rs = "0.1"
 # FBX (pure Rust)
 fbxcel-dom = "0.0.10"
 fbxcel = "0.9"
+
+# Animation extraction
+renzora_animation = { path = "../renzora_animation" }
 
 # Utility
 thiserror = "2"

@@ -274,6 +274,30 @@ fn register_api(engine: &mut Engine) {
     engine.register_fn("stop_animation", || {
         push_command(ScriptCommand::StopAnimation { entity_id: None });
     });
+    engine.register_fn("pause_animation", || {
+        push_command(ScriptCommand::PauseAnimation { entity_id: None });
+    });
+    engine.register_fn("resume_animation", || {
+        push_command(ScriptCommand::ResumeAnimation { entity_id: None });
+    });
+    engine.register_fn("set_animation_speed", |speed: f64| {
+        push_command(ScriptCommand::SetAnimationSpeed { entity_id: None, speed: speed as f32 });
+    });
+    engine.register_fn("crossfade_animation", |name: ImmutableString, duration: f64| {
+        push_command(ScriptCommand::CrossfadeAnimation { entity_id: None, name: name.to_string(), duration: duration as f32, looping: true });
+    });
+    engine.register_fn("set_anim_param", |name: ImmutableString, value: f64| {
+        push_command(ScriptCommand::SetAnimationParam { entity_id: None, name: name.to_string(), value: value as f32 });
+    });
+    engine.register_fn("set_anim_bool", |name: ImmutableString, value: bool| {
+        push_command(ScriptCommand::SetAnimationBoolParam { entity_id: None, name: name.to_string(), value });
+    });
+    engine.register_fn("trigger_anim", |name: ImmutableString| {
+        push_command(ScriptCommand::TriggerAnimation { entity_id: None, name: name.to_string() });
+    });
+    engine.register_fn("set_layer_weight", |layer_name: ImmutableString, weight: f64| {
+        push_command(ScriptCommand::SetAnimationLayerWeight { entity_id: None, layer_name: layer_name.to_string(), weight: weight as f32 });
+    });
 
     // Camera
     engine.register_fn("screen_shake", |intensity: f64, duration: f64| {

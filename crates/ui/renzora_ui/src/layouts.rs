@@ -276,20 +276,20 @@ pub fn layout_particles_advanced() -> DockTree {
     )
 }
 
-/// Shaders: Assets+Console | CodeEditor | ShaderPreview
+/// Shaders: ShaderEditor+CompilerLog | Preview+Properties
 fn layout_shaders() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
-            DockTree::leaf("assets"),
-            DockTree::leaf("console"),
-            0.6,
+            DockTree::leaf("shader_editor"),
+            DockTree::leaf("shader_compiler_log"),
+            0.5,
         ),
-        DockTree::horizontal(
-            DockTree::leaf("code_editor"),
+        DockTree::vertical(
             DockTree::leaf("shader_preview"),
-            0.6,
+            DockTree::leaf("shader_properties"),
+            0.5,
         ),
-        0.18,
+        0.55,
     )
 }
 

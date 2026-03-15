@@ -86,6 +86,14 @@ impl EditorPanel for HierarchyPanel {
 
         let mut state = self.state.write().unwrap();
 
+        // Check for CreateNode shortcut (Ctrl+A)
+        if world.get_resource::<renzora_core::CreateNodeRequested>().is_some() {
+            state.show_add_overlay = true;
+            state.add_search.clear();
+            // Consume the resource via deferred command
+            commands.push(|w: &mut World| { w.remove_resource::<renzora_core::CreateNodeRequested>(); });
+        }
+
         // Search bar + "Add Entity" button
         ui.add_space(4.0);
         ui.horizontal(|ui| {

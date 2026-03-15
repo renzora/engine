@@ -19,9 +19,10 @@ use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_runtime::ViewportRenderTarget;
 use renzora_theme::ThemeManager;
 
@@ -49,6 +50,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<ViewportSettings>()
             .init_resource::<CameraOrbitSnapshot>()
+            .init_resource::<renzora_core::InputFocusState>()
             .init_resource::<renzora_runtime::PlayModeState>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastRenderState>()
@@ -58,6 +60,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .add_systems(Update, (
+                update_input_focus,
                 handle_viewport_resize,
                 render_systems::update_render_toggles,
                 render_systems::update_shadow_settings,
@@ -65,6 +68,7 @@ impl Plugin for ViewportPlugin {
                 play_mode::handle_play_mode_transitions,
                 effect_routing::update_effect_routing,
                 model_drop::spawn_loaded_gltfs,
+                model_drop::auto_discover_animations,
                 model_drop::align_models_to_ground,
                 shape_drop::shape_drag_ground_tracking
                     .before(shape_drop::shape_drag_raycast_system),
@@ -72,6 +76,8 @@ impl Plugin for ViewportPlugin {
                     .before(shape_drop::update_shape_drag_preview),
                 shape_drop::update_shape_drag_preview,
                 shape_drop::handle_shape_spawn,
+                handle_view_shortcuts,
+                handle_play_shortcuts,
             ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
@@ -415,6 +421,70 @@ impl EditorPanel for CameraPreviewPanel {
 
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Bottom
+    }
+}
+
+// ── Input focus tracking ─────────────────────────────────────────────────────
+
+/// Sync egui keyboard focus state so keyboard shortcut systems can skip
+/// when the user is typing in a text field.
+fn update_input_focus(
+    mut ctx: EguiContexts,
+    mut input_focus: ResMut<renzora_core::InputFocusState>,
+) {
+    input_focus.egui_wants_keyboard = ctx
+        .ctx_mut()
+        .map_or(false, |c| c.wants_keyboard_input());
+}
+
+// ── View toggle shortcuts ────────────────────────────────────────────────────
+
+fn handle_view_shortcuts(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<renzora_core::InputFocusState>,
+    mut settings: ResMut<ViewportSettings>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+
+    if keybindings.just_pressed(EditorAction::ToggleWireframe, &keyboard) {
+        settings.render_toggles.wireframe = !settings.render_toggles.wireframe;
+    }
+    if keybindings.just_pressed(EditorAction::ToggleLighting, &keyboard) {
+        settings.render_toggles.lighting = !settings.render_toggles.lighting;
+    }
+    if keybindings.just_pressed(EditorAction::ToggleGrid, &keyboard) {
+        settings.show_grid = !settings.show_grid;
+    }
+}
+
+// ── Play mode shortcuts ──────────────────────────────────────────────────────
+
+fn handle_play_shortcuts(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<renzora_core::InputFocusState>,
+    mut play_mode: ResMut<renzora_runtime::PlayModeState>,
+) {
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+
+    if keybindings.just_pressed(EditorAction::PlayStop, &keyboard) {
+        if play_mode.is_in_play_mode() || play_mode.is_scripts_only() {
+            play_mode.request_stop = true;
+        } else {
+            play_mode.request_play = true;
+        }
+    }
+    if keybindings.just_pressed(EditorAction::PlayScriptsOnly, &keyboard) {
+        if play_mode.is_in_play_mode() || play_mode.is_scripts_only() {
+            play_mode.request_stop = true;
+        } else {
+            play_mode.request_scripts_only = true;
+        }
     }
 }
 

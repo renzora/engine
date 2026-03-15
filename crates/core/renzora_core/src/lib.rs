@@ -374,6 +374,23 @@ pub struct ImportTargetDir(pub String);
 #[derive(Resource)]
 pub struct TutorialRequested;
 
+/// One-shot: request to toggle the settings overlay.
+#[derive(Resource)]
+pub struct ToggleSettingsRequested;
+
+/// One-shot: request to open the Create Node overlay in the hierarchy panel.
+#[derive(Resource)]
+pub struct CreateNodeRequested;
+
+/// Tracks whether a UI text input has keyboard focus.
+///
+/// When `true`, keyboard shortcuts should not fire so typing is not interrupted.
+/// Updated each frame by the viewport/editor systems from egui state.
+#[derive(Resource, Default)]
+pub struct InputFocusState {
+    pub egui_wants_keyboard: bool,
+}
+
 /// Holds the optional render target for the game camera.
 ///
 /// - `Some(handle)` — camera renders to this image (editor mode).

@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular::{
     PLUS, CROSSHAIR, MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
-    FLOW_ARROW, CUBE, LIGHTNING,
+    FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
 };
 
 use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
@@ -49,6 +49,9 @@ impl EditorPanel for BlueprintGraphPanel {
             return;
         };
         let selection = world.get_resource::<EditorSelection>();
+        let project_path = world
+            .get_resource::<renzora_core::CurrentProject>()
+            .map(|p| p.path.clone());
 
         let selected_entity = selection.and_then(|s| s.get());
 
@@ -91,7 +94,7 @@ impl EditorPanel for BlueprintGraphPanel {
         // ── Toolbar ──
         let toolbar_modified = GRAPH_EDITOR_STATE.with(|cell| {
             let mut gs = cell.borrow_mut();
-            render_toolbar(ui, &mut graph, &mut gs, cmds, &entity_name, has_blueprint, entity, &theme)
+            render_toolbar(ui, &mut graph, &mut gs, cmds, &entity_name, has_blueprint, entity, &theme, &project_path)
         });
 
         ui.separator();
@@ -176,11 +179,12 @@ fn render_toolbar(
     ui: &mut egui::Ui,
     graph: &mut BlueprintGraph,
     state: &mut GraphEditorState,
-    _cmds: &EditorCommands,
+    cmds: &EditorCommands,
     entity_name: &str,
     has_blueprint: bool,
-    _entity: Entity,
+    entity: Entity,
     theme: &renzora_theme::Theme,
+    project_path: &Option<std::path::PathBuf>,
 ) -> bool {
     let mut modified = false;
     let text_color = theme.text.primary.to_color32();
@@ -304,8 +308,24 @@ fn render_toolbar(
             state.widget_state.zoom = (state.widget_state.zoom * 1.25).min(4.0);
         }
 
-        // ── Node count ──
+        // ── Node count + Apply ──
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // ── Apply (compile to Lua) ──
+            if project_path.is_some() {
+                let apply_btn = ui.add(egui::Button::new(
+                    RichText::new(format!("{EXPORT} Apply")).size(12.0).color(accent),
+                ));
+                if apply_btn.on_hover_text("Compile blueprint to Lua script and attach to entity").clicked() {
+                    let compiled_graph = graph.clone();
+                    let proj = project_path.clone().unwrap();
+                    let ent_name = entity_name.to_string();
+                    cmds.push(move |world: &mut World| {
+                        apply_blueprint_to_lua(world, entity, &compiled_graph, &proj, &ent_name);
+                    });
+                }
+                ui.separator();
+            }
+
             let node_count = graph.nodes.len();
             let conn_count = graph.connections.len();
             ui.label(
@@ -317,4 +337,66 @@ fn render_toolbar(
     });
 
     modified
+}
+
+/// Compile a blueprint graph to Lua, save it to the project scripts folder,
+/// and attach a ScriptComponent pointing to the generated file.
+fn apply_blueprint_to_lua(
+    world: &mut World,
+    entity: Entity,
+    graph: &BlueprintGraph,
+    project_path: &std::path::Path,
+    entity_name: &str,
+) {
+    use renzora_scripting::ScriptComponent;
+
+    // Compile
+    let lua_source = renzora_blueprint::compiler::compile_to_lua(graph);
+
+    // Sanitize entity name for filename
+    let safe_name: String = entity_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    let file_name = format!("bp_{}.lua", safe_name.to_lowercase());
+
+    // Ensure scripts directory exists
+    let scripts_dir = project_path.join("scripts");
+    if let Err(e) = std::fs::create_dir_all(&scripts_dir) {
+        warn!("Failed to create scripts dir: {}", e);
+        return;
+    }
+
+    // Write the file
+    let file_path = scripts_dir.join(&file_name);
+    if let Err(e) = std::fs::write(&file_path, &lua_source) {
+        warn!("Failed to write compiled blueprint: {}", e);
+        return;
+    }
+
+    info!(
+        "Blueprint compiled to Lua: {} ({} bytes)",
+        file_path.display(),
+        lua_source.len()
+    );
+
+    // Attach or update ScriptComponent
+    let script_rel_path = std::path::PathBuf::from(format!("scripts/{}", file_name));
+    if let Some(mut sc) = world.get_mut::<ScriptComponent>(entity) {
+        // Check if this blueprint script is already attached
+        let existing = sc.scripts.iter().position(|e| {
+            e.script_path.as_ref().map(|p| p.ends_with(&file_name)).unwrap_or(false)
+        });
+        if let Some(idx) = existing {
+            // Update path (forces reload) and reset runtime state
+            sc.scripts[idx].script_path = Some(script_rel_path);
+            sc.scripts[idx].runtime_state = Default::default();
+        } else {
+            sc.add_file_script(script_rel_path);
+        }
+    } else {
+        world
+            .entity_mut(entity)
+            .insert(ScriptComponent::from_file(script_rel_path));
+    }
 }

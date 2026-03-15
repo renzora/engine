@@ -94,6 +94,11 @@ pub enum ScriptCommand {
     PauseAnimation { entity_id: Option<u64> },
     ResumeAnimation { entity_id: Option<u64> },
     SetAnimationSpeed { entity_id: Option<u64>, speed: f32 },
+    CrossfadeAnimation { entity_id: Option<u64>, name: String, duration: f32, looping: bool },
+    SetAnimationParam { entity_id: Option<u64>, name: String, value: f32 },
+    SetAnimationBoolParam { entity_id: Option<u64>, name: String, value: bool },
+    TriggerAnimation { entity_id: Option<u64>, name: String },
+    SetAnimationLayerWeight { entity_id: Option<u64>, layer_name: String, weight: f32 },
 
     // === Sprite Animation ===
     PlaySpriteAnimation { entity_id: Option<u64>, name: String, looping: bool },

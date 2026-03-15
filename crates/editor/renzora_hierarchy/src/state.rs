@@ -267,6 +267,14 @@ fn entity_icon(world: &World, entity: Entity) -> (&'static str, Color32) {
     if world.get::<Mesh3d>(entity).is_some() {
         return (regular::CUBE, Color32::from_rgb(255, 170, 100));
     }
+    // UI Canvas
+    if world.get::<renzora_game_ui::UiCanvas>(entity).is_some() {
+        return (regular::FRAME_CORNERS, Color32::from_rgb(130, 200, 255));
+    }
+    // UI Widget — use the widget-type-specific icon
+    if let Some(widget) = world.get::<renzora_game_ui::UiWidget>(entity) {
+        return (widget.widget_type.icon(), Color32::from_rgb(130, 200, 255));
+    }
     (regular::CIRCLE, Color32::from_rgb(150, 150, 165))
 }
 
