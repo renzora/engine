@@ -391,6 +391,29 @@ pub struct InputFocusState {
     pub egui_wants_keyboard: bool,
 }
 
+/// HUD data for the modal transform overlay (written by gizmo crate, read by viewport).
+///
+/// When `active` is true the viewport panel draws the scale circle / axis info.
+#[derive(Resource, Default)]
+pub struct ModalTransformHud {
+    /// Whether modal transform is active.
+    pub active: bool,
+    /// Mode name ("Grab", "Rotate", "Scale").
+    pub mode: &'static str,
+    /// Whether this is Scale mode (draws circle + line overlay).
+    pub is_scale: bool,
+    /// Screen-space pivot position (entity center projected).
+    pub pivot: Option<[f32; 2]>,
+    /// Current cursor screen position.
+    pub cursor: [f32; 2],
+    /// Axis constraint name ("", "X", "Y", "Z", "YZ", "XZ", "XY").
+    pub axis_name: &'static str,
+    /// Axis constraint color [r, g, b, a] in 0..=255.
+    pub axis_color: [u8; 4],
+    /// Numeric input display string.
+    pub numeric_display: String,
+}
+
 /// Holds the optional render target for the game camera.
 ///
 /// - `Some(handle)` — camera renders to this image (editor mode).

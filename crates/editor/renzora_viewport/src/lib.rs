@@ -281,6 +281,9 @@ impl EditorPanel for ViewportPanel {
         // Check for shape library drops on the viewport
         shape_drop::check_viewport_shape_drop(ui, world, rect);
 
+        // Overlay: modal transform HUD (scale circle, mode text, axis info)
+        render_modal_transform_hud(ui.ctx(), world, rect);
+
         // Overlay: vertical tool bar (gizmo modes, terrain tools, play button)
         toolbar::render_tool_overlay(ui.ctx(), world, rect);
 
@@ -435,6 +438,110 @@ fn update_input_focus(
     input_focus.egui_wants_keyboard = ctx
         .ctx_mut()
         .map_or(false, |c| c.wants_keyboard_input());
+}
+
+// ── Modal transform HUD overlay ──────────────────────────────────────────────
+
+fn render_modal_transform_hud(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
+    let Some(hud) = world.get_resource::<renzora_core::ModalTransformHud>() else { return };
+    if !hud.active {
+        return;
+    }
+
+    let axis_color = egui::Color32::from_rgba_unmultiplied(
+        hud.axis_color[0], hud.axis_color[1], hud.axis_color[2], hud.axis_color[3],
+    );
+
+    // Scale mode: draw circle at pivot + line to cursor + dots
+    if hud.is_scale {
+        if let Some(pivot) = hud.pivot {
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("modal_scale_overlay"),
+            ));
+
+            let pivot_pos = egui::Pos2::new(pivot[0], pivot[1]);
+            let cursor_pos = egui::Pos2::new(hud.cursor[0], hud.cursor[1]);
+
+            const CIRCLE_RADIUS: f32 = 30.0;
+            painter.circle_stroke(pivot_pos, CIRCLE_RADIUS, egui::Stroke::new(1.5, axis_color));
+            painter.line_segment([pivot_pos, cursor_pos], egui::Stroke::new(1.5, axis_color));
+            painter.circle_filled(pivot_pos, 3.0, axis_color);
+            painter.circle_filled(cursor_pos, 3.0, axis_color);
+        }
+    }
+
+    // HUD bar at bottom of viewport
+    let hud_height = 60.0;
+    let hud_width = 300.0;
+    let hud_rect = egui::Rect::from_min_size(
+        egui::Pos2::new(
+            viewport_rect.center().x - hud_width / 2.0,
+            viewport_rect.max.y - hud_height - 10.0,
+        ),
+        egui::Vec2::new(hud_width, hud_height),
+    );
+
+    egui::Area::new(egui::Id::new("modal_transform_hud"))
+        .fixed_pos(hud_rect.min)
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+
+            // Background
+            painter.rect_filled(
+                hud_rect,
+                8.0,
+                egui::Color32::from_rgba_unmultiplied(30, 30, 35, 230),
+            );
+            painter.rect_stroke(
+                hud_rect,
+                8.0,
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70)),
+                egui::StrokeKind::Outside,
+            );
+
+            // Mode text
+            painter.text(
+                egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 16.0),
+                egui::Align2::CENTER_CENTER,
+                hud.mode,
+                egui::FontId::proportional(16.0),
+                egui::Color32::WHITE,
+            );
+
+            // Axis constraint
+            if !hud.axis_name.is_empty() {
+                painter.text(
+                    egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 32.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("Axis: {}", hud.axis_name),
+                    egui::FontId::proportional(12.0),
+                    axis_color,
+                );
+            }
+
+            // Numeric input
+            if !hud.numeric_display.is_empty() {
+                painter.text(
+                    egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 44.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("Value: {}", hud.numeric_display),
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::from_rgb(100, 200, 255),
+                );
+            }
+
+            // Help text
+            painter.text(
+                egui::Pos2::new(hud_rect.center().x, hud_rect.max.y - 8.0),
+                egui::Align2::CENTER_CENTER,
+                "X/Y/Z axis | Enter confirm | Esc cancel",
+                egui::FontId::proportional(10.0),
+                egui::Color32::from_rgb(120, 120, 130),
+            );
+        });
 }
 
 // ── View toggle shortcuts ────────────────────────────────────────────────────

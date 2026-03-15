@@ -778,3 +778,29 @@ fn axis_scale_vec(constraint: AxisConstraint, factor: f32) -> Vec3 {
         AxisConstraint::PlaneXY => Vec3::new(factor, factor, 1.0),
     }
 }
+
+/// Sync modal transform state into the shared HUD resource so the viewport can render overlays.
+pub fn sync_modal_hud(
+    modal: Res<ModalTransformState>,
+    mut hud: ResMut<renzora_core::ModalTransformHud>,
+) {
+    if !modal.active {
+        hud.active = false;
+        return;
+    }
+    hud.active = true;
+    hud.mode = modal.mode.map_or("", |m| m.display_name());
+    hud.is_scale = matches!(modal.mode, Some(ModalTransformMode::Scale));
+    hud.pivot = modal.pivot_screen_pos.map(|v| [v.x, v.y]);
+    hud.cursor = [modal.last_cursor_pos.x, modal.last_cursor_pos.y];
+    hud.axis_name = modal.axis_constraint.display_name();
+    let c = modal.axis_constraint.color();
+    let rgba = c.to_srgba();
+    hud.axis_color = [
+        (rgba.red * 255.0) as u8,
+        (rgba.green * 255.0) as u8,
+        (rgba.blue * 255.0) as u8,
+        (rgba.alpha * 255.0) as u8,
+    ];
+    hud.numeric_display = modal.numeric_input.display();
+}

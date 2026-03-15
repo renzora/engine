@@ -190,6 +190,7 @@ impl Plugin for GizmoPlugin {
             .init_resource::<GizmoState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
             .init_resource::<modal_transform::ModalTransformState>()
+            .init_resource::<renzora_core::ModalTransformHud>()
             .add_systems(PostStartup, setup_gizmo_meshes)
             .add_systems(
                 Update,
@@ -201,6 +202,7 @@ impl Plugin for GizmoPlugin {
                     modal_transform::modal_transform_keyboard_system,
                     modal_transform::modal_transform_apply_system,
                     modal_transform::modal_transform_overlay_system,
+                    modal_transform::sync_modal_hud,
                     update_gizmo_transforms,
                     update_gizmo_materials,
                     gizmo_hover_detect,
