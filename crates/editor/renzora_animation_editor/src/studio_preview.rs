@@ -25,6 +25,8 @@ pub const STUDIO_PREVIEW_LAYER: usize = 10;
 pub struct StudioPreviewImage {
     pub handle: Handle<Image>,
     pub texture_id: Option<TextureId>,
+    pub current_size: (u32, u32),
+    pub requested_size: (u32, u32),
 }
 
 impl Default for StudioPreviewImage {
@@ -32,6 +34,8 @@ impl Default for StudioPreviewImage {
         Self {
             handle: Handle::default(),
             texture_id: None,
+            current_size: (512, 512),
+            requested_size: (512, 512),
         }
     }
 }
@@ -59,6 +63,8 @@ impl Default for StudioPreviewOrbit {
 #[derive(Resource, Default)]
 pub struct StudioPreviewTracker {
     pub source_entity: Option<Entity>,
+    /// Whether the orbit has been auto-fitted to the model bounds.
+    pub auto_fitted: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +113,8 @@ pub fn setup_studio_preview(
     commands.insert_resource(StudioPreviewImage {
         handle: image_handle.clone(),
         texture_id,
+        current_size: (512, 512),
+        requested_size: (512, 512),
     });
 
     // Camera
@@ -114,7 +122,7 @@ pub fn setup_studio_preview(
         Camera3d::default(),
         Msaa::Off,
         Camera {
-            clear_color: ClearColorConfig::Custom(Color::srgba(0.06, 0.06, 0.08, 1.0)),
+            clear_color: ClearColorConfig::Custom(Color::srgba(0.15, 0.05, 0.2, 1.0)),
             order: -5,
             is_active: true,
             ..default()
@@ -163,6 +171,34 @@ pub fn setup_studio_preview(
 }
 
 // ---------------------------------------------------------------------------
+// Resize render target to match panel size
+// ---------------------------------------------------------------------------
+
+pub fn resize_preview(
+    mut preview: ResMut<StudioPreviewImage>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let (rw, rh) = preview.requested_size;
+    let (cw, ch) = preview.current_size;
+
+    if rw == cw && rh == ch {
+        return;
+    }
+
+    let w = rw.max(64).min(3840);
+    let h = rh.max(64).min(2160);
+
+    if let Some(image) = images.get_mut(&preview.handle) {
+        image.resize(Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        });
+        preview.current_size = (w, h);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Model sync — clone the selected entity's GLTF scene into the preview layer
 // ---------------------------------------------------------------------------
 
@@ -171,7 +207,6 @@ pub fn sync_preview_model(
     editor_state: Res<AnimationEditorState>,
     mut tracker: ResMut<StudioPreviewTracker>,
     asset_server: Res<AssetServer>,
-    gltf_assets: Res<Assets<Gltf>>,
     mesh_query: Query<&MeshInstanceData>,
     existing_preview: Query<Entity, With<StudioPreviewModel>>,
 ) {
@@ -182,6 +217,7 @@ pub fn sync_preview_model(
         return;
     }
     tracker.source_entity = selected;
+    tracker.auto_fitted = false;
 
     // Despawn old preview model
     for entity in existing_preview.iter() {
@@ -189,30 +225,28 @@ pub fn sync_preview_model(
     }
 
     // If nothing selected, done
-    let Some(source) = selected else { return };
+    let Some(source) = selected else {
+        info!("[studio_preview] No entity selected");
+        return;
+    };
 
     // Get the model path from the selected entity
-    let Ok(mesh_data) = mesh_query.get(source) else {
-        return;
-    };
-    let Some(ref model_path) = mesh_data.model_path else {
-        return;
-    };
-
-    // Load the GLTF and find its default scene
-    let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
-    let Some(gltf) = gltf_assets.get(&gltf_handle) else {
-        // Not loaded yet — clear tracker so we retry next frame
-        tracker.source_entity = None;
-        return;
+    let model_path = {
+        let Ok(mesh_data) = mesh_query.get(source) else {
+            warn!("[studio_preview] Selected entity {:?} has no MeshInstanceData", source);
+            return;
+        };
+        let Some(ref path) = mesh_data.model_path else {
+            warn!("[studio_preview] Selected entity {:?} has no model_path", source);
+            return;
+        };
+        path.clone()
     };
 
-    let scene = gltf
-        .default_scene
-        .clone()
-        .or_else(|| gltf.scenes.first().cloned());
-
-    let Some(scene_handle) = scene else { return };
+    // Load the default scene directly from the GLB file
+    let scene_path = format!("{}#Scene0", model_path);
+    info!("[studio_preview] Loading scene from '{}'", scene_path);
+    let scene_handle: Handle<Scene> = asset_server.load(&scene_path);
 
     // Spawn the preview model on the studio preview render layer
     let root = commands
@@ -274,6 +308,76 @@ pub fn propagate_preview_layer(
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-fit camera to model bounds
+// ---------------------------------------------------------------------------
+
+pub fn auto_fit_preview_camera(
+    mut tracker: ResMut<StudioPreviewTracker>,
+    mut orbit: ResMut<StudioPreviewOrbit>,
+    preview_roots: Query<Entity, With<StudioPreviewModel>>,
+    children_query: Query<&Children>,
+    aabb_query: Query<(&bevy::camera::primitives::Aabb, &GlobalTransform)>,
+) {
+    if tracker.auto_fitted {
+        return;
+    }
+
+    // Need a preview model to exist
+    let Some(root) = preview_roots.iter().next() else {
+        return;
+    };
+
+    // Walk all descendants and compute world-space bounding box
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+    let mut found_any = false;
+
+    let mut stack: Vec<Entity> = Vec::new();
+    if let Ok(children) = children_query.get(root) {
+        stack.extend(children.iter());
+    }
+
+    while let Some(child) = stack.pop() {
+        if let Ok((aabb, global_transform)) = aabb_query.get(child) {
+            let center = Vec3::from(aabb.center);
+            let half = Vec3::from(aabb.half_extents);
+
+            for sx in [-1.0f32, 1.0] {
+                for sy in [-1.0f32, 1.0] {
+                    for sz in [-1.0f32, 1.0] {
+                        let corner = center + half * Vec3::new(sx, sy, sz);
+                        let world_pos = global_transform.transform_point(corner);
+                        min = min.min(world_pos);
+                        max = max.max(world_pos);
+                        found_any = true;
+                    }
+                }
+            }
+        }
+        if let Ok(grandchildren) = children_query.get(child) {
+            stack.extend(grandchildren.iter());
+        }
+    }
+
+    if !found_any {
+        return; // Meshes haven't spawned yet, retry next frame
+    }
+
+    let center = (min + max) * 0.5;
+    let extents = max - min;
+    let radius = extents.length() * 0.5;
+
+    orbit.target = center;
+    orbit.distance = (radius * 2.5).max(1.0);
+    orbit.yaw = 0.5;
+    orbit.pitch = 0.2;
+
+    tracker.auto_fitted = true;
+    info!("[studio_preview] Auto-fitted camera: center={:?}, radius={:.2}, distance={:.2}",
+        center, radius, orbit.distance);
 }
 
 // ---------------------------------------------------------------------------

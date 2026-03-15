@@ -189,8 +189,10 @@ impl Plugin for AnimationEditorPlugin {
                 sync_selection,
                 sync_anim_editor_bridge,
                 preview::update_animation_preview,
+                studio_preview::resize_preview,
                 studio_preview::sync_preview_model,
                 studio_preview::propagate_preview_layer,
+                studio_preview::auto_fit_preview_camera,
                 studio_preview::update_studio_preview_camera,
             )
                 .chain()

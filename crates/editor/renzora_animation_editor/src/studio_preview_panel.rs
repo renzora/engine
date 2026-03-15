@@ -45,6 +45,22 @@ impl EditorPanel for StudioPreviewPanel {
 
         if let Some(texture_id) = texture_id {
             let available = ui.available_size();
+
+            // Request render target resize to match panel
+            let rw = (available.x as u32).max(64);
+            let rh = (available.y as u32).max(64);
+            if let Some(preview) = world.get_resource::<StudioPreviewImage>() {
+                if preview.requested_size != (rw, rh) {
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+                        cmds.push(move |world: &mut World| {
+                            if let Some(mut p) = world.get_resource_mut::<StudioPreviewImage>() {
+                                p.requested_size = (rw, rh);
+                            }
+                        });
+                    }
+                }
+            }
+
             let response = ui.add(egui::Image::new(egui::load::SizedTexture::new(
                 texture_id,
                 [available.x, available.y],
@@ -58,14 +74,28 @@ impl EditorPanel for StudioPreviewPanel {
 
                 if response.dragged_by(egui::PointerButton::Primary) {
                     let delta = response.drag_delta();
-                    new_yaw -= delta.x * 0.01;
-                    new_pitch = (new_pitch - delta.y * 0.01).clamp(-1.4, 1.4);
+                    new_yaw -= delta.x * 0.005;
+                    new_pitch = (new_pitch - delta.y * 0.005).clamp(-1.4, 1.4);
+                }
+
+                // Middle mouse drag to pan target
+                if response.dragged_by(egui::PointerButton::Middle) {
+                    let delta = response.drag_delta();
+                    let right = Vec3::new(new_yaw.cos(), 0.0, -new_yaw.sin());
+                    let up = Vec3::Y;
+                    let pan_speed = new_distance * 0.003;
+                    let new_target = orbit.target - right * delta.x * pan_speed + up * delta.y * pan_speed;
+                    if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                        cmds.push(move |world: &mut World| {
+                            world.resource_mut::<StudioPreviewOrbit>().target = new_target;
+                        });
+                    }
                 }
 
                 if response.hovered() {
                     let scroll = ui.input(|i| i.smooth_scroll_delta.y);
                     if scroll.abs() > 0.0 {
-                        new_distance = (new_distance - scroll * 0.01).clamp(0.5, 20.0);
+                        new_distance = (new_distance - scroll * 0.05).clamp(0.5, 20.0);
                     }
                 }
 
