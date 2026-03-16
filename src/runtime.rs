@@ -101,7 +101,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_ssr::SsrPlugin);
     app.add_plugins(renzora_auto_exposure::AutoExposurePlugin);
     app.add_plugins(renzora_oit::OitPlugin);
-    //app.add_plugins(renzora_gauges::GaugesPlugin);
+    app.add_plugins(renzora_gauges::GaugesPlugin);
     // app.add_plugins(renzora_forward_decal::DecalPlugin); // disabled: Bevy bindless bind group mismatch with ForwardDecalMaterial
 
     app

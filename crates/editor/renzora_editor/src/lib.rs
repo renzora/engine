@@ -130,6 +130,7 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 show_script_reload_toasts.run_if(in_state(SplashState::Editor)),
             )
+            .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
             .add_plugins(plugin_integration::PluginCorePlugin);
     }
 }
@@ -142,6 +143,17 @@ fn show_script_reload_toasts(
     let Some(events) = reload_events else { return };
     for name in &events.reloaded {
         toasts.success(format!("Reloaded {}", name));
+    }
+}
+
+/// When the editor state is entered, tell the ThemeManager about the project
+/// directory so it can discover custom `.toml` themes in `<project>/themes/`.
+fn wire_theme_project_path(
+    project: Option<Res<renzora_core::CurrentProject>>,
+    mut theme_manager: ResMut<ThemeManager>,
+) {
+    if let Some(project) = project {
+        theme_manager.set_project_path(&project.path);
     }
 }
 

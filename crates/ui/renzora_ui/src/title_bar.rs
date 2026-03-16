@@ -62,8 +62,13 @@ pub fn render_title_bar(
         .show(ctx, |ui| {
             let panel_rect = ui.available_rect_before_wrap();
 
+            // Reduce vertical padding so menu items center in the 28px bar
+            ui.style_mut().spacing.button_padding = Vec2::new(6.0, 2.0);
+            ui.add_space(4.0);
+
             egui::MenuBar::new().ui(ui, |ui| {
                 // --- Left: menus ---
+                ui.add_space(4.0);
                 ui.menu_button("File", |ui| {
                     if ui.button("New Project").clicked() {
                         action = TitleBarAction::NewProject;

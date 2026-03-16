@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    icon_button, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
+    search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
     HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
@@ -96,14 +96,23 @@ impl EditorPanel for HierarchyPanel {
 
         // Search bar + "Add Entity" button
         ui.add_space(4.0);
+        let row_height = ui.spacing().interact_size.y;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
+            let add_width = 50.0;
+            let spacing = ui.spacing().item_spacing.x;
+            let search_width = ui.available_width() - add_width - spacing - 8.0;
             ui.add(
                 egui::TextEdit::singleline(&mut state.search)
-                    .desired_width(ui.available_width() - 30.0)
+                    .desired_width(search_width)
                     .hint_text(format!("{} Search entities...", regular::MAGNIFYING_GLASS)),
             );
-            if icon_button(ui, regular::PLUS, "Add Entity", theme.semantic.accent.to_color32()) {
+            let btn = egui::Button::new(
+                egui::RichText::new(format!("{} Add", regular::PLUS))
+                    .color(theme.semantic.accent.to_color32())
+                    .size(11.0),
+            );
+            if ui.add_sized([add_width, row_height], btn).clicked() {
                 state.show_add_overlay = true;
                 state.add_search.clear();
             }
