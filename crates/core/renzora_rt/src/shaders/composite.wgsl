@@ -21,15 +21,30 @@
 
 var<push_constant> pc: RtPushConstants;
 
-/// Bilinear sample from a storage texture at fractional coordinates.
-fn bilinear_sample_rgba(tex: texture_storage_2d<rgba16float, read_write>, fcoord: vec2<f32>, tex_size: vec2<i32>) -> vec3<f32> {
+/// Bilinear sample from gi_output at fractional coordinates.
+fn bilinear_sample_gi(fcoord: vec2<f32>, tex_size: vec2<i32>) -> vec3<f32> {
     let base = vec2<i32>(floor(fcoord - 0.5));
     let frac = fcoord - 0.5 - vec2<f32>(base);
 
-    let c00 = textureLoad(tex, clamp(base, vec2<i32>(0), tex_size - 1)).rgb;
-    let c10 = textureLoad(tex, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), tex_size - 1)).rgb;
-    let c01 = textureLoad(tex, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), tex_size - 1)).rgb;
-    let c11 = textureLoad(tex, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), tex_size - 1)).rgb;
+    let c00 = textureLoad(gi_output, clamp(base, vec2<i32>(0), tex_size - 1)).rgb;
+    let c10 = textureLoad(gi_output, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), tex_size - 1)).rgb;
+    let c01 = textureLoad(gi_output, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), tex_size - 1)).rgb;
+    let c11 = textureLoad(gi_output, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), tex_size - 1)).rgb;
+
+    let top = mix(c00, c10, frac.x);
+    let bot = mix(c01, c11, frac.x);
+    return mix(top, bot, frac.y);
+}
+
+/// Bilinear sample from refl_output at fractional coordinates.
+fn bilinear_sample_refl(fcoord: vec2<f32>, tex_size: vec2<i32>) -> vec3<f32> {
+    let base = vec2<i32>(floor(fcoord - 0.5));
+    let frac = fcoord - 0.5 - vec2<f32>(base);
+
+    let c00 = textureLoad(refl_output, clamp(base, vec2<i32>(0), tex_size - 1)).rgb;
+    let c10 = textureLoad(refl_output, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), tex_size - 1)).rgb;
+    let c01 = textureLoad(refl_output, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), tex_size - 1)).rgb;
+    let c11 = textureLoad(refl_output, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), tex_size - 1)).rgb;
 
     let top = mix(c00, c10, frac.x);
     let bot = mix(c01, c11, frac.x);
@@ -138,14 +153,14 @@ fn composite(@builtin(global_invocation_id) id: vec3<u32>) {
     if pc_gi_enabled(pc) {
         let gi_size = vec2<i32>(textureDimensions(gi_output));
         let gi_fcoord = vec2<f32>(coord) * vec2<f32>(gi_size) / full_size_f;
-        let gi_raw = bilinear_sample_rgba(gi_output, gi_fcoord, gi_size);
+        let gi_raw = bilinear_sample_gi(gi_fcoord, gi_size);
         gi_indirect = gi_raw / (1.0 + luminance(gi_raw));
     }
 
     if pc_reflections_enabled(pc) {
         let refl_size = vec2<i32>(textureDimensions(refl_output));
         let refl_fcoord = vec2<f32>(coord) * vec2<f32>(refl_size) / full_size_f;
-        let refl_raw = bilinear_sample_rgba(refl_output, refl_fcoord, refl_size);
+        let refl_raw = bilinear_sample_refl(refl_fcoord, refl_size);
         refl_indirect = refl_raw / (1.0 + luminance(refl_raw));
     }
 

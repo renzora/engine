@@ -6,11 +6,11 @@
 
 #import renzora_rt::common::RtPushConstants
 
-@group(0) @binding(14) var<storage, read_write> cache_checksums: array<u32>;
-@group(0) @binding(15) var<storage, read_write> cache_life: array<u32>;
-@group(0) @binding(16) var<storage, read_write> cache_radiance: array<vec4<f32>>;
-@group(0) @binding(17) var<storage, read_write> cache_normals: array<vec4<f32>>;
-@group(0) @binding(18) var<storage, read_write> cache_samples: array<u32>;
+@group(0) @binding(14) var<storage, read_write> cache_checksums: array<u32, 524288u>;
+@group(0) @binding(15) var<storage, read_write> cache_life: array<u32, 524288u>;
+@group(0) @binding(16) var<storage, read_write> cache_radiance: array<vec4<f32>, 524288u>;
+@group(0) @binding(17) var<storage, read_write> cache_normals: array<vec4<f32>, 524288u>;
+@group(0) @binding(18) var<storage, read_write> cache_samples: array<u32, 524288u>;
 
 var<push_constant> pc: RtPushConstants;
 
