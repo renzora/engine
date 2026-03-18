@@ -1,0 +1,266 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
+		A10002 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A20002; };
+		A10003 /* librenzora_ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A20003; };
+		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
+		A10011 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
+		A10012 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20012; };
+		A10013 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20013; };
+		A10014 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20014; };
+		A10015 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20015; };
+		A10016 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20016; };
+		A10017 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20017; };
+		A10018 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20018; };
+		A10019 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20019; };
+		A10020 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20020; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A20002 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A20003 /* librenzora_ios.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librenzora_ios.a; path = libs/librenzora_ios.a; sourceTree = "<group>"; };
+		A20004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20005 /* RenzoraRuntime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RenzoraRuntime.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		A20011 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		A20012 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		A20013 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		A20014 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		A20015 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		A20016 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		A20017 /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
+		A20018 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		A20019 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		A20020 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10003 /* librenzora_ios.a in Frameworks */,
+				A10010 /* Metal.framework in Frameworks */,
+				A10011 /* QuartzCore.framework in Frameworks */,
+				A10012 /* UIKit.framework in Frameworks */,
+				A10013 /* AudioToolbox.framework in Frameworks */,
+				A10014 /* CoreAudio.framework in Frameworks */,
+				A10015 /* AVFoundation.framework in Frameworks */,
+				A10016 /* GameController.framework in Frameworks */,
+				A10017 /* CoreHaptics.framework in Frameworks */,
+				A10018 /* CoreGraphics.framework in Frameworks */,
+				A10019 /* Foundation.framework in Frameworks */,
+				A10020 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40001 = {
+			isa = PBXGroup;
+			children = (
+				A40002 /* RenzoraRuntime */,
+				A40003 /* Frameworks */,
+				A40004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40002 /* RenzoraRuntime */ = {
+			isa = PBXGroup;
+			children = (
+				A20001 /* AppDelegate.swift */,
+				A20002 /* LaunchScreen.storyboard */,
+				A20004 /* Info.plist */,
+			);
+			path = RenzoraRuntime;
+			sourceTree = "<group>";
+		};
+		A40003 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A20003 /* librenzora_ios.a */,
+				A20010 /* Metal.framework */,
+				A20011 /* QuartzCore.framework */,
+				A20012 /* UIKit.framework */,
+				A20013 /* AudioToolbox.framework */,
+				A20014 /* CoreAudio.framework */,
+				A20015 /* AVFoundation.framework */,
+				A20016 /* GameController.framework */,
+				A20017 /* CoreHaptics.framework */,
+				A20018 /* CoreGraphics.framework */,
+				A20019 /* Foundation.framework */,
+				A20020 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A40004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20005 /* RenzoraRuntime.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50001 /* RenzoraRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70001;
+			buildPhases = (
+				A60001 /* Sources */,
+				A30001 /* Frameworks */,
+				A60002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RenzoraRuntime;
+			productName = RenzoraRuntime;
+			productReference = A20005 /* RenzoraRuntime.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+			};
+			buildConfigurationList = A70002;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A40001;
+			productRefGroup = A40004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50001 /* RenzoraRuntime */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10002 /* LaunchScreen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10001 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A90001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A90002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = RenzoraRuntime/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/libs",
+				);
+				OTHER_LDFLAGS = (
+					"-lrenzora_ios",
+					"-lc++",
+					"-lz",
+					"-liconv",
+					"-framework", "Metal",
+					"-framework", "QuartzCore",
+					"-framework", "UIKit",
+					"-framework", "AudioToolbox",
+					"-framework", "CoreAudio",
+					"-framework", "AVFoundation",
+					"-framework", "GameController",
+					"-framework", "CoreHaptics",
+					"-framework", "CoreGraphics",
+					"-framework", "Foundation",
+					"-framework", "Security",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.renzora.runtime;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70001 /* Build configuration list for PBXNativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70002 /* Build configuration list for PBXProject */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = A80001 /* Project object */;
+}

@@ -33,6 +33,14 @@ impl Vfs {
             }
         }
 
+        // iOS / tvOS: load rpak from app bundle
+        #[cfg(any(target_os = "ios", target_os = "tvos"))]
+        {
+            if let Some(vfs) = Self::detect_ios() {
+                return vfs;
+            }
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             // 1. Check for embedded rpak in current exe
@@ -155,6 +163,98 @@ impl Vfs {
         }
     }
 
+    /// On iOS/tvOS, load game.rpak from the app bundle's resource directory.
+    #[cfg(any(target_os = "ios", target_os = "tvos"))]
+    fn detect_ios() -> Option<Self> {
+        use std::ffi::{CStr, c_char};
+
+        extern "C" {
+            fn CFBundleGetMainBundle() -> *const std::ffi::c_void;
+            fn CFBundleCopyResourceURL(
+                bundle: *const std::ffi::c_void,
+                resource_name: *const std::ffi::c_void,
+                resource_type: *const std::ffi::c_void,
+                sub_dir_name: *const std::ffi::c_void,
+            ) -> *const std::ffi::c_void;
+            fn CFURLGetFileSystemRepresentation(
+                url: *const std::ffi::c_void,
+                resolve_against_base: bool,
+                buffer: *mut u8,
+                max_buf_len: isize,
+            ) -> bool;
+            fn CFRelease(cf: *const std::ffi::c_void);
+        }
+
+        // Helper to create a CFString from a Rust &str
+        fn cfstring(s: &str) -> *const std::ffi::c_void {
+            extern "C" {
+                fn CFStringCreateWithBytes(
+                    alloc: *const std::ffi::c_void,
+                    bytes: *const u8,
+                    num_bytes: isize,
+                    encoding: u32,
+                    is_external: bool,
+                ) -> *const std::ffi::c_void;
+            }
+            const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
+            unsafe {
+                CFStringCreateWithBytes(
+                    std::ptr::null(),
+                    s.as_ptr(),
+                    s.len() as isize,
+                    K_CF_STRING_ENCODING_UTF8,
+                    false,
+                )
+            }
+        }
+
+        unsafe {
+            let bundle = CFBundleGetMainBundle();
+            if bundle.is_null() {
+                warn!("iOS: could not get main bundle");
+                return None;
+            }
+
+            let name = cfstring("game");
+            let ext = cfstring("rpak");
+            let url = CFBundleCopyResourceURL(bundle, name, ext, std::ptr::null());
+            CFRelease(name);
+            CFRelease(ext);
+
+            if url.is_null() {
+                warn!("iOS: game.rpak not found in app bundle");
+                return None;
+            }
+
+            let mut buf = [0u8; 1024];
+            let ok = CFURLGetFileSystemRepresentation(url, true, buf.as_mut_ptr(), buf.len() as isize);
+            CFRelease(url);
+
+            if !ok {
+                warn!("iOS: could not get filesystem path for game.rpak");
+                return None;
+            }
+
+            let c_path = CStr::from_ptr(buf.as_ptr() as *const c_char);
+            let path_str = c_path.to_str().ok()?;
+            let path = Path::new(path_str);
+
+            match RpakArchive::from_file(path) {
+                Ok(archive) => {
+                    info!("Loaded iOS bundle rpak ({} files)", archive.len());
+                    Some(Self {
+                        archive: Some(Arc::new(archive)),
+                        project_root: None,
+                    })
+                }
+                Err(e) => {
+                    error!("Failed to load iOS bundle rpak: {}", e);
+                    None
+                }
+            }
+        }
+    }
+
     /// Whether we have an rpak archive loaded.
     pub fn has_archive(&self) -> bool {
         self.archive.is_some()
@@ -194,6 +294,17 @@ impl Vfs {
     /// Get a shared handle to the archive (for passing to the asset reader).
     pub fn archive_arc(&self) -> Option<Arc<RpakArchive>> {
         self.archive.clone()
+    }
+
+    /// Load a VFS from raw rpak bytes (used by wasm fetch).
+    pub fn from_rpak_bytes(bytes: &[u8]) -> Result<Self, String> {
+        let archive = RpakArchive::from_bytes(bytes)
+            .map_err(|e| format!("Failed to load rpak: {}", e))?;
+        info!("Loaded rpak from bytes ({} files)", archive.len());
+        Ok(Self {
+            archive: Some(Arc::new(archive)),
+            project_root: None,
+        })
     }
 
     /// Extract the entire archive to a temporary directory and return the path.
