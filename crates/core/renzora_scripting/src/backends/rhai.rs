@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use rhai::{Dynamic, Engine, AST, Scope, Map, ImmutableString};
 
-use crate::backend::ScriptBackend;
+use crate::backend::{FileReader, ScriptBackend};
 use crate::command::{PropertyValue, ScriptCommand};
 use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
@@ -25,6 +25,7 @@ pub struct RhaiBackend {
     cache: Arc<RwLock<HashMap<PathBuf, CachedScript>>>,
     scripts_folder: Option<PathBuf>,
     extensions_registered: std::sync::atomic::AtomicBool,
+    file_reader: Option<FileReader>,
 }
 
 impl RhaiBackend {
@@ -36,12 +37,16 @@ impl RhaiBackend {
             cache: Arc::new(RwLock::new(HashMap::new())),
             scripts_folder: None,
             extensions_registered: std::sync::atomic::AtomicBool::new(false),
+            file_reader: None,
         }
     }
 
     fn load_script(&self, path: &Path) -> Result<(), String> {
         if let Ok(cache) = self.cache.read() {
             if let Some(cached) = cache.get(path) {
+                if self.file_reader.is_some() {
+                    return Ok(());
+                }
                 if let Ok(meta) = std::fs::metadata(path) {
                     if let Ok(modified) = meta.modified() {
                         if modified == cached.last_modified {
@@ -52,8 +57,17 @@ impl RhaiBackend {
             }
         }
 
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read: {}", e))?;
+        let source = if let Some(ref reader) = self.file_reader {
+            if let Some(s) = reader(path) {
+                s
+            } else {
+                std::fs::read_to_string(path)
+                    .map_err(|e| format!("Failed to read: {}", e))?
+            }
+        } else {
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to read: {}", e))?
+        };
 
         let ast = self.engine.read().unwrap().compile(&source)
             .map_err(|e| format!("Compile error: {}", e))?;
@@ -127,6 +141,10 @@ impl ScriptBackend for RhaiBackend {
         self.scripts_folder = Some(path);
     }
 
+    fn set_file_reader(&mut self, reader: FileReader) {
+        self.file_reader = Some(reader);
+    }
+
     fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
         let Some(folder) = &self.scripts_folder else { return Vec::new() };
         let mut scripts = Vec::new();
@@ -160,6 +178,7 @@ impl ScriptBackend for RhaiBackend {
     fn needs_reload(&self, path: &Path) -> bool {
         let cache = match self.cache.read() { Ok(c) => c, Err(_) => return false };
         let Some(cached) = cache.get(path) else { return true };
+        if self.file_reader.is_some() { return false; }
         let Ok(meta) = std::fs::metadata(path) else { return false };
         let Ok(modified) = meta.modified() else { return false };
         modified != cached.last_modified

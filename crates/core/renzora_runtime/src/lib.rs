@@ -96,7 +96,7 @@ impl Plugin for RuntimePlugin {
                 }
             }
 
-            app.add_systems(Startup, scene_io::load_current_scene)
+            app.add_systems(Startup, (setup_vfs_script_reader, scene_io::load_current_scene).chain())
                 .add_systems(Update, (
                     scene_io::rehydrate_meshes,
                     scene_io::rehydrate_suns,
@@ -104,8 +104,7 @@ impl Plugin for RuntimePlugin {
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
                 ))
-                .add_systems(Update, (scene_io::rehydrate_cameras, scene_io::enforce_single_active_camera)
-                    .run_if(stinger_done));
+                .add_systems(Update, (scene_io::rehydrate_cameras, scene_io::sync_play_mode_camera, scene_io::enforce_single_active_camera));
         }
 
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
@@ -132,13 +131,23 @@ impl Plugin for RuntimePlugin {
     }
 }
 
-/// Run condition: stinger is finished (or was never added).
+/// Wire the VFS file reader into the scripting engine so scripts can be loaded
+/// from rpak archives (Android, exported builds) instead of the filesystem.
 #[cfg(not(feature = "editor"))]
-fn stinger_done(state: Option<Res<State<renzora_stinger::StingerState>>>) -> bool {
-    match state {
-        Some(s) => *s.get() == renzora_stinger::StingerState::Game,
-        None => true, // no stinger plugin
-    }
+fn setup_vfs_script_reader(
+    vfs: Res<Vfs>,
+    mut engine: Option<ResMut<renzora_scripting::ScriptEngine>>,
+) {
+    if !vfs.has_archive() { return; }
+    let Some(ref mut engine) = engine else { return; };
+    let vfs = vfs.clone();
+    engine.set_file_reader(std::sync::Arc::new(move |path: &std::path::Path| {
+        // Try archive-relative key: strip leading "./" and use forward slashes
+        let key = path.to_string_lossy().replace('\\', "/");
+        let key = key.trim_start_matches("./");
+        vfs.read_string(key)
+    }));
+    info!("[runtime] VFS file reader set on scripting engine");
 }
 
 /// In standalone (non-editor) mode, route effects from the default scene camera

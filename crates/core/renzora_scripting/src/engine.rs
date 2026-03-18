@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use std::path::{Path, PathBuf};
 
-use crate::backend::ScriptBackend;
+use crate::backend::{FileReader, ScriptBackend};
 
 use crate::component::{ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
@@ -13,11 +13,12 @@ use crate::context::ScriptContext;
 pub struct ScriptEngine {
     backends: Vec<Box<dyn ScriptBackend>>,
     scripts_folder: Option<PathBuf>,
+    file_reader: Option<FileReader>,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        Self { backends: Vec::new(), scripts_folder: None }
+        Self { backends: Vec::new(), scripts_folder: None, file_reader: None }
     }
 
     /// Register a language backend
@@ -31,6 +32,14 @@ impl ScriptEngine {
         self.scripts_folder = Some(path.clone());
         for b in &mut self.backends {
             b.set_scripts_folder(path.clone());
+        }
+    }
+
+    /// Set a file reader for VFS/rpak support on all backends.
+    pub fn set_file_reader(&mut self, reader: FileReader) {
+        self.file_reader = Some(reader.clone());
+        for b in &mut self.backends {
+            b.set_file_reader(reader.clone());
         }
     }
 

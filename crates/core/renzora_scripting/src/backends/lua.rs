@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use mlua::prelude::*;
 
-use crate::backend::ScriptBackend;
+use crate::backend::{FileReader, ScriptBackend};
 use crate::command::ScriptCommand;
 use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
@@ -23,6 +23,7 @@ use super::{push_command, drain_commands};
 pub struct LuaBackend {
     scripts_folder: Option<PathBuf>,
     cache: Arc<RwLock<HashMap<PathBuf, CachedScript>>>,
+    file_reader: Option<FileReader>,
 }
 
 impl LuaBackend {
@@ -30,6 +31,7 @@ impl LuaBackend {
         Self {
             scripts_folder: None,
             cache: Arc::new(RwLock::new(HashMap::new())),
+            file_reader: None,
         }
     }
 
@@ -40,9 +42,13 @@ impl LuaBackend {
     }
 
     fn load_script(&self, path: &Path) -> Result<(), String> {
-        // Check cache
+        // Check cache (skip mtime check if using VFS — archives have no mtime)
         if let Ok(cache) = self.cache.read() {
             if let Some(cached) = cache.get(path) {
+                if self.file_reader.is_some() {
+                    // VFS mode: script is from rpak, no mtime to compare
+                    return Ok(());
+                }
                 if let Ok(meta) = std::fs::metadata(path) {
                     if let Ok(modified) = meta.modified() {
                         if modified == cached.last_modified {
@@ -53,8 +59,18 @@ impl LuaBackend {
             }
         }
 
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?;
+        // Try VFS file reader first, then fall back to filesystem
+        let source = if let Some(ref reader) = self.file_reader {
+            if let Some(s) = reader(path) {
+                s
+            } else {
+                std::fs::read_to_string(path)
+                    .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?
+            }
+        } else {
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?
+        };
 
         // Parse props by running the script in a temporary Lua state
         let props = self.parse_props(&source);
@@ -198,6 +214,10 @@ impl ScriptBackend for LuaBackend {
         self.scripts_folder = Some(path);
     }
 
+    fn set_file_reader(&mut self, reader: FileReader) {
+        self.file_reader = Some(reader);
+    }
+
     fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
         let Some(folder) = &self.scripts_folder else { return Vec::new() };
         let mut scripts = Vec::new();
@@ -244,6 +264,8 @@ impl ScriptBackend for LuaBackend {
     fn needs_reload(&self, path: &Path) -> bool {
         let cache = match self.cache.read() { Ok(c) => c, Err(_) => return false };
         let Some(cached) = cache.get(path) else { return true };
+        // VFS/rpak scripts don't change at runtime — no reload needed once cached
+        if self.file_reader.is_some() { return false; }
         let Ok(meta) = std::fs::metadata(path) else { return false };
         let Ok(modified) = meta.modified() else { return false };
         modified != cached.last_modified
