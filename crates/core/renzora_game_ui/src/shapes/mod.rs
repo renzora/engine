@@ -101,30 +101,30 @@ fn rehydrate_shape_materials(
 ) {
     for (entity, shape) in &circles {
         let handle = circle_mats.add(CircleMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &arcs {
         let handle = arc_mats.add(ArcMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &radials {
         let handle = radial_mats.add(RadialProgressMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &lines {
         let handle = line_mats.add(LineMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &triangles {
         let handle = tri_mats.add(TriangleMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &polygons {
         let handle = poly_mats.add(PolygonMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
     for (entity, shape) in &wedges {
         let handle = wedge_mats.add(WedgeMaterial::from_shape(shape));
-        commands.entity(entity).insert(MaterialNode(handle));
+        commands.entity(entity).try_insert(MaterialNode(handle));
     }
 }

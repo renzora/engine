@@ -6,3 +6,4 @@ description = "Renzora .rpak asset archive format — zstd-compressed pack files
 
 [dependencies]
 zstd = "0.13"
+cfg-if = "1"

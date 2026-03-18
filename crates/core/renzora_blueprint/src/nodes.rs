@@ -1655,6 +1655,80 @@ pub static START_TIMER: BlueprintNodeDef = BlueprintNodeDef {
 };
 
 // =============================================================================
+// NETWORK NODES
+// =============================================================================
+
+pub const CAT_NETWORK: &str = "Network";
+const CLR_NETWORK: [u8; 3] = [255, 140, 0];
+
+pub static NET_IS_SERVER: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "network/is_server",
+    display_name: "Is Server",
+    category: CAT_NETWORK,
+    description: "Returns true if running as the authoritative server",
+    pins: || vec![
+        PinTemplate::output("value", "Is Server", PinType::Bool),
+    ],
+    color: CLR_NETWORK,
+};
+
+pub static NET_IS_CONNECTED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "network/is_connected",
+    display_name: "Is Connected",
+    category: CAT_NETWORK,
+    description: "Returns true if connected to the server",
+    pins: || vec![
+        PinTemplate::output("value", "Connected", PinType::Bool),
+    ],
+    color: CLR_NETWORK,
+};
+
+pub static NET_SEND_MESSAGE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "network/send_message",
+    display_name: "Send Message",
+    category: CAT_NETWORK,
+    description: "Send a named message over the network",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("channel", "Channel", PinType::String)
+            .with_default(PinValue::String("default".into())),
+        PinTemplate::input("data", "Data", PinType::String),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_NETWORK,
+};
+
+pub static NET_ON_MESSAGE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "network/on_message",
+    display_name: "On Message",
+    category: CAT_NETWORK,
+    description: "Fires when a named network message is received",
+    pins: || vec![
+        PinTemplate::exec_out("exec", ""),
+        PinTemplate::input("channel", "Channel", PinType::String)
+            .with_default(PinValue::String("default".into())),
+        PinTemplate::output("data", "Data", PinType::String),
+        PinTemplate::output("sender", "Sender ID", PinType::Int),
+    ],
+    color: CLR_NETWORK,
+};
+
+pub static NET_SPAWN: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "network/spawn",
+    display_name: "Net Spawn",
+    category: CAT_NETWORK,
+    description: "Request the server to spawn a networked entity",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("name", "Name", PinType::String),
+        PinTemplate::input("position", "Position", PinType::Vec3)
+            .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_NETWORK,
+};
+
+// =============================================================================
 // REGISTRY
 // =============================================================================
 
@@ -1708,6 +1782,8 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &SET_ANIM_BOOL_PARAM, &TRIGGER_ANIM, &SET_LAYER_WEIGHT,
     &GET_ANIMATION_TIME, &IS_ANIMATION_PLAYING, &ON_ANIMATION_FINISHED,
     &TWEEN_POSITION,
+    // Network
+    &NET_IS_SERVER, &NET_IS_CONNECTED, &NET_SEND_MESSAGE, &NET_ON_MESSAGE, &NET_SPAWN,
 ];
 
 /// Get all unique categories in display order.
@@ -1716,7 +1792,7 @@ pub fn categories() -> Vec<&'static str> {
         CAT_EVENT, CAT_FLOW, CAT_MATH, CAT_STRING, CAT_CONVERT,
         CAT_TRANSFORM, CAT_INPUT,
         CAT_ENTITY, CAT_COMPONENT, CAT_PHYSICS, CAT_AUDIO, CAT_UI,
-        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_DEBUG,
+        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_NETWORK, CAT_DEBUG,
     ]
 }
 

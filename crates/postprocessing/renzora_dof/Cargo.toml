@@ -8,7 +8,7 @@ default = []
 editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 bevy_egui = { version = "0.39", optional = true }

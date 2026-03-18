@@ -70,11 +70,11 @@ impl ScriptInput {
 /// System to update ScriptInput from Bevy input resources
 pub fn update_script_input(
     mut script_input: ResMut<ScriptInput>,
-    mut keyboard_events: MessageReader<bevy::input::keyboard::KeyboardInput>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    keyboard_events: Option<MessageReader<bevy::input::keyboard::KeyboardInput>>,
+    mouse_buttons: Option<Res<ButtonInput<MouseButton>>>,
     windows: Query<&Window>,
-    mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
-    mut scroll: MessageReader<bevy::input::mouse::MouseWheel>,
+    mouse_motion: Option<MessageReader<bevy::input::mouse::MouseMotion>>,
+    scroll: Option<MessageReader<bevy::input::mouse::MouseWheel>>,
     gamepads: Query<(Entity, &Gamepad)>,
 ) {
     script_input.keys_just_pressed.clear();
@@ -83,26 +83,30 @@ pub fn update_script_input(
     script_input.mouse_delta = Vec2::ZERO;
     script_input.scroll_delta = Vec2::ZERO;
 
-    for event in keyboard_events.read() {
-        if event.state.is_pressed() {
-            if !script_input.keys_pressed.contains_key(&event.key_code) {
-                script_input.keys_just_pressed.insert(event.key_code, true);
+    if let Some(mut keyboard_events) = keyboard_events {
+        for event in keyboard_events.read() {
+            if event.state.is_pressed() {
+                if !script_input.keys_pressed.contains_key(&event.key_code) {
+                    script_input.keys_just_pressed.insert(event.key_code, true);
+                }
+                script_input.keys_pressed.insert(event.key_code, true);
+            } else {
+                script_input.keys_pressed.remove(&event.key_code);
+                script_input.keys_just_released.insert(event.key_code, true);
             }
-            script_input.keys_pressed.insert(event.key_code, true);
-        } else {
-            script_input.keys_pressed.remove(&event.key_code);
-            script_input.keys_just_released.insert(event.key_code, true);
         }
     }
 
-    for button in mouse_buttons.get_pressed() {
-        script_input.mouse_pressed.insert(*button, true);
-    }
-    for button in mouse_buttons.get_just_pressed() {
-        script_input.mouse_just_pressed.insert(*button, true);
-    }
-    for button in mouse_buttons.get_just_released() {
-        script_input.mouse_pressed.remove(button);
+    if let Some(mouse_buttons) = mouse_buttons {
+        for button in mouse_buttons.get_pressed() {
+            script_input.mouse_pressed.insert(*button, true);
+        }
+        for button in mouse_buttons.get_just_pressed() {
+            script_input.mouse_just_pressed.insert(*button, true);
+        }
+        for button in mouse_buttons.get_just_released() {
+            script_input.mouse_pressed.remove(button);
+        }
     }
 
     if let Ok(window) = windows.single() {
@@ -111,11 +115,15 @@ pub fn update_script_input(
         }
     }
 
-    for event in mouse_motion.read() {
-        script_input.mouse_delta += event.delta;
+    if let Some(mut mouse_motion) = mouse_motion {
+        for event in mouse_motion.read() {
+            script_input.mouse_delta += event.delta;
+        }
     }
-    for event in scroll.read() {
-        script_input.scroll_delta += Vec2::new(event.x, event.y);
+    if let Some(mut scroll) = scroll {
+        for event in scroll.read() {
+            script_input.scroll_delta += Vec2::new(event.x, event.y);
+        }
     }
 
     script_input.gamepad_axes.clear();

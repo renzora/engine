@@ -22,12 +22,15 @@
 //! [magic: b"RPAK"]
 //! ```
 
-#[cfg(not(target_arch = "wasm32"))]
-mod pack;
 mod read;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub use pack::{RpakPacker, pack_directory};
+cfg_if::cfg_if! {
+    if #[cfg(not(target_arch = "wasm32"))] {
+        mod pack;
+        pub use pack::{RpakPacker, pack_project, pack_project_with_progress, pack_project_filtered, SERVER_EXTENSIONS};
+    }
+}
+
 pub use read::RpakArchive;
 
 /// Magic bytes at the end of a self-contained binary.

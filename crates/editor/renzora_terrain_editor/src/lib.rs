@@ -6,7 +6,7 @@ mod systems;
 use bevy::prelude::*;
 use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
-use renzora_terrain::data::{TerrainData, TerrainToolState};
+use renzora_terrain::data::{TerrainData, TerrainTab, TerrainToolState};
 
 pub struct TerrainEditorPlugin;
 
@@ -15,6 +15,7 @@ impl Plugin for TerrainEditorPlugin {
         info!("[editor] TerrainEditorPlugin");
         app.register_panel(panel::TerrainToolsPanel::new())
             .register_inspector(terrain_data_entry())
+            // Sculpt systems — active when tool is on and tab is Sculpt
             .add_systems(
                 Update,
                 (
@@ -22,8 +23,38 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_sculpt_system,
                     systems::terrain_brush_scroll_system,
                 )
+                    .run_if(resource_equals(TerrainToolState { active: true }))
+                    .run_if(terrain_tab_is(TerrainTab::Sculpt)),
+            )
+            // Paint systems — active when tool is on and tab is Paint
+            .add_systems(
+                Update,
+                (
+                    systems::terrain_paint_activate_system,
+                    systems::terrain_paint_hover_system,
+                    systems::terrain_paint_system,
+                    systems::terrain_paint_scroll_system,
+                    systems::terrain_paint_command_system,
+                )
+                    .run_if(resource_equals(TerrainToolState { active: true }))
+                    .run_if(terrain_tab_is(TerrainTab::Paint)),
+            )
+            // Undo/redo — active when terrain mode is on
+            .add_systems(
+                Update,
+                (
+                    systems::terrain_stroke_begin_system,
+                    systems::terrain_stroke_end_system,
+                    systems::terrain_undo_redo_system,
+                )
                     .run_if(resource_equals(TerrainToolState { active: true })),
             );
+    }
+}
+
+fn terrain_tab_is(tab: TerrainTab) -> impl FnMut(Option<Res<renzora_terrain::data::TerrainSettings>>) -> bool {
+    move |settings: Option<Res<renzora_terrain::data::TerrainSettings>>| {
+        settings.map_or(false, |s| s.tab == tab)
     }
 }
 

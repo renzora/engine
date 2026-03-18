@@ -47,7 +47,7 @@ pub fn sync_hanabi_effects(
             }
         } else {
             let effect_handle = effects.add(effect_asset);
-            commands.entity(entity).insert((
+            commands.entity(entity).try_insert((
                 ParticleEffect::new(effect_handle.clone()),
                 HanabiEffectSynced { effect_handle },
             ));
@@ -83,7 +83,7 @@ pub fn rehydrate_hanabi_effects(
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
         let effect_asset = build_complete_effect(&definition);
         let effect_handle = effects.add(effect_asset);
-        commands.entity(entity).insert((
+        commands.entity(entity).try_insert((
             ParticleEffect::new(effect_handle.clone()),
             HanabiEffectSynced { effect_handle },
         ));

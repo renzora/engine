@@ -39,6 +39,32 @@ pub enum FlattenMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
+pub enum NoiseMode {
+    #[default]
+    Fbm,
+    Ridge,
+    Billow,
+    Warped,
+    Hybrid,
+}
+
+impl NoiseMode {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Fbm => "FBM",
+            Self::Ridge => "Ridge",
+            Self::Billow => "Billow",
+            Self::Warped => "Warped",
+            Self::Hybrid => "Hybrid",
+        }
+    }
+
+    pub fn all() -> &'static [NoiseMode] {
+        &[Self::Fbm, Self::Ridge, Self::Billow, Self::Warped, Self::Hybrid]
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
 pub enum TerrainBrushType {
     #[default]
     Raise,
@@ -227,6 +253,8 @@ pub struct TerrainSettings {
     pub noise_lacunarity: f32,
     pub noise_persistence: f32,
     pub noise_seed: u32,
+    pub noise_mode: NoiseMode,
+    pub warp_strength: f32,
 
     // Terrace
     pub terrace_steps: u32,
@@ -250,6 +278,8 @@ impl Default for TerrainSettings {
             noise_lacunarity: 2.0,
             noise_persistence: 0.5,
             noise_seed: 42,
+            noise_mode: NoiseMode::Fbm,
+            warp_strength: 0.5,
             terrace_steps: 8,
             terrace_sharpness: 0.8,
         }

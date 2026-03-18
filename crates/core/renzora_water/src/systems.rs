@@ -15,7 +15,7 @@ pub fn setup_water_entities(
     for (entity, surface) in query.iter() {
         let mesh = meshes.add(generate_water_mesh(surface.mesh_size, surface.subdivisions));
         let material = materials.add(WaterMaterial::default());
-        commands.entity(entity).insert((
+        commands.entity(entity).try_insert((
             Mesh3d(mesh),
             MeshMaterial3d(material),
         ));

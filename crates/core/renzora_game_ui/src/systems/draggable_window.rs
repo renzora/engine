@@ -39,7 +39,7 @@ pub fn draggable_window_system(
     for (entity, data, mut node, mut vis, children, drag_state) in &mut windows {
         // Ensure drag state component exists
         let Some(mut drag) = drag_state else {
-            commands.entity(entity).insert(WindowDragState::default());
+            commands.entity(entity).try_insert(WindowDragState::default());
             continue;
         };
 

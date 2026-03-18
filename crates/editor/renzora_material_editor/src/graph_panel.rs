@@ -148,14 +148,17 @@ fn render_toolbar(
             for (domain, label, icon) in domains {
                 if ui.button(format!("{icon} {label}")).clicked() {
                     let new_graph = MaterialGraph::new("New Material", domain);
+                    let result = codegen::compile(&new_graph);
+                    let wgsl = result.fragment_shader.clone();
+                    let errors = result.errors.clone();
                     cmds.push(move |world: &mut World| {
                         let mut s = world.resource_mut::<MaterialEditorState>();
                         s.graph = new_graph;
                         s.file_path = None;
                         s.is_modified = false;
                         s.selected_node = None;
-                        s.compiled_wgsl = None;
-                        s.compile_errors = Vec::new();
+                        s.compiled_wgsl = Some(wgsl);
+                        s.compile_errors = errors;
                     });
                     state.needs_sync = true;
                     ui.memory_mut(|m| m.toggle_popup(new_id));
@@ -167,6 +170,7 @@ fn render_toolbar(
         if ui.add(egui::Button::new(
             RichText::new(format!("{FOLDER_OPEN} Open")).size(12.0).color(text_color),
         )).clicked() {
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Material", &["material"])
                 .pick_file()
@@ -174,12 +178,17 @@ fn render_toolbar(
                 let path_str = path.to_string_lossy().to_string();
                 if let Ok(contents) = std::fs::read_to_string(&path) {
                     if let Ok(loaded_graph) = serde_json::from_str::<MaterialGraph>(&contents) {
+                        let result = codegen::compile(&loaded_graph);
+                        let wgsl = result.fragment_shader.clone();
+                        let errors = result.errors.clone();
                         cmds.push(move |world: &mut World| {
                             let mut s = world.resource_mut::<MaterialEditorState>();
                             s.graph = loaded_graph;
                             s.file_path = Some(path_str);
                             s.is_modified = false;
                             s.selected_node = None;
+                            s.compiled_wgsl = Some(wgsl);
+                            s.compile_errors = errors;
                         });
                         state.needs_sync = true;
                     }
@@ -199,10 +208,14 @@ fn render_toolbar(
             let save_path = if let Some(ref p) = editor_state.file_path {
                 Some(std::path::PathBuf::from(p))
             } else {
-                rfd::FileDialog::new()
+                #[cfg(not(target_arch = "wasm32"))]
+                let dlg = rfd::FileDialog::new()
                     .add_filter("Material", &["material"])
                     .set_file_name(&format!("{}.material", graph.name))
-                    .save_file()
+                    .save_file();
+                #[cfg(target_arch = "wasm32")]
+                let dlg: Option<std::path::PathBuf> = None;
+                dlg
             };
             if let Some(path) = save_path {
                 if let Ok(json) = serde_json::to_string_pretty(graph) {

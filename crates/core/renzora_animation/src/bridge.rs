@@ -158,7 +158,7 @@ pub fn route_script_animation_commands(
                     let entity = entity_id
                         .map(|id| Entity::from_bits(id))
                         .unwrap_or(source_entity);
-                    commands.entity(entity).insert(ProceduralTween {
+                    commands.entity(entity).try_insert(ProceduralTween {
                         property: TweenProperty::Position(target),
                         start_value: None,
                         easing: EasingFunction::from_str(&easing),
@@ -175,7 +175,7 @@ pub fn route_script_animation_commands(
                     let entity = entity_id
                         .map(|id| Entity::from_bits(id))
                         .unwrap_or(source_entity);
-                    commands.entity(entity).insert(ProceduralTween {
+                    commands.entity(entity).try_insert(ProceduralTween {
                         property: TweenProperty::Rotation(target),
                         start_value: None,
                         easing: EasingFunction::from_str(&easing),
@@ -192,7 +192,7 @@ pub fn route_script_animation_commands(
                     let entity = entity_id
                         .map(|id| Entity::from_bits(id))
                         .unwrap_or(source_entity);
-                    commands.entity(entity).insert(ProceduralTween {
+                    commands.entity(entity).try_insert(ProceduralTween {
                         property: TweenProperty::Scale(target),
                         start_value: None,
                         easing: EasingFunction::from_str(&easing),

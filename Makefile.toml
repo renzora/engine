@@ -1,0 +1,274 @@
+[config]
+default_to_workspace = false
+
+# --- Dev ---
+
+[tasks.editor]
+description = "Run the editor"
+command = "cargo"
+args = ["run", "--bin", "renzora"]
+
+[tasks.runtime]
+description = "Run the runtime (no editor)"
+command = "cargo"
+args = ["run", "--bin", "renzora-runtime", "--no-default-features"]
+
+[tasks.server]
+description = "Run the dedicated server"
+command = "cargo"
+args = ["run", "--bin", "renzora-server", "--no-default-features", "--features", "server"]
+
+# --- Dist builds ---
+
+[tasks.dist-runtime-build]
+description = "Build runtime with max optimization"
+command = "cargo"
+args = ["build", "--profile", "dist", "--bin", "renzora-runtime", "--no-default-features", "--target-dir", "target"]
+
+[tasks.dist-runtime-copy]
+description = "Copy runtime template to target/templates"
+dependencies = ["dist-runtime-build"]
+[tasks.dist-runtime-copy.windows]
+script_runner = "@shell"
+script = '''
+mkdir -p target/templates
+cp target/dist/renzora-runtime.exe target/templates/renzora-runtime-windows-x64.exe
+echo "Template: target/templates/renzora-runtime-windows-x64.exe"
+'''
+[tasks.dist-runtime-copy.linux]
+script = '''
+mkdir -p target/templates
+cp target/dist/renzora-runtime target/templates/renzora-runtime-linux-x64
+echo "Template: target/templates/renzora-runtime-linux-x64"
+'''
+[tasks.dist-runtime-copy.mac]
+script = '''
+mkdir -p target/templates
+cp target/dist/renzora-runtime target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
+echo "Template: target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')"
+'''
+
+[tasks.dist-runtime]
+description = "Build runtime template"
+dependencies = ["dist-runtime-copy"]
+
+[tasks.dist-server]
+description = "Build server with max optimization"
+command = "cargo"
+args = ["build", "--profile", "dist", "--bin", "renzora-server", "--no-default-features", "--features", "server", "--target-dir", "target"]
+
+[tasks.dist-editor]
+description = "Build editor with max optimization"
+command = "cargo"
+args = ["build", "--profile", "dist", "--bin", "renzora", "--target-dir", "target"]
+
+[tasks.dist-build]
+description = "Build all three binaries (editor, runtime, server)"
+command = "cargo"
+args = ["build", "--profile", "dist", "--no-default-features", "--bin", "renzora", "--bin", "renzora-runtime", "--bin", "renzora-server", "--features", "editor,server", "--target-dir", "target"]
+
+# --- UPX compression ---
+
+[tasks.upx-compress]
+description = "Compress dist binaries with UPX"
+dependencies = ["dist-build"]
+
+[tasks.upx-compress.windows]
+script = '''
+echo Compressing binaries with UPX...
+upx --best target/dist/renzora.exe target/dist/renzora-runtime.exe target/dist/renzora-server.exe
+echo Done.
+'''
+
+[tasks.upx-compress.linux]
+script = '''
+echo "Compressing binaries with UPX..."
+upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
+echo "Done."
+'''
+
+[tasks.upx-compress.mac]
+script = '''
+echo "Compressing binaries with UPX..."
+upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
+echo "Done."
+'''
+
+# --- WASM ---
+
+[tasks.ensure-wasm-tools]
+description = "Install wasm-bindgen, wasm-opt, and brotli if missing"
+script_runner = "@shell"
+script = '''
+command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli
+command -v wasm-opt >/dev/null 2>&1 || cargo install wasm-opt
+command -v brotli >/dev/null 2>&1 || cargo install brotli
+'''
+
+[tasks.dist-web]
+description = "Build WASM editor + optimize + generate JS bindings"
+dependencies = ["ensure-wasm-tools"]
+
+[tasks.dist-web.windows]
+script_runner = "@shell"
+script = '''
+cargo dist-web-editor
+wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
+brotli -k -q 11 -f web/renzora_bg.wasm
+echo Output: web/
+'''
+
+[tasks.dist-web.linux]
+script = '''
+cargo dist-web-editor
+wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
+brotli -k -q 11 -f web/renzora_bg.wasm
+echo "Output: web/"
+'''
+
+[tasks.dist-web.mac]
+script = '''
+cargo dist-web-editor
+wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
+brotli -k -q 11 -f web/renzora_bg.wasm
+echo "Output: web/"
+'''
+
+[tasks.dist-web-runtime]
+description = "Build WASM runtime export template (.zip)"
+dependencies = ["ensure-wasm-tools"]
+
+[tasks.dist-web-runtime.windows]
+script_runner = "@shell"
+script = '''
+cargo dist-web-runtime
+wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
+brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
+cd target/dist/web && tar -cf ../renzora-runtime-web-wasm32.zip renzora-runtime.js renzora-runtime_bg.wasm
+echo Template: target/dist/renzora-runtime-web-wasm32.zip
+'''
+
+[tasks.dist-web-runtime.linux]
+script = '''
+cargo dist-web-runtime
+wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
+brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
+cd target/dist/web && zip ../renzora-runtime-web-wasm32.zip renzora-runtime.js renzora-runtime_bg.wasm renzora-runtime_bg.wasm.br
+echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
+'''
+
+[tasks.dist-web-runtime.mac]
+script = '''
+cargo dist-web-runtime
+wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
+brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
+cd target/dist/web && zip ../renzora-runtime-web-wasm32.zip renzora-runtime.js renzora-runtime_bg.wasm renzora-runtime_bg.wasm.br
+echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
+'''
+
+# --- Android ---
+
+[tasks.dist-android-arm64]
+description = "Build Android ARM64 template APK"
+[tasks.dist-android-arm64.windows]
+command = "powershell"
+args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-arm64"]
+[tasks.dist-android-arm64.linux]
+command = "./android/build-template.sh"
+args = ["--arm64"]
+[tasks.dist-android-arm64.mac]
+command = "./android/build-template.sh"
+args = ["--arm64"]
+
+[tasks.dist-android-x86]
+description = "Build Android x86_64 template APK (emulators)"
+[tasks.dist-android-x86.windows]
+command = "powershell"
+args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-x86"]
+[tasks.dist-android-x86.linux]
+command = "./android/build-template.sh"
+args = ["--x86_64"]
+[tasks.dist-android-x86.mac]
+command = "./android/build-template.sh"
+args = ["--x86_64"]
+
+[tasks.dist-android-firetv]
+description = "Build Fire TV ARM64 template APK"
+[tasks.dist-android-firetv.windows]
+command = "powershell"
+args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-firetv"]
+[tasks.dist-android-firetv.linux]
+command = "./android/build-template.sh"
+args = ["--firetv"]
+[tasks.dist-android-firetv.mac]
+command = "./android/build-template.sh"
+args = ["--firetv"]
+
+[tasks.dist-android-all]
+description = "Build all Android template APKs"
+[tasks.dist-android-all.windows]
+command = "powershell"
+args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-all"]
+[tasks.dist-android-all.linux]
+command = "./android/build-template.sh"
+args = ["--all"]
+[tasks.dist-android-all.mac]
+command = "./android/build-template.sh"
+args = ["--all"]
+
+# --- iOS ---
+
+[tasks.dist-ios]
+description = "Build iOS ARM64 template (requires macOS + Xcode)"
+[tasks.dist-ios.mac]
+command = "./ios/build-template.sh"
+[tasks.dist-ios.windows]
+script_runner = "@shell"
+script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
+[tasks.dist-ios.linux]
+script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
+
+[tasks.dist-ios-sim]
+description = "Build iOS Simulator ARM64 template (requires macOS + Xcode)"
+[tasks.dist-ios-sim.mac]
+command = "./ios/build-template.sh"
+args = ["--simulator"]
+[tasks.dist-ios-sim.windows]
+script_runner = "@shell"
+script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
+[tasks.dist-ios-sim.linux]
+script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
+
+[tasks.dist-tvos]
+description = "Build Apple TV ARM64 template (requires macOS + Xcode)"
+[tasks.dist-tvos.mac]
+command = "./ios/build-template.sh"
+args = ["--tvos"]
+[tasks.dist-tvos.windows]
+script_runner = "@shell"
+script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
+[tasks.dist-tvos.linux]
+script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
+
+[tasks.dist-tvos-sim]
+description = "Build Apple TV Simulator ARM64 template (requires macOS + Xcode)"
+[tasks.dist-tvos-sim.mac]
+command = "./ios/build-template.sh"
+args = ["--tvos-simulator"]
+[tasks.dist-tvos-sim.windows]
+script_runner = "@shell"
+script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
+[tasks.dist-tvos-sim.linux]
+script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
+
+# --- Main dist task ---
+
+[tasks.dist]
+description = "Build all binaries + compress with UPX"
+dependencies = ["upx-compress"]

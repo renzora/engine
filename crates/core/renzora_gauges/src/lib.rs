@@ -77,7 +77,7 @@ fn ensure_attributes(
     query: Query<Entity, (With<Gauges>, Without<Attributes>)>,
 ) {
     for entity in &query {
-        commands.entity(entity).insert(Attributes::new());
+        commands.entity(entity).try_insert(Attributes::new());
     }
 }
 

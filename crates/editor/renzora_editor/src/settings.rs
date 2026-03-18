@@ -9,7 +9,6 @@ pub enum SettingsTab {
     Shortcuts,
     Theme,
     Plugins,
-    Updates,
 }
 
 /// Selection highlight mode when using the Select tool.

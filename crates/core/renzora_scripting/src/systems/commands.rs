@@ -139,7 +139,7 @@ pub fn apply_script_commands(
             // === Entity name ===
             ScriptCommand::SetEntityName { entity_id, name } => {
                 let target = Entity::from_bits(entity_id);
-                commands.entity(target).insert(Name::new(name));
+                commands.entity(target).try_insert(Name::new(name));
             }
 
             // === Environment ===

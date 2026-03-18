@@ -3,7 +3,7 @@
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use renzora_core::console_log::*;
-use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeState, SceneCamera, ShapeRegistry};
+use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget};
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
 use std::collections::BTreeSet;
@@ -87,15 +87,24 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
+        // Networking: Lightyear internals should not persist to scene files.
+        // Networked/NetworkOwner/NetworkId are runtime-only markers.
+        .deny_component::<renzora_network::Networked>()
+        .deny_component::<renzora_network::NetworkOwner>()
+        .deny_component::<renzora_network::NetworkId>()
         .extract_entities(entities.into_iter())
         .build();
 
-    // Strip components that can't be serialized to avoid hard failures.
-    // We trial-serialize each component and drop any that fail.
+    // Strip components that can't be serialized or are editor-only.
     {
         let registry = type_registry.read();
         for entity in &mut scene.entities {
             entity.components.retain(|component| {
+                // Filter editor-only types by name (not available as deps in runtime)
+                let type_name = component.reflect_type_path();
+                if type_name.starts_with("bevy_mod_outline::") {
+                    return false;
+                }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
                     component.as_partial_reflect(),
                     &registry,
@@ -118,6 +127,148 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     console_info("Scene", format!("Saved scene to {} ({} entities)", path.display(), scene.entities.len()));
     info!("Saved scene to {} ({} entities)", path.display(), scene.entities.len());
     Ok(())
+}
+
+/// Serialize scene entities to a RON string (same logic as `save_scene` but returns a string).
+pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn std::error::Error>> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+
+    let mut entities: Vec<Entity> = Vec::new();
+    let mut query = world.query_filtered::<Entity, (With<Name>, Without<HideInHierarchy>, Without<EditorCamera>, Without<bevy::input::gamepad::Gamepad>)>();
+    for entity in query.iter(world) {
+        entities.push(entity);
+    }
+
+    // Exclude descendants of MeshInstanceData entities
+    {
+        let mesh_instance_entities: Vec<Entity> = {
+            let mut q = world.query_filtered::<Entity, With<MeshInstanceData>>();
+            q.iter(world).collect()
+        };
+        if !mesh_instance_entities.is_empty() {
+            entities.retain(|&entity| {
+                let mut cursor = entity;
+                loop {
+                    if let Some(child_of) = world.get::<ChildOf>(cursor) {
+                        let parent = child_of.parent();
+                        if mesh_instance_entities.contains(&parent) {
+                            return false;
+                        }
+                        cursor = parent;
+                    } else {
+                        break;
+                    }
+                }
+                true
+            });
+        }
+    }
+
+    if entities.is_empty() {
+        return Ok("(entities: {}, resources: {})".to_string());
+    }
+
+    let mut scene = DynamicSceneBuilder::from_world(world)
+        .deny_all_resources()
+        .deny_component::<Mesh3d>()
+        .deny_component::<MeshMaterial3d<StandardMaterial>>()
+        .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+        .deny_component::<Camera3d>()
+        .deny_component::<Camera>()
+        .deny_component::<GlobalTransform>()
+        .deny_component::<Visibility>()
+        .deny_component::<InheritedVisibility>()
+        .deny_component::<ViewVisibility>()
+        .deny_component::<Children>()
+        .deny_component::<bevy::transform::components::TransformTreeChanged>()
+        .deny_component::<bevy::camera::primitives::Aabb>()
+        .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
+        .deny_component::<bevy::input::gamepad::Gamepad>()
+        .deny_component::<bevy::input::gamepad::GamepadSettings>()
+        .deny_component::<renzora_network::Networked>()
+        .deny_component::<renzora_network::NetworkOwner>()
+        .deny_component::<renzora_network::NetworkId>()
+        .extract_entities(entities.into_iter())
+        .build();
+
+    // Strip components that can't be serialized or are editor-only.
+    {
+        let registry = type_registry.read();
+        for entity in &mut scene.entities {
+            entity.components.retain(|component| {
+                let type_name = component.reflect_type_path();
+                if type_name.starts_with("bevy_mod_outline::") {
+                    return false;
+                }
+                let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
+                    component.as_partial_reflect(),
+                    &registry,
+                );
+                ron::ser::to_string(&serializer).is_ok()
+            });
+        }
+    }
+
+    let registry = type_registry.read();
+    let serialized = scene
+        .serialize(&registry)
+        .map_err(|e| format!("Scene serialization failed: {e}"))?;
+
+    Ok(serialized)
+}
+
+/// Load a scene from a RON string into the world (same logic as `load_scene` but from string).
+pub fn load_scene_from_string(world: &mut World, ron: &str) {
+    let trimmed = ron.trim();
+    if trimmed.is_empty() || trimmed == "(entities: {}, resources: {})" {
+        return;
+    }
+
+    let scene = {
+        let type_registry = world.resource::<AppTypeRegistry>().clone();
+        let registry = type_registry.read();
+
+        let scene_deserializer = bevy::scene::serde::SceneDeserializer {
+            type_registry: &registry,
+        };
+
+        let mut ron_deserializer = match ron::Deserializer::from_str(ron) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Failed to parse RON string: {}", e);
+                return;
+            }
+        };
+
+        match scene_deserializer.deserialize(&mut ron_deserializer) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to deserialize scene from string: {}", e);
+                return;
+            }
+        }
+    };
+
+    let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
+    match scene.write_to_world(world, &mut entity_map) {
+        Ok(()) => {
+            // Re-insert ChildOf to trigger hierarchy hooks
+            let children_with_parents: Vec<(Entity, Entity)> = entity_map
+                .values()
+                .filter_map(|&entity| {
+                    world.get_entity(entity).ok()?.get::<ChildOf>().map(|c| (entity, c.parent()))
+                })
+                .collect();
+
+            for (child, parent) in children_with_parents {
+                world.entity_mut(child).remove::<ChildOf>();
+                world.entity_mut(child).insert(ChildOf(parent));
+            }
+        }
+        Err(e) => {
+            error!("Failed to write scene from string to world: {}", e);
+        }
+    }
 }
 
 /// Save the current project's main scene.
@@ -270,7 +421,14 @@ pub fn load_scene(world: &mut World, path: &Path) {
 }
 
 /// Load the current project's main scene.
+///
+/// Skipped when [`LifecycleHandlesBoot`](renzora_core::LifecycleHandlesBoot) is present,
+/// because the lifecycle graph's `On Game Start` node controls the boot scene.
 pub fn load_current_scene(world: &mut World) {
+    if world.get_resource::<renzora_core::LifecycleHandlesBoot>().is_some() {
+        info!("load_current_scene: skipped (lifecycle handles boot)");
+        return;
+    }
     let Some(project) = world.get_resource::<CurrentProject>() else {
         warn!("load_current_scene: no CurrentProject resource");
         return;
@@ -290,9 +448,10 @@ pub fn rehydrate_meshes(
     mut commands: Commands,
     query: Query<(Entity, &MeshPrimitive, Option<&MeshColor>), Without<Mesh3d>>,
     registry: Res<ShapeRegistry>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: Option<ResMut<Assets<Mesh>>>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
+    let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else { return };
     for (entity, primitive, color) in &query {
         let Some(mesh) = registry.create_mesh(&primitive.0, &mut meshes) else {
             warn!("Unknown shape ID '{}' — skipping rehydration", primitive.0);
@@ -305,7 +464,7 @@ pub fn rehydrate_meshes(
             ..default()
         });
 
-        commands.entity(entity).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+        commands.entity(entity).try_insert((Mesh3d(mesh), MeshMaterial3d(material)));
     }
 }
 
@@ -316,7 +475,7 @@ pub fn rehydrate_visibility(
     query: Query<Entity, (With<Children>, Without<Visibility>)>,
 ) {
     for entity in &query {
-        commands.entity(entity).insert(Visibility::default());
+        commands.entity(entity).try_insert(Visibility::default());
     }
 }
 
@@ -325,14 +484,19 @@ pub fn rehydrate_visibility(
 /// In runtime mode (no editor), the `DefaultCamera` is active; if none is marked,
 /// the first scene camera wins. All others are inactive.
 /// In editor mode, all scene cameras are inactive (the editor camera renders).
+/// In play mode, the default camera becomes the active play mode camera with the
+/// viewport render target.
 pub fn rehydrate_cameras(
     mut commands: Commands,
     query: Query<(Entity, Option<&DefaultCamera>), (With<SceneCamera>, Without<Camera3d>)>,
     editor_camera: Query<(), With<EditorCamera>>,
+    play_mode: Option<Res<PlayModeState>>,
+    render_target: Option<Res<ViewportRenderTarget>>,
 ) {
     if query.is_empty() { return; }
 
-    let is_editor = !editor_camera.is_empty();
+    let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+    let is_editor = !editor_camera.is_empty() && !in_play_mode;
 
     // Find which entity should be the active camera in runtime mode
     let default_entity = query.iter()
@@ -343,13 +507,46 @@ pub fn rehydrate_cameras(
     for (entity, _) in &query {
         let is_active = !is_editor && default_entity == Some(entity);
 
-        commands.entity(entity).insert((
+        commands.entity(entity).try_insert((
             Camera3d::default(),
             Camera {
                 is_active,
                 ..default()
             },
         ));
+
+        // During play mode, configure the default camera as the play mode camera
+        // with the viewport render target (mirrors what enter_play_mode does).
+        if in_play_mode && is_active {
+            use renzora_core::console_log::*;
+            let name = commands.entity(entity).id();
+            console_info("Rehydration", format!(
+                "Play mode active — configuring {:?} as play mode camera", name
+            ));
+            commands.entity(entity).try_insert(PlayModeCamera);
+            if let Some(ref img) = render_target.as_ref().and_then(|rt| rt.image.as_ref()) {
+                commands.entity(entity).try_insert(
+                    bevy::camera::RenderTarget::Image(Handle::<Image>::clone(img).into()),
+                );
+            }
+        }
+    }
+}
+
+/// Keeps `PlayModeState.active_game_camera` in sync when a scene transition
+/// during play mode spawns a new `PlayModeCamera` entity.
+pub fn sync_play_mode_camera(
+    query: Query<Entity, Added<PlayModeCamera>>,
+    play_mode: Option<ResMut<PlayModeState>>,
+) {
+    let Some(mut play_mode) = play_mode else { return; };
+    for entity in &query {
+        if play_mode.active_game_camera != Some(entity) {
+            renzora_core::console_log::console_info("PlayMode", format!(
+                "Play mode camera updated: {:?} -> {:?}", play_mode.active_game_camera, entity
+            ));
+            play_mode.active_game_camera = Some(entity);
+        }
     }
 }
 
@@ -586,7 +783,7 @@ pub fn rehydrate_mesh_instances(
 
         // We need to wait for the GLTF to load before spawning the scene.
         // Insert a pending-load marker so a follow-up system can spawn the scene child.
-        commands.entity(entity).insert(PendingMeshInstanceRehydrate(gltf_handle));
+        commands.entity(entity).try_insert(PendingMeshInstanceRehydrate(gltf_handle));
     }
 }
 
@@ -598,8 +795,9 @@ pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
 pub fn finish_mesh_instance_rehydrate(
     mut commands: Commands,
     query: Query<(Entity, &PendingMeshInstanceRehydrate)>,
-    gltf_assets: Res<Assets<Gltf>>,
+    gltf_assets: Option<Res<Assets<Gltf>>>,
 ) {
+    let Some(gltf_assets) = gltf_assets else { return };
     for (entity, pending) in &query {
         let Some(gltf) = gltf_assets.get(&pending.0) else {
             continue;

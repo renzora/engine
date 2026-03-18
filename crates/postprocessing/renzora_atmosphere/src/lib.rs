@@ -219,7 +219,7 @@ fn atmosphere_custom_ui(
     let mut scale = settings.scene_units_to_m;
     inline_property(ui, row, "Units to m", theme, |ui| {
         let orig = scale;
-        ui.add(egui::DragValue::new(&mut scale).speed(0.1).range(0.001..=10000.0));
+        ui.add(egui::DragValue::new(&mut scale).speed(0.1).range(0.0001..=10000.0).max_decimals(4));
         if scale != orig {
             cmds.push(move |world: &mut World| {
                 if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.scene_units_to_m = scale; }

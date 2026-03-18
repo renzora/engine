@@ -2,25 +2,39 @@
 //!
 //! Checks GitHub releases for new versions, downloads updates with progress
 //! tracking, and launches an external updater for exe replacement.
+//!
+//! Disabled on WASM (no filesystem, no HTTP client, no process spawning).
 
+#[cfg(not(target_arch = "wasm32"))]
 mod check;
+#[cfg(not(target_arch = "wasm32"))]
 mod download;
+#[cfg(not(target_arch = "wasm32"))]
 mod ui;
 
 use bevy::prelude::*;
-use bevy_egui::EguiPrimaryContextPass;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, Ordering}};
 
+#[cfg(not(target_arch = "wasm32"))]
 use renzora_splash::SplashState;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use check::UpdateCheckResult;
-pub use ui::UpdateDialogState;
+
+/// The current editor version — update this before each release to match the git tag.
+pub const EDITOR_VERSION: &str = "r1-alpha4";
+
+/// Get the current editor version.
+pub fn current_version() -> &'static str {
+    EDITOR_VERSION
+}
 
 /// Thread-safe wrapper for mpsc::Receiver
 pub(crate) struct SyncReceiver<T>(Mutex<Option<std::sync::mpsc::Receiver<T>>>);
 
 impl<T> SyncReceiver<T> {
+    #[cfg(not(target_arch = "wasm32"))]
     fn new(receiver: std::sync::mpsc::Receiver<T>) -> Self {
         Self(Mutex::new(Some(receiver)))
     }
@@ -35,84 +49,65 @@ impl<T> SyncReceiver<T> {
     }
 }
 
-/// Plugin that provides auto-update functionality.
-pub struct UpdatePlugin;
-
-impl Plugin for UpdatePlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] UpdatePlugin");
-        app.init_resource::<UpdateState>()
-            .init_resource::<UpdateDialogState>()
-            .add_systems(Startup, trigger_startup_check)
-            .add_systems(Update, poll_update_check.run_if(in_state(SplashState::Editor)))
-            .add_systems(Update, poll_download_progress.run_if(in_state(SplashState::Editor)))
-            .add_systems(
-                EguiPrimaryContextPass,
-                ui::render_update_dialog.run_if(in_state(SplashState::Editor)),
-            );
-    }
-}
-
-/// The current editor version — update this before each release to match the git tag.
-pub const EDITOR_VERSION: &str = "r1-alpha4";
-
-/// Get the current editor version.
-pub fn current_version() -> &'static str {
-    EDITOR_VERSION
+/// State for the update dialog UI.
+#[derive(Resource, Default)]
+pub struct UpdateDialogState {
+    pub open: bool,
 }
 
 /// Runtime state for the update system.
 #[derive(Resource)]
 pub struct UpdateState {
-    /// Result of the version check (populated by background thread).
+    #[cfg(not(target_arch = "wasm32"))]
     pub check_result: Option<UpdateCheckResult>,
-    /// Whether a check is currently in progress.
     pub checking: bool,
-    /// Download progress (0.0 to 1.0).
     pub download_progress: Option<f32>,
-    /// Path to the downloaded binary.
     pub downloaded_path: Option<PathBuf>,
-    /// Whether a download is currently in progress.
     pub downloading: bool,
-    /// Error message if something went wrong.
     pub error: Option<String>,
-    /// Shared progress for background download thread.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) download_progress_shared: Option<Arc<AtomicU64>>,
-    /// Shared total size for background download thread.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) download_total_shared: Option<Arc<AtomicU64>>,
-    /// Shared completion flag for background download thread.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) download_complete: Option<Arc<AtomicBool>>,
-    /// Shared error for background download thread.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) download_error: Option<Arc<Mutex<Option<String>>>>,
-    /// Receiver for background check results.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) check_receiver: Option<Arc<SyncReceiver<Result<UpdateCheckResult, String>>>>,
 }
 
 impl Default for UpdateState {
     fn default() -> Self {
         Self {
+            #[cfg(not(target_arch = "wasm32"))]
             check_result: None,
             checking: false,
             download_progress: None,
             downloaded_path: None,
             downloading: false,
             error: None,
+            #[cfg(not(target_arch = "wasm32"))]
             download_progress_shared: None,
+            #[cfg(not(target_arch = "wasm32"))]
             download_total_shared: None,
+            #[cfg(not(target_arch = "wasm32"))]
             download_complete: None,
+            #[cfg(not(target_arch = "wasm32"))]
             download_error: None,
+            #[cfg(not(target_arch = "wasm32"))]
             check_receiver: None,
         }
     }
 }
 
 impl UpdateState {
-    /// Start checking for updates.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn start_check(&mut self) {
         check::start_update_check(self);
     }
 
-    /// Start downloading the update.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn start_download(&mut self) {
         let download_info = self.check_result.as_ref().and_then(|result| {
             let url = result.download_url.clone()?;
@@ -125,7 +120,7 @@ impl UpdateState {
         }
     }
 
-    /// Launch the updater and exit the editor.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn install_and_restart(&self) -> Result<(), String> {
         if let Some(ref downloaded_path) = self.downloaded_path {
             download::launch_updater(downloaded_path)
@@ -134,13 +129,36 @@ impl UpdateState {
         }
     }
 
-    /// Clear error state.
     pub fn clear_error(&mut self) {
         self.error = None;
     }
 }
 
-/// System to trigger update check on startup (if auto_check is enabled).
+/// Plugin that provides auto-update functionality.
+pub struct UpdatePlugin;
+
+impl Plugin for UpdatePlugin {
+    fn build(&self, app: &mut App) {
+        info!("[editor] UpdatePlugin");
+        app.init_resource::<UpdateState>()
+            .init_resource::<UpdateDialogState>();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use bevy_egui::EguiPrimaryContextPass;
+
+            app.add_systems(Startup, trigger_startup_check)
+                .add_systems(Update, poll_update_check.run_if(in_state(SplashState::Editor)))
+                .add_systems(Update, poll_download_progress.run_if(in_state(SplashState::Editor)))
+                .add_systems(
+                    EguiPrimaryContextPass,
+                    ui::render_update_dialog.run_if(in_state(SplashState::Editor)),
+                );
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn trigger_startup_check(
     mut update_state: ResMut<UpdateState>,
     app_config: Res<renzora_splash::AppConfig>,
@@ -150,7 +168,7 @@ fn trigger_startup_check(
     }
 }
 
-/// System to poll for update check results from background thread.
+#[cfg(not(target_arch = "wasm32"))]
 fn poll_update_check(mut update_state: ResMut<UpdateState>) {
     let receiver = update_state.check_receiver.clone();
     if let Some(ref receiver) = receiver {
@@ -169,9 +187,7 @@ fn poll_update_check(mut update_state: ResMut<UpdateState>) {
                     }
                     update_state.check_receiver = None;
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Still waiting
-                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     update_state.checking = false;
                     update_state.error = Some("Update check thread disconnected".to_string());
@@ -182,7 +198,7 @@ fn poll_update_check(mut update_state: ResMut<UpdateState>) {
     }
 }
 
-/// System to poll download progress from background thread.
+#[cfg(not(target_arch = "wasm32"))]
 fn poll_download_progress(mut update_state: ResMut<UpdateState>) {
     if !update_state.downloading {
         return;

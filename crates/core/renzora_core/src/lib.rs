@@ -24,6 +24,44 @@ impl Default for WindowConfig {
     }
 }
 
+/// Network configuration stored in `[network]` section of project.toml.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NetworkProjectConfig {
+    /// Server address (IP or hostname).
+    #[serde(default = "default_server_addr")]
+    pub server_addr: String,
+    /// Port for the server to listen on / client to connect to.
+    #[serde(default = "default_port")]
+    pub port: u16,
+    /// Transport protocol: "udp", "webtransport", "websocket".
+    #[serde(default = "default_transport")]
+    pub transport: String,
+    /// Server tick rate in Hz.
+    #[serde(default = "default_tick_rate")]
+    pub tick_rate: u16,
+    /// Maximum number of connected clients.
+    #[serde(default = "default_max_clients")]
+    pub max_clients: u16,
+}
+
+fn default_server_addr() -> String { "127.0.0.1".to_string() }
+fn default_port() -> u16 { 7636 }
+fn default_transport() -> String { "udp".to_string() }
+fn default_tick_rate() -> u16 { 64 }
+fn default_max_clients() -> u16 { 32 }
+
+impl Default for NetworkProjectConfig {
+    fn default() -> Self {
+        Self {
+            server_addr: default_server_addr(),
+            port: default_port(),
+            transport: default_transport(),
+            tick_rate: default_tick_rate(),
+            max_clients: default_max_clients(),
+        }
+    }
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
@@ -34,6 +72,8 @@ pub struct ProjectConfig {
     pub icon: Option<String>,
     #[serde(default)]
     pub window: WindowConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<NetworkProjectConfig>,
 }
 
 impl Default for ProjectConfig {
@@ -44,6 +84,7 @@ impl Default for ProjectConfig {
             main_scene: "scenes/main.ron".to_string(),
             icon: None,
             window: WindowConfig::default(),
+            network: None,
         }
     }
 }
@@ -328,6 +369,12 @@ pub struct PlayModeCamera;
 #[derive(Component)]
 pub struct UiCanvasPreviewCamera;
 
+/// Marker resource: inserted by LifecyclePlugin when the lifecycle graph
+/// has an `on_game_start` node. The runtime skips `load_current_scene`
+/// when this is present (the lifecycle handles it instead).
+#[derive(Resource)]
+pub struct LifecycleHandlesBoot;
+
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]
@@ -353,6 +400,28 @@ pub struct NewSceneRequested;
 /// Request "Open Scene" — prompts user to pick a scene file.
 #[derive(Resource)]
 pub struct OpenSceneRequested;
+
+/// Request a tab switch — serializes current scene, deserializes target.
+#[derive(Resource)]
+pub struct TabSwitchRequest {
+    pub old_tab_id: u64,
+    pub new_tab_id: u64,
+}
+
+/// In-memory snapshot of a scene tab's state (entities + camera).
+pub struct TabSceneSnapshot {
+    pub scene_ron: String,
+    pub camera_focus: [f32; 3],
+    pub camera_distance: f32,
+    pub camera_yaw: f32,
+    pub camera_pitch: f32,
+}
+
+/// Stores serialized scene data for each tab so switching tabs can serialize/deserialize.
+#[derive(Resource, Default)]
+pub struct SceneTabBuffers {
+    pub buffers: std::collections::HashMap<u64, TabSceneSnapshot>,
+}
 
 /// Marker resource requesting the export overlay to open.
 ///

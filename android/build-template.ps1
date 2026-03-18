@@ -8,11 +8,11 @@
 #        rustup target add x86_64-linux-android --toolchain nightly
 #
 # Usage:
-#   .\scripts\build-android-template.ps1              # Android ARM64 (Vulkan)
-#   .\scripts\build-android-template.ps1 -x86         # Android x86_64 (Vulkan)
-#   .\scripts\build-android-template.ps1 -firetv      # Fire TV ARM64 (Vulkan)
-#   .\scripts\build-android-template.ps1 -all         # Build all templates
-#   .\scripts\build-android-template.ps1 -firetv -x86 # Multiple targets
+#   .\android\build-template.ps1              # Android ARM64 (Vulkan)
+#   .\android\build-template.ps1 -x86         # Android x86_64 (Vulkan)
+#   .\android\build-template.ps1 -firetv      # Fire TV ARM64 (Vulkan)
+#   .\android\build-template.ps1 -all         # Build all templates
+#   .\android\build-template.ps1 -firetv -x86 # Multiple targets
 
 param(
     [switch]$arm64,
@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = (Resolve-Path "$PSScriptRoot\..").Path
-$AndroidDir = "$ProjectRoot\android"
+$AndroidDir = $PSScriptRoot
 $AndroidCrate = "$ProjectRoot\crates\platform\renzora_android"
 $JniLibsDir = "$AndroidDir\app\src\main\jniLibs"
 
@@ -96,7 +96,7 @@ $gradleCmd = if (Test-Path "$AndroidDir\gradlew.bat") { "$AndroidDir\gradlew.bat
 $templatesDir = "$env:APPDATA\renzora\templates"
 New-Item -ItemType Directory -Force -Path $templatesDir | Out-Null
 
-$outputDir = "$ProjectRoot\build\templates"
+$outputDir = "$ProjectRoot\target\templates"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 # --- Helper: build one architecture ---

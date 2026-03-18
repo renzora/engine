@@ -59,7 +59,7 @@ impl Plugin for ScriptingPlugin {
         // Create the script engine with available backends
         let mut engine = ScriptEngine::new();
 
-        #[cfg(feature = "lua")]
+        #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
         engine.add_backend(Box::new(crate::backends::lua::LuaBackend::new()));
 
         #[cfg(feature = "rhai")]

@@ -1,13 +1,11 @@
 # Rust
 /target/
-/app/
 /target-runtime/
 updater/target/
 **/target/
 Cargo.lock
 
 # Build artifacts
-/build/
 rustc-ice-*.txt
 
 # IDE
@@ -22,6 +20,13 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# WASM build output
+web/*.wasm
+web/*.wasm.br
+web/*.d.ts
+web/renzora.js
+web/node_modules/
 
 # Exported builds
 /export/

@@ -48,7 +48,7 @@ pub fn rehydrate_animators(
             }
         }
 
-        commands.entity(entity).insert(state);
+        commands.entity(entity).try_insert(state);
     }
 }
 

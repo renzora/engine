@@ -126,7 +126,7 @@ pub fn update_canvas_preview(
                 *t = cam_transform;
                 *p = cam_proj.clone();
                 if let Some(ref skybox) = editor_skybox {
-                    commands.entity(entity).insert(skybox.clone());
+                    commands.entity(entity).try_insert(skybox.clone());
                 } else {
                     commands.entity(entity).remove::<bevy::core_pipeline::Skybox>();
                 }

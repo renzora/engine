@@ -34,11 +34,11 @@ fn main() {
         app.add_plugins(renzora_blueprint_editor::BlueprintEditorPlugin);
         app.add_plugins(renzora_tutorial::TutorialPlugin);
         app.add_plugins(renzora_network_editor::NetworkEditorPlugin);
+        app.add_plugins(renzora_lifecycle_editor::LifecycleEditorPlugin);
         app.add_plugins(renzora_daw::DawPlugin);
         app.add_plugins(renzora_level_presets::LevelPresetsPlugin);
         app.add_plugins(renzora_animation_editor::AnimationEditorPlugin);
         app.add_plugins(renzora_shader_editor::ShaderEditorPlugin);
-        app.add_plugins(renzora_update::UpdatePlugin);
     }
 
     app.run();

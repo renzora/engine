@@ -7,6 +7,7 @@ pub mod camera;
 pub mod commands;
 pub mod ext;
 pub mod inspector_registry;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_integration;
 pub mod selection;
 pub mod settings;
@@ -131,7 +132,9 @@ impl Plugin for RenzoraEditorPlugin {
                 show_script_reload_toasts.run_if(in_state(SplashState::Editor)),
             )
             .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
-            .add_plugins(plugin_integration::PluginCorePlugin);
+            ;
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_plugins(plugin_integration::PluginCorePlugin);
     }
 }
 
@@ -267,6 +270,7 @@ pub fn editor_ui_system(world: &mut World) {
     let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
     // 7. Status bar (bottom) — render plugin status items directly from PluginHost
+    #[cfg(not(target_arch = "wasm32"))]
     render_plugin_status_bar(&ctx, &theme, world);
 
     // 8. Get current drag state (read-only snapshot for rendering)
@@ -548,20 +552,47 @@ pub fn editor_ui_system(world: &mut World) {
 
     // L) Handle document tab actions
     match doc_tab_action {
-        DocTabAction::Activate(idx, _layout_name) => {
-            let layout_name = world
+        DocTabAction::Activate(idx) => {
+            let ids = world
                 .get_resource_mut::<DocumentTabState>()
-                .and_then(|mut ts| ts.activate_tab(idx).map(|s| s.to_string()));
-            if let Some(name) = layout_name {
-                switch_layout_by_name(world, &name);
+                .and_then(|mut ts| ts.activate_tab(idx));
+            if let Some((old_id, new_id)) = ids {
+                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
         }
         DocTabAction::Close(idx) => {
-            let layout_name = world
+            // If closing the active tab, switch to adjacent first
+            let switch_and_close = {
+                if let Some(ts) = world.get_resource::<DocumentTabState>() {
+                    if idx == ts.active_tab && ts.tabs.len() > 1 {
+                        let new_active = if idx + 1 < ts.tabs.len() { idx + 1 } else { idx.saturating_sub(1) };
+                        let old_id = ts.tabs[idx].id;
+                        let new_id = ts.tabs[new_active].id;
+                        Some((old_id, new_id, new_active))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some((old_id, new_id, new_active)) = switch_and_close {
+                // Activate adjacent tab first
+                if let Some(mut ts) = world.get_resource_mut::<DocumentTabState>() {
+                    ts.active_tab = new_active;
+                }
+                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+            }
+
+            // Close the tab and clean up buffer
+            let closed_id = world
                 .get_resource_mut::<DocumentTabState>()
-                .and_then(|mut ts| ts.close_tab(idx).map(|s| s.to_string()));
-            if let Some(name) = layout_name {
-                switch_layout_by_name(world, &name);
+                .and_then(|mut ts| ts.close_tab(idx));
+            if let Some(id) = closed_id {
+                if let Some(mut buffers) = world.get_resource_mut::<renzora_core::SceneTabBuffers>() {
+                    buffers.buffers.remove(&id);
+                }
             }
         }
         DocTabAction::Reorder(from, to) => {
@@ -569,19 +600,27 @@ pub fn editor_ui_system(world: &mut World) {
                 ts.reorder(from, to);
             }
         }
-        DocTabAction::AddNew(kind) => {
-            let layout_name = kind.preferred_layout().to_string();
-            let label = kind.label().to_string();
-            if let Some(mut ts) = world.get_resource_mut::<DocumentTabState>() {
-                let idx = ts.add_tab(format!("Untitled {}", label), kind);
-                ts.active_tab = idx;
+        DocTabAction::AddNew => {
+            let (old_id, new_id) = {
+                if let Some(mut ts) = world.get_resource_mut::<DocumentTabState>() {
+                    let old_id = ts.active_tab_id().unwrap_or(0);
+                    let idx = ts.add_tab("Untitled Scene".into(), None);
+                    ts.active_tab = idx;
+                    let new_id = ts.tabs[idx].id;
+                    (old_id, new_id)
+                } else {
+                    (0, 0)
+                }
+            };
+            if old_id != 0 {
+                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
-            switch_layout_by_name(world, &layout_name);
         }
         DocTabAction::None => {}
     }
 
     // Plugin floating panels
+    #[cfg(not(target_arch = "wasm32"))]
     render_plugin_floating_panels(&ctx, &theme, world);
 
     // Auth window
@@ -930,8 +969,7 @@ fn render_play_mode_overlay(
         });
 }
 
-/// Render the status bar with plugin items read directly from PluginHost.
-/// Matches legacy layout: left items on left, right items + version on right.
+#[cfg(not(target_arch = "wasm32"))]
 fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
     use editor_plugin_api::api::StatusBarAlign;
 
@@ -1023,7 +1061,7 @@ fn render_status_item(
     }
 }
 
-/// Render plugin-registered panels as floating egui windows.
+#[cfg(not(target_arch = "wasm32"))]
 fn render_plugin_floating_panels(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
     let Some(host) = world.get_resource::<plugin_host::PluginHost>() else {
         return;

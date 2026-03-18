@@ -266,7 +266,7 @@ fn rehydrate_ui_images(
     for (entity, img_path) in &query {
         let path = img_path.path.clone();
         let handle: Handle<Image> = asset_server.load(path);
-        commands.entity(entity).insert(ImageNode::new(handle));
+        commands.entity(entity).try_insert(ImageNode::new(handle));
     }
 }
 
@@ -313,7 +313,7 @@ fn sync_ui_zindex(
                 let desired = ZIndex(ui_count - 1 - ui_idx);
                 let current = zindex_query.get(child).ok().flatten().copied();
                 if current != Some(desired) {
-                    commands.entity(child).insert(desired);
+                    commands.entity(child).try_insert(desired);
                 }
                 ui_idx += 1;
             }
@@ -328,7 +328,7 @@ fn sync_ui_zindex(
         if let Ok((canvas, current_gz)) = canvas_data.get(entity) {
             let desired = GlobalZIndex(canvas.sort_order);
             if current_gz.copied() != Some(desired) {
-                commands.entity(entity).insert(desired);
+                commands.entity(entity).try_insert(desired);
             }
         }
     }
@@ -377,7 +377,7 @@ fn ensure_ui_visibility_components(
     widgets_no_iv: Query<Entity, (With<UiWidget>, Without<InheritedVisibility>)>,
 ) {
     for entity in canvases_no_iv.iter().chain(widgets_no_iv.iter()) {
-        commands.entity(entity).insert((
+        commands.entity(entity).try_insert((
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ));

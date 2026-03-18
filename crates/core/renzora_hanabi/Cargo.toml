@@ -7,7 +7,7 @@ edition = "2021"
 editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor"]
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 bevy_hanabi = { path = "../../third_party/bevy_hanabi" }
 renzora_core = { path = "../renzora_core" }
 serde = { version = "1", features = ["derive"] }

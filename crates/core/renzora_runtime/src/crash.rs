@@ -78,6 +78,7 @@ pub fn install_panic_hook() {
 
         let _ = save_crash_report(&report);
 
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         show_crash_dialog(&report);
 
         default_hook(panic_info);
@@ -125,11 +126,11 @@ fn save_crash_report(report: &CrashReport) -> std::io::Result<()> {
 
 /// Get the crash report directory
 fn get_crash_dir() -> std::path::PathBuf {
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(home) = dirs::home_dir() {
-        home.join(".renzora").join("crashes")
-    } else {
-        std::path::PathBuf::from(".renzora/crashes")
+        return home.join(".renzora").join("crashes");
     }
+    std::path::PathBuf::from(".renzora/crashes")
 }
 
 /// Check if there's a crash report from a previous session
@@ -181,6 +182,7 @@ pub fn check_previous_crash() -> Option<CrashReport> {
 }
 
 /// Show a native crash dialog using rfd, with option to copy to clipboard
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 fn show_crash_dialog(report: &CrashReport) {
     let short_message = format!(
         "The application has crashed.\n\n\

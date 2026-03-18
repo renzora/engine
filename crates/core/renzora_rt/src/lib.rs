@@ -52,7 +52,7 @@ fn sync_rt_lighting(
                     break;
                 }
                 if settings.enabled {
-                    commands.entity(*target).insert((
+                    commands.entity(*target).try_insert((
                         settings.clone(),
                         DepthPrepass,
                         MotionVectorPrepass,

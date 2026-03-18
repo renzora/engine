@@ -2,9 +2,8 @@
   "name": "renzora-web",
   "private": true,
   "scripts": {
-    "build:wasm": "cargo build --release --features editor --target wasm32-unknown-unknown --manifest-path ../Cargo.toml",
-    "bind": "node bind.js",
-    "dev": "npm run build:wasm && npm run bind && vite",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {

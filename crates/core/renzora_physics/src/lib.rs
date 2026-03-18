@@ -85,7 +85,7 @@ pub fn spawn_entity_physics(
     }
 
     if has_physics {
-        commands.entity(entity).insert(RuntimePhysics);
+        commands.entity(entity).try_insert(RuntimePhysics);
     }
 }
 
@@ -110,7 +110,7 @@ fn auto_init_physics(
         if let Some(s) = shape {
             spawn_collision_shape(&mut commands, entity, s);
         }
-        commands.entity(entity).insert(RuntimePhysics);
+        commands.entity(entity).try_insert(RuntimePhysics);
     }
 }
 

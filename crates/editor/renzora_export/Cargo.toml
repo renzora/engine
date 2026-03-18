@@ -5,11 +5,12 @@ edition = "2021"
 description = "Export overlay for packaging Renzora projects"
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 bevy_egui = "0.39"
 egui-phosphor = "0.11"
 renzora_core = { path = "../../core/renzora_core" }
 renzora_rpak = { path = "../../core/renzora_rpak" }
+renzora_import = { path = "../../core/renzora_import" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"

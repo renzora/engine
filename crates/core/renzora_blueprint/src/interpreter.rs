@@ -71,6 +71,10 @@ struct EvalContext<'a> {
     runtime: &'a mut BlueprintRuntimeState,
     /// Entity name.
     entity_name: String,
+    /// Network state: is this instance a server?
+    net_is_server: bool,
+    /// Network state: is this instance connected?
+    net_is_connected: bool,
 }
 
 impl<'a> EvalContext<'a> {
@@ -485,6 +489,10 @@ impl<'a> EvalContext<'a> {
             "convert/to_float" => PinValue::Float(self.resolve_input(node_id, "value").as_float()),
             "convert/to_int" => PinValue::Int(self.resolve_input(node_id, "value").as_int()),
             "convert/to_bool" => PinValue::Bool(self.resolve_input(node_id, "value").as_bool()),
+
+            // ── Network data queries ────────────────────────────────
+            "network/is_server" => PinValue::Bool(self.net_is_server),
+            "network/is_connected" => PinValue::Bool(self.net_is_connected),
 
             _ => PinValue::None,
         }
@@ -1032,6 +1040,32 @@ impl<'a> EvalContext<'a> {
                 self.follow_exec(node_id, "then");
             }
 
+            // ── Network ──────────────────────────────────────────────
+            "network/send_message" => {
+                let channel = self.resolve_input(node_id, "channel").as_string();
+                let data = self.resolve_input(node_id, "data").as_string();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_network::script_extension::NetworkScriptCommand::SendEvent {
+                        name: channel,
+                        data,
+                    },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+            "network/spawn" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let pos = self.resolve_input(node_id, "position").as_vec3();
+                self.commands.push(ScriptCommand::Extension(Box::new(
+                    renzora_network::script_extension::NetworkScriptCommand::SpawnRequest {
+                        name,
+                        x: pos[0],
+                        y: pos[1],
+                        z: pos[2],
+                    },
+                )));
+                self.follow_exec(node_id, "then");
+            }
+
             _ => {
                 // Unknown node type — skip and continue.
                 self.follow_exec(node_id, "then");
@@ -1094,6 +1128,12 @@ pub fn run_blueprints(world: &mut World) {
             .collect();
 
         let (commands, transform_writes) = {
+            // Query network status for blueprint nodes
+            let (net_is_server, net_is_connected) = world
+                .get_resource::<renzora_network::NetworkStatus>()
+                .map(|s| (s.is_server, s.is_connected()))
+                .unwrap_or((false, false));
+
             let mut ctx = EvalContext {
                 entity: bpe.entity,
                 cache: HashMap::new(),
@@ -1107,6 +1147,8 @@ pub fn run_blueprints(world: &mut World) {
                 transform_writes: Vec::new(),
                 runtime: &mut runtime,
                 entity_name: bpe.entity_name.clone(),
+                net_is_server,
+                net_is_connected,
             };
 
             for (node_id, node_type) in &event_nodes {

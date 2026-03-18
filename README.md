@@ -13,18 +13,21 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 1. [Documentation](#documentation)
 2. [Prerequisites](#prerequisites)
 3. [Building & Running](#building--running)
-4. [Creating Extensions](#creating-extensions)
-5. [Creating Scripting Extensions](#creating-scripting-extensions)
-6. [Creating Components](#creating-components)
-7. [Creating Post-Process Effects](#creating-post-process-effects)
-8. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
-9. [Exporting](#exporting)
-10. [Building Android Runtime](#building-android-runtime)
-11. [Cargo Features](#cargo-features)
-12. [Supported File Formats](#supported-file-formats)
-13. [Testing](#testing)
-14. [Troubleshooting](#troubleshooting)
-15. [License](#license)
+4. [Building for WASM](#building-for-wasm)
+5. [Mesh Optimization](#mesh-optimization)
+6. [Creating Extensions](#creating-extensions)
+7. [Creating Scripting Extensions](#creating-scripting-extensions)
+8. [Creating Components](#creating-components)
+9. [Creating Post-Process Effects](#creating-post-process-effects)
+10. [Dynamic Plugins (DLL)](#dynamic-plugins-dll)
+11. [Exporting](#exporting)
+12. [Building Android Runtime](#building-android-runtime)
+13. [Building iOS / tvOS Runtime](#building-ios--tvos-runtime)
+14. [Cargo Features](#cargo-features)
+15. [Supported File Formats](#supported-file-formats)
+16. [Testing](#testing)
+17. [Troubleshooting](#troubleshooting)
+18. [License](#license)
 
 ## Documentation
 
@@ -91,6 +94,7 @@ Renzora uses **cargo aliases** so you never need to remember `--bin` or `--no-de
 ```bash
 cargo renzora                # build + run the editor
 cargo runtime                # build + run the runtime (no editor)
+cargo server                 # build + run the dedicated server
 ```
 
 ### Build Only (no run)
@@ -105,8 +109,42 @@ cargo build-runtime          # build runtime binary
 ```bash
 cargo release-editor         # optimized editor
 cargo release-runtime        # optimized runtime
-cargo dist-runtime           # max optimized runtime (fat LTO, stripped)
+cargo release-server         # optimized dedicated server
 ```
+
+### Dist Builds (max optimization, fat LTO, stripped)
+
+```bash
+cargo dist-runtime           # runtime only
+cargo dist-server            # server only
+cargo dist-editor            # editor only
+cargo dist-all               # editor + runtime + server in one pass
+```
+
+The `dist` profile uses fat LTO, single codegen unit, `opt-level = "z"`, panic = abort, and symbol stripping for minimum binary size.
+
+### Dist with UPX Compression
+
+Requires [cargo-make](https://github.com/sagiegurari/cargo-make) and [UPX](https://upx.github.io/):
+
+```bash
+cargo install cargo-make
+
+# UPX:
+# Windows:  winget install upx
+# Linux:    sudo apt install upx
+# macOS:    brew install upx
+```
+
+```bash
+cargo make dist              # build all 3 + compress with UPX
+cargo make dist-build        # build all 3 without compression
+cargo make dist-runtime      # build just runtime
+cargo make dist-server       # build just server
+cargo make dist-editor       # build just editor
+```
+
+UPX typically achieves ~70-75% size reduction on the engine binaries.
 
 ### Running the Runtime with a Project
 
@@ -122,12 +160,158 @@ The runtime also looks for `project.toml` in the current directory if `--project
 
 ### Architecture
 
-The engine has two binaries that share a common runtime library:
+The engine has three binaries that share a common runtime library:
 
 - **`src/editor.rs`** -- Editor binary. Calls `build_runtime_app()` then adds editor plugins (UI, viewport, inspector, etc.) behind `#[cfg(feature = "editor")]`.
-- **`src/runtime.rs`** -- Shared runtime setup. Registers `DefaultPlugins`, `RuntimePlugin`, all post-process effects, environment plugins (skybox, clouds, lighting).
+- **`src/runtime.rs`** -- Shared runtime setup. Registers plugins, post-process effects, environment plugins. With the `server` feature, uses `DefaultPlugins` in headless mode (no window, no audio, no postprocessing).
+- **`src/server.rs`** -- Dedicated server binary. Calls `build_runtime_app()` with `--features server` (headless) then adds `NetworkServerPlugin`.
 
-Both binaries (`renzora` and `renzora-runtime`) use the same runtime core. The `editor` feature controls whether the editor UI is included.
+All three binaries use the same runtime core. The `editor` feature controls whether the editor UI is included, and the `server` feature controls headless mode (no rendering/audio/postprocessing).
+
+## Building for WASM
+
+The engine compiles to WebAssembly for browser deployment. Both the editor and the game runtime can run in the browser. Some subsystems are automatically disabled on WASM (audio, networking, Lua scripting) while the rest works natively via WebGPU.
+
+### Prerequisites
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli
+cargo install wasm-opt       # or: pip install wasm-opt
+cargo install brotli         # pre-compression for serving
+```
+
+> **Note:** `cargo make dist-web` and `cargo make dist-web-runtime` will automatically install missing tools (`wasm-bindgen`, `wasm-opt`, `brotli`) before building.
+
+### WASM Builds
+
+There are two WASM targets — the editor (for running in the browser) and the runtime (export template for shipping games):
+
+| What | Command | Output |
+|------|---------|--------|
+| Editor (compile only) | `cargo dist-web-editor` | `app/wasm32-unknown-unknown/dist/renzora.wasm` |
+| Editor (full pipeline) | `cargo make dist-web` | `web/` (serve with Vite) |
+| Runtime template (full pipeline) | `cargo make dist-web-runtime` | `target/dist/renzora-runtime-web-wasm32.zip` |
+
+### Editor in Browser
+
+The `web/` directory contains a Vite project for running the editor in the browser:
+
+```bash
+cargo make dist-web           # compile editor + wasm-bindgen + wasm-opt + brotli → web/
+cd web
+npm install                   # first time only
+npm run dev                   # start Vite dev server on localhost:3000
+```
+
+For production:
+
+```bash
+cd web
+npm run build                 # Vite production bundle → web/dist/
+npm run preview               # preview the production build locally
+```
+
+If the wasm is already built, `npm run dev` skips recompilation and just starts Vite.
+
+### Game Export Template
+
+The runtime wasm template is a `.zip` containing `renzora-runtime.js` + `renzora-runtime_bg.wasm`. It works like every other export template — build it once, install it, then export games from the editor overlay:
+
+```bash
+cargo make dist-web-runtime   # compile + bind + optimize + zip → target/dist/renzora-runtime-web-wasm32.zip
+```
+
+Install the template by copying it to the templates directory or using the "Install from file" button in the export overlay:
+
+```
+Windows:  %APPDATA%\renzora\templates\renzora-runtime-web-wasm32.zip
+Linux:    ~/.config/renzora/templates/renzora-runtime-web-wasm32.zip
+macOS:    ~/Library/Application Support/renzora/templates/renzora-runtime-web-wasm32.zip
+```
+
+When you select **Web (WASM)** in the export overlay, the editor:
+1. Packs your project assets into an `.rpak`
+2. Extracts the template zip (JS glue + wasm binary)
+3. Generates an `index.html` with your project name
+4. Bundles everything into `{project}-web.zip`
+
+Unzip to any static host and it runs.
+
+### Deploying
+
+- **GitHub Pages** — push the unzipped contents; brotli compression is automatic (~7MB over the wire)
+- **Netlify / Vercel / Cloudflare Pages** — same, just point to the output directory
+- **Any HTTP server** — files must be served over HTTP, not opened as local files
+
+### WASM Limitations
+
+| Subsystem | Status |
+|-----------|--------|
+| Rendering (WebGPU) | Works (Chrome 113+, Edge 113+, Firefox Nightly) |
+| Physics (Avian) | Works |
+| Particles (Hanabi) | Works (requires WebGPU compute shaders) |
+| Scripting (Rhai) | Works |
+| Visual scripting (Blueprints) | Works |
+| Animation | Works |
+| Game UI | Works |
+| Post-processing effects | Works |
+| Terrain | Works |
+| Screen-space RT effects | Disabled (storage texture limits) |
+| Audio (Kira) | Disabled (no cpal backend for WASM) |
+| Networking (Lightyear) | Disabled (no UDP sockets on WASM) |
+| Scripting (Lua) | Disabled (requires C compiler) |
+| File dialogs (rfd) | Disabled |
+| Clipboard (arboard) | Disabled |
+
+### Compression
+
+The `cargo make dist-web` pipeline automatically runs `wasm-opt -Oz` and `brotli -q 11`, producing both `.wasm` and `.wasm.br` in `web/`:
+
+| Stage | Typical Size |
+|-------|-------------|
+| Raw (pre-opt) | ~48 MB |
+| After `wasm-opt -Oz` | ~37 MB |
+| After Brotli (transfer size) | ~8.5 MB |
+
+Most web servers (nginx, Cloudflare, Vercel, Netlify) serve the `.br` file automatically when the browser sends `Accept-Encoding: br`.
+
+## Mesh Optimization
+
+The engine includes optional meshoptimizer-based mesh processing at both import and export time, powered by the `meshopt` crate.
+
+### Import Optimization (lossless)
+
+When importing 3D models through the import overlay, three lossless optimizations are available (all enabled by default):
+
+| Option | Effect |
+|--------|--------|
+| Optimize vertex cache | Reorders triangles for GPU vertex cache locality |
+| Optimize overdraw | Reorders triangles to reduce pixel overdraw |
+| Optimize vertex fetch | Reorders vertices for vertex fetch cache efficiency |
+
+These don't change the visual output -- they just make meshes render faster. The import runs on a background thread with per-file progress reporting.
+
+### Export Optimization (lossy, optional)
+
+When exporting a project, additional mesh processing options are available in the export overlay under "Mesh Optimization":
+
+| Option | Effect |
+|--------|--------|
+| Simplify meshes | Reduces triangle count by a configurable ratio (0.1 - 1.0) |
+| Quantize vertex attributes | Reduces vertex data precision for smaller files |
+| Generate LODs | Creates N levels of detail (1-5) as separate `.glb` entries |
+
+The export pipeline only packs assets that are actually referenced from scene files (BFS from `project.toml` -> main scene -> asset references). No unused assets are included.
+
+### Export Pipeline Order
+
+1. Scan project entry points and pack only referenced assets
+2. Strip editor-only components from scene files
+3. Optimize meshes (vertex cache, overdraw, vertex fetch + optional simplify/quantize)
+4. Generate LOD variants (if enabled)
+5. Compress with zstd and write `.rpak`
+6. Copy/append to runtime template binary
 
 ## Creating Extensions
 
@@ -143,12 +327,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_editor = { path = "../renzora_editor" }
 renzora_theme = { path = "../../ui/renzora_theme" }
 ```
+
+> **Important:** Always use `default-features = false` on the `bevy` dependency in sub-crates. The root `Cargo.toml` controls which Bevy features are active. Without this, sub-crates pull in Bevy's full default features (including `file_watcher`) which breaks WASM builds via Cargo feature unification.
 
 ### 2. Implement EditorPanel
 
@@ -235,10 +421,13 @@ lua = ["dep:mlua"]
 rhai = ["dep:rhai"]
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 renzora_scripting = { path = "../renzora_scripting" }
-mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
 rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# Lua is native-only (requires C compiler, cannot target WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
 ```
 
 Enable the lua/rhai features in the root `Cargo.toml`:
@@ -278,7 +467,7 @@ renzora_scripting::script_extension_command! {
 
 ### 3. Register Script Functions
 
-Use `dual_register!` to define functions once — both Lua and Rhai bindings are generated automatically. The body uses standard Rust types; type conversion (e.g. Rhai `ImmutableString` → `String`) is handled by the macro.
+Use `dual_register!` to define functions once — both Lua and Rhai bindings are generated automatically. The body uses standard Rust types; type conversion (e.g. Rhai `ImmutableString` -> `String`) is handled by the macro.
 
 Supported parameter types: `String`, `f64`, `i64`, `bool`.
 
@@ -318,15 +507,14 @@ impl ScriptExtension for MyScriptExtension {
         data.insert(my_data);
     }
 
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn register_lua_functions(&self, lua: &mlua::Lua) {
         register_my_lua(lua);
     }
 
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {
         let Some(my_data) = data.get::<MyData>() else { return };
-        // Helper converts HashMap<String, f32> to a Lua table
         renzora_scripting::macros::lua_set_map(lua, "_my_data", &my_data.values);
     }
 
@@ -338,7 +526,6 @@ impl ScriptExtension for MyScriptExtension {
     #[cfg(feature = "rhai")]
     fn setup_rhai_scope(&self, scope: &mut rhai::Scope, data: &ExtensionData) {
         let Some(my_data) = data.get::<MyData>() else { return };
-        // Helper converts HashMap<String, f32> to a Rhai Map
         renzora_scripting::macros::rhai_set_map(scope, "_my_data", &my_data.values);
     }
 }
@@ -423,7 +610,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_editor = { path = "../renzora_editor" }
 ```
@@ -456,7 +643,7 @@ impl Plugin for MyComponentsPlugin {
 }
 ```
 
-The `Inspectable` derive generates the `InspectableComponent` trait impl automatically. Field types are inferred from Rust types (`f32` → drag slider, `bool` → checkbox, `String` → text input, `Vec3` → XYZ fields).
+The `Inspectable` derive generates the `InspectableComponent` trait impl automatically. Field types are inferred from Rust types (`f32` -> drag slider, `bool` -> checkbox, `String` -> text input, `Vec3` -> XYZ fields).
 
 #### `#[field(...)]` Attributes
 
@@ -516,7 +703,7 @@ default = []
 editor = ["dep:renzora_editor", "dep:egui-phosphor"]
 
 [dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.18", default-features = false }
 serde = { version = "1", features = ["derive"] }
 renzora_postprocess = { path = "../renzora_postprocess" }
 
@@ -663,6 +850,19 @@ declare_plugin!(MyDynamicPlugin, MyDynamicPlugin::new());
 
 Renzora uses `.rpak` files -- zstd-compressed archives containing all project assets. The export system supports multiple platforms and packaging modes.
 
+### How Export Works
+
+The export pipeline only packs files that are actually referenced from your project:
+
+1. **Scan** -- BFS from `project.toml` -> main scene -> all quoted asset paths in scene/script/config files
+2. **Pack** -- Only referenced files are read from disk and added to the archive
+3. **Strip** -- Editor-only components (e.g. `OrbitCameraState`) are removed from scene RON files
+4. **Optimize** -- Meshopt runs on `.glb` files (vertex cache, overdraw, vertex fetch, optional simplify/LOD)
+5. **Compress** -- zstd compression at configurable level (1-19)
+6. **Write** -- Output as standalone `.rpak` or appended to a runtime template binary
+
+For server exports, visual components (`MeshInstanceData`, `MeshColor`, etc.) and rendering assets are additionally stripped.
+
 ### Export Templates
 
 Export templates are pre-built runtime binaries for each target platform. When you export a game, the editor injects your project's assets into the template — so the template is a snapshot of the engine at build time.
@@ -671,22 +871,28 @@ Export templates are pre-built runtime binaries for each target platform. When y
 
 ```bash
 # Desktop (current platform)
-cargo dist-runtime
+cargo make dist-runtime           # game runtime template
+cargo make dist-server            # dedicated server template
 
-# Android (bash / Git Bash)
-./scripts/build-android-template.sh              # ARM64 (phones, tablets, VR headsets)
-./scripts/build-android-template.sh --x86_64     # x86_64 (emulator)
-./scripts/build-android-template.sh --firetv     # Fire TV ARM64
-./scripts/build-android-template.sh --all        # All Android templates
-
-# Android (PowerShell)
-.\scripts\build-android-template.ps1             # ARM64 (phones, tablets, VR headsets)
-.\scripts\build-android-template.ps1 -x86        # x86_64 (emulator)
-.\scripts\build-android-template.ps1 -firetv     # Fire TV ARM64
-.\scripts\build-android-template.ps1 -all        # All Android templates
+# Android
+cargo make dist-android-arm64     # ARM64 (phones, tablets, VR headsets)
+cargo make dist-android-x86       # x86_64 (emulator)
+cargo make dist-android-firetv    # Fire TV ARM64
+cargo make dist-android-all       # All Android templates
 ```
 
-Templates are installed automatically to:
+All templates are output to `target/templates/`:
+
+```
+target/templates/
+  renzora-runtime-windows-x64.exe          # Desktop
+  renzora-runtime-android-arm64.apk        # Android ARM64
+  renzora-runtime-android-x86_64.apk       # Android x86_64
+  renzora-runtime-firetv-arm64.apk         # Fire TV
+  renzora-runtime-web-wasm32.zip           # Web
+```
+
+Android templates are also installed to the editor's template cache:
 
 ```
 Windows:  %APPDATA%\renzora\templates\
@@ -696,7 +902,7 @@ macOS:    ~/Library/Application Support/renzora/templates/
 
 Or use the "Install from file" button in the export overlay.
 
-**When to rebuild templates:** Templates only contain the engine runtime (`src/runtime.rs`) — not your game assets. You need to rebuild templates when you:
+**When to rebuild templates:** Templates only contain the engine runtime (`src/runtime.rs`) and server (`src/server.rs`) — not your game assets. You need to rebuild templates when you:
 
 - Add or remove plugins in `src/runtime.rs`
 - Update Bevy or other engine dependencies
@@ -711,9 +917,13 @@ Open the export overlay from the editor. Options vary by platform:
 - **Platform selection** -- Windows, Linux, macOS, Android, Fire TV, iOS, Web (with supported device list)
 - **Packaging mode** (desktop only) -- Binary + `.rpak` (two files) or single executable (rpak appended)
 - **Compression** -- zstd level 1-19
+- **Mesh optimization** -- Simplify meshes (with ratio slider), quantize vertex attributes, generate LODs (with level count)
 - **Window settings** (desktop only) -- Windowed, Fullscreen, or Borderless + resolution
+- **Include dedicated server** (desktop only) -- Exports a server binary alongside the game with stripped assets (scenes, scripts, config only — no textures, audio, models, or shaders)
 - **Icon** -- Custom .png/.ico for the exported game
 - **Output directory** -- Where the build goes
+
+The export runs on a background thread with real-time progress reporting (per-file packing, mesh optimization, LOD generation, writing).
 
 ### How .rpak Works
 
@@ -744,15 +954,14 @@ Android APKs are signed automatically during export using APK Signature Scheme v
 
 #### Build Commands
 
-| Template | Bash | PowerShell |
-|----------|------|------------|
-| Desktop (current OS) | `cargo dist-runtime` | `cargo dist-runtime` |
-| Android ARM64 | `./scripts/build-android-template.sh` | `.\scripts\build-android-template.ps1` |
-| Android x86_64 | `./scripts/build-android-template.sh --x86_64` | `.\scripts\build-android-template.ps1 -x86` |
-| Fire TV | `./scripts/build-android-template.sh --firetv` | `.\scripts\build-android-template.ps1 -firetv` |
-| Everything | `./scripts/build-android-template.sh --all` | `.\scripts\build-android-template.ps1 -all` |
-
-Flags can be combined: `--arm64 --firetv` / `-arm64 -firetv` builds just those two.
+| Template | Command |
+|----------|---------|
+| Desktop (current OS) | `cargo make dist-runtime` |
+| Android ARM64 | `cargo make dist-android-arm64` |
+| Android x86_64 | `cargo make dist-android-x86` |
+| Fire TV | `cargo make dist-android-firetv` |
+| All Android | `cargo make dist-android-all` |
+| Web | `cargo make dist-web-runtime` |
 
 #### Unsupported Devices
 
@@ -774,25 +983,18 @@ Build the Android runtime template APK so the editor can export games for Androi
 
 ### Building the Template
 
-A single script handles environment detection, Rust cross-compilation, native library bundling, and Gradle build:
+Use `cargo make` to build (handles cross-platform script selection automatically):
 
 ```bash
-# Bash / Git Bash
-./scripts/build-android-template.sh              # Android ARM64 (Vulkan)
-./scripts/build-android-template.sh --x86_64     # Android x86_64 (Vulkan)
-./scripts/build-android-template.sh --firetv     # Fire TV ARM64 (Vulkan)
-./scripts/build-android-template.sh --all        # All templates
-
-# PowerShell
-.\scripts\build-android-template.ps1             # Android ARM64 (Vulkan)
-.\scripts\build-android-template.ps1 -x86        # Android x86_64 (Vulkan)
-.\scripts\build-android-template.ps1 -firetv     # Fire TV ARM64 (Vulkan)
-.\scripts\build-android-template.ps1 -all        # All templates
+cargo make dist-android-arm64     # Android ARM64 (Vulkan)
+cargo make dist-android-x86       # Android x86_64 (Vulkan)
+cargo make dist-android-firetv    # Fire TV ARM64 (Vulkan)
+cargo make dist-android-all       # All templates
 ```
 
-The script auto-detects `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
+The underlying scripts auto-detect `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` from standard install locations. Set them manually if needed.
 
-The built template is installed to:
+Templates are output to `target/templates/` and also installed to the editor's template cache:
 ```
 Windows:  %APPDATA%\renzora\templates\renzora-runtime-android-arm64.apk
 Linux:    ~/.config/renzora/templates/renzora-runtime-android-arm64.apk
@@ -825,13 +1027,116 @@ Android templates are also built automatically via GitHub Actions on tagged rele
 | Blank screen (app runs but no content) | Ensure the rpak was injected into `assets/game.rpak` in the APK |
 | `SDK location not found` | Create `android/local.properties` with `sdk.dir=/path/to/Android/Sdk` |
 
+## Building iOS / tvOS Runtime
+
+Build the iOS or tvOS runtime template so the editor can export games for iPhone, iPad, and Apple TV. This requires macOS with Xcode.
+
+### Prerequisites
+
+1. **Xcode** with iOS and/or tvOS SDKs (`xcode-select --install`)
+2. **Rust Apple targets** (nightly):
+   ```bash
+   rustup target add aarch64-apple-ios --toolchain nightly          # iOS device
+   rustup target add aarch64-apple-ios-sim --toolchain nightly      # iOS simulator
+   rustup target add aarch64-apple-tvos --toolchain nightly         # Apple TV
+   rustup target add aarch64-apple-tvos-sim --toolchain nightly     # Apple TV simulator
+   ```
+
+### Building the Template
+
+```bash
+cargo make dist-ios              # iOS device (ARM64)
+cargo make dist-ios-sim          # iOS simulator (ARM64)
+cargo make dist-tvos             # Apple TV (ARM64)
+cargo make dist-tvos-sim         # Apple TV simulator (ARM64)
+```
+
+Or use the build script directly:
+
+```bash
+./ios/build-template.sh                    # iOS device
+./ios/build-template.sh --simulator        # iOS simulator
+./ios/build-template.sh --tvos             # Apple TV
+./ios/build-template.sh --tvos-simulator   # Apple TV simulator
+```
+
+Templates are output to `target/templates/` and installed to the editor's template cache:
+```
+macOS:  ~/Library/Application Support/renzora/templates/renzora-runtime-ios-arm64.zip
+```
+
+### Cargo Aliases
+
+```bash
+cargo build-ios          # Build iOS static lib (release)
+cargo build-ios-sim      # Build for iOS simulator
+cargo build-tvos         # Build Apple TV static lib (release)
+cargo build-tvos-sim     # Build for Apple TV simulator
+cargo dist-ios           # Build with max optimization (dist profile)
+cargo dist-tvos          # Build with max optimization (dist profile)
+```
+
+### Export Workflow
+
+1. **Build the template** on macOS (or download from CI)
+2. **Export from the editor** -- select iOS or Apple TV in the export overlay, which injects your game's `.rpak` into the app bundle and outputs an `.ipa`
+3. **Sign and distribute** -- use Xcode or `codesign` to sign for TestFlight / App Store / ad-hoc distribution
+
+### How It Works
+
+- `cargo build` cross-compiles the `renzora_ios` crate to a static library (`librenzora_ios.a`) for the target architecture
+- `xcodebuild` links the static library with a Swift `AppDelegate` that calls the Rust `renzora_main()` entry point
+- The Xcode project links Metal, GameController, AudioToolbox, AVFoundation, and other system frameworks
+- At export time, the editor injects `game.rpak` into the `.app` bundle and packages it as an `.ipa`
+- At runtime, the VFS reads `game.rpak` from the app bundle via CoreFoundation's `CFBundleCopyResourceURL`
+- iOS covers both iPhone and iPad (universal binary with `TARGETED_DEVICE_FAMILY = "1,2"`)
+- tvOS uses a separate Info.plist tuned for Apple TV (landscape, focus-based navigation, no touch)
+
+### Supported Devices
+
+| Template | Devices |
+|----------|---------|
+| iOS (ARM64) | iPhone, iPad |
+| Apple TV (ARM64) | Apple TV 4K, Apple TV HD |
+
+### Troubleshooting iOS / tvOS
+
+| Issue | Fix |
+|-------|-----|
+| `error: Rust target not installed` | Run `rustup target add aarch64-apple-ios` (or the target you need) |
+| `xcodebuild` fails with signing error | Templates are built unsigned (`CODE_SIGNING_ALLOWED=NO`); signing happens at distribution time |
+| Blank screen (app runs but no content) | Ensure the rpak was injected into the `.app` bundle as `game.rpak` |
+| Scripts not running on device | Verify scripts are packed into the rpak (check export log for `.lua`/`.rhai` files) |
+| `Library not found for -lrenzora_ios` | The build script copies the `.a` to `ios/libs/`; ensure `LIBRARY_SEARCH_PATHS` points there |
+
 ## Cargo Features
 
-| Feature | Description |
-|---------|-------------|
-| `editor` | Full editor with UI, asset browser, scene editing (default) |
-| `solari` | Raytraced GI, DLSS, and meshlet virtual geometry (requires Vulkan SDK + DLSS SDK) |
-| `dynamic` | Dynamic linking for faster dev builds |
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `editor` | Full editor with UI, asset browser, scene editing | Yes |
+| `dynamic` | Dynamic linking for faster dev builds | Yes |
+| `native` | Native platform support (file watcher, gamepad, x11/wayland) | Yes |
+| `server` | Headless mode for dedicated server (no window, no rendering, no audio) | No |
+| `solari` | Raytraced GI, DLSS, and meshlet virtual geometry (requires Vulkan SDK + DLSS SDK) | No |
+
+### Bevy Feature Management
+
+All sub-crates use `bevy = { version = "0.18", default-features = false }`. The root `Cargo.toml` is the single source of truth for which Bevy features are active. This prevents Cargo feature unification from accidentally enabling features like `file_watcher` that break WASM builds.
+
+The `native` feature enables `bevy/default_platform` which includes file watching, gamepad support, and platform-specific window backends. It's included in `default` but excluded for WASM builds (`--no-default-features`).
+
+### WASM-Incompatible Subsystems
+
+These subsystems are automatically gated behind `cfg(not(target_arch = "wasm32"))`:
+
+| Crate | Reason |
+|-------|--------|
+| `renzora_audio` (Kira) | cpal backend requires native audio API |
+| `renzora_network` (Lightyear) | UDP sockets not available in browsers |
+| `renzora_scripting` (Lua only) | mlua requires C compiler for vendored Lua |
+| `renzora_rpak` (packer only) | Filesystem packing is editor/build-time only |
+
+Rhai scripting works on WASM (pure Rust). The rpak *reader* works on WASM.
 
 ## Supported File Formats
 
@@ -840,15 +1145,18 @@ Android templates are also built automatically via GitHub Actions on tagged rele
 | `.glb` / `.gltf` | 3D models (meshes, materials, animations, skeletons) |
 | `.obj` | 3D models (meshes) |
 | `.fbx` | 3D models (meshes, skeletons) |
+| `.stl` | 3D models (meshes) |
+| `.ply` | 3D models (point clouds, meshes) |
 | `.ron` | Scene files (Bevy DynamicScene) |
 | `.rpak` | Compressed asset archives (exported games) |
 | `.rhai` | Script files |
-| `.blueprint` | Visual script graphs (compile to Rhai) |
-| `.material_bp` | Material blueprint graphs (compile to WGSL) |
+| `.lua` | Script files (native builds only) |
+| `.blueprint` | Visual script graphs |
+| `.material` | Material graphs (compile to WGSL) |
 | `.particle` | Particle effect definitions |
 | `.png` / `.jpg` / `.jpeg` | Textures |
 | `.hdr` / `.exr` | HDR environment maps |
-| `.ogg` / `.mp3` / `.wav` / `.flac` | Audio files (Kira 0.12) |
+| `.ogg` / `.mp3` / `.wav` / `.flac` | Audio files (Kira 0.12, native only) |
 
 ## Testing
 
@@ -883,11 +1191,28 @@ Windows Smart App Control is blocking build script executables. Open **Windows S
 
 ### Export shows "Template not installed"
 
-Build the runtime template and install it:
+Build the runtime and/or server template:
 ```bash
-cargo dist-runtime
+cargo make dist-runtime      # game runtime template → target/templates/
+cargo make dist-server       # dedicated server template
 ```
-Then copy the binary to the templates directory, or use the "Install from file" button in the export overlay.
+Or use the "Install from file" button in the export overlay.
+
+### WASM build fails with "file_watcher" error
+
+A sub-crate is pulling in Bevy with default features. Ensure all sub-crate `Cargo.toml` files use:
+```toml
+bevy = { version = "0.18", default-features = false }
+```
+
+### WASM build fails with "getrandom" error
+
+Add both getrandom versions with JS/WASM features to the root `Cargo.toml`:
+```toml
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+```
 
 ## License
 

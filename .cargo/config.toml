@@ -3,21 +3,38 @@
 # Dev: run
 renzora = "run --bin renzora"
 runtime = "run --bin renzora-runtime --no-default-features"
+server = "run --bin renzora-server --no-default-features --features server"
 
 # Dev: build only
 build-editor = "build --bin renzora"
 build-runtime = "build --bin renzora-runtime --no-default-features"
 
 # Release builds (static linking, separate target dir)
-release-editor = "build --release --bin renzora --target-dir app"
-release-editor-solari = "build --release --no-default-features --features editor,solari --target-dir app"
-release-runtime = "build --release --bin renzora-runtime --no-default-features --target-dir app"
+release-editor = "build --release --bin renzora --target-dir target"
+release-editor-solari = "build --release --no-default-features --features editor,solari --target-dir target"
+release-runtime = "build --release --bin renzora-runtime --no-default-features --target-dir target"
+release-server = "build --release --bin renzora-server --no-default-features --features server --target-dir target"
 
-# WASM: build editor for browser
-build-web = "build --features editor --target wasm32-unknown-unknown"
+# WASM
+dist-web-editor = "build --profile dist --bin renzora --no-default-features --features editor,wasm --target wasm32-unknown-unknown --target-dir target"
+dist-web-runtime = "build --profile dist --bin renzora-runtime --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target"
+dist-web = "build --profile dist --bin renzora-runtime --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target"
 
 # Dist builds (max optimization for export templates)
-dist-runtime = "build --profile dist --bin renzora-runtime --no-default-features --target-dir app"
+dist-editor = "build --profile dist --bin renzora --no-default-features --features editor --target-dir target"
+dist-runtime = "build --profile dist --bin renzora-runtime --no-default-features --target-dir target"
+dist-server = "build --profile dist --bin renzora-server --no-default-features --features server --target-dir target"
+dist-all = "build --profile dist --no-default-features --bin renzora --bin renzora-runtime --bin renzora-server --features editor,server --target-dir target"
+
+# iOS (cross-compile static library — macOS only)
+build-ios = "build --target aarch64-apple-ios -p renzora-ios --release"
+build-ios-sim = "build --target aarch64-apple-ios-sim -p renzora-ios --release"
+dist-ios = "build --target aarch64-apple-ios -p renzora-ios --profile dist"
+
+# tvOS / Apple TV (cross-compile static library — macOS only)
+build-tvos = "build --target aarch64-apple-tvos -p renzora-ios --release"
+build-tvos-sim = "build --target aarch64-apple-tvos-sim -p renzora-ios --release"
+dist-tvos = "build --target aarch64-apple-tvos -p renzora-ios --profile dist"
 
 # Static link the MSVC runtime (eliminates VCRUNTIME140.dll dependency)
 [target.x86_64-pc-windows-msvc]
@@ -31,7 +48,7 @@ BINDGEN_EXTRA_CLANG_ARGS = "-IC:\\DLSS_SDK\\include"
 # Note: rust-lld doesn't work with Bevy dynamic linking on Windows nightly
 # linker = "rust-lld.exe"
 
-# Faster linking for Linux (uses lld via clang)
+# Faster linking for Linux (uses mold, 5x faster than lld)
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]

@@ -106,7 +106,7 @@ renzora_scripting::dual_register! {
 
 // ── Getter functions (language-specific, need access to context data) ────
 
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 fn register_gauge_getters_lua(lua: &mlua::Lua) {
     use mlua::prelude::*;
     let g = lua.globals();
@@ -260,13 +260,13 @@ impl ScriptExtension for GaugeScriptExtension {
         data.insert(ctx_data);
     }
 
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn register_lua_functions(&self, lua: &mlua::Lua) {
         register_gauge_lua(lua);
         register_gauge_getters_lua(lua);
     }
 
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {
         let Some(d) = data.get::<GaugeContextData>() else { return };
         renzora_scripting::macros::lua_set_map(lua, "_gauge_attributes", &d.attributes);
@@ -289,7 +289,7 @@ impl ScriptExtension for GaugeScriptExtension {
 
 // ── Lua helpers ──────────────────────────────────────────────────────────
 
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 fn lua_arg_string(args: &mlua::MultiValue, idx: usize) -> String {
     match args.get(idx) {
         Some(mlua::Value::String(s)) => s.to_string_lossy().to_string(),
@@ -299,7 +299,7 @@ fn lua_arg_string(args: &mlua::MultiValue, idx: usize) -> String {
     }
 }
 
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 fn lua_arg_roles(args: &mlua::MultiValue, idx: usize) -> Vec<(String, u64)> {
     match args.get(idx) {
         Some(mlua::Value::Number(n)) => vec![("attacker".into(), *n as u64)],
@@ -309,7 +309,7 @@ fn lua_arg_roles(args: &mlua::MultiValue, idx: usize) -> Vec<(String, u64)> {
     }
 }
 
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 fn parse_roles_table(table: Option<&mlua::Table>) -> Vec<(String, u64)> {
     let Some(t) = table else { return vec![] };
     let mut roles = vec![];

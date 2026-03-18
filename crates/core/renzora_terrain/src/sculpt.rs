@@ -72,6 +72,116 @@ pub fn fbm(
     if max_amp > 0.0 { value / max_amp } else { 0.0 }
 }
 
+/// Ridge noise: sharp mountain ridges via `1 - |signed_noise|`.
+pub fn ridge_noise(
+    x: f32,
+    y: f32,
+    octaves: u32,
+    lacunarity: f32,
+    persistence: f32,
+    seed: u32,
+) -> f32 {
+    let mut value = 0.0f32;
+    let mut amplitude = 1.0f32;
+    let mut frequency = 1.0f32;
+    let mut max_amp = 0.0f32;
+
+    for i in 0..octaves {
+        let oct_seed = seed.wrapping_add(i.wrapping_mul(12_345));
+        let n = value_noise(x * frequency, y * frequency, oct_seed) * 2.0 - 1.0;
+        value += (1.0 - n.abs()) * amplitude;
+        max_amp += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+}
+
+/// Billow noise: rounded puffy terrain via `|signed_noise|`.
+pub fn billow_noise(
+    x: f32,
+    y: f32,
+    octaves: u32,
+    lacunarity: f32,
+    persistence: f32,
+    seed: u32,
+) -> f32 {
+    let mut value = 0.0f32;
+    let mut amplitude = 1.0f32;
+    let mut frequency = 1.0f32;
+    let mut max_amp = 0.0f32;
+
+    for i in 0..octaves {
+        let oct_seed = seed.wrapping_add(i.wrapping_mul(12_345));
+        let n = value_noise(x * frequency, y * frequency, oct_seed) * 2.0 - 1.0;
+        value += n.abs() * amplitude;
+        max_amp += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+}
+
+/// Domain-warped FBM: distort input coords by another noise field.
+pub fn warped_fbm(
+    x: f32,
+    y: f32,
+    octaves: u32,
+    lacunarity: f32,
+    persistence: f32,
+    seed: u32,
+    warp_strength: f32,
+) -> f32 {
+    let warp_seed = seed.wrapping_add(999);
+    let wx = fbm(x, y, octaves.min(3), lacunarity, persistence, warp_seed) * 2.0 - 1.0;
+    let wy = fbm(x + 5.2, y + 1.3, octaves.min(3), lacunarity, persistence, warp_seed.wrapping_add(1)) * 2.0 - 1.0;
+    fbm(
+        x + wx * warp_strength,
+        y + wy * warp_strength,
+        octaves,
+        lacunarity,
+        persistence,
+        seed,
+    )
+}
+
+/// Hybrid: blend ridge noise with FBM for natural mountain terrain.
+pub fn hybrid_noise(
+    x: f32,
+    y: f32,
+    octaves: u32,
+    lacunarity: f32,
+    persistence: f32,
+    seed: u32,
+) -> f32 {
+    let r = ridge_noise(x, y, octaves, lacunarity, persistence, seed);
+    let f = fbm(x, y, octaves, lacunarity, persistence, seed);
+    r * 0.6 + f * 0.4
+}
+
+/// Evaluate noise with the selected mode.
+pub fn eval_noise(
+    x: f32,
+    y: f32,
+    mode: crate::data::NoiseMode,
+    octaves: u32,
+    lacunarity: f32,
+    persistence: f32,
+    seed: u32,
+    warp_strength: f32,
+) -> f32 {
+    use crate::data::NoiseMode;
+    match mode {
+        NoiseMode::Fbm => fbm(x, y, octaves, lacunarity, persistence, seed),
+        NoiseMode::Ridge => ridge_noise(x, y, octaves, lacunarity, persistence, seed),
+        NoiseMode::Billow => billow_noise(x, y, octaves, lacunarity, persistence, seed),
+        NoiseMode::Warped => warped_fbm(x, y, octaves, lacunarity, persistence, seed, warp_strength),
+        NoiseMode::Hybrid => hybrid_noise(x, y, octaves, lacunarity, persistence, seed),
+    }
+}
+
 // ── Brush Application ────────────────────────────────────────────────────────
 
 /// Apply a single brush stroke to a chunk's heightmap.
@@ -239,13 +349,15 @@ fn apply_brush_at_vertex(
                 chunk.set_height(vx, vz, resolution, current + (avg - current) * effect);
             } else {
                 let scale = settings.noise_scale.max(0.1);
-                let n = fbm(
+                let n = eval_noise(
                     world_x / scale,
                     world_z / scale,
+                    settings.noise_mode,
                     settings.noise_octaves.clamp(1, 8),
                     settings.noise_lacunarity,
                     settings.noise_persistence,
                     settings.noise_seed,
+                    settings.warp_strength,
                 );
                 let centered = n - 0.5;
                 chunk.modify_height(vx, vz, resolution, effect * centered / height_range);

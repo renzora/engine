@@ -21,6 +21,9 @@ fbxcel = "0.9"
 # Animation extraction
 renzora_animation = { path = "../renzora_animation" }
 
+# Mesh optimization
+meshopt = "0.3"
+
 # Utility
 thiserror = "2"
 log = "0.4"

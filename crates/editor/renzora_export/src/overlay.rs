@@ -1,10 +1,13 @@
 //! Export overlay UI — a modal dialog for configuring and running project exports.
 
+use std::sync::{mpsc, Mutex};
+
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_core::CurrentProject;
-use renzora_rpak::{pack_directory, RpakPacker};
+use renzora_import::optimize::MeshOptSettings;
+use renzora_rpak::{pack_project_with_progress, pack_project_filtered, RpakPacker, SERVER_EXTENSIONS};
 use renzora_theme::ThemeManager;
 
 use crate::templates::{Platform, TemplateManager};
@@ -30,10 +33,21 @@ pub enum WindowMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportProgress {
     Idle,
-    Packing,
-    Writing,
+    Working(String),
     Done(String),
     Error(String),
+}
+
+/// Messages sent from the background export thread.
+enum ExportMsg {
+    Progress(String),
+    Done(String),
+    Error(String),
+}
+
+/// Handle for a running background export.
+struct ExportTask {
+    rx: Mutex<mpsc::Receiver<ExportMsg>>,
 }
 
 /// Resource holding the export overlay state.
@@ -48,8 +62,16 @@ pub struct ExportOverlayState {
     pub console_logging: bool,
     pub compression_level: i32,
     pub icon_path: Option<String>,
+    pub include_server: bool,
+    pub mesh_simplify: bool,
+    pub mesh_simplify_ratio: f32,
+    pub mesh_quantize: bool,
+    pub mesh_generate_lods: bool,
+    pub mesh_lod_levels: u32,
     pub output_dir: String,
     pub progress: ExportProgress,
+    /// Background export task (if running).
+    active_task: Option<ExportTask>,
 }
 
 impl Default for ExportOverlayState {
@@ -64,13 +86,82 @@ impl Default for ExportOverlayState {
             console_logging: false,
             compression_level: 3,
             icon_path: None,
+            include_server: false,
+            mesh_simplify: false,
+            mesh_simplify_ratio: 0.5,
+            mesh_quantize: false,
+            mesh_generate_lods: false,
+            mesh_lod_levels: 3,
             output_dir: String::new(),
             progress: ExportProgress::Idle,
+            active_task: None,
         }
     }
 }
 
+/// Drain progress messages from the background thread into overlay state.
+fn poll_export_task(world: &mut World) {
+    let has_task = world
+        .resource::<ExportOverlayState>()
+        .active_task
+        .is_some();
+    if !has_task {
+        return;
+    }
+
+    let mut finished = false;
+    let mut updates: Vec<ExportMsg> = Vec::new();
+
+    {
+        let state = world.resource::<ExportOverlayState>();
+        let task = state.active_task.as_ref().unwrap();
+        let rx = task.rx.lock().unwrap();
+        loop {
+            match rx.try_recv() {
+                Ok(msg) => {
+                    let is_terminal = matches!(msg, ExportMsg::Done(_) | ExportMsg::Error(_));
+                    updates.push(msg);
+                    if is_terminal {
+                        finished = true;
+                        break;
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    updates.push(ExportMsg::Error(
+                        "Export thread terminated unexpectedly".into(),
+                    ));
+                    finished = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    let mut state = world.resource_mut::<ExportOverlayState>();
+    for msg in updates {
+        match msg {
+            ExportMsg::Progress(label) => {
+                state.progress = ExportProgress::Working(label);
+            }
+            ExportMsg::Done(msg) => {
+                state.progress = ExportProgress::Done(msg);
+            }
+            ExportMsg::Error(msg) => {
+                state.progress = ExportProgress::Error(msg);
+            }
+        }
+    }
+
+    if finished {
+        state.active_task = None;
+    }
+}
+
 pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
+    // Poll background task every frame
+    poll_export_task(world);
+
     // Dim background
     let screen = ctx.screen_rect();
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -129,7 +220,9 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                             ).frame(false))
                             .clicked()
                         {
-                            world.resource_mut::<ExportOverlayState>().visible = false;
+                            let mut s = world.resource_mut::<ExportOverlayState>();
+                            s.visible = false;
+                            s.active_task = None;
                         }
                     });
                 });
@@ -213,7 +306,6 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                         if ui.add(egui::Button::new(
                             egui::RichText::new(format!("{} Install from file...", regular::FOLDER_OPEN)).size(11.0),
                         ).fill(surface_mid)).clicked() {
-                            // Open file dialog to pick a template binary
                             let platform = selected_platform;
                             if let Some(path) = rfd::FileDialog::new()
                                 .set_title("Select runtime template binary")
@@ -278,6 +370,62 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                 ui.add_space(12.0);
 
+                // --- Mesh Optimization ---
+                section_label(ui, regular::CUBE, "Mesh Optimization", text_primary);
+                ui.add_space(4.0);
+
+                {
+                    let mut export_state = world.resource_mut::<ExportOverlayState>();
+
+                    ui.checkbox(
+                        &mut export_state.mesh_simplify,
+                        egui::RichText::new("Simplify meshes").color(text_primary),
+                    );
+                    if export_state.mesh_simplify {
+                        ui.indent("mesh_simplify_ratio", |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Keep ratio:")
+                                        .size(12.0)
+                                        .color(text_secondary),
+                                );
+                                ui.add(
+                                    egui::Slider::new(&mut export_state.mesh_simplify_ratio, 0.1..=1.0)
+                                        .text("triangles"),
+                                );
+                            });
+                        });
+                    }
+
+                    ui.checkbox(
+                        &mut export_state.mesh_quantize,
+                        egui::RichText::new("Quantize vertex attributes").color(text_primary),
+                    );
+
+                    ui.checkbox(
+                        &mut export_state.mesh_generate_lods,
+                        egui::RichText::new("Generate LODs").color(text_primary),
+                    );
+                    if export_state.mesh_generate_lods {
+                        ui.indent("mesh_lod_levels", |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Levels:")
+                                        .size(12.0)
+                                        .color(text_secondary),
+                                );
+                                ui.add(
+                                    egui::Slider::new(&mut export_state.mesh_lod_levels, 1..=5),
+                                );
+                            });
+                        });
+                    }
+
+                    drop(export_state);
+                }
+
+                ui.add_space(12.0);
+
                 // --- Window Settings (desktop only) ---
                 if is_desktop {
                     section_label(ui, regular::MONITOR, "Window", text_primary);
@@ -327,6 +475,49 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     &mut export_state.console_logging,
                     egui::RichText::new("Console logging").color(text_primary),
                 );
+
+                if is_desktop {
+                    let server_available = selected_platform.server_template_filename().is_some();
+                    if server_available {
+                        ui.checkbox(
+                            &mut export_state.include_server,
+                            egui::RichText::new("Include dedicated server").color(text_primary),
+                        );
+
+                        if export_state.include_server {
+                            drop(export_state);
+                            let server_installed = world.resource::<TemplateManager>().is_server_installed(selected_platform);
+                            ui.indent("server_template_status", |ui| {
+                                if server_installed {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(regular::CHECK_CIRCLE).color(egui::Color32::from_rgb(89, 191, 115)));
+                                        ui.label(egui::RichText::new("Server template installed").size(11.0).color(text_secondary));
+                                    });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(regular::WARNING).color(egui::Color32::from_rgb(242, 166, 64)));
+                                        ui.label(egui::RichText::new("Server template not installed").size(11.0).color(text_secondary));
+                                        if ui.add(egui::Button::new(
+                                            egui::RichText::new(format!("{} Install from file...", regular::FOLDER_OPEN)).size(11.0),
+                                        ).fill(surface_mid)).clicked() {
+                                            let platform = selected_platform;
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .set_title("Select server template binary")
+                                                .pick_file()
+                                            {
+                                                let mut mgr = world.resource_mut::<TemplateManager>();
+                                                if let Err(e) = mgr.install_server_from_file(platform, &path) {
+                                                    warn!("Failed to install server template: {}", e);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                            export_state = world.resource_mut::<ExportOverlayState>();
+                        }
+                    }
+                }
 
                 // Icon
                 ui.add_space(4.0);
@@ -387,6 +578,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 let progress = export_state.progress.clone();
                 let can_export = template_installed
                     && !export_state.output_dir.is_empty()
+                    && export_state.active_task.is_none()
                     && matches!(progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_));
 
                 drop(export_state);
@@ -396,16 +588,10 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 // --- Progress / status ---
                 match &progress {
                     ExportProgress::Idle => {}
-                    ExportProgress::Packing => {
+                    ExportProgress::Working(label) => {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.label(egui::RichText::new("Packing assets...").color(text_secondary));
-                        });
-                    }
-                    ExportProgress::Writing => {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(egui::RichText::new("Writing output...").color(text_secondary));
+                            ui.label(egui::RichText::new(label).color(text_secondary));
                         });
                     }
                     ExportProgress::Done(msg) => {
@@ -504,6 +690,196 @@ fn export_android_apk(
     Ok(())
 }
 
+/// Export for iOS: extract template .app zip, inject game.rpak, re-zip.
+///
+/// The template is a zip containing `RenzoraRuntime.app/` (unsigned).
+/// We inject `game.rpak` into the app bundle's root so the VFS can find it
+/// via `CFBundleCopyResourceURL`.
+fn export_ios_app(
+    template_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    project_name: &str,
+    packer: RpakPacker,
+    compression_level: i32,
+) -> std::io::Result<()> {
+    use std::io::{Read as _, Write as _};
+
+    let rpak_bytes = packer.finish(compression_level)?;
+    let output_zip = output_dir.join(format!("{}.ipa", project_name));
+
+    // Read the template zip
+    let template_data = std::fs::read(template_path)?;
+    let cursor = std::io::Cursor::new(&template_data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    let out_file = std::fs::File::create(&output_zip)?;
+    let mut writer = zip::ZipWriter::new(out_file);
+
+    // Copy all existing entries from template
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let name = entry.name().to_string();
+
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(entry.compression())
+            .unix_permissions(entry.unix_mode().unwrap_or(0o644));
+
+        if entry.is_dir() {
+            writer.add_directory(&name, options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        } else {
+            writer.start_file(&name, options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf)?;
+            writer.write_all(&buf)?;
+        }
+    }
+
+    // Add game.rpak inside the .app bundle
+    // IPA structure: Payload/AppName.app/game.rpak
+    // Template structure: RenzoraRuntime.app/game.rpak
+    // Find the .app directory name from existing entries
+    let app_prefix = archive.file_names()
+        .find(|n| n.ends_with(".app/"))
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "Payload/RenzoraRuntime.app/".to_string());
+
+    let rpak_path = format!("{}game.rpak", app_prefix);
+    let rpak_options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    writer.start_file(&rpak_path, rpak_options)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    writer.write_all(&rpak_bytes)?;
+
+    writer.finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok(())
+}
+
+/// Export for Web/WASM: extract template zip, add rpak + index.html, write output zip.
+///
+/// The template is a zip file containing `renzora-runtime.js` and
+/// `renzora-runtime_bg.wasm` (built by `cargo make dist-web-runtime`).
+fn export_wasm_zip(
+    tx: &mpsc::Sender<ExportMsg>,
+    template_zip_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    project_name: &str,
+    packer: RpakPacker,
+    compression_level: i32,
+) -> std::io::Result<()> {
+    use std::io::{Read as _, Write as _};
+
+    let _ = tx.send(ExportMsg::Progress("Packaging WASM build...".into()));
+
+    let rpak_bytes = packer.finish(compression_level)?;
+    let zip_path = output_dir.join(format!("{}-web.zip", project_name));
+
+    // Read the template zip
+    let template_data = std::fs::read(template_zip_path)?;
+    let cursor = std::io::Cursor::new(&template_data);
+    let mut template_archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    let out_file = std::fs::File::create(&zip_path)?;
+    let mut writer = zip::ZipWriter::new(out_file);
+
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let stored = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+
+    // Copy all template entries (js + wasm) into the output zip
+    for i in 0..template_archive.len() {
+        let mut entry = template_archive.by_index(i)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let name = entry.name().to_string();
+
+        // Store wasm uncompressed — browsers get brotli/gzip from the HTTP
+        // server, double-compressing wastes CPU on extraction.
+        let file_options = if name.ends_with(".wasm") { stored } else { options };
+
+        writer.start_file(&name, file_options)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let mut buf = Vec::new();
+        entry.read_to_end(&mut buf)?;
+        writer.write_all(&buf)?;
+    }
+
+    // Add the rpak as game.rpak
+    writer.start_file("game.rpak", stored)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    writer.write_all(&rpak_bytes)?;
+
+    // Generate index.html
+    let index_html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <style>
+        html, body {{ margin: 0; padding: 0; overflow: hidden; background: #050410; }}
+        canvas {{ display: block; }}
+        #loading {{
+            position: fixed; inset: 0; display: flex;
+            align-items: center; justify-content: center;
+            background: #050410; color: #888; font-family: monospace; font-size: 14px;
+            z-index: 10;
+        }}
+        #loading.hidden {{ display: none; }}
+    </style>
+</head>
+<body>
+    <div id="loading">Loading {title}...</div>
+    <script type="module">
+        import init from './renzora-runtime.js';
+
+        async function run() {{
+            await init();
+            document.getElementById('loading').classList.add('hidden');
+
+            const canvas = document.querySelector('canvas');
+            if (canvas) {{
+                const resize = () => {{
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    canvas.style.width = window.innerWidth + 'px';
+                    canvas.style.height = window.innerHeight + 'px';
+                }};
+                resize();
+                window.addEventListener('resize', resize);
+            }}
+        }}
+
+        run().catch(err => {{
+            document.getElementById('loading').textContent = 'Failed to load: ' + err;
+            console.error(err);
+        }});
+    </script>
+</body>
+</html>
+"#,
+        title = project_name,
+    );
+
+    writer.start_file("index.html", options)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    writer.write_all(index_html.as_bytes())?;
+
+    writer.finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    info!("[export] WASM zip written to {}", zip_path.display());
+
+    Ok(())
+}
+
 fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color32) {
     ui.label(
         egui::RichText::new(format!("{} {}", icon, label))
@@ -514,8 +890,6 @@ fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color3
 }
 
 fn run_export(world: &mut World, project_name: &str) {
-    world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Packing;
-
     let project = world.resource::<CurrentProject>().clone();
     let export_state = world.resource::<ExportOverlayState>();
     let platform = export_state.platform;
@@ -526,9 +900,15 @@ fn run_export(world: &mut World, project_name: &str) {
     let window_width = export_state.window_width;
     let window_height = export_state.window_height;
     let _console_logging = export_state.console_logging;
+    let include_server = export_state.include_server;
+    let mesh_simplify = export_state.mesh_simplify;
+    let mesh_simplify_ratio = export_state.mesh_simplify_ratio;
+    let mesh_quantize = export_state.mesh_quantize;
+    let mesh_generate_lods = export_state.mesh_generate_lods;
+    let mesh_lod_levels = export_state.mesh_lod_levels;
     let project_name = project_name.to_string();
 
-    // Get template path
+    // Get template path before spawning thread
     let template_path = match world.resource::<TemplateManager>().get(platform) {
         Some(t) => t.path.clone(),
         None => {
@@ -538,21 +918,146 @@ fn run_export(world: &mut World, project_name: &str) {
         }
     };
 
+    // Get server template path if needed
+    let server_template = if include_server {
+        world
+            .resource::<TemplateManager>()
+            .get_server(platform)
+            .map(|t| t.path.clone())
+    } else {
+        None
+    };
+
+    let (tx, rx) = mpsc::channel();
+
+    // Set initial progress and store task
+    {
+        let mut state = world.resource_mut::<ExportOverlayState>();
+        state.progress = ExportProgress::Working("Packing assets...".into());
+        state.active_task = Some(ExportTask {
+            rx: Mutex::new(rx),
+        });
+    }
+
+    // Spawn background thread
+    std::thread::spawn(move || {
+        export_worker(
+            tx,
+            project,
+            project_name,
+            platform,
+            packaging_mode,
+            compression_level,
+            output_dir,
+            window_mode,
+            window_width,
+            window_height,
+            include_server,
+            mesh_simplify,
+            mesh_simplify_ratio,
+            mesh_quantize,
+            mesh_generate_lods,
+            mesh_lod_levels,
+            template_path,
+            server_template,
+        );
+    });
+}
+
+/// Background export worker — runs on a separate thread.
+#[allow(clippy::too_many_arguments)]
+fn export_worker(
+    tx: mpsc::Sender<ExportMsg>,
+    project: CurrentProject,
+    project_name: String,
+    platform: Platform,
+    packaging_mode: PackagingMode,
+    compression_level: i32,
+    output_dir: std::path::PathBuf,
+    window_mode: WindowMode,
+    window_width: u32,
+    window_height: u32,
+    include_server: bool,
+    mesh_simplify: bool,
+    mesh_simplify_ratio: f32,
+    mesh_quantize: bool,
+    mesh_generate_lods: bool,
+    mesh_lod_levels: u32,
+    template_path: std::path::PathBuf,
+    server_template: Option<std::path::PathBuf>,
+) {
     // Pack assets
-    let packer = match pack_directory(&project.path) {
+    let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
+    let tx_pack = tx.clone();
+    let mut packer = match pack_project_with_progress(&project.path, None, |key| {
+        let _ = tx_pack.send(ExportMsg::Progress(format!("Packing {}", key)));
+    }) {
         Ok(p) => p,
         Err(e) => {
-            world.resource_mut::<ExportOverlayState>().progress =
-                ExportProgress::Error(format!("Failed to pack assets: {}", e));
+            let _ = tx.send(ExportMsg::Error(format!("Failed to pack assets: {}", e)));
             return;
         }
     };
+    info!("[export] Packed {} referenced files", packer.len());
+
+    // Strip editor-only components from scene files
+    packer.strip_for_runtime();
+
+    // Mesh optimization
+    let mesh_settings = MeshOptSettings {
+        vertex_cache: true,
+        overdraw: true,
+        vertex_fetch: true,
+        simplify: mesh_simplify,
+        simplify_ratio: mesh_simplify_ratio,
+        quantize: mesh_quantize,
+        generate_lods: false,
+        lod_levels: mesh_lod_levels,
+    };
+    if mesh_settings.any_enabled() {
+        let settings = mesh_settings.clone();
+        let tx2 = tx.clone();
+        packer.optimize_meshes_with_progress(
+            |bytes| renzora_import::optimize_glb(bytes, &settings),
+            |current, total, name| {
+                let _ = tx2.send(ExportMsg::Progress(format!(
+                    "Optimizing meshes ({}/{}) {}",
+                    current, total, name
+                )));
+            },
+        );
+    }
+
+    // LOD generation
+    if mesh_generate_lods {
+        let tx2 = tx.clone();
+        packer.generate_mesh_lods_with_progress(
+            mesh_lod_levels,
+            |bytes, ratio| {
+                let lod_settings = MeshOptSettings {
+                    vertex_cache: true,
+                    overdraw: true,
+                    vertex_fetch: true,
+                    simplify: true,
+                    simplify_ratio: ratio,
+                    ..Default::default()
+                };
+                renzora_import::optimize_glb(bytes, &lod_settings)
+            },
+            |current, total, name| {
+                let _ = tx2.send(ExportMsg::Progress(format!(
+                    "Generating LODs ({}/{}) {}",
+                    current, total, name
+                )));
+            },
+        );
+    }
 
     let file_count = packer.len();
 
-    world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Writing;
+    let _ = tx.send(ExportMsg::Progress("Writing output...".into()));
 
-    // Write export config into the rpak (override project.toml with export settings)
+    // Write export config
     let mut export_config = project.config.clone();
     export_config.window.width = window_width;
     export_config.window.height = window_height;
@@ -561,19 +1066,50 @@ fn run_export(world: &mut World, project_name: &str) {
 
     // Create output directory
     if let Err(e) = std::fs::create_dir_all(&output_dir) {
-        world.resource_mut::<ExportOverlayState>().progress =
-            ExportProgress::Error(format!("Failed to create output dir: {}", e));
+        let _ = tx.send(ExportMsg::Error(format!(
+            "Failed to create output dir: {}",
+            e
+        )));
         return;
     }
 
     let binary_name = platform.binary_name(&project_name);
-    let is_android = matches!(platform, Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64);
-    let result = if is_android {
-        export_android_apk(&template_path, &output_dir, &binary_name, packer, compression_level)
-            .and_then(|_| {
-                let apk_path = output_dir.join(&binary_name);
-                crate::apk_signer::sign_apk(&apk_path)
-            })
+    let is_android = matches!(
+        platform,
+        Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64
+    );
+    let is_ios = matches!(platform, Platform::IOSArm64 | Platform::TvOSArm64);
+    let is_wasm = matches!(platform, Platform::WebWasm32);
+
+    let result = if is_ios {
+        export_ios_app(
+            &template_path,
+            &output_dir,
+            &project_name,
+            packer,
+            compression_level,
+        )
+    } else if is_wasm {
+        export_wasm_zip(
+            &tx,
+            &template_path,
+            &output_dir,
+            &project_name,
+            packer,
+            compression_level,
+        )
+    } else if is_android {
+        export_android_apk(
+            &template_path,
+            &output_dir,
+            &binary_name,
+            packer,
+            compression_level,
+        )
+        .and_then(|_| {
+            let apk_path = output_dir.join(&binary_name);
+            crate::apk_signer::sign_apk(&apk_path)
+        })
     } else {
         match packaging_mode {
             PackagingMode::SeparateFiles => {
@@ -595,7 +1131,8 @@ fn run_export(world: &mut World, project_name: &str) {
             }
             PackagingMode::SingleBinary => {
                 let binary_dest = output_dir.join(&binary_name);
-                packer.append_to_binary(&template_path, &binary_dest, compression_level)
+                packer
+                    .append_to_binary(&template_path, &binary_dest, compression_level)
                     .and_then(|_| {
                         #[cfg(unix)]
                         {
@@ -611,13 +1148,114 @@ fn run_export(world: &mut World, project_name: &str) {
 
     match result {
         Ok(()) => {
-            world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Done(
-                format!("Exported {} files to {}", file_count, output_dir.display()),
-            );
+            // Server export
+            if include_server {
+                let server_result = export_server_standalone(
+                    &tx,
+                    &project,
+                    &project_name,
+                    platform,
+                    packaging_mode,
+                    compression_level,
+                    &output_dir,
+                    server_template.as_deref(),
+                );
+                match server_result {
+                    Ok(server_files) => {
+                        let _ = tx.send(ExportMsg::Done(format!(
+                            "Exported {} files + server ({} files) to {}",
+                            file_count,
+                            server_files,
+                            output_dir.display()
+                        )));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(ExportMsg::Done(format!(
+                            "Exported {} files (server failed: {}) to {}",
+                            file_count,
+                            e,
+                            output_dir.display()
+                        )));
+                    }
+                }
+            } else {
+                let _ = tx.send(ExportMsg::Done(format!(
+                    "Exported {} files to {}",
+                    file_count,
+                    output_dir.display()
+                )));
+            }
         }
         Err(e) => {
-            world.resource_mut::<ExportOverlayState>().progress =
-                ExportProgress::Error(format!("Export failed: {}", e));
+            let _ = tx.send(ExportMsg::Error(format!("Export failed: {}", e)));
         }
     }
+}
+
+/// Export the dedicated server binary with stripped assets (no World access).
+fn export_server_standalone(
+    tx: &mpsc::Sender<ExportMsg>,
+    project: &CurrentProject,
+    project_name: &str,
+    platform: Platform,
+    packaging_mode: PackagingMode,
+    compression_level: i32,
+    output_dir: &std::path::Path,
+    server_template: Option<&std::path::Path>,
+) -> Result<usize, String> {
+    let _ = tx.send(ExportMsg::Progress("Packing server assets...".into()));
+
+    let server_template = server_template
+        .ok_or_else(|| "No server template installed for this platform".to_string())?;
+
+    let server_binary_name = platform
+        .server_binary_name(project_name)
+        .ok_or_else(|| "Server not supported on this platform".to_string())?;
+
+    let mut server_packer = pack_project_filtered(&project.path, SERVER_EXTENSIONS)
+        .map_err(|e| format!("Failed to pack server assets: {}", e))?;
+
+    server_packer.strip_for_server();
+
+    let server_file_count = server_packer.len();
+
+    let _ = tx.send(ExportMsg::Progress("Writing server output...".into()));
+
+    match packaging_mode {
+        PackagingMode::SeparateFiles => {
+            let rpak_path = output_dir.join(format!("{}-server.rpak", project_name));
+            let binary_dest = output_dir.join(&server_binary_name);
+
+            server_packer
+                .write_to_file(&rpak_path, compression_level)
+                .and_then(|_| std::fs::copy(server_template, &binary_dest).map(|_| ()))
+                .and_then(|_| {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let perms = std::fs::Permissions::from_mode(0o755);
+                        std::fs::set_permissions(&binary_dest, perms)?;
+                    }
+                    Ok(())
+                })
+                .map_err(|e| format!("Server export failed: {}", e))?;
+        }
+        PackagingMode::SingleBinary => {
+            let binary_dest = output_dir.join(&server_binary_name);
+            server_packer
+                .append_to_binary(server_template, &binary_dest, compression_level)
+                .and_then(|_| {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let perms = std::fs::Permissions::from_mode(0o755);
+                        std::fs::set_permissions(&binary_dest, perms)?;
+                    }
+                    Ok(())
+                })
+                .map_err(|e| format!("Server export failed: {}", e))?;
+        }
+    }
+
+    Ok(server_file_count)
 }

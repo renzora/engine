@@ -67,7 +67,7 @@ pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &P
         locked = locked.lock_translation_z();
     }
 
-    commands.entity(entity).insert((
+    commands.entity(entity).try_insert((
         rigid_body,
         Mass(body_data.mass),
         GravityScale(body_data.gravity_scale),
@@ -97,14 +97,14 @@ pub fn spawn_collision_shape(commands: &mut Commands, entity: Entity, shape_data
     let mut entity_commands = commands.entity(entity);
 
     if shape_data.offset != Vec3::ZERO {
-        entity_commands.insert((
+        entity_commands.try_insert((
             collider,
             ColliderTransform::from(Transform::from_translation(shape_data.offset)),
             Friction::new(shape_data.friction),
             Restitution::new(shape_data.restitution),
         ));
     } else {
-        entity_commands.insert((
+        entity_commands.try_insert((
             collider,
             Friction::new(shape_data.friction),
             Restitution::new(shape_data.restitution),
@@ -112,7 +112,7 @@ pub fn spawn_collision_shape(commands: &mut Commands, entity: Entity, shape_data
     }
 
     if shape_data.is_sensor {
-        entity_commands.insert(Sensor);
+        entity_commands.try_insert(Sensor);
     }
 }
 

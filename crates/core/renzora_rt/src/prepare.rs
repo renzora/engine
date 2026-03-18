@@ -191,7 +191,7 @@ pub fn prepare_rt_lighting_resources(
         });
         let fallback_deferred_view = fallback_deferred.create_view(&TextureViewDescriptor::default());
 
-        commands.entity(entity).insert(RtLightingResources {
+        commands.entity(entity).try_insert(RtLightingResources {
             hi_z_texture,
             hi_z_views,
             hi_z_mip_count,

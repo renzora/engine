@@ -16,6 +16,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn
         main_scene: "scenes/main.ron".to_string(),
         icon: None,
         window: WindowConfig::default(),
+        network: None,
     };
 
     let config_path = path.join("project.toml");

@@ -22,6 +22,12 @@ pub struct ImportSettings {
     pub flip_uvs: bool,
     /// Generate flat normals if the source has none.
     pub generate_normals: bool,
+    /// Optimize vertex cache locality (reorders triangles for GPU).
+    pub optimize_vertex_cache: bool,
+    /// Optimize for reduced overdraw.
+    pub optimize_overdraw: bool,
+    /// Optimize vertex fetch (reorders vertices for cache).
+    pub optimize_vertex_fetch: bool,
 }
 
 impl Default for ImportSettings {
@@ -31,6 +37,9 @@ impl Default for ImportSettings {
             up_axis: UpAxis::Auto,
             flip_uvs: false,
             generate_normals: true,
+            optimize_vertex_cache: true,
+            optimize_overdraw: true,
+            optimize_vertex_fetch: true,
         }
     }
 }

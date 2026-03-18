@@ -210,6 +210,7 @@ impl EditorPanel for MaterialInspectorPanel {
                             any_changed = true;
                         }
                         if ui.small_button(egui_phosphor::regular::FOLDER_OPEN).clicked() {
+                            #[cfg(not(target_arch = "wasm32"))]
                             if let Some(file) = rfd::FileDialog::new()
                                 .add_filter("Image", &["png", "jpg", "jpeg", "ktx2"])
                                 .pick_file()

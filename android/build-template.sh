@@ -14,15 +14,15 @@ set -euo pipefail
 #        rustup target add x86_64-linux-android --toolchain nightly
 #
 # Usage:
-#   ./scripts/build-android-template.sh              # Android ARM64 (Vulkan)
-#   ./scripts/build-android-template.sh --x86_64     # Android x86_64 (Vulkan)
-#   ./scripts/build-android-template.sh --firetv     # Fire TV ARM64 (Vulkan)
-#   ./scripts/build-android-template.sh --all        # Build all templates
-#   ./scripts/build-android-template.sh --firetv --x86_64   # Multiple targets
+#   ./android/build-template.sh              # Android ARM64 (Vulkan)
+#   ./android/build-template.sh --x86_64     # Android x86_64 (Vulkan)
+#   ./android/build-template.sh --firetv     # Fire TV ARM64 (Vulkan)
+#   ./android/build-template.sh --all        # Build all templates
+#   ./android/build-template.sh --firetv --x86_64   # Multiple targets
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ANDROID_DIR="$PROJECT_ROOT/android"
+ANDROID_DIR="$SCRIPT_DIR"
 ANDROID_CRATE="$PROJECT_ROOT/crates/platform/renzora_android"
 JNILIBS_DIR="$ANDROID_DIR/app/src/main/jniLibs"
 
@@ -123,7 +123,7 @@ else
 fi
 mkdir -p "$TEMPLATES_DIR"
 
-OUTPUT_DIR="$PROJECT_ROOT/build/templates"
+OUTPUT_DIR="$PROJECT_ROOT/target/templates"
 mkdir -p "$OUTPUT_DIR"
 
 # --- Helper: build one architecture ---

@@ -86,7 +86,7 @@ fn sync_sun(
         *transform = Transform::from_rotation(
             Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()),
         );
-        commands.entity(entity).insert(SunDisk {
+        commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
             intensity: sun.sun_disk_intensity,
         });

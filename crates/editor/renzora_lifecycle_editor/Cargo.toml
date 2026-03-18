@@ -1,0 +1,17 @@
+[package]
+name = "renzora_lifecycle_editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_ui = { path = "../../ui/renzora_ui" }
+renzora_lifecycle = { path = "../../core/renzora_lifecycle" }
+renzora_blueprint = { path = "../../core/renzora_blueprint" }
+renzora_network = { path = "../../core/renzora_network" }
+renzora_core = { path = "../../core/renzora_core" }
+serde_json = "1"

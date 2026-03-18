@@ -60,11 +60,11 @@ pub trait ScriptExtension: Send + Sync + 'static {
 
     /// Register custom Lua functions. Called once per Lua state creation.
     /// Use `push_command(ScriptCommand::Extension(...))` for custom commands.
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn register_lua_functions(&self, _lua: &mlua::Lua) {}
 
     /// Set up Lua globals from extension data before each script execution.
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn setup_lua_context(&self, _lua: &mlua::Lua, _data: &ExtensionData) {}
 
     /// Register custom Rhai functions. Called once per engine creation.
@@ -104,7 +104,7 @@ impl ScriptExtensions {
     }
 
     /// Register Lua functions from all extensions.
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     pub fn register_lua_functions(&self, lua: &mlua::Lua) {
         for ext in &self.extensions {
             ext.register_lua_functions(lua);
@@ -112,7 +112,7 @@ impl ScriptExtensions {
     }
 
     /// Set up Lua context from all extensions.
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     pub fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {
         for ext in &self.extensions {
             ext.setup_lua_context(lua, data);

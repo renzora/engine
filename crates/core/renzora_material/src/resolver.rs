@@ -49,19 +49,25 @@ fn resolve_material_refs(
     mut commands: Commands,
     query: Query<(Entity, &MaterialRef), Without<MaterialResolved>>,
     mut cache: ResMut<MaterialCache>,
-    mut graph_materials: ResMut<Assets<GraphMaterial>>,
-    mut code_materials: ResMut<Assets<CodeShaderMaterial>>,
-    mut shaders: ResMut<Assets<Shader>>,
-    mut shader_state: ResMut<GraphMaterialShaderState>,
-    mut shader_cache: ResMut<ShaderCache>,
-    shader_registry: Res<renzora_shader::registry::ShaderBackendRegistry>,
+    graph_materials: Option<ResMut<Assets<GraphMaterial>>>,
+    code_materials: Option<ResMut<Assets<CodeShaderMaterial>>>,
+    shaders: Option<ResMut<Assets<Shader>>>,
+    shader_state: Option<ResMut<GraphMaterialShaderState>>,
+    shader_cache: Option<ResMut<ShaderCache>>,
+    shader_registry: Option<Res<renzora_shader::registry::ShaderBackendRegistry>>,
 ) {
+    let Some(mut graph_materials) = graph_materials else { return; };
+    let Some(mut code_materials) = code_materials else { return; };
+    let Some(mut shaders) = shaders else { return; };
+    let Some(mut shader_state) = shader_state else { return; };
+    let Some(mut shader_cache) = shader_cache else { return; };
+    let Some(shader_registry) = shader_registry else { return; };
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
 
         // Check graph material cache
         if let Some(handle) = cache.graph_materials.get(path) {
-            commands.entity(entity).insert((
+            commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
                 MaterialResolved { source_path: path.clone() },
             ));
@@ -70,7 +76,7 @@ fn resolve_material_refs(
 
         // Check code material cache
         if let Some(handle) = cache.code_materials.get(path) {
-            commands.entity(entity).insert((
+            commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
                 MaterialResolved { source_path: path.clone() },
             ));
@@ -82,7 +88,7 @@ fn resolve_material_refs(
             match resolve_graph_material(path, &mut graph_materials, &mut shaders, &mut shader_state) {
                 Some(handle) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).insert((
+                    commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
                         MaterialResolved { source_path: path.clone() },
                     ));
@@ -101,21 +107,21 @@ fn resolve_material_refs(
             ) {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).insert((
+                    commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
                         MaterialResolved { source_path: path.clone() },
                     ));
                 }
                 None => {
                     warn!("Failed to resolve .shader: {}", path);
-                    commands.entity(entity).insert(
+                    commands.entity(entity).try_insert(
                         MaterialResolved { source_path: path.clone() },
                     );
                 }
             }
         } else {
             warn!("MaterialRef has unsupported extension: {}", path);
-            commands.entity(entity).insert(
+            commands.entity(entity).try_insert(
                 MaterialResolved { source_path: path.clone() },
             );
         }

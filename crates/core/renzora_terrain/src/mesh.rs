@@ -254,7 +254,7 @@ pub fn terrain_chunk_mesh_update_system(
             *mesh = new_mesh;
         }
         let new_collider = generate_chunk_collider(terrain, &chunk);
-        commands.entity(entity).insert(new_collider);
+        commands.entity(entity).try_insert(new_collider);
         chunk.dirty = false;
     }
 }

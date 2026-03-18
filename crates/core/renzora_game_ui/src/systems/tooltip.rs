@@ -43,7 +43,7 @@ pub fn tooltip_system(
             }
             None => {
                 // First time — insert timer component
-                commands.entity(entity).insert(TooltipHoverTimer::default());
+                commands.entity(entity).try_insert(TooltipHoverTimer::default());
                 set_content_visibility(children, &mut parts, Visibility::Hidden);
             }
         }

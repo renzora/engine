@@ -52,7 +52,7 @@ pub fn push_ext_command(cmd: impl crate::extension::ScriptExtensionCommand) {
 // ── Context setup helpers ────────────────────────────────────────────────
 
 /// Set a Lua global table from a `HashMap<String, f32>`.
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 pub fn lua_set_map(lua: &mlua::Lua, name: &str, map: &std::collections::HashMap<String, f32>) {
     if let Ok(table) = lua.create_table() {
         for (k, v) in map {
@@ -63,7 +63,7 @@ pub fn lua_set_map(lua: &mlua::Lua, name: &str, map: &std::collections::HashMap<
 }
 
 /// Set a Lua global nested table from `HashMap<K, HashMap<String, f32>>` where K: Display.
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 pub fn lua_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash>(
     lua: &mlua::Lua,
     name: &str,
@@ -166,7 +166,7 @@ macro_rules! dual_register {
             }
         )*
     ) => {
-        #[cfg(feature = "lua")]
+        #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
         pub fn $lua_fn(lua: &mlua::Lua) {
             let __globals = lua.globals();
             $(

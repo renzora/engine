@@ -80,6 +80,7 @@ pub fn create_web_project(name: &str) -> Result<CurrentProject, String> {
         main_scene: "scenes/main.ron".to_string(),
         icon: None,
         window: WindowConfig::default(),
+        network: None,
     };
 
     let scene_content = "(

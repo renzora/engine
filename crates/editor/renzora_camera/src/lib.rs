@@ -19,7 +19,11 @@ use renzora_runtime::EditorCamera;
 use renzora_viewport::{NavOverlayState, ViewportSettings, ViewportState};
 
 /// Orbit camera state for the editor viewport.
-#[derive(Resource)]
+///
+/// Stored as a component on the `SceneCamera` entity so it persists in scene RON files.
+/// Editor-only: the runtime/server won't register this type (stripped at export).
+#[derive(Clone, Resource, Component, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
 pub struct OrbitCameraState {
     /// The point the camera orbits around.
     pub focus: Vec3,
@@ -79,7 +83,7 @@ impl OrbitCameraState {
 }
 
 /// Camera projection mode.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Reflect, serde::Serialize, serde::Deserialize)]
 pub enum ProjectionMode {
     #[default]
     Perspective,
@@ -133,7 +137,8 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] CameraPlugin");
-        app.init_resource::<OrbitCameraState>()
+        app.register_type::<OrbitCameraState>()
+            .init_resource::<OrbitCameraState>()
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
             .add_systems(PostStartup, apply_initial_orbit)
@@ -145,6 +150,7 @@ impl Plugin for CameraPlugin {
                 apply_nav_overlay,
                 update_camera_projection,
                 sync_orbit_snapshot,
+                apply_orbit_on_change,
             ).chain().run_if(in_state(renzora_splash::SplashState::Editor)));
     }
 }
@@ -152,10 +158,14 @@ impl Plugin for CameraPlugin {
 /// Set the runtime camera transform from initial orbit state.
 fn apply_initial_orbit(
     orbit: Res<OrbitCameraState>,
-    mut cameras: Query<&mut Transform, With<EditorCamera>>,
+    mut cameras: Query<(Entity, &mut Transform), With<EditorCamera>>,
 ) {
-    for mut transform in &mut cameras {
+    for (entity, mut transform) in &mut cameras {
         let t = orbit.calculate_transform();
+        renzora_core::console_log::console_info("Camera", format!(
+            "apply_initial_orbit: entity={:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3} pos={:?}",
+            entity, orbit.focus, orbit.distance, orbit.yaw, orbit.pitch, t.translation
+        ));
         *transform = t;
     }
 }
@@ -518,6 +528,26 @@ fn update_camera_projection(
                 ortho.scale = orbit.distance / 5.0;
             }
         }
+    }
+}
+
+/// Apply orbit transform when the resource is replaced (e.g. after scene load).
+fn apply_orbit_on_change(
+    orbit: Res<OrbitCameraState>,
+    mut cameras: Query<(Entity, &mut Transform, &Camera), With<EditorCamera>>,
+    play_mode: Option<Res<renzora_core::PlayModeState>>,
+) {
+    if !orbit.is_changed() { return; }
+    let is_playing = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
+    for (entity, mut transform, camera) in &mut cameras {
+        let new_t = orbit.calculate_transform();
+        renzora_core::console_log::console_info("Camera", format!(
+            "apply_orbit_on_change: entity={:?} active={} playing={} pos={:?} -> {:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3}",
+            entity, camera.is_active, is_playing,
+            transform.translation, new_t.translation,
+            orbit.focus, orbit.distance, orbit.yaw, orbit.pitch
+        ));
+        *transform = new_t;
     }
 }
 

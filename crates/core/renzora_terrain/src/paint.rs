@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::data::{BrushFalloffType, BrushShape, compute_brush_falloff};
+use crate::splatmap_material::LayerAnimationType;
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,23 @@ pub struct MaterialLayer {
     pub uv_scale: Vec2,
     pub metallic: f32,
     pub roughness: f32,
+    /// Base color for procedural layer shading.
+    pub color: Vec3,
+    /// Procedural animation type (grass, water, rock, etc.).
+    #[serde(default)]
+    #[reflect(ignore)]
+    pub animation_type: LayerAnimationType,
+    /// Animation speed multiplier.
+    pub animation_speed: f32,
+    /// Albedo texture path (asset-relative).
+    #[serde(default)]
+    pub albedo_path: Option<String>,
+    /// Normal map texture path (asset-relative).
+    #[serde(default)]
+    pub normal_path: Option<String>,
+    /// ARM (AO/Roughness/Metallic) packed texture path (asset-relative).
+    #[serde(default)]
+    pub arm_path: Option<String>,
     /// Cached compiled WGSL source for this layer (populated at runtime).
     #[serde(skip)]
     #[reflect(ignore)]
@@ -31,25 +49,34 @@ impl Default for MaterialLayer {
         Self {
             name: "Layer".to_string(),
             material_path: None,
-            uv_scale: Vec2::splat(1.0),
+            uv_scale: Vec2::splat(0.1),
             metallic: 0.0,
             roughness: 0.5,
+            color: Vec3::new(0.5, 0.5, 0.5),
+            animation_type: LayerAnimationType::Solid,
+            animation_speed: 1.0,
+            albedo_path: None,
+            normal_path: None,
+            arm_path: None,
             cached_shader_source: None,
         }
     }
 }
 
+/// Maximum number of texture layers supported.
+pub const MAX_LAYERS: usize = 8;
+
 /// Component holding per-mesh surface painting data.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
 pub struct PaintableSurfaceData {
-    /// Material layers (max 4).
+    /// Material layers (up to 8).
     pub layers: Vec<MaterialLayer>,
     /// Resolution of the splatmap texture (width = height).
     pub splatmap_resolution: u32,
     /// CPU-side weight data. Length = resolution * resolution.
-    /// Each element is [r, g, b, a] weights for layers 0..3.
-    pub splatmap_weights: Vec<[f32; 4]>,
+    /// Each element is 8 weights for layers 0..7 (two RGBA splatmaps).
+    pub splatmap_weights: Vec<[f32; 8]>,
     /// Whether the splatmap needs uploading to GPU.
     #[serde(skip)]
     #[reflect(ignore)]
@@ -67,16 +94,39 @@ impl Default for PaintableSurfaceData {
         Self {
             layers: vec![
                 MaterialLayer {
-                    name: "Base".to_string(),
+                    name: "Grass".to_string(),
+                    color: Vec3::new(0.25, 0.50, 0.15),
+                    animation_type: LayerAnimationType::Grass,
+                    animation_speed: 1.0,
+                    roughness: 0.8,
                     ..Default::default()
                 },
                 MaterialLayer {
-                    name: "Layer 2".to_string(),
+                    name: "Dirt".to_string(),
+                    color: Vec3::new(0.45, 0.35, 0.22),
+                    animation_type: LayerAnimationType::Dirt,
+                    roughness: 0.9,
+                    ..Default::default()
+                },
+                MaterialLayer {
+                    name: "Water".to_string(),
+                    color: Vec3::new(0.10, 0.25, 0.40),
+                    animation_type: LayerAnimationType::Water,
+                    animation_speed: 1.0,
+                    metallic: 0.1,
+                    roughness: 0.2,
+                    ..Default::default()
+                },
+                MaterialLayer {
+                    name: "Rock".to_string(),
+                    color: Vec3::new(0.40, 0.38, 0.35),
+                    animation_type: LayerAnimationType::Rock,
+                    roughness: 0.9,
                     ..Default::default()
                 },
             ],
             splatmap_resolution: resolution,
-            splatmap_weights: vec![[1.0, 0.0, 0.0, 0.0]; texel_count],
+            splatmap_weights: vec![[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]; texel_count],
             dirty: true,
             shader_dirty: true,
         }
@@ -165,7 +215,7 @@ pub fn apply_paint_brush(
 ) {
     let res = surface.splatmap_resolution;
     let layer = settings.active_layer;
-    let num_layers = surface.layers.len().min(4);
+    let num_layers = surface.layers.len().min(MAX_LAYERS);
 
     if layer >= num_layers {
         return;
@@ -236,18 +286,18 @@ pub fn apply_paint_brush(
                     }
                 }
                 PaintBrushType::Smooth => {
-                    let mut avg = [0.0f32; 4];
+                    let mut avg = [0.0f32; MAX_LAYERS];
                     let mut count = 0.0f32;
                     for nv in tv.saturating_sub(1)..=(tv + 1).min(res - 1) {
                         for nu in tu.saturating_sub(1)..=(tu + 1).min(res - 1) {
                             let ni = (nv * res + nu) as usize;
-                            for c in 0..4 {
+                            for c in 0..MAX_LAYERS {
                                 avg[c] += surface.splatmap_weights[ni][c];
                             }
                             count += 1.0;
                         }
                     }
-                    for c in 0..4 {
+                    for c in 0..MAX_LAYERS {
                         avg[c] /= count;
                     }
                     for c in 0..num_layers {
@@ -255,7 +305,7 @@ pub fn apply_paint_brush(
                     }
                 }
                 PaintBrushType::Fill => {
-                    for i in 0..4 {
+                    for i in 0..MAX_LAYERS {
                         w[i] = if i == layer { 1.0 } else { 0.0 };
                     }
                 }
@@ -275,8 +325,8 @@ pub fn apply_paint_brush(
     }
 }
 
-/// Convert splatmap weights to RGBA8 pixel data for GPU upload.
-pub fn splatmap_to_rgba8(weights: &[[f32; 4]], resolution: u32) -> Vec<u8> {
+/// Convert splatmap weights (layers 0-3) to RGBA8 pixel data for GPU upload.
+pub fn splatmap_to_rgba8_a(weights: &[[f32; 8]], resolution: u32) -> Vec<u8> {
     let count = (resolution * resolution) as usize;
     let mut pixels = Vec::with_capacity(count * 4);
     for w in weights.iter().take(count) {
@@ -284,6 +334,19 @@ pub fn splatmap_to_rgba8(weights: &[[f32; 4]], resolution: u32) -> Vec<u8> {
         pixels.push((w[1] * 255.0).round() as u8);
         pixels.push((w[2] * 255.0).round() as u8);
         pixels.push((w[3] * 255.0).round() as u8);
+    }
+    pixels
+}
+
+/// Convert splatmap weights (layers 4-7) to RGBA8 pixel data for GPU upload.
+pub fn splatmap_to_rgba8_b(weights: &[[f32; 8]], resolution: u32) -> Vec<u8> {
+    let count = (resolution * resolution) as usize;
+    let mut pixels = Vec::with_capacity(count * 4);
+    for w in weights.iter().take(count) {
+        pixels.push((w[4] * 255.0).round() as u8);
+        pixels.push((w[5] * 255.0).round() as u8);
+        pixels.push((w[6] * 255.0).round() as u8);
+        pixels.push((w[7] * 255.0).round() as u8);
     }
     pixels
 }

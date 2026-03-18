@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    AppEditorExt, DockTree, DocumentTabState, EditorPanel, LayoutManager, PanelLocation, TabKind,
+    AppEditorExt, DockTree, DocumentTabState, EditorPanel, LayoutManager, PanelLocation,
     WorkspaceLayout,
 };
 use renzora_theme::ThemeManager;
@@ -407,8 +407,6 @@ impl Plugin for TestExtensionPlugin {
         let mut tabs = world
             .remove_resource::<DocumentTabState>()
             .unwrap_or_default();
-
-        tabs.add_tab("player_controller.rhai".into(), TabKind::Script);
 
         world.insert_resource(tabs);
     }

@@ -1,4 +1,4 @@
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 pub mod lua;
 
 #[cfg(feature = "rhai")]

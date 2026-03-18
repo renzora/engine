@@ -1,8 +1,7 @@
 //! Document tab bar — renders between title bar and dock tree.
 //!
-//! Each open document (scene, script, material, etc.) gets a tab with a
-//! type-coded accent color, close button, and modified indicator. Clicking
-//! a tab activates it and optionally switches the workspace layout.
+//! Each tab represents an open scene. The "+" button creates a new empty scene tab.
+//! Workspace layouts are switched independently via the layout/workspace system.
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
@@ -23,116 +22,17 @@ const CLOSE_BTN_WIDTH: f32 = 20.0;
 /// Total height consumed by the document tab bar.
 pub const DOC_TAB_BAR_HEIGHT: f32 = TAB_HEIGHT + TOP_MARGIN;
 
-// ── Tab types ────────────────────────────────────────────────────────────────
-
-/// The kind of document a tab represents.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TabKind {
-    Scene,
-    Script,
-    Material,
-    Image,
-    Video,
-    Audio,
-    Animation,
-    Texture,
-    ParticleFX,
-    Level,
-    Terrain,
-    Shader,
-}
-
-impl TabKind {
-    /// Phosphor icon for this tab type.
-    pub fn icon(&self) -> &'static str {
-        match self {
-            TabKind::Scene => regular::FILM_SCRIPT,
-            TabKind::Script => regular::SCROLL,
-            TabKind::Material => regular::PALETTE,
-            TabKind::Image => regular::IMAGE,
-            TabKind::Video => regular::VIDEO,
-            TabKind::Audio => regular::MUSIC_NOTES,
-            TabKind::Animation => regular::FILM_SCRIPT,
-            TabKind::Texture => regular::PAINT_BRUSH,
-            TabKind::ParticleFX => regular::SPARKLE,
-            TabKind::Level => regular::GAME_CONTROLLER,
-            TabKind::Terrain => regular::MOUNTAINS,
-            TabKind::Shader => regular::MONITOR,
-        }
-    }
-
-    /// Accent color for this tab type.
-    pub fn accent_color(&self, theme: &Theme) -> Color32 {
-        match self {
-            TabKind::Scene => theme.semantic.accent.to_color32(),
-            TabKind::Script => theme.categories.scripting.accent.to_color32(),
-            TabKind::Material => Color32::from_rgb(180, 130, 200),
-            TabKind::Image => Color32::from_rgb(166, 217, 140),
-            TabKind::Video => Color32::from_rgb(220, 80, 80),
-            TabKind::Audio => Color32::from_rgb(180, 100, 220),
-            TabKind::Animation => Color32::from_rgb(100, 180, 220),
-            TabKind::Texture => Color32::from_rgb(120, 200, 120),
-            TabKind::ParticleFX => Color32::from_rgb(255, 180, 50),
-            TabKind::Level => Color32::from_rgb(100, 200, 180),
-            TabKind::Terrain => Color32::from_rgb(140, 180, 100),
-            TabKind::Shader => Color32::from_rgb(180, 130, 255),
-        }
-    }
-
-    /// Muted version of the accent color for inactive tabs.
-    pub fn inactive_color(&self, theme: &Theme) -> Color32 {
-        let c = self.accent_color(theme);
-        Color32::from_rgb(c.r() / 2 + 50, c.g() / 2 + 50, c.b() / 2 + 55)
-    }
-
-    /// The layout name this tab type prefers.
-    pub fn preferred_layout(&self) -> &'static str {
-        match self {
-            TabKind::Scene => "Scene",
-            TabKind::Script => "Scripting",
-            TabKind::Material => "Materials",
-            TabKind::Image => "Scene",
-            TabKind::Video => "Scene",
-            TabKind::Audio => "Scene",
-            TabKind::Animation => "Animation",
-            TabKind::Texture => "Scene",
-            TabKind::ParticleFX => "Particles",
-            TabKind::Level => "Level Design",
-            TabKind::Terrain => "Terrain",
-            TabKind::Shader => "Shaders",
-        }
-    }
-
-    /// Display name for the + menu.
-    pub fn label(&self) -> &'static str {
-        match self {
-            TabKind::Scene => "Scene",
-            TabKind::Script => "Script",
-            TabKind::Material => "Material",
-            TabKind::Image => "Image",
-            TabKind::Video => "Video",
-            TabKind::Audio => "Audio",
-            TabKind::Animation => "Animation",
-            TabKind::Texture => "Texture",
-            TabKind::ParticleFX => "Particle FX",
-            TabKind::Level => "Level",
-            TabKind::Terrain => "Terrain",
-            TabKind::Shader => "Shader",
-        }
-    }
-}
-
 // ── Document tab ─────────────────────────────────────────────────────────────
 
-/// A single open document tab.
+/// A single open scene tab.
 #[derive(Debug, Clone)]
 pub struct DocumentTab {
     /// Unique id for this tab instance.
     pub id: u64,
     /// Display name.
     pub name: String,
-    /// Document type.
-    pub kind: TabKind,
+    /// Path to the scene file on disk (None for unsaved scenes).
+    pub scene_path: Option<String>,
     /// Whether the document has unsaved changes.
     pub is_modified: bool,
 }
@@ -158,54 +58,52 @@ impl Default for DocumentTabState {
             next_id: 1,
         };
         // Start with one default scene tab
-        state.add_tab("Untitled Scene".into(), TabKind::Scene);
+        state.add_tab("Untitled Scene".into(), None);
         state
     }
 }
 
 impl DocumentTabState {
     /// Add a new tab and return its index.
-    pub fn add_tab(&mut self, name: String, kind: TabKind) -> usize {
+    pub fn add_tab(&mut self, name: String, scene_path: Option<String>) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         self.tabs.push(DocumentTab {
             id,
             name,
-            kind,
+            scene_path,
             is_modified: false,
         });
         self.tabs.len() - 1
     }
 
-    /// Close a tab by index. Returns the preferred layout of the newly active tab, if any.
-    pub fn close_tab(&mut self, index: usize) -> Option<&'static str> {
+    /// Close a tab by index. Returns the closed tab's id for buffer cleanup, or None if close was denied.
+    pub fn close_tab(&mut self, index: usize) -> Option<u64> {
         if index >= self.tabs.len() {
             return None;
         }
-        // Don't close the last scene tab
-        let is_last_scene = self.tabs[index].kind == TabKind::Scene
-            && self.tabs.iter().filter(|t| t.kind == TabKind::Scene).count() <= 1;
-        if is_last_scene {
+        // Don't close the last tab
+        if self.tabs.len() <= 1 {
             return None;
         }
 
+        let closed_id = self.tabs[index].id;
         self.tabs.remove(index);
-        if self.tabs.is_empty() {
-            self.add_tab("Untitled Scene".into(), TabKind::Scene);
-            self.active_tab = 0;
-        } else if self.active_tab >= self.tabs.len() {
+        if self.active_tab >= self.tabs.len() {
             self.active_tab = self.tabs.len() - 1;
         } else if self.active_tab > index {
             self.active_tab -= 1;
         }
-        Some(self.tabs[self.active_tab].kind.preferred_layout())
+        Some(closed_id)
     }
 
-    /// Activate a tab by index. Returns the preferred layout name.
-    pub fn activate_tab(&mut self, index: usize) -> Option<&'static str> {
-        if index < self.tabs.len() {
+    /// Activate a tab by index. Returns (old_id, new_id) if the tab changed.
+    pub fn activate_tab(&mut self, index: usize) -> Option<(u64, u64)> {
+        if index < self.tabs.len() && index != self.active_tab {
+            let old_id = self.tabs[self.active_tab].id;
             self.active_tab = index;
-            Some(self.tabs[index].kind.preferred_layout())
+            let new_id = self.tabs[index].id;
+            Some((old_id, new_id))
         } else {
             None
         }
@@ -230,6 +128,11 @@ impl DocumentTabState {
             self.active_tab += 1;
         }
     }
+
+    /// Get the active tab's id.
+    pub fn active_tab_id(&self) -> Option<u64> {
+        self.tabs.get(self.active_tab).map(|t| t.id)
+    }
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -237,14 +140,14 @@ impl DocumentTabState {
 /// Actions returned from the document tab bar.
 pub enum DocTabAction {
     None,
-    /// Activate tab at index — includes preferred layout name.
-    Activate(usize, &'static str),
+    /// Activate tab at index.
+    Activate(usize),
     /// Close tab at index.
     Close(usize),
     /// Reorder tab from index to index.
     Reorder(usize, usize),
-    /// Add a new tab of the given kind.
-    AddNew(TabKind),
+    /// Add a new scene tab.
+    AddNew,
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -258,6 +161,7 @@ pub fn render_document_tabs(
     let mut action = DocTabAction::None;
 
     let bg_color = theme.surfaces.extreme.to_color32();
+    let accent = theme.semantic.accent.to_color32();
 
     egui::TopBottomPanel::top("renzora_document_tabs")
         .exact_height(DOC_TAB_BAR_HEIGHT)
@@ -271,7 +175,13 @@ pub fn render_document_tabs(
             let tab_hover_bg = theme.widgets.hovered_bg.to_color32();
             let text_color = theme.text.secondary.to_color32();
             let text_active_color = theme.text.primary.to_color32();
-            let drop_indicator_color = theme.semantic.accent.to_color32();
+            let drop_indicator_color = accent;
+
+            // Inactive icon color (muted accent)
+            let icon_inactive = {
+                let c = accent;
+                Color32::from_rgb(c.r() / 2 + 50, c.g() / 2 + 50, c.b() / 2 + 55)
+            };
 
             // Bottom border
             let bar_bottom = panel_rect.min.y + DOC_TAB_BAR_HEIGHT;
@@ -293,13 +203,9 @@ pub fn render_document_tabs(
             // Collect tab rects for drop detection
             let mut tab_rects: Vec<(usize, Rect)> = Vec::new();
 
-            let scene_count = tab_state.tabs.iter().filter(|t| t.kind == TabKind::Scene).count();
-
             for (order_idx, tab) in tab_state.tabs.iter().enumerate() {
                 let is_active = order_idx == tab_state.active_tab;
                 let is_being_dragged = dragging == Some(order_idx);
-                let accent = tab.kind.accent_color(theme);
-                let icon_inactive = tab.kind.inactive_color(theme);
 
                 // Build display text
                 let tab_text = if tab.is_modified {
@@ -401,11 +307,11 @@ pub fn render_document_tabs(
                     );
                 }
 
-                // Tab icon
+                // Tab icon — all tabs use scene icon
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 8.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    tab.kind.icon(),
+                    regular::FILM_SCRIPT,
                     egui::FontId::proportional(12.0),
                     if is_active { accent } else { icon_inactive },
                 );
@@ -433,11 +339,8 @@ pub fn render_document_tabs(
                     ctx.set_cursor_icon(CursorIcon::PointingHand);
                 }
 
-                // Only show close for scenes if more than one scene exists
-                let can_close = match tab.kind {
-                    TabKind::Scene => scene_count > 1,
-                    _ => true,
-                };
+                // Only show close if more than one tab
+                let can_close = tab_state.tabs.len() > 1;
 
                 if can_close {
                     let close_color = if close_hovered {
@@ -471,47 +374,28 @@ pub fn render_document_tabs(
                 if close_response.clicked() && can_close {
                     action = DocTabAction::Close(order_idx);
                 } else if tab_response.clicked() && !tab_response.dragged() && !is_active {
-                    let layout = tab.kind.preferred_layout();
-                    action = DocTabAction::Activate(order_idx, layout);
+                    action = DocTabAction::Activate(order_idx);
                 }
 
                 x_offset += tab_width + TAB_GAP;
             }
 
-            // + button — flush with the last tab, same height and Y
+            // + button — plain button, no dropdown
             let tab_area_y = top_y + TOP_MARGIN + 2.0;
             let tab_area_h = TAB_HEIGHT - 2.0;
             let add_btn_size = Vec2::new(24.0, tab_area_h);
             let add_btn_pos = Pos2::new(x_offset, tab_area_y);
             let add_btn_rect = Rect::from_min_size(add_btn_pos, add_btn_size);
 
-            // Render + button with menu styling
             #[allow(deprecated)]
             ui.allocate_ui_at_rect(add_btn_rect, |ui| {
                 ui.style_mut().visuals.widgets.inactive.weak_bg_fill = tab_bg;
                 ui.style_mut().visuals.widgets.hovered.weak_bg_fill = tab_hover_bg;
                 ui.style_mut().visuals.widgets.active.weak_bg_fill = tab_hover_bg;
 
-                #[allow(deprecated)]
-                let _menu_response = egui::menu::menu_button(ui, "+", |ui| {
-                    ui.set_min_width(140.0);
-
-                    let doc_types = [
-                        TabKind::Scene,
-                        TabKind::Material,
-                        TabKind::Script,
-                        TabKind::Shader,
-                    ];
-
-                    for kind in &doc_types {
-                        let label = format!("{} {}", kind.icon(), kind.label());
-                        if ui.button(label).clicked() {
-                            action = DocTabAction::AddNew(kind.clone());
-                            #[allow(deprecated)]
-                            ui.close_menu();
-                        }
-                    }
-                });
+                if ui.button("+").clicked() {
+                    action = DocTabAction::AddNew;
+                }
             });
 
             // Handle drag-drop for reordering

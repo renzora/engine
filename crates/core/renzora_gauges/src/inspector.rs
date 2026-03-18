@@ -20,7 +20,7 @@ pub fn gauges_inspector_entry() -> InspectorEntry {
         category: "gameplay",
         has_fn: |world, entity| world.get::<Gauges>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.commands().entity(entity).insert(Gauges);
+            world.commands().entity(entity).try_insert(Gauges);
         }),
         remove_fn: Some(|world, entity| {
             world.commands().entity(entity).remove::<Gauges>();

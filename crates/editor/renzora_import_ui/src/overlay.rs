@@ -1,11 +1,13 @@
 //! Import overlay UI — modal dialog for importing 3D models.
 
 use std::path::PathBuf;
+use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_core::CurrentProject;
+use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::{ImportSettings, UpAxis};
 use renzora_theme::ThemeManager;
 
@@ -13,7 +15,11 @@ use renzora_theme::ThemeManager;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportProgress {
     Idle,
-    Converting { current: usize, total: usize },
+    Working {
+        current: usize,
+        total: usize,
+        label: String,
+    },
     Done(String),
     Error(String),
 }
@@ -26,6 +32,23 @@ pub struct ImportLogEntry {
     pub message: String,
 }
 
+/// Messages sent from the background import thread.
+enum ImportMsg {
+    Progress {
+        current: usize,
+        total: usize,
+        label: String,
+    },
+    Log(ImportLogEntry),
+    Done(String),
+    Error(String),
+}
+
+/// Handle for a running background import.
+struct ImportTask {
+    rx: Mutex<mpsc::Receiver<ImportMsg>>,
+}
+
 /// Resource holding the import overlay state.
 #[derive(Resource)]
 pub struct ImportOverlayState {
@@ -36,6 +59,8 @@ pub struct ImportOverlayState {
     pub progress: ImportProgress,
     /// Per-file import results shown in the output log.
     pub log_entries: Vec<ImportLogEntry>,
+    /// Background import task (if running).
+    active_task: Option<ImportTask>,
 }
 
 impl Default for ImportOverlayState {
@@ -47,11 +72,87 @@ impl Default for ImportOverlayState {
             settings: ImportSettings::default(),
             progress: ImportProgress::Idle,
             log_entries: Vec::new(),
+            active_task: None,
         }
     }
 }
 
+/// Drain progress messages from the background thread into overlay state.
+fn poll_import_task(world: &mut World) {
+    let has_task = world
+        .resource::<ImportOverlayState>()
+        .active_task
+        .is_some();
+    if !has_task {
+        return;
+    }
+
+    let mut finished = false;
+    let mut progress_updates: Vec<ImportMsg> = Vec::new();
+
+    // Drain all pending messages
+    {
+        let state = world.resource::<ImportOverlayState>();
+        let task = state.active_task.as_ref().unwrap();
+        let rx = task.rx.lock().unwrap();
+        loop {
+            match rx.try_recv() {
+                Ok(msg) => {
+                    let is_terminal = matches!(msg, ImportMsg::Done(_) | ImportMsg::Error(_));
+                    progress_updates.push(msg);
+                    if is_terminal {
+                        finished = true;
+                        break;
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    progress_updates
+                        .push(ImportMsg::Error("Import thread terminated unexpectedly".into()));
+                    finished = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Apply messages
+    let mut state = world.resource_mut::<ImportOverlayState>();
+    for msg in progress_updates {
+        match msg {
+            ImportMsg::Progress {
+                current,
+                total,
+                label,
+            } => {
+                state.progress = ImportProgress::Working {
+                    current,
+                    total,
+                    label,
+                };
+            }
+            ImportMsg::Log(entry) => {
+                state.log_entries.push(entry);
+            }
+            ImportMsg::Done(msg) => {
+                state.progress = ImportProgress::Done(msg);
+                state.pending_files.clear();
+            }
+            ImportMsg::Error(msg) => {
+                state.progress = ImportProgress::Error(msg);
+            }
+        }
+    }
+
+    if finished {
+        state.active_task = None;
+    }
+}
+
 pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
+    // Poll background task every frame
+    poll_import_task(world);
+
     // Dim background
     let screen = ctx.input(|i| i.viewport_rect());
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -349,6 +450,29 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
 
                 ui.add_space(12.0);
 
+                // --- Mesh Optimization ---
+                section_label(ui, regular::CUBE, "Mesh Optimization", text_primary);
+                ui.add_space(4.0);
+
+                {
+                    let mut state = world.resource_mut::<ImportOverlayState>();
+
+                    ui.checkbox(
+                        &mut state.settings.optimize_vertex_cache,
+                        egui::RichText::new("Optimize vertex cache").color(text_primary),
+                    );
+                    ui.checkbox(
+                        &mut state.settings.optimize_overdraw,
+                        egui::RichText::new("Optimize overdraw").color(text_primary),
+                    );
+                    ui.checkbox(
+                        &mut state.settings.optimize_vertex_fetch,
+                        egui::RichText::new("Optimize vertex fetch").color(text_primary),
+                    );
+                }
+
+                ui.add_space(12.0);
+
                 // --- Destination ---
                 section_label(ui, regular::FOLDER_OPEN, "Destination", text_primary);
                 ui.add_space(4.0);
@@ -397,6 +521,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     let state = world.resource::<ImportOverlayState>();
                     let progress = state.progress.clone();
                     let can = !state.pending_files.is_empty()
+                        && state.active_task.is_none()
                         && matches!(
                             progress,
                             ImportProgress::Idle | ImportProgress::Done(_) | ImportProgress::Error(_)
@@ -409,22 +534,20 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                 // --- Progress / status ---
                 match &progress {
                     ImportProgress::Idle => {}
-                    ImportProgress::Converting { current, total } => {
+                    ImportProgress::Working {
+                        current,
+                        total,
+                        label,
+                    } => {
                         ui.horizontal(|ui| {
                             ui.spinner();
                             ui.label(
-                                egui::RichText::new(format!(
-                                    "Converting {}/{}...",
-                                    current, total
-                                ))
-                                .color(text_secondary),
+                                egui::RichText::new(format!("[{}/{}] {}", current, total, label))
+                                    .color(text_secondary),
                             );
                         });
                         let frac = *current as f32 / (*total as f32).max(1.0);
-                        ui.add(
-                            egui::ProgressBar::new(frac)
-                                .show_percentage(),
-                        );
+                        ui.add(egui::ProgressBar::new(frac).show_percentage());
                     }
                     ImportProgress::Done(msg) => {
                         ui.label(
@@ -542,6 +665,7 @@ fn close_overlay(world: &mut World) {
     state.pending_files.clear();
     state.progress = ImportProgress::Idle;
     state.log_entries.clear();
+    state.active_task = None;
 }
 
 fn run_import(world: &mut World) {
@@ -552,23 +676,55 @@ fn run_import(world: &mut World) {
     let target_dir = state.target_directory.clone();
 
     let total = files.len();
+    info!(
+        "[import] Starting import of {} file(s) to assets/{}",
+        total, target_dir
+    );
 
-    info!("[import] Starting import of {} file(s) to assets/{}", total, target_dir);
+    let (tx, rx) = mpsc::channel();
 
-    // Ensure destination directory exists
+    // Set initial progress and store the task handle
+    {
+        let mut state = world.resource_mut::<ImportOverlayState>();
+        state.log_entries.clear();
+        state.progress = ImportProgress::Working {
+            current: 0,
+            total,
+            label: "Starting...".into(),
+        };
+        state.active_task = Some(ImportTask {
+            rx: Mutex::new(rx),
+        });
+    }
+
+    // Spawn background thread
+    std::thread::spawn(move || {
+        import_worker(tx, project, files, settings, target_dir);
+    });
+}
+
+/// Background import worker — runs on a separate thread.
+fn import_worker(
+    tx: mpsc::Sender<ImportMsg>,
+    project: CurrentProject,
+    files: Vec<PathBuf>,
+    settings: ImportSettings,
+    target_dir: String,
+) {
+    let total = files.len();
     let dest = project.path.join("assets").join(&target_dir);
+
     if let Err(e) = std::fs::create_dir_all(&dest) {
-        let msg = format!("Failed to create directory: {}", e);
-        error!("[import] {}", msg);
-        world.resource_mut::<ImportOverlayState>().progress =
-            ImportProgress::Error(msg);
+        let _ = tx.send(ImportMsg::Error(format!(
+            "Failed to create directory: {}",
+            e
+        )));
         return;
     }
 
-    let mut imported = 0;
+    let mut imported = 0usize;
     let mut errors = Vec::new();
     let mut all_warnings = Vec::new();
-    let mut log_entries = Vec::new();
 
     for (i, source_path) in files.iter().enumerate() {
         let file_name = source_path
@@ -577,26 +733,55 @@ fn run_import(world: &mut World) {
             .unwrap_or("unknown")
             .to_string();
 
-        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Converting {
+        // --- Phase: converting ---
+        let _ = tx.send(ImportMsg::Progress {
             current: i + 1,
             total,
-        };
-
-        info!("[import] [{}/{}] Converting {}", i + 1, total, file_name);
+            label: format!("Converting {}", file_name),
+        });
 
         match renzora_import::convert_to_glb(source_path, &settings) {
             Ok(result) => {
-                // Write GLB to destination
+                // --- Phase: optimizing ---
+                let opt_settings = MeshOptSettings {
+                    vertex_cache: settings.optimize_vertex_cache,
+                    overdraw: settings.optimize_overdraw,
+                    vertex_fetch: settings.optimize_vertex_fetch,
+                    ..Default::default()
+                };
+
+                let glb_bytes = if opt_settings.any_enabled() {
+                    let _ = tx.send(ImportMsg::Progress {
+                        current: i + 1,
+                        total,
+                        label: format!("Optimizing {}", file_name),
+                    });
+
+                    match renzora_import::optimize_glb(&result.glb_bytes, &opt_settings) {
+                        Ok(optimized) => optimized,
+                        Err(e) => {
+                            warn!(
+                                "[import] Mesh optimization failed for {}: {}",
+                                file_name, e
+                            );
+                            result.glb_bytes.clone()
+                        }
+                    }
+                } else {
+                    result.glb_bytes.clone()
+                };
+
+                // --- Phase: writing ---
                 let stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
                 let output_path = dest.join(format!("{}.glb", stem));
 
-                let size_kb = result.glb_bytes.len() as f64 / 1024.0;
+                let size_kb = glb_bytes.len() as f64 / 1024.0;
                 let warn_count = result.warnings.len();
 
-                match std::fs::write(&output_path, &result.glb_bytes) {
+                match std::fs::write(&output_path, &glb_bytes) {
                     Ok(()) => {
                         imported += 1;
                         let msg = if warn_count > 0 {
@@ -604,28 +789,24 @@ fn run_import(world: &mut World) {
                         } else {
                             format!("{:.1} KB", size_kb)
                         };
-                        info!(
-                            "[import] {} → {} ({})",
-                            source_path.display(),
-                            output_path.display(),
-                            msg,
-                        );
-                        log_entries.push(ImportLogEntry {
+                        let _ = tx.send(ImportMsg::Log(ImportLogEntry {
                             file_name: file_name.clone(),
                             success: true,
                             message: msg,
+                        }));
+
+                        // --- Phase: extracting animations ---
+                        let _ = tx.send(ImportMsg::Progress {
+                            current: i + 1,
+                            total,
+                            label: format!("Extracting animations from {}", file_name),
                         });
 
-                        // Extract animations from the GLB into .anim files
                         let anim_dir = dest.join("animations");
-                        match renzora_import::extract_animations_from_glb(
-                            &result.glb_bytes,
-                            &anim_dir,
-                        ) {
+                        match renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir) {
                             Ok(anim_result) => {
                                 for anim_path in &anim_result.written_files {
-                                    info!("[import] Extracted animation: {}", anim_path);
-                                    log_entries.push(ImportLogEntry {
+                                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
                                         file_name: std::path::Path::new(anim_path)
                                             .file_name()
                                             .and_then(|n| n.to_str())
@@ -633,28 +814,25 @@ fn run_import(world: &mut World) {
                                             .to_string(),
                                         success: true,
                                         message: "animation extracted".to_string(),
-                                    });
+                                    }));
                                 }
                                 for w in &anim_result.warnings {
-                                    warn!("[import] Animation warning: {}", w);
                                     all_warnings.push(w.clone());
                                 }
                             }
                             Err(e) => {
-                                warn!("[import] Animation extraction failed: {}", e);
                                 all_warnings.push(format!("animation extraction: {}", e));
                             }
                         }
                     }
                     Err(e) => {
                         let msg = format!("write failed: {}", e);
-                        error!("[import] {}: {}", file_name, msg);
                         errors.push(format!("{}: {}", stem, msg));
-                        log_entries.push(ImportLogEntry {
+                        let _ = tx.send(ImportMsg::Log(ImportLogEntry {
                             file_name: file_name.clone(),
                             success: false,
                             message: msg,
-                        });
+                        }));
                     }
                 }
 
@@ -665,44 +843,36 @@ fn run_import(world: &mut World) {
             }
             Err(e) => {
                 let msg = format!("{}", e);
-                error!("[import] {}: {}", file_name, msg);
                 errors.push(format!("{}: {}", file_name, msg));
-                log_entries.push(ImportLogEntry {
+                let _ = tx.send(ImportMsg::Log(ImportLogEntry {
                     file_name: file_name.clone(),
                     success: false,
                     message: msg,
-                });
+                }));
             }
         }
     }
 
-    // Store log entries
-    world.resource_mut::<ImportOverlayState>().log_entries = log_entries;
-
-    // Set final status
+    // Final message
     if errors.is_empty() {
         let warn_suffix = if all_warnings.is_empty() {
             String::new()
         } else {
             format!(" ({} warnings)", all_warnings.len())
         };
-        let msg = format!(
+        let _ = tx.send(ImportMsg::Done(format!(
             "Imported {} file{} to assets/{}{}",
             imported,
             if imported == 1 { "" } else { "s" },
             target_dir,
             warn_suffix,
-        );
-        info!("[import] {}", msg);
-        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Done(msg);
-        // Clear the file list on success
-        world.resource_mut::<ImportOverlayState>().pending_files.clear();
+        )));
     } else {
-        let msg = format!(
+        let _ = tx.send(ImportMsg::Error(format!(
             "Imported {}/{} — {} error(s)",
-            imported, total, errors.len()
-        );
-        error!("[import] {}", msg);
-        world.resource_mut::<ImportOverlayState>().progress = ImportProgress::Error(msg);
+            imported,
+            total,
+            errors.len()
+        )));
     }
 }

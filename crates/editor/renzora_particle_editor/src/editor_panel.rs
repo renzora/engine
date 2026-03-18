@@ -396,6 +396,7 @@ impl ParticleEditorPanel {
                         RichText::new(format!("{} Open", FOLDER_OPEN)).color(text_muted),
                     )).clicked() {
                         cmds.push(move |world: &mut World| {
+                            #[cfg(not(target_arch = "wasm32"))]
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Particle files", &["particle"])
                                 .pick_file()

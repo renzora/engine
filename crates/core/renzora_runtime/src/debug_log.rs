@@ -346,7 +346,7 @@ pub fn debug_log_post_processing(world: &mut World) {
 
     // Check camera entities
     for &entity in &camera_entities {
-        let entity_ref = world.entity(entity);
+        let Ok(entity_ref) = world.get_entity(entity) else { continue };
         let mut effects: Vec<&str> = Vec::new();
 
         for (type_path, reflect_component) in &settings_types {
@@ -365,7 +365,7 @@ pub fn debug_log_post_processing(world: &mut World) {
         if camera_entities.contains(&entity) {
             continue;
         }
-        let entity_ref = world.entity(entity);
+        let Ok(entity_ref) = world.get_entity(entity) else { continue };
         let mut effects: Vec<&str> = Vec::new();
         for (type_path, reflect_component) in &settings_types {
             if reflect_component.contains(FilteredEntityRef::from(entity_ref)) {
@@ -385,7 +385,7 @@ pub fn debug_log_post_processing(world: &mut World) {
         if camera_entities.contains(entity) || isolated_entities.contains(entity) {
             continue;
         }
-        let entity_ref = world.entity(*entity);
+        let Ok(entity_ref) = world.get_entity(*entity) else { continue };
         let mut effects: Vec<&str> = Vec::new();
         for (type_path, reflect_component) in &settings_types {
             if reflect_component.contains(FilteredEntityRef::from(entity_ref)) {
@@ -423,7 +423,7 @@ pub fn debug_log_post_processing(world: &mut World) {
                 .unwrap_or_else(|| "unnamed".into());
 
             // Check which native Bevy effect components are present on the route target
-            let rt_ref = world.entity(rt);
+            let Ok(rt_ref) = world.get_entity(rt) else { continue };
             let mut active_native: Vec<&str> = Vec::new();
             for (type_path, reflect_component) in &native_types {
                 if reflect_component.contains(FilteredEntityRef::from(rt_ref)) {

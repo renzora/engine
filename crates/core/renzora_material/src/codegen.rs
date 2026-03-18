@@ -70,8 +70,21 @@ impl<'a> Ctx<'a> {
         self.output_vars.insert((node, pin.to_string()), expr);
     }
 
+    /// Look up the PinType for a given pin on a node definition.
+    fn pin_type_for(node_type: &str, pin_name: &str, direction: crate::graph::PinDir) -> Option<crate::graph::PinType> {
+        let def = nodes::node_def(node_type)?;
+        let pins = (def.pins)();
+        pins.iter()
+            .find(|p| p.name == pin_name && p.direction == direction)
+            .map(|p| p.pin_type)
+    }
+
     /// Resolve an input pin value — follows connections or falls back to defaults.
+    /// Applies automatic type coercion (e.g. Float → Vec4) when pin types differ.
     fn input(&mut self, node: &MaterialNode, pin_name: &str) -> String {
+        // Determine expected type of destination pin
+        let dest_type = Self::pin_type_for(&node.node_type, pin_name, crate::graph::PinDir::Input);
+
         // Check for connection
         if let Some(conn) = self.graph.connection_to(node.id, pin_name) {
             let from_node = conn.from_node;
@@ -82,7 +95,13 @@ impl<'a> Ctx<'a> {
                     self.gen_node(&src);
                 }
             }
-            if let Some(expr) = self.output_vars.get(&(from_node, from_pin)).cloned() {
+            if let Some(expr) = self.output_vars.get(&(from_node, from_pin.clone())).cloned() {
+                // Apply type coercion if source and dest types differ
+                if let (Some(dt), Some(src_node)) = (dest_type, self.graph.get_node(from_node)) {
+                    if let Some(st) = Self::pin_type_for(&src_node.node_type, &from_pin, crate::graph::PinDir::Output) {
+                        return crate::graph::PinType::cast_expr(st, dt, &expr);
+                    }
+                }
                 return expr;
             }
         }
@@ -1029,5 +1048,26 @@ mod tests {
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
         assert!(!result.fragment_shader.contains("pbr_input_new"));
+    }
+
+    #[test]
+    fn compile_checkerboard_direct_to_base_color() {
+        // Float output → Color input (should auto-widen to vec4)
+        let mut graph = MaterialGraph::new("CheckDirect", MaterialDomain::Surface);
+        let uv_id = graph.add_node("input/uv", [-200.0, 0.0]);
+        let check_id = graph.add_node("procedural/checkerboard", [0.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+
+        graph.connect(uv_id, "uv", check_id, "uv");
+        graph.connect(check_id, "value", output_id, "base_color");
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+        // The float must be widened to vec4 for base_color
+        assert!(
+            result.fragment_shader.contains("vec4<f32>(check_"),
+            "Expected float→vec4 coercion in shader:\n{}",
+            result.fragment_shader
+        );
     }
 }

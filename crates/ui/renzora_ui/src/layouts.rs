@@ -26,14 +26,14 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
-            WorkspaceLayout { name: "Level Design".into(), tree: layout_level_design() },
+            WorkspaceLayout { name: "Sandbox".into(), tree: layout_sandbox() },
             WorkspaceLayout { name: "Terrain".into(), tree: layout_terrain() },
             WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
             WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
             WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
             WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
-            WorkspaceLayout { name: "Networking".into(), tree: layout_networking() },
+            WorkspaceLayout { name: "Lifecycle".into(), tree: layout_lifecycle() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
         ];
 
@@ -231,8 +231,8 @@ fn layout_materials() -> DockTree {
     )
 }
 
-/// Level Design: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
-fn layout_level_design() -> DockTree {
+/// Sandbox: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
+fn layout_sandbox() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
@@ -360,8 +360,8 @@ fn layout_audio() -> DockTree {
     )
 }
 
-/// Networking: Hierarchy | Viewport+NetworkMonitor | Inspector+NetworkEntities
-fn layout_networking() -> DockTree {
+/// Lifecycle: Hierarchy+NetworkEntities | LifecycleGraph+Monitor+Console | Properties+Settings
+fn layout_lifecycle() -> DockTree {
     DockTree::horizontal(
         // Left: hierarchy + network entities
         DockTree::vertical(
@@ -370,19 +370,19 @@ fn layout_networking() -> DockTree {
             0.5,
         ),
         DockTree::horizontal(
-            // Center: viewport on top, network monitor + console below
+            // Center: lifecycle graph on top, monitor + console below
             DockTree::vertical(
-                DockTree::leaf("viewport"),
+                DockTree::leaf("lifecycle_graph"),
                 DockTree::Leaf {
-                    tabs: vec!["network_monitor".into(), "console".into()],
+                    tabs: vec!["lifecycle_monitor".into(), "console".into()],
                     active_tab: 0,
                 },
-                0.65,
+                0.7,
             ),
-            // Right: inspector + network settings
+            // Right: node properties + lifecycle settings
             DockTree::vertical(
-                DockTree::leaf("inspector"),
-                DockTree::leaf("network_settings"),
+                DockTree::leaf("lifecycle_properties"),
+                DockTree::leaf("lifecycle_settings"),
                 0.5,
             ),
             0.75,

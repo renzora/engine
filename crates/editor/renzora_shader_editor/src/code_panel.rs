@@ -428,9 +428,12 @@ fn inject_params_into_wgsl(
 }
 
 fn open_shader_file(world: &mut World) {
+    #[cfg(not(target_arch = "wasm32"))]
     let file = rfd::FileDialog::new()
         .add_filter("Shader", &["shader"])
         .pick_file();
+    #[cfg(target_arch = "wasm32")]
+    let file: Option<std::path::PathBuf> = None;
 
     if let Some(path) = file {
         match std::fs::read_to_string(&path) {
@@ -465,10 +468,13 @@ fn save_shader_file(world: &mut World, source: &str) {
         std::path::PathBuf::from(p)
     } else {
         // Save-as dialog
+        #[cfg(not(target_arch = "wasm32"))]
         let file = rfd::FileDialog::new()
             .add_filter("Shader", &["shader"])
             .set_file_name("new_shader.shader")
             .save_file();
+        #[cfg(target_arch = "wasm32")]
+        let file: Option<std::path::PathBuf> = None;
         match file {
             Some(p) => {
                 state.file_path = Some(p.display().to_string());

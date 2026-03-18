@@ -119,7 +119,7 @@ impl ScriptExtension for GameUiScriptExtension {
         // Future: could populate with UI state data (which canvases are visible, etc.)
     }
 
-    #[cfg(feature = "lua")]
+    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn register_lua_functions(&self, lua: &mlua::Lua) {
         register_ui_lua(lua);
     }
