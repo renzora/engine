@@ -121,6 +121,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorSettings>()
             .init_resource::<HierarchyFilter>()
             .init_resource::<renzora_auth::AuthState>()
+            .insert_resource(renzora_auth::try_restore_session())
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
@@ -625,8 +626,17 @@ pub fn editor_ui_system(world: &mut World) {
 
     // Auth window
     {
-        if let Some(mut auth) = world.get_resource_mut::<renzora_auth::AuthState>() {
-            renzora_auth::render_auth_window(&ctx, &theme, &mut auth);
+        // Take both resources out, render, then put them back to avoid double-borrow.
+        let mut auth = world.remove_resource::<renzora_auth::AuthState>();
+        let mut session = world.remove_resource::<renzora_auth::AuthSession>();
+        if let (Some(ref mut auth), Some(ref mut session)) = (&mut auth, &mut session) {
+            renzora_auth::render_auth_window(&ctx, &theme, auth, session);
+        }
+        if let Some(auth) = auth {
+            world.insert_resource(auth);
+        }
+        if let Some(session) = session {
+            world.insert_resource(session);
         }
     }
 
