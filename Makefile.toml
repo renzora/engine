@@ -100,9 +100,8 @@ echo "Done."
 description = "Install wasm-bindgen, wasm-opt, and brotli if missing"
 script_runner = "@shell"
 script = '''
-command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli
+command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --version 0.2.108
 command -v wasm-opt >/dev/null 2>&1 || cargo install wasm-opt
-command -v brotli >/dev/null 2>&1 || cargo install brotli
 '''
 
 [tasks.dist-web]
@@ -142,15 +141,8 @@ description = "Build WASM runtime export template (.zip)"
 dependencies = ["ensure-wasm-tools"]
 
 [tasks.dist-web-runtime.windows]
-script_runner = "@shell"
-script = '''
-cargo dist-web-runtime
-wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
-brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
-cd target/dist/web && tar -cf ../renzora-runtime-web-wasm32.zip renzora-runtime.js renzora-runtime_bg.wasm
-echo Template: target/dist/renzora-runtime-web-wasm32.zip
-'''
+command = "powershell"
+args = ["-ExecutionPolicy", "Bypass", "-File", "scripts\\build-web-runtime.ps1"]
 
 [tasks.dist-web-runtime.linux]
 script = '''

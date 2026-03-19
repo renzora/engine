@@ -1,3 +1,20 @@
+// On WASM runtime (no editor), main() is a no-op — JS calls set_rpak() then start().
+#[cfg(all(target_arch = "wasm32", not(feature = "editor")))]
+fn main() {}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "editor")))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn set_rpak(data: &[u8]) {
+    renzora_runtime::vfs::set_wasm_rpak(data.to_vec());
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "editor")))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn start() {
+    let mut app = renzora::build_runtime_app();
+    app.run();
+}
+
 fn main() {
     renzora_runtime::crash::install_panic_hook();
 

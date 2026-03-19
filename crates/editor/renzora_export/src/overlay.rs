@@ -799,9 +799,7 @@ fn export_wasm_zip(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let name = entry.name().to_string();
 
-        // Store wasm uncompressed — browsers get brotli/gzip from the HTTP
-        // server, double-compressing wastes CPU on extraction.
-        let file_options = if name.ends_with(".wasm") { stored } else { options };
+        let file_options = options;
 
         writer.start_file(&name, file_options)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -838,10 +836,17 @@ fn export_wasm_zip(
 <body>
     <div id="loading">Loading {title}...</div>
     <script type="module">
-        import init from './renzora-runtime.js';
+        import init, {{ set_rpak, start }} from './renzora-runtime.js';
 
         async function run() {{
+            const rpakResp = await fetch('./game.rpak');
+            if (!rpakResp.ok) throw new Error('Failed to fetch game.rpak: ' + rpakResp.status);
+            const rpakBytes = new Uint8Array(await rpakResp.arrayBuffer());
+
             await init();
+            set_rpak(rpakBytes);
+            start();
+
             document.getElementById('loading').classList.add('hidden');
 
             const canvas = document.querySelector('canvas');

@@ -8,7 +8,16 @@
 use bevy::prelude::*;
 use renzora_rpak::RpakArchive;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+/// Static storage for rpak bytes injected from JS before app startup (WASM only).
+static WASM_RPAK_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+
+/// Called from JavaScript to provide the game.rpak bytes before init().
+/// Must be called before the Bevy app starts.
+pub fn set_wasm_rpak(bytes: Vec<u8>) {
+    let _ = WASM_RPAK_BYTES.set(bytes);
+}
 
 /// Bevy resource providing a virtual filesystem backed by an `.rpak` archive.
 ///
@@ -38,6 +47,25 @@ impl Vfs {
         {
             if let Some(vfs) = Self::detect_ios() {
                 return vfs;
+            }
+        }
+
+        // WASM: check for rpak bytes injected from JavaScript
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(bytes) = WASM_RPAK_BYTES.get() {
+                match RpakArchive::from_bytes(bytes) {
+                    Ok(archive) => {
+                        info!("Loaded rpak from WASM ({} files)", archive.len());
+                        return Self {
+                            archive: Some(Arc::new(archive)),
+                            project_root: None,
+                        };
+                    }
+                    Err(e) => {
+                        error!("Failed to parse WASM rpak: {}", e);
+                    }
+                }
             }
         }
 
