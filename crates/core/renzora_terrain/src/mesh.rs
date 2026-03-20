@@ -10,6 +10,7 @@ use avian3d::prelude::{Collider, RigidBody};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
+use renzora_material::material_ref::MaterialRef;
 
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {
@@ -194,7 +195,7 @@ pub fn rehydrate_terrain_chunks(
     mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     terrain_query: Query<&TerrainData>,
     chunk_query: Query<
-        (Entity, &TerrainChunkData, Option<&TerrainChunkOf>, Option<&ChildOf>),
+        (Entity, &TerrainChunkData, Option<&TerrainChunkOf>, Option<&ChildOf>, Option<&MaterialRef>),
         Without<Mesh3d>,
     >,
 ) {
@@ -204,7 +205,7 @@ pub fn rehydrate_terrain_chunks(
 
     let material = materials.add(TerrainCheckerboardMaterial::default());
 
-    for (entity, chunk_data, chunk_of, child_of) in chunk_query.iter() {
+    for (entity, chunk_data, chunk_of, child_of, mat_ref) in chunk_query.iter() {
         // Resolve parent terrain: prefer TerrainChunkOf, fall back to ChildOf parent
         let parent = chunk_of
             .map(|c| c.0)
@@ -223,10 +224,14 @@ pub fn rehydrate_terrain_chunks(
         let mut ec = commands.entity(entity);
         ec.insert((
             Mesh3d(mesh_handle),
-            MeshMaterial3d(material.clone()),
             RigidBody::Static,
             collider,
         ));
+
+        // Only apply default checkerboard if chunk has no custom material assigned
+        if mat_ref.is_none() {
+            ec.insert(MeshMaterial3d(material.clone()));
+        }
 
         // Restore TerrainChunkOf if missing (scene load doesn't serialize it)
         if chunk_of.is_none() {
