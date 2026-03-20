@@ -42,10 +42,20 @@ pub fn build_runtime_app() -> App {
     #[cfg(not(feature = "server"))]
     {
         app.add_plugins(
-            DefaultPlugins.set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
-                ..default()
-            })
+            DefaultPlugins
+                .set(RenderPlugin {
+                    render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+                    ..default()
+                })
+                .set(ImagePlugin {
+                    default_sampler: bevy::image::ImageSamplerDescriptor {
+                        address_mode_u: bevy::image::ImageAddressMode::Repeat,
+                        address_mode_v: bevy::image::ImageAddressMode::Repeat,
+                        address_mode_w: bevy::image::ImageAddressMode::Repeat,
+                        ..default()
+                    },
+                    ..default()
+                })
         );
     }
     #[cfg(feature = "server")]

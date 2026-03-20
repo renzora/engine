@@ -305,6 +305,11 @@ fn update_preview_material(
     if !editor_state.is_changed() {
         return;
     }
+    // Don't touch the shared shader when no material is being edited —
+    // overwriting it with the empty default would break all scene materials.
+    if matches!(editor_state.edit_mode, crate::MaterialEditMode::Inactive) {
+        return;
+    }
     if !editor_state.compile_errors.is_empty() {
         return;
     }
@@ -363,12 +368,26 @@ fn update_preview_material(
         }
     }
 
-    // Swap shader directly (no double compile via apply_compiled_shader)
+    // Create a unique shader for the preview and assign it to the preview material
     let shader = Shader::from_wgsl(
+        result.fragment_shader.clone(),
+        "graph_material://preview",
+    );
+    let preview_shader_handle = shaders.add(shader);
+
+    // Also update the shared handle (used as fallback)
+    let shared = Shader::from_wgsl(
         result.fragment_shader.clone(),
         "graph_material://compiled",
     );
-    let _ = shaders.insert(&GRAPH_MATERIAL_FRAG_HANDLE, shader);
+    let _ = shaders.insert(&GRAPH_MATERIAL_FRAG_HANDLE, shared);
+
+    // Set the per-material shader on the preview sphere
+    for mat_handle in preview_mesh.iter() {
+        if let Some(material) = materials.get_mut(&mat_handle.0) {
+            material.shader = Some(preview_shader_handle.clone());
+        }
+    }
     shader_state.last_wgsl_hash = Some(hash);
 }
 

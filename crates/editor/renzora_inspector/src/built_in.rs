@@ -748,13 +748,32 @@ fn material_custom_ui(
 
         let dropped_path = dropped.clone();
         if ext == "material" {
-            // Direct .material file drop — set MaterialRef
+            // Direct .material file drop — set MaterialRef + sync editor state
             cmds.push(move |world: &mut World| {
                 let mat_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
                     project.make_asset_relative(&dropped_path)
                 } else {
                     dropped_path.to_string_lossy().to_string()
                 };
+
+                // Load the graph so the shared shader handle gets the right shader
+                let fs_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    project.resolve_path(&format!("assets/{}", mat_path)).to_string_lossy().to_string()
+                } else {
+                    mat_path.clone()
+                };
+                if let Ok(json) = std::fs::read_to_string(&fs_path) {
+                    if let Ok(graph) = serde_json::from_str::<renzora_material::graph::MaterialGraph>(&json) {
+                        let result = renzora_material::codegen::compile(&graph);
+                        let mut state = world.resource_mut::<renzora_material_editor::MaterialEditorState>();
+                        state.editing_entity = Some(entity);
+                        state.compiled_wgsl = Some(result.fragment_shader);
+                        state.compile_errors = result.errors;
+                        state.graph = graph;
+                        state.edit_mode = renzora_material_editor::MaterialEditMode::Existing { path: mat_path.clone(), entity };
+                    }
+                }
+
                 // Remove old resolved state so resolver picks up the new ref
                 world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();
                 if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
@@ -816,6 +835,17 @@ fn material_custom_ui(
                         mat_file.to_string_lossy().to_string()
                     }
                 };
+
+                // Sync editor state so the shared shader gets compiled correctly
+                let result = renzora_material::codegen::compile(&graph);
+                {
+                    let mut state = world.resource_mut::<renzora_material_editor::MaterialEditorState>();
+                    state.editing_entity = Some(entity);
+                    state.compiled_wgsl = Some(result.fragment_shader);
+                    state.compile_errors = result.errors;
+                    state.graph = graph;
+                    state.edit_mode = renzora_material_editor::MaterialEditMode::Existing { path: mat_asset_path.clone(), entity };
+                }
 
                 // Assign MaterialRef
                 world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();

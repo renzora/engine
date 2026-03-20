@@ -60,12 +60,19 @@ impl EditorPanel for MaterialGraphPanel {
         // ── Selection sync ──────────────────────────────────────────────
         let selection = world.get_resource::<EditorSelection>();
         let selected_entity = selection.and_then(|s| s.get());
+        let mat_ref_path = selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
 
-        if selected_entity != editor_state.editing_entity {
+        // Detect entity change OR MaterialRef change on the same entity
+        let current_edit_path = match &editor_state.edit_mode {
+            MaterialEditMode::Existing { path, .. } => Some(path.clone()),
+            _ => None,
+        };
+        let entity_changed = selected_entity != editor_state.editing_entity;
+        let path_changed = !entity_changed && mat_ref_path != current_edit_path;
+
+        if entity_changed || path_changed {
             let new_entity = selected_entity;
-            // Capture what we need from the read-only world before the deferred command
             let has_mesh = new_entity.map_or(false, |e| world.get::<Mesh3d>(e).is_some());
-            let mat_ref_path = new_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
             let entity_name = new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
 
             cmds.push(move |world: &mut World| {
@@ -102,7 +109,7 @@ impl EditorPanel for MaterialGraphPanel {
         // ── Toolbar ──
         let toolbar_modified = GRAPH_EDITOR_STATE.with(|cell| {
             let mut gs = cell.borrow_mut();
-            render_toolbar(ui, &mut graph, &mut gs, editor_state, &theme)
+            render_toolbar(ui, &mut graph, &mut gs, editor_state, cmds, world, &theme)
         });
 
         ui.separator();
@@ -145,8 +152,6 @@ impl EditorPanel for MaterialGraphPanel {
             let errors = result.errors.clone();
 
             cmds.push(move |world: &mut World| {
-                let current_time = world.resource::<Time>().elapsed_secs_f64();
-
                 // Check Pending INSIDE the closure (after sync_to_entity has run)
                 let pending_entity = {
                     let state = world.resource::<MaterialEditorState>();
@@ -186,7 +191,7 @@ impl EditorPanel for MaterialGraphPanel {
                 state.graph = graph;
                 state.compiled_wgsl = Some(wgsl);
                 state.compile_errors = errors;
-                state.save_timer = Some(current_time + 0.5);
+                state.is_dirty = true;
             });
         }
     }
@@ -211,7 +216,7 @@ fn sync_to_entity(
     let mut state = world.resource_mut::<MaterialEditorState>();
     state.editing_entity = new_entity;
     state.selected_node = None;
-    state.save_timer = None;
+    state.is_dirty = false;
 
     let Some(entity) = new_entity else {
         state.edit_mode = MaterialEditMode::Inactive;
@@ -284,6 +289,8 @@ fn render_toolbar(
     graph: &mut MaterialGraph,
     state: &mut GraphEditorState,
     editor_state: &MaterialEditorState,
+    cmds: &renzora_editor::EditorCommands,
+    world: &World,
     theme: &Theme,
 ) -> bool {
     let mut modified = false;
@@ -302,6 +309,58 @@ fn render_toolbar(
             MaterialEditMode::Inactive => egui_phosphor::regular::CUBE,
         };
         ui.label(RichText::new(format!("{name_icon} {}", graph.name)).size(12.0).color(text_color));
+
+        // ── Apply / Apply All ──
+        if !matches!(editor_state.edit_mode, MaterialEditMode::Inactive) {
+            let apply_label = if editor_state.is_dirty {
+                format!("{} Apply*", egui_phosphor::regular::CHECK)
+            } else {
+                format!("{} Apply", egui_phosphor::regular::CHECK)
+            };
+            let apply_color = if editor_state.is_dirty { accent } else { text_muted };
+            if ui.add(egui::Button::new(RichText::new(apply_label).size(12.0).color(apply_color)))
+                .on_hover_text("Save material and apply to mesh")
+                .clicked()
+            {
+                cmds.push(crate::apply_material);
+            }
+
+            // Apply All — applies to every selected mesh entity
+            let selection = world.get_resource::<EditorSelection>();
+            let selected_count = selection.map(|s| s.get_all().len()).unwrap_or(0);
+            if selected_count > 1 {
+                if ui.add(egui::Button::new(
+                    RichText::new(format!("{} Apply All ({})", egui_phosphor::regular::CHECKS, selected_count))
+                        .size(12.0).color(accent),
+                )).on_hover_text("Apply this material to all selected meshes").clicked() {
+                    let entities = selection.unwrap().get_all();
+                    cmds.push(move |world: &mut World| {
+                        // First save the material
+                        crate::apply_material(world);
+
+                        // Get the material path
+                        let path = {
+                            let state = world.resource::<MaterialEditorState>();
+                            match &state.edit_mode {
+                                MaterialEditMode::Existing { path, .. } => Some(path.clone()),
+                                _ => None,
+                            }
+                        };
+
+                        if let Some(path) = path {
+                            for entity in &entities {
+                                // Only apply to entities with Mesh3d
+                                if world.get::<Mesh3d>(*entity).is_none() {
+                                    continue;
+                                }
+                                world.entity_mut(*entity).remove::<renzora_material::resolver::MaterialResolved>();
+                                world.entity_mut(*entity).insert(MaterialRef(path.clone()));
+                            }
+                        }
+                    });
+                }
+            }
+        }
 
         // ── Domain indicator ──
         ui.separator();
@@ -404,8 +463,8 @@ fn render_toolbar(
             if matches!(editor_state.edit_mode, MaterialEditMode::Pending { .. }) {
                 ui.label(RichText::new("New").size(10.0).color(text_muted));
             }
-            if editor_state.save_timer.is_some() {
-                ui.label(RichText::new("Saving...").size(10.0).color(text_muted));
+            if editor_state.is_dirty {
+                ui.label(RichText::new("Unsaved").size(10.0).color(text_muted));
             }
         });
     });

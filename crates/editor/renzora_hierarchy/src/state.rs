@@ -75,7 +75,11 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                     names
                         .iter()
                         .filter_map(|name| {
-                            let reg = registry.iter().find(|r| r.type_info().type_path_table().short_path() == *name)?;
+                            // Match by short_path OR by ident (last segment of type path)
+                            let reg = registry.iter().find(|r| {
+                                let table = r.type_info().type_path_table();
+                                table.short_path() == *name || table.ident().map_or(false, |i| i == *name)
+                            })?;
                             world.components().get_id(reg.type_id())
                         })
                         .collect(),

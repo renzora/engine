@@ -166,6 +166,18 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "sin_time", s);
                 self.set_out(id, "cos_time", c);
             }
+            "input/uv_scale" => {
+                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
+                    self.input(node, "uv")
+                } else {
+                    "in.uv".to_string()
+                };
+                let scale = self.input(node, "scale");
+                let offset = self.input(node, "offset");
+                let v = self.next_var("uv_scaled");
+                self.emit(format!("    let {v} = {uv} * {scale} + {offset};"));
+                self.set_out(id, "uv", v);
+            }
             "input/vertex_color" => {
                 self.set_out(id, "color", "in.color".into());
                 self.set_out(id, "r", "in.color.r".into());
@@ -863,7 +875,9 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     let mut shader = String::new();
 
     shader.push_str("#import bevy_pbr::{\n");
-    shader.push_str("    pbr_functions,\n");
+    shader.push_str("    pbr_functions::apply_pbr_lighting,\n");
+    shader.push_str("    pbr_functions::calculate_view,\n");
+    shader.push_str("    pbr_functions::main_pass_post_lighting_processing,\n");
     shader.push_str("    pbr_types::PbrInput,\n");
     shader.push_str("    pbr_types::pbr_input_new,\n");
     shader.push_str("    mesh_view_bindings::view,\n");
@@ -904,11 +918,11 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
         shader.push_str("    pbr_input.N = normalize(in.world_normal);\n");
     }
     shader.push_str("    pbr_input.world_position = in.world_position;\n");
-    shader.push_str("    pbr_input.V = pbr_functions::calculate_view(in.world_position, pbr_input.is_orthographic);\n");
+    shader.push_str("    pbr_input.V = calculate_view(in.world_position, pbr_input.is_orthographic);\n");
     shader.push_str("    pbr_input.frag_coord = in.position;\n");
 
-    shader.push_str("\n    var color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
-    shader.push_str("    color = pbr_functions::main_pass_post_lighting_processing(pbr_input, color);\n");
+    shader.push_str("\n    var color = apply_pbr_lighting(pbr_input);\n");
+    shader.push_str("    color = main_pass_post_lighting_processing(pbr_input, color);\n");
     shader.push_str(&format!("    color.a = {alpha};\n"));
     shader.push_str("    return color;\n");
     shader.push_str("}\n");

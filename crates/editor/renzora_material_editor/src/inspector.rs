@@ -163,8 +163,7 @@ impl EditorPanel for MaterialInspectorPanel {
                                     PinValue::Float(f) => *f,
                                     _ => 0.0,
                                 };
-                                let slider = Slider::new(&mut val, 0.0..=1.0).text("").step_by(0.01);
-                                if ui.add(slider).changed() {
+                                if ui.add(egui::DragValue::new(&mut val).speed(0.01).range(-1000.0..=1000.0)).changed() {
                                     node_mut.input_values.insert(pin.name.clone(), PinValue::Float(val));
                                     any_changed = true;
                                     true
@@ -182,9 +181,9 @@ impl EditorPanel for MaterialInspectorPanel {
                                 let mut changed = false;
                                 let text_muted = theme.text.muted.to_color32();
                                 ui.label(RichText::new("X").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).range(-100.0..=100.0)).changed();
+                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.1).range(-10000.0..=10000.0)).changed();
                                 ui.label(RichText::new("Y").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).range(-100.0..=100.0)).changed();
+                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.1).range(-10000.0..=10000.0)).changed();
                                 if changed {
                                     node_mut.input_values.insert(pin.name.clone(), PinValue::Vec2(v));
                                     any_changed = true;
@@ -201,11 +200,11 @@ impl EditorPanel for MaterialInspectorPanel {
                                 let mut changed = false;
                                 let text_muted = theme.text.muted.to_color32();
                                 ui.label(RichText::new("X").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).range(-100.0..=100.0)).changed();
+                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.1).range(-10000.0..=10000.0)).changed();
                                 ui.label(RichText::new("Y").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).range(-100.0..=100.0)).changed();
+                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.1).range(-10000.0..=10000.0)).changed();
                                 ui.label(RichText::new("Z").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).range(-100.0..=100.0)).changed();
+                                changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.1).range(-10000.0..=10000.0)).changed();
                                 if changed {
                                     node_mut.input_values.insert(pin.name.clone(), PinValue::Vec3(v));
                                     any_changed = true;
@@ -305,10 +304,9 @@ impl EditorPanel for MaterialInspectorPanel {
 
         if any_changed {
             cmds.push(move |world: &mut World| {
-                let current_time = world.resource::<Time>().elapsed_secs_f64();
                 let mut state = world.resource_mut::<MaterialEditorState>();
                 state.graph = graph_clone;
-                state.save_timer = Some(current_time + 0.5);
+                state.is_dirty = true;
             });
         }
     }

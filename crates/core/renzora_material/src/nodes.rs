@@ -58,6 +58,20 @@ pub static UV: MaterialNodeDef = MaterialNodeDef {
     color: CLR_INPUT,
 };
 
+pub static UV_SCALE: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/uv_scale",
+    display_name: "UV Scale",
+    category: CAT_INPUT,
+    description: "Scale and offset UV coordinates for tiling",
+    pins: || vec![
+        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        PinTemplate::input("scale", "Scale", PinType::Vec2).with_default(PinValue::Vec2([2.0, 2.0])),
+        PinTemplate::input("offset", "Offset", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+        PinTemplate::output("uv", "UV", PinType::Vec2),
+    ],
+    color: CLR_INPUT,
+};
+
 pub static WORLD_POSITION: MaterialNodeDef = MaterialNodeDef {
     node_type: "input/world_position",
     display_name: "World Position",
@@ -1011,7 +1025,7 @@ pub static OUTPUT_UNLIT: MaterialNodeDef = MaterialNodeDef {
 /// All available material node types.
 pub static ALL_NODES: &[&MaterialNodeDef] = &[
     // Input
-    &UV, &WORLD_POSITION, &WORLD_NORMAL, &VIEW_DIRECTION, &TIME, &VERTEX_COLOR,
+    &UV, &UV_SCALE, &WORLD_POSITION, &WORLD_NORMAL, &VIEW_DIRECTION, &TIME, &VERTEX_COLOR,
     &CAMERA_POSITION, &OBJECT_POSITION,
     // Texture
     &SAMPLE_TEXTURE, &SAMPLE_NORMAL, &TRIPLANAR_SAMPLE,

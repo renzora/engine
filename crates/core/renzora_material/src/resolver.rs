@@ -233,15 +233,12 @@ fn resolve_graph_material(
         return None;
     }
 
-    // Insert the compiled shader
+    // Each material gets its own shader handle — no more shared overwriting.
     let shader = Shader::from_wgsl(
         result.fragment_shader,
         format!("material://{}", path),
     );
-    let _ = shaders.insert(
-        &crate::runtime::GRAPH_MATERIAL_FRAG_HANDLE,
-        shader,
-    );
+    let shader_handle = shaders.add(shader);
 
     // Create material — start with fallback textures, then load actual ones
     let mut mat = if let Some(fb) = fallback_texture {
@@ -249,6 +246,7 @@ fn resolve_graph_material(
     } else {
         new_graph_material(&FallbackTexture(Handle::default()))
     };
+    mat.shader = Some(shader_handle);
 
     for tb in &result.texture_bindings {
         if tb.asset_path.is_empty() {

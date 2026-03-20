@@ -8,8 +8,9 @@
 
 use bevy::prelude::*;
 use bevy::asset::uuid_handle;
-use bevy::pbr::{Material, MaterialPlugin as BevyMaterialPlugin};
-use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
+use bevy::pbr::{Material, MaterialPipelineKey, MaterialPlugin as BevyMaterialPlugin};
+use bevy::mesh::MeshVertexBufferLayoutRef;
+use bevy::render::render_resource::{AsBindGroup, Extent3d, RenderPipelineDescriptor, SpecializedMeshPipelineError, TextureDimension, TextureFormat};
 use bevy::shader::ShaderRef;
 
 use crate::codegen;
@@ -52,7 +53,15 @@ pub struct FallbackTexture(pub Handle<Image>);
 /// `MaterialGraph`. Uses `Option<Handle<Image>>` (Bevy's standard pattern
 /// for `AsBindGroup` texture layout generation) — always set to
 /// `Some(fallback)` so the pipeline layout is stable across shader hot-swaps.
+/// Pipeline key — carries the per-material shader handle so `specialize()`
+/// can select the correct compiled WGSL for each material instance.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct GraphMaterialKey {
+    pub shader: Option<Handle<Shader>>,
+}
+
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+#[bind_group_data(GraphMaterialKey)]
 pub struct GraphMaterial {
     #[uniform(0)]
     pub base_color: LinearRgba,
@@ -74,15 +83,43 @@ pub struct GraphMaterial {
     pub texture_3: Option<Handle<Image>>,
 
     pub alpha_mode: AlphaMode,
+
+    /// Per-material shader handle — each compiled .material file gets its own
+    /// shader so multiple materials can coexist without overwriting each other.
+    pub shader: Option<Handle<Shader>>,
+}
+
+impl From<&GraphMaterial> for GraphMaterialKey {
+    fn from(mat: &GraphMaterial) -> Self {
+        Self {
+            shader: mat.shader.clone(),
+        }
+    }
 }
 
 impl Material for GraphMaterial {
     fn fragment_shader() -> ShaderRef {
+        // Default fallback — overridden per-instance via specialize()
         GRAPH_MATERIAL_FRAG_HANDLE.into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
+    }
+
+    fn specialize(
+        _pipeline: &bevy::pbr::MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        // Override the fragment shader with this material's compiled shader
+        if let Some(ref shader_handle) = key.bind_group_data.shader {
+            if let Some(ref mut frag) = descriptor.fragment {
+                frag.shader = shader_handle.clone();
+            }
+        }
+        Ok(())
     }
 }
 
@@ -147,6 +184,7 @@ pub fn new_graph_material(fallback: &FallbackTexture) -> GraphMaterial {
         texture_2: Some(fallback.0.clone()),
         texture_3: Some(fallback.0.clone()),
         alpha_mode: AlphaMode::Opaque,
+        shader: None,
     }
 }
 
