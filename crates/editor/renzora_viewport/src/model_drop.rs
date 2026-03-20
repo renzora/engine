@@ -115,8 +115,7 @@ fn compute_ground_position(
 fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_position: Vec3) {
     // Compute asset-relative path
     let asset_path = if let Some(project) = world.get_resource::<CurrentProject>() {
-        let assets_dir = project.path.join("assets");
-        let models_dir = assets_dir.join("models");
+        let models_dir = project.path.join("models");
 
         // Copy to project assets/models/ if not already there
         let _ = std::fs::create_dir_all(&models_dir);
@@ -238,11 +237,9 @@ fn discover_animation_clips(
     project: Option<&CurrentProject>,
 ) -> Option<AnimatorComponent> {
     let project = project?;
-    let assets_dir = project.path.join("assets");
-
     // Model is e.g. "models/Man.glb" → look in "models/animations/"
     let model_dir = std::path::Path::new(asset_path).parent().unwrap_or(std::path::Path::new(""));
-    let anim_dir_abs = assets_dir.join(model_dir).join("animations");
+    let anim_dir_abs = project.path.join(model_dir).join("animations");
 
     if !anim_dir_abs.is_dir() {
         return None;

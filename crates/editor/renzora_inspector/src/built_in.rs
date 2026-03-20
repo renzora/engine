@@ -758,7 +758,7 @@ fn material_custom_ui(
 
                 // Load the graph so the shared shader handle gets the right shader
                 let fs_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
-                    project.resolve_path(&format!("assets/{}", mat_path)).to_string_lossy().to_string()
+                    project.resolve_path(&mat_path).to_string_lossy().to_string()
                 } else {
                     mat_path.clone()
                 };
@@ -793,7 +793,7 @@ fn material_custom_ui(
                         dropped_path.to_string_lossy().to_string()
                     };
                     let dir = project
-                        .map(|p| p.path.join("assets").join("materials"))
+                        .map(|p| p.path.join("materials"))
                         .unwrap_or_else(|| std::path::PathBuf::from("."));
                     (tex, dir)
                 };

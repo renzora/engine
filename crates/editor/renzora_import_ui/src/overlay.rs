@@ -504,13 +504,13 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
 
                 if browse_clicked {
                     let project = world.resource::<CurrentProject>();
-                    let assets_dir = project.path.join("assets");
+                    let project_dir = &project.path;
                     if let Some(path) = rfd::FileDialog::new()
                         .set_title("Select destination folder")
-                        .set_directory(&assets_dir)
+                        .set_directory(project_dir)
                         .pick_folder()
                     {
-                        if let Ok(rel) = path.strip_prefix(&assets_dir) {
+                        if let Ok(rel) = path.strip_prefix(project_dir) {
                             world.resource_mut::<ImportOverlayState>().target_directory =
                                 rel.to_string_lossy().replace('\\', "/");
                         }
@@ -712,7 +712,7 @@ fn import_worker(
     target_dir: String,
 ) {
     let total = files.len();
-    let dest = project.path.join("assets").join(&target_dir);
+    let dest = project.path.join(&target_dir);
 
     if let Err(e) = std::fs::create_dir_all(&dest) {
         let _ = tx.send(ImportMsg::Error(format!(

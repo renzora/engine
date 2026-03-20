@@ -154,14 +154,9 @@ where
 
     // Helper: try to find a file on disk given an archive-relative path.
     let resolve = |archive_key: &str| -> Option<PathBuf> {
-        let candidates = [
-            project_dir.join(archive_key),
-            project_dir.join("assets").join(archive_key),
-        ];
-        for c in &candidates {
-            if c.is_file() {
-                return Some(c.clone());
-            }
+        let path = project_dir.join(archive_key);
+        if path.is_file() {
+            return Some(path);
         }
         None
     };
@@ -242,8 +237,6 @@ where
             for candidate in [
                 norm.clone(),
                 stripped.clone(),
-                format!("assets/{}", stripped),
-                norm.trim_start_matches("assets/").to_string(),
             ] {
                 if !visited.contains(&candidate) {
                     try_pack(&candidate, &mut packer, &mut visited, &mut queue, &mut on_packed);

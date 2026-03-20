@@ -368,8 +368,7 @@ impl EditorPanel for AssetBrowserPanel {
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                         let target_dir = import_target.as_ref().and_then(|folder| {
                             let project = world.get_resource::<renzora_core::CurrentProject>()?;
-                            let assets_dir = project.path.join("assets");
-                            folder.strip_prefix(&assets_dir).ok().map(|rel| {
+                            folder.strip_prefix(&project.path).ok().map(|rel| {
                                 rel.to_string_lossy().replace('\\', "/")
                             })
                         }).unwrap_or_default();
@@ -486,8 +485,7 @@ impl EditorPanel for AssetBrowserPanel {
             if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                 let target_dir = state.current_folder.as_ref().and_then(|folder| {
                     let project = world.get_resource::<renzora_core::CurrentProject>()?;
-                    let assets_dir = project.path.join("assets");
-                    folder.strip_prefix(&assets_dir).ok().map(|rel| {
+                    folder.strip_prefix(&project.path).ok().map(|rel| {
                         rel.to_string_lossy().replace('\\', "/")
                     })
                 }).unwrap_or_default();

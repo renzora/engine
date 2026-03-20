@@ -119,7 +119,7 @@ pub fn apply_material(world: &mut World) {
     let fs_path = {
         let project = world.get_resource::<CurrentProject>();
         if let Some(p) = project {
-            p.resolve_path(&format!("assets/{}", path)).to_string_lossy().to_string()
+            p.resolve_path(&path).to_string_lossy().to_string()
         } else {
             path.clone()
         }

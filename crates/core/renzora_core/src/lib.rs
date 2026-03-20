@@ -3,6 +3,36 @@ pub mod console_log;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+/// Generic file reader resource that abstracts filesystem vs. archive (rpak) reads.
+///
+/// By default reads from disk. The runtime replaces this with a Vfs-backed
+/// reader so materials (and other systems) transparently read from rpak archives.
+#[derive(Resource, Clone)]
+pub struct VirtualFileReader {
+    reader: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+}
+
+impl Default for VirtualFileReader {
+    fn default() -> Self {
+        Self {
+            reader: Arc::new(|path| std::fs::read_to_string(path).ok()),
+        }
+    }
+}
+
+impl VirtualFileReader {
+    /// Create a reader backed by a custom function.
+    pub fn new(f: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
+        Self { reader: Arc::new(f) }
+    }
+
+    /// Read a file to string. Tries the backing store (archive or disk).
+    pub fn read_string(&self, path: &str) -> Option<String> {
+        (self.reader)(path)
+    }
+}
 
 /// Window configuration for exported/runtime games
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -137,22 +167,20 @@ impl CurrentProject {
 
     /// Convert an absolute path to an asset-relative path for `AssetServer::load()`.
     ///
-    /// Strips the project's `assets/` directory prefix so the resulting path
+    /// Strips the project root prefix so the resulting path
     /// (e.g. `textures/foo.png`) is portable across machines and works with the
     /// asset reader in both editor and standalone runtime builds.
     pub fn make_asset_relative(&self, path: &Path) -> String {
-        let assets_dir = self.path.join("assets");
-
         // Try direct strip first
-        if let Ok(rel) = path.strip_prefix(&assets_dir) {
+        if let Ok(rel) = path.strip_prefix(&self.path) {
             return rel.to_string_lossy().replace('\\', "/");
         }
 
         // Try canonicalized paths
-        if let (Ok(canon_assets), Ok(canon_path)) =
-            (assets_dir.canonicalize(), path.canonicalize())
+        if let (Ok(canon_proj), Ok(canon_path)) =
+            (self.path.canonicalize(), path.canonicalize())
         {
-            if let Ok(rel) = canon_path.strip_prefix(&canon_assets) {
+            if let Ok(rel) = canon_path.strip_prefix(&canon_proj) {
                 return rel.to_string_lossy().replace('\\', "/");
             }
         }

@@ -171,7 +171,7 @@ impl EditorPanel for MaterialGraphPanel {
 
                     // Save the initial file
                     if let Some(project) = world.get_resource::<CurrentProject>() {
-                        let dir = project.path.join("assets").join("materials");
+                        let dir = project.path.join("materials");
                         let _ = std::fs::create_dir_all(&dir);
                         let file = dir.join(format!("{}.material", graph_name));
                         if let Ok(json) = serde_json::to_string_pretty(&graph) {
@@ -237,7 +237,7 @@ fn sync_to_entity(
     if let Some(path) = mat_ref_path {
         // Entity has a MaterialRef — load the .material file
         let fs_path = if let Some(project) = world.get_resource::<CurrentProject>() {
-            project.resolve_path(&format!("assets/{}", path)).to_string_lossy().to_string()
+            project.resolve_path(&path).to_string_lossy().to_string()
         } else {
             path.clone()
         };
@@ -554,7 +554,7 @@ fn handle_texture_drop(
         let texture_path = if let Some(project) = world.get_resource::<CurrentProject>() {
             let rel = project.make_asset_relative(&os_path);
             if std::path::Path::new(&rel).is_absolute() {
-                let textures_dir = project.path.join("assets").join("textures");
+                let textures_dir = project.path.join("textures");
                 let _ = std::fs::create_dir_all(&textures_dir);
                 if let Some(filename) = os_path.file_name() {
                     let dest = textures_dir.join(filename);

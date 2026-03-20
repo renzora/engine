@@ -45,6 +45,7 @@ impl Plugin for MaterialResolverPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] MaterialResolverPlugin");
         app.init_resource::<MaterialCache>()
+            .init_resource::<renzora_core::VirtualFileReader>()
             .register_type::<MaterialRef>()
             .register_type::<crate::material_ref::MaterialOverrides>()
             .register_type::<crate::material_ref::ParamValue>()
@@ -66,6 +67,7 @@ fn resolve_material_refs(
     shader_registry: Option<Res<renzora_shader::registry::ShaderBackendRegistry>>,
     fallback_texture: Option<Res<FallbackTexture>>,
     project: Option<Res<renzora_core::CurrentProject>>,
+    file_reader: Option<Res<renzora_core::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
     let Some(mut graph_materials) = graph_materials else { return; };
@@ -74,6 +76,8 @@ fn resolve_material_refs(
     let Some(mut shader_state) = shader_state else { return; };
     let Some(mut shader_cache) = shader_cache else { return; };
     let Some(shader_registry) = shader_registry else { return; };
+    let default_reader = renzora_core::VirtualFileReader::default();
+    let reader = file_reader.as_deref().unwrap_or(&default_reader);
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
 
@@ -95,18 +99,21 @@ fn resolve_material_refs(
             continue;
         }
 
-        // Resolve asset-relative path to full filesystem path via CurrentProject
+        // Resolve asset-relative path to full filesystem path via CurrentProject.
+        // Normalize to forward slashes and strip leading "./" for rpak compatibility.
         let fs_path = if std::path::Path::new(path).is_absolute() {
             path.clone()
         } else if let Some(ref proj) = project {
-            proj.resolve_path(&format!("assets/{}", path)).to_string_lossy().to_string()
+            let raw = proj.resolve_path(path).to_string_lossy().to_string();
+            let normalized = raw.replace('\\', "/");
+            normalized.strip_prefix("./").unwrap_or(&normalized).to_string()
         } else {
             path.clone()
         };
 
         // Determine file type and resolve
         if path.ends_with(".material") {
-            match resolve_graph_material(&fs_path, &mut graph_materials, &mut shaders, &mut shader_state, &fallback_texture, &asset_server) {
+            match resolve_graph_material(&fs_path, &mut graph_materials, &mut shaders, &mut shader_state, &fallback_texture, &asset_server, reader) {
                 Some(handle) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
                     // Remove StandardMaterial so it doesn't keep rendering over the custom one
@@ -127,6 +134,7 @@ fn resolve_material_refs(
                 &mut shaders,
                 &mut shader_cache,
                 &shader_registry,
+                reader,
             ) {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
@@ -159,11 +167,12 @@ fn resolve_code_shader(
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
     registry: &renzora_shader::registry::ShaderBackendRegistry,
+    reader: &renzora_core::VirtualFileReader,
 ) -> Option<Handle<CodeShaderMaterial>> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Failed to read shader file '{}': {}", path, e);
+    let content = match reader.read_string(path) {
+        Some(c) => c,
+        None => {
+            error!("Failed to read shader file '{}'", path);
             return None;
         }
     };
@@ -207,11 +216,12 @@ fn resolve_graph_material(
     _shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
+    reader: &renzora_core::VirtualFileReader,
 ) -> Option<Handle<GraphMaterial>> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Failed to read material file '{}': {}", path, e);
+    let content = match reader.read_string(path) {
+        Some(c) => c,
+        None => {
+            error!("Failed to read material file '{}'", path);
             return None;
         }
     };

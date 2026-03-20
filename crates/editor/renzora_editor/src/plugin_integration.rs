@@ -92,7 +92,7 @@ fn sync_bevy_to_plugins(
     )>,
     children_query: Query<&Children>,
 ) {
-    let assets_path = current_project.as_ref().map(|p| p.path.join("assets"));
+    let assets_path = current_project.as_ref().map(|p| p.path.clone());
     plugin_host.api_mut().set_project_assets_path(assets_path);
 
     let selected = selection.get().map(EntityId::from_bevy);

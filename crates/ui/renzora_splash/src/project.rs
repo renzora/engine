@@ -7,7 +7,6 @@ use std::path::Path;
 pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn std::error::Error>> {
     std::fs::create_dir_all(path)?;
     std::fs::create_dir_all(path.join("scenes"))?;
-    std::fs::create_dir_all(path.join("assets"))?;
     std::fs::create_dir_all(path.join("plugins"))?;
 
     let config = ProjectConfig {

@@ -106,7 +106,7 @@ impl EditorPanel for AnimationPanel {
         let clip_data = selected_clip.as_deref().and_then(|name| {
             let slot = animator.clips.iter().find(|s| s.name == name)?;
             let project = world.get_resource::<renzora_core::CurrentProject>()?;
-            let anim_path = project.path.join("assets").join(&slot.path);
+            let anim_path = project.path.join(&slot.path);
             let content = std::fs::read_to_string(&anim_path).ok()?;
             ron::from_str::<AnimClip>(&content).ok()
         });

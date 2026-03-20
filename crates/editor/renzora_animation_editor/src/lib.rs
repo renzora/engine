@@ -203,7 +203,7 @@ fn cache_clip_duration(
         return;
     };
 
-    let anim_path = project.path.join("assets").join(&slot.path);
+    let anim_path = project.path.join(&slot.path);
     if let Ok(content) = std::fs::read_to_string(&anim_path) {
         if let Ok(clip) = ron::from_str::<renzora_animation::AnimClip>(&content) {
             editor_state.clip_duration = Some(clip.duration);

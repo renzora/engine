@@ -70,6 +70,12 @@ impl Plugin for RuntimePlugin {
                 } else {
                     error!("rpak archive has no project.toml");
                 }
+                // Provide a VirtualFileReader backed by Vfs so material/shader
+                // resolution reads from the rpak archive instead of disk.
+                let vfs_for_reader = vfs.clone();
+                app.insert_resource(renzora_core::VirtualFileReader::new(move |path| {
+                    vfs_for_reader.read_string(path)
+                }));
                 app.insert_resource(vfs);
             } else {
                 app.insert_resource(vfs);

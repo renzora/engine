@@ -686,7 +686,7 @@ impl TimelinePanel {
         let clip_name = selected_clip?;
         let slot = animator.clips.iter().find(|s| s.name == clip_name)?;
         let project = world.get_resource::<renzora_core::CurrentProject>()?;
-        let anim_path = project.path.join("assets").join(&slot.path);
+        let anim_path = project.path.join(&slot.path);
         let content = std::fs::read_to_string(&anim_path).ok()?;
         ron::from_str::<AnimClip>(&content).ok()
     }

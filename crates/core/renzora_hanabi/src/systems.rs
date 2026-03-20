@@ -13,7 +13,7 @@ fn resolve_effect_definition(source: &EffectSource, project: Option<&CurrentProj
     match source {
         EffectSource::Asset { path } => {
             if let Some(proj) = project {
-                let full_path = proj.path.join("assets").join(path);
+                let full_path = proj.path.join(path);
                 load_effect_from_file(&full_path).unwrap_or_default()
             } else {
                 load_effect_from_file(&PathBuf::from(path)).unwrap_or_default()

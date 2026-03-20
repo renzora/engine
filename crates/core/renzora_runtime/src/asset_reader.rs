@@ -27,7 +27,7 @@ use std::task::{Context, Poll};
 /// Shared project path that the asset reader checks for local overrides.
 ///
 /// When a project is open, this holds the project directory path.
-/// The asset reader checks `project_path/assets/{path}` before falling back
+/// The asset reader checks `project_path/{path}` before falling back
 /// to engine-bundled assets.
 #[derive(Resource, Clone)]
 pub struct ProjectAssetPath(pub Arc<RwLock<Option<PathBuf>>>);
@@ -105,32 +105,29 @@ struct EmbeddedAssetReader {
 impl EmbeddedAssetReader {
     fn normalize(path: &Path) -> String {
         let s = path.to_string_lossy();
-        // Strip leading "assets/" if present (Bevy passes relative-to-source paths)
-        let s = s.strip_prefix("assets/").unwrap_or(&s);
         s.replace('\\', "/")
     }
 
     /// Try reading a file from the rpak archive.
-    /// Archive paths are stored relative to the project root (e.g. `assets/models/foo.glb`).
+    /// Archive paths are stored relative to the project root (e.g. `models/foo.glb`).
     fn try_read_from_archive(&self, normalized: &str) -> Option<Vec<u8>> {
         let lock = self.archive.read().ok()?;
         let archive = lock.as_ref()?;
-        let archive_path = format!("assets/{}", normalized);
-        archive.get(&archive_path).map(|data| data.to_vec())
+        archive.get(normalized).map(|data| data.to_vec())
     }
 
-    /// Try reading a file from the project's assets directory.
+    /// Try reading a file from the project directory.
     fn try_read_from_project(&self, normalized: &str) -> Option<Vec<u8>> {
         let lock = self.project_path.read().ok()?;
         let project_path = lock.as_ref()?;
-        let full_path = project_path.join("assets").join(normalized);
+        let full_path = project_path.join(normalized);
         std::fs::read(&full_path).ok()
     }
 
-    /// Try reading a file from the exe-adjacent assets directory.
+    /// Try reading a file from the exe-adjacent directory.
     fn try_read_from_exe(&self, normalized: &str) -> Option<Vec<u8>> {
         let exe_dir = self.exe_dir.as_ref()?;
-        let full_path = exe_dir.join("assets").join(normalized);
+        let full_path = exe_dir.join(normalized);
         std::fs::read(&full_path).ok()
     }
 
@@ -139,15 +136,15 @@ impl EmbeddedAssetReader {
         let lock = self.archive.read().ok()?;
         let archive = lock.as_ref()?;
         let prefix = if normalized.is_empty() || normalized == "." {
-            "assets/".to_string()
+            String::new()
         } else {
-            format!("assets/{}/", normalized)
+            format!("{}/", normalized)
         };
         let entries: Vec<PathBuf> = archive
             .paths()
-            .filter(|p| p.starts_with(&prefix))
+            .filter(|p| if prefix.is_empty() { !p.contains('/') } else { p.starts_with(&prefix) })
             .filter_map(|p| {
-                let relative = p.strip_prefix(&prefix)?;
+                let relative = if prefix.is_empty() { p } else { p.strip_prefix(&prefix)? };
                 // Only direct children
                 if relative.contains('/') {
                     None
@@ -164,12 +161,15 @@ impl EmbeddedAssetReader {
         let Ok(lock) = self.archive.read() else { return false };
         let Some(archive) = lock.as_ref() else { return false };
         let prefix = if normalized.is_empty() || normalized == "." {
-            "assets/".to_string()
+            String::new()
         } else {
-            format!("assets/{}/", normalized)
+            format!("{}/", normalized)
         };
-        let result = archive.paths().any(|p| p.starts_with(&prefix));
-        result
+        if prefix.is_empty() {
+            archive.paths().next().is_some()
+        } else {
+            archive.paths().any(|p| p.starts_with(&prefix))
+        }
     }
 }
 
@@ -199,9 +199,9 @@ impl AssetReader for EmbeddedAssetReader {
             return Ok(VecReader::new(bytes));
         }
 
-        // 5. Fall back to CWD assets (development)
+        // 5. Fall back to CWD (development)
         {
-            let local_path = PathBuf::from("assets").join(&normalized);
+            let local_path = PathBuf::from(&normalized);
             if let Ok(bytes) = std::fs::read(&local_path) {
                 return Ok(VecReader::new(bytes));
             }
@@ -225,10 +225,10 @@ impl AssetReader for EmbeddedAssetReader {
             return Ok(Box::new(VecPathStream { entries, index: 0 }));
         }
 
-        // Project assets
+        // Project directory
         if let Ok(lock) = self.project_path.read() {
             if let Some(project_path) = lock.as_ref() {
-                let dir = project_path.join("assets").join(&normalized);
+                let dir = project_path.join(&normalized);
                 if dir.is_dir() {
                     let entries: Vec<PathBuf> = std::fs::read_dir(&dir)
                         .map_err(|_| AssetReaderError::NotFound(path.to_path_buf()))?
@@ -240,9 +240,9 @@ impl AssetReader for EmbeddedAssetReader {
             }
         }
 
-        // Exe-adjacent assets
+        // Exe-adjacent directory
         if let Some(exe_dir) = &self.exe_dir {
-            let dir = exe_dir.join("assets").join(&normalized);
+            let dir = exe_dir.join(&normalized);
             if dir.is_dir() {
                 let entries: Vec<PathBuf> = std::fs::read_dir(&dir)
                     .map_err(|_| AssetReaderError::NotFound(path.to_path_buf()))?
@@ -253,9 +253,9 @@ impl AssetReader for EmbeddedAssetReader {
             }
         }
 
-        // CWD assets
+        // CWD fallback
         {
-            let local_path = PathBuf::from("assets").join(&normalized);
+            let local_path = PathBuf::from(&normalized);
             if local_path.is_dir() {
                 let entries: Vec<PathBuf> = std::fs::read_dir(&local_path)
                     .map_err(|_| AssetReaderError::NotFound(path.to_path_buf()))?
@@ -281,24 +281,24 @@ impl AssetReader for EmbeddedAssetReader {
             return Ok(true);
         }
 
-        // Project assets
+        // Project directory
         if let Ok(lock) = self.project_path.read() {
             if let Some(project_path) = lock.as_ref() {
-                if project_path.join("assets").join(&normalized).is_dir() {
+                if project_path.join(&normalized).is_dir() {
                     return Ok(true);
                 }
             }
         }
 
-        // Exe-adjacent assets
+        // Exe-adjacent directory
         if let Some(exe_dir) = &self.exe_dir {
-            if exe_dir.join("assets").join(&normalized).is_dir() {
+            if exe_dir.join(&normalized).is_dir() {
                 return Ok(true);
             }
         }
 
-        // CWD assets
-        let local_path = PathBuf::from("assets").join(&normalized);
+        // CWD fallback
+        let local_path = PathBuf::from(&normalized);
         Ok(local_path.is_dir())
     }
 }
