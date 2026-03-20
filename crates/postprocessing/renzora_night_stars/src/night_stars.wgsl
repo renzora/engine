@@ -38,6 +38,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let twinkle_spd  = params_a.w;
     let twinkle_amt  = params_b.x;
     let horizon_fade = params_b.y;
+    let sun_elevation = params_b.z; // radians, positive = above horizon
 
     let dir = normalize(in.world_position.xyz);
 
@@ -113,7 +114,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    let final_alpha = out_val * horizon_mask;
+    // Stars fade out as sun rises above horizon (1.0 at night, 0.0 during day)
+    let night_factor = 1.0 - smoothstep(-0.05, 0.15, sun_elevation);
+
+    let final_alpha = out_val * horizon_mask * night_factor;
     if final_alpha < 0.001 {
         discard;
     }

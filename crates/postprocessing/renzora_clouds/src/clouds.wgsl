@@ -198,8 +198,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let atmo = horizon_dist * atmosphere_strength;
     lit = mix(lit, haze_color, atmo);
 
+    // Day/night fade: sun elevation in radians (positive = above horizon)
+    let sun_elevation = params_b.w;
+    let day_factor = smoothstep(-0.05, 0.15, sun_elevation);
+
     // Final alpha
-    let alpha = eroded * density * altitude_mask;
+    let alpha = eroded * density * altitude_mask * day_factor;
 
     if alpha < 0.001 {
         discard;

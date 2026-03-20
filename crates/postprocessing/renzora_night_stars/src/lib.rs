@@ -116,6 +116,7 @@ fn sync_night_stars(
         &Transform,
         (With<Camera3d>, Without<renzora_core::IsolatedCamera>),
     >,
+    sun_query: Query<&renzora_lighting::Sun>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut star_materials: ResMut<Assets<NightStarsMaterial>>,
     has_data: Query<(), With<NightStarsData>>,
@@ -141,8 +142,13 @@ fn sync_night_stars(
 
     let camera_pos = camera_transform.translation;
 
+    // Sun elevation in radians for day/night fading (positive = above horizon)
+    let sun_elevation = sun_query.iter().next()
+        .map(|s| s.elevation.to_radians())
+        .unwrap_or(1.0); // default to daytime if no Sun component
+
     let params_a = Vec4::new(data.density, data.brightness, data.star_size, data.twinkle_speed);
-    let params_b = Vec4::new(data.twinkle_amount, data.horizon_fade, 0.0, 0.0);
+    let params_b = Vec4::new(data.twinkle_amount, data.horizon_fade, sun_elevation, 0.0);
     let star_color = LinearRgba::new(data.color.0, data.color.1, data.color.2, 1.0);
 
     if let Some(dome_entity) = state.entity {

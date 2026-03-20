@@ -149,6 +149,7 @@ fn sync_clouds(
     clouds_query: Query<&CloudsData>,
     camera_query: Query<(&Transform, &Camera), With<Camera3d>>,
     sun_query: Query<&Transform, With<DirectionalLight>>,
+    sun_data_query: Query<&renzora_lighting::Sun>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
@@ -183,7 +184,12 @@ fn sync_clouds(
         clouds_data.scale,
         clouds_data.speed,
     );
-    let params_b = Vec4::new(wind_dir.x, wind_dir.y, clouds_data.altitude, 0.0);
+    // Sun elevation in radians for day/night fading (positive = above horizon)
+    let sun_elevation = sun_data_query.iter().next()
+        .map(|s| s.elevation.to_radians())
+        .unwrap_or(1.0); // default to daytime if no Sun component
+
+    let params_b = Vec4::new(wind_dir.x, wind_dir.y, clouds_data.altitude, sun_elevation);
     let cloud_color = LinearRgba::new(
         clouds_data.color.0,
         clouds_data.color.1,
