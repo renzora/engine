@@ -261,7 +261,10 @@ pub fn editor_ui_system(world: &mut World) {
         .get_resource::<renzora_auth::AuthState>()
         .map(|a| a.window_open)
         .unwrap_or(false);
-    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info, sign_in_open);
+    let signed_in_username = world
+        .get_resource::<renzora_auth::AuthSession>()
+        .and_then(|s| s.user.as_ref().map(|u| u.username.clone()));
+    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info, sign_in_open, signed_in_username.as_deref());
 
     // 6. Document tabs (below title bar)
     let doc_tab_state = world

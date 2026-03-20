@@ -183,7 +183,7 @@ pub fn render_graph_editor(
 
         // Auto-fit view
         if !graph.nodes.is_empty() {
-            let node_w = 180.0_f32;
+            let node_w = 140.0_f32;
             let node_h_est = 120.0_f32;
             let (mut min_x, mut max_x) = (f32::MAX, f32::MIN);
             let (mut min_y, mut max_y) = (f32::MAX, f32::MIN);
@@ -207,7 +207,7 @@ pub fn render_graph_editor(
     // ── Render widget ──
     let config = NodeGraphConfig {
         grid_spacing: 20.0,
-        node_width: 180.0,
+        node_width: 140.0,
         header_height: 24.0,
         pin_height: 22.0,
         pin_radius: 5.0,

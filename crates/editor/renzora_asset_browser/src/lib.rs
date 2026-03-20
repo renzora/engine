@@ -197,8 +197,15 @@ impl EditorPanel for AssetBrowserPanel {
 
             let over_tree = drag_pos.map(|p| tree_rect.contains(p)).unwrap_or(false);
             let over_grid = drag_pos.map(|p| grid_rect.contains(p)).unwrap_or(false);
-            let over_panel = drag_pos.map(|p| available.contains(p))
-                .unwrap_or(has_file_hover || has_drops);
+            // Accept drops whenever the asset browser is visible — the OS already
+            // confirmed the user targeted this window, and pointer position can be
+            // unreliable (stale or None) during cross-process drag-and-drop.
+            let over_panel = if has_drops {
+                true
+            } else {
+                drag_pos.map(|p| available.contains(p))
+                    .unwrap_or(has_file_hover)
+            };
 
             state.drop_hover = has_file_hover && over_panel;
 

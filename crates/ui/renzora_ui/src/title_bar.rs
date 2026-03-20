@@ -54,6 +54,7 @@ pub fn render_title_bar(
     layout_manager: &LayoutManager,
     play_mode: &PlayModeInfo,
     sign_in_open: bool,
+    signed_in_username: Option<&str>,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
 
@@ -431,13 +432,19 @@ pub fn render_title_bar(
                     theme.text.secondary.to_color32(),
                 );
 
-                // "Sign In" text
+                // "Sign In" or username text
+                let label = signed_in_username.unwrap_or("Sign In");
+                let label_color = if signed_in_username.is_some() {
+                    theme.text.primary.to_color32()
+                } else {
+                    theme.text.secondary.to_color32()
+                };
                 ui.painter().text(
                     Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    "Sign In",
+                    label,
                     egui::FontId::proportional(11.0),
-                    theme.text.secondary.to_color32(),
+                    label_color,
                 );
 
                 if sign_in_resp.clicked() {

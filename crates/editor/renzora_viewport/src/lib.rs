@@ -471,9 +471,10 @@ fn update_input_focus(
     mut ctx: EguiContexts,
     mut input_focus: ResMut<renzora_core::InputFocusState>,
 ) {
-    input_focus.egui_wants_keyboard = ctx
-        .ctx_mut()
-        .map_or(false, |c| c.wants_keyboard_input());
+    if let Ok(c) = ctx.ctx_mut() {
+        input_focus.egui_wants_keyboard = c.wants_keyboard_input();
+        input_focus.egui_has_pointer = c.wants_pointer_input() || c.is_pointer_over_area();
+    }
 }
 
 // ── Modal transform HUD overlay ──────────────────────────────────────────────

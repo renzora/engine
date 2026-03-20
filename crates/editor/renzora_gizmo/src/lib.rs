@@ -566,6 +566,7 @@ fn handle_selection_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
+    viewport_state: Res<renzora_viewport::ViewportState>,
     selection: Res<EditorSelection>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     gizmo_state: Res<GizmoState>,
@@ -576,6 +577,7 @@ fn handle_selection_shortcuts(
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
+    if input_focus.egui_has_pointer && !viewport_state.hovered { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
     if gizmo_state.active_axis.is_some() { return; }
     if modal.active { return; }

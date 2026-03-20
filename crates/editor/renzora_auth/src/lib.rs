@@ -4,6 +4,7 @@
 //! with the renzora.com API. Tokens are persisted to disk for auto-login.
 
 pub mod api;
+pub mod marketplace;
 pub mod session;
 
 use bevy::prelude::*;

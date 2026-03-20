@@ -209,25 +209,30 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Materials: [Preview / Properties] | [MaterialGraph / (Assets+Console tabs)]
+/// Materials: Hierarchy | MaterialGraph + (Assets+Console) | Preview + Properties
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        // Left column: preview on top, properties below
-        DockTree::vertical(
-            DockTree::leaf("material_preview"),
-            DockTree::leaf("material_inspector"),
-            0.4,
+        // Left column: hierarchy (full height)
+        DockTree::leaf("hierarchy"),
+        DockTree::horizontal(
+            // Center: graph on top, assets+console tabbed below
+            DockTree::vertical(
+                DockTree::leaf("material_graph"),
+                DockTree::Leaf {
+                    tabs: vec!["assets".into(), "console".into()],
+                    active_tab: 0,
+                },
+                0.7,
+            ),
+            // Right column: preview on top, properties below
+            DockTree::vertical(
+                DockTree::leaf("material_preview"),
+                DockTree::leaf("material_inspector"),
+                0.5,
+            ),
+            0.75,
         ),
-        // Right column: graph on top, assets+console tabbed below
-        DockTree::vertical(
-            DockTree::leaf("material_graph"),
-            DockTree::Leaf {
-                tabs: vec!["assets".into(), "console".into()],
-                active_tab: 0,
-            },
-            0.7,
-        ),
-        0.25,
+        0.15,
     )
 }
 

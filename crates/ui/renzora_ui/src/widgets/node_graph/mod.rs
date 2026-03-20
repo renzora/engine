@@ -457,7 +457,8 @@ fn draw_node_layout(
     let output_count = node.pins.iter().filter(|p| p.direction == PinDirection::Output).count();
     let max_pins = input_count.max(output_count);
 
-    let node_height = config.header_height + (max_pins as f32 * config.pin_height) + 8.0;
+    let thumb_bottom_pad = if node.thumbnail.is_some() { config.node_width * 0.3 + 4.0 } else { 0.0 };
+    let node_height = config.header_height + (max_pins as f32 * config.pin_height) + 8.0 + thumb_bottom_pad;
     let scaled_w = config.node_width * zoom;
     let scaled_h = node_height * zoom;
     let node_rect = Rect::from_min_size(screen_pos, Vec2::new(scaled_w, scaled_h));

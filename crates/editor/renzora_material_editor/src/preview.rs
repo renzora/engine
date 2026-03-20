@@ -10,7 +10,7 @@ use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora_core::{IsolatedCamera, HideInHierarchy, EditorLocked};
 use renzora_editor::{EditorPanel, PanelLocation};
-use renzora_material::runtime::{GraphMaterial, GraphMaterialShaderState, apply_compiled_shader};
+use renzora_material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, GRAPH_MATERIAL_FRAG_HANDLE, new_graph_material};
 use renzora_theme::ThemeManager;
 
 use crate::MaterialEditorState;
@@ -36,12 +36,54 @@ impl Default for MaterialPreviewImage {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PreviewShape {
+    Sphere,
+    Cube,
+    Cylinder,
+    Torus,
+    Plane,
+}
+
+impl PreviewShape {
+    pub const ALL: &[PreviewShape] = &[
+        PreviewShape::Sphere,
+        PreviewShape::Cube,
+        PreviewShape::Cylinder,
+        PreviewShape::Torus,
+        PreviewShape::Plane,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sphere => "Sphere",
+            Self::Cube => "Cube",
+            Self::Cylinder => "Cylinder",
+            Self::Torus => "Torus",
+            Self::Plane => "Plane",
+        }
+    }
+
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Sphere => egui_phosphor::regular::GLOBE_HEMISPHERE_EAST,
+            Self::Cube => egui_phosphor::regular::CUBE,
+            Self::Cylinder => egui_phosphor::regular::CYLINDER,
+            Self::Torus => egui_phosphor::regular::CIRCLE_DASHED,
+            Self::Plane => egui_phosphor::regular::SQUARE,
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct MaterialPreviewOrbit {
     pub yaw: f32,
     pub pitch: f32,
     pub distance: f32,
     pub target: Vec3,
+    pub shape: PreviewShape,
+    pub auto_rotate: bool,
+    pub dark_bg: bool,
 }
 
 impl Default for MaterialPreviewOrbit {
@@ -51,6 +93,9 @@ impl Default for MaterialPreviewOrbit {
             pitch: 0.3,
             distance: 3.0,
             target: Vec3::ZERO,
+            shape: PreviewShape::Sphere,
+            auto_rotate: false,
+            dark_bg: true,
         }
     }
 }
@@ -80,6 +125,7 @@ fn setup_material_preview(
     mut user_textures: ResMut<EguiUserTextures>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<GraphMaterial>>,
+    fallback: Res<FallbackTexture>,
 ) {
     let size = Extent3d {
         width: 512,
@@ -159,9 +205,9 @@ fn setup_material_preview(
         Name::new("Material Preview Fill Light"),
     ));
 
-    // Preview sphere
+    // Preview sphere — all texture slots filled with fallback for stable pipeline layout
     let sphere_mesh = meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap());
-    let material = materials.add(GraphMaterial::default());
+    let material = materials.add(new_graph_material(&fallback));
 
     commands.spawn((
         Mesh3d(sphere_mesh),
@@ -193,34 +239,137 @@ fn sync_preview_camera_active(
 }
 
 fn update_preview_camera_orbit(
-    orbit: Res<MaterialPreviewOrbit>,
-    mut camera: Query<&mut Transform, With<MaterialPreviewCamera>>,
+    time: Res<Time>,
+    mut orbit: ResMut<MaterialPreviewOrbit>,
+    mut camera: Query<(&mut Transform, &mut Camera), With<MaterialPreviewCamera>>,
 ) {
-    for mut transform in camera.iter_mut() {
+    if orbit.auto_rotate {
+        orbit.yaw += time.delta_secs() * 0.5;
+    }
+
+    for (mut transform, mut cam) in camera.iter_mut() {
         let x = orbit.distance * orbit.pitch.cos() * orbit.yaw.sin();
         let y = orbit.distance * orbit.pitch.sin();
         let z = orbit.distance * orbit.pitch.cos() * orbit.yaw.cos();
 
         transform.translation = orbit.target + Vec3::new(x, y, z);
         transform.look_at(orbit.target, Vec3::Y);
+
+        let bg = if orbit.dark_bg {
+            Color::srgba(0.08, 0.08, 0.1, 1.0)
+        } else {
+            Color::srgba(0.45, 0.45, 0.5, 1.0)
+        };
+        cam.clear_color = ClearColorConfig::Custom(bg);
+    }
+}
+
+fn swap_preview_shape(
+    orbit: Res<MaterialPreviewOrbit>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut preview_mesh: Query<&mut Mesh3d, With<MaterialPreviewMesh>>,
+) {
+    if !orbit.is_changed() {
+        return;
+    }
+    for mut mesh3d in preview_mesh.iter_mut() {
+        let new_mesh = match orbit.shape {
+            PreviewShape::Sphere => Sphere::new(1.0).mesh().ico(5).unwrap(),
+            PreviewShape::Cube => Cuboid::new(1.5, 1.5, 1.5).into(),
+            PreviewShape::Cylinder => Cylinder::new(0.8, 2.0).into(),
+            PreviewShape::Torus => Torus::new(0.5, 1.0).into(),
+            PreviewShape::Plane => Plane3d::new(Vec3::Y, Vec2::splat(1.5)).into(),
+        };
+        mesh3d.0 = meshes.add(new_mesh);
     }
 }
 
 // ── Shader hot-swap ─────────────────────────────────────────────────────────
 
-fn update_preview_shader(
+/// Update both the shader AND the material textures atomically in one system.
+/// This prevents the pipeline layout mismatch where the shader declares texture
+/// bindings but the material hasn't assigned them yet.
+///
+/// Uses a content hash to skip redundant work when only non-graph fields
+/// of MaterialEditorState change (e.g. selected_node).
+fn update_preview_material(
     editor_state: Res<MaterialEditorState>,
+    asset_server: Res<AssetServer>,
+    fallback: Res<FallbackTexture>,
     mut shaders: ResMut<Assets<Shader>>,
     mut shader_state: ResMut<GraphMaterialShaderState>,
+    mut tracker: ResMut<MaterialPreviewTracker>,
+    preview_mesh: Query<&MeshMaterial3d<GraphMaterial>, With<MaterialPreviewMesh>>,
+    mut materials: ResMut<Assets<GraphMaterial>>,
 ) {
-    // Only update when the editor state changes
     if !editor_state.is_changed() {
         return;
     }
-
-    if editor_state.compile_errors.is_empty() {
-        let _ = apply_compiled_shader(&editor_state.graph, &mut shaders, &mut shader_state);
+    if !editor_state.compile_errors.is_empty() {
+        return;
     }
+
+    // Compile once — used for both texture bindings and shader insertion.
+    let result = renzora_material::codegen::compile(&editor_state.graph);
+    if !result.errors.is_empty() {
+        return;
+    }
+
+    // Hash shader + texture bindings to detect actual graph changes.
+    // Skips redundant work when only selection/UI state changed.
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    result.fragment_shader.hash(&mut hasher);
+    for tb in &result.texture_bindings {
+        tb.binding.hash(&mut hasher);
+        tb.asset_path.hash(&mut hasher);
+    }
+    let hash = hasher.finish();
+
+    if tracker.last_wgsl_hash == Some(hash) {
+        return;
+    }
+    tracker.last_wgsl_hash = Some(hash);
+
+    info!("[material_preview] Compiling graph: {} nodes, {} connections",
+        editor_state.graph.nodes.len(), editor_state.graph.connections.len());
+
+    // Assign textures — unused slots get fallback (never None)
+    let fb = &fallback.0;
+    for mat_handle in preview_mesh.iter() {
+        let Some(material) = materials.get_mut(&mat_handle.0) else {
+            warn!("[material_preview] Could not get material asset for preview mesh");
+            continue;
+        };
+
+        material.texture_0 = Some(fb.clone());
+        material.texture_1 = Some(fb.clone());
+        material.texture_2 = Some(fb.clone());
+        material.texture_3 = Some(fb.clone());
+
+        for tb in &result.texture_bindings {
+            if tb.asset_path.is_empty() {
+                continue;
+            }
+            let handle: Handle<Image> = asset_server.load(&tb.asset_path);
+            match tb.binding {
+                0 => material.texture_0 = Some(handle),
+                1 => material.texture_1 = Some(handle),
+                2 => material.texture_2 = Some(handle),
+                3 => material.texture_3 = Some(handle),
+                _ => warn!("[material_preview] Texture binding slot {} exceeds max 3!", tb.binding),
+            }
+        }
+    }
+
+    // Swap shader directly (no double compile via apply_compiled_shader)
+    let shader = Shader::from_wgsl(
+        result.fragment_shader.clone(),
+        "graph_material://compiled",
+    );
+    let _ = shaders.insert(&GRAPH_MATERIAL_FRAG_HANDLE, shader);
+    shader_state.last_wgsl_hash = Some(hash);
 }
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
@@ -237,7 +386,8 @@ impl Plugin for MaterialPreviewPlugin {
             .add_systems(Update, (
                 sync_preview_camera_active,
                 update_preview_camera_orbit,
-                update_preview_shader,
+                swap_preview_shape,
+                update_preview_material,
             ));
     }
 }
@@ -286,7 +436,84 @@ impl EditorPanel for MaterialPreviewPanel {
             return;
         }
 
-        // Render the preview image to fill available space
+        let orbit = world.get_resource::<MaterialPreviewOrbit>();
+
+        // ── Toolbar ──
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            ui.style_mut().spacing.button_padding = egui::vec2(4.0, 1.0);
+
+            if let Some(orbit) = orbit {
+                // Shape dropdown
+                let shape_label = format!("{} {}", orbit.shape.icon(), orbit.shape.label());
+                let shape_btn = ui.add(egui::Button::new(
+                    RichText::new(shape_label).size(10.0).color(text_muted),
+                ));
+                let shape_id = ui.make_persistent_id("preview_shape");
+                if shape_btn.clicked() {
+                    ui.memory_mut(|m| m.toggle_popup(shape_id));
+                }
+                egui::popup_below_widget(ui, shape_id, &shape_btn, egui::PopupCloseBehavior::CloseOnClick, |ui| {
+                    for &s in PreviewShape::ALL {
+                        if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
+                            let shape = s;
+                            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+                                cmds.push(move |world: &mut World| {
+                                    world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
+                                });
+                            }
+                        }
+                    }
+                });
+
+                ui.separator();
+
+                // Auto-rotate toggle
+                let rotate_icon = if orbit.auto_rotate {
+                    egui_phosphor::regular::ARROWS_CLOCKWISE
+                } else {
+                    egui_phosphor::regular::ARROW_CLOCKWISE
+                };
+                let rotate_color = if orbit.auto_rotate {
+                    egui::Color32::from_rgb(80, 200, 120)
+                } else {
+                    text_muted
+                };
+                if ui.add(egui::Button::new(RichText::new(rotate_icon).size(11.0).color(rotate_color)))
+                    .on_hover_text("Auto-rotate")
+                    .clicked()
+                {
+                    let new_val = !orbit.auto_rotate;
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+                        cmds.push(move |world: &mut World| {
+                            world.resource_mut::<MaterialPreviewOrbit>().auto_rotate = new_val;
+                        });
+                    }
+                }
+
+                // Background toggle
+                let bg_icon = if orbit.dark_bg {
+                    egui_phosphor::regular::MOON
+                } else {
+                    egui_phosphor::regular::SUN
+                };
+                if ui.add(egui::Button::new(RichText::new(bg_icon).size(11.0).color(text_muted)))
+                    .on_hover_text("Toggle background")
+                    .clicked()
+                {
+                    let new_val = !orbit.dark_bg;
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+                        cmds.push(move |world: &mut World| {
+                            world.resource_mut::<MaterialPreviewOrbit>().dark_bg = new_val;
+                        });
+                    }
+                }
+            }
+        });
+
+        ui.separator();
+
+        // ── Preview image ──
         let available = ui.available_size();
         let size = available.x.min(available.y);
 
@@ -298,7 +525,7 @@ impl EditorPanel for MaterialPreviewPanel {
             );
 
             // Orbit interaction — drag to rotate, scroll to zoom
-            if let Some(orbit) = world.get_resource::<MaterialPreviewOrbit>() {
+            if let Some(orbit) = orbit {
                 let mut new_yaw = orbit.yaw;
                 let mut new_pitch = orbit.pitch;
                 let mut new_distance = orbit.distance;
@@ -306,7 +533,7 @@ impl EditorPanel for MaterialPreviewPanel {
                 if response.dragged_by(egui::PointerButton::Primary) {
                     let delta = response.drag_delta();
                     new_yaw += delta.x * 0.01;
-                    new_pitch = (new_pitch + delta.y * 0.01).clamp(-1.4, 1.4);
+                    new_pitch = (new_pitch - delta.y * 0.01).clamp(-1.4, 1.4);
                 }
 
                 if response.hovered() {
@@ -331,19 +558,6 @@ impl EditorPanel for MaterialPreviewPanel {
                 }
             }
         });
-
-        // Domain + material name info below preview
-        if let Some(state) = editor_state {
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(&state.graph.name).size(11.0).color(text_muted));
-                ui.label(
-                    RichText::new(format!("({})", state.graph.domain.display_name()))
-                        .size(10.0)
-                        .color(text_muted),
-                );
-            });
-        }
     }
 
     fn closable(&self) -> bool {

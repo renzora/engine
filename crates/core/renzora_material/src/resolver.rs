@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use crate::codegen;
 use crate::graph::MaterialGraph;
 use crate::material_ref::MaterialRef;
-use crate::runtime::{GraphMaterial, GraphMaterialShaderState};
+use crate::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
 
 /// Cache of compiled materials to avoid redundant recompilation.
@@ -21,6 +21,15 @@ pub struct MaterialCache {
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
+}
+
+impl MaterialCache {
+    /// Remove a cached material so the resolver re-loads it from disk.
+    pub fn invalidate(&mut self, path: &str) {
+        self.graph_materials.remove(path);
+        self.code_materials.remove(path);
+        self.loaded_paths.remove(path);
+    }
 }
 
 /// Marker component added to entities that have been resolved.
@@ -55,6 +64,9 @@ fn resolve_material_refs(
     shader_state: Option<ResMut<GraphMaterialShaderState>>,
     shader_cache: Option<ResMut<ShaderCache>>,
     shader_registry: Option<Res<renzora_shader::registry::ShaderBackendRegistry>>,
+    fallback_texture: Option<Res<FallbackTexture>>,
+    project: Option<Res<renzora_core::CurrentProject>>,
+    asset_server: Res<AssetServer>,
 ) {
     let Some(mut graph_materials) = graph_materials else { return; };
     let Some(mut code_materials) = code_materials else { return; };
@@ -83,11 +95,22 @@ fn resolve_material_refs(
             continue;
         }
 
+        // Resolve asset-relative path to full filesystem path via CurrentProject
+        let fs_path = if std::path::Path::new(path).is_absolute() {
+            path.clone()
+        } else if let Some(ref proj) = project {
+            proj.resolve_path(&format!("assets/{}", path)).to_string_lossy().to_string()
+        } else {
+            path.clone()
+        };
+
         // Determine file type and resolve
         if path.ends_with(".material") {
-            match resolve_graph_material(path, &mut graph_materials, &mut shaders, &mut shader_state) {
+            match resolve_graph_material(&fs_path, &mut graph_materials, &mut shaders, &mut shader_state, &fallback_texture, &asset_server) {
                 Some(handle) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
+                    // Remove StandardMaterial so it doesn't keep rendering over the custom one
+                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
                         MaterialResolved { source_path: path.clone() },
@@ -99,7 +122,7 @@ fn resolve_material_refs(
             }
         } else if path.ends_with(".shader") {
             match resolve_code_shader(
-                path,
+                &fs_path,
                 &mut code_materials,
                 &mut shaders,
                 &mut shader_cache,
@@ -107,6 +130,7 @@ fn resolve_material_refs(
             ) {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
+                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
                         MaterialResolved { source_path: path.clone() },
@@ -181,6 +205,8 @@ fn resolve_graph_material(
     materials: &mut Assets<GraphMaterial>,
     shaders: &mut Assets<Shader>,
     _shader_state: &mut GraphMaterialShaderState,
+    fallback_texture: &Option<Res<FallbackTexture>>,
+    asset_server: &AssetServer,
 ) -> Option<Handle<GraphMaterial>> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
@@ -217,7 +243,26 @@ fn resolve_graph_material(
         shader,
     );
 
-    // Create material asset
-    let mat = GraphMaterial::default();
+    // Create material — start with fallback textures, then load actual ones
+    let mut mat = if let Some(fb) = fallback_texture {
+        new_graph_material(fb)
+    } else {
+        new_graph_material(&FallbackTexture(Handle::default()))
+    };
+
+    for tb in &result.texture_bindings {
+        if tb.asset_path.is_empty() {
+            continue;
+        }
+        let handle: Handle<Image> = asset_server.load(&tb.asset_path);
+        match tb.binding {
+            0 => mat.texture_0 = Some(handle),
+            1 => mat.texture_1 = Some(handle),
+            2 => mat.texture_2 = Some(handle),
+            3 => mat.texture_3 = Some(handle),
+            _ => {}
+        }
+    }
+
     Some(materials.add(mat))
 }

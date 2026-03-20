@@ -52,7 +52,7 @@ impl<'a> Ctx<'a> {
             var_counter: 0,
             processed: HashSet::new(),
             texture_bindings: Vec::new(),
-            next_texture_binding: 1, // binding 0 = uniforms
+            next_texture_binding: 0, // index into texture_0, texture_1, ...
             lines: Vec::new(),
             uses_noise: false,
             uses_voronoi: false,
@@ -183,23 +183,28 @@ impl<'a> Ctx<'a> {
 
             // ── Textures ────────────────────────────────────────────
             "texture/sample" => {
-                let uv = self.input(node, "uv");
-                let path = node.input_values.get("path")
+                // Use in.uv when UV pin is unconnected (most common case)
+                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
+                    self.input(node, "uv")
+                } else {
+                    "in.uv".to_string()
+                };
+                let path = node.input_values.get("texture")
                     .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_default();
 
-                let tex_name = format!("mat_texture_{}", self.next_texture_binding);
-                let samp_name = format!("mat_sampler_{}", self.next_texture_binding);
-                let binding_tex = self.next_texture_binding;
-                self.next_texture_binding += 2;
+                let slot = self.next_texture_binding;
+                let tex_name = format!("texture_{slot}");
+                let samp_name = format!("texture_{slot}_sampler");
+                self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
                     name: tex_name.clone(),
-                    binding: binding_tex,
+                    binding: slot,
                     asset_path: path,
                 });
 
-                let uv_expr = if uv == "in.uv" { "in.uv".to_string() } else { uv };
+                let uv_expr = uv;
                 let v = self.next_var("tex");
                 self.emit(format!("    let {v} = textureSample({tex_name}, {samp_name}, {uv_expr});"));
                 self.set_out(id, "color", v.clone());
@@ -211,20 +216,24 @@ impl<'a> Ctx<'a> {
             }
 
             "texture/sample_normal" => {
-                let uv = self.input(node, "uv");
+                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
+                    self.input(node, "uv")
+                } else {
+                    "in.uv".to_string()
+                };
                 let strength = self.input(node, "strength");
-                let path = node.input_values.get("path")
+                let path = node.input_values.get("texture")
                     .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_default();
 
-                let tex_name = format!("mat_texture_{}", self.next_texture_binding);
-                let samp_name = format!("mat_sampler_{}", self.next_texture_binding);
-                let binding = self.next_texture_binding;
-                self.next_texture_binding += 2;
+                let slot = self.next_texture_binding;
+                let tex_name = format!("texture_{slot}");
+                let samp_name = format!("texture_{slot}_sampler");
+                self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
                     name: tex_name.clone(),
-                    binding,
+                    binding: slot,
                     asset_path: path,
                 });
 
@@ -238,18 +247,18 @@ impl<'a> Ctx<'a> {
             "texture/triplanar" => {
                 let scale = self.input(node, "scale");
                 let sharpness = self.input(node, "sharpness");
-                let path = node.input_values.get("path")
+                let path = node.input_values.get("texture")
                     .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_default();
 
-                let tex_name = format!("mat_texture_{}", self.next_texture_binding);
-                let samp_name = format!("mat_sampler_{}", self.next_texture_binding);
-                let binding = self.next_texture_binding;
-                self.next_texture_binding += 2;
+                let slot = self.next_texture_binding;
+                let tex_name = format!("texture_{slot}");
+                let samp_name = format!("texture_{slot}_sampler");
+                self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
                     name: tex_name.clone(),
-                    binding,
+                    binding: slot,
                     asset_path: path,
                 });
 
@@ -823,17 +832,19 @@ fn mat_voronoi(p: vec2<f32>) -> vec2<f32> {
     s
 }
 
-fn texture_bindings_wgsl(ctx: &Ctx) -> String {
+fn texture_bindings_wgsl(_ctx: &Ctx) -> String {
+    // Always declare all 4 texture slots so the pipeline layout is stable.
+    // Unused slots are bound to a 1x1 white fallback on the Rust side.
+    // Bevy 0.18: MATERIAL_BIND_GROUP_INDEX = 3 (not 2).
     let mut s = String::new();
-    for tb in &ctx.texture_bindings {
+    for slot in 0..4u32 {
+        let tex_binding = 1 + slot * 2;
+        let samp_binding = tex_binding + 1;
         s.push_str(&format!(
-            "@group(3) @binding({}) var {}: texture_2d<f32>;\n",
-            tb.binding, tb.name
+            "@group(3) @binding({tex_binding}) var texture_{slot}: texture_2d<f32>;\n",
         ));
         s.push_str(&format!(
-            "@group(3) @binding({}) var {}_sampler: sampler;\n",
-            tb.binding + 1,
-            tb.name
+            "@group(3) @binding({samp_binding}) var texture_{slot}_sampler: sampler;\n",
         ));
     }
     s
@@ -843,24 +854,22 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     let base_color = resolved.get("base_color").cloned().unwrap_or("vec4<f32>(0.8, 0.8, 0.8, 1.0)".into());
     let metallic = resolved.get("metallic").cloned().unwrap_or("0.0".into());
     let roughness = resolved.get("roughness").cloned().unwrap_or("0.5".into());
-    let normal = resolved.get("normal");
+    let normal_connected = ctx.graph.connection_to(ctx.graph.output_node().unwrap().id, "normal").is_some();
+    let normal = if normal_connected { resolved.get("normal") } else { None };
     let emissive = resolved.get("emissive").cloned().unwrap_or("vec3<f32>(0.0, 0.0, 0.0)".into());
     let ao = resolved.get("ao").cloned().unwrap_or("1.0".into());
     let alpha = resolved.get("alpha").cloned().unwrap_or("1.0".into());
 
     let mut shader = String::new();
 
-    // Imports
     shader.push_str("#import bevy_pbr::{\n");
     shader.push_str("    pbr_functions,\n");
     shader.push_str("    pbr_types::PbrInput,\n");
     shader.push_str("    pbr_types::pbr_input_new,\n");
     shader.push_str("    mesh_view_bindings::view,\n");
-    shader.push_str("    mesh_bindings::mesh,\n");
+    shader.push_str("    mesh_view_bindings::globals,\n");
     shader.push_str("    forward_io::VertexOutput,\n");
-    shader.push_str("}\n");
-    shader.push_str("#import bevy_render::globals::Globals\n");
-    shader.push_str("@group(0) @binding(1) var<uniform> globals: Globals;\n\n");
+    shader.push_str("}\n\n");
 
     // Texture bindings
     shader.push_str(&texture_bindings_wgsl(ctx));
@@ -878,29 +887,29 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
         shader.push('\n');
     }
 
-    // PBR assembly
-    shader.push_str("\n    // PBR assembly\n");
-    shader.push_str("    var pbr = pbr_input_new();\n");
-    shader.push_str(&format!("    pbr.material.base_color = {base_color};\n"));
-    shader.push_str(&format!("    pbr.material.base_color.a = {alpha};\n"));
-    shader.push_str(&format!("    pbr.material.metallic = {metallic};\n"));
-    shader.push_str(&format!("    pbr.material.perceptual_roughness = {roughness};\n"));
-    shader.push_str(&format!("    pbr.material.emissive = vec4<f32>({emissive}, 1.0);\n"));
+    // PBR assembly — matches legacy BlueprintMaterial pattern
+    shader.push_str("\n    // PBR Output\n");
+    shader.push_str("    var pbr_input: PbrInput = pbr_input_new();\n");
+    shader.push_str(&format!("    pbr_input.material.base_color = {base_color};\n"));
+    shader.push_str(&format!("    pbr_input.material.metallic = {metallic};\n"));
+    shader.push_str(&format!("    pbr_input.material.perceptual_roughness = {roughness};\n"));
+    shader.push_str(&format!("    pbr_input.material.emissive = vec4<f32>({emissive}, 1.0);\n"));
+    shader.push_str(&format!("    pbr_input.diffuse_occlusion = vec3<f32>({ao});\n"));
 
     if let Some(n) = normal {
-        shader.push_str(&format!("    pbr.world_normal = {n};\n"));
-        shader.push_str(&format!("    pbr.N = {n};\n"));
+        shader.push_str(&format!("    pbr_input.world_normal = normalize({n});\n"));
+        shader.push_str(&format!("    pbr_input.N = normalize({n});\n"));
     } else {
-        shader.push_str("    pbr.world_normal = in.world_normal;\n");
-        shader.push_str("    pbr.N = normalize(in.world_normal);\n");
+        shader.push_str("    pbr_input.world_normal = in.world_normal;\n");
+        shader.push_str("    pbr_input.N = normalize(in.world_normal);\n");
     }
+    shader.push_str("    pbr_input.world_position = in.world_position;\n");
+    shader.push_str("    pbr_input.V = pbr_functions::calculate_view(in.world_position, pbr_input.is_orthographic);\n");
+    shader.push_str("    pbr_input.frag_coord = in.position;\n");
 
-    shader.push_str("    pbr.world_position = in.world_position;\n");
-    shader.push_str("    pbr.V = pbr_functions::calculate_view(in.world_position, pbr.is_orthographic);\n");
-    shader.push_str(&format!("    pbr.occlusion = vec3<f32>({ao});\n"));
-
-    shader.push_str("\n    var color = pbr_functions::apply_pbr_lighting(pbr);\n");
-    shader.push_str("    color = pbr_functions::main_pass_post_lighting_processing(pbr, color);\n");
+    shader.push_str("\n    var color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
+    shader.push_str("    color = pbr_functions::main_pass_post_lighting_processing(pbr_input, color);\n");
+    shader.push_str(&format!("    color.a = {alpha};\n"));
     shader.push_str("    return color;\n");
     shader.push_str("}\n");
 
@@ -915,8 +924,9 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
 
     let mut shader = String::new();
     shader.push_str("// Auto-generated terrain layer shader\n");
-    shader.push_str("#import bevy_render::globals::Globals\n");
-    shader.push_str("@group(0) @binding(1) var<uniform> globals: Globals;\n\n");
+    shader.push_str("#import bevy_pbr::{\n");
+    shader.push_str("    mesh_view_bindings::globals,\n");
+    shader.push_str("}\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
 
@@ -945,9 +955,10 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     let alpha = resolved.get("alpha").cloned().unwrap_or("1.0".into());
 
     let mut shader = String::new();
-    shader.push_str("#import bevy_pbr::forward_io::VertexOutput\n");
-    shader.push_str("#import bevy_render::globals::Globals\n");
-    shader.push_str("@group(0) @binding(1) var<uniform> globals: Globals;\n\n");
+    shader.push_str("#import bevy_pbr::{\n");
+    shader.push_str("    mesh_view_bindings::globals,\n");
+    shader.push_str("    forward_io::VertexOutput,\n");
+    shader.push_str("}\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
 
@@ -971,8 +982,7 @@ fn build_vegetation_vertex_shader(_ctx: &Ctx, resolved: &HashMap<String, String>
     let mut shader = String::new();
     shader.push_str("#import bevy_pbr::mesh_functions\n");
     shader.push_str("#import bevy_pbr::forward_io::{Vertex, VertexOutput}\n");
-    shader.push_str("#import bevy_render::globals::Globals\n");
-    shader.push_str("@group(0) @binding(1) var<uniform> globals: Globals;\n\n");
+    shader.push_str("#import bevy_pbr::mesh_view_bindings::globals\n\n");
 
     shader.push_str("@vertex\n");
     shader.push_str("fn vertex(in: Vertex) -> VertexOutput {\n");

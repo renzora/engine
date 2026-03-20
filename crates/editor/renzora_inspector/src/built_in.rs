@@ -10,6 +10,7 @@ use renzora_editor::{
     EditorCommands, EntityLabelColor, EntityTag, FieldDef, FieldType, FieldValue,
     InspectorEntry, InspectorRegistry, OverlayAction, OverlayEntry,
 };
+use renzora_material::material_ref::MaterialRef;
 use renzora_scripting::ScriptComponent;
 use renzora_theme::Theme;
 
@@ -32,6 +33,7 @@ pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
     registry.register(volumetric_light_entry());
     registry.register(volumetric_fog_entry());
     registry.register(script_component_entry());
+    registry.register(material_entry());
     registry.register(physics_body_entry());
     registry.register(collision_shape_entry());
 }
@@ -675,6 +677,166 @@ fn mesh3d_entry() -> InspectorEntry {
             set_fn: |_, _, _| {},
         }],
         custom_ui_fn: None,
+    }
+}
+
+/// Image extensions accepted for auto-material creation.
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
+
+fn material_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "material_ref",
+        display_name: "Material",
+        icon: regular::PAINT_BRUSH,
+        category: "rendering",
+        has_fn: |world, entity| {
+            world.get::<MaterialRef>(entity).is_some()
+                || world.get::<bevy::pbr::MeshMaterial3d<bevy::pbr::StandardMaterial>>(entity).is_some()
+                || world.get::<Mesh3d>(entity).is_some()
+        },
+        add_fn: None,
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<MaterialRef>();
+            world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(material_custom_ui),
+    }
+}
+
+/// Custom UI for the Material section: shows current MaterialRef path
+/// and accepts drops of `.material` files or images (auto-creates a material).
+fn material_custom_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let current_path = world
+        .get::<MaterialRef>(entity)
+        .map(|m| m.0.clone())
+        .unwrap_or_default();
+
+    let payload = world.get_resource::<AssetDragPayload>();
+
+    // Drop target that accepts .material files AND images
+    let mut all_exts: Vec<&str> = vec!["material"];
+    all_exts.extend_from_slice(IMAGE_EXTENSIONS);
+    let ext_refs: Vec<&str> = all_exts;
+
+    let current_display = if current_path.is_empty() { None } else { Some(current_path.as_str()) };
+
+    let drop_result = asset_drop_target(
+        ui,
+        egui::Id::new(("material_drop", entity)),
+        current_display,
+        &ext_refs,
+        "Drop material or image",
+        theme,
+        payload,
+    );
+
+    if let Some(ref dropped) = drop_result.dropped_path {
+        let ext = dropped
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        let dropped_path = dropped.clone();
+        if ext == "material" {
+            // Direct .material file drop — set MaterialRef
+            cmds.push(move |world: &mut World| {
+                let mat_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    project.make_asset_relative(&dropped_path)
+                } else {
+                    dropped_path.to_string_lossy().to_string()
+                };
+                // Remove old resolved state so resolver picks up the new ref
+                world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();
+                if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
+                    mr.0 = mat_path;
+                } else {
+                    world.entity_mut(entity).insert(MaterialRef(mat_path));
+                }
+            });
+        } else if IMAGE_EXTENSIONS.iter().any(|e| ext == *e) {
+            // Image drop — auto-create a .material file with texture→output
+            cmds.push(move |world: &mut World| {
+                let (tex_path, mat_save_dir) = {
+                    let project = world.get_resource::<renzora_core::CurrentProject>();
+                    let tex = if let Some(p) = project {
+                        p.make_asset_relative(&dropped_path)
+                    } else {
+                        dropped_path.to_string_lossy().to_string()
+                    };
+                    let dir = project
+                        .map(|p| p.path.join("assets").join("materials"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("."));
+                    (tex, dir)
+                };
+
+                // Build a simple graph: TextureSample → Surface Output
+                let mat_name = dropped_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("material")
+                    .to_string();
+
+                let mut graph = renzora_material::graph::MaterialGraph::new(
+                    &mat_name,
+                    renzora_material::graph::MaterialDomain::Surface,
+                );
+                let tex_id = graph.add_node("texture/sample", [-200.0, 0.0]);
+                if let Some(node) = graph.get_node_mut(tex_id) {
+                    node.input_values.insert(
+                        "texture".to_string(),
+                        renzora_material::graph::PinValue::TexturePath(tex_path),
+                    );
+                }
+                let output_id = graph.output_node().unwrap().id;
+                graph.connect(tex_id, "color", output_id, "base_color");
+
+                // Save the .material file
+                let _ = std::fs::create_dir_all(&mat_save_dir);
+                let mat_file = mat_save_dir.join(format!("{}.material", mat_name));
+                if let Ok(json) = serde_json::to_string_pretty(&graph) {
+                    let _ = std::fs::write(&mat_file, &json);
+                }
+
+                // Compute asset-relative path for the saved .material
+                let mat_asset_path = {
+                    let project = world.get_resource::<renzora_core::CurrentProject>();
+                    if let Some(p) = project {
+                        p.make_asset_relative(&mat_file)
+                    } else {
+                        mat_file.to_string_lossy().to_string()
+                    }
+                };
+
+                // Assign MaterialRef
+                world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();
+                if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
+                    mr.0 = mat_asset_path;
+                } else {
+                    world.entity_mut(entity).insert(MaterialRef(mat_asset_path));
+                }
+            });
+        }
+    }
+
+    if drop_result.cleared {
+        cmds.push(move |world: &mut World| {
+            world.entity_mut(entity).remove::<MaterialRef>();
+            world.entity_mut(entity).remove::<renzora_material::resolver::MaterialResolved>();
+            world.entity_mut(entity).remove::<MeshMaterial3d<renzora_material::runtime::GraphMaterial>>();
+            // Restore default StandardMaterial so the mesh renders again
+            let default_mat = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
+            world.entity_mut(entity).insert(MeshMaterial3d(default_mat));
+        });
     }
 }
 

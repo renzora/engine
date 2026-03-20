@@ -72,8 +72,8 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         }
     }
 
-    // Delete key
-    if ctx.input(|i| i.key_pressed(egui::Key::Delete)) && !state.selected_assets.is_empty() {
+    // Delete key — only when this panel area has focus
+    if ui.ui_contains_pointer() && ui.input(|i| i.key_pressed(egui::Key::Delete)) && !state.selected_assets.is_empty() {
         state.pending_delete = state.selected_assets.iter().cloned().collect();
     }
 

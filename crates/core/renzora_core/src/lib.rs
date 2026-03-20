@@ -458,6 +458,8 @@ pub struct CreateNodeRequested;
 #[derive(Resource, Default)]
 pub struct InputFocusState {
     pub egui_wants_keyboard: bool,
+    /// True when the pointer is over an egui panel (not the viewport).
+    pub egui_has_pointer: bool,
 }
 
 /// HUD data for the modal transform overlay (written by gizmo crate, read by viewport).

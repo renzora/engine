@@ -2,11 +2,14 @@
 //!
 //! Uses a weak shader handle so the WGSL source can be hot-swapped at runtime
 //! (insert a new `Shader` at the same handle to update).
+//!
+//! All 4 texture slots are always populated (with a 1x1 white fallback when unused)
+//! so the pipeline layout is stable and never changes between shader swaps.
 
 use bevy::prelude::*;
 use bevy::asset::uuid_handle;
 use bevy::pbr::{Material, MaterialPlugin as BevyMaterialPlugin};
-use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
 use bevy::shader::ShaderRef;
 
 use crate::codegen;
@@ -15,13 +18,21 @@ use crate::graph::MaterialGraph;
 // ── Shader handles ──────────────────────────────────────────────────────────
 
 /// Well-known handle for the graph material fragment shader.
-/// Insert a `Shader` at this handle to update the material's fragment stage.
 pub const GRAPH_MATERIAL_FRAG_HANDLE: Handle<Shader> =
     uuid_handle!("a1b2c3d4-e5f6-0001-dead-beefcafe0001");
 
-/// Default PBR fragment shader used when no graph has been compiled yet.
+/// Default fragment shader — declares all 4 texture slots (pipeline layout must be stable).
 const DEFAULT_FRAG: &str = r#"
 #import bevy_pbr::forward_io::VertexOutput
+
+@group(3) @binding(1) var texture_0: texture_2d<f32>;
+@group(3) @binding(2) var texture_0_sampler: sampler;
+@group(3) @binding(3) var texture_1: texture_2d<f32>;
+@group(3) @binding(4) var texture_1_sampler: sampler;
+@group(3) @binding(5) var texture_2: texture_2d<f32>;
+@group(3) @binding(6) var texture_2_sampler: sampler;
+@group(3) @binding(7) var texture_3: texture_2d<f32>;
+@group(3) @binding(8) var texture_3_sampler: sampler;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -29,50 +40,40 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+// ── Fallback texture ────────────────────────────────────────────────────────
+
+/// 1x1 white fallback image handle, always valid.
+#[derive(Resource, Clone)]
+pub struct FallbackTexture(pub Handle<Image>);
+
 // ── GraphMaterial ───────────────────────────────────────────────────────────
 
 /// A custom Bevy `Material` whose fragment shader is generated from a
-/// `MaterialGraph`. Supports up to 4 dynamically-bound textures.
+/// `MaterialGraph`. Uses `Option<Handle<Image>>` (Bevy's standard pattern
+/// for `AsBindGroup` texture layout generation) — always set to
+/// `Some(fallback)` so the pipeline layout is stable across shader hot-swaps.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct GraphMaterial {
-    /// Base color tint (multiplied in shader if desired).
     #[uniform(0)]
     pub base_color: LinearRgba,
 
-    /// Texture slot 0 (e.g. base color / albedo).
     #[texture(1)]
     #[sampler(2)]
     pub texture_0: Option<Handle<Image>>,
 
-    /// Texture slot 1 (e.g. normal map).
     #[texture(3)]
     #[sampler(4)]
     pub texture_1: Option<Handle<Image>>,
 
-    /// Texture slot 2 (e.g. metallic/roughness).
     #[texture(5)]
     #[sampler(6)]
     pub texture_2: Option<Handle<Image>>,
 
-    /// Texture slot 3 (e.g. emissive / AO).
     #[texture(7)]
     #[sampler(8)]
     pub texture_3: Option<Handle<Image>>,
 
     pub alpha_mode: AlphaMode,
-}
-
-impl Default for GraphMaterial {
-    fn default() -> Self {
-        Self {
-            base_color: LinearRgba::WHITE,
-            texture_0: None,
-            texture_1: None,
-            texture_2: None,
-            texture_3: None,
-            alpha_mode: AlphaMode::Opaque,
-        }
-    }
 }
 
 impl Material for GraphMaterial {
@@ -87,11 +88,8 @@ impl Material for GraphMaterial {
 
 // ── Resource tracking compiled shader state ─────────────────────────────────
 
-/// Tracks the latest compiled WGSL so systems can detect changes and
-/// re-insert the shader asset.
 #[derive(Resource)]
 pub struct GraphMaterialShaderState {
-    /// Hash of the last WGSL source that was inserted into the shader assets.
     pub last_wgsl_hash: Option<u64>,
 }
 
@@ -108,24 +106,52 @@ pub struct GraphMaterialPlugin;
 impl Plugin for GraphMaterialPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] GraphMaterialPlugin");
+
+        // Create fallback texture immediately during build so it's available
+        // before any GraphMaterial is created.
+        let fallback_image = Image::new(
+            Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            TextureDimension::D2,
+            vec![255, 255, 255, 255],
+            TextureFormat::Rgba8UnormSrgb,
+            default(),
+        );
+        let fallback_handle = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(fallback_image);
+        info!("[runtime] Created fallback texture: {:?}", fallback_handle);
+        app.insert_resource(FallbackTexture(fallback_handle));
+
         app.add_plugins(BevyMaterialPlugin::<GraphMaterial>::default())
             .init_resource::<GraphMaterialShaderState>()
             .add_systems(PostStartup, setup_default_shader);
     }
 }
 
-/// Insert the default PBR fragment shader so the material is valid from the start.
+/// Insert the default PBR fragment shader.
 fn setup_default_shader(mut shaders: ResMut<Assets<Shader>>) {
+    info!("[runtime] Inserting default GraphMaterial shader with {} chars", DEFAULT_FRAG.len());
     let shader = Shader::from_wgsl(DEFAULT_FRAG.to_string(), "graph_material://default");
     let _ = shaders.insert(&GRAPH_MATERIAL_FRAG_HANDLE, shader);
 }
 
 // ── Public helpers ──────────────────────────────────────────────────────────
 
+/// Create a `GraphMaterial` with all slots set to the fallback texture.
+pub fn new_graph_material(fallback: &FallbackTexture) -> GraphMaterial {
+    GraphMaterial {
+        base_color: LinearRgba::WHITE,
+        texture_0: Some(fallback.0.clone()),
+        texture_1: Some(fallback.0.clone()),
+        texture_2: Some(fallback.0.clone()),
+        texture_3: Some(fallback.0.clone()),
+        alpha_mode: AlphaMode::Opaque,
+    }
+}
+
 /// Compile a `MaterialGraph` and insert the resulting WGSL into the shader
 /// assets, replacing the previous shader at `GRAPH_MATERIAL_FRAG_HANDLE`.
-///
-/// Returns the `CompileResult` for error reporting.
 pub fn apply_compiled_shader(
     graph: &MaterialGraph,
     shaders: &mut Assets<Shader>,

@@ -53,86 +53,64 @@ pub struct MessageResponse {
     pub message: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
 // ── API calls (blocking, run on background thread) ──
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn login(email: &str, password: &str) -> Result<AuthResponse, String> {
-    let body = serde_json::to_string(&LoginRequest {
-        email: email.to_string(),
-        password: password.to_string(),
-    })
-    .map_err(|e| e.to_string())?;
+fn post_json<T: serde::de::DeserializeOwned>(url: &str, body: &impl Serialize) -> Result<T, String> {
+    let json = serde_json::to_string(body).map_err(|e| e.to_string())?;
 
-    let response = ureq::post(&format!("{API_BASE}/api/auth/login"))
+    let response = ureq::post(url)
         .header("Content-Type", "application/json")
-        .send(body.as_bytes())
-        .map_err(|e| parse_error(e))?;
+        .send(json.as_bytes())
+        .map_err(|e| format!("Request failed: {e}"))?;
 
-    let auth: AuthResponse = response.body_mut().read_json().map_err(|e| e.to_string())?;
-    Ok(auth)
+    let body_str = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn login(email: &str, password: &str) -> Result<AuthResponse, String> {
+    post_json(
+        &format!("{API_BASE}/api/auth/login"),
+        &LoginRequest {
+            email: email.to_string(),
+            password: password.to_string(),
+        },
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn register(username: &str, email: &str, password: &str) -> Result<AuthResponse, String> {
-    let body = serde_json::to_string(&RegisterRequest {
-        username: username.to_string(),
-        email: email.to_string(),
-        password: password.to_string(),
-    })
-    .map_err(|e| e.to_string())?;
-
-    let response = ureq::post(&format!("{API_BASE}/api/auth/register"))
-        .header("Content-Type", "application/json")
-        .send(body.as_bytes())
-        .map_err(|e| parse_error(e))?;
-
-    let auth: AuthResponse = response.body_mut().read_json().map_err(|e| e.to_string())?;
-    Ok(auth)
+    post_json(
+        &format!("{API_BASE}/api/auth/register"),
+        &RegisterRequest {
+            username: username.to_string(),
+            email: email.to_string(),
+            password: password.to_string(),
+        },
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn refresh_token(refresh_token: &str) -> Result<AuthResponse, String> {
-    let body = serde_json::to_string(&RefreshRequest {
-        refresh_token: refresh_token.to_string(),
-    })
-    .map_err(|e| e.to_string())?;
-
-    let response = ureq::post(&format!("{API_BASE}/api/auth/refresh"))
-        .header("Content-Type", "application/json")
-        .send(body.as_bytes())
-        .map_err(|e| parse_error(e))?;
-
-    let auth: AuthResponse = response.body_mut().read_json().map_err(|e| e.to_string())?;
-    Ok(auth)
+    post_json(
+        &format!("{API_BASE}/api/auth/refresh"),
+        &RefreshRequest {
+            refresh_token: refresh_token.to_string(),
+        },
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn forgot_password(email: &str) -> Result<MessageResponse, String> {
-    let body = serde_json::to_string(&ForgotPasswordRequest {
-        email: email.to_string(),
-    })
-    .map_err(|e| e.to_string())?;
-
-    let response = ureq::post(&format!("{API_BASE}/api/auth/forgot"))
-        .header("Content-Type", "application/json")
-        .send(body.as_bytes())
-        .map_err(|e| parse_error(e))?;
-
-    let msg: MessageResponse = response.body_mut().read_json().map_err(|e| e.to_string())?;
-    Ok(msg)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn parse_error(err: ureq::Error) -> String {
-    match err {
-        ureq::Error::StatusCode(code) => {
-            format!("Request failed (HTTP {code})")
-        }
-        other => other.to_string(),
-    }
+    post_json(
+        &format!("{API_BASE}/api/auth/forgot"),
+        &ForgotPasswordRequest {
+            email: email.to_string(),
+        },
+    )
 }
