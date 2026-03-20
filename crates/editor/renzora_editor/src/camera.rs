@@ -3,6 +3,10 @@
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 
+/// Marker for the editor's egui UI camera so play mode can disable it.
+#[derive(Component)]
+pub struct EditorUiCamera;
+
 /// Spawns the UI camera used for the egui overlay.
 ///
 /// Explicitly inserts `PrimaryEguiContext` so bevy_egui renders on THIS camera
@@ -18,5 +22,6 @@ pub fn spawn_ui_camera(mut commands: Commands) {
             ..default()
         },
         PrimaryEguiContext,
+        EditorUiCamera,
     ));
 }

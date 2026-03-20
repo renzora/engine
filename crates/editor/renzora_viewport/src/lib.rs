@@ -613,6 +613,12 @@ fn handle_play_shortcuts(
     input_focus: Res<renzora_core::InputFocusState>,
     mut play_mode: ResMut<renzora_runtime::PlayModeState>,
 ) {
+    // Escape exits play mode — always, regardless of focus state
+    if keyboard.just_pressed(KeyCode::Escape) && play_mode.is_in_play_mode() {
+        play_mode.request_stop = true;
+        return;
+    }
+
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
 

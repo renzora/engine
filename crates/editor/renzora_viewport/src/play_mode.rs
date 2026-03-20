@@ -1,7 +1,8 @@
 //! Play mode — switches from editor camera to game camera for in-editor playtesting.
 
 use bevy::prelude::*;
-use bevy::camera::RenderTarget;
+use bevy::camera::{ClearColorConfig, RenderTarget};
+use renzora_editor::camera::EditorUiCamera;
 use renzora_runtime::{
     DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, PlayState,
     SceneCamera, ViewportRenderTarget,
@@ -104,15 +105,17 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         console_info("PlayMode", format!("Configured camera {:?}: active=true order=0", cam_entity));
     }
 
-    // Point at viewport render target
-    let render_target: Option<Handle<Image>> = world.get_resource::<ViewportRenderTarget>()
-        .and_then(|vrt| vrt.image.clone());
-    if let Some(ref img) = render_target {
-        let rt = RenderTarget::Image(Handle::<Image>::clone(img).into());
-        world.entity_mut(cam_entity).insert(rt);
-        console_info("PlayMode", format!("Set render target on {:?} to viewport image", cam_entity));
-    } else {
-        console_warn("PlayMode", format!("No viewport image — camera {:?} renders to window", cam_entity));
+    // Render directly to the primary window (replace any offscreen render target)
+    world.entity_mut(cam_entity).insert(RenderTarget::default());
+    console_info("PlayMode", format!("Camera {:?} target set to primary window", cam_entity));
+
+    // Disable the egui UI camera so it doesn't paint over the game output
+    let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
+    let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
+    for entity in ui_cams {
+        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+            camera.is_active = false;
+        }
     }
 
     world.entity_mut(cam_entity).insert(PlayModeCamera);
@@ -148,14 +151,12 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         if let Some(mut cam) = world.get_mut::<Camera>(entity) {
             cam.is_active = false;
         }
-        let mut em = world.entity_mut(entity);
-        em.remove::<PlayModeCamera>();
-        em.remove::<RenderTarget>();
-        em.remove::<Camera>();
-        em.remove::<Camera3d>();
+        world.entity_mut(entity).remove::<PlayModeCamera>();
+        world.entity_mut(entity).remove::<Camera>();
+        world.entity_mut(entity).remove::<Camera3d>();
     }
 
-    // Re-enable editor camera and restore its render target
+    // Re-enable editor camera and restore its render target to viewport image
     let viewport_image = world.get_resource::<ViewportRenderTarget>()
         .and_then(|vrt| vrt.image.clone());
 
@@ -171,6 +172,15 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         if let Some(ref img) = viewport_image {
             world.entity_mut(entity)
                 .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
+        }
+    }
+
+    // Re-enable the egui UI camera
+    let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
+    let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
+    for entity in ui_cams {
+        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+            camera.is_active = true;
         }
     }
 
