@@ -1,11 +1,20 @@
 pub mod data;
 pub mod properties;
 pub mod backend;
+pub mod character_controller;
+pub mod character_controller_systems;
 
 pub use data::*;
 pub use properties::*;
+pub use character_controller::*;
 
 use bevy::prelude::*;
+use renzora_core::PlayModeState;
+
+/// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
+fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
+    play_mode.map_or(true, |pm| !pm.is_editing())
+}
 
 #[cfg(not(any(feature = "avian", feature = "rapier")))]
 compile_error!("renzora_physics requires either the `avian` or `rapier` feature");
@@ -27,7 +36,9 @@ impl Plugin for PhysicsPlugin {
         app.register_type::<PhysicsBodyData>()
             .register_type::<PhysicsBodyType>()
             .register_type::<CollisionShapeData>()
-            .register_type::<CollisionShapeType>();
+            .register_type::<CollisionShapeType>()
+            .register_type::<CharacterControllerData>()
+            .register_type::<CharacterControllerInput>();
 
         #[cfg(feature = "avian")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
@@ -36,6 +47,37 @@ impl Plugin for PhysicsPlugin {
         app.add_plugins(backend::rapier::RapierBackendPlugin { start_paused });
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
+
+        // Character controller systems — only active during play mode.
+        app.add_systems(PreUpdate, (
+            character_controller_systems::clear_character_input,
+            character_controller_systems::auto_input_from_actions,
+        )
+            .chain()
+            .after(renzora_input::state::update_action_state)
+            .run_if(not_editing));
+        app.add_systems(Update,
+            character_controller_systems::auto_init_character_controller,
+        );
+        app.add_systems(Update,
+            character_controller_systems::process_character_commands
+                .run_if(not_editing),
+        );
+
+        #[cfg(feature = "avian")]
+        {
+            app.add_systems(
+                Update,
+                (
+                    backend::avian_character::character_ground_check,
+                    backend::avian_character::character_movement,
+                    backend::avian_character::character_apply_velocity,
+                )
+                    .chain()
+                    .after(character_controller_systems::process_character_commands)
+                    .run_if(not_editing),
+            );
+        }
     }
 }
 

@@ -908,6 +908,64 @@ pub static GET_GAMEPAD: BlueprintNodeDef = BlueprintNodeDef {
 };
 
 // =============================================================================
+// INPUT ACTION NODES
+// =============================================================================
+
+pub static IS_ACTION_PRESSED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/is_action_pressed",
+    display_name: "Is Action Pressed",
+    category: CAT_INPUT,
+    description: "Check if a named input action is currently held",
+    pins: || vec![
+        PinTemplate::input("action", "Action", PinType::String)
+            .with_default(PinValue::String("jump".into())),
+        PinTemplate::output("pressed", "Pressed", PinType::Bool),
+    ],
+    color: CLR_INPUT,
+};
+
+pub static IS_ACTION_JUST_PRESSED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/is_action_just_pressed",
+    display_name: "Is Action Just Pressed",
+    category: CAT_INPUT,
+    description: "Check if a named input action was just pressed this frame",
+    pins: || vec![
+        PinTemplate::input("action", "Action", PinType::String)
+            .with_default(PinValue::String("jump".into())),
+        PinTemplate::output("pressed", "Pressed", PinType::Bool),
+    ],
+    color: CLR_INPUT,
+};
+
+pub static GET_ACTION_AXIS: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/get_action_axis",
+    display_name: "Get Action Axis",
+    category: CAT_INPUT,
+    description: "Get a 1D axis value from a named input action (-1 to 1)",
+    pins: || vec![
+        PinTemplate::input("action", "Action", PinType::String)
+            .with_default(PinValue::String("move".into())),
+        PinTemplate::output("value", "Value", PinType::Float),
+    ],
+    color: CLR_INPUT,
+};
+
+pub static GET_ACTION_AXIS2D: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/get_action_axis2d",
+    display_name: "Get Action Axis 2D",
+    category: CAT_INPUT,
+    description: "Get a 2D axis value from a named input action (e.g. movement)",
+    pins: || vec![
+        PinTemplate::input("action", "Action", PinType::String)
+            .with_default(PinValue::String("move".into())),
+        PinTemplate::output("value", "Value", PinType::Vec2),
+        PinTemplate::output("x", "X", PinType::Float),
+        PinTemplate::output("y", "Y", PinType::Float),
+    ],
+    color: CLR_INPUT,
+};
+
+// =============================================================================
 // ENTITY NODES
 // =============================================================================
 
@@ -1078,6 +1136,73 @@ pub static RAYCAST: BlueprintNodeDef = BlueprintNodeDef {
         PinTemplate::output("normal", "Hit Normal", PinType::Vec3),
         PinTemplate::output("entity", "Hit Entity", PinType::Entity),
         PinTemplate::output("distance", "Distance", PinType::Float),
+    ],
+    color: CLR_PHYSICS,
+};
+
+// =============================================================================
+// CHARACTER CONTROLLER NODES
+// =============================================================================
+
+pub static CHARACTER_MOVE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "character/move",
+    display_name: "Character Move",
+    category: CAT_PHYSICS,
+    description: "Set character movement direction (XZ plane)",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("direction", "Direction", PinType::Vec2)
+            .with_default(PinValue::Vec2([0.0, 0.0])),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static CHARACTER_JUMP: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "character/jump",
+    display_name: "Character Jump",
+    category: CAT_PHYSICS,
+    description: "Make the character jump",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static CHARACTER_SPRINT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "character/sprint",
+    display_name: "Character Sprint",
+    category: CAT_PHYSICS,
+    description: "Set character sprint state",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("sprinting", "Sprinting", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static CHARACTER_IS_GROUNDED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "character/is_grounded",
+    display_name: "Is Grounded",
+    category: CAT_PHYSICS,
+    description: "Check if the character is on the ground",
+    pins: || vec![
+        PinTemplate::output("grounded", "Grounded", PinType::Bool),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static CHARACTER_GET_VELOCITY: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "character/get_velocity",
+    display_name: "Get Velocity",
+    category: CAT_PHYSICS,
+    description: "Get the character controller's current velocity",
+    pins: || vec![
+        PinTemplate::output("velocity", "Velocity", PinType::Vec3),
+        PinTemplate::output("speed", "Speed", PinType::Float),
     ],
     color: CLR_PHYSICS,
 };
@@ -1752,12 +1877,14 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     // Input
     &GET_MOVEMENT, &IS_KEY_PRESSED, &IS_KEY_JUST_PRESSED,
     &GET_MOUSE_POSITION, &IS_MOUSE_PRESSED, &GET_GAMEPAD,
+    &IS_ACTION_PRESSED, &IS_ACTION_JUST_PRESSED, &GET_ACTION_AXIS, &GET_ACTION_AXIS2D,
     // Entity
     &GET_SELF, &GET_ENTITY, &SPAWN_ENTITY, &DESPAWN_ENTITY, &DESPAWN_SELF,
     // Component
     &GET_COMPONENT, &SET_COMPONENT,
     // Physics
     &APPLY_FORCE, &APPLY_IMPULSE, &SET_VELOCITY, &RAYCAST,
+    &CHARACTER_MOVE, &CHARACTER_JUMP, &CHARACTER_SPRINT, &CHARACTER_IS_GROUNDED, &CHARACTER_GET_VELOCITY,
     // Audio
     &PLAY_SOUND, &PLAY_MUSIC, &STOP_MUSIC,
     // UI

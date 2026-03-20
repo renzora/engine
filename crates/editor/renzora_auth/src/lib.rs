@@ -46,6 +46,8 @@ pub struct AuthState {
     pub error: Option<String>,
     /// Whether an API call is in flight.
     pub loading: bool,
+    /// Set to `true` when sign-in succeeds so the editor can react (e.g. switch layout).
+    pub just_signed_in: bool,
     /// Channel receiver for background API results.
     receiver: Option<Mutex<mpsc::Receiver<AuthResult>>>,
 }
@@ -62,6 +64,7 @@ impl Default for AuthState {
             status: None,
             error: None,
             loading: false,
+            just_signed_in: false,
             receiver: None,
         }
     }
@@ -84,9 +87,10 @@ pub fn render_auth_window(
     let accent = theme.semantic.accent.to_color32();
     let text_secondary = theme.text.secondary.to_color32();
 
-    // If signed in, show the account view instead
+    // If signed in, no need for the auth window — the title-bar dropdown
+    // handles settings / sign-out / library.
     if session.is_signed_in() {
-        render_account_view(ctx, theme, state, session, accent, text_secondary);
+        state.window_open = false;
         return;
     }
 
@@ -166,10 +170,12 @@ fn poll_auth_result(state: &mut AuthState, session: &mut AuthSession) {
                 #[cfg(not(target_arch = "wasm32"))]
                 session::save_session(session);
                 state.error = None;
-                state.status = Some(format!("Welcome, {}!", response.user.username));
-                // Clear form fields
+                state.status = None;
+                // Clear form fields and close window — editor will handle the transition
                 state.password.clear();
                 state.confirm_password.clear();
+                state.window_open = false;
+                state.just_signed_in = true;
             }
             AuthResult::ForgotSuccess(msg) => {
                 state.error = None;
@@ -491,103 +497,6 @@ fn render_forgot_password_form(
             state.status = None;
         }
     });
-}
-
-/// Render the signed-in account view (replaces the sign-in form).
-fn render_account_view(
-    ctx: &egui::Context,
-    theme: &Theme,
-    state: &mut AuthState,
-    session: &mut AuthSession,
-    accent: Color32,
-    text_secondary: Color32,
-) {
-    let mut open = state.window_open;
-
-    egui::Window::new("Account")
-        .id(egui::Id::new("auth_window"))
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .fixed_size([320.0, 0.0])
-        .frame(
-            egui::Frame::window(&ctx.style())
-                .fill(theme.surfaces.panel.to_color32())
-                .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
-                .corner_radius(egui::CornerRadius::same(8)),
-        )
-        .show(ctx, |ui| {
-            ui.add_space(8.0);
-
-            if let Some(user) = &session.user {
-                // User icon + name
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(egui_phosphor::regular::USER_CIRCLE)
-                            .size(32.0)
-                            .color(accent),
-                    );
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(&user.username)
-                                .size(14.0)
-                                .strong(),
-                        );
-                        ui.label(
-                            egui::RichText::new(&user.email)
-                                .size(11.0)
-                                .color(text_secondary),
-                        );
-                    });
-                });
-
-                ui.add_space(12.0);
-
-                // Credits balance
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("Credits:")
-                            .size(12.0)
-                            .color(text_secondary),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!("{}", user.credit_balance))
-                            .size(12.0)
-                            .strong(),
-                    );
-                });
-
-                ui.add_space(16.0);
-            }
-
-            // Sign Out button
-            let btn = ui.add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(
-                    egui::RichText::new("Sign Out")
-                        .color(Color32::WHITE)
-                        .size(13.0),
-                )
-                .fill(Color32::from_rgb(220, 38, 38))
-                .corner_radius(egui::CornerRadius::same(4)),
-            );
-            if btn.hovered() {
-                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-            }
-            if btn.clicked() {
-                session.clear();
-                #[cfg(not(target_arch = "wasm32"))]
-                session::delete_session();
-                state.status = None;
-                state.error = None;
-                state.view = AuthView::SignIn;
-            }
-
-            ui.add_space(4.0);
-        });
-
-    state.window_open = open;
 }
 
 /// Try to restore a previously saved session on startup.

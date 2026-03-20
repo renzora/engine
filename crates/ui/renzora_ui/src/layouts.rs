@@ -35,6 +35,7 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
             WorkspaceLayout { name: "Lifecycle".into(), tree: layout_lifecycle() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
+            WorkspaceLayout { name: "Hub".into(), tree: layout_hub() },
         ];
 
 
@@ -393,6 +394,15 @@ fn layout_lifecycle() -> DockTree {
             0.75,
         ),
         0.18,
+    )
+}
+
+/// Hub: MyLibrary | Store
+fn layout_hub() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("hub_library"),
+        DockTree::leaf("hub_store"),
+        0.22,
     )
 }
 

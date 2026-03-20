@@ -36,6 +36,7 @@ pub fn register_built_in_inspectors(registry: &mut InspectorRegistry) {
     registry.register(material_entry());
     registry.register(physics_body_entry());
     registry.register(collision_shape_entry());
+    registry.register(character_controller_entry());
 }
 
 fn name_entry() -> InspectorEntry {
@@ -1904,4 +1905,187 @@ fn collision_shape_ui(
     });
 }
 
+// ── Character Controller ────────────────────────────────────────────────────
+
+fn character_controller_entry() -> InspectorEntry {
+    use renzora_physics::CharacterControllerData;
+
+    InspectorEntry {
+        type_id: "character_controller",
+        display_name: "Character Controller",
+        icon: regular::PERSON_SIMPLE_RUN,
+        category: "physics",
+        has_fn: |world, entity| world.get::<CharacterControllerData>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(CharacterControllerData::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<CharacterControllerData>();
+            world.entity_mut(entity).remove::<renzora_physics::CharacterControllerState>();
+            world.entity_mut(entity).remove::<renzora_physics::CharacterControllerInput>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(character_controller_ui),
+    }
+}
+
+fn character_controller_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    use renzora_physics::CharacterControllerData;
+
+    let Some(cc) = world.get::<CharacterControllerData>(entity) else { return };
+    let cc = cc.clone();
+
+    // Auto Input toggle
+    inline_property(ui, 0, "Auto Input", theme, |ui| {
+        let id = ui.id().with("cc_auto_input");
+        if toggle_switch(ui, id, cc.auto_input) {
+            let val = !cc.auto_input;
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.auto_input = val; }
+            });
+        }
+    });
+
+    // Action names (only shown when auto_input is on)
+    if cc.auto_input {
+        inline_property(ui, 1, "Move Action", theme, |ui| {
+            let mut v = cc.move_action.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(100.0)).changed() {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.move_action = v; }
+                });
+            }
+        });
+        inline_property(ui, 0, "Jump Action", theme, |ui| {
+            let mut v = cc.jump_action.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(100.0)).changed() {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.jump_action = v; }
+                });
+            }
+        });
+        inline_property(ui, 1, "Sprint Action", theme, |ui| {
+            let mut v = cc.sprint_action.clone();
+            if ui.add(egui::TextEdit::singleline(&mut v).desired_width(100.0)).changed() {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.sprint_action = v; }
+                });
+            }
+        });
+    }
+
+    // Move Speed
+    inline_property(ui, 0, "Move Speed", theme, |ui| {
+        let mut v = cc.move_speed;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.1).range(0.0..=100.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.move_speed = v; }
+            });
+        }
+    });
+
+    // Sprint Multiplier
+    inline_property(ui, 1, "Sprint Multiplier", theme, |ui| {
+        let mut v = cc.sprint_multiplier;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.05).range(1.0..=5.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.sprint_multiplier = v; }
+            });
+        }
+    });
+
+    // Jump Force
+    inline_property(ui, 0, "Jump Force", theme, |ui| {
+        let mut v = cc.jump_force;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.1).range(0.0..=50.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.jump_force = v; }
+            });
+        }
+    });
+
+    // Gravity Scale
+    inline_property(ui, 1, "Gravity Scale", theme, |ui| {
+        let mut v = cc.gravity_scale;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.05).range(-10.0..=10.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.gravity_scale = v; }
+            });
+        }
+    });
+
+    // Max Slope Angle
+    inline_property(ui, 0, "Max Slope Angle", theme, |ui| {
+        let mut v = cc.max_slope_angle;
+        if ui.add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=90.0).suffix("°")).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.max_slope_angle = v; }
+            });
+        }
+    });
+
+    // Ground Distance
+    inline_property(ui, 1, "Ground Distance", theme, |ui| {
+        let mut v = cc.ground_distance;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.01..=1.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.ground_distance = v; }
+            });
+        }
+    });
+
+    // Air Control
+    inline_property(ui, 0, "Air Control", theme, |ui| {
+        let mut v = cc.air_control;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.05).range(0.0..=1.0)).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.air_control = v; }
+            });
+        }
+    });
+
+    // Coyote Time
+    inline_property(ui, 1, "Coyote Time", theme, |ui| {
+        let mut v = cc.coyote_time;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0).suffix("s")).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.coyote_time = v; }
+            });
+        }
+    });
+
+    // Jump Buffer Time
+    inline_property(ui, 0, "Jump Buffer", theme, |ui| {
+        let mut v = cc.jump_buffer_time;
+        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0).suffix("s")).changed() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut c) = w.get_mut::<CharacterControllerData>(entity) { c.jump_buffer_time = v; }
+            });
+        }
+    });
+
+    // Runtime state (read-only, shown when playing)
+    if let Some(state) = world.get::<renzora_physics::CharacterControllerState>(entity) {
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Runtime State").size(11.0).color(theme.text.muted.to_color32()));
+        inline_property(ui, 1, "Grounded", theme, |ui| {
+            ui.label(if state.is_grounded { "Yes" } else { "No" });
+        });
+        inline_property(ui, 0, "Velocity", theme, |ui| {
+            ui.label(format!("{:.1}, {:.1}, {:.1}", state.velocity.x, state.velocity.y, state.velocity.z));
+        });
+        inline_property(ui, 1, "Speed", theme, |ui| {
+            let speed = Vec3::new(state.velocity.x, 0.0, state.velocity.z).length();
+            ui.label(format!("{:.1}", speed));
+        });
+    }
+}
 

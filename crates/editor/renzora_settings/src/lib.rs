@@ -11,7 +11,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP,
     FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
-    WRENCH, GRID_FOUR, CUBE,
+    WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER,
 };
 
 use renzora_editor::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -113,6 +113,53 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
         save_requested: false,
     };
 
+    let input_map = world.get_resource::<renzora_input::InputMap>().cloned().unwrap_or_default();
+    let mut input_map_mut = input_map.clone();
+    let mut input_ui_state = world.remove_resource::<InputUiState>().unwrap_or_default();
+
+    // Capture gamepad input for the listen-mode binding UI.
+    // Must be read here (outside egui closure) since gamepads are Bevy resources.
+    input_ui_state.captured_gamepad = None;
+    if input_ui_state.listening {
+        use bevy::input::gamepad::{Gamepad, GamepadButton as GpBtn};
+        let mut gp_query = world.query::<&Gamepad>();
+        for gamepad in gp_query.iter(world) {
+            for btn in [
+                GpBtn::South, GpBtn::East, GpBtn::West, GpBtn::North,
+                GpBtn::LeftTrigger, GpBtn::RightTrigger,
+                GpBtn::LeftTrigger2, GpBtn::RightTrigger2,
+                GpBtn::Select, GpBtn::Start,
+                GpBtn::LeftThumb, GpBtn::RightThumb,
+                GpBtn::DPadUp, GpBtn::DPadDown,
+                GpBtn::DPadLeft, GpBtn::DPadRight,
+            ] {
+                if gamepad.just_pressed(btn) {
+                    input_ui_state.captured_gamepad = Some(
+                        renzora_input::InputBinding::GamepadButton(format!("{:?}", btn))
+                    );
+                    break;
+                }
+            }
+            if input_ui_state.captured_gamepad.is_some() { break; }
+
+            // Also check stick axes for axis bindings
+            let left = gamepad.left_stick();
+            let right = gamepad.right_stick();
+            if left.length() > 0.8 {
+                input_ui_state.captured_gamepad = Some(
+                    renzora_input::InputBinding::GamepadAxis("LeftStickX".into())
+                );
+                break;
+            }
+            if right.length() > 0.8 {
+                input_ui_state.captured_gamepad = Some(
+                    renzora_input::InputBinding::GamepadAxis("RightStickX".into())
+                );
+                break;
+            }
+        }
+    }
+
     let mut settings_mut = settings.clone();
     let mut keybindings_mut = keybindings.clone();
     let mut viewport_mut = viewport_settings.clone();
@@ -149,6 +196,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                     SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
                     SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &theme),
                     SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
+                    SettingsTab::Input => render_input_tab(ui, &mut input_map_mut, &mut input_ui_state, &theme),
                     SettingsTab::Plugins => render_placeholder_tab(ui, &theme, "Plugins", "Plugin management coming soon."),
                 }
             });
@@ -207,6 +255,20 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
             tm.save_theme(&name);
         }
     }
+
+    // Write back input map changes and save to disk
+    if input_map_mut.actions != input_map.actions {
+        // Save to project file
+        if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+            if let Err(e) = renzora_input::save_input_map(&input_map_mut, project) {
+                warn!("Failed to save input map: {}", e);
+            }
+        }
+        if let Some(mut res) = world.get_resource_mut::<renzora_input::InputMap>() {
+            *res = input_map_mut;
+        }
+    }
+    world.insert_resource(input_ui_state);
 
 }
 
@@ -340,6 +402,7 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
         (SettingsTab::Viewport,  CUBE,             "Viewport"),
         (SettingsTab::Shortcuts, KEYBOARD,         "Shortcuts"),
         (SettingsTab::Theme,     PALETTE,          "Theme"),
+        (SettingsTab::Input,     GAME_CONTROLLER,  "Input"),
     ];
 
     ui.horizontal(|ui| {
@@ -855,6 +918,268 @@ fn theme_color_row_mut(
                 });
             });
         });
+}
+
+// ── Input tab ───────────────────────────────────────────────────────────────
+
+/// Persistent UI state for the input settings tab.
+#[derive(Resource, Default)]
+struct InputUiState {
+    /// Index of the currently selected action.
+    selected: Option<usize>,
+    /// When `Some`, we are listening for the next key/button press to create a binding.
+    listening: bool,
+    /// Name buffer for the new action being added.
+    new_action_name: String,
+    /// Gamepad binding captured this frame (read from Bevy input, outside egui closure).
+    captured_gamepad: Option<renzora_input::InputBinding>,
+}
+
+fn render_input_tab(
+    ui: &mut egui::Ui,
+    input_map: &mut renzora_input::InputMap,
+    ui_state: &mut InputUiState,
+    theme: &Theme,
+) {
+    use renzora_input::{ActionKind, InputAction, InputBinding};
+
+    let text_primary = theme.text.primary.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
+
+    render_category(ui, GAME_CONTROLLER, "Input Actions", CategoryStyle::interface(), "settings_input_actions", true, theme, |ui| {
+        // Action list
+        let mut remove_idx: Option<usize> = None;
+        for (i, action) in input_map.actions.iter().enumerate() {
+            let is_selected = ui_state.selected == Some(i);
+            let bg = if is_selected {
+                theme.panels.tab_active.to_color32()
+            } else if i % 2 == 0 {
+                theme.panels.inspector_row_even.to_color32()
+            } else {
+                theme.panels.inspector_row_odd.to_color32()
+            };
+            let kind_label = match action.kind {
+                ActionKind::Button => "Button",
+                ActionKind::Axis1D => "Axis1D",
+                ActionKind::Axis2D => "Axis2D",
+            };
+
+            egui::Frame::new()
+                .fill(bg)
+                .inner_margin(egui::Margin::symmetric(6, 3))
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width() - 12.0);
+                    ui.horizontal(|ui| {
+                        let label_text = format!("{}  ({})", action.name, kind_label);
+                        let resp = ui.selectable_label(is_selected,
+                            RichText::new(&label_text).size(12.0));
+                        if resp.clicked() {
+                            ui_state.selected = if is_selected { None } else { Some(i) };
+                            ui_state.listening = false;
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button(RichText::new("\u{2715}").size(11.0).color(theme.semantic.error.to_color32())).clicked() {
+                                remove_idx = Some(i);
+                            }
+                        });
+                    });
+                });
+        }
+
+        // Remove action if requested
+        if let Some(idx) = remove_idx {
+            input_map.actions.remove(idx);
+            if ui_state.selected == Some(idx) {
+                ui_state.selected = None;
+            } else if let Some(sel) = ui_state.selected {
+                if sel > idx {
+                    ui_state.selected = Some(sel - 1);
+                }
+            }
+        }
+
+        ui.add_space(4.0);
+
+        // Add action row
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut ui_state.new_action_name)
+                .desired_width(120.0)
+                .hint_text("Action name..."));
+
+            if ui.button(RichText::new("+ Button").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
+                let name = std::mem::take(&mut ui_state.new_action_name);
+                input_map.add(InputAction::button(name, vec![]));
+            }
+            if ui.button(RichText::new("+ Axis2D").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
+                let name = std::mem::take(&mut ui_state.new_action_name);
+                input_map.add(InputAction::axis_2d(name, vec![], 0.15));
+            }
+        });
+    });
+
+    // Selected action detail
+    if let Some(sel) = ui_state.selected {
+        if sel < input_map.actions.len() {
+            ui.add_space(4.0);
+            render_category(ui, KEYBOARD, "Bindings", CategoryStyle::shortcuts(), "settings_input_bindings", true, theme, |ui| {
+                let action = &mut input_map.actions[sel];
+
+                // Dead zone (for axis types)
+                if action.kind != ActionKind::Button {
+                    settings_row(ui, 0, "Dead Zone", theme, |ui| {
+                        ui.add(egui::Slider::new(&mut action.dead_zone, 0.0..=0.5).step_by(0.01))
+                    });
+                    ui.add_space(4.0);
+                }
+
+                // Existing bindings
+                let mut remove_binding: Option<usize> = None;
+                for (bi, binding) in action.bindings.iter().enumerate() {
+                    let bg = if bi % 2 == 0 {
+                        theme.panels.inspector_row_even.to_color32()
+                    } else {
+                        theme.panels.inspector_row_odd.to_color32()
+                    };
+
+                    egui::Frame::new()
+                        .fill(bg)
+                        .inner_margin(egui::Margin::symmetric(6, 3))
+                        .show(ui, |ui| {
+                            ui.set_min_width(ui.available_width() - 12.0);
+                            ui.horizontal(|ui| {
+                                let label = format_binding(binding);
+                                ui.label(RichText::new(label).size(12.0).color(text_primary));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.small_button(RichText::new("\u{2715}").size(11.0).color(theme.semantic.error.to_color32())).clicked() {
+                                        remove_binding = Some(bi);
+                                    }
+                                });
+                            });
+                        });
+                }
+
+                if let Some(bi) = remove_binding {
+                    action.bindings.remove(bi);
+                }
+
+                ui.add_space(4.0);
+
+                // Add binding
+                if ui_state.listening {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Press any key, mouse button, or gamepad button...")
+                            .size(12.0).color(accent_color).italics());
+                        if ui.small_button("Cancel").clicked() {
+                            ui_state.listening = false;
+                        }
+                    });
+
+                    // Capture key press
+                    let captured = ui.input(|i| {
+                        for event in &i.events {
+                            match event {
+                                egui::Event::Key { key, pressed: true, .. } => {
+                                    if let Some(key_str) = egui_key_to_key_string(*key) {
+                                        return Some(InputBinding::Key(key_str));
+                                    }
+                                }
+                                egui::Event::PointerButton { button, pressed: true, .. } => {
+                                    let mb_str = match button {
+                                        egui::PointerButton::Primary => "Left",
+                                        egui::PointerButton::Secondary => "Right",
+                                        egui::PointerButton::Middle => "Middle",
+                                        _ => "Left",
+                                    };
+                                    return Some(InputBinding::MouseButton(mb_str.into()));
+                                }
+                                _ => {}
+                            }
+                        }
+                        None
+                    });
+
+                    // Merge keyboard/mouse capture (from egui) with gamepad capture (from Bevy)
+                    let final_binding = captured.or_else(|| ui_state.captured_gamepad.take());
+
+                    if let Some(binding) = final_binding {
+                        let action = &mut input_map.actions[sel];
+                        action.bindings.push(binding);
+                        ui_state.listening = false;
+                    }
+                } else {
+                    ui.horizontal(|ui| {
+                        if ui.button(RichText::new("+ Add Binding").size(11.0)).clicked() {
+                            ui_state.listening = true;
+                        }
+                        if action.kind == ActionKind::Axis2D {
+                            if ui.button(RichText::new("+ Add WASD").size(11.0)).clicked() {
+                                action.bindings.push(InputBinding::Composite2D {
+                                    up: "KeyW".into(),
+                                    down: "KeyS".into(),
+                                    left: "KeyA".into(),
+                                    right: "KeyD".into(),
+                                });
+                            }
+                            if ui.button(RichText::new("+ Add Arrows").size(11.0)).clicked() {
+                                action.bindings.push(InputBinding::Composite2D {
+                                    up: "ArrowUp".into(),
+                                    down: "ArrowDown".into(),
+                                    left: "ArrowLeft".into(),
+                                    right: "ArrowRight".into(),
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+}
+
+fn format_binding(binding: &renzora_input::InputBinding) -> String {
+    use renzora_input::InputBinding;
+    match binding {
+        InputBinding::Key(key) => format!("Key: {}", key),
+        InputBinding::MouseButton(btn) => format!("Mouse: {}", btn),
+        InputBinding::GamepadButton(btn) => format!("Gamepad: {}", btn),
+        InputBinding::GamepadAxis(axis) => format!("Gamepad Axis: {}", axis),
+        InputBinding::Composite2D { up, down, left, right } => {
+            format!("Composite: {}/{}/{}/{}", up, left, down, right)
+        }
+    }
+}
+
+/// Convert an egui key to a Bevy KeyCode debug string.
+fn egui_key_to_key_string(key: egui::Key) -> Option<String> {
+    use egui::Key;
+    Some(match key {
+        Key::A => "KeyA", Key::B => "KeyB", Key::C => "KeyC",
+        Key::D => "KeyD", Key::E => "KeyE", Key::F => "KeyF",
+        Key::G => "KeyG", Key::H => "KeyH", Key::I => "KeyI",
+        Key::J => "KeyJ", Key::K => "KeyK", Key::L => "KeyL",
+        Key::M => "KeyM", Key::N => "KeyN", Key::O => "KeyO",
+        Key::P => "KeyP", Key::Q => "KeyQ", Key::R => "KeyR",
+        Key::S => "KeyS", Key::T => "KeyT", Key::U => "KeyU",
+        Key::V => "KeyV", Key::W => "KeyW", Key::X => "KeyX",
+        Key::Y => "KeyY", Key::Z => "KeyZ",
+        Key::Num0 => "Digit0", Key::Num1 => "Digit1",
+        Key::Num2 => "Digit2", Key::Num3 => "Digit3",
+        Key::Num4 => "Digit4", Key::Num5 => "Digit5",
+        Key::Num6 => "Digit6", Key::Num7 => "Digit7",
+        Key::Num8 => "Digit8", Key::Num9 => "Digit9",
+        Key::Space => "Space",
+        Key::Enter => "Enter",
+        Key::Escape => "Escape",
+        Key::Tab => "Tab",
+        Key::Backspace => "Backspace",
+        Key::ArrowUp => "ArrowUp", Key::ArrowDown => "ArrowDown",
+        Key::ArrowLeft => "ArrowLeft", Key::ArrowRight => "ArrowRight",
+        Key::F1 => "F1", Key::F2 => "F2", Key::F3 => "F3",
+        Key::F4 => "F4", Key::F5 => "F5", Key::F6 => "F6",
+        Key::F7 => "F7", Key::F8 => "F8", Key::F9 => "F9",
+        Key::F10 => "F10", Key::F11 => "F11", Key::F12 => "F12",
+        _ => return None,
+    }.into())
 }
 
 // ── Placeholder tab ─────────────────────────────────────────────────────────

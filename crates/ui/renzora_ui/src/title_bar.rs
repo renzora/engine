@@ -19,6 +19,9 @@ pub enum TitleBarAction {
     Export,
     ToggleSettings,
     ToggleSignIn,
+    OpenUserSettings,
+    OpenUserLibrary,
+    SignOut,
     Play,
     Stop,
     Pause,
@@ -397,61 +400,107 @@ pub fn render_title_bar(
 
                 ui.add_space(gear_size + 8.0);
 
-                // Sign In button
-                let sign_in_size = Vec2::new(sign_in_width, 20.0);
-                let sign_in_rect = Rect::from_min_size(
-                    Pos2::new(ui.cursor().left(), tab_y + (tab_h - 20.0) / 2.0),
-                    sign_in_size,
-                );
-                let sign_in_id = ui.id().with("sign_in_btn");
-                let sign_in_resp = ui.interact(sign_in_rect, sign_in_id, Sense::click());
-
-                if sign_in_resp.hovered() {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                }
-
-                let bg = if sign_in_open {
-                    brighten(theme.surfaces.window.to_color32(), 25)
-                } else if sign_in_resp.hovered() {
-                    brighten(theme.surfaces.window.to_color32(), 15)
+                // User button — sign-in or dropdown menu when signed in
+                if let Some(username) = signed_in_username {
+                    // Signed in — show username button with dropdown
+                    let _user_btn_resp = ui.menu_button(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            egui_phosphor::regular::USER_CIRCLE,
+                            username
+                        ))
+                        .size(11.0),
+                        |ui| {
+                            ui.set_min_width(140.0);
+                            if ui
+                                .button(format!(
+                                    "{} My Library",
+                                    egui_phosphor::regular::BOOKS
+                                ))
+                                .clicked()
+                            {
+                                action = TitleBarAction::OpenUserLibrary;
+                                ui.close();
+                            }
+                            if ui
+                                .button(format!(
+                                    "{} Settings",
+                                    egui_phosphor::regular::GEAR
+                                ))
+                                .clicked()
+                            {
+                                action = TitleBarAction::OpenUserSettings;
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui
+                                .button(format!(
+                                    "{} Sign Out",
+                                    egui_phosphor::regular::SIGN_OUT
+                                ))
+                                .clicked()
+                            {
+                                action = TitleBarAction::SignOut;
+                                ui.close();
+                            }
+                        },
+                    );
                 } else {
-                    Color32::TRANSPARENT
-                };
-                ui.painter().rect_filled(
-                    sign_in_rect,
-                    egui::CornerRadius::same(3),
-                    bg,
-                );
+                    // Not signed in — simple sign-in button
+                    let sign_in_size = Vec2::new(sign_in_width, 20.0);
+                    let sign_in_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - 20.0) / 2.0),
+                        sign_in_size,
+                    );
+                    let sign_in_id = ui.id().with("sign_in_btn");
+                    let sign_in_resp =
+                        ui.interact(sign_in_rect, sign_in_id, Sense::click());
 
-                // User icon
-                ui.painter().text(
-                    Pos2::new(sign_in_rect.left() + 14.0, sign_in_rect.center().y),
-                    egui::Align2::CENTER_CENTER,
-                    egui_phosphor::regular::USER,
-                    egui::FontId::proportional(12.0),
-                    theme.text.secondary.to_color32(),
-                );
+                    if sign_in_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
 
-                // "Sign In" or username text
-                let label = signed_in_username.unwrap_or("Sign In");
-                let label_color = if signed_in_username.is_some() {
-                    theme.text.primary.to_color32()
-                } else {
-                    theme.text.secondary.to_color32()
-                };
-                ui.painter().text(
-                    Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    label,
-                    egui::FontId::proportional(11.0),
-                    label_color,
-                );
+                    let bg = if sign_in_open {
+                        brighten(theme.surfaces.window.to_color32(), 25)
+                    } else if sign_in_resp.hovered() {
+                        brighten(theme.surfaces.window.to_color32(), 15)
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(
+                        sign_in_rect,
+                        egui::CornerRadius::same(3),
+                        bg,
+                    );
 
-                if sign_in_resp.clicked() {
-                    action = TitleBarAction::ToggleSignIn;
+                    ui.painter().text(
+                        Pos2::new(
+                            sign_in_rect.left() + 14.0,
+                            sign_in_rect.center().y,
+                        ),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::USER,
+                        egui::FontId::proportional(12.0),
+                        theme.text.secondary.to_color32(),
+                    );
+
+                    ui.painter().text(
+                        Pos2::new(
+                            sign_in_rect.left() + 28.0,
+                            sign_in_rect.center().y,
+                        ),
+                        egui::Align2::LEFT_CENTER,
+                        "Sign In",
+                        egui::FontId::proportional(11.0),
+                        theme.text.secondary.to_color32(),
+                    );
+
+                    if sign_in_resp.clicked() {
+                        action = TitleBarAction::ToggleSignIn;
+                    }
+
+                    ui.add_space(sign_in_width);
                 }
-
-                ui.add_space(sign_in_width);
             });
         });
 

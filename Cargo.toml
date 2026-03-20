@@ -135,6 +135,7 @@ editor = [
     "dep:renzora_level_presets",
     "dep:renzora_shader_editor",
     "dep:renzora_animation_editor",
+    "dep:renzora_hub",
     "renzora_animation/editor",
     "renzora_water/editor",
     "renzora_game_ui/editor",
@@ -171,6 +172,7 @@ renzora_animation = { path = "crates/core/renzora_animation" }
 renzora_game_ui = { path = "crates/core/renzora_game_ui" }
 renzora_gauges = { path = "crates/core/renzora_gauges" }
 renzora_lifecycle = { path = "crates/core/renzora_lifecycle" }
+renzora_input = { path = "crates/core/renzora_input" }
 
 # Editor plugins (optional, enabled by `editor` feature)
 renzora_editor = { path = "crates/editor/renzora_editor", optional = true }
@@ -207,6 +209,7 @@ renzora_daw = { path = "crates/editor/renzora_daw", optional = true }
 renzora_level_presets = { path = "crates/editor/renzora_level_presets", optional = true }
 renzora_shader_editor = { path = "crates/editor/renzora_shader_editor", optional = true }
 renzora_animation_editor = { path = "crates/editor/renzora_animation_editor", optional = true }
+renzora_hub = { path = "crates/editor/renzora_hub", optional = true }
 renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
 
 # Component crates (always included, editor feature cascaded)

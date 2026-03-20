@@ -78,6 +78,7 @@ pub fn build_runtime_app() -> App {
     app.add_plugins(renzora_runtime::RuntimePlugin);
     app.add_plugins(renzora_scripting::ScriptingPlugin::new());
     app.add_plugins(renzora_blueprint::BlueprintPlugin);
+    app.add_plugins(renzora_input::InputPlugin);
     app.add_plugins(renzora_physics::PhysicsPlugin);
     app.add_plugins(renzora_lifecycle::LifecyclePlugin);
     app.add_plugins(renzora_terrain::TerrainPlugin);

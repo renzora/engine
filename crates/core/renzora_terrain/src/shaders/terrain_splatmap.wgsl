@@ -50,6 +50,30 @@ struct LayerInfo {
 // Layer count
 @group(3) @binding(7) var<uniform> layer_info: LayerInfo;
 
+// Layer texture arrays
+struct LayerTexFlags {
+    flags: u32,
+    _pad: vec3<u32>,
+};
+
+@group(3) @binding(8)  var layer_albedo_array: texture_2d_array<f32>;
+@group(3) @binding(9)  var layer_tex_sampler: sampler;
+@group(3) @binding(10) var layer_normal_array: texture_2d_array<f32>;
+@group(3) @binding(11) var layer_arm_array: texture_2d_array<f32>;
+@group(3) @binding(12) var<uniform> layer_tex_flags: LayerTexFlags;
+
+fn layer_has_albedo(idx: u32) -> bool {
+    return (layer_tex_flags.flags & (1u << idx)) != 0u;
+}
+
+fn layer_has_normal(idx: u32) -> bool {
+    return (layer_tex_flags.flags & (1u << (idx + 8u))) != 0u;
+}
+
+fn layer_has_arm(idx: u32) -> bool {
+    return (layer_tex_flags.flags & (1u << (idx + 16u))) != 0u;
+}
+
 // ── Noise functions ────────────────────────────────────────────────────────
 
 fn hash2(p: vec2<f32>) -> f32 {
@@ -213,9 +237,16 @@ fn shade_dirt(base_color: vec3<f32>, world_pos: vec3<f32>, uv_scale: f32, time: 
 
 // ── Main layer dispatch ────────────────────────────────────────────────────
 
-fn eval_layer(layer_color: vec4<f32>, layer_prop: vec4<f32>, world_pos: vec3<f32>, time: f32) -> vec3<f32> {
-    let base_color = layer_color.rgb;
+fn eval_layer(layer_color: vec4<f32>, layer_prop: vec4<f32>, world_pos: vec3<f32>, time: f32, layer_idx: u32) -> vec3<f32> {
     let uv_scale = layer_color.a;
+
+    // If this layer has an albedo texture, sample it instead of procedural
+    if layer_has_albedo(layer_idx) {
+        let tex_uv = world_pos.xz * uv_scale;
+        return textureSample(layer_albedo_array, layer_tex_sampler, tex_uv, layer_idx).rgb;
+    }
+
+    let base_color = layer_color.rgb;
     let anim_type = i32(layer_prop.z);
     let anim_speed = layer_prop.w;
 
@@ -230,7 +261,13 @@ fn eval_layer(layer_color: vec4<f32>, layer_prop: vec4<f32>, world_pos: vec3<f32
     }
 }
 
-fn eval_layer_pbr(layer_prop: vec4<f32>) -> vec2<f32> {
+fn eval_layer_pbr(layer_prop: vec4<f32>, world_pos: vec3<f32>, uv_scale: f32, layer_idx: u32) -> vec2<f32> {
+    // If this layer has an ARM texture, sample it (G=roughness, B=metallic)
+    if layer_has_arm(layer_idx) {
+        let tex_uv = world_pos.xz * uv_scale;
+        let arm = textureSample(layer_arm_array, layer_tex_sampler, tex_uv, layer_idx);
+        return vec2<f32>(arm.b, arm.g); // metallic, roughness
+    }
     return vec2<f32>(layer_prop.x, layer_prop.y);
 }
 
@@ -311,6 +348,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var blended_color = vec3<f32>(0.0);
     var blended_metallic = 0.0;
     var blended_roughness = 0.0;
+    var blended_normal = vec3<f32>(0.0, 0.0, 0.0);
+    var has_tex_normal = false;
 
     for (var i = 0; i < count; i++) {
         var w: f32;
@@ -328,15 +367,36 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         }
 
         if w > 0.001 {
-            blended_color += eval_layer(lc, lp, world_pos, time) * w;
-            let pbr = eval_layer_pbr(lp);
+            let layer_idx = u32(i);
+            blended_color += eval_layer(lc, lp, world_pos, time, layer_idx) * w;
+            let pbr = eval_layer_pbr(lp, world_pos, lc.a, layer_idx);
             blended_metallic += pbr.x * w;
             blended_roughness += pbr.y * w;
+
+            // Normal mapping from texture array
+            if layer_has_normal(layer_idx) {
+                let tex_uv = world_pos.xz * lc.a;
+                let n_sample = textureSample(layer_normal_array, layer_tex_sampler, tex_uv, layer_idx).rgb;
+                let tangent_normal = n_sample * 2.0 - 1.0;
+                blended_normal += tangent_normal * w;
+                has_tex_normal = true;
+            }
         }
     }
 
     // PBR lighting
-    let N = normalize(in.world_normal);
+    var N = normalize(in.world_normal);
+
+    // Apply blended tangent-space normal if any textured layers contributed
+    if has_tex_normal {
+        let world_n = normalize(in.world_normal);
+        // Build tangent frame from world normal (terrain is mostly Y-up)
+        let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(world_n.y) > 0.999);
+        let T = normalize(cross(up, world_n));
+        let B = cross(world_n, T);
+        let tn = normalize(blended_normal);
+        N = normalize(T * tn.x + B * tn.y + world_n * tn.z);
+    }
     let V = pbr_functions::calculate_view(in.world_position, false);
 
     var pbr_input: PbrInput = pbr_input_new();

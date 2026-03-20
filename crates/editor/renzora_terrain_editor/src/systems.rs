@@ -528,6 +528,7 @@ pub fn terrain_paint_system(
         Option<&SplatmapActive>,
     )>,
     mut gizmos: Gizmos,
+    layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
 ) {
     // Draw paint brush gizmo
     if paint_state.brush_visible {
@@ -577,6 +578,7 @@ pub fn terrain_paint_system(
             &surface,
             &mut images,
             &mut splatmap_materials,
+            &layer_tex,
         );
     }
 
@@ -595,6 +597,7 @@ pub fn terrain_paint_activate_system(
         Without<SplatmapActive>,
     >,
     surface_query: Query<&PaintableSurfaceData>,
+    layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
 ) {
     if settings.tab != TerrainTab::Paint {
         return;
@@ -610,6 +613,7 @@ pub fn terrain_paint_activate_system(
                 surface,
                 &mut images,
                 &mut splatmap_materials,
+                &layer_tex,
             );
         } else {
             // Add default PaintableSurfaceData then activate
@@ -620,6 +624,7 @@ pub fn terrain_paint_activate_system(
                 &surface,
                 &mut images,
                 &mut splatmap_materials,
+                &layer_tex,
             );
             commands.entity(chunk_entity).insert(surface);
         }
@@ -646,6 +651,9 @@ pub fn terrain_paint_scroll_system(
 pub fn terrain_paint_command_system(
     mut paint_state: ResMut<SurfacePaintState>,
     mut surface_query: Query<&mut PaintableSurfaceData>,
+    vfs: Res<renzora_core::VirtualFileReader>,
+    asset_server: Res<AssetServer>,
+    mut layer_tex: ResMut<splatmap_systems::TerrainLayerTextures>,
 ) {
     let commands: Vec<_> = paint_state.pending_commands.drain(..).collect();
     if commands.is_empty() {
@@ -668,10 +676,61 @@ pub fn terrain_paint_command_system(
                 paint::SurfacePaintCommand::RemoveLayer(idx) => {
                     if *idx < surface.layers.len() && surface.layers.len() > 1 {
                         surface.layers.remove(*idx);
+                        // Clear texture handles for this layer
+                        if *idx < 8 {
+                            layer_tex.layer_albedo[*idx] = None;
+                            layer_tex.layer_normal[*idx] = None;
+                            layer_tex.layer_arm[*idx] = None;
+                            layer_tex.dirty = true;
+                        }
                         surface.dirty = true;
                     }
                 }
-                _ => {}
+                paint::SurfacePaintCommand::AssignMaterial { layer, path } => {
+                    if *layer < surface.layers.len() {
+                        // Read and parse the .material file
+                        if let Some(json) = vfs.read_string(path) {
+                            if let Ok(graph) = serde_json::from_str::<renzora_material::graph::MaterialGraph>(&json) {
+                                let textures = graph.extract_layer_textures();
+
+                                surface.layers[*layer].material_path = Some(path.clone());
+                                surface.layers[*layer].albedo_path = textures.albedo.clone();
+                                surface.layers[*layer].normal_path = textures.normal.clone();
+                                surface.layers[*layer].arm_path = textures.arm.clone();
+
+                                // Load textures via asset server
+                                if let Some(ref albedo) = textures.albedo {
+                                    layer_tex.layer_albedo[*layer] = Some(asset_server.load(albedo.clone()));
+                                }
+                                if let Some(ref normal) = textures.normal {
+                                    layer_tex.layer_normal[*layer] = Some(asset_server.load(normal.clone()));
+                                }
+                                if let Some(ref arm) = textures.arm {
+                                    layer_tex.layer_arm[*layer] = Some(asset_server.load(arm.clone()));
+                                }
+
+                                layer_tex.dirty = true;
+                                surface.dirty = true;
+                            }
+                        }
+                    }
+                }
+                paint::SurfacePaintCommand::ClearMaterial(idx) => {
+                    if *idx < surface.layers.len() {
+                        surface.layers[*idx].material_path = None;
+                        surface.layers[*idx].albedo_path = None;
+                        surface.layers[*idx].normal_path = None;
+                        surface.layers[*idx].arm_path = None;
+
+                        if *idx < 8 {
+                            layer_tex.layer_albedo[*idx] = None;
+                            layer_tex.layer_normal[*idx] = None;
+                            layer_tex.layer_arm[*idx] = None;
+                            layer_tex.dirty = true;
+                        }
+                        surface.dirty = true;
+                    }
+                }
             }
         }
 

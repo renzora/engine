@@ -56,6 +56,7 @@ fn main() {
         app.add_plugins(renzora_level_presets::LevelPresetsPlugin);
         app.add_plugins(renzora_animation_editor::AnimationEditorPlugin);
         app.add_plugins(renzora_shader_editor::ShaderEditorPlugin);
+        app.add_plugins(renzora_hub::HubPlugin);
     }
 
     app.run();

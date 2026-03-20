@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use renzora_scripting::systems::execution::{ScriptCommandQueue, TransformWrite};
 use renzora_scripting::{PropertyValue, ScriptCommand, ScriptInput};
+use renzora_input::ActionState;
 
 use crate::graph::{BlueprintGraph, NodeId, PinValue};
 use crate::nodes;
@@ -60,6 +61,8 @@ struct EvalContext<'a> {
     transform: &'a Transform,
     /// Input state.
     input: &'a ScriptInput,
+    /// Action-mapped input state.
+    action_state: &'a ActionState,
     /// Time info.
     delta: f32,
     elapsed: f64,
@@ -323,6 +326,53 @@ impl<'a> EvalContext<'a> {
                     }
                     "left_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, true)),
                     "right_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, false)),
+                    _ => PinValue::None,
+                }
+            }
+
+            // ── Action-mapped input reads ─────────────────────────────
+            "input/is_action_pressed" => {
+                let action = self.resolve_input(node_id, "action").as_string();
+                PinValue::Bool(self.action_state.pressed(&action))
+            }
+            "input/is_action_just_pressed" => {
+                let action = self.resolve_input(node_id, "action").as_string();
+                PinValue::Bool(self.action_state.just_pressed(&action))
+            }
+            "input/get_action_axis" => {
+                let action = self.resolve_input(node_id, "action").as_string();
+                PinValue::Float(self.action_state.axis_1d(&action))
+            }
+            "input/get_action_axis2d" => {
+                let action = self.resolve_input(node_id, "action").as_string();
+                let v = self.action_state.axis_2d(&action);
+                match pin_name {
+                    "value" => PinValue::Vec2([v.x, v.y]),
+                    "x" => PinValue::Float(v.x),
+                    "y" => PinValue::Float(v.y),
+                    _ => PinValue::None,
+                }
+            }
+
+            // ── Character Controller reads ────────────────────────────
+            "character/is_grounded" => {
+                let grounded = self.world
+                    .get::<renzora_physics::CharacterControllerState>(self.entity)
+                    .map_or(false, |s| s.is_grounded);
+                PinValue::Bool(grounded)
+            }
+            "character/get_velocity" => {
+                let state = self.world
+                    .get::<renzora_physics::CharacterControllerState>(self.entity);
+                match pin_name {
+                    "velocity" => {
+                        let v = state.map_or(Vec3::ZERO, |s| s.velocity);
+                        PinValue::Vec3([v.x, v.y, v.z])
+                    }
+                    "speed" => {
+                        let v = state.map_or(Vec3::ZERO, |s| s.velocity);
+                        PinValue::Float(Vec3::new(v.x, 0.0, v.z).length())
+                    }
                     _ => PinValue::None,
                 }
             }
@@ -687,6 +737,24 @@ impl<'a> EvalContext<'a> {
                     entity_id: None,
                     velocity: Vec3::new(v[0], v[1], v[2]),
                 });
+                self.follow_exec(node_id, "then");
+            }
+
+            // ── Character Controller ─────────────────────────────────
+            "character/move" => {
+                let dir = self.resolve_input(node_id, "direction").as_vec2();
+                self.commands.push(ScriptCommand::CharacterMove {
+                    direction: Vec2::new(dir[0], dir[1]),
+                });
+                self.follow_exec(node_id, "then");
+            }
+            "character/jump" => {
+                self.commands.push(ScriptCommand::CharacterJump);
+                self.follow_exec(node_id, "then");
+            }
+            "character/sprint" => {
+                let sprinting = self.resolve_input(node_id, "sprinting").as_bool();
+                self.commands.push(ScriptCommand::CharacterSprint { sprinting });
                 self.follow_exec(node_id, "then");
             }
 
@@ -1084,6 +1152,7 @@ pub fn run_blueprints(world: &mut World) {
     let time_delta = world.resource::<Time>().delta_secs();
     let time_elapsed = world.resource::<Time>().elapsed_secs_f64();
     let input = world.resource::<ScriptInput>().clone();
+    let action_state = world.resource::<ActionState>().clone();
 
     // Collect entities with blueprints.
     struct BpEntity {
@@ -1141,6 +1210,7 @@ pub fn run_blueprints(world: &mut World) {
                 world: &world,
                 transform: &bpe.transform,
                 input: &input,
+                action_state: &action_state,
                 delta: time_delta,
                 elapsed: time_elapsed,
                 commands: Vec::new(),

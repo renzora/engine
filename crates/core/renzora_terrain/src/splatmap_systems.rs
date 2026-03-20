@@ -8,8 +8,224 @@ use bevy::asset::RenderAssetUsages;
 
 use crate::paint::{splatmap_to_rgba8_a, splatmap_to_rgba8_b, PaintableSurfaceData};
 use crate::splatmap_material::{
-    LayerColorBlock, LayerPropsBlock, TerrainLayerInfo, TerrainSplatmapMaterial,
+    LayerColorBlock, LayerPropsBlock, LayerTexFlags, TerrainLayerInfo, TerrainSplatmapMaterial,
 };
+
+/// Standardized resolution for all texture array slices.
+pub const LAYER_TEX_SIZE: u32 = 512;
+
+/// Resource tracking per-layer textures for the terrain splatmap material.
+#[derive(Resource)]
+pub struct TerrainLayerTextures {
+    pub layer_albedo: [Option<Handle<Image>>; 8],
+    pub layer_normal: [Option<Handle<Image>>; 8],
+    pub layer_arm: [Option<Handle<Image>>; 8],
+    pub albedo_array: Handle<Image>,
+    pub normal_array: Handle<Image>,
+    pub arm_array: Handle<Image>,
+    pub flags: u32,
+    pub dirty: bool,
+}
+
+impl FromWorld for TerrainLayerTextures {
+    fn from_world(world: &mut World) -> Self {
+        let mut images = world.resource_mut::<Assets<Image>>();
+        let albedo_array = images.add(create_fallback_array(
+            [255, 255, 255, 255],
+            TextureFormat::Rgba8UnormSrgb,
+        ));
+        let normal_array = images.add(create_fallback_array(
+            [128, 128, 255, 255],
+            TextureFormat::Rgba8Unorm,
+        ));
+        let arm_array = images.add(create_fallback_array(
+            [255, 128, 0, 255],
+            TextureFormat::Rgba8Unorm,
+        ));
+        Self {
+            layer_albedo: Default::default(),
+            layer_normal: Default::default(),
+            layer_arm: Default::default(),
+            albedo_array,
+            normal_array,
+            arm_array,
+            flags: 0,
+            dirty: false,
+        }
+    }
+}
+
+/// Create a 1×1×8 array texture with a constant fallback pixel.
+fn create_fallback_array(pixel: [u8; 4], format: TextureFormat) -> Image {
+    let mut data = Vec::with_capacity(4 * 8);
+    for _ in 0..8 {
+        data.extend_from_slice(&pixel);
+    }
+    let size = Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 8,
+    };
+    let mut image = Image::new(
+        size,
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        format,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::linear();
+    image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image
+}
+
+/// Build a texture array from per-layer source images, resizing to `LAYER_TEX_SIZE`.
+fn build_texture_array(
+    sources: &[Option<Handle<Image>>; 8],
+    images: &Assets<Image>,
+    default_pixel: [u8; 4],
+    format: TextureFormat,
+) -> Image {
+    let size = LAYER_TEX_SIZE as usize;
+    let bytes_per_slice = size * size * 4;
+    let mut data = Vec::with_capacity(bytes_per_slice * 8);
+
+    for slot in sources.iter() {
+        if let Some(handle) = slot {
+            if let Some(src) = images.get(handle) {
+                if let Some(ref src_data) = src.data {
+                    let src_w = src.texture_descriptor.size.width as usize;
+                    let src_h = src.texture_descriptor.size.height as usize;
+                    if src_w == size && src_h == size && src_data.len() == bytes_per_slice {
+                        data.extend_from_slice(src_data);
+                        continue;
+                    }
+                    // Nearest-neighbor resize
+                    let resized = resize_nearest(src_data, src_w, src_h, size, size);
+                    data.extend_from_slice(&resized);
+                    continue;
+                }
+            }
+        }
+        // Fallback: fill with default pixel
+        for _ in 0..(size * size) {
+            data.extend_from_slice(&default_pixel);
+        }
+    }
+
+    let extent = Extent3d {
+        width: LAYER_TEX_SIZE,
+        height: LAYER_TEX_SIZE,
+        depth_or_array_layers: 8,
+    };
+    let mut image = Image::new(
+        extent,
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        format,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::linear();
+    image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image
+}
+
+fn resize_nearest(src: &[u8], src_w: usize, src_h: usize, dst_w: usize, dst_h: usize) -> Vec<u8> {
+    let mut out = vec![0u8; dst_w * dst_h * 4];
+    for y in 0..dst_h {
+        let sy = (y * src_h / dst_h).min(src_h - 1);
+        for x in 0..dst_w {
+            let sx = (x * src_w / dst_w).min(src_w - 1);
+            let si = (sy * src_w + sx) * 4;
+            let di = (y * dst_w + x) * 4;
+            out[di..di + 4].copy_from_slice(&src[si..si + 4]);
+        }
+    }
+    out
+}
+
+/// System that rebuilds texture arrays when layer textures change.
+pub fn terrain_layer_texture_system(
+    mut layer_tex: ResMut<TerrainLayerTextures>,
+    mut images: ResMut<Assets<Image>>,
+    mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
+    active_query: Query<&SplatmapActive>,
+) {
+    if !layer_tex.dirty {
+        return;
+    }
+
+    // Check that all assigned textures are loaded
+    for slot in layer_tex.layer_albedo.iter().chain(layer_tex.layer_normal.iter()).chain(layer_tex.layer_arm.iter()) {
+        if let Some(handle) = slot {
+            if images.get(handle).is_none() {
+                return; // Not loaded yet, wait
+            }
+        }
+    }
+
+    // Build arrays
+    let albedo = build_texture_array(
+        &layer_tex.layer_albedo, &images,
+        [255, 255, 255, 255], TextureFormat::Rgba8UnormSrgb,
+    );
+    let normal = build_texture_array(
+        &layer_tex.layer_normal, &images,
+        [128, 128, 255, 255], TextureFormat::Rgba8Unorm,
+    );
+    let arm = build_texture_array(
+        &layer_tex.layer_arm, &images,
+        [255, 128, 0, 255], TextureFormat::Rgba8Unorm,
+    );
+
+    // Compute flags
+    let mut flags = 0u32;
+    for i in 0..8u32 {
+        if layer_tex.layer_albedo[i as usize].is_some() {
+            flags |= 1 << i;
+        }
+        if layer_tex.layer_normal[i as usize].is_some() {
+            flags |= 1 << (i + 8);
+        }
+        if layer_tex.layer_arm[i as usize].is_some() {
+            flags |= 1 << (i + 16);
+        }
+    }
+    layer_tex.flags = flags;
+
+    // Replace array images
+    if let Some(img) = images.get_mut(&layer_tex.albedo_array) {
+        *img = albedo;
+    } else {
+        layer_tex.albedo_array = images.add(albedo);
+    }
+    if let Some(img) = images.get_mut(&layer_tex.normal_array) {
+        *img = normal;
+    } else {
+        layer_tex.normal_array = images.add(normal);
+    }
+    if let Some(img) = images.get_mut(&layer_tex.arm_array) {
+        *img = arm;
+    } else {
+        layer_tex.arm_array = images.add(arm);
+    }
+
+    // Update all active materials
+    for active in active_query.iter() {
+        if let Some(mat) = splatmap_materials.get_mut(&active.material_handle) {
+            mat.layer_albedo_array = layer_tex.albedo_array.clone();
+            mat.layer_normal_array = layer_tex.normal_array.clone();
+            mat.layer_arm_array = layer_tex.arm_array.clone();
+            mat.layer_tex_flags = LayerTexFlags {
+                flags,
+                _pad: UVec3::ZERO,
+            };
+        }
+    }
+
+    layer_tex.dirty = false;
+}
 
 /// Marker component indicating a chunk has been switched to splatmap rendering.
 #[derive(Component)]
@@ -73,6 +289,7 @@ pub fn build_splatmap_material(
     surface: &PaintableSurfaceData,
     splatmap_a_handle: Handle<Image>,
     splatmap_b_handle: Handle<Image>,
+    layer_tex: &TerrainLayerTextures,
 ) -> TerrainSplatmapMaterial {
     let mut colors_a = LayerColorBlock::default();
     let mut props_a = LayerPropsBlock::default();
@@ -119,6 +336,13 @@ pub fn build_splatmap_material(
             _pad1: 0,
             _pad2: 0,
         },
+        layer_albedo_array: layer_tex.albedo_array.clone(),
+        layer_normal_array: layer_tex.normal_array.clone(),
+        layer_arm_array: layer_tex.arm_array.clone(),
+        layer_tex_flags: LayerTexFlags {
+            flags: layer_tex.flags,
+            _pad: UVec3::ZERO,
+        },
     }
 }
 
@@ -127,6 +351,7 @@ pub fn splatmap_upload_system(
     mut images: ResMut<Assets<Image>>,
     mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
     mut surface_query: Query<(&mut PaintableSurfaceData, Option<&SplatmapActive>)>,
+    layer_tex: Res<TerrainLayerTextures>,
 ) {
     for (mut surface, splatmap_active) in surface_query.iter_mut() {
         if !surface.dirty {
@@ -152,12 +377,17 @@ pub fn splatmap_upload_system(
                     &surface,
                     active.splatmap_a_handle.clone(),
                     active.splatmap_b_handle.clone(),
+                    &layer_tex,
                 );
                 mat.layer_colors_a = updated.layer_colors_a;
                 mat.layer_props_a = updated.layer_props_a;
                 mat.layer_colors_b = updated.layer_colors_b;
                 mat.layer_props_b = updated.layer_props_b;
                 mat.layer_info = updated.layer_info;
+                mat.layer_albedo_array = updated.layer_albedo_array;
+                mat.layer_normal_array = updated.layer_normal_array;
+                mat.layer_arm_array = updated.layer_arm_array;
+                mat.layer_tex_flags = updated.layer_tex_flags;
             }
 
             surface.dirty = false;
@@ -172,12 +402,13 @@ pub fn activate_splatmap_on_chunk(
     surface: &PaintableSurfaceData,
     images: &mut Assets<Image>,
     splatmap_materials: &mut Assets<TerrainSplatmapMaterial>,
+    layer_tex: &TerrainLayerTextures,
 ) {
     let image_a = create_splatmap_image_a(&surface.splatmap_weights, surface.splatmap_resolution);
     let image_b = create_splatmap_image_b(&surface.splatmap_weights, surface.splatmap_resolution);
     let splatmap_a_handle = images.add(image_a);
     let splatmap_b_handle = images.add(image_b);
-    let material = build_splatmap_material(surface, splatmap_a_handle.clone(), splatmap_b_handle.clone());
+    let material = build_splatmap_material(surface, splatmap_a_handle.clone(), splatmap_b_handle.clone(), layer_tex);
     let material_handle = splatmap_materials.add(material);
 
     commands.entity(entity).try_insert((

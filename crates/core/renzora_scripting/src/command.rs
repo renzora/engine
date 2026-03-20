@@ -2,6 +2,20 @@ use bevy::prelude::*;
 
 use crate::extension::ScriptExtensionCommand;
 
+/// Queued character controller commands, processed by renzora_physics each frame.
+#[derive(Resource, Default)]
+pub struct CharacterCommandQueue {
+    pub commands: Vec<(Entity, CharacterCommand)>,
+}
+
+/// A character controller command for a specific entity.
+#[derive(Debug)]
+pub enum CharacterCommand {
+    Move(Vec2),
+    Jump,
+    Sprint(bool),
+}
+
 /// Commands that scripts can issue, processed after execution.
 /// Language-agnostic — all backends produce these same commands.
 #[derive(Debug)]
@@ -76,6 +90,11 @@ pub enum ScriptCommand {
     SetAngularVelocity { entity_id: Option<u64>, velocity: Vec3 },
     SetGravityScale { entity_id: Option<u64>, scale: f32 },
     Raycast { origin: Vec3, direction: Vec3, max_distance: f32, result_var: String },
+
+    // === Character Controller ===
+    CharacterMove { direction: Vec2 },
+    CharacterJump,
+    CharacterSprint { sprinting: bool },
 
     // === Timers ===
     StartTimer { name: String, duration: f32, repeat: bool },

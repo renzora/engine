@@ -29,6 +29,7 @@ impl Plugin for TerrainPlugin {
             .init_resource::<paint::SurfacePaintState>()
             .init_resource::<undo::TerrainUndoStack>()
             .init_resource::<undo::TerrainStrokeSnapshot>()
+            .init_resource::<splatmap_systems::TerrainLayerTextures>()
             .add_systems(
                 Update,
                 (
@@ -36,6 +37,7 @@ impl Plugin for TerrainPlugin {
                     mesh::terrain_chunk_mesh_update_system,
                     mesh::terrain_data_changed_system,
                     splatmap_systems::splatmap_upload_system,
+                    splatmap_systems::terrain_layer_texture_system,
                 ),
             );
     }

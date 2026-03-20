@@ -8,6 +8,8 @@ bevy = { version = "0.18", default-features = false }
 serde = { version = "1", features = ["derive"] }
 renzora_core = { path = "../renzora_core" }
 renzora_scripting = { path = "../renzora_scripting" }
+renzora_input = { path = "../renzora_input" }
+renzora_physics = { path = "../renzora_physics" }
 renzora_game_ui = { path = "../renzora_game_ui" }
 renzora_network = { path = "../renzora_network" }
 log = "0.4"

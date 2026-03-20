@@ -150,6 +150,115 @@ pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// List marketplace categories.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn list_categories() -> Result<Vec<Category>, String> {
+    let url = format!("{API_BASE}/api/marketplace/categories");
+
+    let response = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Purchase an asset with credits (requires authentication).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn purchase_asset(session: &AuthSession, asset_id: &str) -> Result<PurchaseResponse, String> {
+    let token = session
+        .access_token
+        .as_deref()
+        .ok_or("Not signed in")?;
+
+    let url = format!("{API_BASE}/api/credits/purchase");
+    let body = serde_json::json!({ "asset_id": asset_id });
+    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
+
+    let response = ureq::post(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .send(json.as_bytes())
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body_str = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Get the user's purchased/owned assets.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_my_assets(session: &AuthSession) -> Result<MarketplaceListResponse, String> {
+    let token = session
+        .access_token
+        .as_deref()
+        .ok_or("Not signed in")?;
+
+    let url = format!("{API_BASE}/api/marketplace/purchased");
+
+    let response = ureq::get(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Get the user's credit balance.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_credit_balance(session: &AuthSession) -> Result<CreditBalanceResponse, String> {
+    let token = session
+        .access_token
+        .as_deref()
+        .ok_or("Not signed in")?;
+
+    let url = format!("{API_BASE}/api/credits/balance");
+
+    let response = ureq::get(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub icon: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PurchaseResponse {
+    pub message: String,
+    pub new_balance: i64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CreditBalanceResponse {
+    pub balance: i64,
+}
+
 /// Simple percent-encoding for query parameters.
 fn urlencoded(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

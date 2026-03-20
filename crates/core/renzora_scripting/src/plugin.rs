@@ -6,6 +6,7 @@ use crate::engine::ScriptEngine;
 use crate::input::{ScriptInput, update_script_input};
 use crate::resources::ScriptTimers;
 use crate::resources::update_script_timers;
+use crate::command::CharacterCommandQueue;
 use crate::systems::execution::{ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptReflectionQueue};
 
 /// Events emitted when scripts are hot-reloaded.
@@ -73,6 +74,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptInput>()
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
+            .init_resource::<CharacterCommandQueue>()
             .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()

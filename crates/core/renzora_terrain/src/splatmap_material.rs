@@ -104,6 +104,23 @@ pub struct TerrainLayerInfo {
     pub _pad2: u32,
 }
 
+/// Per-layer texture flags packed into a uniform.
+/// bits 0-7 = has_albedo per layer, 8-15 = has_normal, 16-23 = has_arm.
+#[derive(Clone, Debug, ShaderType)]
+pub struct LayerTexFlags {
+    pub flags: u32,
+    pub _pad: UVec3,
+}
+
+impl Default for LayerTexFlags {
+    fn default() -> Self {
+        Self {
+            flags: 0,
+            _pad: UVec3::ZERO,
+        }
+    }
+}
+
 impl Default for TerrainLayerInfo {
     fn default() -> Self {
         Self {
@@ -126,6 +143,11 @@ impl Default for TerrainLayerInfo {
 ///   5: layer_props_b  (layers 4-7)
 ///   6: splatmap_b     (layers 4-7 weights RGBA8)
 ///   7: layer_info     (layer count)
+///   8: layer_albedo_array  (texture_2d_array, 8 slices)
+///   9: layer_tex_sampler   (sampler for texture arrays)
+///  10: layer_normal_array  (texture_2d_array, 8 slices)
+///  11: layer_arm_array     (texture_2d_array, 8 slices)
+///  12: layer_tex_flags     (per-layer has_albedo/normal/arm bitmask)
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct TerrainSplatmapMaterial {
     #[uniform(0)]
@@ -143,6 +165,20 @@ pub struct TerrainSplatmapMaterial {
     pub splatmap_b: Handle<Image>,
     #[uniform(7)]
     pub layer_info: TerrainLayerInfo,
+
+    // Layer texture arrays (8 slices each)
+    #[texture(8, dimension = "2d_array", sample_type = "float")]
+    #[sampler(9)]
+    pub layer_albedo_array: Handle<Image>,
+
+    #[texture(10, dimension = "2d_array", sample_type = "float")]
+    pub layer_normal_array: Handle<Image>,
+
+    #[texture(11, dimension = "2d_array", sample_type = "float")]
+    pub layer_arm_array: Handle<Image>,
+
+    #[uniform(12)]
+    pub layer_tex_flags: LayerTexFlags,
 }
 
 impl Material for TerrainSplatmapMaterial {

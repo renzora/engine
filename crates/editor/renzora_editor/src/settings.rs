@@ -8,6 +8,7 @@ pub enum SettingsTab {
     Viewport,
     Shortcuts,
     Theme,
+    Input,
     Plugins,
 }
 

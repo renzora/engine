@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::execution::{ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptLogEntry, ScriptReflectionQueue, ReflectionSet};
-use crate::command::ScriptCommand;
+use crate::command::{ScriptCommand, CharacterCommand, CharacterCommandQueue};
 use crate::resources::ScriptTimers;
 
 /// System that applies script outputs to the world.
@@ -20,6 +20,7 @@ pub fn apply_script_commands(
     mut pending_env: ResMut<ScriptEnvironmentCommands>,
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
     mut pending_scene: ResMut<renzora_core::PendingSceneLoad>,
+    mut character_queue: ResMut<CharacterCommandQueue>,
     mut ran_once: Local<bool>,
 ) {
     if !*ran_once {
@@ -163,6 +164,17 @@ pub fn apply_script_commands(
             ScriptCommand::LoadScene { path } => {
                 renzora_core::clog_info!("Scene", "LoadScene requested: {}", path);
                 pending_scene.requests.push(path);
+            }
+
+            // === Character Controller ===
+            ScriptCommand::CharacterMove { direction } => {
+                character_queue.commands.push((source_entity, CharacterCommand::Move(direction)));
+            }
+            ScriptCommand::CharacterJump => {
+                character_queue.commands.push((source_entity, CharacterCommand::Jump));
+            }
+            ScriptCommand::CharacterSprint { sprinting } => {
+                character_queue.commands.push((source_entity, CharacterCommand::Sprint(sprinting)));
             }
 
             // Commands that need additional systems (audio, physics, etc.)

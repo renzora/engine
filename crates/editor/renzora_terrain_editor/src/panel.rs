@@ -18,6 +18,8 @@ use renzora_terrain::splatmap_material::LayerAnimationType;
 use renzora_theme::{Theme, ThemeManager};
 use renzora_editor::EditorCommands;
 use renzora_ui::EditorPanel;
+use renzora_ui::asset_drag::{asset_drop_target, AssetDragPayload};
+use renzora_core::CurrentProject;
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -410,6 +412,47 @@ fn render_layer_list(
                 });
             }
         });
+
+        // Material drop target for the active layer
+        if is_active {
+            let drag_payload = world.get_resource::<AssetDragPayload>();
+            let material_source = if i < paint_state.layers_preview.len() {
+                paint_state.layers_preview[i].material_source.as_deref()
+            } else {
+                None
+            };
+            let drop_result = asset_drop_target(
+                ui,
+                egui::Id::new(("terrain_layer_mat", i)),
+                material_source,
+                &["material"],
+                "Drop .material file",
+                theme,
+                drag_payload,
+            );
+            if let Some(ref dropped) = drop_result.dropped_path {
+                let path = if let Some(project) = world.get_resource::<CurrentProject>() {
+                    project.make_asset_relative(dropped)
+                } else {
+                    dropped.to_string_lossy().to_string()
+                };
+                let layer = i;
+                cmds.push(move |world: &mut World| {
+                    if let Some(mut ps) = world.get_resource_mut::<SurfacePaintState>() {
+                        ps.pending_commands.push(SurfacePaintCommand::AssignMaterial { layer, path });
+                    }
+                });
+            }
+            if drop_result.cleared {
+                let layer = i;
+                cmds.push(move |world: &mut World| {
+                    if let Some(mut ps) = world.get_resource_mut::<SurfacePaintState>() {
+                        ps.pending_commands.push(SurfacePaintCommand::ClearMaterial(layer));
+                    }
+                });
+            }
+        }
+
         ui.add_space(2.0);
     }
 

@@ -348,4 +348,53 @@ impl MaterialGraph {
             .iter()
             .find(|c| c.to_node == to_node && c.to_pin == to_pin)
     }
+
+    /// Extract texture paths from a material graph for terrain layer use.
+    ///
+    /// Traces connections from the output node's `base_color`, `normal`, and
+    /// `metallic`/`roughness`/`ao` inputs back to texture sample nodes.
+    pub fn extract_layer_textures(&self) -> LayerTextureSet {
+        let mut result = LayerTextureSet::default();
+        let Some(output) = self.output_node() else {
+            return result;
+        };
+        let output_id = output.id;
+
+        // Trace base_color → albedo texture
+        result.albedo = self.trace_texture_path(output_id, "base_color");
+        // Trace normal → normal map
+        result.normal = self.trace_texture_path(output_id, "normal");
+        // Trace metallic, roughness, or ao → ARM texture (any of them)
+        result.arm = self
+            .trace_texture_path(output_id, "metallic")
+            .or_else(|| self.trace_texture_path(output_id, "roughness"))
+            .or_else(|| self.trace_texture_path(output_id, "ao"));
+
+        result
+    }
+
+    /// Trace a pin connection back through the graph to find a texture path.
+    /// Follows one hop: output_pin → texture/sample node → TexturePath input value.
+    fn trace_texture_path(&self, node_id: NodeId, pin_name: &str) -> Option<String> {
+        let conn = self.connection_to(node_id, pin_name)?;
+        let source_node = self.get_node(conn.from_node)?;
+
+        // If the source is a texture sample node, extract the texture path
+        if source_node.node_type.starts_with("texture/") {
+            if let Some(PinValue::TexturePath(path)) = source_node.get_input_value("texture") {
+                if !path.is_empty() {
+                    return Some(path.clone());
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Texture paths extracted from a material graph for terrain layer use.
+#[derive(Clone, Debug, Default)]
+pub struct LayerTextureSet {
+    pub albedo: Option<String>,
+    pub normal: Option<String>,
+    pub arm: Option<String>,
 }
