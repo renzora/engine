@@ -1,0 +1,10 @@
+[package]
+name = "renzora_input"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+serde = { version = "1", features = ["derive"] }
+renzora_core = { path = "../renzora_core" }
+ron = "0.10"

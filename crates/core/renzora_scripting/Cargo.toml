@@ -1,0 +1,22 @@
+[package]
+name = "renzora_scripting"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["lua", "rhai"]
+lua = ["dep:mlua"]
+rhai = ["dep:rhai"]
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+renzora_core = { path = "../renzora_core" }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+
+# Rhai backend (pure Rust, works everywhere including WASM)
+rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# Lua backend (native only — requires C compiler, cannot target WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }

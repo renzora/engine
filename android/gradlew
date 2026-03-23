@@ -1,0 +1,50 @@
+#!/bin/sh
+
+#
+# Gradle wrapper script for POSIX systems.
+#
+
+# Resolve the directory this script is in
+APP_HOME=$( cd "${0%/*}" && pwd -P )
+
+# Use the maximum available, or set MAX_FD != -1 to use that value.
+MAX_FD=maximum
+
+# OS specific support
+cygwin=false
+msys=false
+case "$( uname )" in
+  CYGWIN* ) cygwin=true ;;
+  MINGW* | MSYS* ) msys=true ;;
+esac
+
+# Determine the Java command to use to start the JVM.
+if [ -n "$JAVA_HOME" ] ; then
+    JAVACMD="$JAVA_HOME/bin/java"
+else
+    JAVACMD=java
+fi
+
+# Increase the maximum file descriptors if we can.
+if ! "$cygwin" && ! "$msys" ; then
+    case $MAX_FD in
+      max*)
+        MAX_FD=$( ulimit -H -n ) ||
+            warn "Could not query maximum file descriptor limit"
+      ;;
+    esac
+    case $MAX_FD in
+      '' | soft) :;;
+      *)
+        ulimit -n "$MAX_FD" ||
+            warn "Could not set maximum file descriptor limit to $MAX_FD"
+      ;;
+    esac
+fi
+
+# Collect all arguments for the java command
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+exec "$JAVACMD" \
+    -classpath "$CLASSPATH" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"

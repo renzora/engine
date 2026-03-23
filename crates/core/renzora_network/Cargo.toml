@@ -1,0 +1,18 @@
+[package]
+name = "renzora_network"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+editor = []
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+serde = { version = "1", features = ["derive"] }
+renzora_core = { path = "../renzora_core" }
+renzora_scripting = { path = "../renzora_scripting" }
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+lightyear = { version = "0.26", features = ["udp", "netcode"] }

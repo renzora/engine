@@ -1,0 +1,23 @@
+[package]
+name = "renzora-ios"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "renzora_ios"
+crate-type = ["staticlib"]
+
+[dependencies]
+renzora = { path = "../../..", default-features = false }
+bevy = { version = "0.18", features = ["jpeg"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+strip = true
+codegen-units = 1

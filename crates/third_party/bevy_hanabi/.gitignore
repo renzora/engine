@@ -1,0 +1,20 @@
+# Rust
+target/
+Cargo.lock
+.cargo/config.toml
+
+# IDEs
+.vs*
+
+# OS
+.DS_Store
+
+# Perf
+profiling/
+*.cap
+perf.data
+perf.data.old
+
+# Other
+ignore/
+media/

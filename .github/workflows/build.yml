@@ -1,4 +1,4 @@
-name: Build
+name: Build Editor
 
 on:
   workflow_dispatch:
@@ -7,26 +7,23 @@ on:
       - "v*"
 
 jobs:
-  build:
+  desktop:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: renzora_editor.exe
-            artifact: renzora-editor-windows
-            features: editor,solari
+            binary: renzora.exe
+            artifact: renzora-editor-windows-x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: renzora_editor
-            artifact: renzora-editor-linux
-            features: editor,solari
+            binary: renzora
+            artifact: renzora-editor-linux-x64
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary: renzora_editor
-            artifact: renzora-editor-macos
-            features: editor
+            binary: renzora
+            artifact: renzora-editor-macos-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -46,11 +43,6 @@ jobs:
           version: latest
           cache: true
 
-      - name: Download DLSS SDK headers
-        if: runner.os != 'macOS'
-        shell: bash
-        run: git clone --depth 1 https://github.com/NVIDIA/DLSS.git DLSS_SDK
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -62,14 +54,44 @@ jobs:
             libxkbcommon-dev \
             libvulkan-dev
 
-      - name: Build
-        shell: bash
-        env:
-          BINDGEN_EXTRA_CLANG_ARGS: ${{ runner.os != 'macOS' && format('-I{0}/DLSS_SDK/include', github.workspace) || '' }}
-        run: cargo build --release --no-default-features --features ${{ matrix.features }} --target ${{ matrix.target }}
+      - name: Build editor
+        run: cargo build --profile dist --features editor --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: target/${{ matrix.target }}/dist/${{ matrix.binary }}
+
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build editor for WASM
+        run: cargo build --profile dist --features editor --target wasm32-unknown-unknown
+
+      - name: Run wasm-bindgen
+        run: |
+          wasm-bindgen \
+            --out-dir web-dist \
+            --out-name renzora \
+            --target web \
+            target/wasm32-unknown-unknown/dist/renzora.wasm
+          cp web/index.html web-dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-editor-web
+          path: web-dist/

@@ -1,0 +1,16 @@
+[package]
+name = "renzora_settings"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_core = { path = "../../core/renzora_core" }
+renzora_editor = { path = "../renzora_editor" }
+renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_viewport = { path = "../renzora_viewport" }
+renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_splash = { path = "../../ui/renzora_splash" }
+renzora_input = { path = "../../core/renzora_input" }

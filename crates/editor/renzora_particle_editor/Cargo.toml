@@ -1,0 +1,20 @@
+[package]
+name = "renzora_particle_editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+bevy_egui = "0.39"
+bevy_hanabi = { path = "../../third_party/bevy_hanabi" }
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_ui = { path = "../../ui/renzora_ui" }
+renzora_hanabi = { path = "../../core/renzora_hanabi" }
+renzora_core = { path = "../../core/renzora_core" }
+renzora_runtime = { path = "../../core/renzora_runtime" }
+ron = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

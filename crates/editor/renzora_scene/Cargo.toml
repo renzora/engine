@@ -1,0 +1,16 @@
+[package]
+name = "renzora_scene"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+renzora_core = { path = "../../core/renzora_core" }
+renzora_runtime = { path = "../../core/renzora_runtime" }
+renzora_splash = { path = "../../ui/renzora_splash" }
+renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_camera = { path = "../renzora_camera" }
+renzora_ui = { path = "../../ui/renzora_ui" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

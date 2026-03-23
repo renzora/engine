@@ -1,0 +1,199 @@
+name: Build Runtime Templates
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Desktop templates (Windows, Linux, macOS)
+  # ---------------------------------------------------------------------------
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            template: renzora-runtime-windows-x64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            template: renzora-runtime-linux-x64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            template: renzora-runtime-macos-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            template: renzora-runtime-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Vulkan SDK
+        if: runner.os != 'macOS'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: latest
+          cache: true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libvulkan-dev
+
+      - name: Build runtime
+        run: cargo build --profile dist --no-default-features --bin renzora-runtime --target ${{ matrix.target }}
+
+      - name: Rename template
+        shell: bash
+        run: |
+          src="target/${{ matrix.target }}/dist/renzora-runtime"
+          if [ -f "${src}.exe" ]; then src="${src}.exe"; fi
+          cp "$src" "${{ matrix.template }}"
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.template }}
+          path: ${{ matrix.template }}
+
+  # ---------------------------------------------------------------------------
+  # Web (WASM) template
+  # ---------------------------------------------------------------------------
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build runtime for WASM
+        run: cargo build --profile dist --no-default-features --bin renzora-runtime --target wasm32-unknown-unknown
+
+      - name: Run wasm-bindgen
+        run: |
+          wasm-bindgen \
+            --out-dir wasm-out \
+            --target web \
+            target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-runtime-web-wasm32
+          path: wasm-out/
+
+  # ---------------------------------------------------------------------------
+  # Android (ARM64) template
+  # ---------------------------------------------------------------------------
+  android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-linux-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Build native library
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        working-directory: crates/platform/renzora_android
+        run: |
+          cargo ndk \
+            --target aarch64-linux-android \
+            --platform 30 \
+            build --release
+
+      - name: Copy native libs to Gradle project
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp crates/platform/renzora_android/target/aarch64-linux-android/release/libmain.so \
+            android/app/src/main/jniLibs/arm64-v8a/libmain.so
+
+          # Bundle libc++_shared.so from NDK
+          HOST_DIR=$(ls "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" | head -1)
+          cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_DIR/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+            android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleStandardRelease
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-runtime-android-arm64.apk
+          path: android/app/build/outputs/apk/standard/release/app-standard-release-unsigned.apk
+
+  # ---------------------------------------------------------------------------
+  # iOS (ARM64) template
+  # ---------------------------------------------------------------------------
+  ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Build runtime for iOS ARM64
+        run: cargo build --profile dist --no-default-features --bin renzora-runtime --target aarch64-apple-ios
+
+      - name: Rename template
+        run: cp target/aarch64-apple-ios/dist/renzora-runtime renzora-runtime-ios-arm64
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-runtime-ios-arm64
+          path: renzora-runtime-ios-arm64

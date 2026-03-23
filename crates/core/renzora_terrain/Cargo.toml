@@ -1,0 +1,16 @@
+[package]
+name = "renzora_terrain"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+editor = []
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+renzora_material = { path = "../renzora_material" }
+renzora_core = { path = "../renzora_core" }
+avian3d = { version = "0.5", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }

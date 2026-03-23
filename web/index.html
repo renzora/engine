@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Renzora Editor</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; background: #050410; }
+        canvas { display: block; }
+        #loading {
+            position: fixed; inset: 0; display: flex;
+            align-items: center; justify-content: center;
+            background: #050410; color: #888; font-family: monospace; font-size: 14px;
+            z-index: 10;
+        }
+        #loading.hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading Renzora Editor...</div>
+    <script type="module">
+        import init from './renzora.js';
+
+        function resizeCanvas() {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                canvas.style.width = window.innerWidth + 'px';
+                canvas.style.height = window.innerHeight + 'px';
+            }
+        }
+
+        async function run() {
+            await init();
+            document.getElementById('loading').classList.add('hidden');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        run().catch(err => {
+            document.getElementById('loading').textContent = 'Failed to load: ' + err;
+            console.error(err);
+        });
+    </script>
+</body>
+</html>

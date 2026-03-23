@@ -1,0 +1,22 @@
+[package]
+name = "renzora_hierarchy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+bevy_egui = "0.39"
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora_core = { path = "../../core/renzora_core" }
+renzora_editor = { path = "../renzora_editor" }
+renzora_theme = { path = "../../ui/renzora_theme" }
+renzora_lighting = { path = "../../core/renzora_lighting", features = ["editor"] }
+renzora_physics = { path = "../../core/renzora_physics" }
+renzora_scripting = { path = "../../core/renzora_scripting" }
+renzora_bloom_effect = { path = "../../postprocessing/renzora_bloom_effect" }
+renzora_atmosphere = { path = "../../postprocessing/renzora_atmosphere" }
+renzora_clouds = { path = "../../postprocessing/renzora_clouds" }
+renzora_distance_fog = { path = "../../postprocessing/renzora_distance_fog" }
+renzora_terrain = { path = "../../core/renzora_terrain" }
+renzora_blueprint = { path = "../../core/renzora_blueprint" }
+renzora_game_ui = { path = "../../core/renzora_game_ui", features = ["editor"] }

@@ -1,0 +1,23 @@
+[package]
+name = "renzora_gauges"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:egui-phosphor", "dep:bevy_egui"]
+lua = ["dep:mlua"]
+rhai = ["dep:rhai"]
+
+[dependencies]
+bevy = { version = "0.18", default-features = false }
+bevy_gauge = "0.4"
+renzora_scripting = { path = "../renzora_scripting" }
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
+rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# Editor (optional)
+renzora_editor = { path = "../../editor/renzora_editor", optional = true }
+renzora_theme = { path = "../../ui/renzora_theme", optional = true }
+bevy_egui = { version = "0.39", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
