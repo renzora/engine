@@ -58,7 +58,7 @@ jobs:
             libvulkan-dev
 
       - name: Build editor
-        run: cargo build --profile dist --features editor --target ${{ matrix.target }}
+        run: cargo build --profile dist --no-default-features --features editor,native --target ${{ matrix.target }}
 
       # Windows: copy binary
       - name: Package (Windows)
@@ -185,7 +185,7 @@ jobs:
         run: cargo install wasm-bindgen-cli
 
       - name: Build editor for WASM
-        run: cargo build --profile dist --features editor --target wasm32-unknown-unknown
+        run: cargo build --profile dist --no-default-features --features editor --target wasm32-unknown-unknown
 
       - name: Run wasm-bindgen
         run: |
