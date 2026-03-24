@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - "v*"
+      - "r*"
 
 jobs:
   desktop:
@@ -15,20 +16,20 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: renzora.exe
-            artifact: renzora-editor-windows-x64
+            artifact: renzora-windows-x64.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: renzora
-            artifact: renzora-editor-linux-x64
+            artifact: renzora-linux-x64.AppImage
           - os: macos-latest
             target: aarch64-apple-darwin
             binary: renzora
-            artifact: renzora-editor-macos-arm64
+            artifact: renzora-macos-arm64.dmg
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -57,17 +58,120 @@ jobs:
       - name: Build editor
         run: cargo build --profile dist --features editor --target ${{ matrix.target }}
 
+      # Windows: copy binary
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/dist/${{ matrix.binary }} ${{ matrix.artifact }}
+
+      # Linux: create AppImage
+      - name: Package AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/applications
+
+          cp target/${{ matrix.target }}/dist/${{ matrix.binary }} AppDir/usr/bin/renzora
+          chmod +x AppDir/usr/bin/renzora
+
+          cp icon.png AppDir/usr/share/icons/hicolor/256x256/apps/renzora.png
+
+          cat > AppDir/renzora.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=Renzora Engine
+          Comment=Open source game engine with visual editor
+          Exec=renzora
+          Icon=renzora
+          Type=Application
+          Categories=Development;Game;
+          DESKTOP
+          cp AppDir/renzora.desktop AppDir/usr/share/applications/
+
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "$HERE/usr/bin/renzora" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+          ln -sf usr/share/icons/hicolor/256x256/apps/renzora.png AppDir/renzora.png
+          ln -sf usr/share/icons/hicolor/256x256/apps/renzora.png AppDir/.DirIcon
+
+          ARCH=x86_64 ./appimagetool AppDir ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
+
+      # macOS: create .app bundle and .dmg
+      - name: Package DMG (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP_NAME="Renzora Engine.app"
+          mkdir -p "$APP_NAME/Contents/MacOS"
+          mkdir -p "$APP_NAME/Contents/Resources"
+
+          cp target/${{ matrix.target }}/dist/${{ matrix.binary }} "$APP_NAME/Contents/MacOS/Renzora Engine"
+          chmod +x "$APP_NAME/Contents/MacOS/Renzora Engine"
+          cp icon.png "$APP_NAME/Contents/Resources/icon.png"
+
+          cat > "$APP_NAME/Contents/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Renzora Engine</string>
+            <key>CFBundleDisplayName</key>
+            <string>Renzora Engine</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.renzora.engine</string>
+            <key>CFBundleVersion</key>
+            <string>0.2.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.2.0</string>
+            <key>CFBundleExecutable</key>
+            <string>Renzora Engine</string>
+            <key>CFBundleIconFile</key>
+            <string>icon</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>12.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          brew install create-dmg || true
+          create-dmg \
+            --volname "Renzora Engine" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon "Renzora Engine.app" 150 190 \
+            --app-drop-link 450 190 \
+            --no-internet-enable \
+            "${{ matrix.artifact }}" \
+            "$APP_NAME" || true
+
+          if [ ! -f "${{ matrix.artifact }}" ]; then
+            hdiutil create -volname "Renzora Engine" -srcfolder "$APP_NAME" -ov -format UDZO "${{ matrix.artifact }}"
+          fi
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/dist/${{ matrix.binary }}
+          path: ${{ matrix.artifact }}
 
   web:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -91,7 +195,25 @@ jobs:
           cp web/index.html web-dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: renzora-editor-web
           path: web-dist/
+
+  release:
+    needs: [desktop, web]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

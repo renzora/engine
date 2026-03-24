@@ -271,6 +271,9 @@ getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 wasm-bindgen = "0.2.108"
 
+[build-dependencies]
+winres = "0.1"
+
 # Bevy recommended optimizations
 
 [profile.dev]
