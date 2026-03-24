@@ -82,6 +82,10 @@ jobs:
           cp target/${{ matrix.target }}/dist/${{ matrix.binary }} AppDir/usr/bin/renzora
           chmod +x AppDir/usr/bin/renzora
 
+          # Compress binary before packaging
+          sudo apt-get install -y upx-ucl
+          upx --brute AppDir/usr/bin/renzora || true
+
           cp icon.png AppDir/usr/share/icons/hicolor/256x256/apps/renzora.png
 
           cat > AppDir/renzora.desktop << 'DESKTOP'
