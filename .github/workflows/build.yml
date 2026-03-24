@@ -3,6 +3,8 @@ name: Build Editor
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
       - "r*"
