@@ -60,11 +60,13 @@ jobs:
       - name: Build editor
         run: cargo build --profile dist --no-default-features --features editor,native --target ${{ matrix.target }}
 
-      # Windows: copy binary
+      # Windows: copy binary + UPX compress
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: |
           cp target/${{ matrix.target }}/dist/${{ matrix.binary }} ${{ matrix.artifact }}
+          choco install upx -y
+          upx --brute ${{ matrix.artifact }} || true
 
       # Linux: create AppImage
       - name: Package AppImage (Linux)
