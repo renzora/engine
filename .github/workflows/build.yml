@@ -208,8 +208,43 @@ jobs:
           name: renzora-editor-web
           path: web-dist/
 
+  preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build preview harness for WASM
+        run: |
+          cd crates/preview/renzora_preview
+          cargo build --release --target wasm32-unknown-unknown
+
+      - name: Run wasm-bindgen
+        run: |
+          wasm-bindgen \
+            --out-dir preview-dist \
+            --out-name renzora_preview \
+            --target web \
+            --no-typescript \
+            crates/preview/renzora_preview/target/wasm32-unknown-unknown/release/renzora_preview.wasm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: renzora-preview-wasm
+          path: preview-dist/
+
   release:
-    needs: [desktop, web]
+    needs: [desktop, web, preview]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
