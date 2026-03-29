@@ -184,10 +184,13 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         }
     }
 
-    // Sort root entities by HierarchyOrder component
+    // Sort root entities by HierarchyOrder component, using Entity index as
+    // tiebreaker so the order is deterministic even when archetype iteration
+    // order shifts (e.g. after component additions from selection changes).
     root_indices.sort_by_key(|&idx| {
         let entity = entries[idx].0;
-        world.get::<HierarchyOrder>(entity).map(|h| h.0).unwrap_or(u32::MAX)
+        let order = world.get::<HierarchyOrder>(entity).map(|h| h.0).unwrap_or(u32::MAX);
+        (order, entity)
     });
 
     // Sort children by their order in the parent's Children component
