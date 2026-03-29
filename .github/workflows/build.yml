@@ -63,6 +63,21 @@ jobs:
       - name: Build editor
         run: cargo build --profile dist --no-default-features --features editor,native --bin renzora --target ${{ matrix.target }}
 
+      - name: Install UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install upx -y
+          else
+            sudo apt-get install -y upx-ucl
+          fi
+
+      - name: Compress with UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: upx --brute "target/${{ matrix.target }}/dist/${{ matrix.binary }}" || true
+
       - name: Rename artifact
         shell: bash
         run: |
@@ -161,6 +176,24 @@ jobs:
 
       - name: Build runtime
         run: cargo build --profile dist --no-default-features --bin renzora-runtime --target ${{ matrix.target }}
+
+      - name: Install UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install upx -y
+          else
+            sudo apt-get install -y upx-ucl
+          fi
+
+      - name: Compress with UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          src="target/${{ matrix.target }}/dist/renzora-runtime"
+          if [ -f "${src}.exe" ]; then src="${src}.exe"; fi
+          upx --brute "$src" || true
 
       - name: Rename template
         shell: bash
@@ -269,6 +302,11 @@ jobs:
           if [ "$NDK_TARGET" = "armv7-linux-androideabi" ]; then NDK_TARGET="arm-linux-androideabi"; fi
           cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_DIR/sysroot/usr/lib/$NDK_TARGET/libc++_shared.so" \
             android/app/src/main/jniLibs/${{ matrix.abi }}/
+
+      - name: Compress with UPX
+        run: |
+          sudo apt-get install -y upx-ucl
+          upx --brute android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so || true
 
       - name: Build APK
         working-directory: android
