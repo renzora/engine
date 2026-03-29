@@ -114,3 +114,24 @@ pub fn forgot_password(email: &str) -> Result<MessageResponse, String> {
         },
     )
 }
+
+// WASM stubs — auth not yet supported in browser
+#[cfg(target_arch = "wasm32")]
+pub fn login(_email: &str, _password: &str) -> Result<AuthResponse, String> {
+    Err("Authentication is not supported in the browser yet".into())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn register(_username: &str, _email: &str, _password: &str) -> Result<AuthResponse, String> {
+    Err("Authentication is not supported in the browser yet".into())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn refresh_token(_refresh_token: &str) -> Result<AuthResponse, String> {
+    Err("Authentication is not supported in the browser yet".into())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn forgot_password(_email: &str) -> Result<MessageResponse, String> {
+    Err("Authentication is not supported in the browser yet".into())
+}

@@ -58,7 +58,8 @@ jobs:
             libudev-dev \
             libwayland-dev \
             libxkbcommon-dev \
-            libvulkan-dev
+            libvulkan-dev \
+            mold
 
       - name: Build editor
         run: cargo build --profile dist --no-default-features --features editor,native --bin renzora --target ${{ matrix.target }}
@@ -172,7 +173,8 @@ jobs:
             libudev-dev \
             libwayland-dev \
             libxkbcommon-dev \
-            libvulkan-dev
+            libvulkan-dev \
+            mold
 
       - name: Build runtime
         run: cargo build --profile dist --no-default-features --bin renzora-runtime --target ${{ matrix.target }}
