@@ -15,6 +15,7 @@ pub fn start() {
     app.run();
 }
 
+#[cfg(not(all(target_arch = "wasm32", not(feature = "editor"))))]
 fn main() {
     renzora_runtime::crash::install_panic_hook();
 
