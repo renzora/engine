@@ -288,6 +288,7 @@ jobs:
       - name: Build native library
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_BUILD_JOBS: "2"
         working-directory: crates/platform/renzora_android
         run: cargo ndk --target ${{ matrix.rust_target }} --platform 30 build --release
 
