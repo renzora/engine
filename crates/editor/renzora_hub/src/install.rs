@@ -37,6 +37,23 @@ pub fn install_asset(
     file_url: &str,
     data: &[u8],
 ) -> Result<PathBuf, String> {
+    install_asset_with_filename(project_path, category, asset_name, file_url, "", data)
+}
+
+/// Install downloaded bytes into the project directory.
+///
+/// If `download_filename` is non-empty, it is used instead of the URL-derived name.
+/// If the file is a `.zip`, it is extracted. Otherwise it is written as-is.
+/// Returns the path where the asset was installed.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_asset_with_filename(
+    project_path: &Path,
+    category: &str,
+    asset_name: &str,
+    file_url: &str,
+    download_filename: &str,
+    data: &[u8],
+) -> Result<PathBuf, String> {
     let subdir = install_dir_for_category(category);
     let dest = project_path.join(subdir);
     std::fs::create_dir_all(&dest).map_err(|e| format!("Failed to create directory: {e}"))?;
@@ -47,11 +64,15 @@ pub fn install_asset(
     if is_zip {
         extract_zip(data, &dest, asset_name)
     } else {
-        // Single file — derive filename from URL
-        let filename = file_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(asset_name);
+        // Single file — prefer download_filename, fall back to URL-derived name
+        let filename = if !download_filename.is_empty() {
+            download_filename
+        } else {
+            file_url
+                .rsplit('/')
+                .next()
+                .unwrap_or(asset_name)
+        };
         let file_path = dest.join(filename);
         std::fs::write(&file_path, data)
             .map_err(|e| format!("Failed to write file: {e}"))?;

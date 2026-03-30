@@ -58,6 +58,8 @@ pub struct AssetDetail {
 #[derive(Debug, Deserialize)]
 pub struct DownloadResponse {
     pub download_url: String,
+    #[serde(default)]
+    pub download_filename: String,
 }
 
 // ── API calls (blocking) ──

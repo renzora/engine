@@ -414,11 +414,12 @@ impl AssetOverlay {
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)
                     .map_err(|e| format!("Failed to download file: {e}"))?;
 
-                install::install_asset(
+                install::install_asset_with_filename(
                     &project_path,
                     &category,
                     &asset_name,
                     &dl_resp.download_url,
+                    &dl_resp.download_filename,
                     &data,
                 )?;
 

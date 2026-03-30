@@ -140,11 +140,12 @@ impl HubLibraryPanel {
                 let dl_resp =
                     renzora_auth::marketplace::download_asset(&session_clone, &asset_id)?;
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)?;
-                install::install_asset(
+                install::install_asset_with_filename(
                     &project_path,
                     &category,
                     &asset_name,
                     &dl_resp.download_url,
+                    &dl_resp.download_filename,
                     &data,
                 )?;
                 Ok(format!("Installed \"{}\"", asset_name))
