@@ -7,6 +7,8 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, 
 use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
 use renzora_editor::{EditorPanel, PanelLocation};
+
+use crate::images::ImageCache;
 use crate::install;
 
 // ── Background result types ──
@@ -46,6 +48,7 @@ pub struct HubLibraryPanel {
     state: RwLock<LibraryState>,
     receiver: Mutex<Option<mpsc::Receiver<LibraryResult>>>,
     needs_refresh: RwLock<bool>,
+    images: Mutex<ImageCache>,
 }
 
 impl Default for HubLibraryPanel {
@@ -54,12 +57,13 @@ impl Default for HubLibraryPanel {
             state: RwLock::new(LibraryState::default()),
             receiver: Mutex::new(None),
             needs_refresh: RwLock::new(true),
+            images: Mutex::new(ImageCache::default()),
         }
     }
 }
 
 impl HubLibraryPanel {
-    fn poll_results(&self) {
+    fn poll_results(&self, ctx: &egui::Context) {
         let rx_guard = self.receiver.lock().ok();
         let result = rx_guard
             .as_ref()
@@ -86,6 +90,10 @@ impl HubLibraryPanel {
                     state.installing_id = None;
                 }
             }
+        }
+
+        if let Ok(mut images) = self.images.lock() {
+            images.poll(ctx);
         }
     }
 
@@ -172,7 +180,7 @@ impl EditorPanel for HubLibraryPanel {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        self.poll_results();
+        self.poll_results(ui.ctx());
 
         let theme = match world.get_resource::<renzora_theme::ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
@@ -190,20 +198,33 @@ impl EditorPanel for HubLibraryPanel {
             .get_resource::<renzora_core::CurrentProject>()
             .map(|p| p.path.clone());
 
-        let _accent = theme.semantic.accent.to_color32();
-        let _text_secondary = theme.text.secondary.to_color32();
+        let accent = theme.semantic.accent.to_color32();
+        let text_primary = theme.text.primary.to_color32();
+        let text_secondary = theme.text.secondary.to_color32();
         let text_muted = theme.text.muted.to_color32();
+        let surface = theme.surfaces.panel.to_color32();
+        let border = theme.widgets.border.to_color32();
 
         if !session.is_signed_in() {
             ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
+                ui.add_space(60.0);
                 ui.label(
                     RichText::new(egui_phosphor::regular::USER)
-                        .size(32.0)
+                        .size(36.0)
                         .color(text_muted),
                 );
-                ui.add_space(8.0);
-                ui.label(RichText::new("Sign in to view your library").color(text_muted));
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("Sign in to view your library")
+                        .size(13.0)
+                        .color(text_muted),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Purchased assets will appear here")
+                        .size(11.0)
+                        .color(darken(text_muted, 20)),
+                );
             });
             return;
         }
@@ -222,28 +243,52 @@ impl EditorPanel for HubLibraryPanel {
         let mut do_refresh = false;
 
         // ── Toolbar ──
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+
             let mut state = self.state.write().unwrap();
             ui.add(
                 egui::TextEdit::singleline(&mut state.filter)
-                    .desired_width(160.0)
-                    .hint_text("Filter..."),
+                    .desired_width(ui.available_width() - 34.0)
+                    .hint_text(format!(
+                        "{} Filter assets...",
+                        egui_phosphor::regular::FUNNEL
+                    )),
             );
 
-            let btn = ui.button(RichText::new(egui_phosphor::regular::ARROW_CLOCKWISE).size(13.0));
-            if btn.clicked() {
+            let refresh_btn = ui.button(
+                RichText::new(egui_phosphor::regular::ARROW_CLOCKWISE).size(14.0),
+            );
+            if refresh_btn.clicked() {
                 do_refresh = true;
             }
         });
 
         // Status/error
         {
-            let state = self.state.read().unwrap();
-            if let Some(err) = &state.error {
-                ui.label(RichText::new(err).size(11.0).color(Color32::from_rgb(239, 68, 68)));
+            let mut state = self.state.write().unwrap();
+            if let Some(err) = state.error.take() {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{} {}", egui_phosphor::regular::WARNING, err))
+                            .size(10.5)
+                            .color(Color32::from_rgb(239, 68, 68)),
+                    );
+                });
             }
-            if let Some(msg) = &state.status {
-                ui.label(RichText::new(msg).size(11.0).color(Color32::from_rgb(34, 197, 94)));
+            if let Some(msg) = state.status.take() {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {}",
+                            egui_phosphor::regular::CHECK_CIRCLE,
+                            msg
+                        ))
+                        .size(10.5)
+                        .color(Color32::from_rgb(34, 197, 94)),
+                    );
+                });
             }
         }
 
@@ -258,72 +303,195 @@ impl EditorPanel for HubLibraryPanel {
 
                 if state.loading {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(20.0);
+                        ui.add_space(40.0);
                         ui.spinner();
-                    });
-                    return;
-                }
-
-                if state.assets.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(20.0);
+                        ui.add_space(8.0);
                         ui.label(
-                            RichText::new("No purchased assets yet")
+                            RichText::new("Loading library...")
+                                .size(12.0)
                                 .color(text_muted),
                         );
                     });
                     return;
                 }
 
+                if state.assets.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.label(
+                            RichText::new(egui_phosphor::regular::BOOKS)
+                                .size(36.0)
+                                .color(text_muted),
+                        );
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("No purchased assets yet")
+                                .size(12.0)
+                                .color(text_muted),
+                        );
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Browse the Store to find assets")
+                                .size(10.5)
+                                .color(darken(text_muted, 20)),
+                        );
+                    });
+                    return;
+                }
+
                 let filter_lower = state.filter.to_lowercase();
-                let panel_bg = theme.surfaces.panel.to_color32();
-                let border = theme.widgets.border.to_color32();
 
-                for asset in &state.assets {
-                    // Apply filter
-                    if !filter_lower.is_empty()
-                        && !asset.name.to_lowercase().contains(&filter_lower)
-                        && !asset.category.to_lowercase().contains(&filter_lower)
-                    {
-                        continue;
-                    }
+                // Snapshot assets
+                let assets_snapshot: Vec<_> = state
+                    .assets
+                    .iter()
+                    .filter(|a| {
+                        filter_lower.is_empty()
+                            || a.name.to_lowercase().contains(&filter_lower)
+                            || a.category.to_lowercase().contains(&filter_lower)
+                    })
+                    .cloned()
+                    .collect();
+                let installing_id = state.installing_id.clone();
+                drop(state); // Release read lock before image cache lock
 
+                if assets_snapshot.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.label(
+                            RichText::new("No matching assets")
+                                .size(11.0)
+                                .color(text_muted),
+                        );
+                    });
+                    return;
+                }
+
+                let row_height = 62.0;
+
+                for asset in &assets_snapshot {
+                    let is_installing = installing_id.as_deref() == Some(&asset.id);
                     let install_dir = install::install_dir_for_category(&asset.category);
-                    let is_installing = state.installing_id.as_deref() == Some(&asset.id);
 
-                    let (rect, _resp) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), 52.0),
+                    let (rect, resp) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), row_height),
                         Sense::hover(),
                     );
 
+                    let hovered = resp.hovered();
+                    let row_bg = if hovered { brighten(surface, 8) } else { surface };
+                    let row_border = if hovered { accent } else { border };
+
                     ui.painter().rect(
                         rect,
-                        CornerRadius::same(3),
-                        panel_bg,
-                        egui::Stroke::new(0.5, border),
+                        CornerRadius::same(4),
+                        row_bg,
+                        egui::Stroke::new(if hovered { 1.0 } else { 0.5 }, row_border),
                         StrokeKind::Outside,
                     );
 
-                    // Name + category
-                    ui.painter().text(
-                        rect.min + egui::vec2(8.0, 8.0),
-                        egui::Align2::LEFT_TOP,
-                        &asset.name,
-                        egui::FontId::proportional(12.0),
-                        theme.text.primary.to_color32(),
-                    );
-                    ui.painter().text(
-                        rect.min + egui::vec2(8.0, 24.0),
-                        egui::Align2::LEFT_TOP,
-                        format!("{} {} {}/", egui_phosphor::regular::FOLDER_OPEN, &asset.category, install_dir),
-                        egui::FontId::proportional(10.0),
-                        text_muted,
+                    // Thumbnail (small square on the left)
+                    let thumb_size = 44.0;
+                    let thumb_rect = egui::Rect::from_min_size(
+                        rect.min + egui::vec2(8.0, (row_height - thumb_size) / 2.0),
+                        Vec2::splat(thumb_size),
                     );
 
-                    // Install button
+                    let mut drew_image = false;
+                    if let Some(ref url) = asset.thumbnail_url {
+                        if let Ok(mut images) = self.images.lock() {
+                            if let Some(handle) = images.get(url) {
+                                ui.painter().rect_filled(
+                                    thumb_rect,
+                                    CornerRadius::same(3),
+                                    Color32::TRANSPARENT,
+                                );
+                                ui.painter().image(
+                                    handle.id(),
+                                    thumb_rect,
+                                    egui::Rect::from_min_max(
+                                        egui::pos2(0.0, 0.0),
+                                        egui::pos2(1.0, 1.0),
+                                    ),
+                                    Color32::WHITE,
+                                );
+                                drew_image = true;
+                            }
+                        }
+                    }
+                    if !drew_image {
+                        ui.painter().rect_filled(
+                            thumb_rect,
+                            CornerRadius::same(3),
+                            brighten(surface, 8),
+                        );
+                        ui.painter().text(
+                            thumb_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            egui_phosphor::regular::PACKAGE,
+                            egui::FontId::proportional(16.0),
+                            text_muted,
+                        );
+                    }
+
+                    // Content to the right of thumbnail
+                    let text_left = thumb_rect.right() + 10.0;
+
+                    // Name
+                    ui.painter().text(
+                        egui::Pos2::new(text_left, rect.top() + 10.0),
+                        egui::Align2::LEFT_TOP,
+                        truncate_str(&asset.name, 20),
+                        egui::FontId::proportional(12.0),
+                        text_primary,
+                    );
+
+                    // Category pill + install path
+                    let meta_y = rect.top() + 28.0;
+
+                    // Category pill
+                    let pill_galley = ui.painter().layout_no_wrap(
+                        asset.category.clone(),
+                        egui::FontId::proportional(9.0),
+                        text_secondary,
+                    );
+                    let pill_w = pill_galley.rect.width() + 8.0;
+                    let pill_h = 14.0;
+                    let pill_rect = egui::Rect::from_min_size(
+                        egui::Pos2::new(text_left, meta_y),
+                        Vec2::new(pill_w, pill_h),
+                    );
+                    ui.painter().rect_filled(
+                        pill_rect,
+                        CornerRadius::same(2),
+                        brighten(surface, 16),
+                    );
+                    ui.painter().text(
+                        pill_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        &asset.category,
+                        egui::FontId::proportional(9.0),
+                        text_secondary,
+                    );
+
+                    // Install path
+                    ui.painter().text(
+                        egui::Pos2::new(pill_rect.right() + 6.0, meta_y + 2.0),
+                        egui::Align2::LEFT_TOP,
+                        format!("{}/", install_dir),
+                        egui::FontId::proportional(9.0),
+                        darken(text_muted, 10),
+                    );
+
+                    // Install button (right side)
+                    let btn_w = 68.0;
+                    let btn_h = 24.0;
                     let btn_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(rect.right() - 78.0, rect.center().y - 11.0),
-                        Vec2::new(70.0, 22.0),
+                        egui::Pos2::new(
+                            rect.right() - btn_w - 8.0,
+                            rect.center().y - btn_h / 2.0,
+                        ),
+                        Vec2::new(btn_w, btn_h),
                     );
                     let btn_id = ui.id().with(("lib_install", &asset.id));
                     let btn_resp = ui.interact(btn_rect, btn_id, Sense::click());
@@ -335,14 +503,19 @@ impl EditorPanel for HubLibraryPanel {
                     } else {
                         Color32::from_rgb(34, 197, 94)
                     };
-                    ui.painter().rect_filled(btn_rect, CornerRadius::same(3), btn_bg);
+                    ui.painter()
+                        .rect_filled(btn_rect, CornerRadius::same(3), btn_bg);
 
-                    let btn_text = if is_installing { "Installing" } else { "Install" };
+                    let btn_text = if is_installing {
+                        format!("{}", egui_phosphor::regular::SPINNER)
+                    } else {
+                        format!("{} Install", egui_phosphor::regular::DOWNLOAD_SIMPLE)
+                    };
                     ui.painter().text(
                         btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        btn_text,
-                        egui::FontId::proportional(10.5),
+                        &btn_text,
+                        egui::FontId::proportional(10.0),
                         Color32::WHITE,
                     );
 
@@ -353,7 +526,7 @@ impl EditorPanel for HubLibraryPanel {
                         do_install = Some(asset.clone());
                     }
 
-                    ui.add_space(2.0);
+                    ui.add_space(3.0);
                 }
             });
 
@@ -369,4 +542,32 @@ impl EditorPanel for HubLibraryPanel {
             }
         }
     }
+}
+
+// ── Helpers ──
+
+fn truncate_str(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        s
+    } else {
+        &s[..s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len())]
+    }
+}
+
+fn brighten(c: Color32, delta: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        c.r().saturating_add(delta),
+        c.g().saturating_add(delta),
+        c.b().saturating_add(delta),
+        c.a(),
+    )
+}
+
+fn darken(c: Color32, delta: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        c.r().saturating_sub(delta),
+        c.g().saturating_sub(delta),
+        c.b().saturating_sub(delta),
+        c.a(),
+    )
 }

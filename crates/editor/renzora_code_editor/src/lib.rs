@@ -9,7 +9,8 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora_core::CurrentProject;
-use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 
 use crate::render::render_code_editor_content;
@@ -154,6 +155,28 @@ fn sync_code_editor_bridge(bridge: Res<CodeEditorBridge>, mut state: ResMut<Code
     }
 }
 
+/// When the selected entity has scripts attached, auto-open them in the code editor.
+fn sync_selection_scripts(
+    selection: Res<EditorSelection>,
+    mut state: ResMut<CodeEditorState>,
+    project: Option<Res<CurrentProject>>,
+    script_query: Query<&ScriptComponent>,
+) {
+    let Some(entity) = selection.get() else { return };
+    let Ok(sc) = script_query.get(entity) else { return };
+    let Some(project) = project else { return };
+
+    for entry in &sc.scripts {
+        if let Some(ref rel_path) = entry.script_path {
+            let full_path = project.path.join(rel_path);
+            if full_path.exists() {
+                // open_file is idempotent — if already open it just switches tab
+                state.open_file(full_path);
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -172,7 +195,10 @@ impl Plugin for CodeEditorPlugin {
         use renzora_editor::SplashState;
         app.add_systems(
             Update,
-            sync_code_editor_bridge.run_if(in_state(SplashState::Editor)),
+            (
+                sync_code_editor_bridge,
+                sync_selection_scripts,
+            ).run_if(in_state(SplashState::Editor)),
         );
 
         app.register_panel(CodeEditorPanel::new(arc));

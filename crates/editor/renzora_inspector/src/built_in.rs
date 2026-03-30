@@ -1310,19 +1310,161 @@ fn script_component_ui(
                 }
             });
 
-            // Script variables (props)
+            // Script variables (props) — editable
             if !entry.variables.iter_all().next().is_none() {
+                use renzora_scripting::ScriptValue;
                 ui.add_space(2.0);
                 for (var_name, var_value) in entry.variables.iter_all() {
-                    let display = format_script_value(var_value);
                     let label = to_display_name(var_name);
-                    inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                        ui.label(
-                            egui::RichText::new(display)
-                                .size(11.0)
-                                .color(theme.text.secondary.to_color32()),
-                        );
-                    });
+                    let script_idx = i;
+                    let vname = var_name.clone();
+                    match var_value.clone() {
+                        ScriptValue::Float(mut v) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = v;
+                                ui.add(egui::DragValue::new(&mut v).speed(0.1));
+                                if v != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Float(v));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::Int(mut v) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = v;
+                                ui.add(egui::DragValue::new(&mut v).speed(1.0));
+                                if v != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Int(v));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::Bool(v) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let id = ui.id().with(("script_var_bool", script_idx, &vname));
+                                if toggle_switch(ui, id, v) {
+                                    let new_val = !v;
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Bool(new_val));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::String(mut s) | ScriptValue::Entity(mut s) => {
+                            let is_entity = matches!(var_value, ScriptValue::Entity(_));
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = s.clone();
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut s)
+                                        .desired_width(ui.available_width()),
+                                );
+                                if s != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                let val = if is_entity {
+                                                    ScriptValue::Entity(s)
+                                                } else {
+                                                    ScriptValue::String(s)
+                                                };
+                                                entry.variables.set(vname, val);
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::Vec2(mut v) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = v;
+                                let w = ((ui.available_width() - 32.0) / 2.0).max(30.0);
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                ui.label(egui::RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
+                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.x).speed(0.1));
+                                ui.label(egui::RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(130, 200, 90)));
+                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.y).speed(0.1));
+                                if v != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Vec2(v));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::Vec3(mut v) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = v;
+                                let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                ui.label(egui::RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
+                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.x).speed(0.1));
+                                ui.label(egui::RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(130, 200, 90)));
+                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.y).speed(0.1));
+                                ui.label(egui::RichText::new("Z").size(10.0).color(egui::Color32::from_rgb(90, 150, 230)));
+                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.z).speed(0.1));
+                                if v != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Vec3(v));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        ScriptValue::Color(mut c) => {
+                            let vname = vname.clone();
+                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                let orig = c;
+                                let mut rgb = [c.x, c.y, c.z];
+                                if ui.color_edit_button_rgb(&mut rgb).changed() {
+                                    c.x = rgb[0];
+                                    c.y = rgb[1];
+                                    c.z = rgb[2];
+                                }
+                                if c != orig {
+                                    let vname = vname.clone();
+                                    cmds.push(move |w: &mut World| {
+                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
+                                                entry.variables.set(vname, ScriptValue::Color(c));
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
                 }
                 ui.add_space(2.0);
             }

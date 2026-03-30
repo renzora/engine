@@ -1,68 +1,43 @@
-//! Hub Store panel — browse, search, and purchase marketplace assets.
+//! Hub Marketplace panel — browse grid of marketplace assets with category sidebar.
+//!
+//! Clicking an asset opens the [`AssetOverlay`] modal for full detail,
+//! purchase, ratings, and comments.
 
 use std::sync::{mpsc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, StrokeKind, Vec2};
-use renzora_auth::marketplace::{AssetDetail, AssetSummary, Category, MarketplaceListResponse};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2};
+use renzora_auth::marketplace::{AssetSummary, Category, MarketplaceListResponse};
 use renzora_auth::session::AuthSession;
 use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_theme::Theme;
 
-use crate::install;
+use crate::images::ImageCache;
+use crate::overlay::AssetOverlay;
 
-// ── Background result types ──
-
-enum StoreResult {
-    Assets(Result<MarketplaceListResponse, String>),
-    Categories(Result<Vec<Category>, String>),
-    Detail(Result<AssetDetail, String>),
-    Purchase(Result<String, String>),
-    Download(Result<DownloadComplete, String>),
-}
-
-#[allow(dead_code)]
-struct DownloadComplete {
-    asset_name: String,
-    category: String,
-    file_url: String,
-    data: Vec<u8>,
-}
-
-// ── Panel state ──
-
-#[derive(Default)]
-enum StoreView {
-    #[default]
-    Browse,
-    Detail(String), // asset slug
-}
+// ── Panel state ─────────────────────────────────────────────────────────────
 
 struct StoreState {
-    view: StoreView,
     search_query: String,
     selected_category: Option<String>,
     sort: String,
     page: u32,
 
-    // Cached data
     assets: Vec<AssetSummary>,
     total: i64,
     per_page: i64,
     categories: Vec<Category>,
-    detail: Option<AssetDetail>,
 
-    // Status
     loading: bool,
     error: Option<String>,
     status: Option<String>,
-    installing: bool,
+
+    sidebar_width: f32,
 }
 
 impl Default for StoreState {
     fn default() -> Self {
         Self {
-            view: StoreView::Browse,
             search_query: String::new(),
             selected_category: None,
             sort: "newest".into(),
@@ -71,89 +46,74 @@ impl Default for StoreState {
             total: 0,
             per_page: 24,
             categories: Vec::new(),
-            detail: None,
             loading: false,
             error: None,
             status: None,
-            installing: false,
+            sidebar_width: 150.0,
         }
     }
 }
 
-// ── Panel ──
+// ── Panel ───────────────────────────────────────────────────────────────────
 
 pub struct HubStorePanel {
     state: RwLock<StoreState>,
-    receiver: Mutex<Option<mpsc::Receiver<StoreResult>>>,
+    asset_rx: Mutex<Option<mpsc::Receiver<Result<MarketplaceListResponse, String>>>>,
+    category_rx: Mutex<Option<mpsc::Receiver<Result<Vec<Category>, String>>>>,
     initialized: RwLock<bool>,
+    images: Mutex<ImageCache>,
+    pub(crate) overlay: AssetOverlay,
 }
 
 impl Default for HubStorePanel {
     fn default() -> Self {
         Self {
             state: RwLock::new(StoreState::default()),
-            receiver: Mutex::new(None),
+            asset_rx: Mutex::new(None),
+            category_rx: Mutex::new(None),
             initialized: RwLock::new(false),
+            images: Mutex::new(ImageCache::default()),
+            overlay: AssetOverlay::default(),
         }
     }
 }
 
 impl HubStorePanel {
-    fn poll_results(&self) {
-        let rx_guard = self.receiver.lock().ok();
-        let result = rx_guard
-            .as_ref()
-            .and_then(|opt| opt.as_ref())
-            .and_then(|rx| rx.try_recv().ok());
-
-        if let Some(result) = result {
-            let mut state = self.state.write().unwrap();
-            match result {
-                StoreResult::Assets(Ok(resp)) => {
-                    state.assets = resp.assets;
-                    state.total = resp.total;
-                    state.per_page = resp.per_page;
-                    state.loading = false;
-                }
-                StoreResult::Assets(Err(e)) => {
-                    state.error = Some(e);
-                    state.loading = false;
-                }
-                StoreResult::Categories(Ok(cats)) => {
-                    state.categories = cats;
-                }
-                StoreResult::Categories(Err(_)) => {}
-                StoreResult::Detail(Ok(detail)) => {
-                    state.detail = Some(detail);
-                    state.loading = false;
-                }
-                StoreResult::Detail(Err(e)) => {
-                    state.error = Some(e);
-                    state.loading = false;
-                }
-                StoreResult::Purchase(Ok(msg)) => {
-                    state.status = Some(msg);
-                    state.loading = false;
-                    // Mark as owned in detail view
-                    if let Some(ref mut d) = state.detail {
-                        d.owned = Some(true);
+    fn poll_results(&self, ctx: &egui::Context) {
+        // Poll asset results
+        if let Ok(guard) = self.asset_rx.lock() {
+            if let Some(rx) = guard.as_ref() {
+                if let Ok(result) = rx.try_recv() {
+                    let mut state = self.state.write().unwrap();
+                    match result {
+                        Ok(resp) => {
+                            state.assets = resp.assets;
+                            state.total = resp.total;
+                            state.per_page = resp.per_page;
+                            state.loading = false;
+                        }
+                        Err(e) => {
+                            state.error = Some(e);
+                            state.loading = false;
+                        }
                     }
                 }
-                StoreResult::Purchase(Err(e)) => {
-                    state.error = Some(e);
-                    state.loading = false;
-                }
-                StoreResult::Download(Ok(dl)) => {
-                    state.installing = false;
-                    state.status = Some(format!("Installed \"{}\"", dl.asset_name));
-                    // Actual file install happens via the stored project path
-                    // (handled in the caller that set up the download).
-                }
-                StoreResult::Download(Err(e)) => {
-                    state.installing = false;
-                    state.error = Some(e);
+            }
+        }
+
+        // Poll category results
+        if let Ok(guard) = self.category_rx.lock() {
+            if let Some(rx) = guard.as_ref() {
+                if let Ok(result) = rx.try_recv() {
+                    if let Ok(cats) = result {
+                        self.state.write().unwrap().categories = cats;
+                    }
                 }
             }
+        }
+
+        if let Ok(mut images) = self.images.lock() {
+            images.poll(ctx);
         }
     }
 
@@ -171,7 +131,7 @@ impl HubStorePanel {
         drop(state);
 
         let (tx, rx) = mpsc::channel();
-        *self.receiver.lock().unwrap() = Some(rx);
+        *self.asset_rx.lock().unwrap() = Some(rx);
         self.state.write().unwrap().loading = true;
 
         std::thread::spawn(move || {
@@ -181,98 +141,18 @@ impl HubStorePanel {
                 Some(&sort),
                 page,
             );
-            let _ = tx.send(StoreResult::Assets(result));
+            let _ = tx.send(result);
         });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn fetch_categories(&self) {
         let (tx, rx) = mpsc::channel();
-        // Multiplex onto the same receiver — categories come back first
-        *self.receiver.lock().unwrap() = Some(rx);
+        *self.category_rx.lock().unwrap() = Some(rx);
 
         std::thread::spawn(move || {
             let result = renzora_auth::marketplace::list_categories();
-            let _ = tx.send(StoreResult::Categories(result));
-        });
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn fetch_detail(&self, slug: &str) {
-        let slug = slug.to_string();
-        let (tx, rx) = mpsc::channel();
-        *self.receiver.lock().unwrap() = Some(rx);
-        self.state.write().unwrap().loading = true;
-
-        std::thread::spawn(move || {
-            let result = renzora_auth::marketplace::get_asset(&slug);
-            let _ = tx.send(StoreResult::Detail(result));
-        });
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn purchase(&self, session: &AuthSession, asset_id: &str) {
-        let session_clone = AuthSession {
-            user: session.user.clone(),
-            access_token: session.access_token.clone(),
-            refresh_token: session.refresh_token.clone(),
-        };
-        let asset_id = asset_id.to_string();
-        let (tx, rx) = mpsc::channel();
-        *self.receiver.lock().unwrap() = Some(rx);
-        self.state.write().unwrap().loading = true;
-
-        std::thread::spawn(move || {
-            let result = renzora_auth::marketplace::purchase_asset(&session_clone, &asset_id);
-            let _ = tx.send(StoreResult::Purchase(result.map(|r| r.message)));
-        });
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn download_and_install(
-        &self,
-        session: &AuthSession,
-        asset_id: &str,
-        asset_name: &str,
-        category: &str,
-        project_path: std::path::PathBuf,
-    ) {
-        let session_clone = AuthSession {
-            user: session.user.clone(),
-            access_token: session.access_token.clone(),
-            refresh_token: session.refresh_token.clone(),
-        };
-        let asset_id = asset_id.to_string();
-        let asset_name = asset_name.to_string();
-        let category = category.to_string();
-        let (tx, rx) = mpsc::channel();
-        *self.receiver.lock().unwrap() = Some(rx);
-        self.state.write().unwrap().installing = true;
-
-        std::thread::spawn(move || {
-            let result = (|| {
-                let dl_resp =
-                    renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                        .map_err(|e| format!("Failed to get download URL: {e}"))?;
-                let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)
-                    .map_err(|e| format!("Failed to download file: {e}"))?;
-
-                install::install_asset(
-                    &project_path,
-                    &category,
-                    &asset_name,
-                    &dl_resp.download_url,
-                    &data,
-                )?;
-
-                Ok(DownloadComplete {
-                    asset_name,
-                    category,
-                    file_url: dl_resp.download_url,
-                    data,
-                })
-            })();
-            let _ = tx.send(StoreResult::Download(result));
+            let _ = tx.send(result);
         });
     }
 }
@@ -283,7 +163,7 @@ impl EditorPanel for HubStorePanel {
     }
 
     fn title(&self) -> &str {
-        "Store"
+        "Marketplace"
     }
 
     fn icon(&self) -> Option<&str> {
@@ -303,7 +183,7 @@ impl EditorPanel for HubStorePanel {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        self.poll_results();
+        self.poll_results(ui.ctx());
 
         let theme = match world.get_resource::<renzora_theme::ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
@@ -317,9 +197,6 @@ impl EditorPanel for HubStorePanel {
                 refresh_token: s.refresh_token.clone(),
             })
             .unwrap_or_default();
-        let project_path = world
-            .get_resource::<renzora_core::CurrentProject>()
-            .map(|p| p.path.clone());
 
         // Initialize on first frame
         {
@@ -334,108 +211,63 @@ impl EditorPanel for HubStorePanel {
             }
         }
 
-        let accent = theme.semantic.accent.to_color32();
-        let text_secondary = theme.text.secondary.to_color32();
-        let text_muted = theme.text.muted.to_color32();
+        self.render_browse_view(ui, &theme, &session);
 
-        // Check current view
-        let current_view = {
-            let state = self.state.read().unwrap();
-            match &state.view {
-                StoreView::Browse => None,
-                StoreView::Detail(slug) => Some(slug.clone()),
-            }
-        };
-
-        if let Some(_slug) = current_view {
-            self.render_detail_view(ui, &theme, &session, project_path.as_ref(), accent, text_secondary, text_muted);
-        } else {
-            self.render_browse_view(ui, &theme, &session, accent, text_secondary, text_muted);
-        }
+        // Overlay renders on top of everything
+        self.overlay.show(ui.ctx(), world);
     }
 }
 
+// ── Constants ───────────────────────────────────────────────────────────────
+
+const CARD_WIDTH: f32 = 120.0;
+const CARD_HEIGHT: f32 = 170.0;
+const THUMB_HEIGHT: f32 = 120.0;
+const CARD_RADIUS: f32 = 6.0;
+const CARD_SPACING: f32 = 10.0;
+
 impl HubStorePanel {
-    fn render_browse_view(
-        &self,
-        ui: &mut egui::Ui,
-        theme: &Theme,
-        _session: &AuthSession,
-        accent: Color32,
-        text_secondary: Color32,
-        text_muted: Color32,
-    ) {
+    fn render_browse_view(&self, ui: &mut egui::Ui, theme: &Theme, session: &AuthSession) {
+        let accent = theme.semantic.accent.to_color32();
+        let text_primary = theme.text.primary.to_color32();
+        let text_secondary = theme.text.secondary.to_color32();
+        let text_muted = theme.text.muted.to_color32();
+        let surface = theme.surfaces.panel.to_color32();
+        let border = theme.widgets.border.to_color32();
+
         let mut should_search = false;
         let mut navigate_to: Option<String> = None;
         let mut page_change: Option<u32> = None;
 
-        // ── Toolbar ──
+        // ── Header + Search Toolbar ──
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = 6.0;
 
-            // Search box
             let mut state = self.state.write().unwrap();
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut state.search_query)
-                    .desired_width(200.0)
-                    .hint_text("Search assets..."),
+                    .desired_width(180.0)
+                    .hint_text(format!(
+                        "{} Search assets...",
+                        egui_phosphor::regular::MAGNIFYING_GLASS
+                    )),
             );
             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 state.page = 1;
                 should_search = true;
             }
 
-            let btn = ui.button(RichText::new(egui_phosphor::regular::MAGNIFYING_GLASS).size(13.0));
-            if btn.clicked() {
-                state.page = 1;
-                should_search = true;
-            }
-
-            ui.add_space(8.0);
-
-            // Category filter
-            let cat_label = state
-                .selected_category
-                .as_deref()
-                .unwrap_or("All Categories")
-                .to_string();
-            let categories_snapshot: Vec<_> = state
-                .categories
-                .iter()
-                .map(|c| (c.slug.clone(), c.name.clone()))
-                .collect();
-            let current_cat = state.selected_category.clone();
-            egui::ComboBox::from_id_salt("hub_category")
-                .selected_text(&cat_label)
-                .width(120.0)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(current_cat.is_none(), "All Categories").clicked() {
-                        state.selected_category = None;
-                        state.page = 1;
-                        should_search = true;
-                    }
-                    for (slug, name) in &categories_snapshot {
-                        if ui.selectable_label(
-                            current_cat.as_deref() == Some(slug.as_str()),
-                            name,
-                        ).clicked() {
-                            state.selected_category = Some(slug.clone());
-                            state.page = 1;
-                            should_search = true;
-                        }
-                    }
-                });
-
             // Sort
             egui::ComboBox::from_id_salt("hub_sort")
                 .selected_text(match state.sort.as_str() {
                     "newest" => "Newest",
                     "popular" => "Popular",
-                    "price_asc" => "Price: Low to High",
-                    "price_desc" => "Price: High to Low",
+                    "price_asc" => "Price: Low",
+                    "price_desc" => "Price: High",
                     _ => "Newest",
                 })
-                .width(120.0)
+                .width(100.0)
                 .show_ui(ui, |ui| {
                     for (val, label) in [
                         ("newest", "Newest"),
@@ -450,186 +282,466 @@ impl HubStorePanel {
                         }
                     }
                 });
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format!("{} assets", state.total))
+                        .size(10.5)
+                        .color(text_muted),
+                );
+            });
         });
 
-        ui.add_space(4.0);
+        ui.add_space(2.0);
 
-        // Status/error
+        // Status/error bar
         {
-            let state = self.state.read().unwrap();
-            if let Some(err) = &state.error {
-                ui.label(RichText::new(err).size(11.0).color(Color32::from_rgb(239, 68, 68)));
+            let mut state = self.state.write().unwrap();
+            if let Some(err) = state.error.take() {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{} {}", egui_phosphor::regular::WARNING, err))
+                            .size(11.0)
+                            .color(Color32::from_rgb(239, 68, 68)),
+                    );
+                });
             }
-            if let Some(msg) = &state.status {
-                ui.label(RichText::new(msg).size(11.0).color(Color32::from_rgb(34, 197, 94)));
+            if let Some(msg) = state.status.take() {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {}",
+                            egui_phosphor::regular::CHECK_CIRCLE,
+                            msg
+                        ))
+                        .size(11.0)
+                        .color(Color32::from_rgb(34, 197, 94)),
+                    );
+                });
             }
         }
 
         ui.separator();
 
-        // ── Asset grid ──
+        // ── Split layout: category sidebar (left) + asset grid (right) ──
+        let content_rect = ui.available_rect_before_wrap();
+        if content_rect.height() < 10.0 {
+            return;
+        }
+
+        let sidebar_width = self
+            .state
+            .read()
+            .unwrap()
+            .sidebar_width
+            .clamp(100.0, (content_rect.width() - 200.0).max(100.0));
+        let splitter_width = 4.0;
+
+        let sidebar_rect = egui::Rect::from_min_max(
+            content_rect.min,
+            egui::pos2(content_rect.min.x + sidebar_width, content_rect.max.y),
+        );
+        let splitter_rect = egui::Rect::from_min_max(
+            egui::pos2(sidebar_rect.max.x, content_rect.min.y),
+            egui::pos2(sidebar_rect.max.x + splitter_width, content_rect.max.y),
+        );
+        let grid_rect = egui::Rect::from_min_max(
+            egui::pos2(splitter_rect.max.x, content_rect.min.y),
+            content_rect.max,
+        );
+
+        // Draggable splitter
+        let splitter_id = ui.id().with("marketplace_splitter");
+        let splitter_resp =
+            ui.interact(splitter_rect, splitter_id, egui::Sense::click_and_drag());
+        if splitter_resp.dragged() {
+            let new_w = (sidebar_width + splitter_resp.drag_delta().x)
+                .clamp(100.0, (content_rect.width() - 200.0).max(100.0));
+            self.state.write().unwrap().sidebar_width = new_w;
+        }
+        if splitter_resp.hovered() || splitter_resp.dragged() {
+            ui.ctx()
+                .set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+        let splitter_color = if splitter_resp.hovered() || splitter_resp.dragged() {
+            accent
+        } else {
+            border
+        };
+        ui.painter().vline(
+            splitter_rect.center().x,
+            splitter_rect.y_range(),
+            Stroke::new(1.0, splitter_color),
+        );
+
+        // ── Category sidebar ──
+        let mut sidebar_ui = ui.new_child(egui::UiBuilder::new().max_rect(sidebar_rect));
+        egui::ScrollArea::vertical()
+            .id_salt("hub_category_scroll")
+            .auto_shrink([false, false])
+            .show(&mut sidebar_ui, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(8.0);
+                    ui.label(
+                        RichText::new("Categories")
+                            .size(10.0)
+                            .color(text_muted),
+                    );
+                });
+                ui.add_space(4.0);
+
+                let row_height = 22.0;
+                let mut state = self.state.write().unwrap();
+                let current_cat = state.selected_category.clone();
+                let categories_snapshot: Vec<_> = state
+                    .categories
+                    .iter()
+                    .map(|c| (c.slug.clone(), c.name.clone()))
+                    .collect();
+
+                // "All" row
+                {
+                    let selected = current_cat.is_none();
+                    let (rect, resp) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), row_height),
+                        Sense::click(),
+                    );
+                    let bg = if selected {
+                        accent.linear_multiply(0.15)
+                    } else if resp.hovered() {
+                        brighten(surface, 8)
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter()
+                        .rect_filled(rect, CornerRadius::same(3), bg);
+                    if selected {
+                        ui.painter().rect_stroke(
+                            rect,
+                            CornerRadius::same(3),
+                            Stroke::new(1.0, accent.linear_multiply(0.4)),
+                            StrokeKind::Inside,
+                        );
+                    }
+                    let text_color = if selected { accent } else { text_primary };
+                    ui.painter().text(
+                        egui::pos2(rect.min.x + 10.0, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{}  All", egui_phosphor::regular::SQUARES_FOUR),
+                        egui::FontId::proportional(11.0),
+                        text_color,
+                    );
+                    if resp.clicked() && !selected {
+                        state.selected_category = None;
+                        state.page = 1;
+                        should_search = true;
+                    }
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                }
+
+                // Category rows
+                for (slug, name) in &categories_snapshot {
+                    let selected = current_cat.as_deref() == Some(slug.as_str());
+                    let (rect, resp) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), row_height),
+                        Sense::click(),
+                    );
+                    let bg = if selected {
+                        accent.linear_multiply(0.15)
+                    } else if resp.hovered() {
+                        brighten(surface, 8)
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter()
+                        .rect_filled(rect, CornerRadius::same(3), bg);
+                    if selected {
+                        ui.painter().rect_stroke(
+                            rect,
+                            CornerRadius::same(3),
+                            Stroke::new(1.0, accent.linear_multiply(0.4)),
+                            StrokeKind::Inside,
+                        );
+                    }
+                    let text_color = if selected { accent } else { text_primary };
+                    ui.painter().text(
+                        egui::pos2(rect.min.x + 10.0, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{}  {}", egui_phosphor::regular::TAG, name),
+                        egui::FontId::proportional(11.0),
+                        text_color,
+                    );
+                    if resp.clicked() && !selected {
+                        state.selected_category = Some(slug.clone());
+                        state.page = 1;
+                        should_search = true;
+                    }
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                }
+            });
+
+        // ── Asset grid (right pane) ──
+        let mut grid_child = ui.new_child(egui::UiBuilder::new().max_rect(grid_rect));
         egui::ScrollArea::vertical()
             .id_salt("hub_store_scroll")
             .auto_shrink([false, false])
-            .show(ui, |ui| {
+            .show(&mut grid_child, |ui| {
                 let state = self.state.read().unwrap();
 
                 if state.loading {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(40.0);
+                        ui.add_space(60.0);
                         ui.spinner();
-                        ui.label(RichText::new("Loading...").color(text_muted));
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("Loading assets...").size(12.0).color(text_muted),
+                        );
                     });
                     return;
                 }
 
                 if state.assets.is_empty() {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(40.0);
+                        ui.add_space(60.0);
                         ui.label(
                             RichText::new(egui_phosphor::regular::PACKAGE)
-                                .size(32.0)
+                                .size(40.0)
                                 .color(text_muted),
                         );
-                        ui.label(RichText::new("No assets found").color(text_muted));
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("No assets found").size(13.0).color(text_muted),
+                        );
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Try a different search or category")
+                                .size(11.0)
+                                .color(text_muted),
+                        );
                     });
                     return;
                 }
 
-                // Grid of asset cards
+                // Grid layout — centered
                 let available_width = ui.available_width();
-                let card_width = 200.0_f32;
-                let spacing = 8.0_f32;
-                let cols = ((available_width + spacing) / (card_width + spacing))
+                let cols = ((available_width + CARD_SPACING) / (CARD_WIDTH + CARD_SPACING))
                     .floor()
                     .max(1.0) as usize;
+                let total_grid_width =
+                    cols as f32 * CARD_WIDTH + (cols.saturating_sub(1)) as f32 * CARD_SPACING;
+                let left_pad = ((available_width - total_grid_width) / 2.0).max(0.0);
 
-                let panel_bg = theme.surfaces.panel.to_color32();
-                let border = theme.widgets.border.to_color32();
+                let assets_snapshot: Vec<_> = state
+                    .assets
+                    .iter()
+                    .map(|a| {
+                        (
+                            a.slug.clone(),
+                            a.name.clone(),
+                            a.category.clone(),
+                            a.price_credits,
+                            a.thumbnail_url.clone(),
+                        )
+                    })
+                    .collect();
+                let page = state.page;
+                let total = state.total;
+                let per_page = state.per_page;
+                drop(state);
 
-                for row in state.assets.chunks(cols) {
+                for row in assets_snapshot.chunks(cols) {
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = spacing;
-                        for asset in row {
+                        ui.add_space(left_pad);
+                        ui.spacing_mut().item_spacing.x = CARD_SPACING;
+
+                        for (slug, name, category, price, thumb_url) in row {
                             let (rect, response) = ui.allocate_exact_size(
-                                Vec2::new(card_width, 140.0),
+                                Vec2::new(CARD_WIDTH, CARD_HEIGHT),
                                 Sense::click(),
                             );
 
+                            let hovered = response.hovered();
+
                             // Card background
-                            let bg = if response.hovered() {
-                                brighten(panel_bg, 12)
-                            } else {
-                                panel_bg
-                            };
+                            let card_bg = if hovered { brighten(surface, 10) } else { surface };
+                            let card_border = if hovered { accent } else { border };
                             ui.painter().rect(
                                 rect,
-                                CornerRadius::same(4),
-                                bg,
-                                egui::Stroke::new(1.0, border),
+                                CornerRadius::same(CARD_RADIUS as u8),
+                                card_bg,
+                                egui::Stroke::new(
+                                    if hovered { 1.5 } else { 1.0 },
+                                    card_border,
+                                ),
                                 StrokeKind::Outside,
                             );
 
-                            // Thumbnail placeholder
+                            // Square thumbnail
                             let thumb_rect = egui::Rect::from_min_size(
-                                rect.min + egui::vec2(8.0, 8.0),
-                                Vec2::new(card_width - 16.0, 60.0),
+                                rect.min,
+                                Vec2::new(CARD_WIDTH, THUMB_HEIGHT),
+                            );
+                            let thumb_radius = CornerRadius {
+                                nw: CARD_RADIUS as u8,
+                                ne: CARD_RADIUS as u8,
+                                sw: 0,
+                                se: 0,
+                            };
+
+                            let mut drew_image = false;
+                            if let Some(url) = thumb_url {
+                                if let Ok(mut images) = self.images.lock() {
+                                    if let Some(handle) = images.get(url) {
+                                        ui.painter().rect_filled(
+                                            thumb_rect,
+                                            thumb_radius,
+                                            Color32::TRANSPARENT,
+                                        );
+                                        ui.painter().image(
+                                            handle.id(),
+                                            thumb_rect,
+                                            egui::Rect::from_min_max(
+                                                egui::pos2(0.0, 0.0),
+                                                egui::pos2(1.0, 1.0),
+                                            ),
+                                            Color32::WHITE,
+                                        );
+                                        drew_image = true;
+                                    }
+                                }
+                            }
+
+                            if !drew_image {
+                                ui.painter().rect_filled(
+                                    thumb_rect,
+                                    thumb_radius,
+                                    brighten(surface, 5),
+                                );
+                                ui.painter().text(
+                                    thumb_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    egui_phosphor::regular::IMAGE,
+                                    egui::FontId::proportional(22.0),
+                                    darken(text_muted, 30),
+                                );
+                            }
+
+                            // Content below thumbnail
+                            let content_left = rect.left() + 6.0;
+                            let content_right = rect.right() - 6.0;
+                            let content_top = thumb_rect.bottom() + 4.0;
+
+                            // Asset name
+                            ui.painter().text(
+                                egui::Pos2::new(content_left, content_top),
+                                egui::Align2::LEFT_TOP,
+                                truncate_str(name, 16),
+                                egui::FontId::proportional(10.5),
+                                text_primary,
+                            );
+
+                            // Bottom row: category + price
+                            let bottom_y = rect.bottom() - 16.0;
+
+                            // Category pill
+                            let pill_text = truncate_str(category, 8);
+                            let pill_galley = ui.painter().layout_no_wrap(
+                                pill_text.to_string(),
+                                egui::FontId::proportional(8.5),
+                                text_secondary,
+                            );
+                            let pill_w = pill_galley.rect.width() + 6.0;
+                            let pill_rect = egui::Rect::from_min_size(
+                                egui::Pos2::new(content_left, bottom_y),
+                                Vec2::new(pill_w, 14.0),
                             );
                             ui.painter().rect_filled(
-                                thumb_rect,
+                                pill_rect,
                                 CornerRadius::same(2),
-                                brighten(panel_bg, 6),
+                                brighten(surface, 16),
                             );
                             ui.painter().text(
-                                thumb_rect.center(),
+                                pill_rect.center(),
                                 egui::Align2::CENTER_CENTER,
-                                egui_phosphor::regular::IMAGE,
-                                egui::FontId::proportional(20.0),
-                                text_muted,
-                            );
-
-                            // Name
-                            let name_pos = egui::Pos2::new(rect.left() + 8.0, thumb_rect.bottom() + 6.0);
-                            ui.painter().text(
-                                name_pos,
-                                egui::Align2::LEFT_TOP,
-                                truncate_str(&asset.name, 24),
-                                egui::FontId::proportional(11.5),
-                                theme.text.primary.to_color32(),
-                            );
-
-                            // Creator
-                            let creator_pos = egui::Pos2::new(rect.left() + 8.0, name_pos.y + 15.0);
-                            ui.painter().text(
-                                creator_pos,
-                                egui::Align2::LEFT_TOP,
-                                &asset.creator_name,
-                                egui::FontId::proportional(10.0),
-                                text_muted,
+                                pill_text,
+                                egui::FontId::proportional(8.5),
+                                text_secondary,
                             );
 
                             // Price
-                            let price_text = if asset.price_credits == 0 {
-                                "Free".to_string()
+                            let (price_text, price_color) = if *price == 0 {
+                                ("Free".to_string(), Color32::from_rgb(34, 197, 94))
                             } else {
-                                format!("{} credits", asset.price_credits)
-                            };
-                            let price_color = if asset.price_credits == 0 {
-                                Color32::from_rgb(34, 197, 94)
-                            } else {
-                                accent
+                                (format!("{} credits", price), accent)
                             };
                             ui.painter().text(
-                                egui::Pos2::new(rect.right() - 8.0, creator_pos.y),
-                                egui::Align2::RIGHT_TOP,
+                                egui::Pos2::new(content_right, bottom_y + 7.0),
+                                egui::Align2::RIGHT_CENTER,
                                 &price_text,
-                                egui::FontId::proportional(10.0),
+                                egui::FontId::proportional(9.0),
                                 price_color,
                             );
 
-                            // Downloads
-                            let dl_pos = egui::Pos2::new(rect.left() + 8.0, rect.bottom() - 10.0);
-                            ui.painter().text(
-                                dl_pos,
-                                egui::Align2::LEFT_BOTTOM,
-                                format!("{} {}", egui_phosphor::regular::DOWNLOAD_SIMPLE, asset.downloads),
-                                egui::FontId::proportional(9.5),
-                                text_muted,
-                            );
-
-                            if response.hovered() {
+                            if hovered {
                                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                             }
-
                             if response.clicked() {
-                                navigate_to = Some(asset.slug.clone());
+                                navigate_to = Some(slug.clone());
                             }
                         }
                     });
-                    ui.add_space(spacing);
+                    ui.add_space(CARD_SPACING);
                 }
 
                 // ── Pagination ──
-                let total_pages = ((state.total as f32) / (state.per_page.max(1) as f32)).ceil() as u32;
+                let total_pages = ((total as f32) / (per_page.max(1) as f32)).ceil() as u32;
                 if total_pages > 1 {
-                    ui.add_space(8.0);
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if state.page > 1 {
-                            if ui.button(RichText::new(egui_phosphor::regular::CARET_LEFT).size(12.0)).clicked() {
-                                page_change = Some(state.page - 1);
+                        let pad =
+                            ((ui.available_width() - 200.0) / 2.0).max(0.0);
+                        ui.add_space(pad);
+
+                        if page > 1 {
+                            if ui
+                                .button(
+                                    RichText::new(format!(
+                                        "{} Prev",
+                                        egui_phosphor::regular::CARET_LEFT
+                                    ))
+                                    .size(11.0),
+                                )
+                                .clicked()
+                            {
+                                page_change = Some(page - 1);
                             }
                         }
                         ui.label(
-                            RichText::new(format!("Page {} of {}", state.page, total_pages))
+                            RichText::new(format!("{} / {}", page, total_pages))
                                 .size(11.0)
                                 .color(text_secondary),
                         );
-                        if state.page < total_pages {
-                            if ui.button(RichText::new(egui_phosphor::regular::CARET_RIGHT).size(12.0)).clicked() {
-                                page_change = Some(state.page + 1);
+                        if page < total_pages {
+                            if ui
+                                .button(
+                                    RichText::new(format!(
+                                        "Next {}",
+                                        egui_phosphor::regular::CARET_RIGHT
+                                    ))
+                                    .size(11.0),
+                                )
+                                .clicked()
+                            {
+                                page_change = Some(page + 1);
                             }
                         }
                     });
+                    ui.add_space(8.0);
                 }
             });
 
@@ -639,12 +751,7 @@ impl HubStorePanel {
             self.fetch_assets();
         }
         if let Some(slug) = navigate_to {
-            self.state.write().unwrap().view = StoreView::Detail(slug.clone());
-            self.state.write().unwrap().detail = None;
-            self.state.write().unwrap().error = None;
-            self.state.write().unwrap().status = None;
-            #[cfg(not(target_arch = "wasm32"))]
-            self.fetch_detail(&slug);
+            self.overlay.open(&slug, Some(session));
         }
         if let Some(page) = page_change {
             self.state.write().unwrap().page = page;
@@ -652,199 +759,9 @@ impl HubStorePanel {
             self.fetch_assets();
         }
     }
-
-    fn render_detail_view(
-        &self,
-        ui: &mut egui::Ui,
-        _theme: &Theme,
-        session: &AuthSession,
-        project_path: Option<&std::path::PathBuf>,
-        accent: Color32,
-        text_secondary: Color32,
-        text_muted: Color32,
-    ) {
-        let mut go_back = false;
-        let mut do_purchase: Option<String> = None;
-        let mut do_install: Option<(String, String, String)> = None; // (id, name, category)
-
-        // Back button
-        ui.horizontal(|ui| {
-            let back = ui.button(
-                RichText::new(format!("{} Back", egui_phosphor::regular::ARROW_LEFT)).size(11.0),
-            );
-            if back.clicked() {
-                go_back = true;
-            }
-        });
-
-        ui.separator();
-
-        let state = self.state.read().unwrap();
-
-        if state.loading {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.spinner();
-            });
-        } else if let Some(detail) = &state.detail {
-            egui::ScrollArea::vertical()
-                .id_salt("hub_detail_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.add_space(8.0);
-
-                    // Name
-                    ui.label(
-                        RichText::new(&detail.name)
-                            .size(18.0)
-                            .strong(),
-                    );
-                    ui.add_space(4.0);
-
-                    // Category + Version
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("{} {}", egui_phosphor::regular::TAG, &detail.category))
-                                .size(11.0)
-                                .color(text_secondary),
-                        );
-                        ui.label(
-                            RichText::new(format!("v{}", &detail.version))
-                                .size(11.0)
-                                .color(text_muted),
-                        );
-                        ui.label(
-                            RichText::new(format!("{} {} downloads", egui_phosphor::regular::DOWNLOAD_SIMPLE, detail.downloads))
-                                .size(11.0)
-                                .color(text_muted),
-                        );
-                    });
-
-                    ui.add_space(12.0);
-
-                    // Install directory info
-                    let install_dir = install::install_dir_for_category(&detail.category);
-                    ui.label(
-                        RichText::new(format!("Installs to: {}/", install_dir))
-                            .size(10.5)
-                            .color(text_muted),
-                    );
-
-                    ui.add_space(12.0);
-
-                    // Description
-                    ui.label(
-                        RichText::new(&detail.description)
-                            .size(12.0)
-                            .color(text_secondary),
-                    );
-
-                    ui.add_space(16.0);
-
-                    // Price + Action buttons
-                    let is_owned = detail.owned.unwrap_or(false);
-                    let is_free = detail.price_credits == 0;
-
-                    ui.horizontal(|ui| {
-                        if is_owned {
-                            // Already owned — show install button
-                            let install_text = if state.installing {
-                                "Installing..."
-                            } else {
-                                "Install to Project"
-                            };
-                            let btn = ui.add_sized(
-                                [160.0, 28.0],
-                                egui::Button::new(
-                                    RichText::new(format!("{} {}", egui_phosphor::regular::DOWNLOAD_SIMPLE, install_text))
-                                        .color(Color32::WHITE)
-                                        .size(12.0),
-                                )
-                                .fill(Color32::from_rgb(34, 197, 94))
-                                .corner_radius(CornerRadius::same(4)),
-                            );
-                            if btn.clicked() && !state.installing {
-                                do_install = Some((
-                                    detail.id.clone(),
-                                    detail.name.clone(),
-                                    detail.category.clone(),
-                                ));
-                            }
-                            if btn.hovered() && !state.installing {
-                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                            }
-
-                            ui.label(
-                                RichText::new("Owned")
-                                    .size(11.0)
-                                    .color(Color32::from_rgb(34, 197, 94)),
-                            );
-                        } else if !session.is_signed_in() {
-                            ui.label(
-                                RichText::new("Sign in to purchase")
-                                    .size(11.0)
-                                    .color(text_muted),
-                            );
-                        } else {
-                            // Purchase button
-                            let price_label = if is_free {
-                                "Get for Free".to_string()
-                            } else {
-                                format!("Buy for {} credits", detail.price_credits)
-                            };
-                            let btn = ui.add_sized(
-                                [160.0, 28.0],
-                                egui::Button::new(
-                                    RichText::new(&price_label)
-                                        .color(Color32::WHITE)
-                                        .size(12.0),
-                                )
-                                .fill(accent)
-                                .corner_radius(CornerRadius::same(4)),
-                            );
-                            if btn.clicked() && !state.loading {
-                                do_purchase = Some(detail.id.clone());
-                            }
-                            if btn.hovered() && !state.loading {
-                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                            }
-                        }
-                    });
-
-                    // Status/error
-                    if let Some(err) = &state.error {
-                        ui.add_space(8.0);
-                        ui.label(RichText::new(err).size(11.0).color(Color32::from_rgb(239, 68, 68)));
-                    }
-                    if let Some(msg) = &state.status {
-                        ui.add_space(8.0);
-                        ui.label(RichText::new(msg).size(11.0).color(Color32::from_rgb(34, 197, 94)));
-                    }
-                });
-        } else {
-            ui.label(RichText::new("Asset not found").color(text_muted));
-        }
-
-        // ── Apply deferred actions ──
-        if go_back {
-            let mut state = self.state.write().unwrap();
-            state.view = StoreView::Browse;
-            state.detail = None;
-            state.error = None;
-            state.status = None;
-        }
-        if let Some(asset_id) = do_purchase {
-            #[cfg(not(target_arch = "wasm32"))]
-            self.purchase(session, &asset_id);
-        }
-        if let Some((asset_id, asset_name, category)) = do_install {
-            if let Some(pp) = project_path {
-                #[cfg(not(target_arch = "wasm32"))]
-                self.download_and_install(session, &asset_id, &asset_name, &category, pp.clone());
-            }
-        }
-    }
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn truncate_str(s: &str, max: usize) -> &str {
     if s.len() <= max {
@@ -859,6 +776,15 @@ fn brighten(c: Color32, delta: u8) -> Color32 {
         c.r().saturating_add(delta),
         c.g().saturating_add(delta),
         c.b().saturating_add(delta),
+        c.a(),
+    )
+}
+
+fn darken(c: Color32, delta: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        c.r().saturating_sub(delta),
+        c.g().saturating_sub(delta),
+        c.b().saturating_sub(delta),
         c.a(),
     )
 }

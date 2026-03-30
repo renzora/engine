@@ -151,6 +151,30 @@ fn resolve_material_refs(
                     );
                 }
             }
+        } else if path.ends_with(".wgsl") || path.ends_with(".glsl") || path.ends_with(".frag") || path.ends_with(".vert") {
+            match resolve_raw_shader(
+                &fs_path,
+                &mut code_materials,
+                &mut shaders,
+                &mut shader_cache,
+                &shader_registry,
+                reader,
+            ) {
+                Some(handle) => {
+                    cache.code_materials.insert(path.clone(), handle.clone());
+                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands.entity(entity).try_insert((
+                        MeshMaterial3d(handle),
+                        MaterialResolved { source_path: path.clone() },
+                    ));
+                }
+                None => {
+                    warn!("Failed to resolve raw shader: {}", path);
+                    commands.entity(entity).try_insert(
+                        MaterialResolved { source_path: path.clone() },
+                    );
+                }
+            }
         } else {
             warn!("MaterialRef has unsupported extension: {}", path);
             commands.entity(entity).try_insert(
@@ -194,6 +218,43 @@ fn resolve_code_shader(
         Ok(w) => w,
         Err(e) => {
             error!("Failed to compile shader '{}': {}", path, e.message);
+            return None;
+        }
+    };
+
+    let label = format!("code_shader://{}", path);
+    let shader_handle = shader_cache.get_or_insert(&wgsl, &label, shaders);
+
+    let mat = CodeShaderMaterial {
+        shader_handle,
+        ..Default::default()
+    };
+    Some(materials.add(mat))
+}
+
+/// Load a raw shader file (.wgsl, .glsl, .frag, .vert), auto-detect language,
+/// compile it, and create a `CodeShaderMaterial`.
+fn resolve_raw_shader(
+    path: &str,
+    materials: &mut Assets<CodeShaderMaterial>,
+    shaders: &mut Assets<Shader>,
+    shader_cache: &mut ShaderCache,
+    registry: &renzora_shader::registry::ShaderBackendRegistry,
+    reader: &renzora_core::VirtualFileReader,
+) -> Option<Handle<CodeShaderMaterial>> {
+    let source = match reader.read_string(path) {
+        Some(c) => c,
+        None => {
+            error!("Failed to read raw shader file '{}'", path);
+            return None;
+        }
+    };
+
+    let language = renzora_shader::file::detect_language(&source).to_string();
+    let wgsl = match registry.compile(&language, &source) {
+        Ok(w) => w,
+        Err(e) => {
+            error!("Failed to compile raw shader '{}': {}", path, e.message);
             return None;
         }
     };

@@ -51,6 +51,8 @@ pub struct AssetDetail {
     pub downloads: i64,
     pub published: bool,
     pub owned: Option<bool>,
+    #[serde(default)]
+    pub creator_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -257,6 +259,129 @@ pub struct PurchaseResponse {
 #[derive(Debug, Deserialize, Clone)]
 pub struct CreditBalanceResponse {
     pub balance: i64,
+}
+
+// ── Comments & Ratings ──
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AssetComment {
+    pub id: String,
+    pub user_name: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CommentsResponse {
+    pub comments: Vec<AssetComment>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AssetRating {
+    pub average: f32,
+    pub count: i64,
+    pub user_rating: Option<i32>,
+}
+
+/// Get comments for an asset.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_comments(slug: &str) -> Result<CommentsResponse, String> {
+    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/comments");
+
+    let response = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Post a comment on an asset (requires authentication).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn post_comment(
+    session: &AuthSession,
+    slug: &str,
+    content: &str,
+) -> Result<AssetComment, String> {
+    let token = session
+        .access_token
+        .as_deref()
+        .ok_or("Not signed in")?;
+
+    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/comments");
+    let body = serde_json::json!({ "content": content });
+    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
+
+    let response = ureq::post(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .send(json.as_bytes())
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body_str = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Get the average rating and user's own rating for an asset.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_rating(slug: &str, session: Option<&AuthSession>) -> Result<AssetRating, String> {
+    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/rating");
+
+    let mut req = ureq::get(&url);
+    if let Some(s) = session {
+        if let Some(token) = s.access_token.as_deref() {
+            req = req.header("Authorization", &format!("Bearer {token}"));
+        }
+    }
+
+    let response = req
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+/// Submit or update a rating for an asset (requires authentication).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn post_rating(
+    session: &AuthSession,
+    slug: &str,
+    rating: i32,
+) -> Result<AssetRating, String> {
+    let token = session
+        .access_token
+        .as_deref()
+        .ok_or("Not signed in")?;
+
+    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/rating");
+    let body = serde_json::json!({ "rating": rating });
+    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
+
+    let response = ureq::post(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .send(json.as_bytes())
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body_str = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
 }
 
 /// Simple percent-encoding for query parameters.
