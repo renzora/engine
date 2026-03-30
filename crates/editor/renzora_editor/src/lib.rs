@@ -140,13 +140,17 @@ impl Plugin for RenzoraEditorPlugin {
 }
 
 /// Picks up script hot-reload events and shows toast notifications.
+/// When many scripts reload at once (e.g. project load), shows a single
+/// summary toast instead of flooding the screen.
 fn show_script_reload_toasts(
     reload_events: Option<Res<renzora_scripting::ScriptReloadEvents>>,
     mut toasts: ResMut<renzora_ui::Toasts>,
 ) {
     let Some(events) = reload_events else { return };
-    for name in &events.reloaded {
-        toasts.success(format!("Reloaded {}", name));
+    match events.reloaded.len() {
+        0 => {}
+        1 => { toasts.success(format!("Reloaded {}", events.reloaded[0])); }
+        n => { toasts.success(format!("Reloaded {} scripts", n)); }
     }
 }
 

@@ -177,7 +177,8 @@ impl ScriptBackend for RhaiBackend {
 
     fn needs_reload(&self, path: &Path) -> bool {
         let cache = match self.cache.read() { Ok(c) => c, Err(_) => return false };
-        let Some(cached) = cache.get(path) else { return true };
+        // Not in cache = never loaded yet, not a "reload" scenario
+        let Some(cached) = cache.get(path) else { return false };
         if self.file_reader.is_some() { return false; }
         let Ok(meta) = std::fs::metadata(path) else { return false };
         let Ok(modified) = meta.modified() else { return false };
