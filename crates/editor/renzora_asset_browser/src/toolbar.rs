@@ -5,65 +5,78 @@ use renzora_theme::Theme;
 
 use crate::state::{AssetBrowserState, ViewMode};
 
-/// Renders the toolbar: back, home, breadcrumb path, search bar, zoom slider.
+/// Renders the toolbar: breadcrumb path, search bar, import, view toggle, zoom slider.
 pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) {
     let text_primary = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
 
+    ui.add_space(3.0);
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.add_space(8.0);
 
-        // Back button
-        let can_go_back = !state.history.is_empty();
-        let back_color = if can_go_back { text_primary } else { theme.text.disabled.to_color32() };
-        if icon_button(ui, regular::ARROW_LEFT, "Back", back_color) && can_go_back {
-            state.go_back();
-        }
-
-        // Home button
-        if icon_button(ui, regular::HOUSE, "Go to project root", text_primary) {
-            state.go_home();
-        }
-
-        ui.add_space(4.0);
-
-        // Breadcrumb path
+        // Breadcrumb navigation
         let root = state.root();
+        let root_name = root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Project")
+            .to_string();
+
         if let Some(ref current) = state.current_folder.clone() {
-            let rel = current.strip_prefix(&root).unwrap_or(current);
-            let mut accumulated = root.clone();
+            // Root segment
+            let is_root = current == &root;
+            let root_resp = ui.add(
+                egui::Label::new(
+                    RichText::new(format!("{} {}", regular::HOUSE, root_name))
+                        .size(11.0)
+                        .color(if is_root { text_primary } else { text_muted }),
+                )
+                .selectable(false)
+                .sense(egui::Sense::click()),
+            );
+            if root_resp.clicked() {
+                state.navigate_to(root.clone());
+            }
+            if root_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
 
-            for (i, component) in rel.components().enumerate() {
-                let segment = component.as_os_str().to_string_lossy();
-                if i > 0 {
-                    ui.label(RichText::new("/").size(11.0).color(text_muted));
-                }
+            // Sub-path segments
+            if let Ok(rel) = current.strip_prefix(&root) {
+                let mut accumulated = root.clone();
+                for component in rel.components() {
+                    let segment = component.as_os_str().to_string_lossy();
+                    accumulated = accumulated.join(component);
+                    let target = accumulated.clone();
 
-                accumulated = accumulated.join(component);
-                let target = accumulated.clone();
+                    ui.label(RichText::new(regular::CARET_RIGHT).size(10.0).color(text_muted));
 
-                let resp = ui.add(
-                    egui::Label::new(
-                        RichText::new(segment.as_ref())
-                            .size(11.0)
-                            .color(text_primary),
-                    )
-                    .selectable(false)
-                    .sense(egui::Sense::click()),
-                );
-                if resp.clicked() {
-                    state.navigate_to(target);
-                }
-                if resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    let resp = ui.add(
+                        egui::Label::new(
+                            RichText::new(segment.as_ref())
+                                .size(11.0)
+                                .color(text_primary),
+                        )
+                        .selectable(false)
+                        .sense(egui::Sense::click()),
+                    );
+                    if resp.clicked() {
+                        state.navigate_to(target);
+                    }
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
                 }
             }
         } else {
             ui.label(RichText::new("No folder selected").size(11.0).color(text_muted));
         }
 
-        // Right-aligned: search + zoom
+        // Right-aligned: search + import + view toggle + zoom
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(8.0);
+
             // Zoom slider (only in grid mode)
             if state.view_mode == ViewMode::Grid {
                 ui.spacing_mut().slider_width = 60.0;
@@ -84,14 +97,24 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                 state.view_mode = ViewMode::Grid;
             }
 
-            ui.add_space(8.0);
+            ui.add_space(4.0);
 
             // Import button
-            if icon_button(ui, regular::DOWNLOAD_SIMPLE, "Import 3D model", text_primary) {
+            let accent = theme.semantic.accent.to_color32();
+            let import_resp = ui.add(
+                egui::Button::new(
+                    RichText::new(format!("{} Import", regular::DOWNLOAD_SIMPLE))
+                        .size(11.0)
+                        .color(accent),
+                )
+                .rounding(4.0)
+                .stroke(egui::Stroke::new(1.0, accent.linear_multiply(0.4))),
+            );
+            if import_resp.on_hover_text("Import 3D model").clicked() {
                 state.import_clicked = true;
             }
 
-            ui.add_space(8.0);
+            ui.add_space(4.0);
 
             // Search bar
             ui.add(

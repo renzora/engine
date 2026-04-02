@@ -172,6 +172,8 @@ pub fn grid_ui_interactive(
     let mut drag_started_index: Option<usize> = None;
     let mut thumbnail_requests: Vec<PathBuf> = Vec::new();
     let mut right_clicked = false;
+    let mut pending_rename_rect: Option<egui::Rect> = None;
+    let mut pending_rename_font: f32 = 11.0;
 
     // The visible grid pane rect (used for hit-testing pointer vs grid area)
     let grid_pane_rect = ui.max_rect();
@@ -179,9 +181,9 @@ pub fn grid_ui_interactive(
     egui::ScrollArea::vertical()
         .id_salt("asset_grid")
         .auto_shrink([false, false])
+        .drag_to_scroll(false)
         .show(ui, |ui| {
-            ui.add_space(4.0);
-
+            ui.add_space(5.0);
             let grid = TileGrid::new(theme)
                 .zoom(zoom)
                 .available_width(ui.available_width());
@@ -228,33 +230,9 @@ pub fn grid_ui_interactive(
                 // Inline rename UI
                 let is_renaming = state.renaming_asset.as_ref() == Some(&entry.path);
                 if is_renaming {
-                    // Draw rename TextEdit in the label area
-                    let rename_rect = tile.label_rect;
-                    let rename_id = ui.id().with("rename_input");
-                    let mut text = state.rename_buffer.clone();
-                    let resp = ui.put(
-                        rename_rect,
-                        egui::TextEdit::singleline(&mut text)
-                            .font(FontId::proportional(tile.font_size))
-                            .desired_width(rename_rect.width())
-                            .id(rename_id),
-                    );
-                    state.rename_buffer = text;
-
-                    if !state.rename_focus_set {
-                        resp.request_focus();
-                        state.rename_focus_set = true;
-                    }
-
-                    // Enter to confirm rename
-                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        let new_name = state.rename_buffer.trim().to_string();
-                        if !new_name.is_empty() && new_name != entry.name {
-                            state.pending_rename = Some((entry.path.clone(), new_name));
-                        }
-                        state.renaming_asset = None;
-                    }
-                    // Escape handled above
+                    // Stash rename info to render outside the grid layout
+                    pending_rename_rect = Some(tile.label_rect);
+                    pending_rename_font = tile.font_size;
                 }
 
                 // Try to render an image thumbnail for supported file types
@@ -327,6 +305,46 @@ pub fn grid_ui_interactive(
                     state.clear_selection();
                 }
             }
+        }
+    }
+
+    // --- Inline rename (rendered outside grid layout to avoid breaking flow) ---
+    if let Some(rename_rect) = pending_rename_rect {
+        let rename_id = egui::Id::new("asset_grid_rename_input");
+        let mut text = state.rename_buffer.clone();
+        let area_resp = egui::Area::new(rename_id.with("area"))
+            .fixed_pos(rename_rect.min)
+            .order(egui::Order::Foreground)
+            .show(&ctx, |ui| {
+                ui.set_max_width(rename_rect.width());
+                ui.add(
+                    egui::TextEdit::singleline(&mut text)
+                        .font(FontId::proportional(pending_rename_font))
+                        .desired_width(rename_rect.width() - 8.0)
+                        .id(rename_id),
+                )
+            });
+        let resp = area_resp.inner;
+        state.rename_buffer = text;
+
+        if !state.rename_focus_set {
+            resp.request_focus();
+            state.rename_focus_set = true;
+        }
+
+        if resp.lost_focus() {
+            if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                // Confirm rename
+                let new_name = state.rename_buffer.trim().to_string();
+                if let Some(ref renaming) = state.renaming_asset {
+                    let old_name = renaming.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if !new_name.is_empty() && new_name != old_name {
+                        state.pending_rename = Some((renaming.clone(), new_name));
+                    }
+                }
+            }
+            // Cancel on click-away or Escape — discard changes
+            state.renaming_asset = None;
         }
     }
 

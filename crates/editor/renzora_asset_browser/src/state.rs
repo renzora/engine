@@ -85,17 +85,9 @@ pub struct AssetBrowserState {
     /// Error auto-clear timer.
     pub error_timeout: f32,
 
-    // === Create dialogs ===
-    pub show_create_folder_dialog: bool,
-    pub new_folder_name: String,
-    pub show_create_script_dialog: bool,
-    pub new_script_name: String,
-    pub show_create_scene_dialog: bool,
-    pub new_scene_name: String,
-    pub show_create_material_dialog: bool,
-    pub new_material_name: String,
-    pub show_create_shader_dialog: bool,
-    pub new_shader_name: String,
+    // === Inline create (file created immediately, then enters rename mode) ===
+    /// When set, a new asset was just created and should enter rename mode.
+    pub pending_inline_create: Option<PathBuf>,
 }
 
 impl Default for AssetBrowserState {
@@ -105,7 +97,7 @@ impl Default for AssetBrowserState {
             expanded_folders: HashSet::new(),
             selected_path: None,
             search: String::new(),
-            zoom: 1.0,
+            zoom: 0.75,
             tree_width: 200.0,
             project_root: None,
             history: Vec::new(),
@@ -130,16 +122,7 @@ impl Default for AssetBrowserState {
             pending_delete: Vec::new(),
             last_error: None,
             error_timeout: 0.0,
-            show_create_folder_dialog: false,
-            new_folder_name: String::new(),
-            show_create_script_dialog: false,
-            new_script_name: String::new(),
-            show_create_scene_dialog: false,
-            new_scene_name: String::new(),
-            show_create_material_dialog: false,
-            new_material_name: String::new(),
-            show_create_shader_dialog: false,
-            new_shader_name: String::new(),
+            pending_inline_create: None,
         }
     }
 }
@@ -224,6 +207,31 @@ impl AssetBrowserState {
     pub fn go_back(&mut self) {
         if let Some(prev) = self.history.pop() {
             self.current_folder = Some(prev);
+        }
+    }
+
+    /// Create a new asset file in the current folder with a default name,
+    /// then immediately enter rename mode so the user can type a name.
+    pub fn create_inline(&mut self, default_name: &str, content: &str) {
+        let Some(ref folder) = self.current_folder else { return };
+        let path = folder.join(default_name);
+        // Avoid overwriting existing files — append a number
+        let path = find_unique_path(&path);
+        let is_dir = content.is_empty() && path.extension().is_none();
+        let ok = if is_dir {
+            // Treat extensionless + empty content as folder creation
+            std::fs::create_dir_all(&path).is_ok()
+        } else {
+            std::fs::write(&path, content).is_ok()
+        };
+        if ok {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(default_name);
+            self.renaming_asset = Some(path.clone());
+            self.rename_buffer = name.to_string();
+            self.rename_focus_set = false;
+            self.selected_assets.clear();
+            self.selected_assets.insert(path.clone());
+            self.selected_path = Some(path);
         }
     }
 
@@ -385,6 +393,27 @@ pub fn is_3d_model(path: &Path) -> bool {
             "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
         ))
         .unwrap_or(false)
+}
+
+/// If `path` already exists, append `_1`, `_2`, etc. before the extension.
+fn find_unique_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = path.extension().and_then(|e| e.to_str());
+    let parent = path.parent().unwrap_or(Path::new("."));
+    for i in 1..100 {
+        let name = match ext {
+            Some(e) => format!("{}_{}.{}", stem, i, e),
+            None => format!("{}_{}", stem, i),
+        };
+        let candidate = parent.join(&name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path.to_path_buf()
 }
 
 /// Files that should be hidden from the asset browser.

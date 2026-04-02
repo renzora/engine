@@ -113,7 +113,7 @@ impl EditorPanel for AssetBrowserPanel {
             egui::pos2(tree_rect.max.x + splitter_width, content_rect.max.y),
         );
         let grid_rect = egui::Rect::from_min_max(
-            egui::pos2(splitter_rect.max.x, content_rect.min.y),
+            egui::pos2(splitter_rect.max.x + 5.0, content_rect.min.y),
             content_rect.max,
         );
 
@@ -391,9 +391,6 @@ impl EditorPanel for AssetBrowserPanel {
             render_context_menu(ui, &mut state, &theme, pos);
         }
 
-        // --- Create dialogs ---
-        render_create_dialogs(ui.ctx(), &mut state);
-
         // --- Process pending rename ---
         if let Some((old_path, new_name)) = state.pending_rename.take() {
             if let Some(parent) = old_path.parent() {
@@ -431,11 +428,6 @@ impl EditorPanel for AssetBrowserPanel {
                 state.selected_assets.remove(path);
             }
             state.selected_path = state.selected_assets.iter().next().cloned();
-        }
-
-        // --- Process create folder ---
-        if state.show_create_folder_dialog {
-            // handled by render_create_dialogs
         }
 
         // --- Error display ---
@@ -529,102 +521,168 @@ fn render_context_menu(
     pos: egui::Pos2,
 ) {
     let ctx = ui.ctx().clone();
-    let menu_width = 160.0;
-    let item_height = 20.0;
-    let item_font = 11.0;
+    let menu_width = 200.0;
+    let item_height = 28.0;
+    let item_font = 12.0;
+    let icon_font = 14.0;
+    let shortcut_font = 10.0;
 
     let text_primary = theme.text.primary.to_color32();
     let text_secondary = theme.text.secondary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let hover_bg = theme.panels.item_hover.to_color32();
+
     let folder_color = Color32::from_rgb(255, 196, 0);
     let material_color = Color32::from_rgb(0, 200, 83);
     let scene_color = Color32::from_rgb(115, 191, 242);
-    let script_color = Color32::from_rgb(255, 128, 0);
+    let rhai_color = Color32::from_rgb(130, 230, 180);
+    let lua_color = Color32::from_rgb(80, 130, 230);
+    let blueprint_color = Color32::from_rgb(100, 180, 255);
     let shader_color = Color32::from_rgb(220, 120, 255);
 
+    // Estimate menu height to decide if we need to flip upward
+    // 8 create items + header + separator + selection section (variable) + separator + import
+    let has_selection = !state.selected_assets.is_empty();
+    let selection_items = if has_selection {
+        let rename_item = if state.selected_assets.len() == 1 { 1 } else { 0 };
+        1 + rename_item + 1 // header + rename? + delete
+    } else {
+        0
+    };
+    let total_items = 8 + selection_items + 1; // 8 create items + selection + import
+    let separators = if has_selection { 2 } else { 1 };
+    let headers = if has_selection { 2 } else { 1 };
+    let estimated_height = (total_items as f32 * item_height)
+        + (separators as f32 * 9.0)
+        + (headers as f32 * 18.0)
+        + 12.0; // padding
+
+    // Anchor bottom-center of the menu at the cursor position
+    let total_width = menu_width + 12.0; // menu_width + inner margin
+    let menu_pos = egui::pos2(
+        (pos.x - total_width * 0.5).max(10.0),
+        (pos.y - estimated_height).max(10.0),
+    );
+
     let area_resp = egui::Area::new(egui::Id::new("asset_context_menu"))
-        .fixed_pos(pos)
+        .fixed_pos(menu_pos)
         .order(egui::Order::Foreground)
         .constrain(true)
         .show(&ctx, |ui| {
             egui::Frame::popup(ui.style())
+                .inner_margin(egui::Margin::symmetric(6, 6))
+                .rounding(8.0)
+                .shadow(egui::Shadow {
+                    spread: 0,
+                    blur: 16,
+                    offset: [0, 4],
+                    color: Color32::from_black_alpha(80),
+                })
                 .show(ui, |ui| {
                     ui.set_min_width(menu_width);
                     ui.set_max_width(menu_width);
+                    ui.spacing_mut().item_spacing.y = 1.0;
 
-                    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, color: Color32| -> bool {
+                    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32| -> bool {
                         let desired_size = Vec2::new(menu_width, item_height);
                         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
                         if response.hovered() {
-                            ui.painter().rect_filled(rect, 3.0, theme.panels.item_hover.to_color32());
+                            ui.painter().rect_filled(rect, 4.0, hover_bg);
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         }
 
                         ui.painter().text(
-                            egui::pos2(rect.min.x + 14.0, rect.center().y),
-                            egui::Align2::CENTER_CENTER, icon,
-                            FontId::proportional(item_font), color,
+                            egui::pos2(rect.min.x + 16.0, rect.center().y),
+                            egui::Align2::CENTER_CENTER,
+                            icon,
+                            FontId::proportional(icon_font),
+                            icon_color,
                         );
+
                         ui.painter().text(
-                            egui::pos2(rect.min.x + 28.0, rect.center().y),
-                            egui::Align2::LEFT_CENTER, label,
-                            FontId::proportional(item_font), text_primary,
+                            egui::pos2(rect.min.x + 34.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            label,
+                            FontId::proportional(item_font),
+                            text_primary,
                         );
+
+                        if !shortcut.is_empty() {
+                            ui.painter().text(
+                                egui::pos2(rect.max.x - 10.0, rect.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                shortcut,
+                                FontId::proportional(shortcut_font),
+                                text_muted,
+                            );
+                        }
 
                         response.clicked()
                     };
 
-                    // Section header
+                    let separator = |ui: &mut egui::Ui| {
+                        ui.add_space(4.0);
+                        let rect = ui.allocate_space(egui::vec2(menu_width, 1.0)).1;
+                        ui.painter().hline(
+                            (rect.min.x + 8.0)..=(rect.max.x - 8.0),
+                            rect.center().y,
+                            egui::Stroke::new(1.0, theme.widgets.border.to_color32()),
+                        );
+                        ui.add_space(4.0);
+                    };
+
                     let section_header = |ui: &mut egui::Ui, label: &str| {
-                        let desired_size = Vec2::new(menu_width, 14.0);
+                        let desired_size = Vec2::new(menu_width, 18.0);
                         let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
                         ui.painter().text(
-                            egui::pos2(rect.min.x + 8.0, rect.center().y),
-                            egui::Align2::LEFT_CENTER, label,
-                            FontId::proportional(9.0), text_secondary,
+                            egui::pos2(rect.min.x + 10.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            label,
+                            FontId::proportional(10.0),
+                            text_secondary,
                         );
                     };
 
-                    ui.add_space(2.0);
-                    section_header(ui, "CREATE");
-                    ui.add_space(1.0);
+                    // === Create section ===
+                    section_header(ui, "Create");
 
-                    if menu_item(ui, regular::FOLDER_PLUS, "New Folder", folder_color) {
-                        state.show_create_folder_dialog = true;
-                        state.new_folder_name = "New Folder".to_string();
+                    if menu_item(ui, regular::FOLDER_PLUS, "New Folder", "", folder_color) {
+                        state.create_inline("New Folder", "");
                         state.context_menu_pos = None;
                     }
-                    if menu_item(ui, regular::PALETTE, "Material", material_color) {
-                        state.show_create_material_dialog = true;
-                        state.new_material_name = "NewMaterial".to_string();
+                    if menu_item(ui, regular::PALETTE, "Material", "", material_color) {
+                        state.create_inline("NewMaterial.material", "{}");
                         state.context_menu_pos = None;
                     }
-                    if menu_item(ui, regular::FILM_SCRIPT, "Scene", scene_color) {
-                        state.show_create_scene_dialog = true;
-                        state.new_scene_name = "NewScene".to_string();
+                    if menu_item(ui, regular::FILM_SCRIPT, "Scene", "", scene_color) {
+                        state.create_inline("NewScene.ron", "(resources: {}, entities: {})");
                         state.context_menu_pos = None;
                     }
-                    if menu_item(ui, regular::SCROLL, "Script", script_color) {
-                        state.show_create_script_dialog = true;
-                        state.new_script_name = "new_script".to_string();
+                    if menu_item(ui, regular::BLUEPRINT, "Blueprint", "", blueprint_color) {
+                        state.create_inline("NewBlueprint.blueprint", "{}");
                         state.context_menu_pos = None;
                     }
-                    if menu_item(ui, regular::GRAPHICS_CARD, "Shader", shader_color) {
-                        state.show_create_shader_dialog = true;
-                        state.new_shader_name = "new_shader".to_string();
+                    if menu_item(ui, regular::CODE, "Lua Script", "", lua_color) {
+                        state.create_inline("new_script.lua", "-- New Lua script\n");
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::CODE, "Rhai Script", "", rhai_color) {
+                        state.create_inline("new_script.rhai", "// New Rhai script\n");
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::GRAPHICS_CARD, "Shader", "", shader_color) {
+                        state.create_inline("new_shader.wgsl", "// New shader\n");
                         state.context_menu_pos = None;
                     }
 
-                    // Selection actions (when items are selected)
-                    if !state.selected_assets.is_empty() {
-                        ui.add_space(2.0);
-                        ui.separator();
-                        ui.add_space(2.0);
-
-                        section_header(ui, "SELECTION");
-                        ui.add_space(1.0);
+                    // === Selection actions ===
+                    if has_selection {
+                        separator(ui);
+                        section_header(ui, "Selection");
 
                         if state.selected_assets.len() == 1 {
-                            if menu_item(ui, regular::PENCIL, "Rename  F2", text_primary) {
+                            if menu_item(ui, regular::PENCIL, "Rename", "F2", text_primary) {
                                 if let Some(path) = state.selected_assets.iter().next() {
                                     state.renaming_asset = Some(path.clone());
                                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -637,148 +695,37 @@ fn render_context_menu(
                         }
 
                         let delete_label = if state.selected_assets.len() > 1 {
-                            format!("Delete ({})  Del", state.selected_assets.len())
+                            format!("Delete ({})", state.selected_assets.len())
                         } else {
-                            "Delete  Del".to_string()
+                            "Delete".to_string()
                         };
-                        if menu_item(ui, regular::TRASH, &delete_label, theme.semantic.error.to_color32()) {
+                        if menu_item(ui, regular::TRASH, &delete_label, "Del", theme.semantic.error.to_color32()) {
                             state.pending_delete = state.selected_assets.iter().cloned().collect();
                             state.context_menu_pos = None;
                         }
                     }
 
-                    ui.add_space(2.0);
-                    ui.separator();
-                    ui.add_space(2.0);
+                    // === Import ===
+                    separator(ui);
 
-                    if menu_item(ui, regular::DOWNLOAD_SIMPLE, "Import", text_primary) {
+                    if menu_item(ui, regular::DOWNLOAD_SIMPLE, "Import", "", text_primary) {
                         state.import_clicked = true;
                         state.context_menu_pos = None;
                     }
-
-                    ui.add_space(2.0);
                 });
         });
 
-    // Close context menu on click outside
-    if ctx.input(|i| i.pointer.primary_clicked() || i.pointer.secondary_clicked()) {
-        if let Some(pointer_pos) = ctx.pointer_latest_pos() {
-            if !area_resp.response.rect.contains(pointer_pos) {
-                state.context_menu_pos = None;
+    // Close context menu on primary click outside (skip secondary — that
+    // re-opens a new menu via the grid handler). Also skip the first frame
+    // so the menu isn't immediately dismissed by the same click that opened it.
+    if area_resp.response.rect.area() > 0.0 {
+        if ctx.input(|i| i.pointer.primary_clicked()) {
+            if let Some(pointer_pos) = ctx.pointer_latest_pos() {
+                if !area_resp.response.rect.contains(pointer_pos) {
+                    state.context_menu_pos = None;
+                }
             }
         }
-    }
-}
-
-// ── Create dialogs ──────────────────────────────────────────────────────────
-
-fn render_create_dialogs(ctx: &egui::Context, state: &mut AssetBrowserState) {
-    render_create_dialog(
-        ctx,
-        "Create Folder",
-        &mut state.show_create_folder_dialog,
-        &mut state.new_folder_name,
-        |folder, name| {
-            let path = folder.join(name);
-            std::fs::create_dir_all(&path).ok();
-        },
-        state.current_folder.clone(),
-    );
-
-    render_create_dialog(
-        ctx,
-        "Create Script",
-        &mut state.show_create_script_dialog,
-        &mut state.new_script_name,
-        |folder, name| {
-            let name = if name.ends_with(".rhai") { name.to_string() } else { format!("{}.rhai", name) };
-            let path = folder.join(&name);
-            std::fs::write(&path, "// New script\n").ok();
-        },
-        state.current_folder.clone(),
-    );
-
-    render_create_dialog(
-        ctx,
-        "Create Scene",
-        &mut state.show_create_scene_dialog,
-        &mut state.new_scene_name,
-        |folder, name| {
-            let name = if name.ends_with(".ron") { name.to_string() } else { format!("{}.ron", name) };
-            let path = folder.join(&name);
-            std::fs::write(&path, "(resources: {}, entities: {})").ok();
-        },
-        state.current_folder.clone(),
-    );
-
-    render_create_dialog(
-        ctx,
-        "Create Material",
-        &mut state.show_create_material_dialog,
-        &mut state.new_material_name,
-        |folder, name| {
-            let name = if name.ends_with(".material") { name.to_string() } else { format!("{}.material", name) };
-            let path = folder.join(&name);
-            std::fs::write(&path, "{}").ok();
-        },
-        state.current_folder.clone(),
-    );
-
-    render_create_dialog(
-        ctx,
-        "Create Shader",
-        &mut state.show_create_shader_dialog,
-        &mut state.new_shader_name,
-        |folder, name| {
-            let name = if name.ends_with(".wgsl") { name.to_string() } else { format!("{}.wgsl", name) };
-            let path = folder.join(&name);
-            std::fs::write(&path, "// New shader\n").ok();
-        },
-        state.current_folder.clone(),
-    );
-}
-
-fn render_create_dialog(
-    ctx: &egui::Context,
-    title: &str,
-    show: &mut bool,
-    name_buf: &mut String,
-    on_create: impl FnOnce(&std::path::Path, &str),
-    current_folder: Option<std::path::PathBuf>,
-) {
-    if !*show {
-        return;
-    }
-
-    let mut open = true;
-    egui::Window::new(title)
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(name_buf);
-            });
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.button("Create").clicked() {
-                    let trimmed = name_buf.trim().to_string();
-                    if !trimmed.is_empty() {
-                        if let Some(ref folder) = current_folder {
-                            on_create(folder, &trimmed);
-                        }
-                    }
-                    *show = false;
-                }
-                if ui.button("Cancel").clicked() {
-                    *show = false;
-                }
-            });
-        });
-    if !open {
-        *show = false;
     }
 }
 

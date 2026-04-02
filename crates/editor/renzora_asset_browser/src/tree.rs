@@ -26,6 +26,7 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
     egui::ScrollArea::vertical()
         .id_salt("asset_tree")
         .auto_shrink([false, false])
+        .drag_to_scroll(false)
         .show(ui, |ui| {
             ui.style_mut().spacing.item_spacing.y = 0.0;
 
@@ -52,8 +53,11 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
 
             state.tree_folder_rects.push((root.clone(), row_rect));
 
+            // Root is always expanded — clicking just navigates, never collapses
+            if !is_expanded {
+                state.expanded_folders.insert(root.clone());
+            }
             if clicked {
-                toggle_expanded(&mut state.expanded_folders, &root);
                 state.current_folder = Some(root.clone());
             }
 

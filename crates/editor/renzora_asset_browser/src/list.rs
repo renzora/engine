@@ -94,6 +94,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     egui::ScrollArea::vertical()
         .id_salt("asset_list")
         .auto_shrink([false, false])
+        .drag_to_scroll(false)
         .show(ui, |ui| {
             ui.add_space(2.0);
 
@@ -160,10 +161,12 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                         state.rename_focus_set = true;
                     }
 
-                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        let new_name = state.rename_buffer.trim().to_string();
-                        if !new_name.is_empty() && new_name != entry.name {
-                            state.pending_rename = Some((entry.path.clone(), new_name));
+                    if resp.lost_focus() {
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let new_name = state.rename_buffer.trim().to_string();
+                            if !new_name.is_empty() && new_name != entry.name {
+                                state.pending_rename = Some((entry.path.clone(), new_name));
+                            }
                         }
                         state.renaming_asset = None;
                     }
