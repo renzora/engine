@@ -23,6 +23,8 @@ pub struct AssetDragPayload {
     pub origin: Pos2,
     /// True once the pointer moves >5px from origin.
     pub is_detached: bool,
+    /// Number of items being dragged (1 = single file, >1 = multi-select).
+    pub drag_count: usize,
 }
 
 impl AssetDragPayload {
@@ -68,11 +70,19 @@ pub fn draw_asset_drag_ghost(ctx: &egui::Context, payload: &AssetDragPayload, po
                             .font(FontId::proportional(14.0))
                             .color(payload.color),
                     );
-                    ui.label(
-                        egui::RichText::new(&payload.name)
-                            .font(FontId::proportional(11.0))
-                            .color(theme.text.primary.to_color32()),
-                    );
+                    if payload.drag_count > 1 {
+                        ui.label(
+                            egui::RichText::new(format!("{} items", payload.drag_count))
+                                .font(FontId::proportional(11.0))
+                                .color(theme.text.primary.to_color32()),
+                        );
+                    } else {
+                        ui.label(
+                            egui::RichText::new(&payload.name)
+                                .font(FontId::proportional(11.0))
+                                .color(theme.text.primary.to_color32()),
+                        );
+                    }
                 });
             });
         });

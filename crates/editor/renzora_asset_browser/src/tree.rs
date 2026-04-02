@@ -65,6 +65,45 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
                 render_folder_children(ui, state, &root.clone(), 1, theme);
             }
         });
+
+    // Internal drag-move: detect drop on tree folders
+    if !state.drag_moving.is_empty() {
+        let ctx = ui.ctx().clone();
+        let mut tree_drop_target: Option<PathBuf> = None;
+        if let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) {
+            for (folder_path, rect) in &state.tree_folder_rects {
+                if rect.contains(pos) && !state.drag_moving.contains(folder_path) {
+                    tree_drop_target = Some(folder_path.clone());
+
+                    // Visual feedback
+                    let accent = theme.semantic.accent.to_color32();
+                    ui.painter().rect_filled(
+                        *rect,
+                        2.0,
+                        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+                    );
+                    ui.painter().rect_stroke(
+                        *rect,
+                        2.0,
+                        egui::Stroke::new(1.0, accent),
+                        egui::StrokeKind::Inside,
+                    );
+                    break;
+                }
+            }
+        }
+
+        state.move_drop_target = tree_drop_target.clone();
+
+        // Drop on release
+        if ctx.input(|i| i.pointer.any_released()) {
+            if let Some(target) = tree_drop_target {
+                state.pending_move = Some((state.drag_moving.clone(), target));
+            }
+            state.drag_moving.clear();
+            state.move_drop_target = None;
+        }
+    }
 }
 
 fn render_folder_children(
@@ -174,7 +213,7 @@ fn render_folder_row(
 
     let (rect, response) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), ROW_HEIGHT),
-        Sense::click(),
+        Sense::click_and_drag(),
     );
 
     let is_hovered = response.hovered();

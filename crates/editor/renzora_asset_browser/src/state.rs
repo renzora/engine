@@ -88,6 +88,14 @@ pub struct AssetBrowserState {
     // === Inline create (file created immediately, then enters rename mode) ===
     /// When set, a new asset was just created and should enter rename mode.
     pub pending_inline_create: Option<PathBuf>,
+
+    // === Internal drag-move ===
+    /// Paths being dragged internally (for moving files between folders).
+    pub drag_moving: Vec<PathBuf>,
+    /// Folder currently being hovered as a drop target during internal drag.
+    pub move_drop_target: Option<PathBuf>,
+    /// Pending move operations: (source_paths, target_folder).
+    pub pending_move: Option<(Vec<PathBuf>, PathBuf)>,
 }
 
 impl Default for AssetBrowserState {
@@ -123,6 +131,48 @@ impl Default for AssetBrowserState {
             last_error: None,
             error_timeout: 0.0,
             pending_inline_create: None,
+            drag_moving: Vec::new(),
+            move_drop_target: None,
+            pending_move: None,
+        }
+    }
+}
+
+impl AssetBrowserState {
+    /// Duplicate all selected files/folders. For a single file, enters rename mode on the copy.
+    pub fn duplicate_selected(&mut self) {
+        let selected: Vec<PathBuf> = self.selected_assets.iter().cloned().collect();
+        if selected.is_empty() {
+            return;
+        }
+
+        let mut new_paths = Vec::new();
+        for source in &selected {
+            let dest = find_unique_copy_path(source);
+            let ok = if source.is_dir() {
+                copy_dir_recursive(source, &dest).is_ok()
+            } else {
+                std::fs::copy(source, &dest).is_ok()
+            };
+            if ok {
+                new_paths.push(dest);
+            }
+        }
+
+        if !new_paths.is_empty() {
+            self.selected_assets.clear();
+            for p in &new_paths {
+                self.selected_assets.insert(p.clone());
+            }
+            self.selected_path = new_paths.last().cloned();
+
+            // If single file duplicated, enter rename mode
+            if new_paths.len() == 1 {
+                let p = &new_paths[0];
+                self.renaming_asset = Some(p.clone());
+                self.rename_buffer = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                self.rename_focus_set = false;
+            }
         }
     }
 }
@@ -393,6 +443,50 @@ pub fn is_3d_model(path: &Path) -> bool {
             "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
         ))
         .unwrap_or(false)
+}
+
+/// Generate a copy path like `foo_copy.ext`, `foo_copy_2.ext`, etc.
+fn find_unique_copy_path(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = path.extension().and_then(|e| e.to_str());
+
+    // First try `_copy`
+    let first = match ext {
+        Some(e) => parent.join(format!("{}_copy.{}", stem, e)),
+        None => parent.join(format!("{}_copy", stem)),
+    };
+    if !first.exists() {
+        return first;
+    }
+    // Then `_copy_2`, `_copy_3`, ...
+    for i in 2..100 {
+        let name = match ext {
+            Some(e) => format!("{}_copy_{}.{}", stem, i, e),
+            None => format!("{}_copy_{}", stem, i),
+        };
+        let candidate = parent.join(&name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    first
+}
+
+/// Recursively copy a directory.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 /// If `path` already exists, append `_1`, `_2`, etc. before the extension.

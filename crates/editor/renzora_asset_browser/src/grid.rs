@@ -153,6 +153,13 @@ pub fn grid_ui_interactive(
         state.pending_delete = state.selected_assets.iter().cloned().collect();
     }
 
+    // Ctrl+D to duplicate
+    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D)) && !state.selected_assets.is_empty() {
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::D));
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D));
+        state.duplicate_selected();
+    }
+
     // Escape to cancel rename or close context menu
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         state.renaming_asset = None;
@@ -174,6 +181,7 @@ pub fn grid_ui_interactive(
     let mut right_clicked = false;
     let mut pending_rename_rect: Option<egui::Rect> = None;
     let mut pending_rename_font: f32 = 11.0;
+    let mut drop_target_folder: Option<PathBuf> = None;
 
     // The visible grid pane rect (used for hit-testing pointer vs grid area)
     let grid_pane_rect = ui.max_rect();
@@ -216,9 +224,32 @@ pub fn grid_ui_interactive(
                         state.selection_anchor = Some(entry.path.clone());
                     }
                 }
-                // Drag detection — only for files (not folders)
-                if !entry.is_dir && tile.response.drag_started() {
+                // Drag detection — files and folders
+                if tile.response.drag_started() {
                     drag_started_index = Some(index);
+                }
+
+                // Drop target: folder tiles under the pointer during an active drag
+                // Can't use response.hovered() because egui gives hover to the drag source
+                if entry.is_dir && !state.drag_moving.is_empty() && !state.drag_moving.contains(&entry.path) {
+                    let pointer_over = ctx.input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                        .map(|p| tile.rect.contains(p))
+                        .unwrap_or(false);
+                    if pointer_over {
+                        drop_target_folder = Some(entry.path.clone());
+                        let accent = theme.semantic.accent.to_color32();
+                        ui.painter().rect_filled(
+                            tile.rect,
+                            8.0,
+                            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+                        );
+                        ui.painter().rect_stroke(
+                            tile.rect,
+                            8.0,
+                            Stroke::new(2.0, accent),
+                            StrokeKind::Inside,
+                        );
+                    }
                 }
 
                 let (icon, color) = if entry.is_dir {
@@ -456,19 +487,46 @@ pub fn grid_ui_interactive(
     }
 
     // Build drag payload if a file drag started
-    let drag_payload = drag_started_index.map(|idx| {
+    let mut drag_payload = None;
+    if let Some(idx) = drag_started_index {
         let entry = &entries[idx];
-        let (icon, color) = file_icon(&entry.path);
-        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-        AssetDragPayload {
-            path: entry.path.clone(),
-            name: entry.name.clone(),
-            icon: icon.to_string(),
-            color,
-            origin,
-            is_detached: false,
+
+        // Start internal drag-move: include all selected items, or just the dragged one
+        if state.selected_assets.contains(&entry.path) && state.selected_assets.len() > 1 {
+            state.drag_moving = state.selected_assets.iter().cloned().collect();
+        } else {
+            state.drag_moving = vec![entry.path.clone()];
         }
-    });
+
+        // Only produce viewport drag payload for files (not folders)
+        if !entry.is_dir {
+            let (icon, color) = file_icon(&entry.path);
+            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+            drag_payload = Some(AssetDragPayload {
+                path: entry.path.clone(),
+                name: entry.name.clone(),
+                icon: icon.to_string(),
+                color,
+                origin,
+                is_detached: false,
+                drag_count: state.drag_moving.len(),
+            });
+        }
+    }
+
+    // Update drop target for ghost label
+    if !state.drag_moving.is_empty() {
+        state.move_drop_target = drop_target_folder.clone();
+    }
+
+    // Handle drop on a folder tile
+    if !state.drag_moving.is_empty() && ctx.input(|i| i.pointer.any_released()) {
+        if let Some(target) = drop_target_folder {
+            state.pending_move = Some((state.drag_moving.clone(), target));
+        }
+        state.drag_moving.clear();
+        state.move_drop_target = None;
+    }
 
     GridResult {
         drag_payload,

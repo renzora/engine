@@ -412,6 +412,37 @@ impl EditorPanel for AssetBrowserPanel {
             }
         }
 
+        // --- Process pending move (drag-to-folder) ---
+        if let Some((sources, target)) = state.pending_move.take() {
+            let mut moved = 0usize;
+            for source in &sources {
+                if let Some(file_name) = source.file_name() {
+                    let dest = target.join(file_name);
+                    if source == &dest || source == &target {
+                        continue;
+                    }
+                    // Don't move a folder into itself
+                    if dest.starts_with(source) {
+                        continue;
+                    }
+                    match std::fs::rename(source, &dest) {
+                        Ok(_) => moved += 1,
+                        Err(e) => {
+                            state.last_error = Some(format!("Move failed: {}", e));
+                            state.error_timeout = 3.0;
+                        }
+                    }
+                }
+            }
+            state.selected_assets.clear();
+            state.selected_path = None;
+            // Navigate to the target folder so the user can see the moved files
+            if moved > 0 {
+                state.navigate_to(target.clone());
+                state.expanded_folders.insert(target);
+            }
+        }
+
         // --- Process pending delete ---
         if !state.pending_delete.is_empty() {
             let to_delete: Vec<_> = state.pending_delete.drain(..).collect();
@@ -428,6 +459,62 @@ impl EditorPanel for AssetBrowserPanel {
                 state.selected_assets.remove(path);
             }
             state.selected_path = state.selected_assets.iter().next().cloned();
+        }
+
+        // --- Internal drag ghost (for folder drags or when no viewport payload) ---
+        if !state.drag_moving.is_empty() {
+            if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                let count = state.drag_moving.len();
+                let items_text = if count > 1 {
+                    format!("{} items", count)
+                } else {
+                    state.drag_moving[0].file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("item")
+                        .to_string()
+                };
+
+                let label = if let Some(ref target) = state.move_drop_target {
+                    let folder_name = target.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("folder");
+                    format!("{} Move {} to {}", regular::ARROW_RIGHT, items_text, folder_name)
+                } else {
+                    let icon = if count > 1 {
+                        regular::FOLDERS
+                    } else if state.drag_moving[0].is_dir() {
+                        regular::FOLDER
+                    } else {
+                        regular::FILE
+                    };
+                    format!("{} {}", icon, items_text)
+                };
+
+                let accent = theme.semantic.accent.to_color32();
+                let border_color = if state.move_drop_target.is_some() { accent } else {
+                    theme.widgets.border.to_color32()
+                };
+
+                let ghost_pos = pos + egui::vec2(14.0, -10.0);
+                egui::Area::new(egui::Id::new("asset_move_ghost"))
+                    .fixed_pos(ghost_pos)
+                    .order(egui::Order::Tooltip)
+                    .interactable(false)
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::NONE
+                            .fill(theme.surfaces.panel.to_color32())
+                            .stroke(Stroke::new(1.5, border_color))
+                            .inner_margin(egui::Margin::symmetric(8, 5))
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(label)
+                                        .font(FontId::proportional(11.0))
+                                        .color(theme.text.primary.to_color32()),
+                                );
+                            });
+                    });
+            }
         }
 
         // --- Error display ---
@@ -692,6 +779,11 @@ fn render_context_menu(
                                 }
                                 state.context_menu_pos = None;
                             }
+                        }
+
+                        if menu_item(ui, regular::COPY, "Duplicate", "Ctrl+D", text_primary) {
+                            state.duplicate_selected();
+                            state.context_menu_pos = None;
                         }
 
                         let delete_label = if state.selected_assets.len() > 1 {

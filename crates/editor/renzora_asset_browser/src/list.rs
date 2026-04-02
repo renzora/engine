@@ -77,6 +77,13 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         state.pending_delete = state.selected_assets.iter().cloned().collect();
     }
 
+    // Ctrl+D to duplicate
+    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D)) && !state.selected_assets.is_empty() {
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::D));
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D));
+        state.duplicate_selected();
+    }
+
     // Escape to cancel rename or close context menu
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         state.renaming_asset = None;
@@ -90,6 +97,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     let mut double_clicked_index: Option<usize> = None;
     let mut drag_started_index: Option<usize> = None;
     let mut right_clicked = false;
+    let mut drop_target_folder: Option<PathBuf> = None;
 
     egui::ScrollArea::vertical()
         .id_salt("asset_list")
@@ -211,8 +219,30 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                         state.selection_anchor = Some(entry.path.clone());
                     }
                 }
-                if !entry.is_dir && resp.drag_started() {
+                if resp.drag_started() {
                     drag_started_index = Some(index);
+                }
+
+                // Drop target: folder rows under the pointer during an active drag
+                if entry.is_dir && !state.drag_moving.is_empty() && !state.drag_moving.contains(&entry.path) {
+                    let pointer_over = ctx.input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                        .map(|p| row_rect.contains(p))
+                        .unwrap_or(false);
+                    if pointer_over {
+                        drop_target_folder = Some(entry.path.clone());
+                        let accent = theme.semantic.accent.to_color32();
+                        ui.painter().rect_filled(
+                            row_rect,
+                            2.0,
+                            egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+                        );
+                        ui.painter().rect_stroke(
+                            row_rect,
+                            2.0,
+                            egui::Stroke::new(1.5, accent),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                 }
             }
         });
@@ -239,19 +269,42 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         state.handle_click(path, ctrl_held, shift_held);
     }
 
-    let drag_payload = drag_started_index.map(|idx| {
+    let mut drag_payload = None;
+    if let Some(idx) = drag_started_index {
         let entry = &entries[idx];
-        let (icon, color) = file_icon(&entry.path);
-        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-        AssetDragPayload {
-            path: entry.path.clone(),
-            name: entry.name.clone(),
-            icon: icon.to_string(),
-            color,
-            origin,
-            is_detached: false,
+        if state.selected_assets.contains(&entry.path) && state.selected_assets.len() > 1 {
+            state.drag_moving = state.selected_assets.iter().cloned().collect();
+        } else {
+            state.drag_moving = vec![entry.path.clone()];
         }
-    });
+        if !entry.is_dir {
+            let (icon, color) = file_icon(&entry.path);
+            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+            drag_payload = Some(AssetDragPayload {
+                path: entry.path.clone(),
+                name: entry.name.clone(),
+                icon: icon.to_string(),
+                color,
+                origin,
+                is_detached: false,
+                drag_count: state.drag_moving.len(),
+            });
+        }
+    }
+
+    // Update drop target for ghost label
+    if !state.drag_moving.is_empty() {
+        state.move_drop_target = drop_target_folder.clone();
+    }
+
+    // Handle drop on a folder row
+    if !state.drag_moving.is_empty() && ctx.input(|i| i.pointer.any_released()) {
+        if let Some(target) = drop_target_folder {
+            state.pending_move = Some((state.drag_moving.clone(), target));
+        }
+        state.drag_moving.clear();
+        state.move_drop_target = None;
+    }
 
     GridResult { drag_payload, double_clicked_file, thumbnail_requests: Vec::new() }
 }
