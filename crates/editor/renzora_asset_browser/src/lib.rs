@@ -317,51 +317,98 @@ impl EditorPanel for AssetBrowserPanel {
 
                 let mut model_files = Vec::new();
                 let mut copy_files = Vec::new();
+                let mut zip_files = Vec::new();
+                let mut dir_drops = Vec::new();
 
                 for path in dropped {
-                    if state::is_3d_model(&path) {
+                    if path.is_dir() {
+                        dir_drops.push(path);
+                    } else if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("zip")).unwrap_or(false) {
+                        zip_files.push(path);
+                    } else if state::is_3d_model(&path) {
                         model_files.push(path);
                     } else if state::is_copyable_asset(&path) {
                         copy_files.push(path);
                     }
                 }
 
-                // Copy non-model files directly to target folder
-                if !copy_files.is_empty() {
-                    if let Some(ref folder) = import_target {
-                        let mut imported = 0usize;
-                        for source_path in &copy_files {
-                            let Some(file_name) = source_path.file_name() else {
-                                continue;
-                            };
-                            let dest_path = folder.join(file_name);
+                if let Some(ref folder) = import_target {
+                    let mut imported = 0usize;
 
-                            if source_path == &dest_path {
-                                continue;
+                    // Copy individual files
+                    for source_path in &copy_files {
+                        let Some(file_name) = source_path.file_name() else {
+                            continue;
+                        };
+                        let dest_path = folder.join(file_name);
+
+                        if source_path == &dest_path {
+                            continue;
+                        }
+
+                        match std::fs::copy(source_path, &dest_path) {
+                            Ok(_) => {
+                                imported += 1;
+                                info!("Imported to assets: {}", dest_path.display());
                             }
-
-                            match std::fs::copy(source_path, &dest_path) {
-                                Ok(_) => {
-                                    imported += 1;
-                                    info!("Imported to assets: {}", dest_path.display());
-                                }
-                                Err(e) => {
-                                    state.last_error = Some(format!(
-                                        "Failed to import {}: {}",
-                                        source_path.display(),
-                                        e
-                                    ));
-                                    state.error_timeout = 3.0;
-                                }
+                            Err(e) => {
+                                state.last_error = Some(format!(
+                                    "Failed to import {}: {}",
+                                    source_path.display(),
+                                    e
+                                ));
+                                state.error_timeout = 3.0;
                             }
                         }
-                        if imported > 0 {
-                            info!("Imported {} file(s) to {}", imported, folder.display());
-                        }
-                    } else {
-                        state.last_error = Some("No folder selected for import".to_string());
-                        state.error_timeout = 3.0;
                     }
+
+                    // Copy dropped folders recursively
+                    for source_dir in &dir_drops {
+                        let Some(dir_name) = source_dir.file_name() else { continue };
+                        let dest_dir = folder.join(dir_name);
+                        if source_dir == &dest_dir {
+                            continue;
+                        }
+                        match state::copy_dir_all(source_dir, &dest_dir) {
+                            Ok(count) => {
+                                imported += count;
+                                info!("Imported folder to assets: {}", dest_dir.display());
+                            }
+                            Err(e) => {
+                                state.last_error = Some(format!(
+                                    "Failed to import folder {}: {}",
+                                    source_dir.display(),
+                                    e
+                                ));
+                                state.error_timeout = 3.0;
+                            }
+                        }
+                    }
+
+                    // Extract zip archives
+                    for zip_path in &zip_files {
+                        match state::extract_zip(zip_path, folder) {
+                            Ok(count) => {
+                                imported += count;
+                                info!("Extracted zip to assets: {}", zip_path.display());
+                            }
+                            Err(e) => {
+                                state.last_error = Some(format!(
+                                    "Failed to extract {}: {}",
+                                    zip_path.display(),
+                                    e
+                                ));
+                                state.error_timeout = 3.0;
+                            }
+                        }
+                    }
+
+                    if imported > 0 {
+                        info!("Imported {} item(s) to {}", imported, folder.display());
+                    }
+                } else if !copy_files.is_empty() || !dir_drops.is_empty() || !zip_files.is_empty() {
+                    state.last_error = Some("No folder selected for import".to_string());
+                    state.error_timeout = 3.0;
                 }
 
                 // Route 3D model files to the import overlay

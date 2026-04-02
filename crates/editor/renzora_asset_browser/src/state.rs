@@ -603,6 +603,57 @@ fn find_unique_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// Recursively copy a directory, returning the number of files copied.
+pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<usize> {
+    std::fs::create_dir_all(dst)?;
+    let mut count = 0;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            count += copy_dir_all(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Extract a zip archive into `dest_folder`, returning the number of items extracted.
+pub fn extract_zip(zip_path: &Path, dest_folder: &Path) -> Result<usize, String> {
+    let file = std::fs::File::open(zip_path)
+        .map_err(|e| format!("Cannot open zip: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| format!("Invalid zip: {}", e))?;
+
+    let mut count = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)
+            .map_err(|e| format!("Zip entry error: {}", e))?;
+
+        let Some(enclosed) = entry.enclosed_name() else { continue };
+        let out_path = dest_folder.join(enclosed);
+
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)
+                .map_err(|e| format!("Cannot create dir: {}", e))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Cannot create dir: {}", e))?;
+            }
+            let mut out_file = std::fs::File::create(&out_path)
+                .map_err(|e| format!("Cannot create file: {}", e))?;
+            std::io::copy(&mut entry, &mut out_file)
+                .map_err(|e| format!("Extract failed: {}", e))?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 /// Files that should be hidden from the asset browser.
 const HIDDEN_FILES: &[&str] = &["project.toml"];
 

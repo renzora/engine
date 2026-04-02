@@ -131,14 +131,11 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
                         fav_icon_color,
                     );
 
-                    // Folder name
-                    ui.painter().text(
-                        Pos2::new(rect.min.x + 42.0, rect.center().y),
-                        Align2::LEFT_CENTER,
-                        &fav_name,
-                        FontId::proportional(11.0),
-                        text_secondary,
-                    );
+                    // Folder name (truncated with ellipsis)
+                    let fav_text_x = rect.min.x + 42.0;
+                    let fav_max_w = (rect.max.x - fav_text_x - 4.0).max(0.0);
+                    let fav_text_y = rect.center().y - 11.0 * 0.5;
+                    paint_truncated_text(ui.painter(), Pos2::new(fav_text_x, fav_text_y), &fav_name, FontId::proportional(11.0), text_secondary, fav_max_w);
 
                     if response.clicked() {
                         state.current_folder = Some(fav_path.clone());
@@ -401,14 +398,11 @@ fn render_folder_row(
         icon_color,
     );
 
-    // Folder name
-    painter.text(
-        Pos2::new(icon_x + 16.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        name,
-        FontId::proportional(11.0),
-        text_secondary,
-    );
+    // Folder name (truncated with ellipsis if too long)
+    let text_x = icon_x + 16.0;
+    let max_text_width = (rect.max.x - text_x - 4.0).max(0.0);
+    let text_y = rect.center().y - 11.0 * 0.5; // vertically center for proportional 11
+    paint_truncated_text(painter, Pos2::new(text_x, text_y), name, FontId::proportional(11.0), text_secondary, max_text_width);
 
     // Return (clicked, row_rect)
     (arrow_resp.clicked() || response.clicked(), rect)
@@ -426,6 +420,30 @@ fn toggle_expanded(set: &mut std::collections::HashSet<PathBuf>, path: &PathBuf)
     } else {
         set.insert(path.clone());
     }
+}
+
+/// Paint text truncated with "…" if it exceeds `max_width`.
+fn paint_truncated_text(
+    painter: &egui::Painter,
+    pos: Pos2,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) {
+    let mut job = egui::text::LayoutJob::single_section(text.to_string(), egui::TextFormat {
+        font_id: font,
+        color,
+        ..Default::default()
+    });
+    job.wrap = egui::text::TextWrapping {
+        max_width,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('\u{2026}'),
+    };
+    let galley = painter.layout_job(job);
+    painter.galley(pos, galley, Color32::TRANSPARENT);
 }
 
 /// Check recursively if any file/folder within `dir` matches the search.
