@@ -12,7 +12,6 @@ use renzora_theme::ThemeManager;
 #[derive(Default)]
 struct ShapeLibraryState {
     search_filter: String,
-    active_category: Option<String>,
 }
 
 pub struct ShapeLibraryPanel {
@@ -25,16 +24,6 @@ impl Default for ShapeLibraryPanel {
             state: RwLock::new(ShapeLibraryState::default()),
         }
     }
-}
-
-fn categories(registry: &ShapeRegistry) -> Vec<&'static str> {
-    let mut cats = Vec::new();
-    for entry in registry.iter() {
-        if !cats.contains(&entry.category) {
-            cats.push(entry.category);
-        }
-    }
-    cats
 }
 
 impl EditorPanel for ShapeLibraryPanel {
@@ -94,48 +83,21 @@ impl EditorPanel for ShapeLibraryPanel {
 
         ui.add_space(spacing);
 
-        // Category filter tabs
-        let cats = categories(registry);
-        ui.horizontal(|ui| {
-            ui.add_space(panel_padding);
-            ui.spacing_mut().item_spacing.x = 2.0;
-
-            if ui
-                .selectable_label(state.active_category.is_none(), "All")
-                .clicked()
-            {
-                state.active_category = None;
-            }
-            for cat in &cats {
-                let selected = state.active_category.as_deref() == Some(*cat);
-                if ui.selectable_label(selected, *cat).clicked() {
-                    state.active_category = Some(cat.to_string());
-                }
-            }
-        });
-
-        ui.add_space(spacing);
-
-        // Filter shapes
+        // Filter shapes by search only (no categories)
         let search_lower = state.search_filter.to_lowercase();
         let shapes: Vec<&ShapeEntry> = registry
             .iter()
-            .filter(|s| {
-                state.active_category.is_none()
-                    || state.active_category.as_deref() == Some(s.category)
-            })
             .filter(|s| search_lower.is_empty() || s.name.to_lowercase().contains(&search_lower))
             .collect();
 
         // Responsive grid
         egui::ScrollArea::vertical().show(ui, |ui| {
             let available_width = ui.available_width() - panel_padding * 2.0;
-            let min_tile = 56.0;
-            let max_tile = 80.0;
+            let min_tile = 48.0;
             let cols =
                 ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
-            let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
-                .clamp(min_tile, max_tile);
+            let tile_size =
+                (available_width - spacing * (cols as f32 - 1.0)) / cols as f32;
             let label_height = 16.0;
 
             ui.add_space(2.0);
