@@ -1,6 +1,7 @@
 //! Command processing system — applies transform writes and routes ScriptCommands.
 
 use bevy::prelude::*;
+use bevy::window::{CursorGrabMode, CursorOptions};
 
 use super::execution::{ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptLogEntry, ScriptReflectionQueue, ReflectionSet};
 use crate::command::{ScriptCommand, CharacterCommand, CharacterCommandQueue};
@@ -21,6 +22,7 @@ pub fn apply_script_commands(
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
     mut pending_scene: ResMut<renzora_core::PendingSceneLoad>,
     mut character_queue: ResMut<CharacterCommandQueue>,
+    mut cursor_query: Query<&mut CursorOptions>,
     mut ran_once: Local<bool>,
 ) {
     if !*ran_once {
@@ -44,9 +46,9 @@ pub fn apply_script_commands(
         }
         if let Some(rot) = tw.new_rotation {
             t.rotation = Quat::from_euler(
-                EulerRot::XYZ,
-                rot.x.to_radians(),
+                EulerRot::YXZ,
                 rot.y.to_radians(),
+                rot.x.to_radians(),
                 rot.z.to_radians(),
             );
         }
@@ -55,9 +57,9 @@ pub fn apply_script_commands(
         }
         if let Some(delta) = tw.rotation_delta {
             t.rotation *= Quat::from_euler(
-                EulerRot::XYZ,
-                delta.x.to_radians(),
+                EulerRot::YXZ,
                 delta.y.to_radians(),
+                delta.x.to_radians(),
                 delta.z.to_radians(),
             );
         }
@@ -175,6 +177,20 @@ pub fn apply_script_commands(
             }
             ScriptCommand::CharacterSprint { sprinting } => {
                 character_queue.commands.push((source_entity, CharacterCommand::Sprint(sprinting)));
+            }
+
+            // === Cursor ===
+            ScriptCommand::LockCursor => {
+                if let Ok(mut cursor) = cursor_query.single_mut() {
+                    cursor.grab_mode = CursorGrabMode::Locked;
+                    cursor.visible = false;
+                }
+            }
+            ScriptCommand::UnlockCursor => {
+                if let Ok(mut cursor) = cursor_query.single_mut() {
+                    cursor.grab_mode = CursorGrabMode::None;
+                    cursor.visible = true;
+                }
             }
 
             // Commands that need additional systems (audio, physics, etc.)

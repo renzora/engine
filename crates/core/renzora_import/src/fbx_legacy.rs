@@ -14,7 +14,7 @@ use crate::settings::{ImportSettings, UpAxis};
 // ─── Node tree ──────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
-enum FbxProp {
+pub(crate) enum FbxProp {
     Bool(bool),
     I16(i16),
     I32(i32),
@@ -31,10 +31,10 @@ enum FbxProp {
 }
 
 #[derive(Debug)]
-struct FbxNode {
-    name: String,
-    properties: Vec<FbxProp>,
-    children: Vec<FbxNode>,
+pub(crate) struct FbxNode {
+    pub name: String,
+    pub properties: Vec<FbxProp>,
+    pub children: Vec<FbxNode>,
 }
 
 // ─── Binary parser ─────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ fn parse_node(r: &mut Cursor<&[u8]>, file_len: u64) -> Result<Option<FbxNode>, I
     }))
 }
 
-fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportError> {
+pub(crate) fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportError> {
     if data.len() < HEADER_LEN as usize {
         return Err(ImportError::ParseError("file too short for FBX header".into()));
     }
@@ -273,11 +273,11 @@ fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportError> {
 
 // ─── Data extraction helpers ────────────────────────────────────────────────
 
-fn find_child<'a>(node: &'a FbxNode, name: &str) -> Option<&'a FbxNode> {
+pub(crate) fn find_child<'a>(node: &'a FbxNode, name: &str) -> Option<&'a FbxNode> {
     node.children.iter().find(|c| c.name == name)
 }
 
-fn find_node_recursive<'a>(nodes: &'a [FbxNode], name: &str) -> Option<&'a FbxNode> {
+pub(crate) fn find_node_recursive<'a>(nodes: &'a [FbxNode], name: &str) -> Option<&'a FbxNode> {
     for node in nodes {
         if node.name == name {
             return Some(node);
@@ -289,7 +289,7 @@ fn find_node_recursive<'a>(nodes: &'a [FbxNode], name: &str) -> Option<&'a FbxNo
     None
 }
 
-fn find_all_recursive<'a>(nodes: &'a [FbxNode], name: &str, out: &mut Vec<&'a FbxNode>) {
+pub(crate) fn find_all_recursive<'a>(nodes: &'a [FbxNode], name: &str, out: &mut Vec<&'a FbxNode>) {
     for node in nodes {
         if node.name == name {
             out.push(node);
@@ -299,7 +299,7 @@ fn find_all_recursive<'a>(nodes: &'a [FbxNode], name: &str, out: &mut Vec<&'a Fb
 }
 
 /// Extract f64 values from a node's first array property, or from individual numeric properties.
-fn extract_f64_array(node: &FbxNode) -> Vec<f64> {
+pub(crate) fn extract_f64_array(node: &FbxNode) -> Vec<f64> {
     for prop in &node.properties {
         match prop {
             FbxProp::ArrF64(arr) => return arr.clone(),
@@ -322,7 +322,7 @@ fn extract_f64_array(node: &FbxNode) -> Vec<f64> {
 }
 
 /// Extract i32 values from a node's first array property, or from individual numeric properties.
-fn extract_i32_array(node: &FbxNode) -> Vec<i32> {
+pub(crate) fn extract_i32_array(node: &FbxNode) -> Vec<i32> {
     for prop in &node.properties {
         match prop {
             FbxProp::ArrI32(arr) => return arr.clone(),
@@ -341,6 +341,55 @@ fn extract_i32_array(node: &FbxNode) -> Vec<i32> {
     values
 }
 
+/// Extract i64 values from a node's first i64 array property.
+pub(crate) fn extract_i64_array(node: &FbxNode) -> Vec<i64> {
+    for prop in &node.properties {
+        match prop {
+            FbxProp::ArrI64(arr) => return arr.clone(),
+            FbxProp::ArrI32(arr) => return arr.iter().map(|&v| v as i64).collect(),
+            _ => {}
+        }
+    }
+    let mut values = Vec::new();
+    for prop in &node.properties {
+        match prop {
+            FbxProp::I64(v) => values.push(*v),
+            FbxProp::I32(v) => values.push(*v as i64),
+            _ => {}
+        }
+    }
+    values
+}
+
+/// Extract f32 values from a node's first f32 array property.
+pub(crate) fn extract_f32_array(node: &FbxNode) -> Vec<f32> {
+    for prop in &node.properties {
+        match prop {
+            FbxProp::ArrF32(arr) => return arr.clone(),
+            FbxProp::ArrF64(arr) => return arr.iter().map(|&v| v as f32).collect(),
+            _ => {}
+        }
+    }
+    let mut values = Vec::new();
+    for prop in &node.properties {
+        match prop {
+            FbxProp::F32(v) => values.push(*v),
+            FbxProp::F64(v) => values.push(*v as f32),
+            FbxProp::I32(v) => values.push(*v as f32),
+            _ => {}
+        }
+    }
+    values
+}
+
+pub(crate) fn get_i64_prop(node: &FbxNode, index: usize) -> Option<i64> {
+    node.properties.get(index).and_then(|p| match p {
+        FbxProp::I64(v) => Some(*v),
+        FbxProp::I32(v) => Some(*v as i64),
+        _ => None,
+    })
+}
+
 fn extract_mapping_type(node: &FbxNode) -> Option<String> {
     find_child(node, "MappingInformationType").and_then(|n| {
         n.properties.iter().find_map(|p| match p {
@@ -350,7 +399,7 @@ fn extract_mapping_type(node: &FbxNode) -> Option<String> {
     })
 }
 
-fn get_string_prop(node: &FbxNode, index: usize) -> Option<&str> {
+pub(crate) fn get_string_prop(node: &FbxNode, index: usize) -> Option<&str> {
     node.properties.get(index).and_then(|p| match p {
         FbxProp::String(s) => Some(s.as_str()),
         _ => None,

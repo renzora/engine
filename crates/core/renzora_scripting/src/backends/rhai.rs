@@ -319,6 +319,10 @@ fn register_api(engine: &mut Engine) {
         push_command(ScriptCommand::SetAnimationLayerWeight { entity_id: None, layer_name: layer_name.to_string(), weight: weight as f32 });
     });
 
+    // Cursor
+    engine.register_fn("lock_cursor", || { push_command(ScriptCommand::LockCursor); });
+    engine.register_fn("unlock_cursor", || { push_command(ScriptCommand::UnlockCursor); });
+
     // Camera
     engine.register_fn("screen_shake", |intensity: f64, duration: f64| {
         push_command(ScriptCommand::ScreenShake { intensity: intensity as f32, duration: duration as f32 });

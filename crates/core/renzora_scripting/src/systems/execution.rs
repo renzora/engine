@@ -247,14 +247,14 @@ pub fn run_scripts(world: &mut World) {
                 ctx.has_parent = true;
                 ctx.parent_entity = Some(parent_e);
                 ctx.parent_position = parent_t.translation;
-                let (x, y, z) = parent_t.rotation.to_euler(EulerRot::XYZ);
+                let (y, x, z) = parent_t.rotation.to_euler(EulerRot::YXZ);
                 ctx.parent_rotation = Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees());
                 ctx.parent_scale = parent_t.scale;
             }
 
             // Children
             for (child_e, child_name, child_t) in &child_infos {
-                let (rx, ry, rz) = child_t.rotation.to_euler(EulerRot::XYZ);
+                let (ry, rx, rz) = child_t.rotation.to_euler(EulerRot::YXZ);
                 ctx.children.push(ChildNodeInfo {
                     entity: *child_e,
                     name: child_name.clone(),

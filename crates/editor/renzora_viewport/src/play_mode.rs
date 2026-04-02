@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use bevy::camera::{ClearColorConfig, RenderTarget};
+use bevy::window::{CursorGrabMode, CursorOptions};
 use renzora_editor::camera::EditorUiCamera;
 use renzora_runtime::{
     DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, PlayState,
@@ -186,6 +187,13 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
 
     // Re-pause physics simulation
     renzora_physics::pause(world);
+
+    // Restore cursor (in case a script locked it during play mode)
+    let mut cursor_q = world.query::<&mut CursorOptions>();
+    if let Ok(mut cursor) = cursor_q.single_mut(world) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
 
     play_mode.active_game_camera = None;
     play_mode.state = PlayState::Editing;

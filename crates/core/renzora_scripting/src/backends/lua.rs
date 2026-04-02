@@ -487,6 +487,16 @@ fn register_api(lua: &Lua) {
         Ok(())
     }).unwrap());
 
+    // -- Cursor --
+    let _ = globals.set("lock_cursor", lua.create_function(|_, ()| {
+        push_command(ScriptCommand::LockCursor);
+        Ok(())
+    }).unwrap());
+    let _ = globals.set("unlock_cursor", lua.create_function(|_, ()| {
+        push_command(ScriptCommand::UnlockCursor);
+        Ok(())
+    }).unwrap());
+
     // -- Camera --
     let _ = globals.set("screen_shake", lua.create_function(|_, (intensity, duration): (f32, f32)| {
         push_command(ScriptCommand::ScreenShake { intensity, duration });

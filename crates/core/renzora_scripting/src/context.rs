@@ -43,7 +43,7 @@ impl ScriptTransform {
     }
 
     pub fn euler_degrees(&self) -> Vec3 {
-        let (x, y, z) = self.rotation.to_euler(EulerRot::XYZ);
+        let (y, x, z) = self.rotation.to_euler(EulerRot::YXZ);
         Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees())
     }
 }

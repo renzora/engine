@@ -135,6 +135,10 @@ pub enum ScriptCommand {
     SetLightIntensity { entity_id: Option<u64>, intensity: f32 },
     SetLightColor { entity_id: Option<u64>, color: [f32; 3] },
 
+    // === Cursor ===
+    LockCursor,
+    UnlockCursor,
+
     // === Camera ===
     SetCameraTarget { position: Vec3 },
     SetCameraZoom { zoom: f32 },

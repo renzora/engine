@@ -251,7 +251,7 @@ impl<'a> EvalContext<'a> {
                 }
             }
             "transform/get_rotation" => {
-                let (x, y, z) = self.transform.rotation.to_euler(EulerRot::XYZ);
+                let (y, x, z) = self.transform.rotation.to_euler(EulerRot::YXZ);
                 match pin_name {
                     "rotation" => PinValue::Vec3([x.to_degrees(), y.to_degrees(), z.to_degrees()]),
                     "x" => PinValue::Float(x.to_degrees()),

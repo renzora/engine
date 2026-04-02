@@ -844,6 +844,40 @@ fn import_worker(
                 all_warnings.extend(result.warnings);
             }
             Err(e) => {
+                // If geometry conversion failed for an FBX file, still try
+                // extracting animations directly (animation-only FBX files
+                // have no mesh geometry).
+                let is_fbx = source_path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("fbx"))
+                    .unwrap_or(false);
+
+                if is_fbx {
+                    let anim_dir = dest.join("animations");
+                    match renzora_import::extract_animations_from_fbx(source_path, &anim_dir) {
+                        Ok(anim_result) if !anim_result.written_files.is_empty() => {
+                            imported += 1;
+                            for anim_path in &anim_result.written_files {
+                                let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                                    file_name: std::path::Path::new(anim_path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("animation")
+                                        .to_string(),
+                                    success: true,
+                                    message: "animation extracted".to_string(),
+                                }));
+                            }
+                            for w in &anim_result.warnings {
+                                all_warnings.push(w.clone());
+                            }
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+
                 let msg = format!("{}", e);
                 errors.push(format!("{}: {}", file_name, msg));
                 let _ = tx.send(ImportMsg::Log(ImportLogEntry {
