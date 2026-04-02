@@ -3,15 +3,14 @@ use egui_phosphor::regular;
 use renzora_editor::icon_button;
 use renzora_theme::Theme;
 
-use crate::state::{AssetBrowserState, ViewMode};
+use crate::state::{AssetBrowserState, SortDirection, SortMode, ViewMode};
 
 /// Renders the toolbar: breadcrumb path, search bar, import, view toggle, zoom slider.
 pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) {
     let text_primary = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
 
-    ui.add_space(3.0);
-    ui.horizontal(|ui| {
+    ui.horizontal_centered(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         ui.add_space(8.0);
 
@@ -113,6 +112,31 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
             if import_resp.on_hover_text("Import 3D model").clicked() {
                 state.import_clicked = true;
             }
+
+            ui.add_space(4.0);
+
+            // Sort direction toggle
+            let sort_icon = match state.sort_direction {
+                SortDirection::Ascending => regular::SORT_ASCENDING,
+                SortDirection::Descending => regular::SORT_DESCENDING,
+            };
+            if icon_button(ui, sort_icon, "Toggle sort direction", text_muted) {
+                state.sort_direction = match state.sort_direction {
+                    SortDirection::Ascending => SortDirection::Descending,
+                    SortDirection::Descending => SortDirection::Ascending,
+                };
+            }
+
+            // Sort mode combo
+            egui::ComboBox::from_id_salt("sort_mode")
+                .selected_text(RichText::new(state.sort_mode.label()).size(11.0).color(text_muted))
+                .width(55.0)
+                .height(120.0)
+                .show_ui(ui, |ui| {
+                    for mode in [SortMode::Name, SortMode::DateModified, SortMode::Type, SortMode::Size] {
+                        ui.selectable_value(&mut state.sort_mode, mode, mode.label());
+                    }
+                });
 
             ui.add_space(4.0);
 

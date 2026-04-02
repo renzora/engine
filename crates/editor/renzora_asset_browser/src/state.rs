@@ -12,6 +12,35 @@ pub enum ViewMode {
     List,
 }
 
+/// Sort mode for the asset browser content pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortMode {
+    #[default]
+    Name,
+    DateModified,
+    Type,
+    Size,
+}
+
+impl SortMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            SortMode::Name => "Name",
+            SortMode::DateModified => "Date",
+            SortMode::Type => "Type",
+            SortMode::Size => "Size",
+        }
+    }
+}
+
+/// Sort direction for the asset browser content pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortDirection {
+    #[default]
+    Ascending,
+    Descending,
+}
+
 /// Internal state for the asset browser panel.
 pub struct AssetBrowserState {
     /// Current folder displayed in the file grid.
@@ -96,6 +125,16 @@ pub struct AssetBrowserState {
     pub move_drop_target: Option<PathBuf>,
     /// Pending move operations: (source_paths, target_folder).
     pub pending_move: Option<(Vec<PathBuf>, PathBuf)>,
+
+    // === Favorites ===
+    /// Pinned/starred folders that appear at the top of the tree.
+    pub favorites: Vec<PathBuf>,
+
+    // === Sort ===
+    /// Current sort mode for the file grid/list.
+    pub sort_mode: SortMode,
+    /// Current sort direction.
+    pub sort_direction: SortDirection,
 }
 
 impl Default for AssetBrowserState {
@@ -134,6 +173,9 @@ impl Default for AssetBrowserState {
             drag_moving: Vec::new(),
             move_drop_target: None,
             pending_move: None,
+            favorites: Vec::new(),
+            sort_mode: SortMode::default(),
+            sort_direction: SortDirection::default(),
         }
     }
 }
@@ -294,6 +336,57 @@ impl AssetBrowserState {
             }
             self.current_folder = Some(root);
         }
+    }
+
+    /// Toggle a folder as favorite (add if not present, remove if present).
+    pub fn toggle_favorite(&mut self, path: &Path) {
+        if let Some(idx) = self.favorites.iter().position(|p| p == path) {
+            self.favorites.remove(idx);
+        } else {
+            self.favorites.push(path.to_path_buf());
+        }
+        self.save_favorites();
+    }
+
+    /// Returns true if the given path is in the favorites list.
+    pub fn is_favorite(&self, path: &Path) -> bool {
+        self.favorites.iter().any(|p| p == path)
+    }
+
+    /// Save favorites to `.editor/favorites` in the project root (one relative path per line).
+    fn save_favorites(&self) {
+        let Some(ref root) = self.project_root else { return };
+        let editor_dir = root.join(".editor");
+        let _ = std::fs::create_dir_all(&editor_dir);
+        let content: String = self.favorites.iter().filter_map(|p| {
+            p.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/"))
+        }).collect::<Vec<_>>().join("\n");
+        let _ = std::fs::write(editor_dir.join("favorites"), content);
+    }
+
+    /// Load favorites from `.editor/favorites` in the project root.
+    pub fn load_favorites(&mut self) {
+        let Some(ref root) = self.project_root else { return };
+        let fav_path = root.join(".editor").join("favorites");
+        let Ok(content) = std::fs::read_to_string(&fav_path) else { return };
+        self.favorites = content.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| root.join(l.trim()))
+            .filter(|p| p.exists())
+            .collect();
+    }
+}
+
+/// Format a file size in bytes as a human-readable string.
+pub fn format_file_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
     }
 }
 

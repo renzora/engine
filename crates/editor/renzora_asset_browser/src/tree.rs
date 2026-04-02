@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
-use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
+use egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
 use renzora_theme::Theme;
 
 use crate::state::{folder_icon_color, is_hidden, AssetBrowserState};
@@ -29,6 +29,134 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
         .drag_to_scroll(false)
         .show(ui, |ui| {
             ui.style_mut().spacing.item_spacing.y = 0.0;
+
+            // Favorites section (always show header as drop target, items only when non-empty)
+            {
+                let text_muted = theme.text.muted.to_color32();
+                let star_color = Color32::from_rgb(255, 200, 60);
+
+                // Section header — doubles as drop target for adding favorites
+                let (header_rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), 18.0),
+                    Sense::hover(),
+                );
+
+                // Drag-to-favorite: highlight header when dragging a folder over it
+                let dragging_folders = !state.drag_moving.is_empty()
+                    && state.drag_moving.iter().any(|p| p.is_dir());
+                let pointer_over_header = if dragging_folders {
+                    ui.ctx().input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                        .map(|p| header_rect.contains(p))
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+
+                if pointer_over_header {
+                    let accent = theme.semantic.accent.to_color32();
+                    ui.painter().rect_filled(
+                        header_rect,
+                        2.0,
+                        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+                    );
+                    // Drop on release — add dragged folders to favorites
+                    if ui.ctx().input(|i| i.pointer.any_released()) {
+                        for path in &state.drag_moving.clone() {
+                            if path.is_dir() && !state.is_favorite(path) {
+                                state.toggle_favorite(path);
+                            }
+                        }
+                        state.drag_moving.clear();
+                        state.move_drop_target = None;
+                    }
+                }
+
+                ui.painter().text(
+                    Pos2::new(header_rect.min.x + 10.0, header_rect.center().y),
+                    Align2::LEFT_CENTER,
+                    if dragging_folders && pointer_over_header {
+                        format!("{} Add to Favorites", regular::STAR)
+                    } else {
+                        "Favorites".to_string()
+                    },
+                    FontId::proportional(10.0),
+                    if pointer_over_header { star_color } else { text_muted },
+                );
+
+                // Render each favorite (only if there are any)
+                let favorites_snapshot: Vec<std::path::PathBuf> = state.favorites.clone();
+                for fav_path in &favorites_snapshot {
+                    let fav_name = fav_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("???")
+                        .to_string();
+
+                    let is_current = state.current_folder.as_ref() == Some(fav_path);
+                    let selection_bg = theme.semantic.selection.to_color32();
+                    let item_hover = theme.panels.item_hover.to_color32();
+                    let text_secondary = theme.text.secondary.to_color32();
+                    let fav_icon_color = folder_icon_color(&fav_name);
+
+                    let (rect, response) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), ROW_HEIGHT),
+                        Sense::click(),
+                    );
+
+                    if response.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+
+                    if is_current {
+                        ui.painter().rect_filled(rect, 2.0, selection_bg);
+                    } else if response.hovered() {
+                        ui.painter().rect_filled(rect, 2.0, item_hover);
+                    }
+
+                    // Star icon
+                    ui.painter().text(
+                        Pos2::new(rect.min.x + 12.0, rect.center().y),
+                        Align2::CENTER_CENTER,
+                        regular::STAR,
+                        FontId::proportional(10.0),
+                        star_color,
+                    );
+
+                    // Folder icon
+                    ui.painter().text(
+                        Pos2::new(rect.min.x + 26.0, rect.center().y),
+                        Align2::LEFT_CENTER,
+                        FOLDER,
+                        FontId::proportional(12.0),
+                        fav_icon_color,
+                    );
+
+                    // Folder name
+                    ui.painter().text(
+                        Pos2::new(rect.min.x + 42.0, rect.center().y),
+                        Align2::LEFT_CENTER,
+                        &fav_name,
+                        FontId::proportional(11.0),
+                        text_secondary,
+                    );
+
+                    if response.clicked() {
+                        state.current_folder = Some(fav_path.clone());
+                    }
+                }
+
+                // Separator after favorites (only if there are items)
+                if !favorites_snapshot.is_empty() {
+                    ui.add_space(2.0);
+                    let sep_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
+                    ui.painter().hline(
+                        (sep_rect.min.x + 6.0)..=(sep_rect.max.x - 6.0),
+                        sep_rect.center().y,
+                        egui::Stroke::new(1.0, theme.widgets.border.to_color32()),
+                    );
+                    ui.add_space(2.0);
+                }
+            }
 
             // Root node
             let is_expanded = state.expanded_folders.contains(&root);
@@ -95,13 +223,14 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
 
         state.move_drop_target = tree_drop_target.clone();
 
-        // Drop on release
+        // Drop on release — only consume if dropping on a tree folder
         if ctx.input(|i| i.pointer.any_released()) {
             if let Some(target) = tree_drop_target {
                 state.pending_move = Some((state.drag_moving.clone(), target));
+                state.drag_moving.clear();
+                state.move_drop_target = None;
             }
-            state.drag_moving.clear();
-            state.move_drop_target = None;
+            // If no tree target, leave drag_moving for grid/list to handle
         }
     }
 }

@@ -62,6 +62,7 @@ impl EditorPanel for AssetBrowserPanel {
             if state.project_root.as_ref() != Some(&project.path) {
                 state.project_root = Some(project.path.clone());
                 state.current_folder = Some(project.path.clone());
+                state.load_favorites();
             }
         }
 
@@ -461,62 +462,6 @@ impl EditorPanel for AssetBrowserPanel {
             state.selected_path = state.selected_assets.iter().next().cloned();
         }
 
-        // --- Internal drag ghost (for folder drags or when no viewport payload) ---
-        if !state.drag_moving.is_empty() {
-            if let Some(pos) = ui.ctx().pointer_latest_pos() {
-                let count = state.drag_moving.len();
-                let items_text = if count > 1 {
-                    format!("{} items", count)
-                } else {
-                    state.drag_moving[0].file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("item")
-                        .to_string()
-                };
-
-                let label = if let Some(ref target) = state.move_drop_target {
-                    let folder_name = target.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("folder");
-                    format!("{} Move {} to {}", regular::ARROW_RIGHT, items_text, folder_name)
-                } else {
-                    let icon = if count > 1 {
-                        regular::FOLDERS
-                    } else if state.drag_moving[0].is_dir() {
-                        regular::FOLDER
-                    } else {
-                        regular::FILE
-                    };
-                    format!("{} {}", icon, items_text)
-                };
-
-                let accent = theme.semantic.accent.to_color32();
-                let border_color = if state.move_drop_target.is_some() { accent } else {
-                    theme.widgets.border.to_color32()
-                };
-
-                let ghost_pos = pos + egui::vec2(14.0, -10.0);
-                egui::Area::new(egui::Id::new("asset_move_ghost"))
-                    .fixed_pos(ghost_pos)
-                    .order(egui::Order::Tooltip)
-                    .interactable(false)
-                    .show(ui.ctx(), |ui| {
-                        egui::Frame::NONE
-                            .fill(theme.surfaces.panel.to_color32())
-                            .stroke(Stroke::new(1.5, border_color))
-                            .inner_margin(egui::Margin::symmetric(8, 5))
-                            .corner_radius(egui::CornerRadius::same(6))
-                            .show(ui, |ui| {
-                                ui.label(
-                                    egui::RichText::new(label)
-                                        .font(FontId::proportional(11.0))
-                                        .color(theme.text.primary.to_color32()),
-                                );
-                            });
-                    });
-            }
-        }
-
         // --- Error display ---
         if let Some(ref error) = state.last_error {
             let error_rect = egui::Rect::from_min_size(
@@ -767,6 +712,24 @@ fn render_context_menu(
                     if has_selection {
                         separator(ui);
                         section_header(ui, "Selection");
+
+                        // Favorite toggle for single folder selection
+                        if state.selected_assets.len() == 1 {
+                            let selected_path = state.selected_assets.iter().next().unwrap().clone();
+                            if selected_path.is_dir() {
+                                let is_fav = state.is_favorite(&selected_path);
+                                let fav_label = if is_fav { "Unfavorite" } else { "Favorite" };
+                                let star_color = if is_fav {
+                                    Color32::from_rgb(255, 200, 60)
+                                } else {
+                                    text_primary
+                                };
+                                if menu_item(ui, regular::STAR, fav_label, "", star_color) {
+                                    state.toggle_favorite(&selected_path);
+                                    state.context_menu_pos = None;
+                                }
+                            }
+                        }
 
                         if state.selected_assets.len() == 1 {
                             if menu_item(ui, regular::PENCIL, "Rename", "F2", text_primary) {

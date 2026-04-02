@@ -5,7 +5,7 @@ use egui_phosphor::regular;
 use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
 use renzora_theme::Theme;
 
-use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
+use crate::state::{file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection, SortMode};
 use crate::thumbnails::supports_thumbnail;
 
 /// Entry in the file grid (folder or file).
@@ -60,10 +60,40 @@ pub(crate) fn collect_entries(state: &AssetBrowserState) -> Option<Vec<GridEntry
         Err(_) => return None,
     };
 
+    // Folders always sort before files, then apply sort mode
+    let sort_mode = state.sort_mode;
+    let sort_dir = state.sort_direction;
     entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b.is_dir.cmp(&a.is_dir).then_with(|| {
+            let cmp = match sort_mode {
+                SortMode::Name => {
+                    a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                }
+                SortMode::DateModified => {
+                    let time_a = std::fs::metadata(&a.path)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    let time_b = std::fs::metadata(&b.path)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    time_a.cmp(&time_b)
+                }
+                SortMode::Type => {
+                    let ext_a = a.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    let ext_b = b.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    ext_a.cmp(&ext_b).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+                }
+                SortMode::Size => {
+                    let size_a = std::fs::metadata(&a.path).map(|m| m.len()).unwrap_or(0);
+                    let size_b = std::fs::metadata(&b.path).map(|m| m.len()).unwrap_or(0);
+                    size_a.cmp(&size_b)
+                }
+            };
+            match sort_dir {
+                SortDirection::Ascending => cmp,
+                SortDirection::Descending => cmp.reverse(),
+            }
+        })
     });
 
     // Apply search filter
@@ -296,6 +326,18 @@ pub fn grid_ui_interactive(
                     );
                 }
 
+                // Star badge on favorited folders
+                if entry.is_dir && state.is_favorite(&entry.path) {
+                    let star_pos = egui::pos2(tile.rect.max.x - 10.0, tile.rect.min.y + 10.0);
+                    ui.painter().text(
+                        star_pos,
+                        Align2::CENTER_CENTER,
+                        regular::STAR,
+                        FontId::proportional(10.0),
+                        Color32::from_rgb(255, 200, 60),
+                    );
+                }
+
                 // Draw label (skip if renaming)
                 if !is_renaming {
                     let (line1, line2) =
@@ -316,6 +358,13 @@ pub fn grid_ui_interactive(
                             text_muted,
                         );
                     }
+                }
+
+                // File hover tooltip (suppress during drag)
+                if !entry.is_dir && tile.response.hovered() && state.drag_moving.is_empty() {
+                    tile.response.clone().on_hover_ui_at_pointer(|ui| {
+                        file_hover_tooltip(ui, &entry.path);
+                    });
                 }
 
                 TileState {
@@ -498,20 +547,21 @@ pub fn grid_ui_interactive(
             state.drag_moving = vec![entry.path.clone()];
         }
 
-        // Only produce viewport drag payload for files (not folders)
-        if !entry.is_dir {
-            let (icon, color) = file_icon(&entry.path);
-            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            drag_payload = Some(AssetDragPayload {
-                path: entry.path.clone(),
-                name: entry.name.clone(),
-                icon: icon.to_string(),
-                color,
-                origin,
-                is_detached: false,
-                drag_count: state.drag_moving.len(),
-            });
-        }
+        let (icon, color) = if entry.is_dir {
+            (regular::FOLDER, folder_icon_color(&entry.name))
+        } else {
+            file_icon(&entry.path)
+        };
+        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+        drag_payload = Some(AssetDragPayload {
+            path: entry.path.clone(),
+            name: entry.name.clone(),
+            icon: icon.to_string(),
+            color,
+            origin,
+            is_detached: false,
+            drag_count: state.drag_moving.len(),
+        });
     }
 
     // Update drop target for ghost label
@@ -533,4 +583,63 @@ pub fn grid_ui_interactive(
         double_clicked_file,
         thumbnail_requests,
     }
+}
+
+/// Render a tooltip with file info (name, type, size, date modified).
+pub(crate) fn file_hover_tooltip(ui: &mut egui::Ui, path: &std::path::Path) {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    ui.label(egui::RichText::new(name).strong());
+
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        ui.label(format!("Type: {}", ext.to_uppercase()));
+    }
+
+    if let Ok(meta) = std::fs::metadata(path) {
+        ui.label(format!("Size: {}", format_file_size(meta.len())));
+        if let Ok(modified) = meta.modified() {
+            if let Ok(duration) = modified.duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                let secs = duration.as_secs();
+                // Simple date formatting: YYYY-MM-DD HH:MM
+                let days = secs / 86400;
+                let time_of_day = secs % 86400;
+                let hours = time_of_day / 3600;
+                let minutes = (time_of_day % 3600) / 60;
+
+                // Approximate date from days since epoch
+                let (year, month, day) = days_to_date(days);
+                ui.label(format!("Modified: {}-{:02}-{:02} {:02}:{:02}", year, month, day, hours, minutes));
+            }
+        }
+    }
+}
+
+/// Convert days since Unix epoch to (year, month, day).
+fn days_to_date(mut days: u64) -> (u64, u64, u64) {
+    let mut year = 1970;
+    loop {
+        let days_in_year = if is_leap(year) { 366 } else { 365 };
+        if days < days_in_year {
+            break;
+        }
+        days -= days_in_year;
+        year += 1;
+    }
+    let month_days: &[u64] = if is_leap(year) {
+        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1;
+    for &md in month_days {
+        if days < md {
+            break;
+        }
+        days -= md;
+        month += 1;
+    }
+    (year, month, days + 1)
+}
+
+fn is_leap(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }

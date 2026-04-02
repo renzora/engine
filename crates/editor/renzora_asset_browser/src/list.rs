@@ -5,7 +5,7 @@ use egui_phosphor::regular;
 use renzora_editor::AssetDragPayload;
 use renzora_theme::Theme;
 
-use crate::grid::{collect_entries, GridResult};
+use crate::grid::{collect_entries, file_hover_tooltip, GridResult};
 use crate::state::{file_icon, folder_icon_color, AssetBrowserState};
 
 const ROW_HEIGHT: f32 = 22.0;
@@ -204,6 +204,13 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                     }
                 }
 
+                // File hover tooltip (suppress during drag)
+                if !entry.is_dir && resp.hovered() && state.drag_moving.is_empty() {
+                    resp.clone().on_hover_ui_at_pointer(|ui| {
+                        file_hover_tooltip(ui, &entry.path);
+                    });
+                }
+
                 if resp.clicked() {
                     clicked_path = Some(entry.path.clone());
                 }
@@ -277,19 +284,21 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         } else {
             state.drag_moving = vec![entry.path.clone()];
         }
-        if !entry.is_dir {
-            let (icon, color) = file_icon(&entry.path);
-            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            drag_payload = Some(AssetDragPayload {
-                path: entry.path.clone(),
-                name: entry.name.clone(),
-                icon: icon.to_string(),
-                color,
-                origin,
-                is_detached: false,
-                drag_count: state.drag_moving.len(),
-            });
-        }
+        let (icon, color) = if entry.is_dir {
+            (regular::FOLDER, folder_icon_color(&entry.name))
+        } else {
+            file_icon(&entry.path)
+        };
+        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+        drag_payload = Some(AssetDragPayload {
+            path: entry.path.clone(),
+            name: entry.name.clone(),
+            icon: icon.to_string(),
+            color,
+            origin,
+            is_detached: false,
+            drag_count: state.drag_moving.len(),
+        });
     }
 
     // Update drop target for ghost label
