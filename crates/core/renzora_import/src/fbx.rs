@@ -46,6 +46,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             ))
         }
         Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("Unsupported FBX version") {
+                log::info!("[import] {}: {}, falling back to legacy parser", file_name, msg);
+                return crate::fbx_legacy::convert(path, settings);
+            }
             log::error!("[import] {}: FBX parse error: {}", file_name, e);
             return Err(ImportError::ParseError(format!("FBX parse error: {}", e)))
         }

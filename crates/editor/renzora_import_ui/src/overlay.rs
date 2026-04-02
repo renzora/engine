@@ -262,6 +262,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                         // Show scrollable file list (max 5 visible)
                         let max_height = 120.0;
                         egui::ScrollArea::vertical()
+                            .id_salt("import_file_list")
                             .max_height(max_height)
                             .show(ui, |ui| {
                                 let state = world.resource::<ImportOverlayState>();
@@ -578,6 +579,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     log_frame.show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         egui::ScrollArea::vertical()
+                            .id_salt("import_output_log")
                             .max_height(120.0)
                             .show(ui, |ui| {
                                 for entry in &log_entries {

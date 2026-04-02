@@ -24,6 +24,9 @@ renzora_animation = { path = "../renzora_animation" }
 # Mesh optimization
 meshopt = "0.3"
 
+# Compression (legacy FBX binary arrays)
+flate2 = "1"
+
 # Utility
 thiserror = "2"
 log = "0.4"

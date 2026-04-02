@@ -15,6 +15,7 @@ mod stl;
 mod ply;
 mod fbx;
 mod fbx_ascii;
+mod fbx_legacy;
 
 pub use convert::{convert_to_glb, ImportError, ImportResult};
 pub use formats::{detect_format, supported_extensions, ModelFormat};
