@@ -112,28 +112,28 @@ dependencies = ["ensure-wasm-tools"]
 script_runner = "@shell"
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo Output: web/
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo Output: templates/web/
 '''
 
 [tasks.dist-web.linux]
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo "Output: web/"
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo "Output: templates/web/"
 '''
 
 [tasks.dist-web.mac]
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo "Output: web/"
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo "Output: templates/web/"
 '''
 
 [tasks.dist-web-runtime]
@@ -170,48 +170,48 @@ echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
 description = "Build Android ARM64 template APK"
 [tasks.dist-android-arm64.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-arm64"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-arm64"]
 [tasks.dist-android-arm64.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--arm64"]
 [tasks.dist-android-arm64.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--arm64"]
 
 [tasks.dist-android-x86]
 description = "Build Android x86_64 template APK (emulators)"
 [tasks.dist-android-x86.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-x86"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-x86"]
 [tasks.dist-android-x86.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--x86_64"]
 [tasks.dist-android-x86.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--x86_64"]
 
 [tasks.dist-android-firetv]
 description = "Build Fire TV ARM64 template APK"
 [tasks.dist-android-firetv.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-firetv"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-firetv"]
 [tasks.dist-android-firetv.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--firetv"]
 [tasks.dist-android-firetv.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--firetv"]
 
 [tasks.dist-android-all]
 description = "Build all Android template APKs"
 [tasks.dist-android-all.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-all"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-all"]
 [tasks.dist-android-all.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--all"]
 [tasks.dist-android-all.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--all"]
 
 # --- iOS ---
@@ -219,7 +219,7 @@ args = ["--all"]
 [tasks.dist-ios]
 description = "Build iOS ARM64 template (requires macOS + Xcode)"
 [tasks.dist-ios.mac]
-command = "./ios/build-template.sh"
+command = "./templates/ios/build-template.sh"
 [tasks.dist-ios.windows]
 script_runner = "@shell"
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
@@ -229,7 +229,7 @@ script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
 [tasks.dist-ios-sim]
 description = "Build iOS Simulator ARM64 template (requires macOS + Xcode)"
 [tasks.dist-ios-sim.mac]
-command = "./ios/build-template.sh"
+command = "./templates/ios/build-template.sh"
 args = ["--simulator"]
 [tasks.dist-ios-sim.windows]
 script_runner = "@shell"
@@ -240,7 +240,7 @@ script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
 [tasks.dist-tvos]
 description = "Build Apple TV ARM64 template (requires macOS + Xcode)"
 [tasks.dist-tvos.mac]
-command = "./ios/build-template.sh"
+command = "./templates/ios/build-template.sh"
 args = ["--tvos"]
 [tasks.dist-tvos.windows]
 script_runner = "@shell"
@@ -251,7 +251,7 @@ script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
 [tasks.dist-tvos-sim]
 description = "Build Apple TV Simulator ARM64 template (requires macOS + Xcode)"
 [tasks.dist-tvos-sim.mac]
-command = "./ios/build-template.sh"
+command = "./templates/ios/build-template.sh"
 args = ["--tvos-simulator"]
 [tasks.dist-tvos-sim.windows]
 script_runner = "@shell"

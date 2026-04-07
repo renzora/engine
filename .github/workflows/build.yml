@@ -114,7 +114,7 @@ jobs:
             --out-name renzora \
             --target web \
             target/wasm32-unknown-unknown/dist/renzora.wasm
-          cp web/index.html web-dist/ || true
+          cp templates/web/index.html web-dist/ || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -294,23 +294,23 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
-          mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
+          mkdir -p templates/android/app/src/main/jniLibs/${{ matrix.abi }}
           cp crates/platform/renzora_android/target/${{ matrix.rust_target }}/release/libmain.so \
-            android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so
+            templates/android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so
 
           HOST_DIR=$(ls "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" | head -1)
           NDK_TARGET=${{ matrix.rust_target }}
           if [ "$NDK_TARGET" = "armv7-linux-androideabi" ]; then NDK_TARGET="arm-linux-androideabi"; fi
           cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_DIR/sysroot/usr/lib/$NDK_TARGET/libc++_shared.so" \
-            android/app/src/main/jniLibs/${{ matrix.abi }}/
+            templates/android/app/src/main/jniLibs/${{ matrix.abi }}/
 
       - name: Compress with UPX
         run: |
           sudo apt-get install -y upx-ucl
-          upx --brute android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so || true
+          upx --brute templates/android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so || true
 
       - name: Build APK
-        working-directory: android
+        working-directory: templates/android
         run: |
           FLAVOR_CAP="$(echo '${{ matrix.flavor }}' | sed 's/./\U&/')"
           chmod +x gradlew
@@ -320,7 +320,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.template }}
-          path: android/app/build/outputs/apk/${{ matrix.flavor }}/release/app-${{ matrix.flavor }}-release-unsigned.apk
+          path: templates/android/app/build/outputs/apk/${{ matrix.flavor }}/release/app-${{ matrix.flavor }}-release-unsigned.apk
 
   # ===========================================================================
   # Release — attach all artifacts to the GitHub release
