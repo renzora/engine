@@ -181,19 +181,84 @@ This is why all build commands use the `dist` profile. Using a different profile
 
 ## Exporting
 
-The editor has an export overlay supporting Windows, Linux, macOS, Android, Fire TV, iOS, Apple TV, and Web (WASM).
+The editor has an export overlay that packages your game for any supported platform. It scans your project for referenced assets, strips editor-only components, optimizes meshes, compresses everything into an `.rpak`, and bundles it with a pre-built runtime template.
 
-Export templates are pre-built runtime binaries. Build them with:
+### Export Templates
+
+Templates are pre-built runtime binaries for each target platform. You build them once, then the editor injects your game's assets into the template when you export. Template source code lives in `templates/`.
+
+Rebuild templates when you update Bevy, change engine dependencies, or modify `src/runtime.rs`. You do **not** need to rebuild them when you change game assets, scenes, or scripts.
+
+### Desktop
 
 ```bash
-cargo make dist-runtime           # desktop
-cargo make dist-server            # dedicated server
-cargo make dist-android-arm64     # Android
-cargo make dist-web-runtime       # Web (WASM)
-cargo make dist-ios               # iOS (macOS only)
+cargo make dist-runtime       # game runtime for current OS
+cargo make dist-server        # dedicated server (headless, no rendering/audio)
 ```
 
-The export pipeline scans your project for referenced assets, strips editor-only components, optimizes meshes, compresses everything into an `.rpak`, and bundles it with the template binary.
+Output: `target/templates/renzora-runtime-{os}-{arch}` and `renzora-server-{os}-{arch}`
+
+### Web (WASM)
+
+Requires: `rustup target add wasm32-unknown-unknown`
+
+```bash
+cargo make dist-web-runtime   # compile + wasm-bindgen + wasm-opt + brotli + zip
+```
+
+Output: `target/dist/renzora-runtime-web-wasm32.zip`
+
+The template zip contains JS glue + wasm binary. At export time, the editor packs your assets into an `.rpak`, generates an `index.html`, and bundles everything into a deployable zip. Works on any static host (GitHub Pages, Netlify, Vercel, etc.).
+
+### Android
+
+Requires: Android Studio (SDK + NDK), `cargo install cargo-ndk`, nightly Rust targets
+
+```bash
+rustup target add aarch64-linux-android --toolchain nightly
+rustup target add x86_64-linux-android --toolchain nightly    # optional, emulator
+
+cargo make dist-android-arm64     # phones, tablets, Meta Quest, Pico
+cargo make dist-android-x86       # emulator
+cargo make dist-android-firetv    # Fire TV Stick 4K Max, Fire TV Cube (3rd gen+)
+cargo make dist-android-all       # all of the above
+```
+
+Output: `target/templates/renzora-runtime-android-{arch}.apk`
+
+At export time, the editor injects `game.rpak` into the APK and signs it automatically (ECDSA P-256, no Android SDK needed on the exporting machine).
+
+### iOS / tvOS
+
+Requires: macOS with Xcode, nightly Rust targets
+
+```bash
+rustup target add aarch64-apple-ios --toolchain nightly
+rustup target add aarch64-apple-tvos --toolchain nightly      # optional
+
+cargo make dist-ios           # iPhone, iPad
+cargo make dist-ios-sim       # iOS Simulator
+cargo make dist-tvos          # Apple TV
+cargo make dist-tvos-sim      # Apple TV Simulator
+```
+
+Output: `target/templates/renzora-runtime-ios-arm64.zip`
+
+At export time, the editor injects `game.rpak` into the app bundle and outputs an `.ipa`. Sign with Xcode or `codesign` for distribution.
+
+### Supported Platforms
+
+| Platform | Template | Devices |
+|----------|----------|---------|
+| Windows x64 | `dist-runtime` | Desktop, PCVR (SteamVR, Oculus Link) |
+| Linux x64 | `dist-runtime` | Desktop, Steam Deck |
+| macOS | `dist-runtime` | Intel + Apple Silicon |
+| Web | `dist-web-runtime` | Chrome 113+, Edge 113+, Firefox Nightly |
+| Android ARM64 | `dist-android-arm64` | Phones, tablets, Meta Quest, Pico, HTC Vive Focus |
+| Android x86_64 | `dist-android-x86` | Emulators |
+| Fire TV | `dist-android-firetv` | Fire TV Stick 4K Max, Fire TV Cube 3rd gen+ |
+| iOS | `dist-ios` | iPhone, iPad |
+| Apple TV | `dist-tvos` | Apple TV 4K, Apple TV HD |
 
 ## Cargo Features
 
