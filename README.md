@@ -42,19 +42,6 @@ cargo build-tvos        # Apple TV
 
 Wayland dev libraries required: `sudo apt install libwayland-dev`
 
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Engine User Guide](docs/ENGINE_USER_GUIDE.md) | Viewport, shortcuts, gizmos, terrain, scenes |
-| [Physics Guide](docs/PHYSICS_GUIDE.md) | Rigid bodies, colliders, cloth, scripting |
-| [Audio Guide](docs/AUDIO_GUIDE.md) | Kira audio, spatial, mixer, scripting |
-| [Scripting API](docs/scripting-api.md) | Rhai scripting reference |
-| [Console Commands](docs/CONSOLE_COMMANDS.md) | Built-in console commands |
-| [VR Guide](docs/VR_GUIDE.md) | OpenXR setup, controllers, hand tracking |
-| [Plugin Development](docs/PLUGIN_DEVELOPMENT.md) | Plugin architecture and API |
-| [Contributing](CONTRIBUTING.md) | Issues and pull requests |
-
 ## Architecture
 
 Three binaries share a common runtime library:
@@ -73,7 +60,7 @@ Add a dependency on the SDK crate and write a standard Bevy plugin:
 
 ```rust
 use bevy::prelude::*;
-use dynamic_plugin_meta::add;
+use renzora::prelude::*;
 
 #[derive(Default)]
 pub struct MyPlugin;
@@ -95,7 +82,7 @@ fn tick(time: Res<Time>) {
     }
 }
 
-add!(MyPlugin);
+renzora::add!(MyPlugin);
 ```
 
 ### Plugin Cargo.toml
@@ -111,7 +98,7 @@ crate-type = ["dylib"]
 
 [dependencies]
 bevy = { workspace = true }
-dynamic_plugin_meta = { path = "../../crates/plugins/dynamic_plugin_meta" }
+renzora = { path = "../../crates/renzora" }
 ```
 
 ### Plugin Scope
