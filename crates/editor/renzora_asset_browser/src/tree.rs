@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
-use egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
+use renzora::egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
+use renzora::theme::Theme;
 
 use crate::state::{folder_icon_color, is_hidden, AssetBrowserState};
 

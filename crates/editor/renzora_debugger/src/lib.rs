@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, EntityCountDiagnosticsPlugin, SystemInformationDiagnosticsPlugin};
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 
 use state::*;
 
@@ -47,7 +47,7 @@ struct SystemProfilerPanel;
 impl EditorPanel for SystemProfilerPanel {
     fn id(&self) -> &str { "system_profiler" }
     fn title(&self) -> &str { "System Profiler" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CHART_LINE_UP) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::CHART_LINE_UP) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -69,7 +69,7 @@ struct MemoryProfilerPanel;
 impl EditorPanel for MemoryProfilerPanel {
     fn id(&self) -> &str { "memory_profiler" }
     fn title(&self) -> &str { "Memory Profiler" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MEMORY) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::MEMORY) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -98,7 +98,7 @@ impl CameraDebugPanel {
 impl EditorPanel for CameraDebugPanel {
     fn id(&self) -> &str { "camera_debug" }
     fn title(&self) -> &str { "Camera Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::VIDEO_CAMERA) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::VIDEO_CAMERA) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -156,7 +156,7 @@ impl CullingDebugPanel {
 impl EditorPanel for CullingDebugPanel {
     fn id(&self) -> &str { "culling_debug" }
     fn title(&self) -> &str { "Culling Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::EYE_SLASH) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::EYE_SLASH) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -208,7 +208,7 @@ struct PerformancePanel;
 impl EditorPanel for PerformancePanel {
     fn id(&self) -> &str { "performance" }
     fn title(&self) -> &str { "Performance" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SPEEDOMETER) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::SPEEDOMETER) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -228,7 +228,7 @@ struct RenderStatsPanel;
 impl EditorPanel for RenderStatsPanel {
     fn id(&self) -> &str { "render_stats" }
     fn title(&self) -> &str { "Render Stats" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MONITOR) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::MONITOR) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -256,7 +256,7 @@ impl RenderPipelinePanel {
 impl EditorPanel for RenderPipelinePanel {
     fn id(&self) -> &str { "render_pipeline" }
     fn title(&self) -> &str { "Render Pipeline" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::FLOW_ARROW) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::FLOW_ARROW) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [400.0, 300.0] }
 
@@ -303,7 +303,7 @@ impl EcsStatsPanel {
 impl EditorPanel for EcsStatsPanel {
     fn id(&self) -> &str { "ecs_stats" }
     fn title(&self) -> &str { "ECS Stats" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::DATABASE) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::DATABASE) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -356,6 +356,7 @@ fn sync_debug_bridge(
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct DebuggerPlugin;
 
 impl Plugin for DebuggerPlugin {
@@ -384,7 +385,7 @@ impl Plugin for DebuggerPlugin {
         app.insert_resource(bridge);
 
         // Update systems
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(Update, (
             update_diagnostics_state,
             update_render_stats,
@@ -411,3 +412,5 @@ impl Plugin for DebuggerPlugin {
         extract_render_graph(app);
     }
 }
+
+renzora::add!(DebuggerPlugin);

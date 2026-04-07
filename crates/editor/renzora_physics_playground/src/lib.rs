@@ -14,13 +14,13 @@ pub mod state;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_physics::{
     CollisionShapeData, PhysicsBodyData, PhysicsBodyType, PhysicsPropertiesState,
 };
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use state::*;
 
@@ -55,7 +55,7 @@ impl Default for PhysicsBridge {
 // Helper: get theme from world
 // ============================================================================
 
-fn get_theme(world: &World) -> renzora_theme::Theme {
+fn get_theme(world: &World) -> renzora::theme::Theme {
     world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.active_theme.clone())
@@ -80,7 +80,7 @@ impl PhysicsDebugPanel {
 impl EditorPanel for PhysicsDebugPanel {
     fn id(&self) -> &str { "physics_debug" }
     fn title(&self) -> &str { "Physics Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::ATOM) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::ATOM) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [280.0, 350.0] }
 
@@ -133,7 +133,7 @@ impl PhysicsPlaygroundPanel {
 impl EditorPanel for PhysicsPlaygroundPanel {
     fn id(&self) -> &str { "physics_playground" }
     fn title(&self) -> &str { "Physics Playground" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CUBE) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::CUBE) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -165,7 +165,7 @@ struct PhysicsPropertiesPanel;
 impl EditorPanel for PhysicsPropertiesPanel {
     fn id(&self) -> &str { "physics_properties" }
     fn title(&self) -> &str { "Physics Properties" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SLIDERS) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::SLIDERS) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 280.0] }
 
@@ -204,7 +204,7 @@ impl PhysicsForcesPanel {
 impl EditorPanel for PhysicsForcesPanel {
     fn id(&self) -> &str { "physics_forces" }
     fn title(&self) -> &str { "Physics Forces" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::LIGHTNING) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::LIGHTNING) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -248,7 +248,7 @@ impl PhysicsMetricsPanel {
 impl EditorPanel for PhysicsMetricsPanel {
     fn id(&self) -> &str { "physics_metrics" }
     fn title(&self) -> &str { "Physics Metrics" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CHART_LINE) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::CHART_LINE) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 280.0] }
 
@@ -300,7 +300,7 @@ impl PhysicsScenariosPanel {
 impl EditorPanel for PhysicsScenariosPanel {
     fn id(&self) -> &str { "physics_scenarios" }
     fn title(&self) -> &str { "Physics Scenarios" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::ROCKET_LAUNCH) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::ROCKET_LAUNCH) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -341,7 +341,7 @@ impl ArenaPresetsPanel {
 impl EditorPanel for ArenaPresetsPanel {
     fn id(&self) -> &str { "arena_presets" }
     fn title(&self) -> &str { "Arena Presets" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CUBE) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::CUBE) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -2704,6 +2704,7 @@ fn spawn_labyrinth(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct PhysicsPanelPlugin;
 
 impl Plugin for PhysicsPanelPlugin {
@@ -2720,7 +2721,7 @@ impl Plugin for PhysicsPanelPlugin {
         let arc = bridge.pending.clone();
         app.insert_resource(bridge);
 
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(
             Update,
             (
@@ -2741,3 +2742,5 @@ impl Plugin for PhysicsPanelPlugin {
         app.register_panel(ArenaPresetsPanel::new(arc));
     }
 }
+
+renzora::add!(PhysicsPanelPlugin);

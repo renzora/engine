@@ -2,19 +2,8 @@ use bevy::prelude::*;
 
 use crate::extension::ScriptExtensionCommand;
 
-/// Queued character controller commands, processed by renzora_physics each frame.
-#[derive(Resource, Default)]
-pub struct CharacterCommandQueue {
-    pub commands: Vec<(Entity, CharacterCommand)>,
-}
-
-/// A character controller command for a specific entity.
-#[derive(Debug)]
-pub enum CharacterCommand {
-    Move(Vec2),
-    Jump,
-    Sprint(bool),
-}
+// Re-export from renzora_core for backwards compatibility
+pub use renzora_core::{CharacterCommand, CharacterCommandQueue};
 
 /// Commands that scripts can issue, processed after execution.
 /// Language-agnostic — all backends produce these same commands.
@@ -181,19 +170,20 @@ pub enum ScriptCommand {
         value: PropertyValue,
     },
 
-    // === Extension ===
+    // === Generic Script Action ===
+    /// Fires a `ScriptAction` event that domain crates observe.
+    /// Replaces domain-specific extension commands with a generic event bus.
+    Action {
+        name: String,
+        target_entity: Option<String>,
+        args: std::collections::HashMap<String, renzora_core::ScriptActionValue>,
+    },
+
+    // === Extension (legacy) ===
     /// Custom command from a script extension. Downcasted by the extension's
     /// command processor via `as_any()`.
     Extension(Box<dyn ScriptExtensionCommand>),
 }
 
-/// Value types for property writes
-#[derive(Clone, Debug)]
-pub enum PropertyValue {
-    Float(f32),
-    Int(i64),
-    Bool(bool),
-    String(String),
-    Vec3([f32; 3]),
-    Color([f32; 4]),
-}
+// Re-export PropertyValue from renzora_core for backwards compatibility
+pub use renzora_core::PropertyValue;

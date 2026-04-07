@@ -3,11 +3,10 @@ name = "renzora_console"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = "0.39"
-egui-phosphor = { version = "0.11", features = ["regular"] }
-renzora_core = { path = "../../core/renzora_core" }
-renzora_editor = { path = "../renzora_editor" }
-renzora_theme = { path = "../../ui/renzora_theme" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_scripting = { path = "../../core/renzora_scripting" }

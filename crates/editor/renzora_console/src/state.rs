@@ -1,13 +1,13 @@
 //! Console state — editor-side resource that collects and displays log entries.
 //!
 //! Log types, shared buffer, and global logging functions live in
-//! `renzora_core::console_log` so every crate can use them.
+//! `renzora::core::console_log` so every crate can use them.
 
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
 
 // Re-export core logging types so existing `renzora_console::state::*` imports keep working.
-pub use renzora_core::console_log::{
+pub use renzora::core::console_log::{
     console_log, get_global_log_buffer, init_global_log_buffer, LogEntry, LogLevel,
     SharedLogBuffer, MAX_LOG_ENTRIES,
 };

@@ -1,0 +1,26 @@
+[package]
+name = "renzora_usd"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust USD/USDA/USDC/USDZ parser for Renzora Engine"
+
+[dependencies]
+# Animation clip types
+renzora_animation = { path = "../renzora_animation" }
+
+# GLB output
+gltf-json = "1.4"
+
+# USDZ archive extraction
+zip = "2"
+
+# LZ4 decompression (USDC token tables, compressed arrays)
+lz4_flex = "0.11"
+
+# Float16 support (half-precision vertex data)
+half = "2"
+
+# Utility
+thiserror = "2"
+log = "0.4"
+serde_json = "1"

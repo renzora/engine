@@ -8,10 +8,10 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui::TextureId;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
-use renzora_core::{IsolatedCamera, MeshInstanceData};
-use renzora_runtime::{EditorLocked, HideInHierarchy};
+use renzora::bevy_egui::egui::TextureId;
+use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use renzora::core::{IsolatedCamera, MeshInstanceData};
+use renzora_engine::{EditorLocked, HideInHierarchy};
 
 use crate::AnimationEditorState;
 

@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "sharpen.wgsl", name = "Sharpen", icon = "DIAMOND")]
 pub struct SharpenSettings {
@@ -10,6 +12,7 @@ pub struct SharpenSettings {
     pub strength: f32,
 }
 
+#[derive(Default)]
 pub struct SharpenPlugin;
 
 impl Plugin for SharpenPlugin {
@@ -22,3 +25,5 @@ impl Plugin for SharpenPlugin {
         app.register_inspectable::<SharpenSettings>();
     }
 }
+
+renzora::add!(SharpenPlugin);

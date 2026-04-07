@@ -7,7 +7,7 @@
 //! - **Play mode**: PlayModeCamera ← [play mode source camera, all non-camera entities]
 
 use bevy::prelude::*;
-use renzora_core::{
+use renzora::core::{
     DefaultCamera, EditorCamera, EffectRouting, PlayModeCamera, PlayModeState, SceneCamera,
     UiCanvasPreviewCamera,
 };

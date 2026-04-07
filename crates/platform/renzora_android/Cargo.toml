@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 renzora = { path = "../../..", default-features = false }
-bevy = { version = "0.18", features = ["jpeg"] }
+bevy = { workspace = true }
 
 [profile.release]
 lto = "thin"

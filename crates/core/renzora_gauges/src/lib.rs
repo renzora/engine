@@ -11,11 +11,8 @@ pub use bevy_gauge::prelude::*;
 
 use bevy::prelude::*;
 use bevy_gauge::prelude::InstantExt;
-use renzora_scripting::systems::execution::ScriptCommandQueue;
-use renzora_scripting::{ScriptCommand, ScriptExtensions, ScriptingSet};
 
 mod script_extension;
-pub use script_extension::{GaugeCommand, GaugeScriptExtension};
 
 #[cfg(feature = "editor")]
 mod inspector;
@@ -45,26 +42,15 @@ impl Plugin for GaugesPlugin {
         app.init_resource::<GaugesSnapshot>();
         // ensure_attributes must run before script execution so gauge commands
         // issued in on_ready (the very first frame) find an Attributes component.
-        app.add_systems(
-            Update,
-            ensure_attributes.in_set(ScriptingSet::PreScript),
-        );
+        app.add_systems(Update, ensure_attributes);
         app.add_systems(PostUpdate, update_gauges_snapshot);
 
-        // Process gauge commands after script command processing
-        app.add_systems(
-            Update,
-            process_gauge_commands.in_set(ScriptingSet::CommandProcessing),
-        );
-
-        // Register the gauge script extension
-        app.world_mut()
-            .resource_mut::<ScriptExtensions>()
-            .register(GaugeScriptExtension);
+        // Script actions (decoupled — observes ScriptAction events)
+        app.add_observer(script_extension::handle_gauge_script_actions);
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora_editor_framework::AppEditorExt;
             app.register_inspector(inspector::gauges_inspector_entry());
             app.register_panel(panel::GaugesPanel::default());
         }
@@ -81,67 +67,6 @@ fn ensure_attributes(
     }
 }
 
-// ── Command processing ───────────────────────────────────────────────────
-
-/// Process gauge-related script commands (Extension variant with GaugeCommand).
-fn process_gauge_commands(
-    cmd_queue: Res<ScriptCommandQueue>,
-    mut attrs: AttributesMut,
-) {
-    for (source_entity, cmd) in &cmd_queue.commands {
-        let ScriptCommand::Extension(ext_cmd) = cmd else { continue };
-        let Some(gauge_cmd) = ext_cmd.as_any().downcast_ref::<GaugeCommand>() else { continue };
-
-        let resolve = |target: &Option<u64>| {
-            target.map(Entity::from_bits).unwrap_or(*source_entity)
-        };
-
-        match gauge_cmd {
-            GaugeCommand::Set { attribute, value, target } => {
-                attrs.set(resolve(target), attribute, *value);
-            }
-            GaugeCommand::AddModifier { attribute, value, target } => {
-                attrs.add_modifier(resolve(target), attribute, Modifier::Flat(*value));
-            }
-            GaugeCommand::RemoveModifier { attribute, value, target } => {
-                attrs.remove_modifier(resolve(target), attribute, &Modifier::Flat(*value));
-            }
-            GaugeCommand::AddExprModifier { attribute, expression, target } => {
-                if let Err(e) = attrs.add_expr_modifier(resolve(target), attribute, expression) {
-                    warn!("Gauge expr modifier error on '{}': {:?}", attribute, e);
-                }
-            }
-            GaugeCommand::Instant { attribute, op, value, target } => {
-                let mut instant = InstantModifierSet::new();
-                match op.as_str() {
-                    "add" => instant.push_add(attribute, *value),
-                    "subtract" | "sub" => instant.push_sub(attribute, *value),
-                    "set" => instant.push_set(attribute, *value),
-                    _ => {
-                        warn!("Unknown gauge instant op '{}', use add/subtract/set", op);
-                    }
-                }
-                attrs.apply_instant(&instant, &[], resolve(target));
-            }
-            GaugeCommand::InstantExpr { attribute, op, expression, roles, target } => {
-                let mut instant = InstantModifierSet::new();
-                match op.as_str() {
-                    "add" => instant.push_add(attribute.as_str(), expression.as_str()),
-                    "subtract" | "sub" => instant.push_sub(attribute.as_str(), expression.as_str()),
-                    "set" => instant.push_set(attribute.as_str(), expression.as_str()),
-                    _ => {
-                        warn!("Unknown gauge instant op '{}', use add/subtract/set", op);
-                    }
-                }
-                let role_pairs: Vec<(&str, Entity)> = roles
-                    .iter()
-                    .map(|(name, id)| (name.as_str(), Entity::from_bits(*id)))
-                    .collect();
-                attrs.apply_instant(&instant, &role_pairs, resolve(target));
-            }
-        }
-    }
-}
 
 // ── Snapshot resource for editor panels ────────────────────────────────────
 

@@ -1,7 +1,7 @@
 //! Physics Metrics panel — real-time energy, velocity, and momentum monitoring
 
-use bevy_egui::egui::{self, Color32, RichText};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Color32, RichText};
+use renzora::theme::Theme;
 
 use crate::state::MetricsState;
 

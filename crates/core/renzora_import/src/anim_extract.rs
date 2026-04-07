@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use renzora_animation::clip::{AnimClip, BoneTrack};
-use renzora_animation::extract::write_anim_file;
+use renzora_core::{AnimClip, BoneTrack};
+use renzora_core::write_anim_file;
 
 /// Result of animation extraction for a single GLB.
 #[derive(Debug)]

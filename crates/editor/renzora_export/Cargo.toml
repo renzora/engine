@@ -4,14 +4,15 @@ version = "0.1.0"
 edition = "2021"
 description = "Export overlay for packaging Renzora projects"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = "0.39"
-egui-phosphor = "0.11"
-renzora_core = { path = "../../core/renzora_core" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_rpak = { path = "../../core/renzora_rpak" }
 renzora_import = { path = "../../core/renzora_import" }
-renzora_theme = { path = "../../ui/renzora_theme" }
+dynamic_plugin_loader = { path = "../../plugins/dynamic_plugin_loader" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 

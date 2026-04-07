@@ -1,12 +1,12 @@
 //! Particle Preview Panel — displays the live particle effect preview texture.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use bevy_egui::EguiUserTextures;
-use egui_phosphor::regular::EYE;
+use renzora::bevy_egui::egui;
+use renzora::bevy_egui::EguiUserTextures;
+use renzora::egui_phosphor::regular::EYE;
 
-use renzora_editor::EditorPanel;
-use renzora_theme::ThemeManager;
+use renzora::editor::EditorPanel;
+use renzora::theme::ThemeManager;
 
 use crate::preview::ParticlePreviewImage;
 

@@ -5,7 +5,7 @@ mod graph_panel;
 mod properties_panel;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
+use renzora::editor::AppEditorExt;
 
 /// Tracks which entity's blueprint is currently open in the editor.
 #[derive(Resource, Default)]
@@ -16,6 +16,7 @@ pub struct BlueprintEditorState {
     pub selected_node: Option<u64>,
 }
 
+#[derive(Default)]
 pub struct BlueprintEditorPlugin;
 
 impl Plugin for BlueprintEditorPlugin {
@@ -26,3 +27,5 @@ impl Plugin for BlueprintEditorPlugin {
         app.register_panel(properties_panel::BlueprintPropertiesPanel::default());
     }
 }
+
+renzora::add!(BlueprintEditorPlugin);

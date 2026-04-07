@@ -7,11 +7,11 @@ use bevy::render::{
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
+use renzora::postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora::editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -120,6 +120,7 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
+#[derive(Default)]
 pub struct UnderwaterPlugin;
 
 impl Plugin for UnderwaterPlugin {
@@ -128,10 +129,12 @@ impl Plugin for UnderwaterPlugin {
         bevy::asset::embedded_asset!(app, "underwater.wgsl");
         app.register_type::<UnderwaterSettings>();
         app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<UnderwaterSettings>::default(),
+            renzora::postprocess::PostProcessPlugin::<UnderwaterSettings>::default(),
         );
         app.add_systems(Update, sync_time);
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(UnderwaterPlugin);

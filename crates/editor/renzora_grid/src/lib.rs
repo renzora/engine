@@ -49,6 +49,7 @@ impl Default for GridConfig {
     }
 }
 
+#[derive(Default)]
 pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
@@ -60,7 +61,7 @@ impl Plugin for GridPlugin {
                 sync_grid_from_viewport,
                 toggle_grid_visibility,
                 toggle_axis_visibility,
-            ).run_if(in_state(renzora_splash::SplashState::Editor)));
+            ).run_if(in_state(renzora::editor::SplashState::Editor)));
     }
 }
 
@@ -225,3 +226,5 @@ fn toggle_axis_visibility(
         *visibility = vis;
     }
 }
+
+renzora::add!(GridPlugin);

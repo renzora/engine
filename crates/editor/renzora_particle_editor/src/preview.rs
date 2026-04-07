@@ -4,11 +4,11 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui::TextureId;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use renzora::bevy_egui::egui::TextureId;
+use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
-use renzora_core::IsolatedCamera;
-use renzora_runtime::{EditorLocked, HideInHierarchy};
+use renzora::core::IsolatedCamera;
+use renzora_engine::{EditorLocked, HideInHierarchy};
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;

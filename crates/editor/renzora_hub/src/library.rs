@@ -3,10 +3,10 @@
 use std::sync::{mpsc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, StrokeKind, Vec2};
+use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, StrokeKind, Vec2};
 use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
-use renzora_editor::{EditorPanel, PanelLocation};
+use renzora::editor::{EditorPanel, PanelLocation};
 
 use crate::images::ImageCache;
 use crate::install;
@@ -165,7 +165,7 @@ impl EditorPanel for HubLibraryPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::BOOKS)
+        Some(renzora::egui_phosphor::regular::BOOKS)
     }
 
     fn closable(&self) -> bool {
@@ -183,7 +183,7 @@ impl EditorPanel for HubLibraryPanel {
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         self.poll_results(ui.ctx());
 
-        let theme = match world.get_resource::<renzora_theme::ThemeManager>() {
+        let theme = match world.get_resource::<renzora::theme::ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
             None => return,
         };
@@ -196,7 +196,7 @@ impl EditorPanel for HubLibraryPanel {
             })
             .unwrap_or_default();
         let project_path = world
-            .get_resource::<renzora_core::CurrentProject>()
+            .get_resource::<renzora::core::CurrentProject>()
             .map(|p| p.path.clone());
 
         let accent = theme.semantic.accent.to_color32();
@@ -210,7 +210,7 @@ impl EditorPanel for HubLibraryPanel {
             ui.vertical_centered(|ui| {
                 ui.add_space(60.0);
                 ui.label(
-                    RichText::new(egui_phosphor::regular::USER)
+                    RichText::new(renzora::egui_phosphor::regular::USER)
                         .size(36.0)
                         .color(text_muted),
                 );
@@ -254,12 +254,12 @@ impl EditorPanel for HubLibraryPanel {
                     .desired_width(ui.available_width() - 34.0)
                     .hint_text(format!(
                         "{} Filter assets...",
-                        egui_phosphor::regular::FUNNEL
+                        renzora::egui_phosphor::regular::FUNNEL
                     )),
             );
 
             let refresh_btn = ui.button(
-                RichText::new(egui_phosphor::regular::ARROW_CLOCKWISE).size(14.0),
+                RichText::new(renzora::egui_phosphor::regular::ARROW_CLOCKWISE).size(14.0),
             );
             if refresh_btn.clicked() {
                 do_refresh = true;
@@ -272,7 +272,7 @@ impl EditorPanel for HubLibraryPanel {
             if let Some(err) = state.error.take() {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("{} {}", egui_phosphor::regular::WARNING, err))
+                        RichText::new(format!("{} {}", renzora::egui_phosphor::regular::WARNING, err))
                             .size(10.5)
                             .color(Color32::from_rgb(239, 68, 68)),
                     );
@@ -283,7 +283,7 @@ impl EditorPanel for HubLibraryPanel {
                     ui.label(
                         RichText::new(format!(
                             "{} {}",
-                            egui_phosphor::regular::CHECK_CIRCLE,
+                            renzora::egui_phosphor::regular::CHECK_CIRCLE,
                             msg
                         ))
                         .size(10.5)
@@ -320,7 +320,7 @@ impl EditorPanel for HubLibraryPanel {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
                         ui.label(
-                            RichText::new(egui_phosphor::regular::BOOKS)
+                            RichText::new(renzora::egui_phosphor::regular::BOOKS)
                                 .size(36.0)
                                 .color(text_muted),
                         );
@@ -429,7 +429,7 @@ impl EditorPanel for HubLibraryPanel {
                         ui.painter().text(
                             thumb_rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            egui_phosphor::regular::PACKAGE,
+                            renzora::egui_phosphor::regular::PACKAGE,
                             egui::FontId::proportional(16.0),
                             text_muted,
                         );
@@ -508,9 +508,9 @@ impl EditorPanel for HubLibraryPanel {
                         .rect_filled(btn_rect, CornerRadius::same(3), btn_bg);
 
                     let btn_text = if is_installing {
-                        format!("{}", egui_phosphor::regular::SPINNER)
+                        format!("{}", renzora::egui_phosphor::regular::SPINNER)
                     } else {
-                        format!("{} Install", egui_phosphor::regular::DOWNLOAD_SIMPLE)
+                        format!("{} Install", renzora::egui_phosphor::regular::DOWNLOAD_SIMPLE)
                     };
                     ui.painter().text(
                         btn_rect.center(),

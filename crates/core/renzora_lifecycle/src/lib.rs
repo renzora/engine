@@ -27,8 +27,7 @@ impl Plugin for LifecyclePlugin {
                 reload_lifecycle_on_project_change,
                 interpreter::reset_lifecycle_on_play_start,
                 interpreter::run_lifecycle
-                    .run_if(lifecycle_should_run)
-                    .before(renzora_scripting::ScriptingSet::CommandProcessing),
+                    .run_if(lifecycle_should_run),
                 interpreter::detect_scene_loaded
                     .run_if(lifecycle_should_run),
             )

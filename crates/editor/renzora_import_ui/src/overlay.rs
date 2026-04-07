@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
-use renzora_core::CurrentProject;
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
+use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::{ImportSettings, UpAxis};
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 /// Import progress state.
 #[derive(Debug, Clone, PartialEq)]
@@ -349,12 +349,19 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                             if let Some(paths) = rfd::FileDialog::new()
                                 .set_title("Select 3D model files")
                                 .add_filter("3D Models", &extensions)
+                                .add_filter("All Files", &["*"])
                                 .pick_files()
                             {
                                 let mut state = world.resource_mut::<ImportOverlayState>();
-                                for path in paths {
-                                    if !state.pending_files.contains(&path) {
-                                        state.pending_files.push(path);
+                                let was_empty = state.pending_files.is_empty();
+                                for path in &paths {
+                                    if !state.pending_files.contains(path) {
+                                        state.pending_files.push(path.clone());
+                                    }
+                                }
+                                if was_empty && state.settings.scale == 1.0 {
+                                    if let Some(scale) = renzora_import::units::detect_unit_scale(&paths[0]) {
+                                        state.settings.scale = scale;
                                     }
                                 }
                             }
@@ -372,9 +379,15 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     });
                     if !dropped_in_zone.is_empty() {
                         let mut state = world.resource_mut::<ImportOverlayState>();
-                        for path in dropped_in_zone {
-                            if !state.pending_files.contains(&path) {
-                                state.pending_files.push(path);
+                        let was_empty = state.pending_files.is_empty();
+                        for path in &dropped_in_zone {
+                            if !state.pending_files.contains(path) {
+                                state.pending_files.push(path.clone());
+                            }
+                        }
+                        if was_empty && state.settings.scale == 1.0 {
+                            if let Some(scale) = renzora_import::units::detect_unit_scale(&dropped_in_zone[0]) {
+                                state.settings.scale = scale;
                             }
                         }
                     }
@@ -847,34 +860,46 @@ fn import_worker(
                 // If geometry conversion failed for an FBX file, still try
                 // extracting animations directly (animation-only FBX files
                 // have no mesh geometry).
-                let is_fbx = source_path
+                let ext_lower = source_path
                     .extension()
                     .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.eq_ignore_ascii_case("fbx"))
-                    .unwrap_or(false);
+                    .unwrap_or("")
+                    .to_lowercase();
 
-                if is_fbx {
-                    let anim_dir = dest.join("animations");
-                    match renzora_import::extract_animations_from_fbx(source_path, &anim_dir) {
-                        Ok(anim_result) if !anim_result.written_files.is_empty() => {
-                            imported += 1;
-                            for anim_path in &anim_result.written_files {
-                                let _ = tx.send(ImportMsg::Log(ImportLogEntry {
-                                    file_name: std::path::Path::new(anim_path)
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("animation")
-                                        .to_string(),
-                                    success: true,
-                                    message: "animation extracted".to_string(),
-                                }));
-                            }
-                            for w in &anim_result.warnings {
-                                all_warnings.push(w.clone());
-                            }
-                            continue;
+                let anim_fallback_result = match ext_lower.as_str() {
+                    "fbx" => {
+                        let anim_dir = dest.join("animations");
+                        renzora_import::extract_animations_from_fbx(source_path, &anim_dir).ok()
+                    }
+                    "usd" | "usda" | "usdc" | "usdz" => {
+                        let anim_dir = dest.join("animations");
+                        renzora_import::extract_animations_from_usd(source_path, &anim_dir).ok()
+                    }
+                    "bvh" => {
+                        let anim_dir = dest.join("animations");
+                        renzora_import::extract_animations_from_bvh(source_path, &anim_dir).ok()
+                    }
+                    _ => None,
+                };
+
+                if let Some(anim_result) = anim_fallback_result {
+                    if !anim_result.written_files.is_empty() {
+                        imported += 1;
+                        for anim_path in &anim_result.written_files {
+                            let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                                file_name: std::path::Path::new(anim_path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("animation")
+                                    .to_string(),
+                                success: true,
+                                message: "animation extracted".to_string(),
+                            }));
                         }
-                        _ => {}
+                        for w in &anim_result.warnings {
+                            all_warnings.push(w.clone());
+                        }
+                        continue;
                     }
                 }
 

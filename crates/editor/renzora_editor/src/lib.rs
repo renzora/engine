@@ -3,17 +3,16 @@
 //! The UI framework (docking, panels, widgets, theme) lives in `renzora_ui`.
 //! This crate adds the Bevy plugin that wires it all together.
 
+pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
 pub mod ext;
 pub mod inspector_registry;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod plugin_integration;
 pub mod selection;
 pub mod settings;
 pub mod spawn_registry;
 
-// Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
+// Re-export full UI API so downstream crates can use `renzora_editor_framework::DockTree` etc.
 pub use renzora_ui::*;
 
 pub use commands::EditorCommands;
@@ -23,9 +22,9 @@ pub use inspector_registry::{
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
-pub use settings::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
+pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
-// Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.
+// Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
 pub use renzora_core::{HideInHierarchy, EditorLocked, EditorCamera};
 pub use renzora_splash::SplashState;
 
@@ -52,7 +51,7 @@ pub enum HierarchyFilter {
     OnlyWithComponents(Vec<&'static str>),
 }
 
-pub use spawn_registry::{EntityPreset, SpawnRegistry};
+pub use spawn_registry::{ComponentIconEntry, ComponentIconRegistry, EntityPreset, SpawnRegistry};
 
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
 #[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -63,6 +62,43 @@ pub enum GizmoMode {
     Translate,
     Rotate,
     Scale,
+}
+
+/// Unified active tool — replaces scattered `GizmoMode`, `TerrainToolState`, `FoliageToolState`.
+///
+/// Only one tool is active at a time. The viewport toolbar sets this directly.
+/// Downstream crates read this to decide whether their systems should run.
+#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ActiveTool {
+    #[default]
+    Select,
+    Translate,
+    Rotate,
+    Scale,
+    TerrainSculpt,
+    TerrainPaint,
+    FoliagePaint,
+}
+
+impl ActiveTool {
+    /// Returns the equivalent `GizmoMode` if this is a gizmo tool, `None` for terrain/foliage tools.
+    pub fn gizmo_mode(&self) -> Option<GizmoMode> {
+        match self {
+            Self::Select => Some(GizmoMode::Select),
+            Self::Translate => Some(GizmoMode::Translate),
+            Self::Rotate => Some(GizmoMode::Rotate),
+            Self::Scale => Some(GizmoMode::Scale),
+            _ => None,
+        }
+    }
+
+    pub fn is_terrain(&self) -> bool {
+        matches!(self, Self::TerrainSculpt | Self::TerrainPaint)
+    }
+
+    pub fn is_terrain_or_foliage(&self) -> bool {
+        matches!(self, Self::TerrainSculpt | Self::TerrainPaint | Self::FoliagePaint)
+    }
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -77,6 +113,17 @@ use renzora_theme::ThemeManager;
 // Use fully-qualified `renzora_ui::module::fn` for sub-module function calls.
 
 static FONTS_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Tracks the previously applied font selections so we only reload fonts when they change.
+#[derive(Resource, Default, Clone)]
+struct PreviousFontSettings {
+    ui_font: UiFont,
+    mono_font: MonoFont,
+}
+
+/// Throttle timer for rescanning project custom fonts and themes directories.
+#[derive(Resource)]
+struct ProjectScanTimer(f64);
 
 /// Cached SystemState for the editor exclusive system (avoids per-frame allocation).
 #[derive(Resource)]
@@ -118,39 +165,72 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
+            .init_resource::<ComponentIconRegistry>();
+
+        // Register inspector entries and icons for core Bevy components
+        bevy_inspectors::register_bevy_inspectors(
+            &mut app.world_mut().resource_mut::<InspectorRegistry>(),
+        );
+        bevy_inspectors::register_bevy_icons(
+            &mut app.world_mut().resource_mut::<ComponentIconRegistry>(),
+        );
+        bevy_inspectors::register_bevy_presets(
+            &mut app.world_mut().resource_mut::<SpawnRegistry>(),
+        );
+
+        app
             .init_resource::<EditorSettings>()
+            .init_resource::<ActiveTool>()
+            .init_resource::<GizmoMode>()
+            .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
-            .init_resource::<renzora_auth::AuthState>()
-            .insert_resource(renzora_auth::try_restore_session())
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
                 editor_ui_system.run_if(in_state(SplashState::Editor)),
             )
+            .add_observer(show_script_reload_toasts)
+            .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
             .add_systems(
                 Update,
-                show_script_reload_toasts.run_if(in_state(SplashState::Editor)),
+                sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
-            .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
             ;
-        #[cfg(not(target_arch = "wasm32"))]
-        app.add_plugins(plugin_integration::PluginCorePlugin);
     }
 }
 
-/// Picks up script hot-reload events and shows toast notifications.
-/// When many scripts reload at once (e.g. project load), shows a single
-/// summary toast instead of flooding the screen.
+/// Observer: show toast notifications when scripts are hot-reloaded.
 fn show_script_reload_toasts(
-    reload_events: Option<Res<renzora_scripting::ScriptReloadEvents>>,
+    trigger: On<renzora_core::ScriptsReloaded>,
     mut toasts: ResMut<renzora_ui::Toasts>,
 ) {
-    let Some(events) = reload_events else { return };
-    match events.reloaded.len() {
+    let event = trigger.event();
+    match event.names.len() {
         0 => {}
-        1 => { toasts.success(format!("Reloaded {}", events.reloaded[0])); }
+        1 => { toasts.success(format!("Reloaded {}", event.names[0])); }
         n => { toasts.success(format!("Reloaded {} scripts", n)); }
+    }
+}
+
+/// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read
+/// `GizmoMode` continue to work during the migration.
+fn sync_active_tool_to_gizmo_mode(
+    active_tool: Res<ActiveTool>,
+    gizmo_mode: Option<ResMut<GizmoMode>>,
+) {
+    let Some(mut gizmo_mode) = gizmo_mode else { return };
+    if !active_tool.is_changed() {
+        return;
+    }
+    if let Some(mode) = active_tool.gizmo_mode() {
+        if *gizmo_mode != mode {
+            *gizmo_mode = mode;
+        }
+    } else {
+        if *gizmo_mode != GizmoMode::Select {
+            *gizmo_mode = GizmoMode::Select;
+        }
     }
 }
 
@@ -162,6 +242,77 @@ fn wire_theme_project_path(
 ) {
     if let Some(project) = project {
         theme_manager.set_project_path(&project.path);
+    }
+}
+
+/// How often (in seconds) to rescan the project `fonts/` and `themes/` directories.
+const PROJECT_SCAN_INTERVAL: f64 = 2.0;
+
+/// Scan the project's `fonts/` directory for custom `.ttf`/`.otf` files,
+/// load any new ones into egui's font data, and update the `CustomFonts` resource.
+fn load_project_custom_fonts(world: &mut World, ctx: &egui::Context) {
+    let fonts_dir = match world.get_resource::<renzora_core::CurrentProject>() {
+        Some(project) => project.resolve_path("fonts"),
+        None => return,
+    };
+    let entries = match std::fs::read_dir(&fonts_dir) {
+        Ok(entries) => entries,
+        Err(_) => return, // No fonts/ directory — that's fine
+    };
+
+    let existing = world
+        .get_resource::<CustomFonts>()
+        .cloned()
+        .unwrap_or_default();
+
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    let mut new_names = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if ext != "ttf" && ext != "otf" {
+            continue;
+        }
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_owned(),
+            None => continue,
+        };
+        // Already loaded (built-in or previously discovered custom)
+        if fonts.font_data.contains_key(&stem) {
+            continue;
+        }
+        let data = match std::fs::read(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                bevy::log::warn!("Failed to read custom font {}: {}", path.display(), e);
+                continue;
+            }
+        };
+        fonts
+            .font_data
+            .insert(stem.clone().into(), egui::FontData::from_owned(data).into());
+        new_names.push(stem);
+    }
+
+    if !new_names.is_empty() {
+        bevy::log::info!(
+            "[editor] Loaded {} custom font(s) from {}",
+            new_names.len(),
+            fonts_dir.display()
+        );
+        ctx.set_fonts(fonts);
+
+        let mut all_names = existing.names;
+        all_names.extend(new_names);
+        all_names.sort();
+        world.insert_resource(CustomFonts { names: all_names });
+    } else if !world.contains_resource::<CustomFonts>() {
+        world.insert_resource(CustomFonts::default());
     }
 }
 
@@ -187,16 +338,65 @@ pub fn editor_ui_system(world: &mut World) {
     cached.0.apply(world);
     world.insert_resource(cached);
 
-    // 2. Init fonts once, then apply theme
+    // 2. Init fonts once, then apply theme + font settings
+    let settings = world
+        .get_resource::<EditorSettings>()
+        .cloned()
+        .unwrap_or_default();
     if !FONTS_INITIALIZED.load(Ordering::Relaxed) {
-        renzora_ui::theme::init_fonts(&ctx);
+        renzora_ui::theme::init_fonts(
+            &ctx,
+            settings.ui_font.font_key(),
+            settings.mono_font.font_key(),
+        );
+        // Scan project fonts/ directory and load custom fonts
+        load_project_custom_fonts(world, &ctx);
+        world.insert_resource(PreviousFontSettings {
+            ui_font: settings.ui_font,
+            mono_font: settings.mono_font,
+        });
         FONTS_INITIALIZED.store(true, Ordering::Relaxed);
+    } else {
+        // React to font family changes from the settings panel
+        let prev = world
+            .get_resource::<PreviousFontSettings>()
+            .cloned()
+            .unwrap_or_default();
+        if prev.ui_font != settings.ui_font {
+            renzora_ui::theme::set_ui_font(&ctx, settings.ui_font.font_key());
+        }
+        if prev.mono_font != settings.mono_font {
+            renzora_ui::theme::set_mono_font(&ctx, settings.mono_font.font_key());
+        }
+        if prev.ui_font != settings.ui_font || prev.mono_font != settings.mono_font {
+            world.insert_resource(PreviousFontSettings {
+                ui_font: settings.ui_font.clone(),
+                mono_font: settings.mono_font.clone(),
+            });
+        }
+
+        // Periodically rescan project fonts/ and themes/ directories
+        let now = world
+            .get_resource::<Time>()
+            .map(|t| t.elapsed_secs_f64())
+            .unwrap_or(0.0);
+        let last_scan = world
+            .get_resource::<ProjectScanTimer>()
+            .map(|t| t.0)
+            .unwrap_or(0.0);
+        if now - last_scan >= PROJECT_SCAN_INTERVAL {
+            load_project_custom_fonts(world, &ctx);
+            if let Some(mut tm) = world.get_resource_mut::<ThemeManager>() {
+                tm.scan_themes();
+            }
+            world.insert_resource(ProjectScanTimer(now));
+        }
     }
     let theme = world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.active_theme.clone())
         .unwrap_or_default();
-    renzora_ui::theme::apply_theme(&ctx, &theme);
+    renzora_ui::theme::apply_theme(&ctx, &theme, settings.font_size);
 
     // 3. Temporarily remove PanelRegistry so we can pass &World to panels
     let registry = world
@@ -245,13 +445,13 @@ pub fn editor_ui_system(world: &mut World) {
             is_scripts_only: pm.is_scripts_only(),
         })
         .unwrap_or_default();
-    let sign_in_open = world
-        .get_resource::<renzora_auth::AuthState>()
-        .map(|a| a.window_open)
-        .unwrap_or(false);
-    let signed_in_username = world
-        .get_resource::<renzora_auth::AuthSession>()
-        .and_then(|s| s.user.as_ref().map(|u| u.username.clone()));
+    // Auth state comes from the AuthBridge resource (synced by AuthPlugin).
+    let auth_bridge = world
+        .get_resource::<renzora_core::AuthBridge>()
+        .cloned()
+        .unwrap_or_default();
+    let sign_in_open = auth_bridge.window_open;
+    let signed_in_username = auth_bridge.signed_in_username;
     let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info, sign_in_open, signed_in_username.as_deref());
 
     // 6. Document tabs (below title bar)
@@ -261,8 +461,7 @@ pub fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
     let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
-    // 7. Status bar (bottom) — render plugin status items directly from PluginHost
-    #[cfg(not(target_arch = "wasm32"))]
+    // 7. Status bar (bottom)
     render_plugin_status_bar(&ctx, &theme, world);
 
     // 8. Get current drag state (read-only snapshot for rendering)
@@ -512,9 +711,7 @@ pub fn editor_ui_system(world: &mut World) {
             }
         }
         TitleBarAction::ToggleSignIn => {
-            if let Some(mut auth) = world.get_resource_mut::<renzora_auth::AuthState>() {
-                auth.window_open = !auth.window_open;
-            }
+            world.insert_resource(renzora_core::AuthToggleWindowRequest);
         }
         TitleBarAction::OpenUserSettings => {
             if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
@@ -526,16 +723,7 @@ pub fn editor_ui_system(world: &mut World) {
             switch_layout_by_name(world, "Hub");
         }
         TitleBarAction::SignOut => {
-            if let Some(mut session) = world.get_resource_mut::<renzora_auth::AuthSession>() {
-                session.clear();
-                #[cfg(not(target_arch = "wasm32"))]
-                renzora_auth::session::delete_session();
-            }
-            if let Some(mut auth) = world.get_resource_mut::<renzora_auth::AuthState>() {
-                auth.status = None;
-                auth.error = None;
-                auth.view = renzora_auth::AuthView::SignIn;
-            }
+            world.insert_resource(renzora_core::AuthSignOutRequest);
         }
         TitleBarAction::Play => {
             if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
@@ -632,33 +820,11 @@ pub fn editor_ui_system(world: &mut World) {
         DocTabAction::None => {}
     }
 
-    // Plugin floating panels
-    #[cfg(not(target_arch = "wasm32"))]
-    render_plugin_floating_panels(&ctx, &theme, world);
 
-    // Auth window
-    {
-        // Take both resources out, render, then put them back to avoid double-borrow.
-        let mut auth = world.remove_resource::<renzora_auth::AuthState>();
-        let mut session = world.remove_resource::<renzora_auth::AuthSession>();
-        let mut signed_in_just_now = false;
-        if let (Some(ref mut auth), Some(ref mut session)) = (&mut auth, &mut session) {
-            renzora_auth::render_auth_window(&ctx, &theme, auth, session);
-            if auth.just_signed_in {
-                auth.just_signed_in = false;
-                signed_in_just_now = true;
-            }
-        }
-        if let Some(auth) = auth {
-            world.insert_resource(auth);
-        }
-        if let Some(session) = session {
-            world.insert_resource(session);
-        }
-        // On successful sign-in, switch to the Hub layout
-        if signed_in_just_now {
-            switch_layout_by_name(world, "Hub");
-        }
+    // Auth window rendering is handled by AuthPlugin (renzora_auth).
+    // React to successful sign-in by switching to the Hub layout.
+    if world.remove_resource::<renzora_core::AuthJustSignedIn>().is_some() {
+        switch_layout_by_name(world, "Hub");
     }
 
     // Toast notifications
@@ -872,38 +1038,22 @@ fn process_play_mode_requests(world: &mut World) {
         }
     };
 
-    // Apply physics state change (borrow on PlayModeState is released)
+    // Trigger physics events (decoupled — renzora_physics observes these)
     match physics_action {
-        PhysicsAction::Unpause => renzora_physics::unpause(world),
-        PhysicsAction::Pause => renzora_physics::pause(world),
+        PhysicsAction::Unpause => { world.trigger(renzora_core::UnpausePhysics); }
+        PhysicsAction::Pause => { world.trigger(renzora_core::PausePhysics); }
         PhysicsAction::None => {}
     }
 
     if needs_reset {
-        reset_script_states(world);
+        world.trigger(renzora_core::ResetScriptStates);
     }
 }
 
-/// Reset all script runtime states so on_ready fires again.
-fn reset_script_states(world: &mut World) {
-    use renzora_scripting::ScriptComponent;
-    let mut query = world.query::<&mut ScriptComponent>();
-    for mut sc in query.iter_mut(world) {
-        for entry in sc.scripts.iter_mut() {
-            entry.runtime_state.initialized = false;
-            entry.runtime_state.has_error = false;
-        }
-    }
-}
 
 /// Render the viewport texture fullscreen during play mode.
 
-#[cfg(not(target_arch = "wasm32"))]
-fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
-    use editor_plugin_api::api::StatusBarAlign;
-
-    let plugin_host = world.get_resource::<plugin_host::PluginHost>();
-
+fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, _world: &World) {
     let text_color = theme.text.secondary.to_color32();
     let border_color = theme.widgets.border.to_color32();
     let panel_fill = theme.surfaces.panel.to_color32();
@@ -918,127 +1068,10 @@ fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, w
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
-
-                if let Some(host) = plugin_host {
-                    let api = host.api();
-
-                    // Left-aligned items
-                    let mut left_items: Vec<_> = api
-                        .status_bar_items
-                        .values()
-                        .filter(|(item, _)| item.align == StatusBarAlign::Left)
-                        .map(|(item, _)| item)
-                        .collect();
-                    left_items.sort_by_key(|i| i.priority);
-
-                    // Right-aligned items
-                    let mut right_items: Vec<_> = api
-                        .status_bar_items
-                        .values()
-                        .filter(|(item, _)| item.align == StatusBarAlign::Right)
-                        .map(|(item, _)| item)
-                        .collect();
-                    right_items.sort_by_key(|i| -i.priority);
-
-                    // Render left items
-                    for item in &left_items {
-                        render_status_item(ui, item, text_color);
-                    }
-
-                    if left_items.is_empty() && right_items.is_empty() {
-                        ui.label(
-                            egui::RichText::new("Ready").size(11.0).color(text_color),
-                        );
-                    }
-
-                    // Right section
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.x = 16.0;
-
-                            // Right-aligned plugin items (reversed for right-to-left)
-                            for item in right_items.iter().rev() {
-                                render_status_item(ui, item, text_color);
-                            }
-                        },
-                    );
-                } else {
-                    ui.label(
-                        egui::RichText::new("Ready").size(11.0).color(text_color),
-                    );
-                }
+                ui.label(
+                    egui::RichText::new("Ready").size(11.0).color(text_color),
+                );
             });
         });
 }
 
-/// Render a single status bar item — icon and text as one label (legacy pattern).
-fn render_status_item(
-    ui: &mut egui::Ui,
-    item: &editor_plugin_api::api::StatusBarItem,
-    text_color: egui::Color32,
-) {
-    let display_text = if let Some(ref icon) = item.icon {
-        format!("{} {}", icon, item.text)
-    } else {
-        item.text.clone()
-    };
-
-    let label = ui.label(egui::RichText::new(&display_text).size(11.0).color(text_color));
-    if let Some(ref tooltip) = item.tooltip {
-        label.on_hover_text(tooltip);
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn render_plugin_floating_panels(ctx: &egui::Context, theme: &renzora_theme::Theme, world: &World) {
-    let Some(host) = world.get_resource::<plugin_host::PluginHost>() else {
-        return;
-    };
-    let api = host.api();
-
-    if api.panels.is_empty() {
-        return;
-    }
-
-    let text_color = theme.text.primary.to_color32();
-    let muted_color = theme.text.muted.to_color32();
-
-    for (panel, _plugin_id) in &api.panels {
-        // Check visibility
-        let visible = api.panel_visible.get(&panel.id).copied().unwrap_or(true);
-        if !visible {
-            continue;
-        }
-
-        let title = if let Some(ref icon) = panel.icon {
-            format!("{} {}", icon, panel.title)
-        } else {
-            panel.title.clone()
-        };
-
-        egui::Window::new(&title)
-            .id(egui::Id::new(&panel.id))
-            .default_size(panel.min_size)
-            .show(ctx, |ui| {
-                if let Some(json) = api.panel_contents.get(&panel.id) {
-                    // Panel content is JSON — render as code for now
-                    // (full widget rendering requires a UiRenderer port)
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.label(
-                            egui::RichText::new(json)
-                                .size(11.0)
-                                .color(text_color)
-                                .monospace(),
-                        );
-                    });
-                } else {
-                    ui.label(
-                        egui::RichText::new("No content")
-                            .size(11.0)
-                            .color(muted_color),
-                    );
-                }
-            });
-    }
-}

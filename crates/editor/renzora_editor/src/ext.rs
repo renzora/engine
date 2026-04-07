@@ -26,6 +26,9 @@ pub trait AppEditorExt {
     /// Register an `EntityPreset` with the `SpawnRegistry`.
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self;
 
+    /// Register a component icon for the hierarchy tree.
+    fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self;
+
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
     where
@@ -52,6 +55,12 @@ impl AppEditorExt for App {
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self {
         self.init_resource::<SpawnRegistry>();
         self.world_mut().resource_mut::<SpawnRegistry>().register(preset);
+        self
+    }
+
+    fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self {
+        self.init_resource::<crate::ComponentIconRegistry>();
+        self.world_mut().resource_mut::<crate::ComponentIconRegistry>().register(entry);
         self
     }
 

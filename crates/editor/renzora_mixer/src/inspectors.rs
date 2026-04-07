@@ -1,11 +1,11 @@
 //! Inspector entries for audio components (AudioPlayer, AudioListener).
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
 use renzora_audio::{AudioPlayer, AudioListener, MixerState};
-use renzora_editor::{EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
-use renzora_theme::Theme;
+use renzora::editor::{EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora::theme::Theme;
 
 pub fn register_audio_inspectors(registry: &mut InspectorRegistry) {
     registry.register(audio_player_entry());

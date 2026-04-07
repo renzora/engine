@@ -11,7 +11,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor_framework::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::components::*;

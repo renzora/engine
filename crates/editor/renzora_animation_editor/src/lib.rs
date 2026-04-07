@@ -11,7 +11,7 @@ pub mod studio_preview;
 mod studio_preview_panel;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
+use renzora::editor::AppEditorExt;
 
 use std::sync::{Arc, Mutex};
 
@@ -174,7 +174,7 @@ fn sync_anim_editor_bridge(
 fn cache_clip_duration(
     mut editor_state: ResMut<AnimationEditorState>,
     animators: Query<&renzora_animation::AnimatorComponent>,
-    project: Option<Res<renzora_core::CurrentProject>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
 ) {
     let Some(entity) = editor_state.selected_entity else {
         editor_state.clip_duration = None;
@@ -214,7 +214,7 @@ fn cache_clip_duration(
 /// Sync EditorSelection into AnimationEditorState so the animation panels
 /// automatically follow the entity selected in the hierarchy/inspector.
 fn sync_selection(
-    selection: Res<renzora_editor::EditorSelection>,
+    selection: Res<renzora::editor::EditorSelection>,
     mut editor_state: ResMut<AnimationEditorState>,
 ) {
     let selected = selection.get();
@@ -228,6 +228,7 @@ fn sync_selection(
     }
 }
 
+#[derive(Default)]
 pub struct AnimationEditorPlugin;
 
 impl Plugin for AnimationEditorPlugin {
@@ -269,7 +270,7 @@ impl Plugin for AnimationEditorPlugin {
                 studio_preview::sync_floor_visibility,
             )
                 .chain()
-                .run_if(in_state(renzora_editor::SplashState::Editor)),
+                .run_if(in_state(renzora::editor::SplashState::Editor)),
         );
 
         app.register_panel(animation_panel::AnimationPanel::new(arc.clone()));
@@ -277,3 +278,5 @@ impl Plugin for AnimationEditorPlugin {
         app.register_panel(studio_preview_panel::StudioPreviewPanel);
     }
 }
+
+renzora::add!(AnimationEditorPlugin);

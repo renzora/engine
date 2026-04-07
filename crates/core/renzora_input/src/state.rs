@@ -5,48 +5,8 @@ use std::collections::HashMap;
 use crate::action::{ActionKind, InputBinding};
 use crate::map::InputMap;
 
-/// Per-action runtime state computed each frame.
-#[derive(Clone, Debug, Default)]
-struct ActionData {
-    pressed: bool,
-    just_pressed: bool,
-    just_released: bool,
-    axis_1d: f32,
-    axis_2d: Vec2,
-}
-
-/// Computed action states, queried by gameplay code each frame.
-#[derive(Resource, Clone, Debug, Default)]
-pub struct ActionState {
-    actions: HashMap<String, ActionData>,
-}
-
-impl ActionState {
-    /// Whether the action is currently held.
-    pub fn pressed(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.pressed)
-    }
-
-    /// Whether the action was just pressed this frame.
-    pub fn just_pressed(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.just_pressed)
-    }
-
-    /// Whether the action was just released this frame.
-    pub fn just_released(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.just_released)
-    }
-
-    /// 1D axis value (-1.0 to 1.0). Returns 0.0 for button actions.
-    pub fn axis_1d(&self, action: &str) -> f32 {
-        self.actions.get(action).map_or(0.0, |a| a.axis_1d)
-    }
-
-    /// 2D axis value. Returns Vec2::ZERO for non-2D actions.
-    pub fn axis_2d(&self, action: &str) -> Vec2 {
-        self.actions.get(action).map_or(Vec2::ZERO, |a| a.axis_2d)
-    }
-}
+// Re-export from renzora_core
+pub use renzora_core::{ActionData, ActionState};
 
 /// System that computes `ActionState` from `InputMap` + raw Bevy input each frame.
 pub fn update_action_state(

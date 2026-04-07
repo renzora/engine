@@ -3,15 +3,15 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
-use egui_phosphor::regular::{
+use renzora::bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
+use renzora::egui_phosphor::regular::{
     PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN,
     SPARKLE, TIMER, SHAPES, ARROWS_OUT, WIND, RESIZE, PALETTE, CUBE, GEAR, CODE,
     PROHIBIT, ATOM, SPIRAL, PLANET, GAUGE,
 };
 
-use renzora_editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
-use renzora_theme::{Theme, ThemeManager};
+use renzora::editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
+use renzora::theme::{Theme, ThemeManager};
 
 use renzora_hanabi::{
     HanabiEffectDefinition, HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
@@ -71,7 +71,7 @@ impl EditorPanel for ParticleEditorPanel {
             let label = if is_advanced { "Switch to Simple" } else { "Switch to Advanced" };
             if ui.small_button(label).clicked() {
                 cmds.push(move |world: &mut World| {
-                    use renzora_editor::dock_tree::DockingState;
+                    use renzora::editor::dock_tree::DockingState;
                     let mut state = world.resource_mut::<ParticleEditorState>();
                     if is_advanced {
                         state.editor_mode = EditorMode::Simple;
@@ -88,9 +88,9 @@ impl EditorPanel for ParticleEditorPanel {
                     // Swap layout
                     if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
                         docking.tree = if is_advanced {
-                            renzora_editor::layouts::layout_particles()
+                            renzora::editor::layouts::layout_particles()
                         } else {
-                            renzora_editor::layouts::layout_particles_advanced()
+                            renzora::editor::layouts::layout_particles_advanced()
                         };
                     }
                 });

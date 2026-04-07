@@ -182,7 +182,152 @@ pub fn eval_noise(
     }
 }
 
+// ── Whole-terrain noise generation ───────────────────────────────────────────
+
+/// Fill a chunk's heightmap with procedural noise using the current noise settings.
+///
+/// `additive`: if true, adds noise on top of existing heights; if false, replaces.
+pub fn generate_noise_for_chunk(
+    chunk: &mut TerrainChunkData,
+    terrain: &TerrainData,
+    settings: &TerrainSettings,
+    additive: bool,
+) {
+    let resolution = terrain.chunk_resolution;
+    let spacing = terrain.vertex_spacing();
+    let chunk_origin_x = chunk.chunk_x as f32 * terrain.chunk_size;
+    let chunk_origin_z = chunk.chunk_z as f32 * terrain.chunk_size;
+    let scale = settings.noise_scale.max(0.1);
+    let strength = settings.brush_strength;
+
+    for vz in 0..resolution {
+        for vx in 0..resolution {
+            let world_x = chunk_origin_x + vx as f32 * spacing;
+            let world_z = chunk_origin_z + vz as f32 * spacing;
+
+            let n = eval_noise(
+                world_x / scale,
+                world_z / scale,
+                settings.noise_mode,
+                settings.noise_octaves.clamp(1, 8),
+                settings.noise_lacunarity,
+                settings.noise_persistence,
+                settings.noise_seed,
+                settings.warp_strength,
+            );
+
+            let idx = (vz * resolution + vx) as usize;
+            if idx < chunk.heights.len() {
+                if additive {
+                    let current = chunk.heights[idx];
+                    chunk.heights[idx] = (current + (n - 0.5) * strength).clamp(0.0, 1.0);
+                } else {
+                    chunk.heights[idx] = (n * strength).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+    chunk.dirty = true;
+}
+
 // ── Brush Application ────────────────────────────────────────────────────────
+
+/// Apply the stamp brush to a chunk's heightmap (single application, not continuous).
+///
+/// Samples the stamp image within the brush radius, rotated by `stamp_rotation`,
+/// and blends it into the heightmap according to `stamp_blend_mode`.
+pub fn apply_stamp(
+    chunk: &mut TerrainChunkData,
+    terrain: &TerrainData,
+    settings: &TerrainSettings,
+    stamp: &crate::data::StampBrushData,
+    local_x: f32,
+    local_z: f32,
+) {
+    if !stamp.is_loaded() {
+        return;
+    }
+
+    let spacing = terrain.vertex_spacing();
+    let resolution = terrain.chunk_resolution;
+    let height_range = terrain.height_range();
+    let brush_radius = settings.brush_radius;
+    let strength = settings.brush_strength;
+
+    let chunk_origin_x = chunk.chunk_x as f32 * terrain.chunk_size;
+    let chunk_origin_z = chunk.chunk_z as f32 * terrain.chunk_size;
+    let chunk_end_x = chunk_origin_x + terrain.chunk_size;
+    let chunk_end_z = chunk_origin_z + terrain.chunk_size;
+
+    if local_x + brush_radius < chunk_origin_x
+        || local_x - brush_radius > chunk_end_x
+        || local_z + brush_radius < chunk_origin_z
+        || local_z - brush_radius > chunk_end_z
+    {
+        return;
+    }
+
+    let cos_r = settings.stamp_rotation.cos();
+    let sin_r = settings.stamp_rotation.sin();
+    let height_scale = settings.stamp_height_scale;
+
+    for vz in 0..resolution {
+        for vx in 0..resolution {
+            let wx = chunk_origin_x + vx as f32 * spacing;
+            let wz = chunk_origin_z + vz as f32 * spacing;
+
+            let dx = wx - local_x;
+            let dz = wz - local_z;
+            let dist = (dx * dx + dz * dz).sqrt();
+
+            if dist > brush_radius {
+                continue;
+            }
+
+            // Rotate offset by stamp rotation, then map to UV [0,1]
+            let rx = dx * cos_r + dz * sin_r;
+            let rz = -dx * sin_r + dz * cos_r;
+            let u = (rx / brush_radius + 1.0) * 0.5;
+            let v = (rz / brush_radius + 1.0) * 0.5;
+
+            if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
+                continue;
+            }
+
+            // stamp pixel (0-1) * height_scale * strength = normalized height delta
+            let stamp_sample = stamp.sample(u, v);
+            let stamp_value = stamp_sample * height_scale * strength;
+            let current = chunk.get_height(vx, vz, resolution);
+
+            // Edge falloff so the stamp doesn't create hard edges
+            let t = dist / brush_radius;
+            let edge_blend = compute_brush_falloff(t, settings.falloff, settings.falloff_type);
+
+            let new_h = match settings.stamp_blend_mode {
+                StampBlendMode::Add => {
+                    current + stamp_value * edge_blend
+                }
+                StampBlendMode::Subtract => {
+                    current - stamp_value * edge_blend
+                }
+                StampBlendMode::Replace => {
+                    let target = stamp_value;
+                    current + (target - current) * edge_blend
+                }
+                StampBlendMode::Max => {
+                    let raised = current + stamp_value;
+                    current + (raised - current) * edge_blend
+                }
+                StampBlendMode::Min => {
+                    let lowered = current - stamp_value;
+                    current + (lowered - current).min(0.0) * edge_blend
+                }
+            };
+
+            chunk.set_height(vx, vz, resolution, new_h.clamp(0.0, 1.0));
+        }
+    }
+}
 
 /// Apply a single brush stroke to a chunk's heightmap.
 ///
@@ -476,6 +621,9 @@ fn apply_brush_at_vertex(
             let laplacian = (left + right + up + down) * 0.25 - current;
             let new_h = current + laplacian * (effect * 2.5).min(1.0);
             chunk.set_height(vx, vz, resolution, new_h);
+        }
+        TerrainBrushType::Stamp => {
+            // Stamp brush uses apply_stamp() directly, not the per-vertex brush loop.
         }
         TerrainBrushType::Cliff => {
             // Amplify local slope gradient (Shift = soften)

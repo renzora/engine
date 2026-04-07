@@ -9,12 +9,12 @@ pub mod state;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_core::{MeshColor, MeshPrimitive, SceneCamera};
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_lighting::Sun;
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use state::*;
 
@@ -40,7 +40,7 @@ impl Default for LevelPresetsBridge {
     }
 }
 
-fn get_theme(world: &World) -> renzora_theme::Theme {
+fn get_theme(world: &World) -> renzora::theme::Theme {
     world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.active_theme.clone())
@@ -68,7 +68,7 @@ impl LevelPresetsPanel {
 impl EditorPanel for LevelPresetsPanel {
     fn id(&self) -> &str { "level_presets" }
     fn title(&self) -> &str { "Level Presets" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MAP_TRIFOLD) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::MAP_TRIFOLD) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -151,6 +151,7 @@ fn process_level_commands(
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct LevelPresetsPlugin;
 
 impl Plugin for LevelPresetsPlugin {
@@ -158,11 +159,14 @@ impl Plugin for LevelPresetsPlugin {
         info!("[editor] LevelPresetsPlugin");
         app.init_resource::<LevelPresetsState>();
 
+        // Register World Environment and Sun spawn presets
+        register_lighting_presets(app);
+
         let bridge = LevelPresetsBridge::default();
         let arc = bridge.pending.clone();
         app.insert_resource(bridge);
 
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(
             Update,
             (sync_bridge, process_level_commands).run_if(in_state(SplashState::Editor)),
@@ -946,3 +950,64 @@ fn spawn_terrain(
         Transform::from_xyz(25.0 * s, 15.0 * s, 25.0 * s).looking_at(Vec3::ZERO, Vec3::Y),
     );
 }
+
+// ── Self-registered spawn presets ──────────────────────────────────────────
+
+fn register_lighting_presets(app: &mut App) {
+    use renzora::editor::{AppEditorExt, EntityPreset};
+    use renzora::egui_phosphor::regular;
+
+    app.register_entity_preset(EntityPreset {
+        id: "world_environment",
+        display_name: "World Environment",
+        icon: regular::GLOBE,
+        category: "general",
+        spawn_fn: |world| {
+            let sun = renzora_lighting::Sun::default();
+            let dir = sun.direction();
+            world
+                .spawn((
+                    Name::new("World Environment"),
+                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+                    DirectionalLight {
+                        color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+                        illuminance: sun.illuminance,
+                        shadows_enabled: sun.shadows_enabled,
+                        ..default()
+                    },
+                    sun,
+                    renzora_bloom_effect::BloomSettings::default(),
+                    renzora_atmosphere::AtmosphereComponentSettings::default(),
+                    renzora_clouds::CloudsData::default(),
+                    renzora_distance_fog::DistanceFogSettings::default(),
+                ))
+                .id()
+        },
+    });
+
+    app.register_entity_preset(EntityPreset {
+        id: "sun",
+        display_name: "Sun",
+        icon: regular::SUN_HORIZON,
+        category: "lighting",
+        spawn_fn: |world| {
+            let data = renzora_lighting::Sun::default();
+            let dir = data.direction();
+            world
+                .spawn((
+                    Name::new("Sun"),
+                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+                    DirectionalLight {
+                        color: Color::srgb(data.color.x, data.color.y, data.color.z),
+                        illuminance: data.illuminance,
+                        shadows_enabled: data.shadows_enabled,
+                        ..default()
+                    },
+                    data,
+                ))
+                .id()
+        },
+    });
+}
+
+renzora::add!(LevelPresetsPlugin);

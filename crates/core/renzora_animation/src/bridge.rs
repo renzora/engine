@@ -1,209 +1,159 @@
-//! Bridge between renzora_scripting's ScriptCommandQueue and AnimationCommandQueue.
+//! Bridge between script actions and the animation command queue.
 //!
-//! Reads animation-related ScriptCommands from the scripting queue and converts them
-//! into AnimationCommands. This lets the animation system process commands without
-//! the scripting crate depending on animation.
+//! Observes ScriptAction events for animation commands and converts them
+//! into AnimationCommands. This decouples animation from the scripting crate.
 
 use bevy::prelude::*;
-use renzora_scripting::ScriptCommand;
-use renzora_scripting::systems::execution::ScriptCommandQueue;
+use renzora_core::ScriptAction;
 
 use crate::systems::{AnimationCommand, AnimationCommandQueue};
 use crate::tween::{EasingFunction, ProceduralTween, TweenProperty};
 
-/// Drain animation commands from the script queue and push them into AnimationCommandQueue.
-///
-/// Runs before `process_animation_commands`.
-pub fn route_script_animation_commands(
-    mut commands: Commands,
-    mut script_queue: ResMut<ScriptCommandQueue>,
+/// Observer: handle animation-related ScriptAction events.
+pub fn handle_animation_script_actions(
+    trigger: On<ScriptAction>,
     mut anim_queue: ResMut<AnimationCommandQueue>,
+    mut commands: Commands,
 ) {
-    let mut i = 0;
-    while i < script_queue.commands.len() {
-        let is_animation = matches!(
-            &script_queue.commands[i].1,
-            ScriptCommand::PlayAnimation { .. }
-                | ScriptCommand::StopAnimation { .. }
-                | ScriptCommand::PauseAnimation { .. }
-                | ScriptCommand::ResumeAnimation { .. }
-                | ScriptCommand::SetAnimationSpeed { .. }
-                | ScriptCommand::CrossfadeAnimation { .. }
-                | ScriptCommand::SetAnimationParam { .. }
-                | ScriptCommand::SetAnimationBoolParam { .. }
-                | ScriptCommand::TriggerAnimation { .. }
-                | ScriptCommand::SetAnimationLayerWeight { .. }
-                | ScriptCommand::TweenPosition { .. }
-                | ScriptCommand::TweenRotation { .. }
-                | ScriptCommand::TweenScale { .. }
-        );
+    use renzora_core::ScriptActionValue as V;
+    let action = trigger.event();
 
-        if is_animation {
-            let (source_entity, cmd) = script_queue.commands.remove(i);
-            match cmd {
-                ScriptCommand::PlayAnimation {
-                    entity_id,
-                    name,
-                    looping,
-                    speed,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::Play {
-                        entity,
-                        name,
-                        looping,
-                        speed,
-                    });
-                }
-                ScriptCommand::StopAnimation { entity_id } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::Stop { entity });
-                }
-                ScriptCommand::PauseAnimation { entity_id } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::Pause { entity });
-                }
-                ScriptCommand::ResumeAnimation { entity_id } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::Resume { entity });
-                }
-                ScriptCommand::SetAnimationSpeed { entity_id, speed } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue
-                        .commands
-                        .push(AnimationCommand::SetSpeed { entity, speed });
-                }
-                ScriptCommand::CrossfadeAnimation {
-                    entity_id,
-                    name,
-                    duration,
-                    looping,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::Crossfade {
-                        entity,
-                        name,
-                        duration,
-                        looping,
-                    });
-                }
-                ScriptCommand::SetAnimationParam {
-                    entity_id,
-                    name,
-                    value,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::SetParam {
-                        entity,
-                        name,
-                        value,
-                    });
-                }
-                ScriptCommand::SetAnimationBoolParam {
-                    entity_id,
-                    name,
-                    value,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::SetBoolParam {
-                        entity,
-                        name,
-                        value,
-                    });
-                }
-                ScriptCommand::TriggerAnimation { entity_id, name } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue
-                        .commands
-                        .push(AnimationCommand::Trigger { entity, name });
-                }
-                ScriptCommand::SetAnimationLayerWeight {
-                    entity_id,
-                    layer_name,
-                    weight,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    anim_queue.commands.push(AnimationCommand::SetLayerWeight {
-                        entity,
-                        layer_name,
-                        weight,
-                    });
-                }
-                ScriptCommand::TweenPosition {
-                    entity_id,
-                    target,
-                    duration,
-                    easing,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    commands.entity(entity).try_insert(ProceduralTween {
-                        property: TweenProperty::Position(target),
-                        start_value: None,
-                        easing: EasingFunction::from_str(&easing),
-                        duration,
-                        elapsed: 0.0,
-                    });
-                }
-                ScriptCommand::TweenRotation {
-                    entity_id,
-                    target,
-                    duration,
-                    easing,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    commands.entity(entity).try_insert(ProceduralTween {
-                        property: TweenProperty::Rotation(target),
-                        start_value: None,
-                        easing: EasingFunction::from_str(&easing),
-                        duration,
-                        elapsed: 0.0,
-                    });
-                }
-                ScriptCommand::TweenScale {
-                    entity_id,
-                    target,
-                    duration,
-                    easing,
-                } => {
-                    let entity = entity_id
-                        .map(|id| Entity::from_bits(id))
-                        .unwrap_or(source_entity);
-                    commands.entity(entity).try_insert(ProceduralTween {
-                        property: TweenProperty::Scale(target),
-                        start_value: None,
-                        easing: EasingFunction::from_str(&easing),
-                        duration,
-                        elapsed: 0.0,
-                    });
-                }
-                _ => unreachable!(),
-            }
-        } else {
-            i += 1;
+    let get_entity = || -> Entity {
+        match action.args.get("entity_id") {
+            Some(V::Int(id)) => Entity::from_bits(*id as u64),
+            _ => action.entity,
         }
+    };
+    let get_str = |key: &str| -> String {
+        match action.args.get(key) {
+            Some(V::String(s)) => s.clone(),
+            _ => String::new(),
+        }
+    };
+    let get_f32 = |key: &str, default: f32| -> f32 {
+        match action.args.get(key) {
+            Some(V::Float(v)) => *v,
+            Some(V::Int(v)) => *v as f32,
+            _ => default,
+        }
+    };
+    let get_bool = |key: &str, default: bool| -> bool {
+        match action.args.get(key) {
+            Some(V::Bool(v)) => *v,
+            _ => default,
+        }
+    };
+    let get_vec3 = |key: &str| -> Vec3 {
+        match action.args.get(key) {
+            Some(V::Vec3(v)) => Vec3::new(v[0], v[1], v[2]),
+            _ => Vec3::ZERO,
+        }
+    };
+
+    match action.name.as_str() {
+        "play_animation" => {
+            anim_queue.commands.push(AnimationCommand::Play {
+                entity: get_entity(),
+                name: get_str("name"),
+                looping: get_bool("looping", true),
+                speed: get_f32("speed", 1.0),
+            });
+        }
+        "stop_animation" => {
+            anim_queue.commands.push(AnimationCommand::Stop {
+                entity: get_entity(),
+            });
+        }
+        "pause_animation" => {
+            anim_queue.commands.push(AnimationCommand::Pause {
+                entity: get_entity(),
+            });
+        }
+        "resume_animation" => {
+            anim_queue.commands.push(AnimationCommand::Resume {
+                entity: get_entity(),
+            });
+        }
+        "set_animation_speed" => {
+            anim_queue.commands.push(AnimationCommand::SetSpeed {
+                entity: get_entity(),
+                speed: get_f32("speed", 1.0),
+            });
+        }
+        "crossfade_animation" => {
+            anim_queue.commands.push(AnimationCommand::Crossfade {
+                entity: get_entity(),
+                name: get_str("name"),
+                duration: get_f32("duration", 0.3),
+                looping: get_bool("looping", true),
+            });
+        }
+        "set_anim_param" => {
+            anim_queue.commands.push(AnimationCommand::SetParam {
+                entity: get_entity(),
+                name: get_str("name"),
+                value: get_f32("value", 0.0),
+            });
+        }
+        "set_anim_bool" => {
+            anim_queue.commands.push(AnimationCommand::SetBoolParam {
+                entity: get_entity(),
+                name: get_str("name"),
+                value: get_bool("value", false),
+            });
+        }
+        "trigger_anim" => {
+            anim_queue.commands.push(AnimationCommand::Trigger {
+                entity: get_entity(),
+                name: get_str("name"),
+            });
+        }
+        "set_layer_weight" => {
+            anim_queue.commands.push(AnimationCommand::SetLayerWeight {
+                entity: get_entity(),
+                layer_name: get_str("layer_name"),
+                weight: get_f32("weight", 1.0),
+            });
+        }
+        "tween_position" => {
+            let entity = get_entity();
+            let target = get_vec3("target");
+            let duration = get_f32("duration", 1.0);
+            let easing = EasingFunction::from_str(&get_str("easing"));
+            commands.entity(entity).insert(ProceduralTween {
+                property: TweenProperty::Position(target),
+                start_value: None,
+                duration,
+                elapsed: 0.0,
+                easing,
+            });
+        }
+        "tween_rotation" => {
+            let entity = get_entity();
+            let target = get_vec3("target");
+            let duration = get_f32("duration", 1.0);
+            let easing = EasingFunction::from_str(&get_str("easing"));
+            commands.entity(entity).insert(ProceduralTween {
+                property: TweenProperty::Rotation(target),
+                start_value: None,
+                duration,
+                elapsed: 0.0,
+                easing,
+            });
+        }
+        "tween_scale" => {
+            let entity = get_entity();
+            let target = get_vec3("target");
+            let duration = get_f32("duration", 1.0);
+            let easing = EasingFunction::from_str(&get_str("easing"));
+            commands.entity(entity).insert(ProceduralTween {
+                property: TweenProperty::Scale(target),
+                start_value: None,
+                duration,
+                elapsed: 0.0,
+                easing,
+            });
+        }
+        _ => {} // Not an animation action
     }
 }

@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "scanlines.wgsl", name = "Scanlines", icon = "BARCODE")]
 pub struct ScanlinesSettings {
@@ -14,6 +16,7 @@ pub struct ScanlinesSettings {
     pub speed: f32,
 }
 
+#[derive(Default)]
 pub struct ScanlinesPlugin;
 
 impl Plugin for ScanlinesPlugin {
@@ -26,3 +29,5 @@ impl Plugin for ScanlinesPlugin {
         app.register_inspectable::<ScanlinesSettings>();
     }
 }
+
+renzora::add!(ScanlinesPlugin);

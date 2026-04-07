@@ -60,6 +60,7 @@ impl Plugin for NetworkPlugin {
 
         // Shared status resource (read by editor panels, scripts, blueprints)
         app.init_resource::<NetworkStatus>();
+        app.init_resource::<renzora_core::NetworkBridge>();
 
         // Register networked component types for scene deny list
         app.register_type::<components::Networked>();
@@ -80,23 +81,17 @@ impl Plugin for NetworkPlugin {
             // Register protocol (channels, components, messages)
             protocol::register_protocol(app);
 
-            // Script extension — register net_* functions for Lua/Rhai
-            if let Some(mut exts) = app
-                .world_mut()
-                .get_resource_mut::<renzora_scripting::ScriptExtensions>()
-            {
-                exts.register(script_extension::NetworkScriptExtension);
-            }
+            // Script actions (decoupled — observes ScriptAction events)
+            app.add_observer(script_extension::handle_network_script_actions);
 
             // Schedule systems
             app.add_systems(
                 Update,
                 (
-                    script_extension::process_network_script_commands
-                        .in_set(renzora_scripting::ScriptingSet::CommandProcessing),
                     process_pending_connect,
                     process_pending_disconnect,
                     client::update_network_status,
+                    sync_network_bridge,
                 ),
             );
         }
@@ -192,4 +187,15 @@ fn process_pending_disconnect(world: &mut World) {
     if let Some(mut status) = world.get_resource_mut::<NetworkStatus>() {
         status.state = status::ConnectionState::Disconnected;
     }
+}
+
+/// Sync the lightweight `NetworkBridge` resource from the full `NetworkStatus`.
+#[cfg(not(target_arch = "wasm32"))]
+fn sync_network_bridge(
+    status: Res<NetworkStatus>,
+    mut bridge: ResMut<renzora_core::NetworkBridge>,
+) {
+    bridge.is_server = status.is_server;
+    bridge.is_connected = status.is_connected();
+    bridge.player_count = status.connected_clients.len() as i32;
 }

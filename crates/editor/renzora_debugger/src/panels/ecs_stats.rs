@@ -1,7 +1,7 @@
 //! ECS Statistics panel — entity/component/archetype monitoring
 
-use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
+use renzora::theme::Theme;
 
 use crate::state::EcsStatsState;
 
@@ -89,7 +89,7 @@ fn render_entity_graph(ui: &mut egui::Ui, state: &EcsStatsState, theme: &Theme) 
 
 fn render_archetype_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme: &Theme) {
     let header_response = ui.horizontal(|ui| {
-        let icon = if state.show_archetypes { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
+        let icon = if state.show_archetypes { renzora::egui_phosphor::regular::CARET_DOWN } else { renzora::egui_phosphor::regular::CARET_RIGHT };
         ui.label(RichText::new(icon).size(12.0).color(theme.text.secondary.to_color32()));
         ui.label(RichText::new(format!("Archetypes ({})", state.archetype_count)).size(12.0).color(theme.text.primary.to_color32()));
     });
@@ -127,7 +127,7 @@ fn render_archetype_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme:
 
 fn render_component_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme: &Theme) {
     let header_response = ui.horizontal(|ui| {
-        let icon = if state.show_components { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
+        let icon = if state.show_components { renzora::egui_phosphor::regular::CARET_DOWN } else { renzora::egui_phosphor::regular::CARET_RIGHT };
         ui.label(RichText::new(icon).size(12.0).color(theme.text.secondary.to_color32()));
         ui.label(RichText::new(format!("Component Types ({})", state.component_stats.len())).size(12.0).color(theme.text.primary.to_color32()));
     });
@@ -173,7 +173,7 @@ fn render_component_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme:
 
 fn render_resources_section(ui: &mut egui::Ui, state: &mut EcsStatsState, theme: &Theme) {
     let header_response = ui.horizontal(|ui| {
-        let icon = if state.show_resources { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
+        let icon = if state.show_resources { renzora::egui_phosphor::regular::CARET_DOWN } else { renzora::egui_phosphor::regular::CARET_RIGHT };
         ui.label(RichText::new(icon).size(12.0).color(theme.text.secondary.to_color32()));
         ui.label(RichText::new(format!("Resources ({})", state.resources.len())).size(12.0).color(theme.text.primary.to_color32()));
     });

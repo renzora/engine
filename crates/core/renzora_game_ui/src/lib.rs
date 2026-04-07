@@ -26,7 +26,6 @@ pub mod palette;
 use bevy::prelude::*;
 
 pub use components::{UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
-pub use script_extension::{GameUiScriptExtension, UiScriptCommand};
 
 pub struct GameUiPlugin;
 
@@ -109,16 +108,8 @@ impl Plugin for GameUiPlugin {
         // ── Default theme resource ────────────────────────────────────
         app.init_resource::<components::UiTheme>();
 
-        // ── Script extension ──────────────────────────────────────────
-        app.world_mut()
-            .resource_mut::<renzora_scripting::ScriptExtensions>()
-            .register(script_extension::GameUiScriptExtension);
-
-        app.add_systems(
-            Update,
-            script_extension::process_ui_script_commands
-                .in_set(renzora_scripting::ScriptingSet::CommandProcessing),
-        );
+        // ── Script actions (decoupled — observes ScriptAction events) ──
+        app.add_observer(script_extension::handle_ui_script_actions);
 
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
@@ -171,12 +162,31 @@ impl Plugin for GameUiPlugin {
         // ── Editor panels & systems ─────────────────────────────────────
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora_editor_framework::AppEditorExt;
             info!("[editor] GameUiPlugin (editor panels)");
 
             app.register_panel(palette::WidgetPalettePanel::default());
             app.register_panel(canvas::UiCanvasPanel::default());
             app.register_panel(inspector::UiInspectorPanel::default());
+
+            // Register hierarchy icons for UI entities
+            app.register_component_icon(renzora_editor_framework::ComponentIconEntry {
+                type_id: std::any::TypeId::of::<components::UiCanvas>(),
+                icon: egui_phosphor::regular::FRAME_CORNERS,
+                color: [130, 200, 255],
+                priority: 70,
+                dynamic_icon_fn: None,
+            });
+            app.register_component_icon(renzora_editor_framework::ComponentIconEntry {
+                type_id: std::any::TypeId::of::<components::UiWidget>(),
+                icon: egui_phosphor::regular::SQUARES_FOUR,
+                color: [130, 200, 255],
+                priority: 60,
+                dynamic_icon_fn: Some(|world, entity| {
+                    world.get::<components::UiWidget>(entity)
+                        .map(|w| (w.widget_type.icon(), [130u8, 200, 255]))
+                }),
+            });
 
             app.add_systems(Startup, canvas::setup_canvas_preview);
             app.add_systems(
@@ -340,14 +350,14 @@ fn sync_ui_zindex(
 /// and UI canvas entities. Reset to show all when switching away.
 #[cfg(feature = "editor")]
 fn sync_hierarchy_filter_for_ui_workspace(
-    layout_mgr: Res<renzora_editor::LayoutManager>,
-    mut filter: ResMut<renzora_editor::HierarchyFilter>,
+    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
+    mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
 ) {
     let is_ui = layout_mgr.active_name() == "UI";
     let desired = if is_ui {
-        renzora_editor::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas", "Camera3d"])
+        renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas", "Camera3d"])
     } else {
-        renzora_editor::HierarchyFilter::All
+        renzora_editor_framework::HierarchyFilter::All
     };
     if *filter != desired {
         *filter = desired;
@@ -359,7 +369,7 @@ fn sync_hierarchy_filter_for_ui_workspace(
 /// Top of hierarchy (lowest HierarchyOrder) gets the highest sort_order → renders on top.
 #[cfg(feature = "editor")]
 fn sync_canvas_sort_order_from_hierarchy(
-    mut canvases: Query<(&mut UiCanvas, &renzora_editor::HierarchyOrder), Without<ChildOf>>,
+    mut canvases: Query<(&mut UiCanvas, &renzora_editor_framework::HierarchyOrder), Without<ChildOf>>,
 ) {
     let max_order = canvases.iter().map(|(_, h)| h.0).max().unwrap_or(0) as i32;
     for (mut canvas, order) in &mut canvases {

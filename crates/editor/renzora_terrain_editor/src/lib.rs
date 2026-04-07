@@ -2,20 +2,22 @@
 
 mod panel;
 mod systems;
+mod tool_panel;
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
-use renzora_terrain::data::{TerrainData, TerrainTab, TerrainToolState};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_terrain::data::TerrainData;
 
+#[derive(Default)]
 pub struct TerrainEditorPlugin;
 
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
-        app.register_panel(panel::TerrainToolsPanel::new())
+        app.register_panel(tool_panel::ToolSettingsPanel::new())
             .register_inspector(terrain_data_entry())
-            // Sculpt systems — active when tool is on and tab is Sculpt
+            // Sculpt systems — active when ActiveTool is TerrainSculpt
             .add_systems(
                 Update,
                 (
@@ -23,10 +25,10 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_sculpt_system,
                     systems::terrain_brush_scroll_system,
                 )
-                    .run_if(resource_equals(TerrainToolState { active: true }))
-                    .run_if(terrain_tab_is(TerrainTab::Sculpt)),
+                    .run_if(active_tool_is(ActiveTool::TerrainSculpt))
+                    .run_if(renzora::core::not_in_play_mode),
             )
-            // Paint systems — active when tool is on and tab is Paint
+            // Paint systems — active when ActiveTool is TerrainPaint
             .add_systems(
                 Update,
                 (
@@ -36,10 +38,10 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_paint_scroll_system,
                     systems::terrain_paint_command_system,
                 )
-                    .run_if(resource_equals(TerrainToolState { active: true }))
-                    .run_if(terrain_tab_is(TerrainTab::Paint)),
+                    .run_if(active_tool_is(ActiveTool::TerrainPaint))
+                    .run_if(renzora::core::not_in_play_mode),
             )
-            // Undo/redo — active when terrain mode is on
+            // Undo/redo — active when any terrain tool is on
             .add_systems(
                 Update,
                 (
@@ -47,14 +49,17 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_stroke_end_system,
                     systems::terrain_undo_redo_system,
                 )
-                    .run_if(resource_equals(TerrainToolState { active: true })),
+                    .run_if(|tool: Option<Res<ActiveTool>>| {
+                        tool.map_or(false, |t| t.is_terrain())
+                    })
+                    .run_if(renzora::core::not_in_play_mode),
             );
     }
 }
 
-fn terrain_tab_is(tab: TerrainTab) -> impl FnMut(Option<Res<renzora_terrain::data::TerrainSettings>>) -> bool {
-    move |settings: Option<Res<renzora_terrain::data::TerrainSettings>>| {
-        settings.map_or(false, |s| s.tab == tab)
+fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -> bool {
+    move |tool: Option<Res<ActiveTool>>| {
+        tool.map_or(false, |t| *t == expected)
     }
 }
 
@@ -159,3 +164,5 @@ fn terrain_data_entry() -> InspectorEntry {
     }
 }
 
+
+renzora::add!(TerrainEditorPlugin);

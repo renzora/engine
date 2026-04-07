@@ -5,11 +5,11 @@ edition = "2021"
 
 [features]
 default = []
-editor = ["dep:renzora_editor", "dep:egui-phosphor"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor"]
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
+bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_editor = { path = "../../editor/renzora_editor", optional = true }
+renzora_editor_framework = { path = "../../editor/renzora_editor", optional = true }
 renzora_core = { path = "../../core/renzora_core" }

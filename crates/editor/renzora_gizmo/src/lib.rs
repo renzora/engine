@@ -21,10 +21,10 @@ use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::window::PrimaryWindow;
 use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 
-use renzora_core::InputFocusState;
-use renzora_editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
-use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_viewport::{NavOverlayState, ViewportState};
+use renzora::core::InputFocusState;
+use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::viewport_types::{NavOverlayState, ViewportState};
+use renzora::editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ impl Material for GizmoMaterial {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
-pub use renzora_editor::GizmoMode;
+pub use renzora::editor::GizmoMode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoAxis {
@@ -201,6 +201,7 @@ impl BoxSelectionState {
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
+#[derive(Default)]
 pub struct GizmoPlugin;
 
 impl Plugin for GizmoPlugin {
@@ -223,7 +224,7 @@ impl Plugin for GizmoPlugin {
             .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
             .init_resource::<modal_transform::ModalTransformState>()
-            .init_resource::<renzora_core::ModalTransformHud>()
+            .init_resource::<renzora::core::ModalTransformHud>()
             .add_systems(PostStartup, setup_gizmo_meshes)
             .add_systems(
                 Update,
@@ -250,18 +251,19 @@ impl Plugin for GizmoPlugin {
                     box_selection_system,
                 )
                     .chain()
-                    .run_if(in_state(renzora_splash::SplashState::Editor)),
+                    .run_if(in_state(renzora::editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
             )
             .add_systems(
                 Update,
                 render_box_selection
                     .after(box_selection_system)
-                    .run_if(in_state(renzora_splash::SplashState::Editor)),
+                    .run_if(in_state(renzora::editor::SplashState::Editor)),
             )
             .add_systems(
                 Update,
                 selection_visuals::terrain_chunk_selection_system
-                    .run_if(in_state(renzora_splash::SplashState::Editor)),
+                    .run_if(in_state(renzora::editor::SplashState::Editor)),
             );
     }
 }
@@ -566,7 +568,7 @@ fn handle_selection_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    viewport_state: Res<renzora_viewport::ViewportState>,
+    viewport_state: Res<ViewportState>,
     selection: Res<EditorSelection>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     gizmo_state: Res<GizmoState>,
@@ -597,7 +599,7 @@ fn handle_selection_shortcuts(
     }
 
     if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
-        commands.insert_resource(renzora_core::CreateNodeRequested);
+        commands.insert_resource(renzora::core::CreateNodeRequested);
     }
 
     // Duplicate (Ctrl+D)
@@ -668,27 +670,27 @@ fn handle_file_shortcuts(
 
     // Save (Ctrl+S)
     if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
-        commands.insert_resource(renzora_core::SaveSceneRequested);
+        commands.insert_resource(renzora::core::SaveSceneRequested);
     }
 
     // Save As (Ctrl+Shift+S)
     if keybindings.just_pressed(EditorAction::SaveSceneAs, &keyboard) {
-        commands.insert_resource(renzora_core::SaveAsSceneRequested);
+        commands.insert_resource(renzora::core::SaveAsSceneRequested);
     }
 
     // Open Scene (Ctrl+O)
     if keybindings.just_pressed(EditorAction::OpenScene, &keyboard) {
-        commands.insert_resource(renzora_core::OpenSceneRequested);
+        commands.insert_resource(renzora::core::OpenSceneRequested);
     }
 
     // New Scene (Ctrl+N)
     if keybindings.just_pressed(EditorAction::NewScene, &keyboard) {
-        commands.insert_resource(renzora_core::NewSceneRequested);
+        commands.insert_resource(renzora::core::NewSceneRequested);
     }
 
     // Settings (Ctrl+,)
     if keybindings.just_pressed(EditorAction::OpenSettings, &keyboard) {
-        commands.insert_resource(renzora_core::ToggleSettingsRequested);
+        commands.insert_resource(renzora::core::ToggleSettingsRequested);
     }
 }
 
@@ -701,15 +703,28 @@ fn switch_gizmo_mode(
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
     mut mode: ResMut<GizmoMode>,
+    mut active_tool: ResMut<renzora::editor::ActiveTool>,
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
     if modal.active { return; }
-    if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) { *mode = GizmoMode::Select; }
-    if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) { *mode = GizmoMode::Translate; }
-    if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) { *mode = GizmoMode::Rotate; }
-    if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) { *mode = GizmoMode::Scale; }
+    if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) {
+        *mode = GizmoMode::Select;
+        *active_tool = renzora::editor::ActiveTool::Select;
+    }
+    if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) {
+        *mode = GizmoMode::Translate;
+        *active_tool = renzora::editor::ActiveTool::Translate;
+    }
+    if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) {
+        *mode = GizmoMode::Rotate;
+        *active_tool = renzora::editor::ActiveTool::Rotate;
+    }
+    if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) {
+        *mode = GizmoMode::Scale;
+        *active_tool = renzora::editor::ActiveTool::Scale;
+    }
 }
 
 // ── Ray helpers ─────────────────────────────────────────────────────────────
@@ -1283,34 +1298,36 @@ fn find_named_ancestor(
 
 fn render_box_selection(
     box_sel: Res<BoxSelectionState>,
-    mut ctx: bevy_egui::EguiContexts,
+    mut ctx: renzora::bevy_egui::EguiContexts,
 ) {
     if !box_sel.active || !box_sel.is_drag() { return; }
 
     let Some(ctx) = ctx.ctx_mut().ok() else { return; };
     let (min, max) = box_sel.get_rect();
 
-    let rect = bevy_egui::egui::Rect::from_min_max(
-        bevy_egui::egui::Pos2::new(min.x, min.y),
-        bevy_egui::egui::Pos2::new(max.x, max.y),
+    let rect = renzora::bevy_egui::egui::Rect::from_min_max(
+        renzora::bevy_egui::egui::Pos2::new(min.x, min.y),
+        renzora::bevy_egui::egui::Pos2::new(max.x, max.y),
     );
 
-    bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("box_selection"))
+    renzora::bevy_egui::egui::Area::new(renzora::bevy_egui::egui::Id::new("box_selection"))
         .fixed_pos(rect.min)
-        .order(bevy_egui::egui::Order::Foreground)
+        .order(renzora::bevy_egui::egui::Order::Foreground)
         .interactable(false)
         .show(ctx, |ui| {
             let painter = ui.painter();
             painter.rect_filled(
                 rect,
-                bevy_egui::egui::CornerRadius::ZERO,
-                bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
+                renzora::bevy_egui::egui::CornerRadius::ZERO,
+                renzora::bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
             );
             painter.rect_stroke(
                 rect,
-                bevy_egui::egui::CornerRadius::ZERO,
-                bevy_egui::egui::Stroke::new(1.0, bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
-                bevy_egui::egui::StrokeKind::Outside,
+                renzora::bevy_egui::egui::CornerRadius::ZERO,
+                renzora::bevy_egui::egui::Stroke::new(1.0, renzora::bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
+                renzora::bevy_egui::egui::StrokeKind::Outside,
             );
         });
 }
+
+renzora::add!(GizmoPlugin);

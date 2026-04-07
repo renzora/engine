@@ -1,6 +1,6 @@
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
+use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
 use renzora_hanabi::node_graph::*;
-use renzora_theme::Theme;
+use renzora::theme::Theme;
 use renzora_ui::widgets::node_graph::{
     node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
     PinDef, PinDirection, PinShape,
@@ -45,13 +45,13 @@ fn header_color(category: &str) -> Color32 {
 /// Icon for a node category
 pub fn category_icon(category: &str) -> &'static str {
     match category {
-        "Spawn" => egui_phosphor::regular::SPARKLE,
-        "Init" => egui_phosphor::regular::ARROWS_OUT,
-        "Update" => egui_phosphor::regular::WIND,
-        "Render" => egui_phosphor::regular::PALETTE,
-        "Math" => egui_phosphor::regular::CALCULATOR,
-        "Constants" => egui_phosphor::regular::HASH,
-        _ => egui_phosphor::regular::CIRCLE,
+        "Spawn" => renzora::egui_phosphor::regular::SPARKLE,
+        "Init" => renzora::egui_phosphor::regular::ARROWS_OUT,
+        "Update" => renzora::egui_phosphor::regular::WIND,
+        "Render" => renzora::egui_phosphor::regular::PALETTE,
+        "Math" => renzora::egui_phosphor::regular::CALCULATOR,
+        "Constants" => renzora::egui_phosphor::regular::HASH,
+        _ => renzora::egui_phosphor::regular::CIRCLE,
     }
 }
 
@@ -152,7 +152,7 @@ pub fn render_graph_editor(
     ui: &mut Ui,
     graph: &mut ParticleNodeGraph,
     state: &mut GraphEditorState,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
 ) -> bool {
     let mut modified = false;
 
@@ -353,7 +353,7 @@ pub fn render_graph_editor(
                         // Right arrow indicator
                         painter.text(
                             Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
-                            egui_phosphor::regular::CARET_RIGHT,
+                            renzora::egui_phosphor::regular::CARET_RIGHT,
                             egui::FontId::proportional(12.0),
                             Color32::from_rgb(120, 120, 130),
                         );

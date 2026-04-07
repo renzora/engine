@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "pillowbox.wgsl", name = "Pillarbox", icon = "COLUMNS")]
 pub struct PillowboxSettings {
@@ -14,6 +16,7 @@ pub struct PillowboxSettings {
     pub aspect_ratio: f32,
 }
 
+#[derive(Default)]
 pub struct PillowboxPlugin;
 
 impl Plugin for PillowboxPlugin {
@@ -26,3 +29,5 @@ impl Plugin for PillowboxPlugin {
         app.register_inspectable::<PillowboxSettings>();
     }
 }
+
+renzora::add!(PillowboxPlugin);

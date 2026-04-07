@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
 struct DownloadedImage {
     url: String,

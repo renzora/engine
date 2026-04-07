@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "letterbox.wgsl", name = "Letterbox", icon = "ROWS")]
 pub struct LetterboxSettings {
@@ -14,6 +16,7 @@ pub struct LetterboxSettings {
     pub aspect_ratio: f32,
 }
 
+#[derive(Default)]
 pub struct LetterboxPlugin;
 
 impl Plugin for LetterboxPlugin {
@@ -26,3 +29,5 @@ impl Plugin for LetterboxPlugin {
         app.register_inspectable::<LetterboxSettings>();
     }
 }
+
+renzora::add!(LetterboxPlugin);

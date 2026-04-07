@@ -3,8 +3,8 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding, Vec2};
-use egui_phosphor::regular::{
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding, Vec2};
+use renzora::egui_phosphor::regular::{
     MOUNTAINS, WAVES, EQUALS, ARROW_FAT_LINE_UP, TREE, DROP, WAVEFORM,
     STAIRS, ARROWS_IN_CARDINAL, ACTIVITY, GRAPH, CHART_BAR,
     CIRCLE, SQUARE, DIAMOND, CARET_DOWN, CARET_RIGHT,
@@ -15,11 +15,11 @@ use renzora_terrain::data::*;
 use renzora_terrain::paint::*;
 #[allow(unused_imports)]
 use renzora_terrain::splatmap_material::LayerAnimationType;
-use renzora_theme::{Theme, ThemeManager};
-use renzora_editor::EditorCommands;
-use renzora_ui::EditorPanel;
-use renzora_ui::asset_drag::{asset_drop_target, AssetDragPayload};
-use renzora_core::CurrentProject;
+use renzora::theme::{Theme, ThemeManager};
+use renzora::editor::EditorCommands;
+use renzora::editor::EditorPanel;
+use renzora::editor::{asset_drop_target, AssetDragPayload};
+use renzora::core::CurrentProject;
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -70,8 +70,8 @@ impl EditorPanel for TerrainToolsPanel {
         Some(MOUNTAINS)
     }
 
-    fn default_location(&self) -> renzora_ui::PanelLocation {
-        renzora_ui::PanelLocation::Left
+    fn default_location(&self) -> renzora::editor::PanelLocation {
+        renzora::editor::PanelLocation::Left
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

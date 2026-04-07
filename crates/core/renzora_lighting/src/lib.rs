@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular::SUN_HORIZON,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -47,10 +47,10 @@ pub struct Sun {
 impl Default for Sun {
     fn default() -> Self {
         Self {
-            azimuth: 0.0,
-            elevation: 50.0,
-            color: Vec3::new(1.0, 0.96, 0.90),
-            illuminance: 100_000.0,
+            azimuth: 210.0,
+            elevation: 45.0,
+            color: Vec3::new(1.0, 0.95, 0.88),
+            illuminance: 80_000.0,
             shadows_enabled: true,
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
@@ -236,23 +236,33 @@ fn inspector_entry() -> InspectorEntry {
 
 pub struct LightingPlugin;
 
-/// Apply pending sun angle commands from scripting.
-fn apply_script_sun_commands(
+/// Observer: handle sun angle changes from scripts via ScriptAction.
+fn handle_sun_script_actions(
+    trigger: On<renzora_core::ScriptAction>,
     mut sun_query: Query<&mut Sun>,
-    mut env_cmds: ResMut<renzora_scripting::systems::ScriptEnvironmentCommands>,
 ) {
-    if let Some((azimuth, elevation)) = env_cmds.sun_angles.take() {
-        for mut sun in &mut sun_query {
-            sun.azimuth = azimuth;
-            sun.elevation = elevation;
-        }
+    let action = trigger.event();
+    if action.name != "set_sun_angles" { return; }
+    use renzora_core::ScriptActionValue;
+    let azimuth = match action.args.get("azimuth") {
+        Some(ScriptActionValue::Float(v)) => *v,
+        _ => return,
+    };
+    let elevation = match action.args.get("elevation") {
+        Some(ScriptActionValue::Float(v)) => *v,
+        _ => return,
+    };
+    for mut sun in &mut sun_query {
+        sun.azimuth = azimuth;
+        sun.elevation = elevation;
     }
 }
 
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] LightingPlugin");
-        app.add_systems(Update, (sync_sun, apply_script_sun_commands));
+        app.add_systems(Update, sync_sun);
+        app.add_observer(handle_sun_script_actions);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());

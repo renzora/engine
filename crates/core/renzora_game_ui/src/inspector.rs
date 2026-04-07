@@ -6,7 +6,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor::{
+use renzora_editor_framework::{
     collapsible_section, collapsible_section_removable, empty_state, inline_property,
     EditorCommands, EditorPanel, EditorSelection, PanelLocation,
 };

@@ -3,16 +3,16 @@
 use std::cell::RefCell;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, RichText, Sense, Stroke, Vec2};
-use egui_phosphor::regular::{
+use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, RichText, Sense, Stroke, Vec2};
+use renzora::egui_phosphor::regular::{
     CROSSHAIR, FLOPPY_DISK, FLOW_ARROW, MAGNIFYING_GLASS_MINUS, MAGNIFYING_GLASS_PLUS, PLUS,
 };
 
 use renzora_blueprint::graph::{BlueprintConnection, BlueprintNodeDef, PinDir, PinType};
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_lifecycle::graph::LifecycleGraph;
 use renzora_lifecycle::nodes;
-use renzora_theme::{Theme, ThemeManager};
+use renzora::theme::{Theme, ThemeManager};
 use renzora_ui::widgets::node_graph::{
     node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState, PinDef, PinDirection,
     PinShape,
@@ -188,12 +188,12 @@ fn resync_connections(graph: &LifecycleGraph) -> Vec<ConnectionDef> {
 
 fn category_icon(category: &str) -> &'static str {
     match category {
-        "Lifecycle" => egui_phosphor::regular::ARROWS_CLOCKWISE,
-        "Flow" => egui_phosphor::regular::FLOW_ARROW,
-        "Math" => egui_phosphor::regular::CALCULATOR,
-        "String" => egui_phosphor::regular::TEXT_AA,
-        "Convert" => egui_phosphor::regular::SWAP,
-        _ => egui_phosphor::regular::CIRCLE,
+        "Lifecycle" => renzora::egui_phosphor::regular::ARROWS_CLOCKWISE,
+        "Flow" => renzora::egui_phosphor::regular::FLOW_ARROW,
+        "Math" => renzora::egui_phosphor::regular::CALCULATOR,
+        "String" => renzora::egui_phosphor::regular::TEXT_AA,
+        "Convert" => renzora::egui_phosphor::regular::SWAP,
+        _ => renzora::egui_phosphor::regular::CIRCLE,
     }
 }
 
@@ -444,7 +444,7 @@ fn render_context_menu(
                     );
                     painter.text(
                         Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
-                        egui_phosphor::regular::CARET_RIGHT,
+                        renzora::egui_phosphor::regular::CARET_RIGHT,
                         egui::FontId::proportional(12.0),
                         Color32::from_rgb(120, 120, 130),
                     );
@@ -613,7 +613,7 @@ fn render_toolbar(
             ))
             .clicked()
         {
-            if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+            if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                 let path = project.path.join("lifecycle.json");
                 let _ = renzora_lifecycle::io::save_lifecycle(&path, graph);
             }

@@ -8,10 +8,10 @@ use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::core_pipeline::Skybox;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
-use renzora_editor::EditorSelection;
-use renzora_runtime::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora::editor::EditorSelection;
+use renzora::core::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera};
 
 /// Preview image size.
 const PREVIEW_WIDTH: u32 = 640;
@@ -21,7 +21,7 @@ const PREVIEW_HEIGHT: u32 = 360;
 #[derive(Resource)]
 pub struct CameraPreviewState {
     pub image_handle: Handle<Image>,
-    pub texture_id: Option<bevy_egui::egui::TextureId>,
+    pub texture_id: Option<renzora::bevy_egui::egui::TextureId>,
     /// The entity whose camera we're currently previewing.
     pub previewing: Option<Entity>,
 }

@@ -1,0 +1,31 @@
+[package]
+name = "renzora_engine"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+editor = ["dep:bevy_egui"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora_core = { path = "../renzora_core" }
+renzora_physics = { path = "../renzora_physics" }
+renzora_lighting = { path = "../renzora_lighting" }
+renzora_shader = { path = "../renzora_shader" }
+renzora_terrain = { path = "../renzora_terrain" }
+renzora_network = { path = "../renzora_network" }
+renzora_rpak = { path = "../renzora_rpak" }
+renzora_audio = { path = "../renzora_audio" }
+renzora_scripting = { path = "../renzora_scripting" }
+futures-lite = "2"
+ron = "0.8"
+serde = "1"
+toml = "0.8"
+bevy_egui = { version = "0.39", optional = true }
+
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+arboard = "3"
+rfd = "0.15"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dirs = "6"

@@ -6,11 +6,11 @@ mod state;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 
 use state::{GamepadDebugState, update_gamepad_debug_state};
 
@@ -70,14 +70,17 @@ impl EditorPanel for GamepadPanel {
 // ---------------------------------------------------------------------------
 
 /// Plugin that registers the gamepad debug panel and its update system.
+#[derive(Default)]
 pub struct GamepadPlugin;
 
 impl Plugin for GamepadPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GamepadPlugin");
         app.init_resource::<GamepadDebugState>();
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(Update, update_gamepad_debug_state.run_if(in_state(SplashState::Editor)));
         app.register_panel(GamepadPanel::default());
     }
 }
+
+renzora::add!(GamepadPlugin);

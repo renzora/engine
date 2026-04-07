@@ -56,16 +56,8 @@ pub struct ScriptLogEntry {
     pub message: String,
 }
 
-/// A deferred transform write from script output.
-pub struct TransformWrite {
-    pub entity: Entity,
-    pub new_position: Option<Vec3>,
-    pub new_rotation: Option<Vec3>,
-    pub translation: Option<Vec3>,
-    pub rotation_delta: Option<Vec3>,
-    pub new_scale: Option<Vec3>,
-    pub look_at: Option<Vec3>,
-}
+// Re-export from renzora_core
+pub use renzora_core::TransformWrite;
 
 /// Exclusive system that executes scripts on all entities with a ScriptComponent.
 ///
@@ -274,16 +266,48 @@ pub fn run_scripts(world: &mut World) {
             let self_entity = sed.entity;
             let name_map = name_to_entity.clone();
             let world_ptr = world as *const World;
-            crate::get_handler::set_get_handler(Box::new(move |entity_name, component_type, field_path| {
-                // SAFETY: world is not mutably borrowed during script execution.
-                // The ScriptComponent was taken off the entity, so no mutable borrow exists.
-                let world_ref = unsafe { &*world_ptr };
-                let target = if let Some(name) = entity_name {
-                    *name_map.get(name)?
-                } else {
-                    self_entity
-                };
-                super::reflection::get_reflected_field(world_ref, target, component_type, field_path)
+            crate::get_handler::set_get_handler(Box::new({
+                let name_map = name_map.clone();
+                move |entity_name, component_type, field_path| {
+                    let world_ref = unsafe { &*world_ptr };
+                    let target = if let Some(name) = entity_name {
+                        *name_map.get(name)?
+                    } else {
+                        self_entity
+                    };
+                    super::reflection::get_reflected_field(world_ref, target, component_type, field_path)
+                }
+            }));
+
+            // Set up get_component handler (returns all fields as a map)
+            crate::get_handler::set_get_component_handler(Box::new({
+                let name_map = name_map.clone();
+                move |entity_name, component_type| {
+                    let world_ref = unsafe { &*world_ptr };
+                    let target = if let Some(name) = entity_name {
+                        *name_map.get(name)?
+                    } else {
+                        Some(self_entity)?
+                    };
+                    super::reflection::get_all_component_fields(world_ref, target, component_type)
+                }
+            }));
+
+            // Set up get_components handler (lists component names)
+            crate::get_handler::set_get_components_handler(Box::new({
+                let name_map = name_map.clone();
+                move |entity_name| {
+                    let world_ref = unsafe { &*world_ptr };
+                    let target = if let Some(name) = entity_name {
+                        match name_map.get(name) {
+                            Some(&e) => e,
+                            None => return Vec::new(),
+                        }
+                    } else {
+                        self_entity
+                    };
+                    super::reflection::get_entity_component_names(world_ref, target)
+                }
             }));
 
             // Execute script

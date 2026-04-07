@@ -1,7 +1,12 @@
 pub mod console_log;
+pub mod keybindings;
+pub mod reflection;
+pub mod viewport_types;
 
 use bevy::prelude::*;
+use bevy::input::gamepad::{GamepadAxis, GamepadButton};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -239,7 +244,7 @@ pub struct DefaultCamera;
 /// type the **first** source entity that has it wins.
 ///
 /// Updated each frame by the routing system (editor: viewport crate,
-/// runtime: renzora_runtime). Read by per-crate sync systems.
+/// runtime: renzora_engine). Read by per-crate sync systems.
 #[derive(Resource, Default, Debug)]
 pub struct EffectRouting {
     pub routes: Vec<(Entity, Vec<Entity>)>,
@@ -330,6 +335,180 @@ impl ShapeRegistry {
 pub struct MeshColor(pub Color);
 
 // ============================================================================
+// Editor ↔ Physics decoupling events
+// ============================================================================
+
+/// Sent by the editor to request pausing the physics simulation.
+#[derive(bevy::prelude::Event)]
+pub struct PausePhysics;
+
+/// Sent by the editor to request unpausing the physics simulation.
+#[derive(bevy::prelude::Event)]
+pub struct UnpausePhysics;
+
+/// Sent by the editor to request resetting all script runtime states.
+#[derive(bevy::prelude::Event)]
+pub struct ResetScriptStates;
+
+/// Notification that scripts were hot-reloaded. The scripting crate triggers
+/// this so the editor can show toast notifications without importing scripting.
+#[derive(bevy::prelude::Event)]
+pub struct ScriptsReloaded {
+    pub names: Vec<String>,
+}
+
+/// Sent by the editor to save the current scene before play mode.
+#[derive(bevy::prelude::Event)]
+pub struct SaveCurrentScene;
+
+// ============================================================================
+// Character Controller Commands (shared between scripting and physics)
+// ============================================================================
+
+/// Queued character controller commands, processed by renzora_physics each frame.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct CharacterCommandQueue {
+    pub commands: Vec<(bevy::ecs::entity::Entity, CharacterCommand)>,
+}
+
+/// A character controller command for a specific entity.
+#[derive(Debug)]
+pub enum CharacterCommand {
+    Move(bevy::prelude::Vec2),
+    Jump,
+    Sprint(bool),
+}
+
+// ============================================================================
+// Action State (shared between input and physics/scripting)
+// ============================================================================
+
+/// Per-action runtime state computed each frame by the input system.
+#[derive(Clone, Debug, Default)]
+pub struct ActionData {
+    pub pressed: bool,
+    pub just_pressed: bool,
+    pub just_released: bool,
+    pub axis_1d: f32,
+    pub axis_2d: bevy::prelude::Vec2,
+}
+
+/// Computed action states, populated by the input system and read by
+/// physics, scripting, and blueprints each frame.
+#[derive(bevy::prelude::Resource, Clone, Debug, Default)]
+pub struct ActionState {
+    pub actions: std::collections::HashMap<String, ActionData>,
+}
+
+impl ActionState {
+    pub fn pressed(&self, action: &str) -> bool {
+        self.actions.get(action).map_or(false, |a| a.pressed)
+    }
+    pub fn just_pressed(&self, action: &str) -> bool {
+        self.actions.get(action).map_or(false, |a| a.just_pressed)
+    }
+    pub fn just_released(&self, action: &str) -> bool {
+        self.actions.get(action).map_or(false, |a| a.just_released)
+    }
+    pub fn axis_1d(&self, action: &str) -> f32 {
+        self.actions.get(action).map_or(0.0, |a| a.axis_1d)
+    }
+    pub fn axis_2d(&self, action: &str) -> bevy::prelude::Vec2 {
+        self.actions.get(action).map_or(bevy::prelude::Vec2::ZERO, |a| a.axis_2d)
+    }
+}
+
+// ============================================================================
+// MaterialRef (shared between material and terrain)
+// ============================================================================
+
+/// Reference to a material file. Add to any entity with `Mesh3d` to assign a material.
+#[derive(bevy::prelude::Component, serde::Serialize, serde::Deserialize, bevy::prelude::Reflect, Clone, Debug)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct MaterialRef(pub String);
+
+// ============================================================================
+// Animation clip format (shared between animation and import)
+// ============================================================================
+
+/// One animation clip, serialized to a `.anim` file (RON format).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AnimClip {
+    pub name: String,
+    pub duration: f32,
+    pub tracks: Vec<BoneTrack>,
+}
+
+/// Animation curves for a single bone/target.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BoneTrack {
+    pub bone_name: String,
+    pub translations: Vec<(f32, [f32; 3])>,
+    pub rotations: Vec<(f32, [f32; 4])>,
+    pub scales: Vec<(f32, [f32; 3])>,
+}
+
+// ============================================================================
+// TransformWrite (deferred transform mutations from scripts/blueprints)
+// ============================================================================
+
+/// Deferred transform write — batched and applied by the scripting command processor.
+#[derive(Debug)]
+pub struct TransformWrite {
+    pub entity: bevy::ecs::entity::Entity,
+    pub new_position: Option<bevy::prelude::Vec3>,
+    pub new_rotation: Option<bevy::prelude::Vec3>,
+    pub translation: Option<bevy::prelude::Vec3>,
+    pub rotation_delta: Option<bevy::prelude::Vec3>,
+    pub new_scale: Option<bevy::prelude::Vec3>,
+    pub look_at: Option<bevy::prelude::Vec3>,
+}
+
+/// Queue for batched transform writes.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct TransformWriteQueue {
+    pub writes: Vec<TransformWrite>,
+}
+
+/// Write an AnimClip to a `.anim` file (RON format).
+pub fn write_anim_file(clip: &AnimClip, path: &std::path::Path) -> Result<(), String> {
+    let ron_str = ron::ser::to_string_pretty(clip, ron::ser::PrettyConfig::default())
+        .map_err(|e| format!("RON serialization error: {}", e))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    std::fs::write(path, ron_str)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
+}
+
+/// Generic script action event. Scripts call `action("name", { args })` and
+/// domain crates observe this event to handle actions they recognize.
+/// This decouples scripting from domain crates — no ScriptExtension imports needed.
+#[derive(bevy::prelude::Event, Debug, Clone)]
+pub struct ScriptAction {
+    /// The action name (e.g. "apply_force", "play_sound", "gauge_damage").
+    pub name: String,
+    /// The entity that triggered the action (script's owning entity).
+    pub entity: bevy::ecs::entity::Entity,
+    /// Optional target entity (by name or ID).
+    pub target_entity: Option<String>,
+    /// Action arguments as key-value pairs.
+    pub args: std::collections::HashMap<String, ScriptActionValue>,
+}
+
+/// Value types for script action arguments.
+#[derive(Debug, Clone)]
+pub enum ScriptActionValue {
+    Float(f32),
+    Int(i64),
+    Bool(bool),
+    String(String),
+    Vec3([f32; 3]),
+}
+
+// ============================================================================
 // Play Mode
 // ============================================================================
 
@@ -389,6 +568,12 @@ impl PlayModeState {
     }
 }
 
+/// Run condition: returns true when NOT in play mode (editing or scripts-only).
+/// Use as `.run_if(not_in_play_mode)` on editor systems that should be disabled during play.
+pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
+    !play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode())
+}
+
 /// Marker component added to the game camera entity during play mode.
 #[derive(Component)]
 pub struct PlayModeCamera;
@@ -396,6 +581,19 @@ pub struct PlayModeCamera;
 /// Marker component for the UI canvas preview camera.
 #[derive(Component)]
 pub struct UiCanvasPreviewCamera;
+
+/// Lightweight network status bridge — updated by the network crate,
+/// read by lifecycle and other crates that need connection info without
+/// depending on renzora_network.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct NetworkBridge {
+    /// Whether this instance is running as a server.
+    pub is_server: bool,
+    /// Whether the client is connected to a server (or server is running).
+    pub is_connected: bool,
+    /// Number of connected clients (server only).
+    pub player_count: i32,
+}
 
 /// Marker resource: inserted by LifecyclePlugin when the lifecycle graph
 /// has an `on_game_start` node. The runtime skips `load_current_scene`
@@ -479,6 +677,15 @@ pub struct ToggleSettingsRequested;
 #[derive(Resource)]
 pub struct CreateNodeRequested;
 
+/// One-shot: request the code editor to open a file.
+///
+/// Inserted by the asset browser (or any plugin) so the code editor plugin
+/// can observe it without a direct crate dependency.
+#[derive(Resource)]
+pub struct OpenCodeEditorFile {
+    pub path: std::path::PathBuf,
+}
+
 /// Tracks whether a UI text input has keyboard focus.
 ///
 /// When `true`, keyboard shortcuts should not fire so typing is not interrupted.
@@ -533,4 +740,370 @@ pub fn open_project(project_toml_path: &Path) -> Result<CurrentProject, Box<dyn 
         .to_path_buf();
 
     Ok(CurrentProject { path, config })
+}
+
+// ── Auth bridge ──────────────────────────────────────────────────────────────
+
+/// Lightweight auth info resource that the auth plugin keeps in sync.
+/// The editor reads this to display sign-in state in the title bar without
+/// depending on the full `renzora_auth` crate.
+#[derive(Resource, Default, Clone)]
+pub struct AuthBridge {
+    /// Whether the auth sign-in window is currently open.
+    pub window_open: bool,
+    /// The signed-in username, if any.
+    pub signed_in_username: Option<String>,
+}
+
+/// Marker resource inserted for one frame when sign-in succeeds.
+/// The editor can consume this to react (e.g. switch to the Hub layout).
+#[derive(Resource)]
+pub struct AuthJustSignedIn;
+
+/// Event-like resource: requests the auth window to toggle open/closed.
+#[derive(Resource)]
+pub struct AuthToggleWindowRequest;
+
+/// Event-like resource: requests sign-out.
+#[derive(Resource)]
+pub struct AuthSignOutRequest;
+
+// ============================================================================
+// PropertyValue (shared between scripting and blueprints)
+// ============================================================================
+
+/// Value types for property writes and reflection-based get/set.
+#[derive(Clone, Debug)]
+pub enum PropertyValue {
+    Float(f32),
+    Int(i64),
+    Bool(bool),
+    String(String),
+    Vec3([f32; 3]),
+    Color([f32; 4]),
+}
+
+// ============================================================================
+// ScriptInput (shared between scripting and blueprints)
+// ============================================================================
+
+/// Input state resource collected each frame for scripts and blueprints.
+#[derive(Resource, Default, Clone)]
+pub struct ScriptInput {
+    pub keys_pressed: HashMap<KeyCode, bool>,
+    pub keys_just_pressed: HashMap<KeyCode, bool>,
+    pub keys_just_released: HashMap<KeyCode, bool>,
+    pub mouse_pressed: HashMap<MouseButton, bool>,
+    pub mouse_just_pressed: HashMap<MouseButton, bool>,
+    pub mouse_position: Vec2,
+    pub mouse_delta: Vec2,
+    pub scroll_delta: Vec2,
+    pub gamepad_axes: HashMap<u32, HashMap<GamepadAxis, f32>>,
+    pub gamepad_buttons: HashMap<u32, HashMap<GamepadButton, bool>>,
+}
+
+impl ScriptInput {
+    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
+        self.keys_pressed.get(&key).copied().unwrap_or(false)
+    }
+
+    pub fn is_key_just_pressed(&self, key: KeyCode) -> bool {
+        self.keys_just_pressed.get(&key).copied().unwrap_or(false)
+    }
+
+    pub fn get_movement_vector(&self) -> Vec2 {
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        if self.is_key_pressed(KeyCode::KeyA) || self.is_key_pressed(KeyCode::ArrowLeft) { x -= 1.0; }
+        if self.is_key_pressed(KeyCode::KeyD) || self.is_key_pressed(KeyCode::ArrowRight) { x += 1.0; }
+        if self.is_key_pressed(KeyCode::KeyS) || self.is_key_pressed(KeyCode::ArrowDown) { y -= 1.0; }
+        if self.is_key_pressed(KeyCode::KeyW) || self.is_key_pressed(KeyCode::ArrowUp) { y += 1.0; }
+        let v = Vec2::new(x, y);
+        if v.length_squared() > 0.0 { v.normalize() } else { v }
+    }
+
+    pub fn get_gamepad_left_stick(&self, id: u32) -> Vec2 {
+        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
+        Vec2::new(
+            axes.get(&GamepadAxis::LeftStickX).copied().unwrap_or(0.0),
+            axes.get(&GamepadAxis::LeftStickY).copied().unwrap_or(0.0),
+        )
+    }
+
+    pub fn get_gamepad_right_stick(&self, id: u32) -> Vec2 {
+        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
+        Vec2::new(
+            axes.get(&GamepadAxis::RightStickX).copied().unwrap_or(0.0),
+            axes.get(&GamepadAxis::RightStickY).copied().unwrap_or(0.0),
+        )
+    }
+
+    pub fn get_gamepad_trigger(&self, id: u32, left: bool) -> f32 {
+        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return 0.0 };
+        let axis = if left { GamepadAxis::LeftZ } else { GamepadAxis::RightZ };
+        axes.get(&axis).copied().unwrap_or(0.0)
+    }
+
+    pub fn is_gamepad_button_pressed(&self, id: u32, button: GamepadButton) -> bool {
+        self.gamepad_buttons.get(&id)
+            .and_then(|b| b.get(&button))
+            .copied()
+            .unwrap_or(false)
+    }
+}
+
+// ============================================================================
+// Graph types (shared between blueprint, lifecycle, and editor crates)
+// ============================================================================
+
+/// Node identifier in a visual scripting graph.
+pub type NodeId = u64;
+
+/// Pin data types for blueprint/lifecycle nodes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Reflect)]
+pub enum PinType {
+    /// Execution flow (white wires) — controls order of operations.
+    Exec,
+    Float,
+    Int,
+    Bool,
+    String,
+    Vec2,
+    Vec3,
+    Color,
+    Entity,
+    /// Wildcard — accepts any data type.
+    Any,
+}
+
+impl PinType {
+    /// Can `from` connect to `to`?
+    pub fn compatible(from: PinType, to: PinType) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == PinType::Any && from != PinType::Exec {
+            return true;
+        }
+        if from == PinType::Any && to != PinType::Exec {
+            return true;
+        }
+        matches!(
+            (from, to),
+            (PinType::Int, PinType::Float)
+            | (PinType::Float, PinType::Vec2 | PinType::Vec3 | PinType::Color)
+            | (PinType::Vec3, PinType::Color)
+            | (PinType::Color, PinType::Vec3)
+            | (PinType::Bool, PinType::Int | PinType::Float)
+        )
+    }
+}
+
+/// Pin direction.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Reflect)]
+pub enum PinDir {
+    Input,
+    Output,
+}
+
+/// Concrete values stored on pins (inline constants, defaults).
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+pub enum PinValue {
+    None,
+    Float(f32),
+    Int(i32),
+    Bool(bool),
+    String(String),
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Color([f32; 4]),
+    Entity(String),
+}
+
+impl Default for PinValue {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl PinValue {
+    pub fn as_float(&self) -> f32 {
+        match self {
+            Self::Float(v) => *v,
+            Self::Int(v) => *v as f32,
+            Self::Bool(v) => if *v { 1.0 } else { 0.0 },
+            _ => 0.0,
+        }
+    }
+
+    pub fn as_int(&self) -> i32 {
+        match self {
+            Self::Int(v) => *v,
+            Self::Float(v) => *v as i32,
+            Self::Bool(v) => if *v { 1 } else { 0 },
+            _ => 0,
+        }
+    }
+
+    pub fn as_bool(&self) -> bool {
+        match self {
+            Self::Bool(v) => *v,
+            Self::Float(v) => *v != 0.0,
+            Self::Int(v) => *v != 0,
+            _ => false,
+        }
+    }
+
+    pub fn as_string(&self) -> String {
+        match self {
+            Self::String(v) => v.clone(),
+            Self::Float(v) => format!("{v}"),
+            Self::Int(v) => format!("{v}"),
+            Self::Bool(v) => format!("{v}"),
+            Self::Entity(v) => v.clone(),
+            _ => String::new(),
+        }
+    }
+
+    pub fn as_vec3(&self) -> [f32; 3] {
+        match self {
+            Self::Vec3(v) => *v,
+            Self::Color([r, g, b, _]) => [*r, *g, *b],
+            Self::Float(v) => [*v, *v, *v],
+            _ => [0.0, 0.0, 0.0],
+        }
+    }
+
+    pub fn as_vec2(&self) -> [f32; 2] {
+        match self {
+            Self::Vec2(v) => *v,
+            Self::Float(v) => [*v, *v],
+            _ => [0.0, 0.0],
+        }
+    }
+
+    pub fn as_color(&self) -> [f32; 4] {
+        match self {
+            Self::Color(v) => *v,
+            Self::Vec3([r, g, b]) => [*r, *g, *b, 1.0],
+            Self::Float(v) => [*v, *v, *v, 1.0],
+            _ => [1.0, 1.0, 1.0, 1.0],
+        }
+    }
+
+    pub fn pin_type(&self) -> PinType {
+        match self {
+            Self::None => PinType::Any,
+            Self::Float(_) => PinType::Float,
+            Self::Int(_) => PinType::Int,
+            Self::Bool(_) => PinType::Bool,
+            Self::String(_) => PinType::String,
+            Self::Vec2(_) => PinType::Vec2,
+            Self::Vec3(_) => PinType::Vec3,
+            Self::Color(_) => PinType::Color,
+            Self::Entity(_) => PinType::Entity,
+        }
+    }
+}
+
+/// Describes a pin on a node type (static definition).
+#[derive(Clone, Debug)]
+pub struct PinTemplate {
+    pub name: String,
+    pub label: String,
+    pub pin_type: PinType,
+    pub direction: PinDir,
+    pub default_value: PinValue,
+}
+
+impl PinTemplate {
+    pub fn exec_in(name: &str, label: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            label: label.to_string(),
+            pin_type: PinType::Exec,
+            direction: PinDir::Input,
+            default_value: PinValue::None,
+        }
+    }
+
+    pub fn exec_out(name: &str, label: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            label: label.to_string(),
+            pin_type: PinType::Exec,
+            direction: PinDir::Output,
+            default_value: PinValue::None,
+        }
+    }
+
+    pub fn input(name: &str, label: &str, pin_type: PinType) -> Self {
+        Self {
+            name: name.to_string(),
+            label: label.to_string(),
+            pin_type,
+            direction: PinDir::Input,
+            default_value: PinValue::None,
+        }
+    }
+
+    pub fn output(name: &str, label: &str, pin_type: PinType) -> Self {
+        Self {
+            name: name.to_string(),
+            label: label.to_string(),
+            pin_type,
+            direction: PinDir::Output,
+            default_value: PinValue::None,
+        }
+    }
+
+    pub fn with_default(mut self, value: PinValue) -> Self {
+        self.default_value = value;
+        self
+    }
+}
+
+/// Static definition of a blueprint/lifecycle node type.
+pub struct BlueprintNodeDef {
+    pub node_type: &'static str,
+    pub display_name: &'static str,
+    pub category: &'static str,
+    pub description: &'static str,
+    pub pins: fn() -> Vec<PinTemplate>,
+    /// RGB header color for the node in the graph editor.
+    pub color: [u8; 3],
+}
+
+/// A connection between two pins in a graph.
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+pub struct BlueprintConnection {
+    pub from_node: NodeId,
+    pub from_pin: String,
+    pub to_node: NodeId,
+    pub to_pin: String,
+}
+
+/// A node instance in a graph.
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+pub struct BlueprintNode {
+    pub id: NodeId,
+    pub node_type: String,
+    pub position: [f32; 2],
+    /// Override values for input pins (user-set constants).
+    pub input_values: HashMap<String, PinValue>,
+}
+
+impl BlueprintNode {
+    pub fn new(id: NodeId, node_type: &str, position: [f32; 2]) -> Self {
+        Self {
+            id,
+            node_type: node_type.to_string(),
+            position,
+            input_values: HashMap::new(),
+        }
+    }
+
+    pub fn get_input_value(&self, pin_name: &str) -> Option<&PinValue> {
+        self.input_values.get(pin_name)
+    }
 }

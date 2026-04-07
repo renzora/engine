@@ -5,14 +5,14 @@ use bevy::input::mouse::MouseWheel;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::window::PrimaryWindow;
 
-use renzora_core::EditorCamera;
+use renzora::core::EditorCamera;
 use renzora_terrain::data::*;
 use renzora_terrain::sculpt;
 use renzora_terrain::paint::{self, PaintableSurfaceData, SurfacePaintSettings, SurfacePaintState};
 use renzora_terrain::splatmap_material::TerrainSplatmapMaterial;
 use renzora_terrain::splatmap_systems::{self, SplatmapActive};
 use renzora_terrain::undo::{TerrainUndoStack, TerrainUndoEntry};
-use renzora_viewport::ViewportState;
+use renzora::core::viewport_types::ViewportState;
 
 // ── Height sampling ──────────────────────────────────────────────────────────
 
@@ -225,33 +225,56 @@ pub fn terrain_sculpt_hover_system(
 pub fn terrain_sculpt_system(
     sculpt_state: Res<TerrainSculptState>,
     settings: Res<TerrainSettings>,
+    stamp_data: Res<StampBrushData>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut gizmos: Gizmos,
 ) {
+    let is_stamp = settings.brush_type == TerrainBrushType::Stamp;
+
     // Draw brush gizmo
     if sculpt_state.brush_visible {
         if let Some(hover_pos) = sculpt_state.hover_position {
             if let Some(terrain_entity) = sculpt_state.active_terrain {
                 if let Ok((terrain_data, terrain_transform)) = terrain_query.get(terrain_entity) {
-                    draw_brush_gizmo(
-                        &mut gizmos,
-                        hover_pos,
-                        &settings,
-                        terrain_data,
-                        terrain_transform.translation(),
-                        &chunk_query,
-                        terrain_entity,
-                    );
+                    if is_stamp && stamp_data.is_loaded() {
+                        draw_stamp_gizmo(
+                            &mut gizmos,
+                            hover_pos,
+                            &settings,
+                            &stamp_data,
+                            terrain_data,
+                            terrain_transform.translation(),
+                            &chunk_query,
+                            terrain_entity,
+                        );
+                    } else {
+                        draw_brush_gizmo(
+                            &mut gizmos,
+                            hover_pos,
+                            &settings,
+                            terrain_data,
+                            terrain_transform.translation(),
+                            &chunk_query,
+                            terrain_entity,
+                        );
+                    }
                 }
             }
         }
     }
 
-    // Apply sculpting
-    if !sculpt_state.is_sculpting {
+    // Stamp brush: apply once on click, not continuously
+    let should_apply = if is_stamp {
+        mouse_button.just_pressed(MouseButton::Left) && sculpt_state.hover_position.is_some()
+    } else {
+        sculpt_state.is_sculpting
+    };
+
+    if !should_apply {
         return;
     }
     let Some(hover_pos) = sculpt_state.hover_position else { return };
@@ -271,16 +294,27 @@ pub fn terrain_sculpt_system(
         if chunk_of.0 != terrain_entity {
             continue;
         }
-        sculpt::apply_brush(
-            &mut chunk,
-            terrain_data,
-            &settings,
-            &sculpt_state,
-            local_x,
-            local_z,
-            dt,
-            shift,
-        );
+        if is_stamp {
+            sculpt::apply_stamp(
+                &mut chunk,
+                terrain_data,
+                &settings,
+                &stamp_data,
+                local_x,
+                local_z,
+            );
+        } else {
+            sculpt::apply_brush(
+                &mut chunk,
+                terrain_data,
+                &settings,
+                &sculpt_state,
+                local_x,
+                local_z,
+                dt,
+                shift,
+            );
+        }
     }
 }
 
@@ -332,6 +366,74 @@ fn draw_brush_gizmo(
             chunk_query, terrain_entity, inner_color,
         );
     }
+}
+
+/// Draw a stamp preview gizmo — shows the stamp shape as a raised wireframe grid
+/// at the terrain's actual vertex density so the preview matches reality.
+fn draw_stamp_gizmo(
+    gizmos: &mut Gizmos,
+    hover_pos: Vec3,
+    settings: &TerrainSettings,
+    stamp: &StampBrushData,
+    terrain: &TerrainData,
+    terrain_pos: Vec3,
+    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+    terrain_entity: Entity,
+) {
+    let color = brush_color(settings.brush_type);
+    let radius = settings.brush_radius;
+    let cos_r = settings.stamp_rotation.cos();
+    let sin_r = settings.stamp_rotation.sin();
+    let height_scale = settings.stamp_height_scale * settings.brush_strength * terrain.height_range();
+
+    // Match terrain vertex spacing so preview = actual result
+    let spacing = terrain.vertex_spacing();
+    let grid_res = ((radius * 2.0 / spacing).ceil() as u32).clamp(4, 64);
+
+    // Helper: get world position for a stamp grid point
+    let stamp_point = |gx: u32, gz: u32| -> Vec3 {
+        let u = gx as f32 / grid_res as f32;
+        let v = gz as f32 / grid_res as f32;
+        let lx = (u * 2.0 - 1.0) * radius;
+        let lz = (v * 2.0 - 1.0) * radius;
+        let rx = lx * cos_r - lz * sin_r;
+        let rz = lx * sin_r + lz * cos_r;
+
+        let wx = hover_pos.x + rx;
+        let wz = hover_pos.z + rz;
+
+        let stamp_h = stamp.sample(u, v) * height_scale;
+
+        let terrain_y = sample_brush_height(wx, wz, terrain, terrain_pos, chunk_query, terrain_entity)
+            .unwrap_or(hover_pos.y);
+
+        Vec3::new(wx, terrain_y + stamp_h + 0.1, wz)
+    };
+
+    // Draw grid lines along X
+    for gz in 0..=grid_res {
+        for gx in 0..grid_res {
+            let a = stamp_point(gx, gz);
+            let b = stamp_point(gx + 1, gz);
+            gizmos.line(a, b, color);
+        }
+    }
+    // Draw grid lines along Z
+    for gx in 0..=grid_res {
+        for gz in 0..grid_res {
+            let a = stamp_point(gx, gz);
+            let b = stamp_point(gx, gz + 1);
+            gizmos.line(a, b, color);
+        }
+    }
+
+    // Outer boundary ring
+    let boundary_color = color.with_alpha(0.5);
+    let segments = 48;
+    sample_ring(
+        gizmos, hover_pos, radius, segments, settings, terrain, terrain_pos,
+        chunk_query, terrain_entity, boundary_color,
+    );
 }
 
 fn sample_ring(
@@ -414,6 +516,7 @@ fn brush_color(brush_type: TerrainBrushType) -> Color {
         TerrainBrushType::Pinch     => Color::srgba(0.9, 0.3, 0.7, 0.9),
         TerrainBrushType::Relax     => Color::srgba(0.3, 0.8, 0.8, 0.9),
         TerrainBrushType::Cliff     => Color::srgba(0.5, 0.4, 0.3, 0.9),
+        TerrainBrushType::Stamp     => Color::srgba(0.9, 0.6, 0.9, 0.9),
     }
 }
 
@@ -599,10 +702,6 @@ pub fn terrain_paint_activate_system(
     surface_query: Query<&PaintableSurfaceData>,
     layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
 ) {
-    if settings.tab != TerrainTab::Paint {
-        return;
-    }
-
     for (chunk_entity, _chunk_data, chunk_of) in chunk_query.iter() {
         // Check if parent terrain has PaintableSurfaceData, or add one
         // For simplicity, add PaintableSurfaceData to each chunk that lacks it
@@ -651,7 +750,7 @@ pub fn terrain_paint_scroll_system(
 pub fn terrain_paint_command_system(
     mut paint_state: ResMut<SurfacePaintState>,
     mut surface_query: Query<&mut PaintableSurfaceData>,
-    vfs: Res<renzora_core::VirtualFileReader>,
+    vfs: Res<renzora::core::VirtualFileReader>,
     asset_server: Res<AssetServer>,
     mut layer_tex: ResMut<splatmap_systems::TerrainLayerTextures>,
 ) {
@@ -690,22 +789,20 @@ pub fn terrain_paint_command_system(
                     if *layer < surface.layers.len() {
                         // Read and parse the .material file
                         if let Some(json) = vfs.read_string(path) {
-                            if let Ok(graph) = serde_json::from_str::<renzora_material::graph::MaterialGraph>(&json) {
-                                let textures = graph.extract_layer_textures();
-
+                            if let Ok(textures) = extract_layer_textures_from_json(&json) {
                                 surface.layers[*layer].material_path = Some(path.clone());
-                                surface.layers[*layer].albedo_path = textures.albedo.clone();
-                                surface.layers[*layer].normal_path = textures.normal.clone();
-                                surface.layers[*layer].arm_path = textures.arm.clone();
+                                surface.layers[*layer].albedo_path = textures.0.clone();
+                                surface.layers[*layer].normal_path = textures.1.clone();
+                                surface.layers[*layer].arm_path = textures.2.clone();
 
                                 // Load textures via asset server
-                                if let Some(ref albedo) = textures.albedo {
+                                if let Some(ref albedo) = textures.0 {
                                     layer_tex.layer_albedo[*layer] = Some(asset_server.load(albedo.clone()));
                                 }
-                                if let Some(ref normal) = textures.normal {
+                                if let Some(ref normal) = textures.1 {
                                     layer_tex.layer_normal[*layer] = Some(asset_server.load(normal.clone()));
                                 }
-                                if let Some(ref arm) = textures.arm {
+                                if let Some(ref arm) = textures.2 {
                                     layer_tex.layer_arm[*layer] = Some(asset_server.load(arm.clone()));
                                 }
 
@@ -992,4 +1089,72 @@ pub fn terrain_foliage_scatter_system(
             }
         }
     }
+}
+
+/// Extract albedo, normal, and ARM texture paths from a material graph JSON
+/// without depending on the renzora_shader crate.
+///
+/// Returns `(albedo, normal, arm)` as `Option<String>`.
+fn extract_layer_textures_from_json(
+    json: &str,
+) -> Result<(Option<String>, Option<String>, Option<String>), serde_json::Error> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    let nodes = v["nodes"].as_array();
+    let connections = v["connections"].as_array();
+
+    let (Some(nodes), Some(connections)) = (nodes, connections) else {
+        return Ok((None, None, None));
+    };
+
+    // Find the output node
+    let output_node = nodes.iter().find(|n| {
+        n["node_type"]
+            .as_str()
+            .map_or(false, |t| t.starts_with("output/"))
+    });
+    let Some(output_node) = output_node else {
+        return Ok((None, None, None));
+    };
+    let output_id = output_node["id"].as_u64().unwrap_or(0);
+
+    let trace_texture = |pin_name: &str| -> Option<String> {
+        // Find connection to output_node's pin
+        let conn = connections.iter().find(|c| {
+            c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin_name)
+        })?;
+        let from_node_id = conn["from_node"].as_u64()?;
+        // Find source node
+        let source = nodes.iter().find(|n| n["id"].as_u64() == Some(from_node_id))?;
+        // Check if it's a texture sample node
+        let node_type = source["node_type"].as_str()?;
+        if !node_type.contains("texture") {
+            return None;
+        }
+        // Extract texture path from input_values
+        let input_vals = source.get("input_values")?.as_object()?;
+        for (_key, val) in input_vals {
+            if let Some(s) = val.as_str() {
+                if !s.is_empty() {
+                    return Some(s.to_string());
+                }
+            }
+            // Also handle {"Texture": "path"} format
+            if let Some(obj) = val.as_object() {
+                if let Some(tex) = obj.get("Texture").and_then(|v| v.as_str()) {
+                    if !tex.is_empty() {
+                        return Some(tex.to_string());
+                    }
+                }
+            }
+        }
+        None
+    };
+
+    let albedo = trace_texture("base_color");
+    let normal = trace_texture("normal");
+    let arm = trace_texture("metallic")
+        .or_else(|| trace_texture("roughness"))
+        .or_else(|| trace_texture("ao"));
+
+    Ok((albedo, normal, arm))
 }

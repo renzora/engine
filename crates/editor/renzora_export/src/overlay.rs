@@ -3,12 +3,12 @@
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
-use renzora_core::CurrentProject;
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
+use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_rpak::{pack_project_with_progress, pack_project_filtered, RpakPacker, SERVER_EXTENSIONS};
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use crate::templates::{Platform, TemplateManager};
 
@@ -72,6 +72,12 @@ pub struct ExportOverlayState {
     pub progress: ExportProgress,
     /// Background export task (if running).
     active_task: Option<ExportTask>,
+    /// Available runtime-compatible plugins (scanned once).
+    pub available_plugins: Vec<dynamic_plugin_loader::DynamicPluginInfo>,
+    /// Which plugins are selected for export (by id).
+    pub selected_plugins: std::collections::HashSet<String>,
+    /// Whether plugins have been scanned yet.
+    plugins_scanned: bool,
 }
 
 impl Default for ExportOverlayState {
@@ -95,6 +101,9 @@ impl Default for ExportOverlayState {
             output_dir: String::new(),
             progress: ExportProgress::Idle,
             active_task: None,
+            available_plugins: Vec::new(),
+            selected_plugins: std::collections::HashSet::new(),
+            plugins_scanned: false,
         }
     }
 }
@@ -519,6 +528,50 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     }
                 }
 
+                // --- Plugins ---
+                drop(export_state);
+
+                // Scan plugins directory once
+                if !world.resource::<ExportOverlayState>().plugins_scanned {
+                    let plugins_dir = world
+                        .get_resource::<renzora::editor::EditorSettings>()
+                        .map(|s| s.plugins_dir.clone())
+                        .unwrap_or_else(|| "plugins".to_string());
+                    let plugins = dynamic_plugin_loader::scan_plugins(
+                        &std::path::PathBuf::from(&plugins_dir),
+                    );
+                    let mut state = world.resource_mut::<ExportOverlayState>();
+                    for p in &plugins {
+                        state.selected_plugins.insert(p.id.clone());
+                    }
+                    state.available_plugins = plugins;
+                    state.plugins_scanned = true;
+                }
+
+                {
+                    let mut state = world.resource_mut::<ExportOverlayState>();
+                    if !state.available_plugins.is_empty() {
+                        ui.add_space(8.0);
+                        section_label(ui, regular::PUZZLE_PIECE, "Plugins", text_primary);
+                        ui.add_space(4.0);
+
+                        let plugins: Vec<_> = state.available_plugins.iter().map(|p| (p.id.clone(), p.scope)).collect();
+                        for (id, scope) in &plugins {
+                            let mut checked = state.selected_plugins.contains(id.as_str());
+                            let label = format!("{} ({:?})", id, scope);
+                            if ui.checkbox(&mut checked, egui::RichText::new(label).size(12.0).color(text_primary)).changed() {
+                                if checked {
+                                    state.selected_plugins.insert(id.clone());
+                                } else {
+                                    state.selected_plugins.remove(id.as_str());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                export_state = world.resource_mut::<ExportOverlayState>();
+
                 // Icon
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -911,6 +964,10 @@ fn run_export(world: &mut World, project_name: &str) {
     let mesh_quantize = export_state.mesh_quantize;
     let mesh_generate_lods = export_state.mesh_generate_lods;
     let mesh_lod_levels = export_state.mesh_lod_levels;
+    let selected_plugins: Vec<std::path::PathBuf> = export_state.available_plugins.iter()
+        .filter(|p| export_state.selected_plugins.contains(&p.id))
+        .map(|p| p.path.clone())
+        .collect();
     let project_name = project_name.to_string();
 
     // Get template path before spawning thread
@@ -965,6 +1022,7 @@ fn run_export(world: &mut World, project_name: &str) {
             mesh_lod_levels,
             template_path,
             server_template,
+            selected_plugins,
         );
     });
 }
@@ -990,6 +1048,7 @@ fn export_worker(
     mesh_lod_levels: u32,
     template_path: std::path::PathBuf,
     server_template: Option<std::path::PathBuf>,
+    selected_plugins: Vec<std::path::PathBuf>,
 ) {
     // Pack assets
     let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
@@ -1153,6 +1212,41 @@ fn export_worker(
 
     match result {
         Ok(()) => {
+            // Copy selected plugins + bevy_dylib + std DLL
+            if !selected_plugins.is_empty() && !is_wasm {
+                let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
+                let plugins_out = output_dir.join("plugins");
+                let _ = std::fs::create_dir_all(&plugins_out);
+
+                for plugin_path in &selected_plugins {
+                    if let Some(filename) = plugin_path.file_name() {
+                        let dest = plugins_out.join(filename);
+                        if let Err(e) = std::fs::copy(plugin_path, &dest) {
+                            warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
+                        }
+                    }
+                }
+
+                // Copy bevy_dylib and std DLLs from the exe directory
+                if let Ok(exe_path) = std::env::current_exe() {
+                    if let Some(exe_dir) = exe_path.parent() {
+                        for entry in std::fs::read_dir(exe_dir).into_iter().flatten().flatten() {
+                            let name = entry.file_name();
+                            let name_str = name.to_string_lossy();
+                            if name_str.starts_with("bevy_dylib") || name_str.starts_with("std-") {
+                                if let Some(ext) = entry.path().extension() {
+                                    if ext == "dll" || ext == "so" || ext == "dylib" {
+                                        let _ = std::fs::copy(entry.path(), output_dir.join(&name));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                info!("[export] Copied {} plugins to output", selected_plugins.len());
+            }
+
             // Server export
             if include_server {
                 let server_result = export_server_standalone(

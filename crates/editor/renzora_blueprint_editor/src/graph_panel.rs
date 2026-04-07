@@ -3,14 +3,14 @@
 use std::cell::RefCell;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular::{
+use renzora::bevy_egui::egui::{self, RichText};
+use renzora::egui_phosphor::regular::{
     PLUS, CROSSHAIR, MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
     FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
 };
 
-use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora::theme::ThemeManager;
 use renzora_blueprint::BlueprintGraph;
 
 use crate::BlueprintEditorState;
@@ -50,7 +50,7 @@ impl EditorPanel for BlueprintGraphPanel {
         };
         let selection = world.get_resource::<EditorSelection>();
         let project_path = world
-            .get_resource::<renzora_core::CurrentProject>()
+            .get_resource::<renzora::core::CurrentProject>()
             .map(|p| p.path.clone());
 
         let selected_entity = selection.and_then(|s| s.get());
@@ -183,7 +183,7 @@ fn render_toolbar(
     entity_name: &str,
     has_blueprint: bool,
     entity: Entity,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     project_path: &Option<std::path::PathBuf>,
 ) -> bool {
     let mut modified = false;

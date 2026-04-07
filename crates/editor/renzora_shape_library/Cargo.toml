@@ -3,14 +3,13 @@ name = "renzora_shape_library"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [features]
-default = []
-editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:renzora_editor", "dep:renzora_theme"]
+default = ["editor"]
+editor = []
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = { version = "0.39", optional = true }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_core = { path = "../../core/renzora_core" }
-renzora_editor = { path = "../renzora_editor", optional = true }
-renzora_theme = { path = "../../ui/renzora_theme", optional = true }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }

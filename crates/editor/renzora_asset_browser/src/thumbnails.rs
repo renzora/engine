@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use bevy::asset::LoadState;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy_egui::egui;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
-use renzora_core::CurrentProject;
+use renzora::bevy_egui::egui;
+use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use renzora::core::CurrentProject;
 
 /// Returns true if the image format is safe to register with egui
 /// (filterable float sample type).

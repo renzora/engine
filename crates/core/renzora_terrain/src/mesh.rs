@@ -10,7 +10,7 @@ use avian3d::prelude::{Collider, RigidBody};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
-use renzora_material::material_ref::MaterialRef;
+use renzora_core::MaterialRef;
 
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {

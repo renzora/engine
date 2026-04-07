@@ -7,12 +7,17 @@ edition = "2021"
 default = ["lua", "rhai"]
 lua = ["dep:mlua"]
 rhai = ["dep:rhai"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
+bevy = { workspace = true }
 renzora_core = { path = "../renzora_core" }
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
+renzora_editor_framework = { path = "../../editor/renzora_editor", optional = true }
+renzora_theme = { path = "../../ui/renzora_theme", optional = true }
+bevy_egui = { version = "0.39", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
 # Rhai backend (pure Rust, works everywhere including WASM)
 rhai = { version = "1.21", features = ["sync"], optional = true }

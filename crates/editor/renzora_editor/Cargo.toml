@@ -1,10 +1,10 @@
 [package]
-name = "renzora_editor"
+name = "renzora_editor_framework"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
+bevy = { workspace = true }
 bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_ui = { path = "../../ui/renzora_ui" }
@@ -12,12 +12,7 @@ renzora_theme = { path = "../../ui/renzora_theme" }
 renzora_splash = { path = "../../ui/renzora_splash" }
 renzora_core = { path = "../../core/renzora_core" }
 renzora_postprocess = { path = "../../postprocessing/renzora_postprocess" }
-renzora_scripting = { path = "../../core/renzora_scripting" }
 renzora_macros = { path = "../../macros/renzora_macros" }
-renzora_physics = { path = "../../core/renzora_physics" }
-renzora_auth = { path = "../renzora_auth" }
-plugin_host = { path = "../../plugins/plugin_host" }
-editor_plugin_api = { path = "../../plugins/editor_plugin_api", features = ["bevy"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

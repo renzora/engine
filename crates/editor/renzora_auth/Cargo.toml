@@ -3,11 +3,12 @@ name = "renzora_auth"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = "0.39"
-egui-phosphor = { version = "0.11", features = ["regular"] }
-renzora_theme = { path = "../../ui/renzora_theme" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

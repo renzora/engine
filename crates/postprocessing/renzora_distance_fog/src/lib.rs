@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -39,23 +39,23 @@ pub struct DistanceFogSettings {
 impl Default for DistanceFogSettings {
     fn default() -> Self {
         Self {
-            color_r: 0.5,
-            color_g: 0.5,
-            color_b: 0.5,
-            directional_light_color_r: 0.0,
-            directional_light_color_g: 0.0,
-            directional_light_color_b: 0.0,
-            directional_light_exponent: 8.0,
-            mode: 0,
-            start: 10.0,
-            end: 100.0,
-            density: 0.02,
-            extinction_r: 0.02,
-            extinction_g: 0.02,
-            extinction_b: 0.02,
-            inscattering_r: 0.01,
+            color_r: 0.72,
+            color_g: 0.78,
+            color_b: 0.9,
+            directional_light_color_r: 1.0,
+            directional_light_color_g: 0.92,
+            directional_light_color_b: 0.75,
+            directional_light_exponent: 12.0,
+            mode: 3,
+            start: 50.0,
+            end: 800.0,
+            density: 0.005,
+            extinction_r: 0.006,
+            extinction_g: 0.005,
+            extinction_b: 0.004,
+            inscattering_r: 0.008,
             inscattering_g: 0.01,
-            inscattering_b: 0.01,
+            inscattering_b: 0.014,
             enabled: true,
         }
     }

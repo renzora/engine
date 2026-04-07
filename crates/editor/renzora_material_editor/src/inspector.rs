@@ -2,14 +2,14 @@
 //! and editable pin values (constants, colors, sliders).
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText, Slider};
-use renzora_editor::{
+use renzora::bevy_egui::egui::{self, RichText, Slider};
+use renzora::editor::{
     collapsible_section, inline_property, empty_state,
     EditorCommands, EditorPanel, PanelLocation,
 };
-use renzora_theme::ThemeManager;
-use renzora_material::graph::*;
-use renzora_material::nodes;
+use renzora::theme::ThemeManager;
+use renzora_shader::material::graph::*;
+use renzora_shader::material::nodes;
 use renzora_ui::asset_drag::{asset_drop_target, AssetDragPayload};
 
 use crate::MaterialEditorState;
@@ -26,7 +26,7 @@ impl EditorPanel for MaterialInspectorPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::SLIDERS_HORIZONTAL)
+        Some(renzora::egui_phosphor::regular::SLIDERS_HORIZONTAL)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -45,7 +45,7 @@ impl EditorPanel for MaterialInspectorPanel {
         // ── Material section ──
         collapsible_section(
             ui,
-            egui_phosphor::regular::CUBE,
+            renzora::egui_phosphor::regular::CUBE,
             "Material",
             "rendering",
             &theme,
@@ -77,7 +77,7 @@ impl EditorPanel for MaterialInspectorPanel {
 
         // ── Selected node properties ──
         let Some(selected_id) = editor_state.selected_node else {
-            empty_state(ui, egui_phosphor::regular::CURSOR_CLICK, "No node selected", "Select a node to edit its properties", &theme);
+            empty_state(ui, renzora::egui_phosphor::regular::CURSOR_CLICK, "No node selected", "Select a node to edit its properties", &theme);
             return;
         };
 
@@ -261,7 +261,7 @@ impl EditorPanel for MaterialInspectorPanel {
                                     drag_payload,
                                 );
                                 if let Some(ref dropped) = drop_result.dropped_path {
-                                    let new_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                                    let new_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                                         project.make_asset_relative(&dropped)
                                     } else {
                                         dropped.to_string_lossy().to_string()
@@ -279,7 +279,7 @@ impl EditorPanel for MaterialInspectorPanel {
                                         .add_filter("Image", &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"])
                                         .pick_file()
                                     {
-                                        let new_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                                        let new_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                                             project.make_asset_relative(&file)
                                         } else {
                                             file.to_string_lossy().to_string()

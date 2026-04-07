@@ -3,11 +3,11 @@ pub mod render;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_scripting::{ScriptEngine, ScriptVariableDefinition};
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use crate::render::render_script_variables_content;
 
@@ -48,7 +48,7 @@ impl EditorPanel for ScriptVariablesPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::LIST_DASHES)
+        Some(renzora::egui_phosphor::regular::LIST_DASHES)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -106,6 +106,7 @@ impl EditorPanel for ScriptVariablesPanel {
 // Plugin
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct ScriptVariablesPlugin;
 
 impl Plugin for ScriptVariablesPlugin {
@@ -114,3 +115,5 @@ impl Plugin for ScriptVariablesPlugin {
         app.register_panel(ScriptVariablesPanel::new());
     }
 }
+
+renzora::add!(ScriptVariablesPlugin);

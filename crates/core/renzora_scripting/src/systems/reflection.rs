@@ -222,12 +222,24 @@ fn apply_value_to_reflect(
 
 /// Read a reflected component field value from the world.
 /// Returns None if the component/field doesn't exist.
+///
+/// Delegates to `renzora_core::reflection::get_reflected_field`.
 pub fn get_reflected_field(
     world: &World,
     entity: Entity,
     component_type: &str,
     field_path: &str,
 ) -> Option<PropertyValue> {
+    renzora_core::reflection::get_reflected_field(world, entity, component_type, field_path)
+}
+
+/// Read ALL fields of a reflected component, returning a flat HashMap.
+/// Nested structs are flattened with dot notation (e.g. "color.x").
+pub fn get_all_component_fields(
+    world: &World,
+    entity: Entity,
+    component_type: &str,
+) -> Option<std::collections::HashMap<String, PropertyValue>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
 
@@ -242,8 +254,76 @@ pub fn get_reflected_field(
     let entity_ref = world.entity(entity);
     let reflected = reflect_component.reflect(entity_ref)?;
 
-    let parts: Vec<&str> = field_path.split('.').collect();
-    get_field_by_path(reflected, &parts)
+    let mut fields = std::collections::HashMap::new();
+    collect_struct_fields(reflected, "", &mut fields);
+    Some(fields)
+}
+
+fn collect_struct_fields(
+    reflect: &dyn bevy::reflect::PartialReflect,
+    prefix: &str,
+    out: &mut std::collections::HashMap<String, PropertyValue>,
+) {
+    match reflect.reflect_ref() {
+        ReflectRef::Struct(s) => {
+            for i in 0..s.field_len() {
+                let name = s.name_at(i).unwrap_or("?");
+                let full_name = if prefix.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{}.{}", prefix, name)
+                };
+                let field = s.field_at(i).unwrap();
+                // Try reading as primitive first
+                if let Some(val) = read_value_from_reflect(field) {
+                    out.insert(full_name, val);
+                } else {
+                    // Try recursing into nested struct
+                    collect_struct_fields(field, &full_name, out);
+                }
+            }
+        }
+        _ => {
+            // Try to read the value directly (for non-struct reflected types)
+            if let Some(val) = read_value_from_reflect(reflect) {
+                if !prefix.is_empty() {
+                    out.insert(prefix.to_string(), val);
+                }
+            }
+        }
+    }
+}
+
+/// Get the names of all reflected components on an entity.
+pub fn get_entity_component_names(
+    world: &World,
+    entity: Entity,
+) -> Vec<String> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+    let mut names = Vec::new();
+
+    let entity_ref = world.entity(entity);
+    let archetype = entity_ref.archetype();
+
+    for &component_id in archetype.components() {
+        let Some(info) = world.components().get_info(component_id) else { continue };
+        let type_id = match info.type_id() {
+            Some(id) => id,
+            None => continue,
+        };
+        // Only include components that are registered in the type registry with ReflectComponent
+        if let Some(registration) = registry.get(type_id) {
+            if registration.data::<ReflectComponent>().is_some() {
+                let path = registration.type_info().type_path();
+                let short = path.rsplit("::").next().unwrap_or(path);
+                names.push(short.to_string());
+            }
+        }
+    }
+
+    names.sort();
+    names
 }
 
 /// Recursively navigate a reflected struct by field path and read the value.

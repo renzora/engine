@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use renzora_blueprint::graph::{BlueprintConnection, BlueprintNode, NodeId, PinType};
+use renzora_core::{BlueprintConnection, BlueprintNode, NodeId, PinType};
 
 /// Project-level lifecycle graph — controls boot sequence, scene flow, networking, timers.
 ///

@@ -3,7 +3,9 @@ name = "renzora_test_component"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-egui-phosphor = { version = "0.11", features = ["regular"] }
-renzora_editor = { path = "../renzora_editor" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }

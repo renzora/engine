@@ -18,14 +18,27 @@ ply-rs = "0.1"
 fbxcel-dom = "0.0.10"
 fbxcel = "0.9"
 
-# Animation extraction
-renzora_animation = { path = "../renzora_animation" }
+# Core types (AnimClip, BoneTrack, write_anim_file)
+renzora_core = { path = "../renzora_core" }
+
+# USDZ archive extraction
+zip = "2"
+
+# LZ4 decompression (USDC token tables, compressed arrays)
+lz4_flex = "0.11"
+
+# Float16 support (half-precision vertex data)
+half = "2"
 
 # Mesh optimization
 meshopt = "0.3"
 
 # Compression (legacy FBX binary arrays)
 flate2 = "1"
+
+
+# Collada XML parsing
+quick-xml = "0.37"
 
 # Utility
 thiserror = "2"

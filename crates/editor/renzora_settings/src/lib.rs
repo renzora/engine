@@ -5,24 +5,25 @@
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
-use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
+use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
-use egui_phosphor::regular::{
+use renzora::egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP,
     FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
     WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER,
 };
 
-use renzora_editor::{EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
+use renzora::editor::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 use renzora_keybindings::{bindable_keys, EditorAction, KeyBinding, KeyBindings};
-use renzora_theme::{Theme, ThemeManager};
+use renzora::theme::{Theme, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
 
 const LABEL_WIDTH: f32 = 100.0;
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
+#[derive(Default)]
 pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
@@ -31,7 +32,7 @@ impl Plugin for SettingsPlugin {
         app.add_systems(
             EguiPrimaryContextPass,
             settings_overlay_system
-                .run_if(in_state(renzora_splash::SplashState::Editor)),
+                .run_if(in_state(renzora::editor::SplashState::Editor)),
         );
     }
 }
@@ -76,11 +77,12 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
 
     // Read snapshots
     let settings = world.get_resource::<EditorSettings>().cloned().unwrap_or_default();
+    let custom_fonts = world.get_resource::<CustomFonts>().cloned().unwrap_or_default();
     let keybindings = world.get_resource::<KeyBindings>().cloned().unwrap_or_default();
     let viewport_settings = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
 
     // Project config snapshot + available scene files
-    let (project_config, scene_files) = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+    let (project_config, scene_files) = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
         let scenes_dir = project.resolve_path("scenes");
         let files: Vec<String> = std::fs::read_dir(&scenes_dir)
             .into_iter()
@@ -192,12 +194,12 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                 ui.set_width(ui.available_width());
 
                 match settings_mut.settings_tab {
-                    SettingsTab::General => render_general_tab(ui, &mut settings_mut, &mut project_config_mut, &scene_files, &theme),
+                    SettingsTab::General => render_general_tab(ui, &mut settings_mut, &mut project_config_mut, &scene_files, &custom_fonts, &theme),
                     SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
                     SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &theme),
                     SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
                     SettingsTab::Input => render_input_tab(ui, &mut input_map_mut, &mut input_ui_state, &theme),
-                    SettingsTab::Plugins => render_placeholder_tab(ui, &theme, "Plugins", "Plugin management coming soon."),
+                    SettingsTab::Plugins => render_plugins_tab(ui, &mut settings_mut, &theme),
                 }
             });
         });
@@ -228,7 +230,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     // Write back project config changes
     if project_config_mut != project_config {
         if let Some(new_config) = project_config_mut {
-            if let Some(mut project) = world.get_resource_mut::<renzora_core::CurrentProject>() {
+            if let Some(mut project) = world.get_resource_mut::<renzora::core::CurrentProject>() {
                 project.config = new_config;
                 if let Err(e) = project.save_config() {
                     warn!("Failed to save project.toml: {}", e);
@@ -259,7 +261,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     // Write back input map changes and save to disk
     if input_map_mut.actions != input_map.actions {
         // Save to project file
-        if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+        if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
             if let Err(e) = renzora_input::save_input_map(&input_map_mut, project) {
                 warn!("Failed to save input map: {}", e);
             }
@@ -430,8 +432,9 @@ fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
 fn render_general_tab(
     ui: &mut egui::Ui,
     settings: &mut EditorSettings,
-    project_config: &mut Option<renzora_core::ProjectConfig>,
+    project_config: &mut Option<renzora::core::ProjectConfig>,
     scene_files: &[String],
+    custom_fonts: &CustomFonts,
     theme: &Theme,
 ) {
     // Project Section
@@ -480,8 +483,15 @@ fn render_general_tab(
             egui::ComboBox::from_id_salt("ui_font_selector")
                 .selected_text(settings.ui_font.label())
                 .show_ui(ui, |ui| {
-                    for &font in UiFont::ALL {
-                        ui.selectable_value(&mut settings.ui_font, font, font.label());
+                    for font in UiFont::BUILTIN {
+                        ui.selectable_value(&mut settings.ui_font, font.clone(), font.label());
+                    }
+                    if !custom_fonts.names.is_empty() {
+                        ui.separator();
+                        for name in &custom_fonts.names {
+                            let custom = UiFont::Custom(name.clone());
+                            ui.selectable_value(&mut settings.ui_font, custom, name.as_str());
+                        }
                     }
                 })
         });
@@ -490,8 +500,15 @@ fn render_general_tab(
             egui::ComboBox::from_id_salt("mono_font_selector")
                 .selected_text(settings.mono_font.label())
                 .show_ui(ui, |ui| {
-                    for &font in MonoFont::ALL {
-                        ui.selectable_value(&mut settings.mono_font, font, font.label());
+                    for font in MonoFont::BUILTIN {
+                        ui.selectable_value(&mut settings.mono_font, font.clone(), font.label());
+                    }
+                    if !custom_fonts.names.is_empty() {
+                        ui.separator();
+                        for name in &custom_fonts.names {
+                            let custom = MonoFont::Custom(name.clone());
+                            ui.selectable_value(&mut settings.mono_font, custom, name.as_str());
+                        }
                     }
                 })
         });
@@ -880,7 +897,7 @@ fn render_theme_color_section(
     theme: &Theme,
     row_even: Color32,
     row_odd: Color32,
-    colors: &mut [(&str, &mut renzora_theme::ThemeColor)],
+    colors: &mut [(&str, &mut renzora::theme::ThemeColor)],
 ) {
     render_category(ui, icon, label, style, id_source, false, theme, |ui| {
         for (i, (name, color)) in colors.iter_mut().enumerate() {
@@ -893,7 +910,7 @@ fn theme_color_row_mut(
     ui: &mut egui::Ui,
     row_index: usize,
     label: &str,
-    color: &mut renzora_theme::ThemeColor,
+    color: &mut renzora::theme::ThemeColor,
     row_even: Color32,
     row_odd: Color32,
 ) {
@@ -913,7 +930,7 @@ fn theme_color_row_mut(
                     let [r, g, b, a] = color.0.to_array();
                     let mut srgba = [r, g, b, a];
                     if ui.color_edit_button_srgba_unmultiplied(&mut srgba).changed() {
-                        *color = renzora_theme::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
+                        *color = renzora::theme::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
                     }
                 });
             });
@@ -1193,3 +1210,31 @@ fn render_placeholder_tab(ui: &mut egui::Ui, theme: &Theme, title: &str, message
         ui.label(RichText::new(message).size(12.0).color(text_muted));
     });
 }
+
+fn render_plugins_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+
+    ui.add_space(8.0);
+    ui.label(RichText::new("Plugins Directory").size(13.0).color(text_primary));
+    ui.add_space(4.0);
+
+    ui.horizontal(|ui| {
+        let response = ui.add(
+            egui::TextEdit::singleline(&mut settings.plugins_dir)
+                .desired_width(300.0)
+                .hint_text("Path to plugins folder"),
+        );
+        if ui.button(FOLDER_OPEN).clicked() {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                settings.plugins_dir = path.display().to_string();
+            }
+        }
+        let _ = response;
+    });
+
+    ui.add_space(4.0);
+    ui.label(RichText::new("Restart the editor to load plugins from a new directory.").size(11.0).color(text_muted));
+}
+
+renzora::add!(SettingsPlugin);

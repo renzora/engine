@@ -9,10 +9,10 @@
 use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use renzora_core::InputFocusState;
-use renzora_editor::{EditorSelection, EditorCamera, HideInHierarchy};
-use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_viewport::ViewportState;
+use renzora::core::InputFocusState;
+use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::viewport_types::ViewportState;
+use renzora::editor::{EditorSelection, EditorCamera, HideInHierarchy};
 
 use crate::OverlayGizmoGroup;
 
@@ -782,7 +782,7 @@ fn axis_scale_vec(constraint: AxisConstraint, factor: f32) -> Vec3 {
 /// Sync modal transform state into the shared HUD resource so the viewport can render overlays.
 pub fn sync_modal_hud(
     modal: Res<ModalTransformState>,
-    mut hud: ResMut<renzora_core::ModalTransformHud>,
+    mut hud: ResMut<renzora::core::ModalTransformHud>,
 ) {
     if !modal.active {
         hud.active = false;

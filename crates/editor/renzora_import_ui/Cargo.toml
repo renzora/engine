@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "Import overlay UI for 3D model import in the Renzora editor"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = "0.39"
-egui-phosphor = "0.11"
-renzora_core = { path = "../../core/renzora_core" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_import = { path = "../../core/renzora_import" }
-renzora_theme = { path = "../../ui/renzora_theme" }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

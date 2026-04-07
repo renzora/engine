@@ -105,7 +105,7 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
     world.entity_mut(entity).insert(UiThemed).set_parent_in_place(canvas_entity);
 
     #[cfg(feature = "editor")]
-    if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
+    if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
         sel.set(Some(entity));
     }
 }
@@ -2369,7 +2369,7 @@ pub fn spawn_image_at(
     world.entity_mut(entity).set_parent_in_place(canvas_entity);
 
     #[cfg(feature = "editor")]
-    if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
+    if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
         sel.set(Some(entity));
     }
 }

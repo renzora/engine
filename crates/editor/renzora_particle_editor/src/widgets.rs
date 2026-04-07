@@ -1,7 +1,7 @@
 //! Shared widget helpers for the particle editor.
 
-use bevy_egui::egui::{self, RichText};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, RichText};
+use renzora::theme::Theme;
 
 const LABEL_WIDTH: f32 = 90.0;
 const MIN_WIDTH: f32 = 200.0;

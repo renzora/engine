@@ -3,15 +3,10 @@ name = "renzora_gizmo"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-bevy_egui = "0.39"
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 bevy_mod_outline = { path = "../../third_party/bevy_mod_outline" }
-renzora_core = { path = "../../core/renzora_core" }
-renzora_editor = { path = "../renzora_editor" }
-renzora_keybindings = { path = "../renzora_keybindings" }
-renzora_viewport = { path = "../renzora_viewport" }
-renzora_runtime = { path = "../../core/renzora_runtime" }
-renzora_splash = { path = "../../ui/renzora_splash" }
-renzora_animation = { path = "../../core/renzora_animation" }
-renzora_terrain = { path = "../../core/renzora_terrain" }

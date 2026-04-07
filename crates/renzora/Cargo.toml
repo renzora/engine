@@ -1,0 +1,27 @@
+[package]
+name = "renzora"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora plugin SDK — the single dylib for all plugin development"
+
+[lib]
+crate-type = ["dylib"]
+
+[features]
+default = ["editor"]
+editor = ["dep:renzora_editor_framework", "dep:bevy_egui", "dep:egui-phosphor"]
+
+[dependencies]
+bevy = { workspace = true }
+
+# SDK sub-crates (compiled into renzora.dll)
+renzora_core = { path = "../core/renzora_core" }
+renzora_postprocess = { path = "../postprocessing/renzora_postprocess" }
+renzora_macros = { path = "../macros/renzora_macros" }
+dynamic_plugin_meta = { path = "../plugins/dynamic_plugin_meta" }
+
+# Editor framework (compiled into renzora.dll)
+renzora_editor_framework = { path = "../editor/renzora_editor", optional = true }
+renzora_theme = { path = "../ui/renzora_theme" }
+bevy_egui = { version = "0.39", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

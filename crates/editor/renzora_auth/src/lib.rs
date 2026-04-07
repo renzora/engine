@@ -8,12 +8,102 @@ pub mod marketplace;
 pub mod session;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CursorIcon, Sense};
-use renzora_theme::Theme;
+use bevy::ecs::system::SystemState;
+use renzora::bevy_egui::EguiContexts;
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Sense};
+use renzora::theme::{Theme, ThemeManager};
 
 pub use session::AuthSession;
 
 use std::sync::{mpsc, Mutex};
+
+/// Bevy plugin that registers auth resources, renders the auth window, and
+/// syncs state into the [`renzora::core::AuthBridge`] so the editor can display
+/// sign-in info without depending on this crate.
+#[derive(Default)]
+pub struct AuthPlugin;
+
+impl Plugin for AuthPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<AuthState>()
+            .insert_resource(try_restore_session())
+            .init_resource::<renzora::core::AuthBridge>()
+            .add_systems(Update, auth_system);
+    }
+}
+
+/// Single exclusive system that handles auth requests, renders the auth window,
+/// and syncs the bridge resource.
+fn auth_system(world: &mut World) {
+    // Handle toggle/sign-out requests from the editor (via marker resources).
+    if world.remove_resource::<renzora::core::AuthToggleWindowRequest>().is_some() {
+        if let Some(mut auth) = world.get_resource_mut::<AuthState>() {
+            auth.window_open = !auth.window_open;
+        }
+    }
+    if world.remove_resource::<renzora::core::AuthSignOutRequest>().is_some() {
+        if let Some(mut session) = world.get_resource_mut::<AuthSession>() {
+            session.clear();
+            #[cfg(not(target_arch = "wasm32"))]
+            session::delete_session();
+        }
+        if let Some(mut auth) = world.get_resource_mut::<AuthState>() {
+            auth.status = None;
+            auth.error = None;
+            auth.view = AuthView::SignIn;
+        }
+    }
+
+    // Render the auth window.
+    // Get the egui context
+    let mut state = SystemState::<EguiContexts>::new(world);
+    let mut contexts = state.get_mut(world);
+    let ctx = match contexts.ctx_mut() {
+        Ok(c) => c.clone(),
+        Err(_) => return,
+    };
+    state.apply(world);
+
+    let theme = world
+        .get_resource::<ThemeManager>()
+        .map(|tm| tm.active_theme.clone())
+        .unwrap_or_default();
+
+    // Remove both resources to avoid double-borrow, render, then put them back.
+    let mut auth = world.remove_resource::<AuthState>();
+    let mut session = world.remove_resource::<AuthSession>();
+    let mut signed_in_just_now = false;
+    if let (Some(ref mut auth), Some(ref mut session)) = (&mut auth, &mut session) {
+        render_auth_window(&ctx, &theme, auth, session);
+        if auth.just_signed_in {
+            auth.just_signed_in = false;
+            signed_in_just_now = true;
+        }
+    }
+    if let Some(auth) = auth {
+        world.insert_resource(auth);
+    }
+    if let Some(session) = session {
+        world.insert_resource(session);
+    }
+
+    if signed_in_just_now {
+        world.insert_resource(renzora::core::AuthJustSignedIn);
+    }
+
+    // Sync the lightweight bridge resource for the editor title bar.
+    let window_open = world
+        .get_resource::<AuthState>()
+        .map(|a| a.window_open)
+        .unwrap_or(false);
+    let signed_in_username = world
+        .get_resource::<AuthSession>()
+        .and_then(|s| s.user.as_ref().map(|u| u.username.clone()));
+    if let Some(mut bridge) = world.get_resource_mut::<renzora::core::AuthBridge>() {
+        bridge.window_open = window_open;
+        bridge.signed_in_username = signed_in_username;
+    }
+}
 
 /// Current view within the auth window.
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -528,3 +618,5 @@ pub fn try_restore_session() -> AuthSession {
 pub fn try_restore_session() -> AuthSession {
     AuthSession::default()
 }
+
+renzora::add!(AuthPlugin);

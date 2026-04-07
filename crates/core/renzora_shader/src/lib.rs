@@ -3,6 +3,7 @@ pub mod registry;
 pub mod file;
 pub mod runtime;
 pub mod backends;
+pub mod material;
 
 use bevy::prelude::*;
 

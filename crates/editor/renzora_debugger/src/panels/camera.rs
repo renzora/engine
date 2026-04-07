@@ -1,7 +1,7 @@
 //! Camera debug panel
 
-use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, RichText};
+use renzora::theme::Theme;
 
 use crate::state::{CameraDebugState, CameraProjectionType};
 

@@ -1,30 +1,123 @@
-//! Editor theme application
+//! Editor theme application and font management
 
 use bevy_egui::egui::{self, Color32, CornerRadius, Stroke, Visuals};
 use renzora_theme::Theme;
 
-/// Initialize fonts (including phosphor icons). Call once at startup.
-pub fn init_fonts(ctx: &egui::Context) {
-    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+/// Initialize all bundled fonts (call once at startup).
+///
+/// Loads proportional, monospace, CJK fallback, and icon fonts into egui.
+/// The default families use `ui_font_key` / `mono_font_key` as their primaries.
+pub fn init_fonts(ctx: &egui::Context, ui_font_key: &str, mono_font_key: &str) {
+    let mut fonts = egui::FontDefinitions::default();
 
-    // Phosphor icon fonts
+    // -- Proportional fonts --
+    fonts.font_data.insert(
+        "roboto".into(),
+        egui::FontData::from_static(include_bytes!("../../../../assets/fonts/Roboto-Regular.ttf"))
+            .into(),
+    );
+    fonts.font_data.insert(
+        "open-sans".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/OpenSans-Regular.ttf"
+        ))
+        .into(),
+    );
+    fonts.font_data.insert(
+        "noto-sans".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/NotoSans-Regular.ttf"
+        ))
+        .into(),
+    );
+
+    // -- Monospace fonts --
+    fonts.font_data.insert(
+        "jetbrains-mono".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/JetBrainsMono-Regular.ttf"
+        ))
+        .into(),
+    );
+    fonts.font_data.insert(
+        "fira-code".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/FiraCode-Regular.ttf"
+        ))
+        .into(),
+    );
+    fonts.font_data.insert(
+        "source-code-pro".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/SourceCodePro-Regular.ttf"
+        ))
+        .into(),
+    );
+
+    // -- CJK fallback (Japanese, Chinese, Korean) --
+    fonts.font_data.insert(
+        "noto-sans-jp".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../../assets/fonts/NotoSansJP-Regular.ttf"
+        ))
+        .into(),
+    );
+
+    // -- Icon fonts --
     fonts.font_data.insert(
         "phosphor".into(),
         egui::FontData::from_static(egui_phosphor::Variant::Regular.font_bytes()).into(),
     );
 
-    // Add phosphor as fallback to proportional family
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .push("phosphor".into());
+    // Default families
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            ui_font_key.into(),
+            "noto-sans-jp".into(),
+            "phosphor".into(),
+        ],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        vec![mono_font_key.into()],
+    );
 
     ctx.set_fonts(fonts);
 }
 
+/// Switch the active proportional (UI) font family at runtime.
+pub fn set_ui_font(ctx: &egui::Context, font_key: &str) {
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            font_key.into(),
+            "noto-sans-jp".into(),
+            "phosphor".into(),
+        ],
+    );
+    ctx.set_fonts(fonts);
+}
+
+/// Switch the active monospace (code) font family at runtime.
+pub fn set_mono_font(ctx: &egui::Context, font_key: &str) {
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        vec![font_key.into()],
+    );
+    ctx.set_fonts(fonts);
+}
+
+/// Round a font size so it maps to an integer number of physical pixels.
+/// This eliminates sub-pixel blurriness on fractional-DPI displays (e.g. 125%, 150%).
+fn snap_font_size(size: f32, pixels_per_point: f32) -> f32 {
+    (size * pixels_per_point).round() / pixels_per_point
+}
+
 /// Apply the editor theme to the egui context (visuals + spacing + font sizes).
-pub fn apply_theme(ctx: &egui::Context, theme: &Theme) {
+pub fn apply_theme(ctx: &egui::Context, theme: &Theme, font_size: f32) {
     let mut visuals = Visuals::dark();
 
     // Window styling
@@ -110,27 +203,28 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme) {
         ..Default::default()
     };
 
-    let font_size: f32 = 13.0;
-    let scale = font_size / 13.0;
+    // Scale all text styles based on font_size (base is 14.0)
+    let scale = font_size / 14.0;
+    let ppp = ctx.pixels_per_point();
     style.text_styles.insert(
         egui::TextStyle::Small,
-        egui::FontId::proportional(10.0 * scale),
+        egui::FontId::proportional(snap_font_size(11.0 * scale, ppp)),
     );
     style.text_styles.insert(
         egui::TextStyle::Body,
-        egui::FontId::proportional(13.0 * scale),
+        egui::FontId::proportional(snap_font_size(14.0 * scale, ppp)),
     );
     style.text_styles.insert(
         egui::TextStyle::Monospace,
-        egui::FontId::monospace(13.0 * scale),
+        egui::FontId::monospace(snap_font_size(14.0 * scale, ppp)),
     );
     style.text_styles.insert(
         egui::TextStyle::Button,
-        egui::FontId::proportional(13.0 * scale),
+        egui::FontId::proportional(snap_font_size(14.0 * scale, ppp)),
     );
     style.text_styles.insert(
         egui::TextStyle::Heading,
-        egui::FontId::proportional(18.0 * scale),
+        egui::FontId::proportional(snap_font_size(19.0 * scale, ppp)),
     );
 
     ctx.set_style(style);

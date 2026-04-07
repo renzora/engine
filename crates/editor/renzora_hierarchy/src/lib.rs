@@ -6,16 +6,14 @@ mod tree;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
+use renzora::editor::{
     search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
     HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
-use renzora_core::{MeshPrimitive, MeshColor, ShapeRegistry};
-use renzora_physics::{CollisionShapeData, PhysicsBodyData};
-use renzora_scripting::ScriptComponent;
-use renzora_theme::ThemeManager;
+use renzora::core::{MeshPrimitive, MeshColor, ShapeRegistry};
+use renzora::theme::ThemeManager;
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
 
@@ -87,11 +85,11 @@ impl EditorPanel for HierarchyPanel {
         let mut state = self.state.write().unwrap();
 
         // Check for CreateNode shortcut (Ctrl+A)
-        if world.get_resource::<renzora_core::CreateNodeRequested>().is_some() {
+        if world.get_resource::<renzora::core::CreateNodeRequested>().is_some() {
             state.show_add_overlay = true;
             state.add_search.clear();
             // Consume the resource via deferred command
-            commands.push(|w: &mut World| { w.remove_resource::<renzora_core::CreateNodeRequested>(); });
+            commands.push(|w: &mut World| { w.remove_resource::<renzora::core::CreateNodeRequested>(); });
         }
 
         // Search bar + "Add Entity" button
@@ -170,7 +168,6 @@ impl EditorPanel for HierarchyPanel {
                             let spawn_fn = preset.spawn_fn;
                             commands.push(move |world: &mut World| {
                                 let entity = spawn_fn(world);
-                                world.entity_mut(entity).insert(ScriptComponent::new());
                                 if let Some(sel) = world.get_resource::<EditorSelection>() {
                                     sel.set(Some(entity));
                                 }
@@ -196,22 +193,16 @@ impl EditorPanel for HierarchyPanel {
                                             perceptual_roughness: 0.9,
                                             ..default()
                                         });
-                                    let mut entity_cmds = world.spawn((
+                                    let entity = world.spawn((
                                         Name::new(name),
                                         Transform::default(),
                                         Mesh3d(mesh),
                                         MeshMaterial3d(material),
                                         MeshPrimitive(shape_id.to_string()),
                                         MeshColor(color),
-                                    ));
-                                    entity_cmds.insert(ScriptComponent::new());
-                                    if let Some(collider) = default_collider_for_shape(shape_id) {
-                                        entity_cmds.insert((
-                                            PhysicsBodyData::static_body(),
-                                            collider,
-                                        ));
-                                    }
-                                    let entity = entity_cmds.id();
+                                    )).id();
+                                    // ScriptComponent auto-inserted by renzora_scripting observer
+                                    // Default collider auto-inserted by renzora_physics observer on MeshPrimitive
                                     if let Some(sel) = world.get_resource::<EditorSelection>() {
                                         sel.set(Some(entity));
                                     }
@@ -229,7 +220,7 @@ impl EditorPanel for HierarchyPanel {
                                     let display_name = entry.display_name;
                                     commands.push(move |world: &mut World| {
                                         let entity = world
-                                            .spawn((Name::new(display_name), Transform::default(), ScriptComponent::new()))
+                                            .spawn((Name::new(display_name), Transform::default()))
                                             .id();
                                         add_fn(world, entity);
                                         if let Some(sel) = world.get_resource::<EditorSelection>() {
@@ -297,7 +288,7 @@ impl EditorPanel for HierarchyPanel {
             if let Some((target, zone)) = state.drop_target.take() {
                 let drag_entities = std::mem::take(&mut state.drag_entities);
                 commands.push(move |world: &mut World| {
-                    use renzora_editor::TreeDropZone;
+                    use renzora::editor::TreeDropZone;
                     for entity in &drag_entities {
                         if *entity == target {
                             continue;
@@ -355,7 +346,7 @@ impl EditorPanel for HierarchyPanel {
                                             let e = arch_entity.id();
                                             if world.get::<Name>(e).is_none() { continue; }
                                             if world.get::<ChildOf>(e).is_some() { continue; }
-                                            if world.get::<renzora_core::HideInHierarchy>(e).is_some() { continue; }
+                                            if world.get::<renzora::core::HideInHierarchy>(e).is_some() { continue; }
                                             let order = world.get::<HierarchyOrder>(e).map(|h| h.0).unwrap_or(u32::MAX);
                                             roots.push((e, order));
                                         }
@@ -416,9 +407,9 @@ impl EditorPanel for HierarchyPanel {
                     let target_name = find_node_name(&nodes, target_entity)
                         .unwrap_or_else(|| format!("{:?}", target_entity));
                     match zone {
-                        renzora_editor::TreeDropZone::Before => format!("Move above {}", target_name),
-                        renzora_editor::TreeDropZone::After => format!("Move below {}", target_name),
-                        renzora_editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
+                        renzora::editor::TreeDropZone::Before => format!("Move above {}", target_name),
+                        renzora::editor::TreeDropZone::After => format!("Move below {}", target_name),
+                        renzora::editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
                     }
                 } else {
                     let count = state.drag_entities.len();
@@ -453,6 +444,7 @@ impl EditorPanel for HierarchyPanel {
 }
 
 /// Plugin that registers the `HierarchyPanel` and built-in entity presets.
+#[derive(Default)]
 pub struct HierarchyPanelPlugin;
 
 impl Plugin for HierarchyPanelPlugin {
@@ -460,362 +452,15 @@ impl Plugin for HierarchyPanelPlugin {
         info!("[editor] HierarchyPanelPlugin");
         app.register_panel(HierarchyPanel::default());
 
+        // Spawn presets are now self-registered by their owning crates:
+        // - Bevy types (Empty, lights, camera): renzora::editor::bevy_inspectors
+        // - Physics: renzora_physics::inspector (editor feature)
+        // - Terrain: renzora_terrain (editor feature)
+        // - World Environment/Sun: renzora_level_presets
         app.init_resource::<SpawnRegistry>();
-        register_builtin_presets(
-            &mut app.world_mut().resource_mut::<SpawnRegistry>(),
-        );
     }
 }
 
-fn register_builtin_presets(registry: &mut SpawnRegistry) {
-    registry.register(EntityPreset {
-        id: "empty_entity",
-        display_name: "Empty Entity",
-        icon: regular::CIRCLE,
-        category: "general",
-        spawn_fn: |world| {
-            world
-                .spawn((Name::new("Empty Entity"), Transform::default()))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "world_environment",
-        display_name: "World Environment",
-        icon: regular::GLOBE,
-        category: "general",
-        spawn_fn: |world| {
-            let sun = renzora_lighting::Sun::default();
-            let dir = sun.direction();
-            world
-                .spawn((
-                    Name::new("World Environment"),
-                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
-                    DirectionalLight {
-                        color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
-                        illuminance: sun.illuminance,
-                        shadows_enabled: sun.shadows_enabled,
-                        ..default()
-                    },
-                    sun,
-                    renzora_bloom_effect::BloomSettings::default(),
-                    renzora_atmosphere::AtmosphereComponentSettings::default(),
-                    renzora_clouds::CloudsData::default(),
-                    renzora_distance_fog::DistanceFogSettings::default(),
-                ))
-                .id()
-        },
-    });
-
-    // Note: rendering shapes (cube, sphere, etc.) are registered via ShapeRegistry
-    // and shown in both the shape library panel and this overlay.
-
-    registry.register(EntityPreset {
-        id: "sun",
-        display_name: "Sun",
-        icon: regular::SUN_HORIZON,
-        category: "lighting",
-        spawn_fn: |world| {
-            let data = renzora_lighting::Sun::default();
-            let dir = data.direction();
-            world
-                .spawn((
-                    Name::new("Sun"),
-                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
-                    DirectionalLight {
-                        color: Color::srgb(data.color.x, data.color.y, data.color.z),
-                        illuminance: data.illuminance,
-                        shadows_enabled: data.shadows_enabled,
-                        ..default()
-                    },
-                    data,
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "directional_light",
-        display_name: "Directional Light",
-        icon: regular::SUN,
-        category: "lighting",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("Directional Light"),
-                    Transform::default(),
-                    DirectionalLight::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "point_light",
-        display_name: "Point Light",
-        icon: regular::LIGHTBULB,
-        category: "lighting",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("Point Light"),
-                    Transform::default(),
-                    PointLight::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "spot_light",
-        display_name: "Spot Light",
-        icon: regular::FLASHLIGHT,
-        category: "lighting",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("Spot Light"),
-                    Transform::default(),
-                    SpotLight::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "ambient_light",
-        display_name: "Ambient Light",
-        icon: regular::SUN_DIM,
-        category: "lighting",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("Ambient Light"),
-                    AmbientLight {
-                        color: Color::WHITE,
-                        brightness: 300.0,
-                        ..default()
-                    },
-                ))
-                .id()
-        },
-    });
-
-    // ── Physics ──────────────────────────────────────────────────────────────
-
-    registry.register(EntityPreset {
-        id: "rigid_body",
-        display_name: "Rigid Body",
-        icon: regular::CUBE,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("RigidBody3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::default(),
-                    renzora_physics::CollisionShapeData::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "static_body",
-        display_name: "Static Body",
-        icon: regular::CUBE,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("StaticBody3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::static_body(),
-                    renzora_physics::CollisionShapeData::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "kinematic_body",
-        display_name: "Kinematic Body",
-        icon: regular::CUBE,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("KinematicBody3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::kinematic_body(),
-                    renzora_physics::CollisionShapeData::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "box_collider",
-        display_name: "Box Collider",
-        icon: regular::BOUNDING_BOX,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("BoxShape3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::static_body(),
-                    renzora_physics::CollisionShapeData::default(),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "sphere_collider",
-        display_name: "Sphere Collider",
-        icon: regular::GLOBE_HEMISPHERE_EAST,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("SphereShape3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::static_body(),
-                    renzora_physics::CollisionShapeData::sphere(0.5),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "capsule_collider",
-        display_name: "Capsule Collider",
-        icon: regular::PILL,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("CapsuleShape3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::static_body(),
-                    renzora_physics::CollisionShapeData::capsule(0.5, 0.5),
-                ))
-                .id()
-        },
-    });
-
-    registry.register(EntityPreset {
-        id: "cylinder_collider",
-        display_name: "Cylinder Collider",
-        icon: regular::CYLINDER,
-        category: "physics",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("CylinderShape3D"),
-                    Transform::default(),
-                    renzora_physics::PhysicsBodyData::static_body(),
-                    renzora_physics::CollisionShapeData::cylinder(0.5, 0.5),
-                ))
-                .id()
-        },
-    });
-
-    // ── Camera ──────────────────────────────────────────────────────────────
-
-    registry.register(EntityPreset {
-        id: "camera_3d",
-        display_name: "Camera 3D",
-        icon: regular::VIDEO_CAMERA,
-        category: "camera",
-        spawn_fn: |world| {
-            // Count existing scene cameras to generate a unique name
-            let mut count = 0u32;
-            let mut q = world.query_filtered::<(), With<renzora_core::SceneCamera>>();
-            for _ in q.iter(world) {
-                count += 1;
-            }
-            let name = if count == 0 {
-                "Camera 3D".to_string()
-            } else {
-                format!("Camera 3D ({})", count + 1)
-            };
-            world
-                .spawn((
-                    Name::new(name),
-                    Transform::default(),
-                    Camera3d::default(),
-                    Camera {
-                        is_active: false,
-                        ..default()
-                    },
-                    renzora_core::SceneCamera,
-                ))
-                .id()
-        },
-    });
-
-    // ── Terrain ────────────────────────────────────────────────────────────
-
-    registry.register(EntityPreset {
-        id: "terrain",
-        display_name: "Terrain",
-        icon: regular::MOUNTAINS,
-        category: "general",
-        spawn_fn: |world| renzora_terrain::mesh::spawn_terrain(world),
-    });
-}
-
-/// Map a shape ID to a default collision shape. Returns `None` for complex shapes
-/// where an automatic collider wouldn't be a good fit.
-fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
-    Some(match id {
-        // Basic primitives
-        "cube"       => CollisionShapeData::cuboid(Vec3::splat(0.5)),
-        "sphere"     => CollisionShapeData::sphere(0.5),
-        "cylinder"   => CollisionShapeData::cylinder(0.5, 0.5),
-        "capsule"    => CollisionShapeData::capsule(0.5, 0.25),
-        "cone"       => CollisionShapeData::cylinder(0.5, 0.5),
-        "hemisphere" => CollisionShapeData::sphere(0.5),
-
-        // Flat surfaces
-        "plane"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.001, 0.5)),
-
-        // Level geometry — box approximations
-        "wedge"       => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "wall"        => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "ramp"        => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 1.0)),
-        "doorway"     => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "window_wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "pillar"      => CollisionShapeData::cylinder(0.15, 1.0),
-        "l_shape"     => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "t_shape"     => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.5)),
-        "cross_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.75)),
-        "corner"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "stairs"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "half_cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
-        "quarter_pipe"  => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "curved_wall"   => CollisionShapeData::cylinder(0.5, 1.0),
-        "spiral_stairs" => CollisionShapeData::cylinder(0.5, 1.0),
-
-        // Curved shapes
-        "pipe"   => CollisionShapeData::cylinder(0.5, 0.5),
-        "ring"   => CollisionShapeData::cylinder(0.5, 0.1),
-        "funnel" => CollisionShapeData::cylinder(0.5, 0.5),
-        "gutter" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 0.5)),
-        "torus"  => CollisionShapeData::cylinder(0.5, 0.15),
-
-        // Advanced
-        "prism"   => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "pyramid" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-
-        _ => return None,
-    })
-}
-
-/// Find an entity's name in the tree nodes (for drag tooltip).
 fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String> {
     for node in nodes {
         if node.entity == target {
@@ -827,3 +472,5 @@ fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String>
     }
     None
 }
+
+renzora::add!(HierarchyPanelPlugin);

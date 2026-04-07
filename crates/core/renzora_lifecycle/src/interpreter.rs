@@ -1,14 +1,12 @@
 //! Lifecycle graph interpreter.
 //!
 //! Entity-less, project-level interpreter. Walks the lifecycle graph each frame,
-//! fires event nodes, handles wait/timer nodes, and produces `ScriptCommand`s.
+//! fires event nodes, handles wait/timer nodes, and produces `ScriptAction` events.
 
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_blueprint::graph::{NodeId, PinValue};
-use renzora_scripting::systems::execution::ScriptCommandQueue;
-use renzora_scripting::ScriptCommand;
+use renzora_core::{NodeId, PinValue, ScriptAction, ScriptActionValue};
 
 use crate::graph::LifecycleGraph;
 use crate::nodes;
@@ -19,16 +17,15 @@ struct EvalContext<'a> {
     cache: HashMap<(NodeId, String), PinValue>,
     graph: &'a LifecycleGraph,
     delta: f32,
+    #[allow(dead_code)]
     elapsed: f64,
-    commands: Vec<ScriptCommand>,
+    actions: Vec<ScriptAction>,
     runtime: &'a mut LifecycleRuntimeState,
     net_is_server: bool,
     net_is_connected: bool,
     net_player_count: i32,
     /// Wait timers to start (node_id, seconds).
     new_waits: Vec<(NodeId, f32)>,
-    /// Network commands to apply directly to world after evaluation.
-    net_commands: Vec<LifecycleNetCommand>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -124,7 +121,7 @@ impl<'a> EvalContext<'a> {
                 PinValue::Float(val)
             }
 
-            // ── Shared math/string/convert from blueprint ──────────
+            // ── Shared math/string/convert ────────────────────────
             "math/add" => {
                 let a = self.resolve_input(node_id, "a").as_float();
                 let b = self.resolve_input(node_id, "b").as_float();
@@ -317,7 +314,14 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "error");
                 } else if path != self.runtime.current_scene {
                     self.runtime.current_scene = path.clone();
-                    self.commands.push(ScriptCommand::LoadScene { path });
+                    self.actions.push(ScriptAction {
+                        name: "load_scene".into(),
+                        entity: Entity::PLACEHOLDER,
+                        target_entity: None,
+                        args: HashMap::from([
+                            ("path".into(), ScriptActionValue::String(path)),
+                        ]),
+                    });
                     self.follow_exec(node_id, "success");
                 } else {
                     // Already loaded — still success
@@ -355,15 +359,25 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "error");
                 } else {
                     log::info!("[lifecycle] Connect to {}:{}", address, port);
-                    self.net_commands.push(LifecycleNetCommand::Connect {
-                        address,
-                        port: port as u16,
+                    self.actions.push(ScriptAction {
+                        name: "net_connect".into(),
+                        entity: Entity::PLACEHOLDER,
+                        target_entity: None,
+                        args: HashMap::from([
+                            ("address".into(), ScriptActionValue::String(address)),
+                            ("port".into(), ScriptActionValue::Int(port as i64)),
+                        ]),
                     });
                     self.follow_exec(node_id, "success");
                 }
             }
             "lifecycle/disconnect" => {
-                self.net_commands.push(LifecycleNetCommand::Disconnect);
+                self.actions.push(ScriptAction {
+                    name: "net_disconnect".into(),
+                    entity: Entity::PLACEHOLDER,
+                    target_entity: None,
+                    args: HashMap::new(),
+                });
                 self.follow_exec(node_id, "success");
             }
             "lifecycle/host_server" => {
@@ -374,9 +388,14 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "error");
                 } else {
                     log::info!("[lifecycle] Host server on port {} (max {})", port, max_clients);
-                    self.net_commands.push(LifecycleNetCommand::HostServer {
-                        port: port as u16,
-                        max_clients: max_clients as u16,
+                    self.actions.push(ScriptAction {
+                        name: "net_host_server".into(),
+                        entity: Entity::PLACEHOLDER,
+                        target_entity: None,
+                        args: HashMap::from([
+                            ("port".into(), ScriptActionValue::Int(port as i64)),
+                            ("max_clients".into(), ScriptActionValue::Int(max_clients as i64)),
+                        ]),
                     });
                     self.follow_exec(node_id, "success");
                 }
@@ -387,7 +406,15 @@ impl<'a> EvalContext<'a> {
                 if channel.is_empty() {
                     self.follow_exec(node_id, "error");
                 } else {
-                    self.net_commands.push(LifecycleNetCommand::SendMessage { channel, data });
+                    self.actions.push(ScriptAction {
+                        name: "net_send_message".into(),
+                        entity: Entity::PLACEHOLDER,
+                        target_entity: None,
+                        args: HashMap::from([
+                            ("channel".into(), ScriptActionValue::String(channel)),
+                            ("data".into(), ScriptActionValue::String(data)),
+                        ]),
+                    });
                     self.follow_exec(node_id, "success");
                 }
             }
@@ -397,19 +424,21 @@ impl<'a> EvalContext<'a> {
                 if name.is_empty() {
                     self.follow_exec(node_id, "error");
                 } else {
-                    self.net_commands.push(LifecycleNetCommand::SpawnNetworked {
-                        name,
-                        position,
+                    self.actions.push(ScriptAction {
+                        name: "net_spawn".into(),
+                        entity: Entity::PLACEHOLDER,
+                        target_entity: None,
+                        args: HashMap::from([
+                            ("name".into(), ScriptActionValue::String(name)),
+                            ("position".into(), ScriptActionValue::Vec3(position)),
+                        ]),
                     });
                     self.follow_exec(node_id, "success");
                 }
             }
             "lifecycle/log" => {
                 let message = self.resolve_input(node_id, "message").as_string();
-                self.commands.push(ScriptCommand::Log {
-                    level: "info".into(),
-                    message,
-                });
+                log::info!("[lifecycle] {}", message);
                 self.follow_exec(node_id, "success");
             }
             "lifecycle/set_variable" => {
@@ -426,10 +455,7 @@ impl<'a> EvalContext<'a> {
             // ── Debug (from shared) ─────────────────────────────────
             "debug/log" => {
                 let message = self.resolve_input(node_id, "message").as_string();
-                self.commands.push(ScriptCommand::Log {
-                    level: "info".into(),
-                    message,
-                });
+                log::info!("[lifecycle] {}", message);
                 self.follow_exec(node_id, "then");
             }
 
@@ -438,17 +464,6 @@ impl<'a> EvalContext<'a> {
             }
         }
     }
-}
-
-/// Network commands produced by lifecycle nodes.
-/// These are consumed by `process_lifecycle_net_commands`.
-#[derive(Debug)]
-pub enum LifecycleNetCommand {
-    Connect { address: String, port: u16 },
-    Disconnect,
-    HostServer { port: u16, max_clients: u16 },
-    SendMessage { channel: String, data: String },
-    SpawnNetworked { name: String, position: [f32; 3] },
 }
 
 // ── Main system ─────────────────────────────────────────────────────────────
@@ -501,10 +516,10 @@ pub fn run_lifecycle(world: &mut World) {
         timer.repeat || timer.remaining > 0.0
     });
 
-    // Check network status.
+    // Check network status via bridge resource (avoids renzora_network dependency).
     let (net_is_server, net_is_connected, net_player_count) = world
-        .get_resource::<renzora_network::NetworkStatus>()
-        .map(|s| (s.is_server, s.is_connected(), s.connected_clients.len() as i32))
+        .get_resource::<renzora_core::NetworkBridge>()
+        .map(|b| (b.is_server, b.is_connected, b.player_count))
         .unwrap_or((false, false, 0));
 
     // Detect connection edge.
@@ -524,19 +539,18 @@ pub fn run_lifecycle(world: &mut World) {
 
     let scene_just_loaded = runtime.scene_just_loaded.take();
 
-    let (commands, new_waits, net_commands) = {
+    let (actions, new_waits) = {
         let mut ctx = EvalContext {
             cache: HashMap::new(),
             graph: &graph,
             delta: time_delta,
             elapsed: time_elapsed,
-            commands: Vec::new(),
+            actions: Vec::new(),
             runtime: &mut runtime,
             net_is_server,
             net_is_connected,
             net_player_count,
             new_waits: Vec::new(),
-            net_commands: Vec::new(),
         };
 
         // Resume continuations from completed waits.
@@ -582,7 +596,7 @@ pub fn run_lifecycle(world: &mut World) {
             }
         }
 
-        (ctx.commands, ctx.new_waits, ctx.net_commands)
+        (ctx.actions, ctx.new_waits)
     };
 
     runtime.initialized = true;
@@ -595,52 +609,33 @@ pub fn run_lifecycle(world: &mut World) {
         );
     }
 
-    // Push commands to shared queue.
-    if !commands.is_empty() {
-        let mut cmd_queue = world.resource_mut::<ScriptCommandQueue>();
-        for cmd in commands {
-            cmd_queue.commands.push((Entity::PLACEHOLDER, cmd));
+    // Process load_scene actions by pushing to PendingSceneLoad.
+    let mut scene_actions = Vec::new();
+    let mut other_actions = Vec::new();
+    for action in actions {
+        if action.name == "load_scene" {
+            scene_actions.push(action);
+        } else {
+            other_actions.push(action);
         }
+    }
+
+    // Push scene load requests to PendingSceneLoad resource.
+    if !scene_actions.is_empty() {
+        let mut pending = world.resource_mut::<renzora_core::PendingSceneLoad>();
+        for action in scene_actions {
+            if let Some(ScriptActionValue::String(path)) = action.args.get("path") {
+                pending.requests.push(path.clone());
+            }
+        }
+    }
+
+    // Trigger remaining actions as ScriptAction events.
+    for action in other_actions {
+        world.trigger(action);
     }
 
     world.insert_resource(runtime);
-
-    // Process network commands directly on the world.
-    for net_cmd in net_commands {
-        match net_cmd {
-            LifecycleNetCommand::Connect { address, port } => {
-                world.insert_resource(renzora_network::PendingNetworkConnect {
-                    address,
-                    port,
-                });
-            }
-            LifecycleNetCommand::Disconnect => {
-                world.insert_resource(renzora_network::PendingNetworkDisconnect);
-            }
-            LifecycleNetCommand::HostServer { port, max_clients } => {
-                log::info!(
-                    "[lifecycle] HostServer requested (port={}, max={}). \
-                     Use renzora-server binary for dedicated servers.",
-                    port,
-                    max_clients
-                );
-            }
-            LifecycleNetCommand::SendMessage { channel, data } => {
-                log::info!("[lifecycle] SendMessage '{}' ({}B)", channel, data.len());
-                // TODO: send via Lightyear when message API is wired
-            }
-            LifecycleNetCommand::SpawnNetworked { name, position } => {
-                log::info!(
-                    "[lifecycle] SpawnNetworked '{}' at ({:.1}, {:.1}, {:.1})",
-                    name,
-                    position[0],
-                    position[1],
-                    position[2]
-                );
-                // TODO: send SpawnRequest message to server
-            }
-        }
-    }
 }
 
 /// Detects when a scene finishes loading and sets `scene_just_loaded`.

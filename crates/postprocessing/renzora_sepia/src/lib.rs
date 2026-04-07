@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "sepia.wgsl", name = "Sepia", icon = "IMAGE")]
 pub struct SepiaSettings {
@@ -16,6 +18,7 @@ pub struct SepiaSettings {
     pub tone_b: f32,
 }
 
+#[derive(Default)]
 pub struct SepiaPlugin;
 
 impl Plugin for SepiaPlugin {
@@ -28,3 +31,5 @@ impl Plugin for SepiaPlugin {
         app.register_inspectable::<SepiaSettings>();
     }
 }
+
+renzora::add!(SepiaPlugin);

@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "halftone.wgsl", name = "Halftone", icon = "DOTS_NINE")]
 pub struct HalftoneSettings {
@@ -14,6 +16,7 @@ pub struct HalftoneSettings {
     pub intensity: f32,
 }
 
+#[derive(Default)]
 pub struct HalftonePlugin;
 
 impl Plugin for HalftonePlugin {
@@ -26,3 +29,5 @@ impl Plugin for HalftonePlugin {
         app.register_inspectable::<HalftoneSettings>();
     }
 }
+
+renzora::add!(HalftonePlugin);

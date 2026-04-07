@@ -1,12 +1,12 @@
 //! Generic field rendering — maps FieldType to the appropriate egui widget.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use renzora_editor::{
+use renzora::bevy_egui::egui;
+use renzora::editor::{
     asset_drop_target, inline_property, toggle_switch, AssetDragPayload, EditorCommands,
     FieldDef, FieldType, FieldValue,
 };
-use renzora_theme::Theme;
+use renzora::theme::Theme;
 
 /// Render a single field row using the appropriate widget for its type.
 ///
@@ -153,7 +153,7 @@ pub fn render_field(
                 );
 
                 if let Some(path) = drop_result.dropped_path {
-                    let path_str = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    let path_str = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                         project.make_asset_relative(&path)
                     } else {
                         path.to_string_lossy().to_string()

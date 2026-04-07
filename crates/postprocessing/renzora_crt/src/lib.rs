@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "crt.wgsl", name = "CRT", icon = "MONITOR")]
 pub struct CrtSettings {
@@ -16,6 +18,7 @@ pub struct CrtSettings {
     pub vignette_amount: f32,
 }
 
+#[derive(Default)]
 pub struct CrtPlugin;
 
 impl Plugin for CrtPlugin {
@@ -28,3 +31,5 @@ impl Plugin for CrtPlugin {
         app.register_inspectable::<CrtSettings>();
     }
 }
+
+renzora::add!(CrtPlugin);

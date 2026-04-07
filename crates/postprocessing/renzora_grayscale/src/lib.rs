@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "grayscale.wgsl", name = "Grayscale", icon = "DROP_HALF_BOTTOM")]
 pub struct GrayscaleSettings {
@@ -16,6 +18,7 @@ pub struct GrayscaleSettings {
     pub luminance_b: f32,
 }
 
+#[derive(Default)]
 pub struct GrayscalePlugin;
 
 impl Plugin for GrayscalePlugin {
@@ -28,3 +31,5 @@ impl Plugin for GrayscalePlugin {
         app.register_inspectable::<GrayscaleSettings>();
     }
 }
+
+renzora::add!(GrayscalePlugin);

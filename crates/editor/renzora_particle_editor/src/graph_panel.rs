@@ -4,14 +4,14 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular::{
+use renzora::bevy_egui::egui::{self, RichText};
+use renzora::egui_phosphor::regular::{
     FLOW_ARROW, PLUS, CROSSHAIR, MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
     SPARKLE,
 };
 
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora_theme::{Theme, ThemeManager};
+use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora::theme::{Theme, ThemeManager};
 
 use renzora_hanabi::{
     ParticleEditorState, load_effect_from_file,
@@ -26,10 +26,10 @@ thread_local! {
 
 fn preset_icon(name: &str) -> &'static str {
     match name {
-        "fire" => egui_phosphor::regular::FLAME,
-        "firework" | "firework_rocket" => egui_phosphor::regular::STAR_FOUR,
-        "rain" => egui_phosphor::regular::CLOUD_RAIN,
-        "snow" => egui_phosphor::regular::SNOWFLAKE,
+        "fire" => renzora::egui_phosphor::regular::FLAME,
+        "firework" | "firework_rocket" => renzora::egui_phosphor::regular::STAR_FOUR,
+        "rain" => renzora::egui_phosphor::regular::CLOUD_RAIN,
+        "snow" => renzora::egui_phosphor::regular::SNOWFLAKE,
         _ => SPARKLE,
     }
 }

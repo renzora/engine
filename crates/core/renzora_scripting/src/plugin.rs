@@ -75,6 +75,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
             .init_resource::<CharacterCommandQueue>()
+            .init_resource::<renzora_core::TransformWriteQueue>()
             .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
@@ -131,6 +132,28 @@ impl Plugin for ScriptingPlugin {
                 Update,
                 check_script_hot_reload.in_set(ScriptingSet::PreScript),
             );
+
+        // Listen for editor reset-script-states event (Observer pattern)
+        app.add_observer(handle_reset_script_states);
+
+        // Auto-insert ScriptComponent on new named entities (decouples hierarchy from scripting)
+        app.add_observer(auto_insert_script_component);
+
+        #[cfg(feature = "editor")]
+        crate::inspector::register_script_inspector(app);
+    }
+}
+
+/// Reset all script runtime states when the editor sends `ResetScriptStates`.
+fn handle_reset_script_states(
+    _trigger: On<renzora_core::ResetScriptStates>,
+    mut query: Query<&mut ScriptComponent>,
+) {
+    for mut sc in &mut query {
+        for entry in sc.scripts.iter_mut() {
+            entry.runtime_state.initialized = false;
+            entry.runtime_state.has_error = false;
+        }
     }
 }
 
@@ -152,6 +175,7 @@ fn check_script_hot_reload(
     engine: Res<ScriptEngine>,
     mut scripts: Query<&mut ScriptComponent>,
     mut reload_events: ResMut<ScriptReloadEvents>,
+    mut commands: Commands,
     mut timer: Local<f32>,
     time: Res<Time>,
 ) {
@@ -177,7 +201,6 @@ fn check_script_hot_reload(
 
                 match engine.reload(path) {
                     Ok(_) => {
-                        // Re-run on_ready by resetting initialized flag
                         entry.runtime_state.initialized = false;
                         entry.runtime_state.has_error = false;
                         reload_events.reloaded.push(display_name);
@@ -189,6 +212,14 @@ fn check_script_hot_reload(
                 }
             }
         }
+    }
+
+    // Notify the editor (or any observer) about reloaded scripts
+    if !reload_events.reloaded.is_empty() {
+        let names = reload_events.reloaded.clone();
+        commands.queue(move |world: &mut World| {
+            world.trigger(renzora_core::ScriptsReloaded { names });
+        });
     }
 }
 
@@ -210,5 +241,19 @@ fn sync_scripts_folder(
     if let Some(path) = current_path {
         info!("[Scripting] Scripts folder set to: {:?}", path);
         engine.set_scripts_folder(path);
+    }
+}
+
+/// Auto-insert `ScriptComponent` on newly spawned entities that have a `Name`
+/// but no `ScriptComponent` yet. This decouples the hierarchy from the scripting crate.
+fn auto_insert_script_component(
+    trigger: On<Insert, Name>,
+    mut commands: Commands,
+    query: Query<(), Without<ScriptComponent>>,
+) {
+    let entity = trigger.entity;
+    // Only add if the entity doesn't already have ScriptComponent
+    if query.get(entity).is_ok() {
+        commands.entity(entity).insert(ScriptComponent::new());
     }
 }

@@ -1,9 +1,9 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2};
-use egui_phosphor::regular;
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2};
+use renzora::egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
-use renzora_theme::Theme;
+use renzora::editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
+use renzora::theme::Theme;
 
 use crate::state::{EntityNode, HierarchyState};
 use crate::LABEL_COLORS;
@@ -65,7 +65,7 @@ fn render_node(
     // Track entity order for range selection
     state.building_entity_order.push(node.entity);
 
-    let result = renzora_editor::tree_row(
+    let result = renzora::editor::tree_row(
         ui,
         &TreeRowConfig {
             stable_id: Some(egui::Id::new(("hierarchy_row", node.entity))),
@@ -164,9 +164,9 @@ fn render_node(
             let currently_locked = node.is_locked;
             commands.push(move |world: &mut World| {
                 if currently_locked {
-                    world.entity_mut(entity).remove::<renzora_editor::EditorLocked>();
+                    world.entity_mut(entity).remove::<renzora::editor::EditorLocked>();
                 } else {
-                    world.entity_mut(entity).insert(renzora_editor::EditorLocked);
+                    world.entity_mut(entity).insert(renzora::editor::EditorLocked);
                 }
             });
         }
@@ -305,11 +305,11 @@ fn render_node(
                 let edge_zone = 20.0 / 3.0;
 
                 let drop_pos = if relative_y < edge_zone {
-                    renzora_editor::TreeDropZone::Before
+                    renzora::editor::TreeDropZone::Before
                 } else if relative_y > 20.0 - edge_zone {
-                    renzora_editor::TreeDropZone::After
+                    renzora::editor::TreeDropZone::After
                 } else {
-                    renzora_editor::TreeDropZone::AsChild
+                    renzora::editor::TreeDropZone::AsChild
                 };
 
                 state.drop_target = Some((node.entity, drop_pos));
@@ -322,21 +322,21 @@ fn render_node(
                 let accent = theme.semantic.accent.to_color32();
 
                 match drop_pos {
-                    renzora_editor::TreeDropZone::Before => {
+                    renzora::editor::TreeDropZone::Before => {
                         let y = result.rect.min.y + 1.0;
                         fg.line_segment(
                             [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
                             Stroke::new(3.0, accent),
                         );
                     }
-                    renzora_editor::TreeDropZone::After => {
+                    renzora::editor::TreeDropZone::After => {
                         let y = result.rect.max.y - 1.0;
                         fg.line_segment(
                             [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
                             Stroke::new(3.0, accent),
                         );
                     }
-                    renzora_editor::TreeDropZone::AsChild => {
+                    renzora::editor::TreeDropZone::AsChild => {
                         // Border drawn after children (see group_top handling below)
                     }
                 }
@@ -346,7 +346,7 @@ fn render_node(
 
     // Track AsChild group border top
     let is_as_child_target = state.drop_target.as_ref().map_or(false, |(e, z)| {
-        *e == node.entity && *z == renzora_editor::TreeDropZone::AsChild
+        *e == node.entity && *z == renzora::editor::TreeDropZone::AsChild
     });
     let group_top = if is_as_child_target {
         Some(result.rect.min.y)
@@ -527,7 +527,7 @@ fn context_menu(
             if clear_resp.on_hover_text("Clear").clicked() {
                 let entity = node.entity;
                 commands.push(move |world: &mut World| {
-                    world.entity_mut(entity).remove::<renzora_editor::EntityLabelColor>();
+                    world.entity_mut(entity).remove::<renzora::editor::EntityLabelColor>();
                 });
                 ui.close();
             }
@@ -551,7 +551,7 @@ fn context_menu(
                 if swatch_resp.on_hover_text(name).clicked() {
                     let entity = node.entity;
                     commands.push(move |world: &mut World| {
-                        world.entity_mut(entity).insert(renzora_editor::EntityLabelColor(color));
+                        world.entity_mut(entity).insert(renzora::editor::EntityLabelColor(color));
                     });
                     ui.close();
                 }
@@ -576,15 +576,15 @@ fn context_menu(
                 for archetype in world.archetypes().iter() {
                     for arch_entity in archetype.entities() {
                         let e = arch_entity.id();
-                        if e != entity && world.get::<renzora_core::DefaultCamera>(e).is_some() {
+                        if e != entity && world.get::<renzora::core::DefaultCamera>(e).is_some() {
                             to_remove.push(e);
                         }
                     }
                 }
                 for e in to_remove {
-                    world.entity_mut(e).remove::<renzora_core::DefaultCamera>();
+                    world.entity_mut(e).remove::<renzora::core::DefaultCamera>();
                 }
-                world.entity_mut(entity).insert(renzora_core::DefaultCamera);
+                world.entity_mut(entity).insert(renzora::core::DefaultCamera);
             });
             ui.close();
         }
@@ -595,7 +595,7 @@ fn context_menu(
             commands.push(move |world: &mut World| {
                 // Read the editor camera's transform
                 let editor_transform = {
-                    let mut q = world.query_filtered::<&Transform, With<renzora_core::EditorCamera>>();
+                    let mut q = world.query_filtered::<&Transform, With<renzora::core::EditorCamera>>();
                     q.iter(world).next().copied()
                 };
                 if let Some(t) = editor_transform {

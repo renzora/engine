@@ -4,13 +4,13 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::bevy_egui::egui;
+use renzora::egui_phosphor::regular;
+use renzora::editor::{
     AppEditorExt, DockTree, DocumentTabState, EditorPanel, LayoutManager, PanelLocation,
     WorkspaceLayout,
 };
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 // ── Viewport panel ──────────────────────────────────────────────────────────
 
@@ -106,19 +106,19 @@ impl EditorPanel for InspectorPanel {
         ui.add_space(4.0);
 
         if let Some(theme) = theme {
-            renzora_editor::section_header(ui, "Properties", theme);
+            renzora::editor::section_header(ui, "Properties", theme);
 
             for (i, prop) in ["Position", "Rotation", "Scale"].iter().enumerate() {
-                renzora_editor::inline_property(ui, i, prop, theme, |ui| {
+                renzora::editor::inline_property(ui, i, prop, theme, |ui| {
                     ui.label("0.0, 0.0, 0.0");
                 });
             }
 
             ui.add_space(8.0);
-            renzora_editor::section_header(ui, "Material", theme);
+            renzora::editor::section_header(ui, "Material", theme);
 
             for (i, prop) in ["Color", "Roughness", "Metallic"].iter().enumerate() {
-                renzora_editor::inline_property(ui, i + 3, prop, theme, |ui| {
+                renzora::editor::inline_property(ui, i + 3, prop, theme, |ui| {
                     ui.label("default");
                 });
             }
@@ -225,7 +225,7 @@ impl EditorPanel for AssetsPanel {
         ui.add_space(4.0);
 
         if let Some(theme) = theme {
-            renzora_editor::section_header(ui, "Project Files", theme);
+            renzora::editor::section_header(ui, "Project Files", theme);
         }
 
         let folders = ["meshes/", "textures/", "materials/", "scripts/", "scenes/", "audio/"];
@@ -271,7 +271,7 @@ impl EditorPanel for PerformancePanel {
         ui.add_space(4.0);
 
         if let Some(theme) = theme {
-            renzora_editor::section_header(ui, "Stats", theme);
+            renzora::editor::section_header(ui, "Stats", theme);
 
             let stats = [
                 ("FPS", "60.0"),
@@ -282,7 +282,7 @@ impl EditorPanel for PerformancePanel {
                 ("GPU Memory", "256 MB"),
             ];
             for (i, (label, value)) in stats.iter().enumerate() {
-                renzora_editor::inline_property(ui, i, label, theme, |ui| {
+                renzora::editor::inline_property(ui, i, label, theme, |ui| {
                     ui.label(*value);
                 });
             }
@@ -380,6 +380,7 @@ fn layout_profiling() -> WorkspaceLayout {
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
 /// Test extension plugin — registers demo panels, layouts, and a document tab.
+#[derive(Default)]
 pub struct TestExtensionPlugin;
 
 impl Plugin for TestExtensionPlugin {
@@ -394,20 +395,22 @@ impl Plugin for TestExtensionPlugin {
         app.register_panel(CodeEditorPanel);
 
         // Add custom layouts
-        let mut layouts = world
+        let mut layouts = app.world_mut()
             .remove_resource::<LayoutManager>()
             .unwrap_or_default();
 
         layouts.layouts.push(layout_content_creation());
         layouts.layouts.push(layout_profiling());
 
-        world.insert_resource(layouts);
+        app.world_mut().insert_resource(layouts);
 
         // Add a default document tab
-        let mut tabs = world
+        let mut tabs = app.world_mut()
             .remove_resource::<DocumentTabState>()
             .unwrap_or_default();
 
-        world.insert_resource(tabs);
+        app.world_mut().insert_resource(tabs);
     }
 }
+
+renzora::add!(TestExtensionPlugin);

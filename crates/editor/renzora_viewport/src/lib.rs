@@ -13,29 +13,32 @@ pub mod render_systems;
 pub mod settings;
 pub mod toolbar;
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui;
-use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
-use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_runtime::ViewportRenderTarget;
-use renzora_theme::ThemeManager;
+use renzora::bevy_egui::egui;
+use renzora::bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::ViewportRenderTarget;
+use renzora::theme::ThemeManager;
 
 pub use camera_preview::CameraPreviewState;
-pub use settings::{
-    CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, ProjectionMode,
-    RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings, VisualizationMode,
+// Re-export all viewport types from core (they now live in renzora_core::viewport_types)
+pub use renzora::core::viewport_types::{
+    CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, NavOverlayState,
+    ProjectionMode, RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings,
+    ViewportState, VisualizationMode,
 };
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 720;
 
 /// Plugin that creates the render-to-texture viewport and registers the panel.
+#[derive(Default)]
 pub struct ViewportPlugin;
 
 impl Plugin for ViewportPlugin {
@@ -51,12 +54,12 @@ impl Plugin for ViewportPlugin {
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
             .init_resource::<CameraOrbitSnapshot>()
-            .init_resource::<renzora_core::InputFocusState>()
-            .init_resource::<renzora_runtime::PlayModeState>()
+            .init_resource::<renzora::core::InputFocusState>()
+            .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastRenderState>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
-            .init_resource::<renzora_core::EffectRouting>()
+            .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
@@ -79,35 +82,10 @@ impl Plugin for ViewportPlugin {
                 shape_drop::handle_shape_spawn,
                 handle_view_shortcuts,
                 handle_play_shortcuts,
-            ).run_if(in_state(renzora_editor::SplashState::Editor)));
+            ).run_if(in_state(renzora::editor::SplashState::Editor)));
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);
-    }
-}
-
-/// Tracks the render target image and current resolution.
-#[derive(Resource)]
-pub struct ViewportState {
-    pub image_handle: Option<Handle<Image>>,
-    pub current_size: UVec2,
-    /// Whether the mouse cursor is currently over the viewport.
-    pub hovered: bool,
-    /// Screen-space position of the viewport panel (top-left corner).
-    pub screen_position: Vec2,
-    /// Screen-space size of the viewport panel.
-    pub screen_size: Vec2,
-}
-
-impl Default for ViewportState {
-    fn default() -> Self {
-        Self {
-            image_handle: None,
-            current_size: UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
-            hovered: false,
-            screen_position: Vec2::ZERO,
-            screen_size: Vec2::new(DEFAULT_WIDTH as f32, DEFAULT_HEIGHT as f32),
-        }
     }
 }
 
@@ -132,36 +110,6 @@ impl Default for ViewportResizeRequest {
             hovered: AtomicBool::new(false),
             screen_x: AtomicU32::new(0),
             screen_y: AtomicU32::new(0),
-        }
-    }
-}
-
-/// Atomically-writable nav overlay drag state from the panel's `ui()` method.
-///
-/// The nav overlay buttons write drag deltas here (from `&World`), and the
-/// camera controller system reads + consumes them each frame.
-#[derive(Resource)]
-pub struct NavOverlayState {
-    /// Whether the pan button is currently being dragged.
-    pub pan_dragging: AtomicBool,
-    /// Whether the zoom button is currently being dragged.
-    pub zoom_dragging: AtomicBool,
-    /// Pan drag delta X (scaled by 1000 to preserve fractional part).
-    pub pan_delta_x: AtomicI32,
-    /// Pan drag delta Y (scaled by 1000 to preserve fractional part).
-    pub pan_delta_y: AtomicI32,
-    /// Zoom drag delta Y (scaled by 1000 to preserve fractional part).
-    pub zoom_delta_y: AtomicI32,
-}
-
-impl Default for NavOverlayState {
-    fn default() -> Self {
-        Self {
-            pan_dragging: AtomicBool::new(false),
-            zoom_dragging: AtomicBool::new(false),
-            pan_delta_x: AtomicI32::new(0),
-            pan_delta_y: AtomicI32::new(0),
-            zoom_delta_y: AtomicI32::new(0),
         }
     }
 }
@@ -343,7 +291,7 @@ impl EditorPanel for ViewportPanel {
         let show_axis = world
             .get_resource::<ViewportSettings>()
             .map_or(true, |s| s.show_axis_gizmo);
-        let play_mode = world.get_resource::<renzora_runtime::PlayModeState>();
+        let play_mode = world.get_resource::<renzora::core::PlayModeState>();
         let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
         if show_axis && !in_play {
             if let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() {
@@ -410,7 +358,7 @@ impl EditorPanel for CameraPreviewPanel {
         }).unwrap_or_else(|| "Camera".to_string());
 
         let is_default = previewing_entity.map_or(false, |e| {
-            world.get::<renzora_runtime::DefaultCamera>(e).is_some()
+            world.get::<renzora::core::DefaultCamera>(e).is_some()
         });
 
         let theme = world
@@ -469,7 +417,7 @@ impl EditorPanel for CameraPreviewPanel {
 /// when the user is typing in a text field.
 fn update_input_focus(
     mut ctx: EguiContexts,
-    mut input_focus: ResMut<renzora_core::InputFocusState>,
+    mut input_focus: ResMut<renzora::core::InputFocusState>,
 ) {
     if let Ok(c) = ctx.ctx_mut() {
         input_focus.egui_wants_keyboard = c.wants_keyboard_input();
@@ -480,7 +428,7 @@ fn update_input_focus(
 // ── Modal transform HUD overlay ──────────────────────────────────────────────
 
 fn render_modal_transform_hud(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
-    let Some(hud) = world.get_resource::<renzora_core::ModalTransformHud>() else { return };
+    let Some(hud) = world.get_resource::<renzora::core::ModalTransformHud>() else { return };
     if !hud.active {
         return;
     }
@@ -586,10 +534,12 @@ fn render_modal_transform_hud(ctx: &egui::Context, world: &World, viewport_rect:
 fn handle_view_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    input_focus: Res<renzora_core::InputFocusState>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut settings: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
@@ -610,8 +560,8 @@ fn handle_view_shortcuts(
 fn handle_play_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    input_focus: Res<renzora_core::InputFocusState>,
-    mut play_mode: ResMut<renzora_runtime::PlayModeState>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    mut play_mode: ResMut<renzora::core::PlayModeState>,
 ) {
     // Escape exits play mode — always, regardless of focus state
     if keyboard.just_pressed(KeyCode::Escape) && play_mode.is_in_play_mode() {
@@ -648,7 +598,7 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
     use renzora_console::state::ConsoleState;
 
     // Only show during play mode
-    let Some(play_mode) = world.get_resource::<renzora_runtime::PlayModeState>() else { return };
+    let Some(play_mode) = world.get_resource::<renzora::core::PlayModeState>() else { return };
     if !play_mode.is_in_play_mode() && !play_mode.is_scripts_only() { return; }
 
     let Some(console) = world.get_resource::<ConsoleState>() else { return };
@@ -810,3 +760,5 @@ fn render_axis_gizmo(
     // Center dot
     painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
 }
+
+renzora::add!(ViewportPlugin);

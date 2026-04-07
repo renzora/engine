@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "radial_blur.wgsl", name = "Radial Blur", icon = "CIRCLE_DASHED")]
 pub struct RadialBlurSettings {
@@ -16,6 +18,7 @@ pub struct RadialBlurSettings {
     pub samples: f32,
 }
 
+#[derive(Default)]
 pub struct RadialBlurPlugin;
 
 impl Plugin for RadialBlurPlugin {
@@ -28,3 +31,5 @@ impl Plugin for RadialBlurPlugin {
         app.register_inspectable::<RadialBlurSettings>();
     }
 }
+
+renzora::add!(RadialBlurPlugin);

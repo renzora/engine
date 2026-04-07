@@ -6,12 +6,12 @@ pub use state::*;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_core::CurrentProject;
-use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora::core::CurrentProject;
+use renzora::editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_scripting::ScriptComponent;
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use crate::render::render_code_editor_content;
 
@@ -60,7 +60,7 @@ impl EditorPanel for CodeEditorPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::CODE)
+        Some(renzora::egui_phosphor::regular::CODE)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -181,6 +181,7 @@ fn sync_selection_scripts(
 // Plugin
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct CodeEditorPlugin;
 
 impl Plugin for CodeEditorPlugin {
@@ -192,15 +193,29 @@ impl Plugin for CodeEditorPlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(
             Update,
             (
                 sync_code_editor_bridge,
                 sync_selection_scripts,
+                consume_open_code_editor_file,
             ).run_if(in_state(SplashState::Editor)),
         );
 
         app.register_panel(CodeEditorPanel::new(arc));
     }
 }
+
+/// Consume `OpenCodeEditorFile` resource inserted by other plugins (e.g. asset browser).
+fn consume_open_code_editor_file(
+    mut commands: Commands,
+    request: Option<Res<renzora::core::OpenCodeEditorFile>>,
+    mut state: ResMut<CodeEditorState>,
+) {
+    let Some(req) = request else { return };
+    state.open_file(req.path.clone());
+    commands.remove_resource::<renzora::core::OpenCodeEditorFile>();
+}
+
+renzora::add!(CodeEditorPlugin);

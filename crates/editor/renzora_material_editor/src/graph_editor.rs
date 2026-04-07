@@ -3,10 +3,10 @@
 
 use std::collections::HashMap;
 
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
-use renzora_material::graph::*;
-use renzora_material::nodes::{self, MaterialNodeDef};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
+use renzora_shader::material::graph::*;
+use renzora_shader::material::nodes::{self, MaterialNodeDef};
+use renzora::theme::Theme;
 use renzora_ui::widgets::node_graph::{
     node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
     PinDef, PinDirection, PinShape,
@@ -40,16 +40,16 @@ fn header_color(def: &MaterialNodeDef) -> Color32 {
 
 pub fn category_icon(category: &str) -> &'static str {
     match category {
-        "Input" => egui_phosphor::regular::SIGN_IN,
-        "Texture" => egui_phosphor::regular::IMAGE,
-        "Math" => egui_phosphor::regular::CALCULATOR,
-        "Vector" => egui_phosphor::regular::ARROWS_OUT_CARDINAL,
-        "Color" => egui_phosphor::regular::PALETTE,
-        "Procedural" => egui_phosphor::regular::WAVES,
-        "Animation" => egui_phosphor::regular::TIMER,
-        "Utility" => egui_phosphor::regular::WRENCH,
-        "Output" => egui_phosphor::regular::SIGN_OUT,
-        _ => egui_phosphor::regular::CIRCLE,
+        "Input" => renzora::egui_phosphor::regular::SIGN_IN,
+        "Texture" => renzora::egui_phosphor::regular::IMAGE,
+        "Math" => renzora::egui_phosphor::regular::CALCULATOR,
+        "Vector" => renzora::egui_phosphor::regular::ARROWS_OUT_CARDINAL,
+        "Color" => renzora::egui_phosphor::regular::PALETTE,
+        "Procedural" => renzora::egui_phosphor::regular::WAVES,
+        "Animation" => renzora::egui_phosphor::regular::TIMER,
+        "Utility" => renzora::egui_phosphor::regular::WRENCH,
+        "Output" => renzora::egui_phosphor::regular::SIGN_OUT,
+        _ => renzora::egui_phosphor::regular::CIRCLE,
     }
 }
 
@@ -378,7 +378,7 @@ fn render_context_menu(
                     );
                     painter.text(
                         Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
-                        egui_phosphor::regular::CARET_RIGHT,
+                        renzora::egui_phosphor::regular::CARET_RIGHT,
                         egui::FontId::proportional(12.0),
                         Color32::from_rgb(120, 120, 130),
                     );

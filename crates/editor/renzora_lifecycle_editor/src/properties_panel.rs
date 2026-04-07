@@ -1,14 +1,14 @@
 //! Lifecycle Node Properties — inspector for the selected node's input values.
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
+use renzora::bevy_egui::egui::{self, RichText};
+use renzora::egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
 
 use renzora_blueprint::graph::*;
 use renzora_lifecycle::graph::LifecycleGraph;
 use renzora_lifecycle::nodes;
-use renzora_editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 use renzora_ui::{AssetDragPayload, asset_drop_target};
 
 use crate::LifecycleEditorState;
@@ -250,7 +250,7 @@ fn render_pin_editor(
     pin_name: &str,
     pin_type: PinType,
     current: &PinValue,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     world: &World,
 ) -> Option<PinValue> {
     let mut changed = None;
@@ -302,7 +302,7 @@ fn render_pin_editor(
                     payload,
                 );
                 if let Some(path) = drop_result.dropped_path {
-                    let path_str = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    let path_str = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                         project.make_asset_relative(&path)
                     } else {
                         path.to_string_lossy().to_string()

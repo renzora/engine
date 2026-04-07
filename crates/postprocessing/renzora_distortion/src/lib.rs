@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "distortion.wgsl", name = "Distortion", icon = "WAVE_SINE")]
 pub struct DistortionSettings {
@@ -22,6 +24,7 @@ fn sync_time(time: Res<Time>, mut query: Query<&mut DistortionSettings>) {
     }
 }
 
+#[derive(Default)]
 pub struct DistortionPlugin;
 
 impl Plugin for DistortionPlugin {
@@ -35,3 +38,5 @@ impl Plugin for DistortionPlugin {
         app.register_inspectable::<DistortionSettings>();
     }
 }
+
+renzora::add!(DistortionPlugin);

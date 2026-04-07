@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use renzora_scripting::{CharacterCommand, CharacterCommandQueue};
+use renzora_core::{ActionState, CharacterCommand, CharacterCommandQueue};
 
 use crate::character_controller::*;
 use crate::data::*;
@@ -77,7 +77,7 @@ pub fn process_character_commands(
 ///
 /// Runs after clear but before blueprints, so blueprints can still override.
 pub fn auto_input_from_actions(
-    action_state: Res<renzora_input::ActionState>,
+    action_state: Res<ActionState>,
     mut controllers: Query<(&CharacterControllerData, &mut CharacterControllerInput)>,
 ) {
     for (cc_data, mut input) in &mut controllers {

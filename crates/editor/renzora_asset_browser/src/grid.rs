@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use bevy_egui::egui::{self, Align2, Color32, FontId, Stroke, StrokeKind, TextureId};
-use egui_phosphor::regular;
-use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Align2, Color32, FontId, Stroke, StrokeKind, TextureId};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
+use renzora::theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection, SortMode};
 use crate::thumbnails::supports_thumbnail;
@@ -116,7 +116,7 @@ pub fn grid_ui_interactive(
         Some(e) => e,
         None => {
             if state.current_folder.is_none() {
-                renzora_editor::empty_state(
+                renzora::editor::empty_state(
                     ui,
                     regular::FOLDER_OPEN,
                     "No folder selected",
@@ -124,7 +124,7 @@ pub fn grid_ui_interactive(
                     theme,
                 );
             } else {
-                renzora_editor::empty_state(
+                renzora::editor::empty_state(
                     ui,
                     regular::WARNING,
                     "Cannot read folder",
@@ -146,7 +146,7 @@ pub fn grid_ui_interactive(
         } else {
             ("Empty folder", "This folder has no files or subfolders.")
         };
-        renzora_editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
+        renzora::editor::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
         return GridResult {
             drag_payload: None,
             double_clicked_file: None,

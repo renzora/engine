@@ -13,7 +13,11 @@ pub struct BlueprintPlugin;
 impl Plugin for BlueprintPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] BlueprintPlugin");
-        app.register_type::<BlueprintGraph>()
+        // Ensure shared resources exist (they may also be init'd by scripting).
+        app.init_resource::<renzora_core::TransformWriteQueue>()
+            .init_resource::<renzora_core::CharacterCommandQueue>()
+            .init_resource::<renzora_core::ScriptInput>()
+            .register_type::<BlueprintGraph>()
             .register_type::<BlueprintNode>()
             .register_type::<BlueprintConnection>()
             .add_systems(
@@ -21,8 +25,7 @@ impl Plugin for BlueprintPlugin {
                 (
                     reset_blueprint_runtime_on_play_start,
                     interpreter::run_blueprints
-                        .run_if(blueprints_should_run)
-                        .before(renzora_scripting::ScriptingSet::CommandProcessing),
+                        .run_if(blueprints_should_run),
                 )
                     .chain(),
             );

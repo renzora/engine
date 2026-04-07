@@ -6,11 +6,11 @@
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
 use renzora_animation::{AnimClip, AnimatorComponent};
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 
 use crate::AnimEditorAction;
 use crate::AnimationEditorState;
@@ -52,7 +52,7 @@ impl EditorPanel for TimelinePanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::TIMER)
+        Some(renzora::egui_phosphor::regular::TIMER)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -179,7 +179,7 @@ impl EditorPanel for TimelinePanel {
                                         ui.set_width(HEADER_WIDTH - 14.0);
                                         ui.set_height(TRACK_HEIGHT - 4.0);
                                         ui.horizontal_centered(|ui| {
-                                            ui.label(egui::RichText::new(egui_phosphor::regular::BONE)
+                                            ui.label(egui::RichText::new(renzora::egui_phosphor::regular::BONE)
                                                 .size(10.0).color(muted_color));
                                             ui.add(egui::Label::new(
                                                 egui::RichText::new(&track.bone_name)
@@ -342,7 +342,7 @@ impl TimelinePanel {
     fn empty_state(&self, ui: &mut egui::Ui, color: egui::Color32, msg: &str) {
         ui.vertical_centered(|ui| {
             ui.add_space(ui.available_height() * 0.3);
-            ui.label(egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
+            ui.label(egui::RichText::new(renzora::egui_phosphor::regular::FILM_STRIP)
                 .size(24.0).color(color));
             ui.add_space(4.0);
             ui.label(egui::RichText::new(msg).size(12.0).color(color));
@@ -378,13 +378,13 @@ impl TimelinePanel {
 
                     // ── Transport controls ──
                     // Skip to start
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::SKIP_BACK)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::SKIP_BACK)
                         .size(14.0).color(text_color)).clicked() {
                         self.push_action(AnimEditorAction::SetScrubTime(0.0));
                     }
 
                     // Step back
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::CARET_LEFT)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::CARET_LEFT)
                         .size(14.0).color(text_color)).clicked() {
                         let new_time = (scrub_time - 1.0 / 30.0).max(0.0);
                         self.push_action(AnimEditorAction::SetScrubTime(new_time));
@@ -392,9 +392,9 @@ impl TimelinePanel {
 
                     // Play/Pause
                     let play_icon = if is_previewing {
-                        egui_phosphor::regular::PAUSE
+                        renzora::egui_phosphor::regular::PAUSE
                     } else {
-                        egui_phosphor::regular::PLAY
+                        renzora::egui_phosphor::regular::PLAY
                     };
                     let play_color = if is_previewing { accent_color } else { text_color };
                     if ui.button(egui::RichText::new(play_icon).size(14.0).color(play_color)).clicked() {
@@ -402,20 +402,20 @@ impl TimelinePanel {
                     }
 
                     // Stop
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::STOP)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::STOP)
                         .size(14.0).color(text_color)).clicked() {
                         self.push_action(AnimEditorAction::StopPreview);
                     }
 
                     // Step forward
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::CARET_RIGHT)
                         .size(14.0).color(text_color)).clicked() {
                         let new_time = scrub_time + 1.0 / 30.0;
                         self.push_action(AnimEditorAction::SetScrubTime(new_time));
                     }
 
                     // Skip to end
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::SKIP_FORWARD)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::SKIP_FORWARD)
                         .size(14.0).color(text_color)).clicked() {
                         // Will be clamped to clip duration
                         self.push_action(AnimEditorAction::SetScrubTime(f32::MAX));
@@ -425,7 +425,7 @@ impl TimelinePanel {
 
                     // ── Loop toggle ──
                     let loop_color = if preview_looping { accent_color } else { muted_color };
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::REPEAT)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::REPEAT)
                         .size(13.0).color(loop_color)).on_hover_text("Toggle loop").clicked() {
                         self.push_action(AnimEditorAction::SetPreviewLooping(!preview_looping));
                     }
@@ -433,7 +433,7 @@ impl TimelinePanel {
                     ui.separator();
 
                     // ── Clip dropdown ──
-                    ui.label(egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
+                    ui.label(egui::RichText::new(renzora::egui_phosphor::regular::FILM_STRIP)
                         .size(12.0).color(muted_color));
 
                     let clip_label = selected_clip.unwrap_or("Select clip...");
@@ -492,7 +492,7 @@ impl TimelinePanel {
 
                     // ── Snap toggle ──
                     let snap_color = if snap_enabled { accent_color } else { muted_color };
-                    if ui.button(egui::RichText::new(egui_phosphor::regular::MAGNET_STRAIGHT)
+                    if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::MAGNET_STRAIGHT)
                         .size(13.0).color(snap_color)).on_hover_text("Snap to frames").clicked() {
                         self.push_action(AnimEditorAction::SetSnapEnabled(!snap_enabled));
                     }
@@ -510,7 +510,7 @@ impl TimelinePanel {
                         ui.separator();
 
                         // Zoom controls
-                        if ui.button(egui::RichText::new(egui_phosphor::regular::MAGNIFYING_GLASS_PLUS)
+                        if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::MAGNIFYING_GLASS_PLUS)
                             .size(12.0).color(muted_color)).on_hover_text("Zoom in").clicked() {
                             self.push_action(AnimEditorAction::SetTimelineZoom(
                                 (timeline_zoom * 1.25).min(500.0)
@@ -518,7 +518,7 @@ impl TimelinePanel {
                         }
                         ui.label(egui::RichText::new(format!("{:.0}%", timeline_zoom))
                             .size(10.0).color(muted_color));
-                        if ui.button(egui::RichText::new(egui_phosphor::regular::MAGNIFYING_GLASS_MINUS)
+                        if ui.button(egui::RichText::new(renzora::egui_phosphor::regular::MAGNIFYING_GLASS_MINUS)
                             .size(12.0).color(muted_color)).on_hover_text("Zoom out").clicked() {
                             self.push_action(AnimEditorAction::SetTimelineZoom(
                                 (timeline_zoom * 0.8).max(20.0)
@@ -685,7 +685,7 @@ impl TimelinePanel {
     ) -> Option<AnimClip> {
         let clip_name = selected_clip?;
         let slot = animator.clips.iter().find(|s| s.name == clip_name)?;
-        let project = world.get_resource::<renzora_core::CurrentProject>()?;
+        let project = world.get_resource::<renzora::core::CurrentProject>()?;
         let anim_path = project.path.join(&slot.path);
         let content = std::fs::read_to_string(&anim_path).ok()?;
         ron::from_str::<AnimClip>(&content).ok()

@@ -9,11 +9,11 @@ use crate::component::{WaterSurface, GerstnerWave};
 /// Layout must match `water.wgsl` exactly.
 #[derive(Clone, Copy, Debug, ShaderType)]
 pub struct WaterUniforms {
-    // -- Time --
+    // -- Time + new params --
     pub time: f32,
-    pub _pad0: f32,
-    pub _pad1: f32,
-    pub _pad2: f32,
+    pub refraction_strength: f32,
+    pub max_depth: f32,
+    pub caustic_intensity: f32,
 
     // -- Waves: 6 slots, each packed as (dir.x, dir.y, steepness, wavelength) + (amplitude, 0, 0, 0) --
     pub wave_0: Vec4,
@@ -29,17 +29,18 @@ pub struct WaterUniforms {
     pub wave_5: Vec4,
     pub wave_5_amp: Vec4,
 
-    // -- Wave count --
+    // -- Wave count + specular --
     pub wave_count: u32,
-    pub _wpad0: f32,
-    pub _wpad1: f32,
-    pub _wpad2: f32,
+    pub specular_power: f32,
+    pub wind_speed: f32,
+    pub wind_angle: f32,
 
     // -- Colors --
     pub deep_color: Vec4,
     pub shallow_color: Vec4,
     pub foam_color: Vec4,
     pub sun_direction: Vec4,
+    pub absorption_rgb: Vec4,   // (r, g, b, foam_depth)
 
     // -- Material params --
     pub foam_threshold: f32,
@@ -66,9 +67,9 @@ impl Default for WaterUniforms {
     fn default() -> Self {
         Self {
             time: 0.0,
-            _pad0: 0.0,
-            _pad1: 0.0,
-            _pad2: 0.0,
+            refraction_strength: 0.03,
+            max_depth: 8.0,
+            caustic_intensity: 0.2,
             wave_0: Vec4::ZERO,
             wave_0_amp: Vec4::ZERO,
             wave_1: Vec4::ZERO,
@@ -82,13 +83,14 @@ impl Default for WaterUniforms {
             wave_5: Vec4::ZERO,
             wave_5_amp: Vec4::ZERO,
             wave_count: 0,
-            _wpad0: 0.0,
-            _wpad1: 0.0,
-            _wpad2: 0.0,
+            specular_power: 3000.0,
+            wind_speed: 0.3,
+            wind_angle: 0.0,
             deep_color: Vec4::new(0.005, 0.02, 0.08, 1.0),
             shallow_color: Vec4::new(0.04, 0.22, 0.28, 1.0),
             foam_color: Vec4::new(0.82, 0.88, 0.92, 1.0),
             sun_direction: Vec4::new(0.3, -0.7, 0.4, 0.0),
+            absorption_rgb: Vec4::new(3.0, 1.0, 0.4, 1.0),
             foam_threshold: 0.4,
             absorption: 0.3,
             roughness: 0.15,
@@ -134,7 +136,9 @@ impl Material for WaterMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Opaque
+        // Blend renders after opaques, so the transmission texture
+        // contains the full scene for screen-space refraction.
+        AlphaMode::Blend
     }
 }
 
@@ -174,11 +178,18 @@ pub fn sync_uniforms(surface: &WaterSurface, uniforms: &mut WaterUniforms) {
     uniforms.absorption = surface.absorption;
     uniforms.roughness = surface.roughness;
     uniforms.subsurface_strength = surface.subsurface_strength;
-}
-
-fn color_to_vec4(color: Color) -> Vec4 {
-    let c = color.to_srgba();
-    Vec4::new(c.red, c.green, c.blue, c.alpha)
+    uniforms.refraction_strength = surface.refraction_strength;
+    uniforms.max_depth = surface.max_depth;
+    uniforms.caustic_intensity = surface.caustic_intensity;
+    uniforms.specular_power = surface.specular_power;
+    uniforms.wind_speed = surface.wind_speed;
+    uniforms.wind_angle = surface.wind_angle;
+    uniforms.absorption_rgb = Vec4::new(
+        surface.absorption_r,
+        surface.absorption_g,
+        surface.absorption_b,
+        surface.foam_depth,
+    );
 }
 
 /// Plugin that registers the water material type.

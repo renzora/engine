@@ -1,338 +1,518 @@
-//! VR/XR support for Renzora Engine via OpenXR
+//! XR/VR plugin for Renzora Engine
 //!
-//! Provides stereo rendering, head tracking, controller input, hand tracking,
-//! locomotion, grab interaction, haptic feedback, passthrough, overlay,
-//! and spatial audio integration.
+//! Dynamic plugin that adds OpenXR stereo rendering, head tracking,
+//! controller input, and locomotion via bevy_mod_openxr.
 //!
-//! Gated behind the `xr` feature flag in the root crate. Activated at runtime
-//! with the `--vr` CLI flag.
+//! # Architecture
+//!
+//! This plugin has two phases:
+//! 1. **Rendering init** (`xr_init_rendering`) — called by the engine BEFORE
+//!    DefaultPlugins, replaces the standard render pipeline with OpenXR stereo
+//!    rendering via `bevy_mod_openxr`.
+//! 2. **Plugin build** (`XrPlugin::build`) — called during normal plugin loading,
+//!    adds VR systems (input, locomotion, skybox sync).
+//!
+//! The engine detects this DLL in the plugins directory and calls
+//! `xr_init_rendering` early. The standard `plugin_create` export provides
+//! the VR gameplay systems.
 
-pub mod session;
-pub mod camera;
-pub mod input;
-pub mod interaction;
-pub mod audio_bridge;
-pub mod components;
-pub mod resources;
-pub mod actions;
-pub mod haptics;
-pub mod passthrough;
-pub mod reference_space;
-pub mod overlay;
-pub mod extensions;
+use std::borrow::Cow;
 
 use bevy::prelude::*;
-use bevy_xr_utils::actions::{XRUtilsActionsPlugin, XRUtilsActionSystems};
+use bevy::core_pipeline::Skybox;
+use bevy::window::PresentMode;
+use bevy_mod_xr::session::XrTrackingRoot;
+use bevy_mod_xr::camera::XrCamera;
+use bevy_xr_utils::actions::{
+    ActionType, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState,
+    XRUtilsActionsPlugin, XRUtilsActionSystems,
+};
 use serde::{Deserialize, Serialize};
 
-use resources::VrSessionState;
+// ---------------------------------------------------------------------------
+// FFI: Early rendering initialization
+// ---------------------------------------------------------------------------
 
-// Re-export key types for external use
-pub use camera::{VrCameraRig, VrHead};
-pub use input::{VrControllerState, VrHandTrackingState};
-pub use resources::VrModeActive;
-pub use components::{VrControllerData, TeleportAreaData, VrGrabbableData};
-pub use haptics::HapticPulseEvent;
-pub use extensions::VrCapabilities;
-pub use resources::{VrLogBuffer, VrLogLevel, VrLogEntry, init_vr_log_buffer, get_vr_log_buffer};
-
-/// Master VR configuration resource.
-/// Persisted per-project via the VR settings panel.
-#[derive(Resource, Clone, Debug, Serialize, Deserialize)]
-pub struct VrConfig {
-    /// Render resolution scale (0.5 = half res, 1.0 = native, 1.5 = supersampled)
-    pub render_scale: f32,
-    /// Comfort vignette intensity during locomotion (0.0 = off, 1.0 = full)
-    pub comfort_vignette: f32,
-    /// Snap turn angle in degrees (0 = smooth turning)
-    pub snap_turn_angle: f32,
-    /// Locomotion mode
-    pub locomotion_mode: LocomotionMode,
-    /// Smooth locomotion speed (m/s)
-    pub move_speed: f32,
-    /// Enable hand tracking (if headset supports it)
-    pub hand_tracking_enabled: bool,
-    /// Seated mode — adjusts reference space
-    pub seated_mode: bool,
-    /// Which hand controls locomotion
-    pub locomotion_hand: VrHand,
-    /// Deadzone for thumbstick inputs
-    pub thumbstick_deadzone: f32,
-    /// Snap turn cooldown in seconds
-    pub snap_turn_cooldown: f32,
-    /// Enable passthrough (mixed reality)
-    pub passthrough_enabled: bool,
-    /// Environment blend mode
-    pub blend_mode: BlendMode,
-    /// Enable foveated rendering (if supported)
-    pub foveated_rendering: bool,
-}
-
-impl Default for VrConfig {
-    fn default() -> Self {
-        Self {
-            render_scale: 1.0,
-            comfort_vignette: 0.3,
-            snap_turn_angle: 45.0,
-            locomotion_mode: LocomotionMode::Teleport,
-            move_speed: 4.0,
-            hand_tracking_enabled: true,
-            seated_mode: false,
-            locomotion_hand: VrHand::Left,
-            thumbstick_deadzone: 0.2,
-            snap_turn_cooldown: 0.3,
-            passthrough_enabled: false,
-            blend_mode: BlendMode::Opaque,
-            foveated_rendering: true,
-        }
-    }
-}
-
-/// Locomotion mode for VR movement
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LocomotionMode {
-    Teleport,
-    Smooth,
-    Both,
-}
-
-/// Environment blend mode for mixed reality
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BlendMode {
-    /// Fully opaque VR (no passthrough)
-    Opaque,
-    /// Additive blending (holographic overlay)
-    Additive,
-    /// Alpha blending (mixed reality passthrough)
-    AlphaBlend,
-}
-
-/// Which hand (left or right)
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum VrHand {
-    #[default]
-    Left,
-    Right,
-}
-
-impl VrHand {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            VrHand::Left => "left",
-            VrHand::Right => "right",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "right" => VrHand::Right,
-            _ => VrHand::Left,
-        }
-    }
-}
-
-/// Main XR plugin — registers all VR systems and resources.
-/// Only does work when `VrModeActive` resource is present.
-pub struct XrPlugin;
-
-impl Plugin for XrPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[runtime] XrPlugin");
-        app.init_resource::<VrConfig>()
-            .init_resource::<VrControllerState>()
-            .init_resource::<VrHandTrackingState>()
-            .init_resource::<VrSessionState>();
-
-        // Messages (Bevy 0.18 event system)
-        app.add_message::<HapticPulseEvent>()
-            .add_message::<resources::VrSessionStatusChanged>();
-
-        // Session lifecycle
-        app.add_systems(
-            Update,
-            (
-                session::update_session_state,
-                session::enumerate_refresh_rates,
-                session::apply_requested_refresh_rate,
-            )
-                .chain()
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Camera rig management
-        app.add_systems(
-            Update,
-            (
-                camera::spawn_vr_camera_rig,
-                camera::despawn_vr_camera_rig,
-                camera::sync_vr_head,
-            )
-                .chain()
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Action sets (startup) — must run BEFORE XRUtilsActionsPlugin::CreateEvents
-        // so the entity hierarchy exists when create_openxr_events reads it.
-        app.add_systems(
-            Startup,
-            actions::setup_action_sets
-                .before(XRUtilsActionSystems::CreateEvents),
-        );
-        // Pose actions need the raw ActionSet created by CreateEvents.
-        // CreateEvents inserts XRUtilsActionSetReference via deferred commands,
-        // so it may not be visible in the same Startup frame. Run in Update
-        // (idempotent — stops after first success) to ensure commands are flushed.
-        app.add_systems(
-            Update,
-            actions::add_pose_actions_to_set,
-        );
-        // After session is created, spawn pose space entities
-        app.add_systems(
-            bevy_mod_xr::session::XrSessionCreated,
-            actions::create_pose_spaces,
-        );
-        // Re-send button/axis bindings + action set attachment at session creation.
-        // The original messages from Startup expire before the user clicks "Start VR".
-        // OxrSendActionBindings runs right before bind_actions in the session creation flow.
-        app.add_systems(
-            bevy_mod_openxr::action_binding::OxrSendActionBindings,
-            (
-                actions::resend_button_bindings,
-                actions::resend_pose_bindings,
-                actions::resend_action_set_attachment,
-            ),
-        );
-
-        // Input systems — ordered after action state sync
-        app.add_systems(
-            Update,
-            (
-                input::sync_controller_state,
-                input::sync_hand_tracking,
-            )
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Haptic feedback — after controller state
-        app.add_systems(
-            Update,
-            haptics::process_haptic_events
-                .after(input::sync_controller_state)
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Interaction systems
-        app.add_systems(
-            Update,
-            (
-                interaction::teleport_system,
-                interaction::smooth_locomotion_system,
-                interaction::snap_turn_system,
-                interaction::trigger_vertical_system,
-                interaction::grab_system,
-            )
-                .chain()
-                .after(input::sync_controller_state)
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Passthrough and blend mode
-        app.add_systems(
-            Update,
-            (
-                passthrough::update_passthrough,
-                passthrough::update_blend_mode,
-            )
-                .run_if(resource_exists::<VrModeActive>),
-        );
-
-        // Audio bridge
-        app.add_systems(
-            Update,
-            audio_bridge::sync_vr_head_to_audio_listener
-                .run_if(resource_exists::<VrModeActive>),
-        );
-    }
-}
-
-/// Call this instead of `DefaultPlugins` when VR mode is requested.
+/// Called by the engine BEFORE DefaultPlugins are added.
+/// Replaces the standard render pipeline with OpenXR stereo rendering.
 ///
-/// Replaces `DefaultPlugins` with `add_xr_plugins()` from bevy_mod_openxr,
-/// which sets up the OpenXR session, swapchain, and stereo rendering pipeline.
-///
-/// The `window` parameter is used as the desktop mirror window configuration.
-/// Build the XR plugin group that replaces `DefaultPlugins`.
-///
-/// Returns a `PluginGroupBuilder` that should be added via `app.add_plugins()`
-/// instead of `DefaultPlugins`. The caller passes `DefaultPlugins` in and gets
-/// back a modified plugin group with XR support.
-pub fn build_xr_plugins(window: bevy::window::Window) -> bevy::app::PluginGroupBuilder {
-    use bevy_mod_openxr::add_xr_plugins;
-    use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
+/// # Safety
+/// `app_ptr` must be a valid pointer to a `bevy::app::App`.
+/// Both sides must be built against the same Bevy version (guaranteed by workspace).
+#[no_mangle]
+pub unsafe extern "C" fn xr_init_rendering(app_ptr: *mut std::ffi::c_void) {
+    let app = unsafe { &mut *(app_ptr as *mut App) };
 
-    // Request extensions based on config
     let mut exts = bevy_mod_openxr::exts::OxrExtensions::default();
     exts.enable_hand_tracking();
     exts.enable_fb_passthrough();
     exts.raw_mut().fb_display_refresh_rate = true;
 
-    // Force NoVsync on the desktop mirror window so it doesn't throttle
-    // the VR frame rate to the monitor's refresh rate.
-    let mut vr_window = window;
-    vr_window.present_mode = bevy::window::PresentMode::AutoNoVsync;
+    let plugins = bevy_mod_openxr::add_xr_plugins(
+        DefaultPlugins
+            .build()
+            .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
+    )
+    .set(bevy_mod_xr::session::XrSessionPlugin { auto_handle: true })
+    .set(bevy::window::WindowPlugin {
+        primary_window: Some(bevy::window::Window {
+            title: "Renzora (VR)".into(),
+            present_mode: PresentMode::AutoNoVsync,
+            ..default()
+        }),
+        ..default()
+    })
+    .set(bevy::asset::AssetPlugin {
+        unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+        ..default()
+    })
+    .set(ImagePlugin {
+        default_sampler: bevy::image::ImageSamplerDescriptor {
+            address_mode_u: bevy::image::ImageAddressMode::Repeat,
+            address_mode_v: bevy::image::ImageAddressMode::Repeat,
+            address_mode_w: bevy::image::ImageAddressMode::Repeat,
+            ..default()
+        },
+        ..default()
+    })
+    .set(bevy_mod_openxr::init::OxrInitPlugin {
+        exts,
+        ..default()
+    });
 
-    // Disable PipelinedRenderingPlugin for lower tracking latency —
-    // view poses are located right before rendering instead of one frame ahead.
-    // add_xr_plugins() replaces DefaultPlugins entirely — it includes
-    // WindowPlugin, RenderPlugin, AssetPlugin, etc. configured for XR.
-    // We disable auto_handle so the editor controls session start/stop manually.
-    add_xr_plugins(bevy::DefaultPlugins.build().disable::<PipelinedRenderingPlugin>())
-        .set(bevy_mod_xr::session::XrSessionPlugin { auto_handle: false })
-        .set(bevy::window::WindowPlugin {
-            primary_window: Some(vr_window),
-            ..default()
-        })
-        .set(bevy::asset::AssetPlugin {
-            unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
-            ..default()
-        })
-        .set(bevy_mod_openxr::init::OxrInitPlugin {
-            exts,
-            ..default()
-        })
-}
-
-/// Finalize VR mode on the app after plugins are added.
-///
-/// Call this after `app.add_plugins(build_xr_plugins(...))`.
-pub fn finalize_xr(app: &mut App) {
+    app.add_plugins(plugins);
     app.add_plugins(XRUtilsActionsPlugin);
-    app.insert_resource(VrModeActive);
-    resources::vr_success("OpenXR plugins initialized — VR mode active");
+    info!("[XR] OpenXR rendering pipeline initialized");
 }
 
-/// Re-exports of key types from bevy_mod_openxr and bevy_mod_xr
-/// so consumers don't need direct dependencies on those crates.
-pub mod reexports {
-    // Session & state
-    pub use bevy_mod_xr::session::{XrState, XrTrackingRoot, XrTracker, XrSessionCreated, XrCreateSessionMessage, XrRequestExitMessage, XrStateChanged, XrBeginSessionMessage, XrEndSessionMessage, XrDestroySessionMessage};
-    // Spaces
-    pub use bevy_mod_xr::spaces::{XrSpace, XrReferenceSpace, XrPrimaryReferenceSpace};
-    pub use bevy_mod_xr::spaces::{XrSpaceLocationFlags, XrSpaceVelocityFlags, XrVelocity};
-    // Hands
-    pub use bevy_mod_xr::hands::{HandBone, HandSide, LeftHand, RightHand};
-    pub use bevy_mod_xr::hands::{XrHandBoneEntities, XrHandBoneRadius, HAND_JOINT_COUNT};
-    // Camera
-    pub use bevy_mod_xr::camera::{XrCamera, XrProjection};
-    // OpenXR resources
-    pub use bevy_mod_openxr::resources::{OxrInstance, OxrFrameState, OxrViews};
-    pub use bevy_mod_openxr::session::OxrSession;
-    // Extensions
-    pub use bevy_mod_openxr::exts::{OxrEnabledExtensions, OxrExtensions};
-    // Environment
-    pub use bevy_mod_openxr::environment_blend_mode::OxrEnvironmentBlendModes;
-    // Passthrough
-    pub use bevy_mod_openxr::resources::{OxrPassthrough, OxrPassthroughLayerFB};
-    // Helper traits
-    pub use bevy_mod_openxr::helper_traits::*;
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
+/// Master VR configuration resource.
+#[derive(Resource, Clone, Debug, Serialize, Deserialize)]
+pub struct VrConfig {
+    pub move_speed: f32,
+    pub snap_turn_angle: f32,
+    pub snap_turn_cooldown: f32,
+    pub thumbstick_deadzone: f32,
+    pub smooth_turn: bool,
+}
+
+impl Default for VrConfig {
+    fn default() -> Self {
+        Self {
+            move_speed: 4.0,
+            snap_turn_angle: 45.0,
+            snap_turn_cooldown: 0.3,
+            thumbstick_deadzone: 0.2,
+            smooth_turn: false,
+        }
+    }
+}
+
+/// Controller input state — updated every frame from OpenXR actions.
+#[derive(Resource, Default, Debug)]
+pub struct VrInput {
+    pub left_thumbstick: Vec2,
+    pub right_thumbstick: Vec2,
+    pub left_trigger: f32,
+    pub right_trigger: f32,
+    pub left_grip: f32,
+    pub right_grip: f32,
+    pub button_a: bool,
+    pub button_b: bool,
+    pub button_x: bool,
+    pub button_y: bool,
+    pub menu: bool,
+}
+
+/// Marker components for identifying our action entities.
+#[derive(Component)]
+struct VrAction(Cow<'static, str>);
+
+#[derive(Default)]
+pub struct XrPlugin;
+
+impl Plugin for XrPlugin {
+    fn build(&self, app: &mut App) {
+        info!("[runtime] XrPlugin");
+
+        app.init_resource::<VrConfig>()
+            .init_resource::<VrInput>();
+
+        // OpenXR action setup — runs at startup to create controller bindings
+        app.add_systems(
+            Startup,
+            setup_action_sets.before(XRUtilsActionSystems::CreateEvents),
+        );
+
+        // Input sync — read OpenXR action states into VrInput resource
+        app.add_systems(
+            Update,
+            sync_input.after(XRUtilsActionSystems::SyncActionStates),
+        );
+
+        // Locomotion — thumbstick movement and turning
+        app.add_systems(
+            Update,
+            (smooth_locomotion, snap_turn)
+                .chain()
+                .after(sync_input),
+        );
+
+        // Skybox sync — copy from desktop viewport camera to XR cameras
+        app.add_systems(Update, sync_skybox_to_xr_cameras);
+    }
+}
+
+renzora::add!(XrPlugin);
+
+// ===========================================================================
+// OpenXR Action Setup
+// ===========================================================================
+
+fn setup_action_sets(mut commands: Commands) {
+    let set = commands
+        .spawn(XRUtilsActionSet {
+            name: "renzora_vr".into(),
+            pretty_name: "Renzora VR Controls".into(),
+            priority: 0,
+        })
+        .id();
+
+    let oculus = "/interaction_profiles/oculus/touch_controller";
+
+    // Each action gets a single-hand binding so we can read left/right independently.
+    // bevy_xr_utils syncs with Path::NULL which returns the state of whichever hand
+    // has the binding, so separate actions per hand is the cleanest approach.
+
+    // Left thumbstick
+    let lt = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "left_thumbstick".into(),
+                localized_name: "Left Thumbstick".into(),
+                action_type: ActionType::Vector,
+            },
+            VrAction("left_thumbstick".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/left/input/thumbstick"),
+        })
+        .set_parent_in_place(lt);
+
+    // Right thumbstick
+    let rt = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "right_thumbstick".into(),
+                localized_name: "Right Thumbstick".into(),
+                action_type: ActionType::Vector,
+            },
+            VrAction("right_thumbstick".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/right/input/thumbstick"),
+        })
+        .set_parent_in_place(rt);
+
+    // Left trigger
+    let ltrig = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "left_trigger".into(),
+                localized_name: "Left Trigger".into(),
+                action_type: ActionType::Float,
+            },
+            VrAction("left_trigger".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/left/input/trigger/value"),
+        })
+        .set_parent_in_place(ltrig);
+
+    // Right trigger
+    let rtrig = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "right_trigger".into(),
+                localized_name: "Right Trigger".into(),
+                action_type: ActionType::Float,
+            },
+            VrAction("right_trigger".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/right/input/trigger/value"),
+        })
+        .set_parent_in_place(rtrig);
+
+    // Left grip
+    let lgrip = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "left_grip".into(),
+                localized_name: "Left Grip".into(),
+                action_type: ActionType::Float,
+            },
+            VrAction("left_grip".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/left/input/squeeze/value"),
+        })
+        .set_parent_in_place(lgrip);
+
+    // Right grip
+    let rgrip = commands
+        .spawn((
+            XRUtilsAction {
+                action_name: "right_grip".into(),
+                localized_name: "Right Grip".into(),
+                action_type: ActionType::Float,
+            },
+            VrAction("right_grip".into()),
+        ))
+        .set_parent_in_place(set)
+        .id();
+    commands
+        .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+            profile: Cow::Borrowed(oculus),
+            binding: Cow::Borrowed("/user/hand/right/input/squeeze/value"),
+        })
+        .set_parent_in_place(rgrip);
+
+    // Buttons — A/B on right, X/Y on left (Quest controllers)
+    for (name, path) in [
+        ("button_a", "/user/hand/right/input/a/click"),
+        ("button_b", "/user/hand/right/input/b/click"),
+        ("button_x", "/user/hand/left/input/x/click"),
+        ("button_y", "/user/hand/left/input/y/click"),
+        ("menu", "/user/hand/left/input/menu/click"),
+    ] {
+        let ent = commands
+            .spawn((
+                XRUtilsAction {
+                    action_name: name.into(),
+                    localized_name: name.into(),
+                    action_type: ActionType::Bool,
+                },
+                VrAction(name.into()),
+            ))
+            .set_parent_in_place(set)
+            .id();
+        commands
+            .spawn(bevy_xr_utils::actions::XRUtilsBinding {
+                profile: Cow::Borrowed(oculus),
+                binding: Cow::Borrowed(path),
+            })
+            .set_parent_in_place(ent);
+    }
+}
+
+// ===========================================================================
+// Input Sync
+// ===========================================================================
+
+fn sync_input(
+    actions: Query<(&VrAction, &XRUtilsActionState)>,
+    mut input: ResMut<VrInput>,
+) {
+    for (vr_action, state) in actions.iter() {
+        match vr_action.0.as_ref() {
+            "left_thumbstick" => {
+                if let XRUtilsActionState::Vector(v) = state {
+                    input.left_thumbstick = Vec2::new(v.current_state[0], v.current_state[1]);
+                }
+            }
+            "right_thumbstick" => {
+                if let XRUtilsActionState::Vector(v) = state {
+                    input.right_thumbstick = Vec2::new(v.current_state[0], v.current_state[1]);
+                }
+            }
+            "left_trigger" => {
+                if let XRUtilsActionState::Float(f) = state {
+                    input.left_trigger = f.current_state;
+                }
+            }
+            "right_trigger" => {
+                if let XRUtilsActionState::Float(f) = state {
+                    input.right_trigger = f.current_state;
+                }
+            }
+            "left_grip" => {
+                if let XRUtilsActionState::Float(f) = state {
+                    input.left_grip = f.current_state;
+                }
+            }
+            "right_grip" => {
+                if let XRUtilsActionState::Float(f) = state {
+                    input.right_grip = f.current_state;
+                }
+            }
+            "button_a" => {
+                if let XRUtilsActionState::Bool(b) = state {
+                    input.button_a = b.current_state;
+                }
+            }
+            "button_b" => {
+                if let XRUtilsActionState::Bool(b) = state {
+                    input.button_b = b.current_state;
+                }
+            }
+            "button_x" => {
+                if let XRUtilsActionState::Bool(b) = state {
+                    input.button_x = b.current_state;
+                }
+            }
+            "button_y" => {
+                if let XRUtilsActionState::Bool(b) = state {
+                    input.button_y = b.current_state;
+                }
+            }
+            "menu" => {
+                if let XRUtilsActionState::Bool(b) = state {
+                    input.menu = b.current_state;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// ===========================================================================
+// Locomotion
+// ===========================================================================
+
+/// Left thumbstick moves the tracking root relative to head forward direction.
+fn smooth_locomotion(
+    input: Res<VrInput>,
+    config: Res<VrConfig>,
+    time: Res<Time>,
+    mut tracking_root: Query<&mut Transform, With<XrTrackingRoot>>,
+    xr_cameras: Query<&Transform, (With<XrCamera>, Without<XrTrackingRoot>)>,
+) {
+    let stick = input.left_thumbstick;
+    if stick.length() < config.thumbstick_deadzone {
+        return;
+    }
+
+    let Ok(mut root_tf) = tracking_root.single_mut() else {
+        return;
+    };
+
+    // Head forward projected onto XZ plane
+    let head_forward = if let Some(cam_tf) = xr_cameras.iter().next() {
+        let fwd = cam_tf.forward().as_vec3();
+        Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero()
+    } else {
+        root_tf.forward().as_vec3()
+    };
+
+    let head_right = Vec3::new(-head_forward.z, 0.0, head_forward.x);
+    let movement = (head_forward * stick.y + head_right * stick.x)
+        * config.move_speed
+        * time.delta_secs();
+
+    root_tf.translation += movement;
+}
+
+/// Right thumbstick X-axis rotates the tracking root (snap or smooth turn).
+fn snap_turn(
+    input: Res<VrInput>,
+    config: Res<VrConfig>,
+    time: Res<Time>,
+    mut tracking_root: Query<&mut Transform, With<XrTrackingRoot>>,
+    mut cooldown: Local<f32>,
+) {
+    *cooldown -= time.delta_secs();
+
+    let stick_x = input.right_thumbstick.x;
+    if stick_x.abs() < 0.7 || *cooldown > 0.0 {
+        if stick_x.abs() < 0.3 {
+            // Reset cooldown when stick returns to center
+            *cooldown = 0.0;
+        }
+        if !config.smooth_turn {
+            return;
+        }
+    }
+
+    let Ok(mut root_tf) = tracking_root.single_mut() else {
+        return;
+    };
+
+    if config.smooth_turn {
+        let turn_speed = 90.0_f32.to_radians();
+        if stick_x.abs() > config.thumbstick_deadzone {
+            root_tf.rotate_y(-stick_x * turn_speed * time.delta_secs());
+        }
+    } else {
+        // Snap turn
+        let angle = if stick_x > 0.0 {
+            -config.snap_turn_angle.to_radians()
+        } else {
+            config.snap_turn_angle.to_radians()
+        };
+        root_tf.rotate_y(angle);
+        *cooldown = config.snap_turn_cooldown;
+    }
+}
+
+// ===========================================================================
+// Skybox Sync
+// ===========================================================================
+
+/// Copy Skybox and clear_color from any non-XR camera to XR cameras
+/// so the headset sees the same environment as the desktop viewport.
+fn sync_skybox_to_xr_cameras(
+    mut commands: Commands,
+    viewport_cameras: Query<(Option<&Skybox>, &Camera), Without<XrCamera>>,
+    xr_cameras: Query<(Entity, Option<&Skybox>), With<XrCamera>>,
+    mut xr_cam_settings: Query<&mut Camera, With<XrCamera>>,
+) {
+    let Some((viewport_skybox, viewport_cam)) = viewport_cameras.iter().next() else {
+        return;
+    };
+    let viewport_clear = viewport_cam.clear_color.clone();
+
+    for (entity, existing_skybox) in xr_cameras.iter() {
+        match (viewport_skybox, existing_skybox) {
+            (Some(sky), Some(existing)) => {
+                if existing.image != sky.image || existing.brightness != sky.brightness {
+                    commands.entity(entity).insert(sky.clone());
+                }
+            }
+            (Some(sky), None) => {
+                commands.entity(entity).insert(sky.clone());
+            }
+            (None, Some(_)) => {
+                commands.entity(entity).remove::<Skybox>();
+            }
+            (None, None) => {}
+        }
+
+        if let Ok(mut xr_cam) = xr_cam_settings.get_mut(entity) {
+            xr_cam.clear_color = viewport_clear.clone();
+        }
+    }
 }

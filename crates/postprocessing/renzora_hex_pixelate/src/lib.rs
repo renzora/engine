@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "hex_pixelate.wgsl", name = "Hex Pixelate", icon = "HEXAGON")]
 pub struct HexPixelateSettings {
@@ -10,6 +12,7 @@ pub struct HexPixelateSettings {
     pub hex_size: f32,
 }
 
+#[derive(Default)]
 pub struct HexPixelatePlugin;
 
 impl Plugin for HexPixelatePlugin {
@@ -22,3 +25,5 @@ impl Plugin for HexPixelatePlugin {
         app.register_inspectable::<HexPixelateSettings>();
     }
 }
+
+renzora::add!(HexPixelatePlugin);

@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::asset::embedded_asset;
 
 pub use buoyancy::Buoyant;
-pub use component::{GerstnerWave, WaterSurface};
+pub use component::{GerstnerWave, WaterSurface, WaterInteractor, WaterPreset};
 pub use material::WaterMaterial;
 
 pub struct WaterPlugin;
@@ -21,8 +21,10 @@ impl Plugin for WaterPlugin {
 
         app.add_plugins(material::WaterMaterialPlugin)
             .register_type::<component::WaterSurface>()
+            .register_type::<component::WaterInteractor>()
             .register_type::<buoyancy::Buoyant>()
             .add_systems(Update, (
+                systems::ensure_depth_prepass,
                 systems::setup_water_entities,
                 systems::update_water_uniforms,
                 buoyancy::apply_buoyancy,
@@ -30,8 +32,9 @@ impl Plugin for WaterPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora_editor_framework::AppEditorExt;
             app.register_inspector(component::water_inspector_entry());
+            app.register_inspector(component::water_interactor_inspector_entry());
             app.register_inspector(buoyancy::buoyant_inspector_entry());
         }
     }

@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "matrix.wgsl", name = "Matrix Rain", icon = "CODE")]
 pub struct MatrixSettings {
@@ -22,6 +24,7 @@ pub struct MatrixSettings {
     pub time: f32,
 }
 
+#[derive(Default)]
 pub struct MatrixPlugin;
 
 impl Plugin for MatrixPlugin {
@@ -41,3 +44,5 @@ fn sync_time(time: Res<Time>, mut query: Query<&mut MatrixSettings>) {
         s.time = time.elapsed_secs();
     }
 }
+
+renzora::add!(MatrixPlugin);

@@ -1,14 +1,14 @@
 //! Renzora Scene — editor-side scene plugin that wires save/load to keybindings and splash state.
 //!
-//! The actual save/load and rehydration logic lives in `renzora_runtime::scene_io`.
+//! The actual save/load and rehydration logic lives in `renzora_engine::scene_io`.
 
 use bevy::prelude::*;
 
-use renzora_core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera, SceneCamera, TabSwitchRequest, TabSceneSnapshot, SceneTabBuffers};
+use renzora::core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera, SceneCamera, TabSwitchRequest, TabSceneSnapshot, SceneTabBuffers};
 use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_runtime::scene_io;
-use renzora_splash::SplashState;
+use renzora_engine::scene_io;
+use renzora::editor::SplashState;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
@@ -102,7 +102,7 @@ fn handle_tab_switch(world: &mut World) {
         }
     }
 
-    renzora_core::console_log::console_info(
+    renzora::core::console_log::console_info(
         "Scene",
         format!("Switched from tab {} to tab {}", old_id, new_id),
     );
@@ -147,7 +147,9 @@ fn detect_file_keybindings(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
     if keybindings.rebinding.is_some() { return; }
 
     if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
@@ -208,7 +210,7 @@ fn save_scene_system(world: &mut World) {
         }
     }
 
-    renzora_core::console_log::console_success(
+    renzora::core::console_log::console_success(
         "Scene",
         format!("Saved scene to {}", save_path.display()),
     );
@@ -274,7 +276,7 @@ fn save_as_scene_system(world: &mut World) {
             }
         }
 
-        renzora_core::console_log::console_success(
+        renzora::core::console_log::console_success(
             "Scene",
             format!("Saved scene as {}", file_path.display()),
         );
@@ -312,7 +314,7 @@ fn new_scene_system(world: &mut World) {
         orbit.pitch = def.pitch;
     }
 
-    renzora_core::console_log::console_info("Scene", "New scene created (cleared all entities)");
+    renzora::core::console_log::console_info("Scene", "New scene created (cleared all entities)");
 }
 
 // ============================================================================
@@ -374,7 +376,7 @@ fn open_scene_system(world: &mut World) {
             }
         }
 
-        renzora_core::console_log::console_success(
+        renzora::core::console_log::console_success(
             "Scene",
             format!("Opened scene {}", file_path.display()),
         );
@@ -391,7 +393,7 @@ fn load_scene_on_enter(world: &mut World) {
     // Ensure the asset reader knows the project path before loading the scene.
     if let Some(project) = world.get_resource::<CurrentProject>() {
         let path = project.path.clone();
-        if let Some(asset_path) = world.get_resource::<renzora_runtime::ProjectAssetPath>() {
+        if let Some(asset_path) = world.get_resource::<renzora_engine::ProjectAssetPath>() {
             info!("[scene] Syncing project asset path: {}", path.display());
             asset_path.set(path);
         }
@@ -424,6 +426,7 @@ fn load_scene_on_enter(world: &mut World) {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct ScenePlugin;
 
 impl Plugin for ScenePlugin {
@@ -451,3 +454,5 @@ impl Plugin for ScenePlugin {
             );
     }
 }
+
+renzora::add!(ScenePlugin);

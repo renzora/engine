@@ -3,11 +3,13 @@ name = "renzora_scene"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
-bevy = { version = "0.18", default-features = false }
-renzora_core = { path = "../../core/renzora_core" }
-renzora_runtime = { path = "../../core/renzora_runtime" }
-renzora_splash = { path = "../../ui/renzora_splash" }
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_engine = { path = "../../core/renzora_engine" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_camera = { path = "../renzora_camera" }
 renzora_ui = { path = "../../ui/renzora_ui" }

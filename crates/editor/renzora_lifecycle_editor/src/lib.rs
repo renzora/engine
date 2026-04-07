@@ -6,7 +6,7 @@ mod properties_panel;
 mod settings_panel;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
+use renzora::editor::AppEditorExt;
 
 /// Tracks selection state for the lifecycle graph editor.
 #[derive(Resource, Default)]
@@ -15,6 +15,7 @@ pub struct LifecycleEditorState {
     pub selected_node: Option<u64>,
 }
 
+#[derive(Default)]
 pub struct LifecycleEditorPlugin;
 
 impl Plugin for LifecycleEditorPlugin {
@@ -27,3 +28,5 @@ impl Plugin for LifecycleEditorPlugin {
         app.register_panel(monitor_panel::LifecycleMonitorPanel);
     }
 }
+
+renzora::add!(LifecycleEditorPlugin);

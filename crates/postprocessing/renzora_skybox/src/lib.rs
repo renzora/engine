@@ -12,7 +12,7 @@ use bevy_egui::egui;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::SUN;
 #[cfg(feature = "editor")]
-use renzora_editor::{
+use renzora_editor_framework::{
     file_drop_zone, get_theme_colors, inline_property, sanitize_f32, AppEditorExt,
     EditorCommands, InspectorEntry,
 };
@@ -69,11 +69,11 @@ impl Hash for ProceduralSkyData {
 impl Default for ProceduralSkyData {
     fn default() -> Self {
         Self {
-            sky_top_color: (0.15, 0.35, 0.65),
-            sky_horizon_color: (0.55, 0.70, 0.85),
-            ground_bottom_color: (0.2, 0.17, 0.13),
-            ground_horizon_color: (0.55, 0.55, 0.52),
-            sky_curve: 0.15,
+            sky_top_color: (0.12, 0.30, 0.60),
+            sky_horizon_color: (0.60, 0.75, 0.90),
+            ground_bottom_color: (0.18, 0.15, 0.12),
+            ground_horizon_color: (0.50, 0.52, 0.50),
+            sky_curve: 0.12,
             ground_curve: 0.02,
         }
     }

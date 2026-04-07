@@ -1,14 +1,18 @@
 //! Blueprint graph interpreter.
 //!
 //! Walks the graph starting from event nodes, evaluates data pins,
-//! and produces `ScriptCommand`s that feed into the existing command pipeline.
+//! and produces `ScriptAction` events and `TransformWrite`s.
+//!
+//! This crate depends only on `renzora_core` — not on `renzora_scripting`.
 
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_scripting::systems::execution::{ScriptCommandQueue, TransformWrite};
-use renzora_scripting::{PropertyValue, ScriptCommand, ScriptInput};
-use renzora_input::ActionState;
+use renzora_core::{
+    ActionState, CharacterCommand, CharacterCommandQueue,
+    PropertyValue, ScriptAction, ScriptActionValue, ScriptInput,
+    TransformWrite, TransformWriteQueue,
+};
 
 use crate::graph::{BlueprintGraph, NodeId, PinValue};
 use crate::nodes;
@@ -66,8 +70,10 @@ struct EvalContext<'a> {
     /// Time info.
     delta: f32,
     elapsed: f64,
-    /// Commands to emit.
-    commands: Vec<ScriptCommand>,
+    /// Actions to emit as events.
+    actions: Vec<ScriptAction>,
+    /// Character commands to emit.
+    character_commands: Vec<CharacterCommand>,
     /// Transform writes to emit.
     transform_writes: Vec<TransformWrite>,
     /// Runtime state for flow control.
@@ -354,23 +360,27 @@ impl<'a> EvalContext<'a> {
                 }
             }
 
-            // ── Character Controller reads ────────────────────────────
+            // ── Character Controller reads (via reflection) ─────────
             "character/is_grounded" => {
-                let grounded = self.world
-                    .get::<renzora_physics::CharacterControllerState>(self.entity)
-                    .map_or(false, |s| s.is_grounded);
+                let grounded = renzora_core::reflection::get_reflected_field(
+                    self.world, self.entity, "CharacterControllerState", "is_grounded"
+                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .unwrap_or(false);
                 PinValue::Bool(grounded)
             }
             "character/get_velocity" => {
-                let state = self.world
-                    .get::<renzora_physics::CharacterControllerState>(self.entity);
                 match pin_name {
                     "velocity" => {
-                        let v = state.map_or(Vec3::ZERO, |s| s.velocity);
-                        PinValue::Vec3([v.x, v.y, v.z])
+                        let vx = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vy = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vz = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        PinValue::Vec3([vx, vy, vz])
                     }
                     "speed" => {
-                        let v = state.map_or(Vec3::ZERO, |s| s.velocity);
+                        let vx = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vy = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vz = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let v = Vec3::new(vx, vy, vz);
                         PinValue::Float(Vec3::new(v.x, 0.0, v.z).length())
                     }
                     _ => PinValue::None,
@@ -418,7 +428,7 @@ impl<'a> EvalContext<'a> {
 
                 match target {
                     Some(e) => {
-                        let result = renzora_scripting::systems::get_reflected_field(
+                        let result = renzora_core::reflection::get_reflected_field(
                             self.world, e, &component, &field,
                         );
                         match result {
@@ -546,6 +556,64 @@ impl<'a> EvalContext<'a> {
 
             _ => PinValue::None,
         }
+    }
+
+    /// Push a ScriptAction with string args.
+    fn push_action<const N: usize>(&mut self, name: &str, args: [(&str, String); N]) {
+        let mut map = HashMap::new();
+        for (k, v) in args {
+            map.insert(k.to_string(), ScriptActionValue::String(v));
+        }
+        self.actions.push(ScriptAction {
+            name: name.to_string(),
+            entity: self.entity,
+            target_entity: None,
+            args: map,
+        });
+    }
+
+    /// Push a ScriptAction with mixed arg types.
+    fn push_action_mixed(&mut self, name: &str, str_args: &[(&str, ScriptActionValue)], float_args: &[(&str, f32)]) {
+        let mut map = HashMap::new();
+        for (k, v) in str_args {
+            map.insert(k.to_string(), v.clone());
+        }
+        for (k, v) in float_args {
+            map.insert(k.to_string(), ScriptActionValue::Float(*v));
+        }
+        self.actions.push(ScriptAction {
+            name: name.to_string(),
+            entity: self.entity,
+            target_entity: None,
+            args: map,
+        });
+    }
+
+    /// Push a ScriptAction with Vec3 args.
+    fn push_action_vec3(&mut self, name: &str, str_args: &[(&str, ScriptActionValue)], vec3_args: &[(&str, [f32; 3])]) {
+        let mut map = HashMap::new();
+        for (k, v) in str_args {
+            map.insert(k.to_string(), v.clone());
+        }
+        for (k, v) in vec3_args {
+            map.insert(k.to_string(), ScriptActionValue::Vec3(*v));
+        }
+        self.actions.push(ScriptAction {
+            name: name.to_string(),
+            entity: self.entity,
+            target_entity: None,
+            args: map,
+        });
+    }
+
+    /// Push a ScriptAction targeting a specific entity (by name).
+    fn push_action_targeted(&mut self, name: &str, target: Option<String>, args: HashMap<String, ScriptActionValue>) {
+        self.actions.push(ScriptAction {
+            name: name.to_string(),
+            entity: self.entity,
+            target_entity: target,
+            args,
+        });
     }
 
     /// Execute an exec-pin chain starting from a node's output exec pin.
@@ -717,44 +785,33 @@ impl<'a> EvalContext<'a> {
             // ── Physics ──────────────────────────────────────────────
             "physics/apply_force" => {
                 let f = self.resolve_input(node_id, "force").as_vec3();
-                self.commands.push(ScriptCommand::ApplyForce {
-                    entity_id: None,
-                    force: Vec3::new(f[0], f[1], f[2]),
-                });
+                self.push_action_vec3("apply_force", &[], &[("x", [f[0], f[1], f[2]])]);
                 self.follow_exec(node_id, "then");
             }
             "physics/apply_impulse" => {
                 let imp = self.resolve_input(node_id, "impulse").as_vec3();
-                self.commands.push(ScriptCommand::ApplyImpulse {
-                    entity_id: None,
-                    impulse: Vec3::new(imp[0], imp[1], imp[2]),
-                });
+                self.push_action_vec3("apply_impulse", &[], &[("x", [imp[0], imp[1], imp[2]])]);
                 self.follow_exec(node_id, "then");
             }
             "physics/set_velocity" => {
                 let v = self.resolve_input(node_id, "velocity").as_vec3();
-                self.commands.push(ScriptCommand::SetVelocity {
-                    entity_id: None,
-                    velocity: Vec3::new(v[0], v[1], v[2]),
-                });
+                self.push_action_vec3("set_velocity", &[], &[("x", [v[0], v[1], v[2]])]);
                 self.follow_exec(node_id, "then");
             }
 
             // ── Character Controller ─────────────────────────────────
             "character/move" => {
                 let dir = self.resolve_input(node_id, "direction").as_vec2();
-                self.commands.push(ScriptCommand::CharacterMove {
-                    direction: Vec2::new(dir[0], dir[1]),
-                });
+                self.character_commands.push(CharacterCommand::Move(Vec2::new(dir[0], dir[1])));
                 self.follow_exec(node_id, "then");
             }
             "character/jump" => {
-                self.commands.push(ScriptCommand::CharacterJump);
+                self.character_commands.push(CharacterCommand::Jump);
                 self.follow_exec(node_id, "then");
             }
             "character/sprint" => {
                 let sprinting = self.resolve_input(node_id, "sprinting").as_bool();
-                self.commands.push(ScriptCommand::CharacterSprint { sprinting });
+                self.character_commands.push(CharacterCommand::Sprint(sprinting));
                 self.follow_exec(node_id, "then");
             }
 
@@ -763,62 +820,56 @@ impl<'a> EvalContext<'a> {
                 let path = self.resolve_input(node_id, "path").as_string();
                 let volume = self.resolve_input(node_id, "volume").as_float();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
-                self.commands.push(ScriptCommand::PlaySound {
-                    path,
-                    volume,
-                    looping,
-                    bus: "sfx".into(),
-                });
+                self.push_action_mixed("play_sound", &[
+                    ("path", ScriptActionValue::String(path)),
+                    ("looping", ScriptActionValue::Bool(looping)),
+                    ("bus", ScriptActionValue::String("sfx".into())),
+                ], &[("volume", volume)]);
                 self.follow_exec(node_id, "then");
             }
             "audio/play_music" => {
                 let path = self.resolve_input(node_id, "path").as_string();
                 let volume = self.resolve_input(node_id, "volume").as_float();
                 let fade_in = self.resolve_input(node_id, "fade_in").as_float();
-                self.commands.push(ScriptCommand::PlayMusic {
-                    path,
-                    volume,
-                    fade_in,
-                    bus: "music".into(),
-                });
+                self.push_action_mixed("play_music", &[
+                    ("path", ScriptActionValue::String(path)),
+                    ("bus", ScriptActionValue::String("music".into())),
+                ], &[("volume", volume), ("fade_in", fade_in)]);
                 self.follow_exec(node_id, "then");
             }
             "audio/stop_music" => {
                 let fade_out = self.resolve_input(node_id, "fade_out").as_float();
-                self.commands.push(ScriptCommand::StopMusic { fade_out });
+                self.push_action_mixed("stop_music", &[], &[("fade_out", fade_out)]);
                 self.follow_exec(node_id, "then");
             }
 
             // ── Entity ───────────────────────────────────────────────
             "entity/spawn" => {
                 let name = self.resolve_input(node_id, "name").as_string();
-                self.commands.push(ScriptCommand::SpawnEntity { name });
+                self.push_action("spawn_entity", [("name", name)]);
                 self.follow_exec(node_id, "then");
             }
             "entity/despawn" => {
-                // For now, despawn by entity bits from context
-                self.commands.push(ScriptCommand::DespawnSelf);
+                self.push_action("despawn_self", [("_", String::new())]);
                 self.follow_exec(node_id, "then");
             }
             "entity/despawn_self" => {
-                self.commands.push(ScriptCommand::DespawnSelf);
+                self.push_action("despawn_self", [("_", String::new())]);
             }
 
             // ── Rendering ────────────────────────────────────────────
             "rendering/set_visibility" => {
                 let visible = self.resolve_input(node_id, "visible").as_bool();
-                self.commands.push(ScriptCommand::SetVisibility {
-                    entity_id: None,
-                    visible,
-                });
+                self.push_action_mixed("set_visibility", &[
+                    ("visible", ScriptActionValue::Bool(visible)),
+                ], &[]);
                 self.follow_exec(node_id, "then");
             }
             "rendering/set_material_color" => {
                 let c = self.resolve_input(node_id, "color").as_color();
-                self.commands.push(ScriptCommand::SetMaterialColor {
-                    entity_id: None,
-                    color: c,
-                });
+                self.push_action_mixed("set_material_color", &[], &[
+                    ("r", c[0]), ("g", c[1]), ("b", c[2]), ("a", c[3]),
+                ]);
                 self.follow_exec(node_id, "then");
             }
 
@@ -827,104 +878,84 @@ impl<'a> EvalContext<'a> {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
                 let speed = self.resolve_input(node_id, "speed").as_float();
-                self.commands.push(ScriptCommand::PlayAnimation {
-                    entity_id: None,
-                    name,
-                    looping,
-                    speed,
-                });
+                self.push_action_mixed("play_animation", &[
+                    ("name", ScriptActionValue::String(name)),
+                    ("looping", ScriptActionValue::Bool(looping)),
+                ], &[("speed", speed)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/stop" => {
-                self.commands.push(ScriptCommand::StopAnimation { entity_id: None });
+                self.push_action("stop_animation", [("_", String::new())]);
                 self.follow_exec(node_id, "then");
             }
             "animation/pause" => {
-                self.commands.push(ScriptCommand::PauseAnimation { entity_id: None });
+                self.push_action("pause_animation", [("_", String::new())]);
                 self.follow_exec(node_id, "then");
             }
             "animation/resume" => {
-                self.commands.push(ScriptCommand::ResumeAnimation { entity_id: None });
+                self.push_action("resume_animation", [("_", String::new())]);
                 self.follow_exec(node_id, "then");
             }
             "animation/set_speed" => {
                 let speed = self.resolve_input(node_id, "speed").as_float();
-                self.commands.push(ScriptCommand::SetAnimationSpeed {
-                    entity_id: None,
-                    speed,
-                });
+                self.push_action_mixed("set_animation_speed", &[], &[("speed", speed)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/crossfade" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
-                self.commands.push(ScriptCommand::CrossfadeAnimation {
-                    entity_id: None,
-                    name,
-                    duration,
-                    looping,
-                });
+                self.push_action_mixed("crossfade_animation", &[
+                    ("name", ScriptActionValue::String(name)),
+                    ("looping", ScriptActionValue::Bool(looping)),
+                ], &[("duration", duration)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/set_param" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.commands.push(ScriptCommand::SetAnimationParam {
-                    entity_id: None,
-                    name,
-                    value,
-                });
+                self.push_action_mixed("set_animation_param", &[
+                    ("name", ScriptActionValue::String(name)),
+                ], &[("value", value)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/set_bool_param" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let value = self.resolve_input(node_id, "value").as_bool();
-                self.commands.push(ScriptCommand::SetAnimationBoolParam {
-                    entity_id: None,
-                    name,
-                    value,
-                });
+                self.push_action_mixed("set_animation_bool_param", &[
+                    ("name", ScriptActionValue::String(name)),
+                    ("value", ScriptActionValue::Bool(value)),
+                ], &[]);
                 self.follow_exec(node_id, "then");
             }
             "animation/trigger" => {
                 let name = self.resolve_input(node_id, "name").as_string();
-                self.commands.push(ScriptCommand::TriggerAnimation {
-                    entity_id: None,
-                    name,
-                });
+                self.push_action("trigger_animation", [("name", name)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/set_layer_weight" => {
                 let layer_name = self.resolve_input(node_id, "layer").as_string();
                 let weight = self.resolve_input(node_id, "weight").as_float();
-                self.commands.push(ScriptCommand::SetAnimationLayerWeight {
-                    entity_id: None,
-                    layer_name,
-                    weight,
-                });
+                self.push_action_mixed("set_animation_layer_weight", &[
+                    ("layer_name", ScriptActionValue::String(layer_name)),
+                ], &[("weight", weight)]);
                 self.follow_exec(node_id, "then");
             }
             "animation/tween_position" => {
                 let target = self.resolve_input(node_id, "target").as_vec3();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let easing = self.resolve_input(node_id, "easing").as_string();
-                self.commands.push(ScriptCommand::TweenPosition {
-                    entity_id: None,
-                    target: Vec3::new(target[0], target[1], target[2]),
-                    duration,
-                    easing,
-                });
+                self.push_action_mixed("tween_position", &[
+                    ("easing", ScriptActionValue::String(easing)),
+                ], &[("tx", target[0]), ("ty", target[1]), ("tz", target[2]), ("duration", duration)]);
                 self.follow_exec(node_id, "then");
             }
 
             // ── Debug ────────────────────────────────────────────────
             "debug/log" => {
                 let message = self.resolve_input(node_id, "message").as_string();
-                self.commands.push(ScriptCommand::Log {
-                    level: "info".into(),
-                    message,
-                });
+                log::info!("[Blueprint] {}", message);
+                self.push_action("log", [("message", message)]);
                 self.follow_exec(node_id, "then");
             }
             "debug/draw_line" => {
@@ -932,118 +963,91 @@ impl<'a> EvalContext<'a> {
                 let end = self.resolve_input(node_id, "end").as_vec3();
                 let color = self.resolve_input(node_id, "color").as_color();
                 let duration = self.resolve_input(node_id, "duration").as_float();
-                self.commands.push(ScriptCommand::DrawLine {
-                    start: Vec3::new(start[0], start[1], start[2]),
-                    end: Vec3::new(end[0], end[1], end[2]),
-                    color,
-                    duration,
-                });
+                self.push_action_mixed("draw_line", &[], &[
+                    ("sx", start[0]), ("sy", start[1]), ("sz", start[2]),
+                    ("ex", end[0]), ("ey", end[1]), ("ez", end[2]),
+                    ("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3]),
+                    ("duration", duration),
+                ]);
                 self.follow_exec(node_id, "then");
             }
 
-            // ── UI ──────────────────────────────────────────────────
+            // ── UI (via generic ScriptAction) ───────────────────────
             "ui/show" => {
                 let name = self.resolve_input(node_id, "path").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::Show { name },
-                )));
+                self.push_action("ui_show", [("name", name)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/hide" => {
                 let name = self.resolve_input(node_id, "path").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::Hide { name },
-                )));
+                self.push_action("ui_hide", [("name", name)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/toggle" => {
                 let name = self.resolve_input(node_id, "name").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::Toggle { name },
-                )));
+                self.push_action("ui_toggle", [("name", name)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_text" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let text = self.resolve_input(node_id, "text").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetText { name, text },
-                )));
+                self.push_action("ui_set_text", [("name", name), ("text", text)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_progress" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetProgress { name, value },
-                )));
+                self.push_action_mixed("ui_set_progress", &[("name", renzora_core::ScriptActionValue::String(name))], &[("value", value)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_health" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let current = self.resolve_input(node_id, "current").as_float();
                 let max = self.resolve_input(node_id, "max").as_float();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetHealth { name, current, max },
-                )));
+                self.push_action_mixed("ui_set_health", &[("name", renzora_core::ScriptActionValue::String(name))], &[("current", current), ("max", max)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_slider" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetSlider { name, value },
-                )));
+                self.push_action_mixed("ui_set_slider", &[("name", renzora_core::ScriptActionValue::String(name))], &[("value", value)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_checkbox" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let checked = self.resolve_input(node_id, "checked").as_bool();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetCheckbox { name, checked },
-                )));
+                self.push_action_mixed("ui_set_checkbox", &[("name", renzora_core::ScriptActionValue::String(name)), ("checked", renzora_core::ScriptActionValue::Bool(checked))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_toggle" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let on = self.resolve_input(node_id, "on").as_bool();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetToggle { name, on },
-                )));
+                self.push_action_mixed("ui_set_toggle", &[("name", renzora_core::ScriptActionValue::String(name)), ("on", renzora_core::ScriptActionValue::Bool(on))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_visible" => {
                 let name = self.resolve_input(node_id, "element").as_string();
-                // If no element name given, target the entity this blueprint is on.
                 let name = if name.is_empty() { self.entity_name.clone() } else { name };
                 let visible = self.resolve_input(node_id, "visible").as_bool();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetVisible { name, visible },
-                )));
+                self.push_action_mixed("ui_set_visible", &[("name", renzora_core::ScriptActionValue::String(name)), ("visible", renzora_core::ScriptActionValue::Bool(visible))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_theme" => {
                 let theme_name = self.resolve_input(node_id, "theme").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetTheme { theme_name },
-                )));
+                self.push_action("ui_set_theme", [("theme", theme_name)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_color" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let color = self.resolve_input(node_id, "color").as_color();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_game_ui::UiScriptCommand::SetColor {
-                        name, r: color[0], g: color[1], b: color[2], a: color[3],
-                    },
-                )));
+                self.push_action_mixed("ui_set_color", &[("name", renzora_core::ScriptActionValue::String(name))], &[("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3])]);
                 self.follow_exec(node_id, "then");
             }
 
             // ── Scene ────────────────────────────────────────────────
             "scene/load" => {
                 let path = self.resolve_input(node_id, "path").as_string();
-                self.commands.push(ScriptCommand::LoadScene { path });
+                self.push_action("load_scene", [("path", path)]);
                 self.follow_exec(node_id, "then");
             }
 
@@ -1052,7 +1056,10 @@ impl<'a> EvalContext<'a> {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let repeat = self.resolve_input(node_id, "repeat").as_bool();
-                self.commands.push(ScriptCommand::StartTimer { name, duration, repeat });
+                self.push_action_mixed("start_timer", &[
+                    ("name", ScriptActionValue::String(name)),
+                    ("repeat", ScriptActionValue::Bool(repeat)),
+                ], &[("duration", duration)]);
                 self.follow_exec(node_id, "then");
             }
             "flow/delay" => {
@@ -1060,11 +1067,10 @@ impl<'a> EvalContext<'a> {
                 // For now, just start a timer with a unique name.
                 let timer_name = format!("__bp_delay_{}_{}", self.entity.index(), node_id);
                 let duration = self.resolve_input(node_id, "duration").as_float();
-                self.commands.push(ScriptCommand::StartTimer {
-                    name: timer_name,
-                    duration,
-                    repeat: false,
-                });
+                self.push_action_mixed("start_timer", &[
+                    ("name", ScriptActionValue::String(timer_name)),
+                    ("repeat", ScriptActionValue::Bool(false)),
+                ], &[("duration", duration)]);
                 // The "completed" exec will fire on the next ON_TIMER event.
                 // TODO: wire delay completion through timer system.
             }
@@ -1083,54 +1089,37 @@ impl<'a> EvalContext<'a> {
                 let component = self.resolve_input(node_id, "component").as_string();
                 let field = self.resolve_input(node_id, "field").as_string();
                 let value = self.resolve_input(node_id, "value");
-                let prop_value = match value {
-                    PinValue::Float(v) => PropertyValue::Float(v),
-                    PinValue::Int(v) => PropertyValue::Int(v as i64),
-                    PinValue::Bool(v) => PropertyValue::Bool(v),
-                    PinValue::String(v) => PropertyValue::String(v),
-                    PinValue::Vec3(v) => PropertyValue::Vec3(v),
-                    PinValue::Color(v) => PropertyValue::Color(v),
-                    _ => PropertyValue::Float(0.0),
+                // Convert PinValue to ScriptActionValue for the action args
+                let value_sav = match &value {
+                    PinValue::Float(v) => ScriptActionValue::Float(*v),
+                    PinValue::Int(v) => ScriptActionValue::Float(*v as f32),
+                    PinValue::Bool(v) => ScriptActionValue::Bool(*v),
+                    PinValue::String(v) => ScriptActionValue::String(v.clone()),
+                    PinValue::Vec3(v) => ScriptActionValue::Vec3(*v),
+                    PinValue::Color(v) => ScriptActionValue::Vec3([v[0], v[1], v[2]]),
+                    _ => ScriptActionValue::Float(0.0),
                 };
-                // Empty entity = self, otherwise look up by name.
-                let (entity_id, entity_name) = if entity_val.is_empty() {
-                    (None, None)
-                } else {
-                    (None, Some(entity_val))
-                };
-                self.commands.push(ScriptCommand::SetComponentField {
-                    entity_id,
-                    entity_name,
-                    component_type: component,
-                    field_path: field,
-                    value: prop_value,
-                });
+                // Empty entity = self, otherwise target by name.
+                let target = if entity_val.is_empty() { None } else { Some(entity_val) };
+                let mut args = HashMap::new();
+                args.insert("component".to_string(), ScriptActionValue::String(component));
+                args.insert("field".to_string(), ScriptActionValue::String(field));
+                args.insert("value".to_string(), value_sav);
+                self.push_action_targeted("set_component_field", target, args);
                 self.follow_exec(node_id, "then");
             }
 
-            // ── Network ──────────────────────────────────────────────
+            // ── Network (via generic ScriptAction) ─────────────────
             "network/send_message" => {
                 let channel = self.resolve_input(node_id, "channel").as_string();
                 let data = self.resolve_input(node_id, "data").as_string();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_network::script_extension::NetworkScriptCommand::SendEvent {
-                        name: channel,
-                        data,
-                    },
-                )));
+                self.push_action("net_send", [("channel", channel), ("data", data)]);
                 self.follow_exec(node_id, "then");
             }
             "network/spawn" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let pos = self.resolve_input(node_id, "position").as_vec3();
-                self.commands.push(ScriptCommand::Extension(Box::new(
-                    renzora_network::script_extension::NetworkScriptCommand::SpawnRequest {
-                        name,
-                        x: pos[0],
-                        y: pos[1],
-                        z: pos[2],
-                    },
-                )));
+                self.push_action_mixed("net_spawn", &[("name", renzora_core::ScriptActionValue::String(name))], &[("x", pos[0]), ("y", pos[1]), ("z", pos[2])]);
                 self.follow_exec(node_id, "then");
             }
 
@@ -1147,7 +1136,7 @@ impl<'a> EvalContext<'a> {
 // =============================================================================
 
 /// Exclusive system that evaluates all BlueprintGraph components.
-/// Produces ScriptCommands and TransformWrites into the shared queue.
+/// Produces `ScriptAction` events and `TransformWrite`s into the shared queues.
 pub fn run_blueprints(world: &mut World) {
     let time_delta = world.resource::<Time>().delta_secs();
     let time_elapsed = world.resource::<Time>().elapsed_secs_f64();
@@ -1196,12 +1185,9 @@ pub fn run_blueprints(world: &mut World) {
             .map(|n| (n.id, n.node_type.clone()))
             .collect();
 
-        let (commands, transform_writes) = {
-            // Query network status for blueprint nodes
-            let (net_is_server, net_is_connected) = world
-                .get_resource::<renzora_network::NetworkStatus>()
-                .map(|s| (s.is_server, s.is_connected()))
-                .unwrap_or((false, false));
+        let (actions, transform_writes, character_commands) = {
+            // Network status — defaults to false when network crate isn't loaded.
+            let (net_is_server, net_is_connected) = (false, false);
 
             let mut ctx = EvalContext {
                 entity: bpe.entity,
@@ -1213,7 +1199,8 @@ pub fn run_blueprints(world: &mut World) {
                 action_state: &action_state,
                 delta: time_delta,
                 elapsed: time_elapsed,
-                commands: Vec::new(),
+                actions: Vec::new(),
+                character_commands: Vec::new(),
                 transform_writes: Vec::new(),
                 runtime: &mut runtime,
                 entity_name: bpe.entity_name.clone(),
@@ -1233,7 +1220,6 @@ pub fn run_blueprints(world: &mut World) {
                     }
                     "animation/on_finished" => {
                         if let Some(ref clip_name) = anim_finished_clip {
-                            // Set the output pin value so downstream nodes can read the clip name
                             ctx.cache.insert((*node_id, "name".to_string()), PinValue::String(clip_name.clone()));
                             ctx.follow_exec(*node_id, "exec");
                         }
@@ -1243,24 +1229,32 @@ pub fn run_blueprints(world: &mut World) {
                 }
             }
 
-            (ctx.commands, ctx.transform_writes)
+            (ctx.actions, ctx.transform_writes, ctx.character_commands)
         };
 
         runtime.initialized = true;
 
-        // Push results into the shared command queue.
-        renzora_core::clog_info!("Blueprint", "entity='{}' cmds={} tw={}", bpe.entity_name, commands.len(), transform_writes.len());
+        // Push transform writes into the shared TransformWriteQueue.
+        renzora_core::clog_info!("Blueprint", "entity='{}' actions={} tw={} cc={}", bpe.entity_name, actions.len(), transform_writes.len(), character_commands.len());
         for tw in &transform_writes {
             renzora_core::clog_info!("Blueprint", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
         }
         {
-            let mut cmd_queue = world.resource_mut::<ScriptCommandQueue>();
-            let before = cmd_queue.transform_writes.len();
-            for cmd in commands {
-                cmd_queue.commands.push((bpe.entity, cmd));
+            let mut tw_queue = world.resource_mut::<TransformWriteQueue>();
+            tw_queue.writes.extend(transform_writes);
+        }
+
+        // Push character commands into CharacterCommandQueue.
+        if !character_commands.is_empty() {
+            let mut cc_queue = world.resource_mut::<CharacterCommandQueue>();
+            for cc in character_commands {
+                cc_queue.commands.push((bpe.entity, cc));
             }
-            cmd_queue.transform_writes.extend(transform_writes);
-            renzora_core::clog_info!("Blueprint", "Queue: before={} after={}", before, cmd_queue.transform_writes.len());
+        }
+
+        // Trigger ScriptAction events.
+        for action in actions {
+            world.trigger(action);
         }
 
         // Put components back.

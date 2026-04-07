@@ -27,7 +27,6 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
             WorkspaceLayout { name: "Sandbox".into(), tree: layout_sandbox() },
-            WorkspaceLayout { name: "Terrain".into(), tree: layout_terrain() },
             WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
             WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
@@ -67,10 +66,13 @@ impl LayoutManager {
 /// Scene: Hierarchy+Shapes | Viewport+BottomTabs | Inspector+History
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        // Left column: hierarchy on top, shape library below
+        // Left column: hierarchy on top, tool settings + shape library tabbed below
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("shape_library"),
+            DockTree::Leaf {
+                tabs: vec!["tool_settings".into(), "shape_library".into()],
+                active_tab: 0,
+            },
             0.6,
         ),
         DockTree::horizontal(
@@ -258,14 +260,6 @@ fn layout_sandbox() -> DockTree {
     )
 }
 
-/// Terrain: TerrainTools | Viewport
-fn layout_terrain() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("terrain_tools"),
-        DockTree::leaf("viewport"),
-        0.2,
-    )
-}
 
 /// Particles: ParticlePreview | ParticleEditor
 pub fn layout_particles() -> DockTree {

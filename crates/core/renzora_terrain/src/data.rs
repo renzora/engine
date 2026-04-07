@@ -83,6 +83,23 @@ pub enum TerrainBrushType {
     Pinch,
     Relax,
     Cliff,
+    Stamp,
+}
+
+/// How the stamp image blends with existing terrain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
+pub enum StampBlendMode {
+    /// Add stamp heights on top of existing terrain.
+    #[default]
+    Add,
+    /// Subtract stamp heights from existing terrain.
+    Subtract,
+    /// Replace terrain with stamp heights directly.
+    Replace,
+    /// Use the maximum of stamp and existing terrain.
+    Max,
+    /// Use the minimum of stamp and existing terrain.
+    Min,
 }
 
 impl TerrainBrushType {
@@ -104,6 +121,7 @@ impl TerrainBrushType {
             Self::Pinch => "Pinch",
             Self::Relax => "Relax",
             Self::Cliff => "Cliff",
+            Self::Stamp => "Stamp",
         }
     }
 
@@ -117,6 +135,7 @@ impl TerrainBrushType {
             Self::SetHeight,
             Self::Erase,
             Self::Noise,
+            Self::Stamp,
             Self::Erosion,
             Self::Hydro,
             Self::Terrace,
@@ -126,6 +145,22 @@ impl TerrainBrushType {
             Self::Retop,
             Self::Ramp,
         ]
+    }
+}
+
+impl StampBlendMode {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Add => "Add",
+            Self::Subtract => "Subtract",
+            Self::Replace => "Replace",
+            Self::Max => "Max",
+            Self::Min => "Min",
+        }
+    }
+
+    pub fn all() -> &'static [StampBlendMode] {
+        &[Self::Add, Self::Subtract, Self::Replace, Self::Max, Self::Min]
     }
 }
 
@@ -149,7 +184,7 @@ impl Default for TerrainData {
             chunks_x: 4,
             chunks_z: 4,
             chunk_size: 64.0,
-            chunk_resolution: 33,
+            chunk_resolution: 129,
             max_height: 50.0,
             min_height: -10.0,
         }
@@ -259,6 +294,11 @@ pub struct TerrainSettings {
     // Terrace
     pub terrace_steps: u32,
     pub terrace_sharpness: f32,
+
+    // Stamp
+    pub stamp_blend_mode: StampBlendMode,
+    pub stamp_rotation: f32,
+    pub stamp_height_scale: f32,
 }
 
 impl Default for TerrainSettings {
@@ -282,6 +322,9 @@ impl Default for TerrainSettings {
             warp_strength: 0.5,
             terrace_steps: 8,
             terrace_sharpness: 0.8,
+            stamp_blend_mode: StampBlendMode::Add,
+            stamp_rotation: 0.0,
+            stamp_height_scale: 1.0,
         }
     }
 }
@@ -290,6 +333,143 @@ impl Default for TerrainSettings {
 #[derive(Resource, Default, PartialEq, Eq)]
 pub struct TerrainToolState {
     pub active: bool,
+}
+
+/// Loaded stamp image data for the Stamp brush.
+#[derive(Resource, Default)]
+pub struct StampBrushData {
+    /// Grayscale pixel data, normalized [0, 1]. Row-major.
+    pub pixels: Vec<f32>,
+    /// Width of the stamp image.
+    pub width: u32,
+    /// Height of the stamp image.
+    pub height: u32,
+    /// Display name of the loaded file.
+    pub name: String,
+}
+
+impl StampBrushData {
+    /// Sample the stamp at UV coordinates (0..1, 0..1) with bilinear interpolation.
+    pub fn sample(&self, u: f32, v: f32) -> f32 {
+        if self.pixels.is_empty() || self.width == 0 || self.height == 0 {
+            return 0.0;
+        }
+        let x = u * (self.width - 1) as f32;
+        let y = v * (self.height - 1) as f32;
+        let x0 = (x.floor() as u32).min(self.width - 1);
+        let y0 = (y.floor() as u32).min(self.height - 1);
+        let x1 = (x0 + 1).min(self.width - 1);
+        let y1 = (y0 + 1).min(self.height - 1);
+        let tx = x.fract();
+        let ty = y.fract();
+        let get = |xi: u32, yi: u32| -> f32 {
+            self.pixels.get((yi * self.width + xi) as usize).copied().unwrap_or(0.0)
+        };
+        let h0 = get(x0, y0) * (1.0 - tx) + get(x1, y0) * tx;
+        let h1 = get(x0, y1) * (1.0 - tx) + get(x1, y1) * tx;
+        h0 * (1.0 - ty) + h1 * ty
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        !self.pixels.is_empty()
+    }
+
+    /// Load from a PNG file (reuses heightmap_import's PNG loader).
+    pub fn load_from_png(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
+        crate::heightmap_import::load_png_public(data)
+    }
+
+    /// Generate a procedural stamp. `kind` selects the preset.
+    pub fn generate(kind: StampPreset, size: u32) -> Self {
+        let mut pixels = vec![0.0f32; (size * size) as usize];
+        let center = size as f32 / 2.0;
+        let radius = center;
+
+        for z in 0..size {
+            for x in 0..size {
+                let dx = (x as f32 + 0.5 - center) / radius;
+                let dz = (z as f32 + 0.5 - center) / radius;
+                let dist = (dx * dx + dz * dz).sqrt();
+
+                let val = match kind {
+                    StampPreset::Dome => {
+                        if dist < 1.0 { (1.0 - dist * dist).sqrt() } else { 0.0 }
+                    }
+                    StampPreset::Cone => {
+                        (1.0 - dist).max(0.0)
+                    }
+                    StampPreset::Bell => {
+                        (-dist * dist * 3.0).exp()
+                    }
+                    StampPreset::Mesa => {
+                        if dist < 0.6 { 1.0 }
+                        else if dist < 1.0 { ((1.0 - dist) / 0.4).clamp(0.0, 1.0) }
+                        else { 0.0 }
+                    }
+                    StampPreset::Ridge => {
+                        let ridge = (1.0 - (dz.abs() * 3.0).min(1.0)).max(0.0);
+                        let fade = (1.0 - dist).max(0.0);
+                        ridge * fade
+                    }
+                    StampPreset::Crater => {
+                        if dist < 0.4 { dist / 0.4 * 0.3 }
+                        else if dist < 0.7 { 0.3 + (dist - 0.4) / 0.3 * 0.7 }
+                        else if dist < 1.0 { ((1.0 - dist) / 0.3).max(0.0) }
+                        else { 0.0 }
+                    }
+                    StampPreset::Noise => {
+                        if dist < 1.0 {
+                            let n = crate::sculpt::fbm(
+                                x as f32 * 0.15,
+                                z as f32 * 0.15,
+                                4, 2.0, 0.5, 42,
+                            );
+                            n * (1.0 - dist)
+                        } else { 0.0 }
+                    }
+                };
+
+                pixels[(z * size + x) as usize] = val;
+            }
+        }
+
+        Self {
+            pixels,
+            width: size,
+            height: size,
+            name: format!("{}", kind.display_name()),
+        }
+    }
+}
+
+/// Built-in procedural stamp presets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StampPreset {
+    Dome,
+    Cone,
+    Bell,
+    Mesa,
+    Ridge,
+    Crater,
+    Noise,
+}
+
+impl StampPreset {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Dome => "Dome",
+            Self::Cone => "Cone",
+            Self::Bell => "Bell",
+            Self::Mesa => "Mesa",
+            Self::Ridge => "Ridge",
+            Self::Crater => "Crater",
+            Self::Noise => "Noise",
+        }
+    }
+
+    pub fn all() -> &'static [StampPreset] {
+        &[Self::Dome, Self::Cone, Self::Bell, Self::Mesa, Self::Ridge, Self::Crater, Self::Noise]
+    }
 }
 
 #[derive(Resource, Default)]

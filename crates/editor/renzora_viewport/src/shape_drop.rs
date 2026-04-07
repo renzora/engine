@@ -7,10 +7,10 @@
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_core::{EditorCamera, MeshColor, MeshPrimitive, ShapeRegistry};
-use renzora_editor::EditorSelection;
+use renzora::core::{EditorCamera, MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora::editor::EditorSelection;
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
 };
@@ -44,7 +44,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
                 .unwrap_or(Vec3::ZERO);
             let normal = drag_state.drag_surface_normal;
 
-            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
                 cmds.push(move |world: &mut World| {
                     let state = world.resource_mut::<ShapeDragState>();
                     state.into_inner().pending_drop = Some(PendingShapeDrop {
@@ -56,7 +56,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
             }
         }
         // Clear dragging in both cases (drop or cancel)
-        if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+        if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
             cmds.push(|world: &mut World| {
                 let mut state = world.resource_mut::<ShapeDragState>();
                 state.dragging_shape = None;

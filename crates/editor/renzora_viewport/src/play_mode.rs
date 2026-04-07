@@ -1,10 +1,10 @@
 //! Play mode — switches from editor camera to game camera for in-editor playtesting.
 
 use bevy::prelude::*;
-use bevy::camera::{ClearColorConfig, RenderTarget};
+use bevy::camera::RenderTarget;
 use bevy::window::{CursorGrabMode, CursorOptions};
-use renzora_editor::camera::EditorUiCamera;
-use renzora_runtime::{
+use renzora::editor::camera::EditorUiCamera;
+use renzora::core::{
     DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, PlayState,
     SceneCamera, ViewportRenderTarget,
 };
@@ -38,11 +38,11 @@ pub fn handle_play_mode_transitions(world: &mut World) {
 }
 
 fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
-    use renzora_core::console_log::*;
+    use renzora::core::console_log::*;
     console_info("PlayMode", "=== ENTERING PLAY MODE ===");
 
-    // Save scene before entering play mode so we can restore on stop
-    renzora_runtime::scene_io::save_current_scene(world);
+    // Save scene before entering play mode (observed by renzora_engine)
+    world.trigger(renzora::core::SaveCurrentScene);
     console_info("PlayMode", "Scene saved before play mode");
 
     // Find the game camera: prefer DefaultCamera, then first SceneCamera
@@ -87,30 +87,26 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         cam_entity, had_cam3d, had_camera
     ));
 
-    // Insert Camera3d if not present
     if !had_cam3d {
         world.entity_mut(cam_entity).insert(Camera3d::default());
         console_info("PlayMode", format!("Inserted Camera3d on {:?}", cam_entity));
     }
 
-    // Insert Camera if not present
     if !had_camera {
         world.entity_mut(cam_entity).insert(Camera::default());
         console_info("PlayMode", format!("Inserted Camera on {:?}", cam_entity));
     }
 
-    // Configure camera
     if let Some(mut cam) = world.get_mut::<Camera>(cam_entity) {
         cam.is_active = true;
         cam.order = 0;
         console_info("PlayMode", format!("Configured camera {:?}: active=true order=0", cam_entity));
     }
 
-    // Render directly to the primary window (replace any offscreen render target)
     world.entity_mut(cam_entity).insert(RenderTarget::default());
     console_info("PlayMode", format!("Camera {:?} target set to primary window", cam_entity));
 
-    // Disable the egui UI camera so it doesn't paint over the game output
+    // Disable the egui UI camera
     let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
     let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
     for entity in ui_cams {
@@ -122,8 +118,9 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     world.entity_mut(cam_entity).insert(PlayModeCamera);
     console_info("PlayMode", format!("Inserted PlayModeCamera marker on {:?}", cam_entity));
 
-    // Unpause physics simulation
-    renzora_physics::unpause(world);
+    // Reset script states and unpause physics (via decoupled events)
+    world.trigger(renzora::core::ResetScriptStates);
+    world.trigger(renzora::core::UnpausePhysics);
 
     play_mode.active_game_camera = Some(cam_entity);
     play_mode.state = PlayState::Playing;
@@ -133,7 +130,7 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
 }
 
 fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
-    use renzora_core::console_log::*;
+    use renzora::core::console_log::*;
     console_info("PlayMode", "=== EXITING PLAY MODE ===");
 
     // Remove PlayModeCamera and deactivate the game camera
@@ -157,7 +154,7 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         world.entity_mut(entity).remove::<Camera3d>();
     }
 
-    // Re-enable editor camera and restore its render target to viewport image
+    // Re-enable editor camera and restore its render target
     let viewport_image = world.get_resource::<ViewportRenderTarget>()
         .and_then(|vrt| vrt.image.clone());
 
@@ -185,10 +182,10 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         }
     }
 
-    // Re-pause physics simulation
-    renzora_physics::pause(world);
+    // Re-pause physics (via decoupled event)
+    world.trigger(renzora::core::PausePhysics);
 
-    // Restore cursor (in case a script locked it during play mode)
+    // Restore cursor
     let mut cursor_q = world.query::<&mut CursorOptions>();
     if let Ok(mut cursor) = cursor_q.single_mut(world) {
         cursor.grab_mode = CursorGrabMode::None;

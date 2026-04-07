@@ -18,6 +18,7 @@ pub use templates::{ExportTemplate, TemplateManager, Platform};
 
 use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct ExportPlugin;
 
 impl Plugin for ExportPlugin {
@@ -25,7 +26,7 @@ impl Plugin for ExportPlugin {
         info!("[editor] ExportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+            use renzora::bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
             if !_app.is_plugin_added::<EguiPlugin>() {
                 _app.add_plugins(EguiPlugin::default());
@@ -40,12 +41,12 @@ impl Plugin for ExportPlugin {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
-struct ExportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
+struct ExportEguiState(bevy::ecs::system::SystemState<renzora::bevy_egui::EguiContexts<'static, 'static>>);
 
 #[cfg(not(target_arch = "wasm32"))]
 fn export_overlay_system(world: &mut World) {
     use bevy::ecs::system::SystemState;
-    use bevy_egui::EguiContexts;
+    use renzora::bevy_egui::EguiContexts;
 
     if !world.contains_resource::<ExportEguiState>() {
         let s = ExportEguiState(SystemState::new(world));
@@ -62,7 +63,7 @@ fn export_overlay_system(world: &mut World) {
     world.insert_resource(cached);
 
     // Check for ExportRequested marker from the editor menu
-    if world.remove_resource::<renzora_core::ExportRequested>().is_some() {
+    if world.remove_resource::<renzora::core::ExportRequested>().is_some() {
         world.resource_mut::<ExportOverlayState>().visible = true;
     }
 
@@ -73,3 +74,5 @@ fn export_overlay_system(world: &mut World) {
 
     overlay::draw_export_overlay(world, &ctx);
 }
+
+renzora::add!(ExportPlugin);

@@ -1,44 +1,35 @@
-# Cargo aliases
+# Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
-# Dev: run
-renzora = "run --bin renzora"
-runtime = "run --bin renzora-runtime --no-default-features"
-server = "run --bin renzora-server --no-default-features --features server"
+# Run
+renzora = "run --profile dist --bin renzora"
+runtime = "run --profile dist --bin renzora-game --no-default-features --features runtime"
+server = "run --profile dist --bin renzora-server --no-default-features --features server"
 
-# Dev: build only
-build-editor = "build --bin renzora"
-build-runtime = "build --bin renzora-runtime --no-default-features"
-
-# Release builds (static linking, separate target dir)
-release-editor = "build --release --bin renzora --target-dir target"
-release-editor-solari = "build --release --no-default-features --features editor,solari --target-dir target"
-release-runtime = "build --release --bin renzora-runtime --no-default-features --target-dir target"
-release-server = "build --release --bin renzora-server --no-default-features --features server --target-dir target"
+# Build
+build-editor = "build --profile dist --bin renzora"
+build-runtime = "build --profile dist --bin renzora-game --no-default-features --features runtime"
+build-server = "build --profile dist --bin renzora-server --no-default-features --features server"
+build-all = "build --profile dist --workspace"
 
 # WASM
-dist-web-editor = "build --profile dist --bin renzora --no-default-features --features editor,wasm --target wasm32-unknown-unknown --target-dir target"
-dist-web-runtime = "build --profile dist --bin renzora-runtime --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target"
-dist-web = "build --profile dist --bin renzora-runtime --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target"
+build-web = "build --profile dist --bin renzora-game --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
 
-# Dist builds (max optimization for export templates)
-dist-editor = "build --profile dist --bin renzora --no-default-features --features editor --target-dir target"
-dist-runtime = "build --profile dist --bin renzora-runtime --no-default-features --target-dir target"
-dist-server = "build --profile dist --bin renzora-server --no-default-features --features server --target-dir target"
-dist-all = "build --profile dist --no-default-features --bin renzora --bin renzora-runtime --bin renzora-server --features editor,server --target-dir target"
+# Android
+build-android = "build --profile dist --no-default-features --target aarch64-linux-android"
 
-# iOS (cross-compile static library — macOS only)
-build-ios = "build --target aarch64-apple-ios -p renzora-ios --release"
-build-ios-sim = "build --target aarch64-apple-ios-sim -p renzora-ios --release"
-dist-ios = "build --target aarch64-apple-ios -p renzora-ios --profile dist"
+# iOS
+build-ios = "build --profile dist --target aarch64-apple-ios -p renzora-ios"
+build-ios-sim = "build --profile dist --target aarch64-apple-ios-sim -p renzora-ios"
 
-# tvOS / Apple TV (cross-compile static library — macOS only)
-build-tvos = "build --target aarch64-apple-tvos -p renzora-ios --release"
-build-tvos-sim = "build --target aarch64-apple-tvos-sim -p renzora-ios --release"
-dist-tvos = "build --target aarch64-apple-tvos -p renzora-ios --profile dist"
+# tvOS
+build-tvos = "build --profile dist --target aarch64-apple-tvos -p renzora-ios"
+build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzora-ios"
 
 # Static link the MSVC runtime (eliminates VCRUNTIME140.dll dependency)
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+# NOTE: Disabled — crt-static changes crate disambiguators, breaking TypeId
+# across dylib boundaries (required for dynamic plugin system).
+# [target.x86_64-pc-windows-msvc]
+# rustflags = ["-C", "target-feature=+crt-static"]
 
 # DLSS SDK include path for bindgen (only used when building with --features solari)
 # Update this path if your DLSS SDK is installed elsewhere

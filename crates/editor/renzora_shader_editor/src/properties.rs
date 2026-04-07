@@ -1,14 +1,14 @@
 //! Shader properties panel — edit exposed shader parameters using inspector-style sections.
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
+use renzora::bevy_egui::egui::{self, RichText};
 
-use renzora_editor::{
+use renzora::editor::{
     collapsible_section, inline_property,
     EditorCommands, EditorPanel, PanelLocation,
 };
 use renzora_shader::file::{ParamType, ParamValue};
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use crate::ShaderEditorState;
 use crate::code_panel::reapply_params;
@@ -25,7 +25,7 @@ impl EditorPanel for ShaderPropertiesPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::SLIDERS)
+        Some(renzora::egui_phosphor::regular::SLIDERS)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -71,7 +71,7 @@ impl EditorPanel for ShaderPropertiesPanel {
             if !float_params.is_empty() {
                 collapsible_section(
                     ui,
-                    egui_phosphor::regular::SLIDERS_HORIZONTAL,
+                    renzora::egui_phosphor::regular::SLIDERS_HORIZONTAL,
                     "Float",
                     "rendering",
                     theme,
@@ -89,7 +89,7 @@ impl EditorPanel for ShaderPropertiesPanel {
             if !color_params.is_empty() {
                 collapsible_section(
                     ui,
-                    egui_phosphor::regular::PALETTE,
+                    renzora::egui_phosphor::regular::PALETTE,
                     "Color",
                     "rendering",
                     theme,
@@ -107,7 +107,7 @@ impl EditorPanel for ShaderPropertiesPanel {
             if !vec_params.is_empty() {
                 collapsible_section(
                     ui,
-                    egui_phosphor::regular::ARROWS_OUT_CARDINAL,
+                    renzora::egui_phosphor::regular::ARROWS_OUT_CARDINAL,
                     "Vector",
                     "rendering",
                     theme,
@@ -125,7 +125,7 @@ impl EditorPanel for ShaderPropertiesPanel {
             if !int_params.is_empty() {
                 collapsible_section(
                     ui,
-                    egui_phosphor::regular::HASH,
+                    renzora::egui_phosphor::regular::HASH,
                     "Integer",
                     "rendering",
                     theme,
@@ -143,7 +143,7 @@ impl EditorPanel for ShaderPropertiesPanel {
             if !bool_params.is_empty() {
                 collapsible_section(
                     ui,
-                    egui_phosphor::regular::TOGGLE_LEFT,
+                    renzora::egui_phosphor::regular::TOGGLE_LEFT,
                     "Boolean",
                     "rendering",
                     theme,
@@ -174,7 +174,7 @@ fn render_float_param(
     world: &World,
     name: &str,
     param: &renzora_shader::file::ShaderParam,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     row: usize,
 ) {
     let ParamValue::Float(v) = param.default_value else { return };
@@ -205,7 +205,7 @@ fn render_color_param(
     world: &World,
     name: &str,
     param: &renzora_shader::file::ShaderParam,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     row: usize,
 ) {
     let ParamValue::Color(v) = param.default_value else { return };
@@ -234,7 +234,7 @@ fn render_vec_param(
     world: &World,
     name: &str,
     param: &renzora_shader::file::ShaderParam,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     row: usize,
 ) {
     match param.default_value {
@@ -331,7 +331,7 @@ fn render_int_param(
     world: &World,
     name: &str,
     param: &renzora_shader::file::ShaderParam,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     row: usize,
 ) {
     let ParamValue::Int(v) = param.default_value else { return };
@@ -360,7 +360,7 @@ fn render_bool_param(
     world: &World,
     name: &str,
     param: &renzora_shader::file::ShaderParam,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     row: usize,
 ) {
     let ParamValue::Bool(v) = param.default_value else { return };

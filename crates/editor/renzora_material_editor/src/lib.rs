@@ -6,15 +6,16 @@
 mod graph_editor;
 mod graph_panel;
 mod inspector;
+mod material_inspector;
 pub mod preview;
 mod thumbnails;
 
 use bevy::prelude::*;
-use renzora_core::CurrentProject;
-use renzora_editor::AppEditorExt;
-use renzora_material::graph::{MaterialDomain, MaterialGraph};
-use renzora_material::material_ref::MaterialRef;
-use renzora_material::resolver::{MaterialCache, MaterialResolved};
+use renzora::core::CurrentProject;
+use renzora::editor::AppEditorExt;
+use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
+use renzora_shader::material::material_ref::MaterialRef;
+use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
 /// What the material editor is currently doing.
 #[derive(Clone, Debug)]
@@ -66,6 +67,7 @@ impl Default for MaterialEditorState {
     }
 }
 
+#[derive(Default)]
 pub struct MaterialEditorPlugin;
 
 impl Plugin for MaterialEditorPlugin {
@@ -79,18 +81,21 @@ impl Plugin for MaterialEditorPlugin {
         app.register_panel(graph_panel::MaterialGraphPanel);
         app.register_panel(inspector::MaterialInspectorPanel);
         app.register_panel(preview::MaterialPreviewPanel);
+
+        // Register the material inspector entry
+        app.register_inspector(material_inspector::material_entry());
     }
 }
 
 /// When the Materials layout is active, only show mesh entities in the hierarchy.
 fn sync_hierarchy_filter_for_materials(
     layout_mgr: Res<renzora_ui::layouts::LayoutManager>,
-    mut filter: ResMut<renzora_editor::HierarchyFilter>,
+    mut filter: ResMut<renzora::editor::HierarchyFilter>,
 ) {
     let is_materials = layout_mgr.active_name() == "Materials";
     if is_materials {
         // Use the full reflect short_path — Bevy registers Mesh3d under "bevy_mesh" crate
-        let desired = renzora_editor::HierarchyFilter::OnlyWithComponents(vec!["Mesh3d"]);
+        let desired = renzora::editor::HierarchyFilter::OnlyWithComponents(vec!["Mesh3d"]);
         if *filter != desired {
             *filter = desired;
         }
@@ -151,3 +156,5 @@ pub fn apply_material(world: &mut World) {
 
     world.resource_mut::<MaterialEditorState>().is_dirty = false;
 }
+
+renzora::add!(MaterialEditorPlugin);

@@ -1,10 +1,10 @@
 //! Viewport header bar — render toggles and dropdown menus.
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
-use egui_phosphor::regular::*;
-use renzora_editor::EditorCommands;
-use renzora_theme::ThemeManager;
+use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
+use renzora::egui_phosphor::regular::*;
+use renzora::editor::EditorCommands;
+use renzora::theme::ThemeManager;
 
 use crate::settings::*;
 
@@ -174,7 +174,7 @@ fn dropdown_button(
 fn gizmo_dropdown(
     ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_gizmo_drop");
     let resp = dropdown_button(ui, rect, STACK, icon_color, bg_color, hovered_color, caret_color);
@@ -336,7 +336,7 @@ fn view_dropdown(
 fn camera_dropdown(
     ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_camera_drop");
     let resp = dropdown_button(ui, rect, VIDEO_CAMERA, icon_color, bg_color, hovered_color, caret_color);
@@ -412,7 +412,7 @@ fn camera_dropdown(
 fn snap_dropdown(
     ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_snap_drop");
     let resp = dropdown_button(ui, rect, MAGNET, icon_color, bg_color, hovered_color, caret_color);

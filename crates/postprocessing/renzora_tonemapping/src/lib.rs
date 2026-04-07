@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -24,7 +24,7 @@ pub struct TonemappingSettings {
 impl Default for TonemappingSettings {
     fn default() -> Self {
         Self {
-            mode: 6,
+            mode: 4,
             ev100: 9.7,
             enabled: true,
         }

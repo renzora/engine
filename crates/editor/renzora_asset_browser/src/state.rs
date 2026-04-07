@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use bevy_egui::egui::{self, Color32};
-use egui_phosphor::regular;
+use renzora::bevy_egui::egui::{self, Color32};
+use renzora::egui_phosphor::regular;
 
 /// View mode for the asset browser content pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -444,7 +444,10 @@ pub fn file_icon(path: &Path) -> (&'static str, Color32) {
         "hdr" | "exr" => (regular::SUN, Color32::from_rgb(255, 220, 100)),
 
         // 3D Models
-        "gltf" | "glb" | "obj" | "fbx" | "usd" | "usdz" => (regular::CUBE, Color32::from_rgb(255, 170, 100)),
+        "gltf" | "glb" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae" | "blend" => (regular::CUBE, Color32::from_rgb(255, 170, 100)),
+
+        // Motion Capture
+        "bvh" => (regular::PERSON_SIMPLE_WALK, Color32::from_rgb(180, 140, 255)),
 
         // Audio
         "wav" | "ogg" | "mp3" | "flac" | "opus" => (regular::MUSIC_NOTES, Color32::from_rgb(200, 130, 230)),
@@ -523,7 +526,8 @@ pub fn is_droppable_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|ext| matches!(ext.to_lowercase().as_str(),
-            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
+            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usda" | "usdc" | "usdz"
+            | "abc" | "dae" | "bvh" | "blend"
         ))
         .unwrap_or(false)
 }
@@ -533,7 +537,8 @@ pub fn is_3d_model(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|ext| matches!(ext.to_lowercase().as_str(),
-            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usdz"
+            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usda" | "usdc" | "usdz"
+            | "abc" | "dae" | "bvh" | "blend"
         ))
         .unwrap_or(false)
 }

@@ -5,11 +5,11 @@ use std::path::PathBuf;
 
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
-use renzora_core::{CurrentProject, EditorCamera, MeshInstanceData};
-use renzora_editor::{EditorCommands, EditorSelection};
+use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
+use renzora::editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;

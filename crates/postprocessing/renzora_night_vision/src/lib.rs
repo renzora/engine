@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "night_vision.wgsl", name = "Night Vision", icon = "BINOCULARS")]
 pub struct NightVisionSettings {
@@ -18,6 +20,7 @@ pub struct NightVisionSettings {
     pub time: f32,
 }
 
+#[derive(Default)]
 pub struct NightVisionPlugin;
 
 impl Plugin for NightVisionPlugin {
@@ -37,3 +40,5 @@ fn sync_time(time: Res<Time>, mut query: Query<&mut NightVisionSettings>) {
         s.time = time.elapsed_secs();
     }
 }
+
+renzora::add!(NightVisionPlugin);

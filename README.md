@@ -87,7 +87,7 @@ sudo apt install lld clang
 
 ## Building & Running
 
-Renzora uses **cargo aliases** so you never need to remember `--bin` or `--no-default-features`.
+Renzora uses **cargo aliases** with the `dist` profile for all builds. This ensures consistent `bevy_dylib` hashes so dynamic plugins are always compatible.
 
 ### Quick Start
 
@@ -102,58 +102,31 @@ cargo server                 # build + run the dedicated server
 ```bash
 cargo build-editor           # build editor binary
 cargo build-runtime          # build runtime binary
+cargo build-server           # build server binary
+cargo build-all              # build everything including plugins
 ```
 
-### Release Builds
+### Cross-Platform
 
 ```bash
-cargo release-editor         # optimized editor
-cargo release-runtime        # optimized runtime
-cargo release-server         # optimized dedicated server
+cargo build-web              # WASM (WebGPU)
+cargo build-android          # Android ARM64
+cargo build-ios              # iOS ARM64
+cargo build-ios-sim          # iOS Simulator
+cargo build-tvos             # Apple TV
+cargo build-tvos-sim         # Apple TV Simulator
 ```
 
-### Dist Builds (max optimization, fat LTO, stripped)
-
-```bash
-cargo dist-runtime           # runtime only
-cargo dist-server            # server only
-cargo dist-editor            # editor only
-cargo dist-all               # editor + runtime + server in one pass
-```
-
-The `dist` profile uses fat LTO, single codegen unit, `opt-level = "z"`, panic = abort, and symbol stripping for minimum binary size.
-
-### Dist with UPX Compression
-
-Requires [cargo-make](https://github.com/sagiegurari/cargo-make) and [UPX](https://upx.github.io/):
-
-```bash
-cargo install cargo-make
-
-# UPX:
-# Windows:  winget install upx
-# Linux:    sudo apt install upx
-# macOS:    brew install upx
-```
-
-```bash
-cargo make dist              # build all 3 + compress with UPX
-cargo make dist-build        # build all 3 without compression
-cargo make dist-runtime      # build just runtime
-cargo make dist-server       # build just server
-cargo make dist-editor       # build just editor
-```
-
-UPX typically achieves ~70-75% size reduction on the engine binaries.
+All commands use the `dist` profile. Do not use bare `cargo run` or `cargo build` — these use the dev profile which produces a different `bevy_dylib` hash, breaking plugin compatibility.
 
 ### Running the Runtime with a Project
 
 ```bash
 # PowerShell
-& "./target/debug/renzora-runtime.exe" --project "C:\Users\you\Documents\my_game"
+& "./target/dist/renzora-runtime.exe" --project "C:\Users\you\Documents\my_game"
 
 # Bash / Linux / macOS
-./target/debug/renzora-runtime --project ~/Documents/my_game
+./target/dist/renzora-runtime --project ~/Documents/my_game
 ```
 
 The runtime also looks for `project.toml` in the current directory if `--project` is not specified.
@@ -808,43 +781,100 @@ my_effect = { path = "crates/postprocessing/my_effect" }
 
 ## Dynamic Plugins (DLL)
 
-For plugins that load as dynamic libraries at runtime (hot-reloadable), use the `editor_plugin_api` crate. See `crates/plugins/websocket_plugin/` for a complete example.
+Plugins are Rust `dylib` crates that share `bevy_dylib` with the engine. They have full Bevy ECS access — `Commands`, `Query`, `Res`, `ResMut`, `Assets`, everything. Systems run in parallel alongside built-in engine systems. No FFI wrappers, no translation layer.
+
+### Writing a Plugin
 
 ```rust
-use editor_plugin_api::prelude::*;
+use bevy::prelude::*;
+use dynamic_plugin_meta::add;
 
-pub struct MyDynamicPlugin {
-    status: String,
-}
+#[derive(Default)]
+pub struct MyPlugin;
 
-impl MyDynamicPlugin {
-    pub fn new() -> Self {
-        Self { status: "Ready".into() }
-    }
-
-    pub fn manifest(&self) -> PluginManifest {
-        PluginManifest::new("com.example.my-plugin", "My Plugin", "1.0.0")
-            .author("Your Name")
-            .description("Does something cool")
-            .capability(PluginCapability::Panel)
+impl Plugin for MyPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup);
+        app.add_systems(Update, tick);
+        app.insert_resource(Score(0));
     }
 }
 
-declare_plugin!(MyDynamicPlugin, MyDynamicPlugin::new());
+#[derive(Resource)]
+struct Score(u32);
+
+fn setup(mut commands: Commands) {
+    commands.spawn(PointLight::default());
+}
+
+fn tick(time: Res<Time>) {
+    if (time.elapsed_secs() % 5.0) < time.delta_secs() {
+        info!("[MyPlugin] tick at {:.0}s", time.elapsed_secs());
+    }
+}
+
+add!(MyPlugin);
 ```
 
-### Plugin Capabilities
+Plugin `Cargo.toml`:
 
-| Capability | Description |
-|------------|-------------|
-| `ScriptEngine` | Run scripts |
-| `Gizmo` | Draw in the 3D viewport |
-| `NodeType` | Custom node types |
-| `Inspector` | Custom inspector widgets |
-| `Panel` | Add editor panels |
-| `MenuItem` | Add menu items |
-| `AssetImporter` | Import custom asset formats |
-| `Custom(String)` | User-defined capability |
+```toml
+[package]
+name = "my_plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = { workspace = true }
+dynamic_plugin_meta = { path = "../../crates/plugins/dynamic_plugin_meta" }
+```
+
+### Plugin Scope
+
+Plugins can be scoped to control when they load:
+
+```rust
+add!(MyPlugin);                    // editor + exported games (default)
+add!(MyPlugin, Editor);            // editor only — not shipped with exports
+add!(MyPlugin, Runtime);           // exported games only — not loaded in editor
+```
+
+The export overlay shows runtime-compatible plugins with checkboxes so users can choose which to include.
+
+### Building Plugins
+
+Plugins must be built as part of the workspace to share the same `bevy_dylib` hash:
+
+```bash
+cargo build-all              # builds everything including plugins
+```
+
+Do **not** build plugins standalone (`cargo build` from the plugin directory) — this produces a different `bevy_dylib` hash and the plugin won't load.
+
+### Loading
+
+Plugins are loaded before `app.run()` with full `&mut App` access. On startup, the engine loads from:
+
+1. `<project>/plugins/` — project-specific plugins
+2. Global plugins directory — configured in the launcher settings
+
+Restart the editor to pick up new plugins.
+
+### How It Works
+
+Both the engine and plugin link against the same `bevy_dylib.dll` (shared Bevy library). This gives them identical `TypeId`s for all Bevy types, so the plugin's `Res<Time>`, `Query<&mut Transform>`, etc. are the real Bevy types — not proxies.
+
+The `add!()` macro generates a `plugin_create()` export that returns a boxed `Plugin`. The loader calls `plugin.build(&mut app)` — identical to `app.add_plugins()`.
+
+### Requirements
+
+- Plugin crate type must be `dylib` (not `cdylib`)
+- All crates must use `bevy = { workspace = true }`
+- All builds must use the same profile (dist) for matching hashes
+- Exported games that include plugins must ship `bevy_dylib.dll` alongside the binary
 
 ## Exporting
 

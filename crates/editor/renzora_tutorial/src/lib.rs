@@ -10,16 +10,17 @@ pub mod steps;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Pos2, Rect};
-use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
-use renzora_editor::{DockTree, DockingState, SplashState};
-use renzora_theme::ThemeManager;
+use renzora::bevy_egui::egui::{self, Pos2, Rect};
+use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use renzora::editor::{DockTree, DockingState, SplashState};
+use renzora::theme::ThemeManager;
 
 use overlay::TutorialAction;
 use steps::TutorialStep;
 
 // ── Plugin ─────────────────────────────────────────────────────────────────────
 
+#[derive(Default)]
 pub struct TutorialPlugin;
 
 impl Plugin for TutorialPlugin {
@@ -33,7 +34,7 @@ impl Plugin for TutorialPlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 tutorial_overlay_system
-                    .after(renzora_editor::editor_ui_system)
+                    .after(renzora::editor::editor_ui_system)
                     .run_if(in_state(SplashState::Editor))
                     .run_if(|state: Res<TutorialState>| state.active),
             );
@@ -43,11 +44,11 @@ impl Plugin for TutorialPlugin {
 /// Watches for the `TutorialRequested` marker resource and starts the tutorial.
 fn check_tutorial_requested(
     mut commands: Commands,
-    requested: Option<Res<renzora_core::TutorialRequested>>,
+    requested: Option<Res<renzora::core::TutorialRequested>>,
     mut state: ResMut<TutorialState>,
 ) {
     if requested.is_some() {
-        commands.remove_resource::<renzora_core::TutorialRequested>();
+        commands.remove_resource::<renzora::core::TutorialRequested>();
         state.start();
     }
 }
@@ -181,6 +182,8 @@ fn tutorial_overlay_system(world: &mut World) {
     world.insert_resource(state);
 }
 
+renzora::add!(TutorialPlugin);
+
 // ── Panel rect computation ─────────────────────────────────────────────────────
 
 /// Walk the dock tree to compute the screen rect for each panel.
@@ -220,14 +223,14 @@ fn walk_tree(tree: &DockTree, rect: Rect, out: &mut HashMap<String, Rect>) {
             second,
         } => {
             let (r1, r2) = match direction {
-                renzora_editor::SplitDirection::Horizontal => {
+                renzora::editor::SplitDirection::Horizontal => {
                     let mid = rect.min.x + rect.width() * ratio;
                     (
                         Rect::from_min_max(rect.min, Pos2::new(mid - RESIZE_HANDLE / 2.0, rect.max.y)),
                         Rect::from_min_max(Pos2::new(mid + RESIZE_HANDLE / 2.0, rect.min.y), rect.max),
                     )
                 }
-                renzora_editor::SplitDirection::Vertical => {
+                renzora::editor::SplitDirection::Vertical => {
                     let mid = rect.min.y + rect.height() * ratio;
                     (
                         Rect::from_min_max(rect.min, Pos2::new(rect.max.x, mid - RESIZE_HANDLE / 2.0)),

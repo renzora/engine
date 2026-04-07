@@ -9,7 +9,7 @@
 pub mod procedural_meshes;
 
 use bevy::prelude::*;
-use renzora_core::{ShapeEntry, ShapeRegistry};
+use renzora::core::{ShapeEntry, ShapeRegistry};
 
 // ============================================================================
 // Built-in shape registration
@@ -18,18 +18,10 @@ use renzora_core::{ShapeEntry, ShapeRegistry};
 fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     use procedural_meshes as pm;
 
-    // Icons are only available with the editor feature.
-    // For runtime-only builds we use empty strings (never displayed).
-    #[cfg(feature = "editor")]
-    use egui_phosphor::regular;
+    use renzora::egui_phosphor::regular;
 
-    #[cfg(feature = "editor")]
     macro_rules! icon {
         ($name:ident) => { regular::$name };
-    }
-    #[cfg(not(feature = "editor"))]
-    macro_rules! icon {
-        ($name:ident) => { "" };
     }
 
     // Basic
@@ -191,11 +183,10 @@ fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     });
 }
 
-#[cfg(feature = "editor")]
 mod panel;
 
-/// Shape library plugin — registers built-in shapes and (with `editor` feature)
-/// adds the shape browser panel.
+/// Shape library plugin — registers built-in shapes and adds the shape browser panel.
+#[derive(Default)]
 pub struct ShapeLibraryPlugin;
 
 impl Plugin for ShapeLibraryPlugin {
@@ -203,10 +194,9 @@ impl Plugin for ShapeLibraryPlugin {
         info!("[editor] ShapeLibraryPlugin");
         register_builtin_shapes(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
-        #[cfg(feature = "editor")]
-        {
-            use renzora_editor::AppEditorExt;
-            app.register_panel(panel::ShapeLibraryPanel::default());
-        }
+        use renzora::editor::AppEditorExt;
+        app.register_panel(panel::ShapeLibraryPanel::default());
     }
 }
+
+renzora::add!(ShapeLibraryPlugin);

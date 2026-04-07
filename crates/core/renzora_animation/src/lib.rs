@@ -55,14 +55,16 @@ impl Plugin for AnimationPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora_editor_framework::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
         }
+
+        // Script animation commands (decoupled via ScriptAction observer)
+        app.add_observer(bridge::handle_animation_script_actions);
 
         app.add_systems(
                 Update,
                 (
-                    bridge::route_script_animation_commands,
                     systems::rehydrate_animators,
                     systems::initialize_animation_graphs,
                     systems::auto_play_default,

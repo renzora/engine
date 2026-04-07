@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "invert.wgsl", name = "Invert", icon = "SWAP")]
 pub struct InvertSettings {
@@ -10,6 +12,7 @@ pub struct InvertSettings {
     pub intensity: f32,
 }
 
+#[derive(Default)]
 pub struct InvertPlugin;
 
 impl Plugin for InvertPlugin {
@@ -22,3 +25,5 @@ impl Plugin for InvertPlugin {
         app.register_inspectable::<InvertSettings>();
     }
 }
+
+renzora::add!(InvertPlugin);

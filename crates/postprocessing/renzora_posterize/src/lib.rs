@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "posterize.wgsl", name = "Posterize", icon = "STAIRS")]
 pub struct PosterizeSettings {
@@ -10,6 +12,7 @@ pub struct PosterizeSettings {
     pub levels: f32,
 }
 
+#[derive(Default)]
 pub struct PosterizePlugin;
 
 impl Plugin for PosterizePlugin {
@@ -22,3 +25,5 @@ impl Plugin for PosterizePlugin {
         app.register_inspectable::<PosterizeSettings>();
     }
 }
+
+renzora::add!(PosterizePlugin);

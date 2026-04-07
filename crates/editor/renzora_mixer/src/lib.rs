@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct MixerPlugin;
 
 // On WASM: no-op plugin (no audio backend).
@@ -29,3 +30,5 @@ impl Plugin for MixerPlugin {
         native::build(app);
     }
 }
+
+renzora::add!(MixerPlugin);

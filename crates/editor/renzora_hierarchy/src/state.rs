@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use bevy_egui::egui::Color32;
-use egui_phosphor::regular;
+use renzora::bevy_egui::egui::Color32;
+use renzora::egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
-use renzora_editor::TreeDropZone;
+use renzora::editor::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
+use renzora::editor::TreeDropZone;
 
 /// Persistent UI state for the hierarchy panel.
 pub struct HierarchyState {
@@ -146,7 +146,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
             let is_camera = world.get::<Camera3d>(entity).is_some();
-            let is_default_camera = world.get::<renzora_core::DefaultCamera>(entity).is_some();
+            let is_default_camera = world.get::<renzora::core::DefaultCamera>(entity).is_some();
             let has_blueprint = world.get::<BlueprintGraph>(entity).is_some();
 
             named_entities.insert(entity);
@@ -254,33 +254,13 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         .collect()
 }
 
-/// Detect an icon and color for an entity based on its components.
+/// Detect an icon and color for an entity using the `ComponentIconRegistry`.
+/// Falls back to a generic circle icon if no match is found.
 fn entity_icon(world: &World, entity: Entity) -> (&'static str, Color32) {
-    if world.get::<Camera3d>(entity).is_some() {
-        return (regular::VIDEO_CAMERA, Color32::from_rgb(100, 180, 255));
-    }
-    if world.get::<DirectionalLight>(entity).is_some() {
-        return (regular::SUN, Color32::from_rgb(255, 220, 100));
-    }
-    if world.get::<PointLight>(entity).is_some() {
-        return (regular::LIGHTBULB, Color32::from_rgb(255, 200, 80));
-    }
-    if world.get::<SpotLight>(entity).is_some() {
-        return (regular::FLASHLIGHT, Color32::from_rgb(255, 200, 80));
-    }
-    if world.get::<AmbientLight>(entity).is_some() {
-        return (regular::SUN_DIM, Color32::from_rgb(200, 200, 150));
-    }
-    if world.get::<Mesh3d>(entity).is_some() {
-        return (regular::CUBE, Color32::from_rgb(255, 170, 100));
-    }
-    // UI Canvas
-    if world.get::<renzora_game_ui::UiCanvas>(entity).is_some() {
-        return (regular::FRAME_CORNERS, Color32::from_rgb(130, 200, 255));
-    }
-    // UI Widget — use the widget-type-specific icon
-    if let Some(widget) = world.get::<renzora_game_ui::UiWidget>(entity) {
-        return (widget.widget_type.icon(), Color32::from_rgb(130, 200, 255));
+    if let Some(registry) = world.get_resource::<ComponentIconRegistry>() {
+        if let Some((icon, [r, g, b])) = registry.entity_icon(world, entity) {
+            return (icon, Color32::from_rgb(r, g, b));
+        }
     }
     (regular::CIRCLE, Color32::from_rgb(150, 150, 165))
 }

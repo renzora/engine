@@ -8,10 +8,10 @@ pub use state::*;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 
 use crate::render::render_console_content;
 
@@ -61,7 +61,7 @@ impl EditorPanel for ConsolePanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::TERMINAL)
+        Some(renzora::egui_phosphor::regular::TERMINAL)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -197,6 +197,7 @@ fn sync_console_bridge(bridge: Res<ConsoleBridge>, mut console: ResMut<ConsoleSt
 // Plugin
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct ConsolePlugin;
 
 impl Plugin for ConsolePlugin {
@@ -208,9 +209,11 @@ impl Plugin for ConsolePlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        use renzora_editor::SplashState;
+        use renzora::editor::SplashState;
         app.add_systems(Update, (drain_log_buffer, drain_script_logs, sync_console_bridge).run_if(in_state(SplashState::Editor)));
 
         app.register_panel(ConsolePanel::new(arc));
     }
 }
+
+renzora::add!(ConsolePlugin);

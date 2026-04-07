@@ -3,11 +3,11 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
-use egui_phosphor::regular;
-use renzora_core::{MeshColor, MeshPrimitive, ShapeEntry, ShapeRegistry};
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
-use renzora_theme::ThemeManager;
+use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
+use renzora::egui_phosphor::regular;
+use renzora::core::{MeshColor, MeshPrimitive, ShapeEntry, ShapeRegistry};
+use renzora::editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
+use renzora::theme::ThemeManager;
 
 #[derive(Default)]
 struct ShapeLibraryState {

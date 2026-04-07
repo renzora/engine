@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "oil_painting.wgsl", name = "Oil Painting", icon = "PAINT_BUCKET")]
 pub struct OilPaintingSettings {
@@ -12,6 +14,7 @@ pub struct OilPaintingSettings {
     pub levels: f32,
 }
 
+#[derive(Default)]
 pub struct OilPaintingPlugin;
 
 impl Plugin for OilPaintingPlugin {
@@ -24,3 +27,5 @@ impl Plugin for OilPaintingPlugin {
         app.register_inspectable::<OilPaintingSettings>();
     }
 }
+
+renzora::add!(OilPaintingPlugin);

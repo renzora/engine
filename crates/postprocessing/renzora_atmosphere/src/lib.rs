@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -29,7 +29,7 @@ impl Default for AtmosphereComponentSettings {
             top_radius: 6_460_000.0,
             ground_albedo: 0.3,
             scene_units_to_m: 1.0,
-            mode: 0,
+            mode: 1,
             enabled: true,
         }
     }

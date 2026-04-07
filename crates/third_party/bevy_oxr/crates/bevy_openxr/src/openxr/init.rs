@@ -119,6 +119,8 @@ impl Plugin for OxrInitPlugin {
                                 RenderAdapterInfo(WgpuWrapper::new(adapter_info)),
                                 RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
                                 RenderInstance(Arc::new(WgpuWrapper::new(wgpu_instance))),
+                                #[cfg(feature = "raw_vulkan_init")]
+                                Default::default(),
                             ),
                             synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                             debug_flags: self.render_debug_flags,
@@ -202,6 +204,8 @@ impl Plugin for OxrInitPlugin {
                             RenderAdapterInfo(WgpuWrapper::new(adapter_info)),
                             RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
                             RenderInstance(Arc::new(WgpuWrapper::new(wgpu_instance))),
+                            #[cfg(feature = "raw_vulkan_init")]
+                            Default::default(),
                         ),
                         synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                         debug_flags: self.render_debug_flags,

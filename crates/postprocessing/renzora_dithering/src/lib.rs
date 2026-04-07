@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "dithering.wgsl", name = "Dithering", icon = "GRID_FOUR")]
 pub struct DitheringSettings {
@@ -12,6 +14,7 @@ pub struct DitheringSettings {
     pub intensity: f32,
 }
 
+#[derive(Default)]
 pub struct DitheringPlugin;
 
 impl Plugin for DitheringPlugin {
@@ -24,3 +27,5 @@ impl Plugin for DitheringPlugin {
         app.register_inspectable::<DitheringSettings>();
     }
 }
+
+renzora::add!(DitheringPlugin);

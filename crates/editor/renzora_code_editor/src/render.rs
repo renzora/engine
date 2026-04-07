@@ -1,10 +1,10 @@
-use bevy_egui::egui::{self, CursorIcon, FontFamily, FontId, RichText, Sense};
+use renzora::bevy_egui::egui::{self, CursorIcon, FontFamily, FontId, RichText, Sense};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
-use renzora_theme::Theme;
+use renzora::theme::Theme;
 
 use std::path::PathBuf;
 
-use egui_phosphor::regular::{CODE, FILE_PLUS, FLOPPY_DISK, WARNING, X};
+use renzora::egui_phosphor::regular::{CODE, FILE_PLUS, FLOPPY_DISK, WARNING, X};
 
 use crate::state::CodeEditorState;
 

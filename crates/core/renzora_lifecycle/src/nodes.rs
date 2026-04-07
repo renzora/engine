@@ -1,10 +1,17 @@
 //! Lifecycle node type definitions and registry.
 
-use renzora_blueprint::graph::{BlueprintNodeDef, PinTemplate, PinType, PinValue};
+use renzora_core::{BlueprintNodeDef, PinTemplate, PinType, PinValue};
 
 pub const CAT_LIFECYCLE: &str = "Lifecycle";
 
 const CLR_LIFECYCLE: [u8; 3] = [90, 180, 100];
+
+// ── Shared category colors ─────────────────────────────────────────────────
+const CLR_FLOW: [u8; 3] = [140, 140, 160];
+const CLR_MATH: [u8; 3] = [120, 120, 120];
+const CLR_STRING: [u8; 3] = [180, 130, 200];
+const CLR_CONVERT: [u8; 3] = [150, 150, 180];
+const CLR_DEBUG: [u8; 3] = [180, 180, 80];
 
 /// All lifecycle-specific node definitions.
 pub static ALL_NODES: &[&BlueprintNodeDef] = &[
@@ -34,6 +41,22 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &GET_PLAYER_COUNT,
     &GET_VARIABLE,
     &SET_VARIABLE,
+];
+
+/// Shared nodes (flow, math, string, convert, debug) that lifecycle also supports.
+static SHARED_NODES: &[&BlueprintNodeDef] = &[
+    // Flow
+    &BRANCH, &SEQUENCE, &DO_ONCE, &FLIP_FLOP, &GATE, &COUNTER,
+    // Math
+    &MATH_ADD, &MATH_SUBTRACT, &MATH_MULTIPLY, &MATH_DIVIDE,
+    &MATH_NEGATE, &MATH_ABS, &MATH_CLAMP, &MATH_COMPARE,
+    &MATH_AND, &MATH_OR, &MATH_NOT, &MATH_MIN, &MATH_MAX,
+    // String
+    &STRING_CONCAT, &STRING_FORMAT,
+    // Convert
+    &TO_STRING, &TO_FLOAT, &TO_INT, &TO_BOOL,
+    // Debug
+    &DEBUG_LOG,
 ];
 
 // ── Event nodes ─────────────────────────────────────────────────────────────
@@ -362,6 +385,372 @@ static SET_VARIABLE: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_LIFECYCLE,
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Shared node definitions (duplicated from renzora_blueprint to avoid dep)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Flow ────────────────────────────────────────────────────────────────────
+
+static BRANCH: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/branch",
+    display_name: "Branch",
+    category: "Flow",
+    description: "If/else — routes execution based on a condition",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("condition", "Condition", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("true", "True"),
+        PinTemplate::exec_out("false", "False"),
+    ],
+    color: CLR_FLOW,
+};
+
+static SEQUENCE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/sequence",
+    display_name: "Sequence",
+    category: "Flow",
+    description: "Executes outputs in order",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then_0", "Then 0"),
+        PinTemplate::exec_out("then_1", "Then 1"),
+        PinTemplate::exec_out("then_2", "Then 2"),
+    ],
+    color: CLR_FLOW,
+};
+
+static DO_ONCE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/do_once",
+    display_name: "Do Once",
+    category: "Flow",
+    description: "Executes only the first time",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_in("reset", "Reset"),
+        PinTemplate::exec_out("completed", "Completed"),
+    ],
+    color: CLR_FLOW,
+};
+
+static FLIP_FLOP: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/flip_flop",
+    display_name: "Flip Flop",
+    category: "Flow",
+    description: "Alternates between A and B each time triggered",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("a", "A"),
+        PinTemplate::exec_out("b", "B"),
+        PinTemplate::output("is_a", "Is A", PinType::Bool),
+    ],
+    color: CLR_FLOW,
+};
+
+static GATE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/gate",
+    display_name: "Gate",
+    category: "Flow",
+    description: "Only passes execution when the gate is open",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_in("open", "Open"),
+        PinTemplate::exec_in("close", "Close"),
+        PinTemplate::exec_in("toggle", "Toggle"),
+        PinTemplate::input("start_open", "Start Open", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("exit", "Exit"),
+    ],
+    color: CLR_FLOW,
+};
+
+static COUNTER: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "flow/counter",
+    display_name: "Counter",
+    category: "Flow",
+    description: "Increments a value each time it executes",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("step", "Step", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::input("min", "Min", PinType::Float)
+            .with_default(PinValue::Float(0.0)),
+        PinTemplate::input("max", "Max", PinType::Float)
+            .with_default(PinValue::Float(1.0)),
+        PinTemplate::input("loop", "Loop", PinType::Bool)
+            .with_default(PinValue::Bool(true)),
+        PinTemplate::exec_out("then", ""),
+        PinTemplate::output("value", "Value", PinType::Float),
+    ],
+    color: CLR_FLOW,
+};
+
+// ── Math ────────────────────────────────────────────────────────────────────
+
+static MATH_ADD: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/add",
+    display_name: "Add",
+    category: "Math",
+    description: "A + B",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_SUBTRACT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/subtract",
+    display_name: "Subtract",
+    category: "Math",
+    description: "A - B",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_MULTIPLY: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/multiply",
+    display_name: "Multiply",
+    category: "Math",
+    description: "A * B",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_DIVIDE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/divide",
+    display_name: "Divide",
+    category: "Math",
+    description: "A / B (safe — returns 0 if B is 0)",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_NEGATE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/negate",
+    display_name: "Negate",
+    category: "Math",
+    description: "-Value",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_ABS: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/abs",
+    display_name: "Abs",
+    category: "Math",
+    description: "Absolute value",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_CLAMP: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/clamp",
+    display_name: "Clamp",
+    category: "Math",
+    description: "Clamp value between min and max",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+        PinTemplate::input("min", "Min", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("max", "Max", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_COMPARE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/compare",
+    display_name: "Compare",
+    category: "Math",
+    description: "A > B, A < B, A == B comparisons",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("greater", "A > B", PinType::Bool),
+        PinTemplate::output("less", "A < B", PinType::Bool),
+        PinTemplate::output("equal", "A == B", PinType::Bool),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_AND: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/and",
+    display_name: "AND",
+    category: "Math",
+    description: "Logical AND",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Bool).with_default(PinValue::Bool(false)),
+        PinTemplate::input("b", "B", PinType::Bool).with_default(PinValue::Bool(false)),
+        PinTemplate::output("result", "Result", PinType::Bool),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_OR: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/or",
+    display_name: "OR",
+    category: "Math",
+    description: "Logical OR",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Bool).with_default(PinValue::Bool(false)),
+        PinTemplate::input("b", "B", PinType::Bool).with_default(PinValue::Bool(false)),
+        PinTemplate::output("result", "Result", PinType::Bool),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_NOT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/not",
+    display_name: "NOT",
+    category: "Math",
+    description: "Logical NOT",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Bool).with_default(PinValue::Bool(false)),
+        PinTemplate::output("result", "Result", PinType::Bool),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_MIN: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/min",
+    display_name: "Min",
+    category: "Math",
+    description: "Return the smaller of two values",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+static MATH_MAX: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "math/max",
+    display_name: "Max",
+    category: "Math",
+    description: "Return the larger of two values",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_MATH,
+};
+
+// ── String ──────────────────────────────────────────────────────────────────
+
+static STRING_CONCAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/concat",
+    display_name: "Concat",
+    category: "String",
+    description: "Concatenate two strings",
+    pins: || vec![
+        PinTemplate::input("a", "A", PinType::String).with_default(PinValue::String(String::new())),
+        PinTemplate::input("b", "B", PinType::String).with_default(PinValue::String(String::new())),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_STRING,
+};
+
+static STRING_FORMAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "string/format",
+    display_name: "Format",
+    category: "String",
+    description: "Replace {0} in template with value",
+    pins: || vec![
+        PinTemplate::input("template", "Template", PinType::String)
+            .with_default(PinValue::String("Value: {0}".into())),
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_STRING,
+};
+
+// ── Convert ─────────────────────────────────────────────────────────────────
+
+static TO_STRING: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_string",
+    display_name: "To String",
+    category: "Convert",
+    description: "Convert any value to a string",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::String),
+    ],
+    color: CLR_CONVERT,
+};
+
+static TO_FLOAT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_float",
+    display_name: "To Float",
+    category: "Convert",
+    description: "Convert a value to float",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Float),
+    ],
+    color: CLR_CONVERT,
+};
+
+static TO_INT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_int",
+    display_name: "To Int",
+    category: "Convert",
+    description: "Convert a value to integer",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Int),
+    ],
+    color: CLR_CONVERT,
+};
+
+static TO_BOOL: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "convert/to_bool",
+    display_name: "To Bool",
+    category: "Convert",
+    description: "Convert a value to boolean",
+    pins: || vec![
+        PinTemplate::input("value", "Value", PinType::Any),
+        PinTemplate::output("result", "Result", PinType::Bool),
+    ],
+    color: CLR_CONVERT,
+};
+
+// ── Debug ───────────────────────────────────────────────────────────────────
+
+static DEBUG_LOG: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "debug/log",
+    display_name: "Log",
+    category: "Debug",
+    description: "Print a message to the console",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("message", "Message", PinType::String)
+            .with_default(PinValue::String("Hello!".into())),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_DEBUG,
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 /// Look up a lifecycle node definition by type string.
@@ -372,13 +761,18 @@ pub fn node_def(node_type: &str) -> Option<&'static BlueprintNodeDef> {
             return Some(def);
         }
     }
-    // Fall back to shared blueprint nodes (flow, math, string, convert)
-    renzora_blueprint::node_def(node_type)
+    // Fall back to shared nodes (flow, math, string, convert, debug)
+    for def in SHARED_NODES {
+        if def.node_type == node_type {
+            return Some(def);
+        }
+    }
+    None
 }
 
 /// Return all lifecycle-specific categories.
 pub fn categories() -> Vec<&'static str> {
-    vec![CAT_LIFECYCLE, "Flow", "Math", "String", "Convert"]
+    vec![CAT_LIFECYCLE, "Flow", "Math", "String", "Convert", "Debug"]
 }
 
 /// Return all nodes in a given category.
@@ -386,6 +780,10 @@ pub fn nodes_in_category(category: &str) -> Vec<&'static BlueprintNodeDef> {
     if category == CAT_LIFECYCLE {
         return ALL_NODES.iter().copied().collect();
     }
-    // Delegate to blueprint for shared categories
-    renzora_blueprint::nodes_in_category(category)
+    // Return shared nodes in the requested category
+    SHARED_NODES
+        .iter()
+        .copied()
+        .filter(|n| n.category == category)
+        .collect()
 }

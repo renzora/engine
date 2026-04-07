@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
+bevy = { workspace = true }
 bevy_egui = "0.39"
 renzora_theme = { path = "../renzora_theme" }
 renzora_core = { path = "../../core/renzora_core" }

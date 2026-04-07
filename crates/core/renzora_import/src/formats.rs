@@ -11,6 +11,12 @@ pub enum ModelFormat {
     Stl,
     Ply,
     Fbx,
+    Usd,
+    Usdz,
+    Abc,
+    Dae,
+    Bvh,
+    Blend,
 }
 
 impl ModelFormat {
@@ -22,6 +28,12 @@ impl ModelFormat {
             Self::Stl => "STL",
             Self::Ply => "PLY",
             Self::Fbx => "FBX (Autodesk)",
+            Self::Usd => "USD (Universal Scene Description)",
+            Self::Usdz => "USDZ (Universal Scene Description)",
+            Self::Abc => "ABC (Alembic)",
+            Self::Dae => "DAE (Collada)",
+            Self::Bvh => "BVH (Motion Capture)",
+            Self::Blend => "Blend (Blender)",
         }
     }
 }
@@ -36,13 +48,19 @@ pub fn detect_format(path: &Path) -> Option<ModelFormat> {
         "stl" => Some(ModelFormat::Stl),
         "ply" => Some(ModelFormat::Ply),
         "fbx" => Some(ModelFormat::Fbx),
+        "usd" | "usda" | "usdc" => Some(ModelFormat::Usd),
+        "usdz" => Some(ModelFormat::Usdz),
+        "abc" => Some(ModelFormat::Abc),
+        "dae" => Some(ModelFormat::Dae),
+        "bvh" => Some(ModelFormat::Bvh),
+        "blend" => Some(ModelFormat::Blend),
         _ => None,
     }
 }
 
 /// Returns the list of supported file extensions (without dots).
 pub fn supported_extensions() -> &'static [&'static str] {
-    &["gltf", "glb", "obj", "stl", "ply", "fbx"]
+    &["gltf", "glb", "obj", "stl", "ply", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "bvh", "blend"]
 }
 
 /// Check if a file path has a supported 3D model extension.

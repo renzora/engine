@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "film_grain.wgsl", name = "Film Grain", icon = "FILM_STRIP")]
 pub struct FilmGrainSettings {
@@ -20,6 +22,7 @@ fn sync_time(time: Res<Time>, mut query: Query<&mut FilmGrainSettings>) {
     }
 }
 
+#[derive(Default)]
 pub struct FilmGrainPlugin;
 
 impl Plugin for FilmGrainPlugin {
@@ -33,3 +36,5 @@ impl Plugin for FilmGrainPlugin {
         app.register_inspectable::<FilmGrainSettings>();
     }
 }
+
+renzora::add!(FilmGrainPlugin);

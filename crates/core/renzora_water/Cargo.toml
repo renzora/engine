@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:renzora_editor", "dep:egui-phosphor"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor"]
 
 [dependencies]
-bevy = { version = "0.18", default-features = false, features = ["3d_bevy_render"] }
+bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 avian3d = { version = "0.5", default-features = false, features = ["3d", "f32"] }
-renzora_editor = { path = "../../editor/renzora_editor", optional = true }
+renzora_editor_framework = { path = "../../editor/renzora_editor", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

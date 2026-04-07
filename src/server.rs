@@ -6,8 +6,16 @@
 
 use bevy::prelude::*;
 
+#[cfg(feature = "editor")]
+use renzora_editor as renzora_shared;
+#[cfg(not(feature = "editor"))]
+use renzora_runtime as renzora_shared;
+
+use renzora_shared::renzora_network;
+use renzora_shared::renzora_core;
+
 fn main() {
-    let mut app = renzora::build_runtime_app();
+    let mut app = renzora_app::build_runtime_app();
 
     // Load network config from project/CLI and start the server
     let net_config = load_server_config();

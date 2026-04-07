@@ -142,6 +142,11 @@ pub fn export_heightmap_png16(
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
+/// Public wrapper for stamp brush loading.
+pub fn load_png_public(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
+    load_png(data)
+}
+
 fn load_png(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
     let decoder = png::Decoder::new(std::io::Cursor::new(data));
     let mut reader = decoder.read_info().map_err(|e| format!("PNG decode error: {e}"))?;

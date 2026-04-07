@@ -7,7 +7,7 @@ use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::CLOUD_SUN;
 #[cfg(feature = "editor")]
-use renzora_editor::{
+use renzora_editor_framework::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 use serde::{Deserialize, Serialize};
@@ -57,21 +57,21 @@ impl Default for CloudsData {
     fn default() -> Self {
         Self {
             enabled: true,
-            coverage: 0.5,
-            density: 0.8,
-            scale: 4.0,
-            speed: 0.02,
-            wind_direction: 45.0,
-            altitude: 0.3,
+            coverage: 0.35,
+            density: 0.6,
+            scale: 6.0,
+            speed: 0.01,
+            wind_direction: 220.0,
+            altitude: 0.25,
             color: (1.0, 1.0, 1.0),
-            shadow_color: (0.6, 0.65, 0.7),
-            absorption: 1.5,
-            silver_intensity: 0.4,
-            silver_spread: 0.15,
-            powder_strength: 0.8,
-            ambient_brightness: 0.3,
-            horizon_color: (0.7, 0.8, 0.95),
-            atmosphere_strength: 0.5,
+            shadow_color: (0.55, 0.58, 0.65),
+            absorption: 1.2,
+            silver_intensity: 0.5,
+            silver_spread: 0.12,
+            powder_strength: 0.6,
+            ambient_brightness: 0.35,
+            horizon_color: (0.75, 0.82, 0.92),
+            atmosphere_strength: 0.65,
         }
     }
 }

@@ -17,6 +17,7 @@ use bevy::render::{
         ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
         UniformComponentPlugin,
     },
+    render_asset::RenderAssets,
     render_graph::{
         InternedRenderLabel, InternedRenderSubGraph, NodeRunError, RenderGraphContext,
         RenderGraphError, RenderGraphExt, RenderLabel, RenderSubGraph, ViewNode, ViewNodeRunner,
@@ -31,6 +32,7 @@ use bevy::render::{
         TextureSampleType,
     },
     renderer::{RenderContext, RenderDevice},
+    texture::{FallbackImage, GpuImage},
     view::ViewTarget,
     RenderApp, RenderStartup,
 };
@@ -52,6 +54,11 @@ pub trait PostProcessEffect:
 {
     fn fragment_shader() -> ShaderRef;
 
+    /// When `true`, the pipeline adds two extra binding slots (texture_2d + sampler)
+    /// after the uniform buffer. The effect must populate `ExtraTextureSource<Self>`
+    /// so the handler can bind the texture at render time.
+    fn has_extra_texture() -> bool { false }
+
     /// No longer used — effect ordering is determined by plugin registration order.
     fn node_edges() -> Vec<InternedRenderLabel> { vec![] }
 
@@ -63,6 +70,37 @@ pub trait PostProcessEffect:
     /// No longer used — effects no longer have individual render graph nodes.
     fn node_label() -> impl RenderLabel {
         PostProcessLabel(core::any::type_name::<Self>())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extra texture support (for effects like LUT-based color grading)
+// ---------------------------------------------------------------------------
+
+/// Main-world resource that holds an optional `Handle<Image>` for an extra
+/// texture used by effect `T`. Set this from your plugin's systems.
+#[derive(Resource)]
+pub struct ExtraTextureSource<T: PostProcessEffect> {
+    pub handle: Option<Handle<Image>>,
+    _marker: PhantomData<T>,
+}
+
+impl<T: PostProcessEffect> Default for ExtraTextureSource<T> {
+    fn default() -> Self {
+        Self { handle: None, _marker: PhantomData }
+    }
+}
+
+/// Render-world resource holding the extracted `AssetId<Image>`.
+#[derive(Resource)]
+struct ExtractedExtraTexture<T: PostProcessEffect> {
+    id: Option<AssetId<Image>>,
+    _marker: PhantomData<T>,
+}
+
+impl<T: PostProcessEffect> Default for ExtractedExtraTexture<T> {
+    fn default() -> Self {
+        Self { id: None, _marker: PhantomData }
     }
 }
 
@@ -98,17 +136,33 @@ fn init_pipeline<T: PostProcessEffect>(
     fullscreen_shader: Res<FullscreenShader>,
     pipeline_cache: Res<PipelineCache>,
 ) {
-    let layout = BindGroupLayoutDescriptor::new(
-        "post_process_bind_group_layout",
-        &BindGroupLayoutEntries::sequential(
-            ShaderStages::FRAGMENT,
-            (
-                texture_2d(TextureSampleType::Float { filterable: true }),
-                sampler(SamplerBindingType::Filtering),
-                uniform_buffer::<T>(true),
+    let layout = if T::has_extra_texture() {
+        BindGroupLayoutDescriptor::new(
+            "post_process_bind_group_layout_extra",
+            &BindGroupLayoutEntries::sequential(
+                ShaderStages::FRAGMENT,
+                (
+                    texture_2d(TextureSampleType::Float { filterable: true }),
+                    sampler(SamplerBindingType::Filtering),
+                    uniform_buffer::<T>(true),
+                    texture_2d(TextureSampleType::Float { filterable: true }),
+                    sampler(SamplerBindingType::Filtering),
+                ),
             ),
-        ),
-    );
+        )
+    } else {
+        BindGroupLayoutDescriptor::new(
+            "post_process_bind_group_layout",
+            &BindGroupLayoutEntries::sequential(
+                ShaderStages::FRAGMENT,
+                (
+                    texture_2d(TextureSampleType::Float { filterable: true }),
+                    sampler(SamplerBindingType::Filtering),
+                    uniform_buffer::<T>(true),
+                ),
+            ),
+        )
+    };
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
     let shader = match T::fragment_shader() {
         ShaderRef::Default => {

@@ -12,11 +12,14 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use renzora_core::InputFocusState;
-use renzora_editor::EditorSelection;
-use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_runtime::EditorCamera;
-use renzora_viewport::{NavOverlayState, ViewportSettings, ViewportState};
+use renzora::core::InputFocusState;
+use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::viewport_types::{
+    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode,
+    ViewportSettings, ViewportState,
+};
+use renzora::editor::EditorSelection;
+use renzora::core::EditorCamera;
 
 /// Orbit camera state for the editor viewport.
 ///
@@ -132,6 +135,7 @@ struct CameraDragState {
     dragging: bool,
 }
 
+#[derive(Default)]
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
@@ -151,7 +155,7 @@ impl Plugin for CameraPlugin {
                 update_camera_projection,
                 sync_orbit_snapshot,
                 apply_orbit_on_change,
-            ).chain().run_if(in_state(renzora_splash::SplashState::Editor)));
+            ).chain().run_if(in_state(renzora::editor::SplashState::Editor)));
     }
 }
 
@@ -162,7 +166,7 @@ fn apply_initial_orbit(
 ) {
     for (entity, mut transform) in &mut cameras {
         let t = orbit.calculate_transform();
-        renzora_core::console_log::console_info("Camera", format!(
+        renzora::core::console_log::console_info("Camera", format!(
             "apply_initial_orbit: entity={:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3} pos={:?}",
             entity, orbit.focus, orbit.distance, orbit.yaw, orbit.pitch, t.translation
         ));
@@ -178,8 +182,8 @@ fn sync_viewport_settings(
 ) {
     // Sync projection mode
     let proj = match vp.projection_mode {
-        renzora_viewport::ProjectionMode::Perspective => ProjectionMode::Perspective,
-        renzora_viewport::ProjectionMode::Orthographic => ProjectionMode::Orthographic,
+        VpProjectionMode::Perspective => ProjectionMode::Perspective,
+        VpProjectionMode::Orthographic => ProjectionMode::Orthographic,
     };
     orbit.projection_mode = proj;
 
@@ -205,12 +209,14 @@ fn handle_view_angle_keys(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut orbit: ResMut<OrbitCameraState>,
     mut vp: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
     use std::f32::consts::{FRAC_PI_2, PI};
 
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
@@ -243,8 +249,8 @@ fn handle_view_angle_keys(
         orbit.projection_mode = orbit.projection_mode.toggle();
         // Sync back to viewport settings
         vp.projection_mode = match orbit.projection_mode {
-            ProjectionMode::Perspective => renzora_viewport::ProjectionMode::Perspective,
-            ProjectionMode::Orthographic => renzora_viewport::ProjectionMode::Orthographic,
+            ProjectionMode::Perspective => VpProjectionMode::Perspective,
+            ProjectionMode::Orthographic => VpProjectionMode::Orthographic,
         };
     }
 }
@@ -254,11 +260,13 @@ fn focus_selected(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     selection: Res<EditorSelection>,
     mut orbit: ResMut<OrbitCameraState>,
     transforms: Query<&Transform, Without<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
     if mouse_button.pressed(MouseButton::Right) { return; }
@@ -277,7 +285,8 @@ fn camera_controller(
     settings: Res<CameraSettings>,
     mut drag: ResMut<CameraDragState>,
     viewport: Option<Res<ViewportState>>,
-    terrain_tool: Option<Res<renzora_terrain::data::TerrainToolState>>,
+    active_tool: Option<Res<renzora::editor::ActiveTool>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -286,6 +295,13 @@ fn camera_controller(
     mut camera_query: Query<&mut Transform, With<EditorCamera>>,
     mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
+    // Don't touch cursor or process input during play mode
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
     let viewport_hovered = viewport.as_ref().map_or(true, |v| v.hovered);
 
     let Ok(mut transform) = camera_query.single_mut() else {
@@ -346,11 +362,11 @@ fn camera_controller(
         return;
     }
 
-    // Skip scroll zoom when terrain tool is active — scroll controls brush radius instead
-    let terrain_active = terrain_tool.as_ref().map_or(false, |t| t.active);
+    // Skip scroll zoom when terrain/foliage tool is active — scroll controls brush radius instead
+    let tool_active = active_tool.as_ref().map_or(false, |t| t.is_terrain_or_foliage());
 
     let mut scroll_changed = false;
-    if !terrain_active {
+    if !tool_active {
         for ev in scroll_events.read() {
             let forward = Vec3::new(
                 orbit.pitch.cos() * orbit.yaw.sin(),
@@ -535,13 +551,13 @@ fn update_camera_projection(
 fn apply_orbit_on_change(
     orbit: Res<OrbitCameraState>,
     mut cameras: Query<(Entity, &mut Transform, &Camera), With<EditorCamera>>,
-    play_mode: Option<Res<renzora_core::PlayModeState>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
     if !orbit.is_changed() { return; }
     let is_playing = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
     for (entity, mut transform, camera) in &mut cameras {
         let new_t = orbit.calculate_transform();
-        renzora_core::console_log::console_info("Camera", format!(
+        renzora::core::console_log::console_info("Camera", format!(
             "apply_orbit_on_change: entity={:?} active={} playing={} pos={:?} -> {:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3}",
             entity, camera.is_active, is_playing,
             transform.translation, new_t.translation,
@@ -554,10 +570,12 @@ fn apply_orbit_on_change(
 /// Copy orbit yaw/pitch into the shared snapshot so the viewport axis gizmo can read it.
 fn sync_orbit_snapshot(
     orbit: Res<OrbitCameraState>,
-    mut snapshot: ResMut<renzora_viewport::CameraOrbitSnapshot>,
+    mut snapshot: ResMut<CameraOrbitSnapshot>,
 ) {
     if orbit.is_changed() {
         snapshot.yaw = orbit.yaw;
         snapshot.pitch = orbit.pitch;
     }
 }
+
+renzora::add!(CameraPlugin);

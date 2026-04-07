@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "chromatic_aberration.wgsl", name = "Chromatic Aberration", icon = "RAINBOW")]
 pub struct ChromaticAberrationSettings {
@@ -16,6 +18,7 @@ pub struct ChromaticAberrationSettings {
     pub direction_y: f32,
 }
 
+#[derive(Default)]
 pub struct ChromaticAberrationPlugin;
 
 impl Plugin for ChromaticAberrationPlugin {
@@ -28,3 +31,5 @@ impl Plugin for ChromaticAberrationPlugin {
         app.register_inspectable::<ChromaticAberrationSettings>();
     }
 }
+
+renzora::add!(ChromaticAberrationPlugin);

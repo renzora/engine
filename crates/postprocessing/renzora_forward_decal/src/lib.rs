@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora::editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 
@@ -99,7 +99,7 @@ fn ensure_depth_prepass(
     mut commands: Commands,
     cameras: Query<Entity, (With<Camera3d>, Without<DepthPrepass>)>,
     decals: Query<(), With<DecalSettings>>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::core::EffectRouting>,
 ) {
     if decals.is_empty() {
         return;
@@ -183,6 +183,7 @@ fn decal_custom_ui(
     });
 }
 
+#[derive(Default)]
 pub struct DecalPlugin;
 
 impl Plugin for DecalPlugin {
@@ -194,3 +195,5 @@ impl Plugin for DecalPlugin {
         app.register_inspector(decal_entry());
     }
 }
+
+renzora::add!(DecalPlugin);

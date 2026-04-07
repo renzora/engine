@@ -1,7 +1,7 @@
 //! Inspector registration for AnimatorComponent.
 
 use bevy::prelude::*;
-use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+use renzora_editor_framework::{InspectorEntry, FieldDef, FieldType, FieldValue};
 
 use crate::component::AnimatorComponent;
 
@@ -29,7 +29,7 @@ fn animator_custom_ui(
     ui: &mut bevy_egui::egui::Ui,
     world: &World,
     entity: Entity,
-    cmds: &renzora_editor::EditorCommands,
+    cmds: &renzora_editor_framework::EditorCommands,
     theme: &renzora_theme::Theme,
 ) {
     use bevy_egui::egui;

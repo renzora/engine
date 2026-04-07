@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "pixelation.wgsl", name = "Pixelation", icon = "GRID_FOUR")]
 pub struct PixelationSettings {
@@ -10,6 +12,7 @@ pub struct PixelationSettings {
     pub pixel_size: f32,
 }
 
+#[derive(Default)]
 pub struct PixelationPlugin;
 
 impl Plugin for PixelationPlugin {
@@ -22,3 +25,5 @@ impl Plugin for PixelationPlugin {
         app.register_inspectable::<PixelationSettings>();
     }
 }
+
+renzora::add!(PixelationPlugin);

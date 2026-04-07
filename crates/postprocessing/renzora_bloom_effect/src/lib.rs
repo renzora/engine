@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -22,11 +22,11 @@ pub struct BloomSettings {
 impl Default for BloomSettings {
     fn default() -> Self {
         Self {
-            intensity: 0.15,
-            low_frequency_boost: 0.7,
-            high_pass_frequency: 1.0,
-            threshold: 0.0,
-            threshold_softness: 0.0,
+            intensity: 0.08,
+            low_frequency_boost: 0.5,
+            high_pass_frequency: 0.8,
+            threshold: 0.8,
+            threshold_softness: 0.3,
             enabled: true,
         }
     }

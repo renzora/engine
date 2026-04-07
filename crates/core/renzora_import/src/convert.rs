@@ -55,5 +55,10 @@ pub fn convert_to_glb(
         ModelFormat::Stl => crate::stl::convert(source_path, settings),
         ModelFormat::Ply => crate::ply::convert(source_path, settings),
         ModelFormat::Fbx => crate::fbx::convert(source_path, settings),
+        ModelFormat::Usd | ModelFormat::Usdz => crate::usd::convert(source_path, settings),
+        ModelFormat::Abc => crate::abc::convert(source_path, settings),
+        ModelFormat::Dae => crate::dae::convert(source_path, settings),
+        ModelFormat::Bvh => crate::bvh::convert(source_path, settings),
+        ModelFormat::Blend => crate::blend::convert(source_path, settings),
     }
 }

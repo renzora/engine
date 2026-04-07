@@ -8,10 +8,10 @@ mod tree;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
-use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora::bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
+use renzora::theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
 
@@ -58,7 +58,7 @@ impl EditorPanel for AssetBrowserPanel {
         let mut state = self.state.write().unwrap();
 
         // Use project directory if available
-        if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+        if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
             if state.project_root.as_ref() != Some(&project.path) {
                 state.project_root = Some(project.path.clone());
                 state.current_folder = Some(project.path.clone());
@@ -415,16 +415,16 @@ impl EditorPanel for AssetBrowserPanel {
                 if !model_files.is_empty() {
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                         let target_dir = import_target.as_ref().and_then(|folder| {
-                            let project = world.get_resource::<renzora_core::CurrentProject>()?;
+                            let project = world.get_resource::<renzora::core::CurrentProject>()?;
                             folder.strip_prefix(&project.path).ok().map(|rel| {
                                 rel.to_string_lossy().replace('\\', "/")
                             })
                         }).unwrap_or_default();
 
                         cmds.push(move |world: &mut bevy::prelude::World| {
-                            world.insert_resource(renzora_core::ImportRequested);
+                            world.insert_resource(renzora::core::ImportRequested);
                             if !target_dir.is_empty() {
-                                world.insert_resource(renzora_core::ImportTargetDir(target_dir));
+                                world.insert_resource(renzora::core::ImportTargetDir(target_dir));
                             }
                         });
                     }
@@ -535,7 +535,7 @@ impl EditorPanel for AssetBrowserPanel {
                 let requests = grid_result.thumbnail_requests;
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     let asset_server = world.resource::<bevy::prelude::AssetServer>().clone();
-                    let project = world.get_resource::<renzora_core::CurrentProject>().cloned();
+                    let project = world.get_resource::<renzora::core::CurrentProject>().cloned();
                     let mut cache = world.resource_mut::<thumbnails::ThumbnailCache>();
                     for path in requests {
                         cache.request(path, &asset_server, project.as_ref());
@@ -553,18 +553,18 @@ impl EditorPanel for AssetBrowserPanel {
         // Import button clicked — request import overlay
         if state.import_clicked {
             state.import_clicked = false;
-            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
                 let target_dir = state.current_folder.as_ref().and_then(|folder| {
-                    let project = world.get_resource::<renzora_core::CurrentProject>()?;
+                    let project = world.get_resource::<renzora::core::CurrentProject>()?;
                     folder.strip_prefix(&project.path).ok().map(|rel| {
                         rel.to_string_lossy().replace('\\', "/")
                     })
                 }).unwrap_or_default();
 
                 cmds.push(move |world: &mut bevy::prelude::World| {
-                    world.insert_resource(renzora_core::ImportRequested);
+                    world.insert_resource(renzora::core::ImportRequested);
                     if !target_dir.is_empty() {
-                        world.insert_resource(renzora_core::ImportTargetDir(target_dir));
+                        world.insert_resource(renzora::core::ImportTargetDir(target_dir));
                     }
                 });
             }
@@ -581,9 +581,7 @@ impl EditorPanel for AssetBrowserPanel {
             if is_editable {
                 if let Some(cmds) = world.get_resource::<EditorCommands>() {
                     cmds.push(move |world: &mut bevy::prelude::World| {
-                        if let Some(mut editor) = world.get_resource_mut::<renzora_code_editor::CodeEditorState>() {
-                            editor.open_file(path);
-                        }
+                        world.insert_resource(renzora::core::OpenCodeEditorFile { path });
                     });
                 }
             }
@@ -596,7 +594,7 @@ impl EditorPanel for AssetBrowserPanel {
 fn render_context_menu(
     ui: &mut egui::Ui,
     state: &mut AssetBrowserState,
-    theme: &renzora_theme::Theme,
+    theme: &renzora::theme::Theme,
     pos: egui::Pos2,
 ) {
     let ctx = ui.ctx().clone();
@@ -832,6 +830,7 @@ fn render_context_menu(
 }
 
 /// Plugin that registers the `AssetBrowserPanel` with the editor.
+#[derive(Default)]
 pub struct AssetBrowserPlugin;
 
 impl Plugin for AssetBrowserPlugin {
@@ -842,3 +841,5 @@ impl Plugin for AssetBrowserPlugin {
             .register_panel(AssetBrowserPanel::default());
     }
 }
+
+renzora::add!(AssetBrowserPlugin);

@@ -190,7 +190,7 @@ pub fn sync_preview_animation_graph(
 
 /// Update the studio preview camera clear color to match the theme.
 pub fn sync_preview_clear_color(
-    theme_manager: Option<Res<renzora_theme::ThemeManager>>,
+    theme_manager: Option<Res<renzora::theme::ThemeManager>>,
     mut cameras: Query<&mut Camera, With<crate::studio_preview::StudioPreviewCamera>>,
 ) {
     let Some(tm) = theme_manager else { return };

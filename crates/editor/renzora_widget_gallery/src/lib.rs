@@ -5,14 +5,14 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32};
-use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::bevy_egui::egui::{self, Color32};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{
     AppEditorExt, DockTree, EditorPanel, LayoutManager, PanelLocation, WorkspaceLayout,
 };
-use renzora_theme::ThemeManager;
-// Widget re-exports come through renzora_editor (via renzora_ui)
-use renzora_editor::{
+use renzora::theme::ThemeManager;
+// Widget re-exports come through renzora::editor (via renzora_ui)
+use renzora::editor::{
     section_header, inline_property, property_row, toggle_switch,
     icon_button, empty_state, checkerboard, dim_color,
     TileGrid, TileState, split_label_two_lines,
@@ -1510,7 +1510,7 @@ impl EditorPanel for TreeGallery {
                 row_index: &mut usize,
                 node_index: &mut usize,
                 state: &mut TreeState,
-                theme: &renzora_theme::Theme,
+                theme: &renzora::theme::Theme,
             ) {
                 for (i, node) in nodes.iter().enumerate() {
                     let is_last = i == nodes.len() - 1;
@@ -1591,7 +1591,7 @@ impl EditorPanel for TreeGallery {
 
 // ── Mixer gallery ───────────────────────────────────────────────────────────
 
-use renzora_editor::{
+use renzora::editor::{
     rotary_knob, KnobConfig,
     vertical_fader, FaderConfig,
     vu_meter, VuMeterConfig, VuMeterValue,
@@ -2122,6 +2122,7 @@ fn gallery_layout() -> WorkspaceLayout {
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
 /// Plugin that registers the widget gallery panels and layout.
+#[derive(Default)]
 pub struct WidgetGalleryPlugin;
 
 impl Plugin for WidgetGalleryPlugin {
@@ -2147,3 +2148,5 @@ impl Plugin for WidgetGalleryPlugin {
         world.insert_resource(layouts);
     }
 }
+
+renzora::add!(WidgetGalleryPlugin);

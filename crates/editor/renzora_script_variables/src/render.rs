@@ -1,8 +1,8 @@
-use bevy_egui::egui::{self, RichText};
+use renzora::bevy_egui::egui::{self, RichText};
 use renzora_scripting::{ScriptValue, ScriptVariableDefinition};
-use renzora_theme::Theme;
+use renzora::theme::Theme;
 
-use egui_phosphor::regular::{CODE, INFO};
+use renzora::egui_phosphor::regular::{CODE, INFO};
 
 /// Render the script variables panel content.
 pub fn render_script_variables_content(

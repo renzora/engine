@@ -6,12 +6,14 @@
 //!
 //! Bones are identified by walking the child hierarchy and finding named
 //! entities that have `AnimationTarget` components (set up by rehydration).
+//!
+//! Uses reflection to detect AnimatorComponent/AnimatorState so this crate
+//! does not depend on renzora_animation.
 
 use bevy::prelude::*;
 use bevy::animation::AnimationTargetId;
 
-use renzora_editor::EditorSelection;
-use renzora_animation::{AnimatorComponent, AnimatorState};
+use renzora::editor::EditorSelection;
 
 use crate::OverlayGizmoGroup;
 
@@ -22,23 +24,68 @@ pub struct BoneSelection {
     pub hovered_bone: Option<Entity>,
 }
 
+/// Check if an entity has a component whose type name contains the given substring.
+fn has_component_by_name(world: &World, entity: Entity, name: &str) -> bool {
+    let Ok(er) = world.get_entity(entity) else { return false };
+    for &component_id in er.archetype().components() {
+        if let Some(info) = world.components().get_info(component_id) {
+            if info.name().contains(name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Read a bool field from a reflected component by type name.
+fn get_reflected_bool_field(world: &World, entity: Entity, type_substr: &str, field: &str) -> Option<bool> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+
+    let registration = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        path.contains(type_substr)
+    })?;
+
+    let reflect_component = registration.data::<ReflectComponent>()?;
+    let entity_ref = world.get_entity(entity).ok()?;
+    let reflected = reflect_component.reflect(entity_ref)?;
+
+    if let bevy::reflect::ReflectRef::Struct(s) = reflected.reflect_ref() {
+        let field_val = s.field(field)?;
+        field_val.try_downcast_ref::<bool>().copied()
+    } else {
+        None
+    }
+}
+
 /// Draw skeleton overlay for the selected entity.
 pub fn draw_skeleton_gizmo(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
     bone_selection: Res<BoneSelection>,
-    animator_q: Query<(&AnimatorComponent, Option<&AnimatorState>)>,
     global_transforms: Query<&GlobalTransform>,
     children_q: Query<&Children>,
     parent_q: Query<&ChildOf>,
     target_q: Query<(), With<AnimationTargetId>>,
+    world: &World,
 ) {
     let Some(selected) = selection.get() else { return };
 
-    // Only draw if the selected entity has an animator with initialized state
-    let Ok((_, state_opt)) = animator_q.get(selected) else { return };
-    let Some(state) = state_opt else { return };
-    if !state.initialized { return; }
+    // Only draw if the selected entity has an AnimatorComponent
+    if !has_component_by_name(world, selected, "AnimatorComponent") {
+        return;
+    }
+
+    // Check if AnimatorState exists and is initialized
+    let has_state = has_component_by_name(world, selected, "AnimatorState");
+    if !has_state {
+        return;
+    }
+    let initialized = get_reflected_bool_field(world, selected, "AnimatorState", "initialized");
+    if !initialized.unwrap_or(false) {
+        return;
+    }
 
     let default_color = Color::srgba(0.9, 0.9, 0.9, 0.6);
     let hovered_color = Color::srgb(1.0, 1.0, 0.3);

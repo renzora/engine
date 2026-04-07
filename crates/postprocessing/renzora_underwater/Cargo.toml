@@ -3,13 +3,15 @@ name = "renzora_underwater"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [features]
-default = []
-editor = ["dep:renzora_editor", "dep:egui-phosphor"]
+default = ["editor"]
+editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [dependencies]
-bevy = { version = "0.18", default-features = false }
+bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_editor = { path = "../../editor/renzora_editor", optional = true }
-renzora_postprocess = { path = "../renzora_postprocess" }
+renzora = { path = "../../renzora", default-features = false }

@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "glitch.wgsl", name = "Glitch", icon = "LIGHTNING")]
 pub struct GlitchSettings {
@@ -24,6 +26,7 @@ fn sync_time(time: Res<Time>, mut query: Query<&mut GlitchSettings>) {
     }
 }
 
+#[derive(Default)]
 pub struct GlitchPlugin;
 
 impl Plugin for GlitchPlugin {
@@ -37,3 +40,5 @@ impl Plugin for GlitchPlugin {
         app.register_inspectable::<GlitchSettings>();
     }
 }
+
+renzora::add!(GlitchPlugin);

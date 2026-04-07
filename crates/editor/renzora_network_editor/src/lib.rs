@@ -3,13 +3,13 @@
 //! Panels: Network Monitor, Network Entities, Network Settings.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_network::{NetworkStatus, Networked, NetworkId, NetworkOwner, OwnerKind};
 use renzora_network::status::ConnectionState;
-use renzora_core::CurrentProject;
-use renzora_theme::ThemeManager;
+use renzora::core::CurrentProject;
+use renzora::theme::ThemeManager;
 
 // ============================================================================
 // Network Monitor Panel
@@ -20,7 +20,7 @@ struct NetworkMonitorPanel;
 impl EditorPanel for NetworkMonitorPanel {
     fn id(&self) -> &str { "network_monitor" }
     fn title(&self) -> &str { "Network Monitor" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::WIFI_HIGH) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::WIFI_HIGH) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -34,7 +34,7 @@ impl EditorPanel for NetworkMonitorPanel {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.label(
-                    egui::RichText::new(egui_phosphor::regular::WIFI_SLASH)
+                    egui::RichText::new(renzora::egui_phosphor::regular::WIFI_SLASH)
                         .size(32.0)
                         .color(muted),
                 );
@@ -53,7 +53,7 @@ impl EditorPanel for NetworkMonitorPanel {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.label(
-                        egui::RichText::new(egui_phosphor::regular::WIFI_SLASH)
+                        egui::RichText::new(renzora::egui_phosphor::regular::WIFI_SLASH)
                             .size(32.0)
                             .color(muted),
                     );
@@ -88,7 +88,7 @@ impl EditorPanel for NetworkMonitorPanel {
                     // Connection header
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(egui_phosphor::regular::WIFI_HIGH)
+                            egui::RichText::new(renzora::egui_phosphor::regular::WIFI_HIGH)
                                 .size(16.0)
                                 .color(egui::Color32::from_rgb(80, 200, 120)),
                         );
@@ -143,7 +143,7 @@ impl EditorPanel for NetworkMonitorPanel {
                         for client in &status.connected_clients {
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(egui_phosphor::regular::USER)
+                                    egui::RichText::new(renzora::egui_phosphor::regular::USER)
                                         .size(12.0)
                                         .color(muted),
                                 );
@@ -179,7 +179,7 @@ struct NetworkEntitiesPanel;
 impl EditorPanel for NetworkEntitiesPanel {
     fn id(&self) -> &str { "network_entities" }
     fn title(&self) -> &str { "Network Entities" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SHARE_NETWORK) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::SHARE_NETWORK) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Left }
     fn min_size(&self) -> [f32; 2] { [180.0, 100.0] }
 
@@ -207,7 +207,7 @@ impl EditorPanel for NetworkEntitiesPanel {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.label(
-                    egui::RichText::new(egui_phosphor::regular::SHARE_NETWORK)
+                    egui::RichText::new(renzora::egui_phosphor::regular::SHARE_NETWORK)
                         .size(32.0)
                         .color(muted),
                 );
@@ -242,7 +242,7 @@ impl EditorPanel for NetworkEntitiesPanel {
                         .as_deref()
                         .unwrap_or(&fallback);
                     ui.label(
-                        egui::RichText::new(egui_phosphor::regular::CUBE)
+                        egui::RichText::new(renzora::egui_phosphor::regular::CUBE)
                             .size(12.0)
                             .color(muted),
                     );
@@ -284,7 +284,7 @@ struct NetworkSettingsPanel;
 impl EditorPanel for NetworkSettingsPanel {
     fn id(&self) -> &str { "network_settings" }
     fn title(&self) -> &str { "Network Settings" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::GEAR_SIX) }
+    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::GEAR_SIX) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -340,7 +340,7 @@ impl EditorPanel for NetworkSettingsPanel {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.label(
-                        egui::RichText::new(egui_phosphor::regular::CLOUD_SLASH)
+                        egui::RichText::new(renzora::egui_phosphor::regular::CLOUD_SLASH)
                             .size(32.0)
                             .color(muted),
                     );
@@ -366,6 +366,7 @@ impl EditorPanel for NetworkSettingsPanel {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct NetworkEditorPlugin;
 
 impl Plugin for NetworkEditorPlugin {
@@ -376,3 +377,5 @@ impl Plugin for NetworkEditorPlugin {
         app.register_panel(NetworkSettingsPanel);
     }
 }
+
+renzora::add!(NetworkEditorPlugin);

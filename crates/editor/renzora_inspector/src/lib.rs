@@ -1,20 +1,19 @@
 //! Inspector panel — shows and edits component properties for the selected entity.
 
-mod built_in;
 mod field_widget;
 mod state;
 
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::bevy_egui::egui::{self, RichText};
+use renzora::egui_phosphor::regular;
+use renzora::editor::{
     collapsible_section, collapsible_section_removable, empty_state, search_overlay,
     AppEditorExt, EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
     OverlayAction, OverlayEntry, PanelLocation,
 };
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 use state::InspectorState;
 
@@ -235,18 +234,22 @@ impl EditorPanel for InspectorPanel {
 }
 
 /// Plugin that registers the `InspectorPanel` and built-in component inspectors.
+#[derive(Default)]
 pub struct InspectorPanelPlugin;
 
 impl Plugin for InspectorPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] InspectorPanelPlugin");
-        // Register built-in inspectors
+        // Inspector entries are now self-registered by their owning crates:
+        // - Bevy built-ins: renzora_editor_framework::bevy_inspectors
+        // - Physics: renzora_physics::inspector (editor feature)
+        // - Scripts: renzora_scripting::inspector (editor feature)
+        // - Material: renzora_material_editor::material_inspector
         app.init_resource::<InspectorRegistry>();
-        built_in::register_built_in_inspectors(
-            &mut app.world_mut().resource_mut::<InspectorRegistry>(),
-        );
 
         // Register the panel
         app.register_panel(InspectorPanel::default());
     }
 }
+
+renzora::add!(InspectorPanelPlugin);

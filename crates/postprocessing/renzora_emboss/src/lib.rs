@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "emboss.wgsl", name = "Emboss", icon = "CUBE")]
 pub struct EmbossSettings {
@@ -12,6 +14,7 @@ pub struct EmbossSettings {
     pub mix_amount: f32,
 }
 
+#[derive(Default)]
 pub struct EmbossPlugin;
 
 impl Plugin for EmbossPlugin {
@@ -24,3 +27,5 @@ impl Plugin for EmbossPlugin {
         app.register_inspectable::<EmbossSettings>();
     }
 }
+
+renzora::add!(EmbossPlugin);

@@ -147,8 +147,8 @@ pub fn apply_buoyancy(
 // ── Inspector entry ──────────────────────────────────────────────────────────
 
 #[cfg(feature = "editor")]
-pub fn buoyant_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+pub fn buoyant_inspector_entry() -> renzora_editor_framework::InspectorEntry {
+    use renzora_editor_framework::{InspectorEntry, FieldDef, FieldType, FieldValue};
 
     InspectorEntry {
         type_id: "buoyant",

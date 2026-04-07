@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "toon.wgsl", name = "Toon", icon = "PAINT_BRUSH")]
 pub struct ToonSettings {
@@ -16,6 +18,7 @@ pub struct ToonSettings {
     pub saturation_boost: f32,
 }
 
+#[derive(Default)]
 pub struct ToonPlugin;
 
 impl Plugin for ToonPlugin {
@@ -28,3 +31,5 @@ impl Plugin for ToonPlugin {
         app.register_inspectable::<ToonSettings>();
     }
 }
+
+renzora::add!(ToonPlugin);

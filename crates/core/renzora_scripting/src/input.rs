@@ -2,70 +2,8 @@ use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton};
 use std::collections::HashMap;
 
-/// Input state resource collected each frame for scripts
-#[derive(Resource, Default, Clone)]
-pub struct ScriptInput {
-    pub keys_pressed: HashMap<KeyCode, bool>,
-    pub keys_just_pressed: HashMap<KeyCode, bool>,
-    pub keys_just_released: HashMap<KeyCode, bool>,
-    pub mouse_pressed: HashMap<MouseButton, bool>,
-    pub mouse_just_pressed: HashMap<MouseButton, bool>,
-    pub mouse_position: Vec2,
-    pub mouse_delta: Vec2,
-    pub scroll_delta: Vec2,
-    pub gamepad_axes: HashMap<u32, HashMap<GamepadAxis, f32>>,
-    pub gamepad_buttons: HashMap<u32, HashMap<GamepadButton, bool>>,
-}
-
-impl ScriptInput {
-    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
-        self.keys_pressed.get(&key).copied().unwrap_or(false)
-    }
-
-    pub fn is_key_just_pressed(&self, key: KeyCode) -> bool {
-        self.keys_just_pressed.get(&key).copied().unwrap_or(false)
-    }
-
-    pub fn get_movement_vector(&self) -> Vec2 {
-        let mut x = 0.0f32;
-        let mut y = 0.0f32;
-        if self.is_key_pressed(KeyCode::KeyA) || self.is_key_pressed(KeyCode::ArrowLeft) { x -= 1.0; }
-        if self.is_key_pressed(KeyCode::KeyD) || self.is_key_pressed(KeyCode::ArrowRight) { x += 1.0; }
-        if self.is_key_pressed(KeyCode::KeyS) || self.is_key_pressed(KeyCode::ArrowDown) { y -= 1.0; }
-        if self.is_key_pressed(KeyCode::KeyW) || self.is_key_pressed(KeyCode::ArrowUp) { y += 1.0; }
-        let v = Vec2::new(x, y);
-        if v.length_squared() > 0.0 { v.normalize() } else { v }
-    }
-
-    pub fn get_gamepad_left_stick(&self, id: u32) -> Vec2 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
-        Vec2::new(
-            axes.get(&GamepadAxis::LeftStickX).copied().unwrap_or(0.0),
-            axes.get(&GamepadAxis::LeftStickY).copied().unwrap_or(0.0),
-        )
-    }
-
-    pub fn get_gamepad_right_stick(&self, id: u32) -> Vec2 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
-        Vec2::new(
-            axes.get(&GamepadAxis::RightStickX).copied().unwrap_or(0.0),
-            axes.get(&GamepadAxis::RightStickY).copied().unwrap_or(0.0),
-        )
-    }
-
-    pub fn get_gamepad_trigger(&self, id: u32, left: bool) -> f32 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return 0.0 };
-        let axis = if left { GamepadAxis::LeftZ } else { GamepadAxis::RightZ };
-        axes.get(&axis).copied().unwrap_or(0.0)
-    }
-
-    pub fn is_gamepad_button_pressed(&self, id: u32, button: GamepadButton) -> bool {
-        self.gamepad_buttons.get(&id)
-            .and_then(|b| b.get(&button))
-            .copied()
-            .unwrap_or(false)
-    }
-}
+// Re-export ScriptInput from renzora_core
+pub use renzora_core::ScriptInput;
 
 /// System to update ScriptInput from Bevy input resources
 pub fn update_script_input(

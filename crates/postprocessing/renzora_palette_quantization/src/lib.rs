@@ -7,11 +7,11 @@ use bevy::render::{
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
+use renzora::postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora::editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -88,6 +88,7 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
+#[derive(Default)]
 pub struct PaletteQuantizationPlugin;
 
 impl Plugin for PaletteQuantizationPlugin {
@@ -96,9 +97,11 @@ impl Plugin for PaletteQuantizationPlugin {
         bevy::asset::embedded_asset!(app, "palette_quantization.wgsl");
         app.register_type::<PaletteQuantizationSettings>();
         app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<PaletteQuantizationSettings>::default(),
+            renzora::postprocess::PostProcessPlugin::<PaletteQuantizationSettings>::default(),
         );
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(PaletteQuantizationPlugin);

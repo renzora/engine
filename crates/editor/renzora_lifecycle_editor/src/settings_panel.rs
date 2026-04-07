@@ -1,12 +1,12 @@
 //! Lifecycle Settings Panel — network config + project info.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
+use renzora::bevy_egui::egui;
 
-use renzora_core::CurrentProject;
-use renzora_editor::{EditorPanel, PanelLocation};
+use renzora::core::CurrentProject;
+use renzora::editor::{EditorPanel, PanelLocation};
 use renzora_network::NetworkStatus;
-use renzora_theme::ThemeManager;
+use renzora::theme::ThemeManager;
 
 pub struct LifecycleSettingsPanel;
 
@@ -20,7 +20,7 @@ impl EditorPanel for LifecycleSettingsPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::GEAR_SIX)
+        Some(renzora::egui_phosphor::regular::GEAR_SIX)
     }
 
     fn default_location(&self) -> PanelLocation {
@@ -115,7 +115,7 @@ impl EditorPanel for LifecycleSettingsPanel {
                 ui.vertical_centered(|ui| {
                     ui.add_space(20.0);
                     ui.label(
-                        egui::RichText::new(egui_phosphor::regular::CLOUD_SLASH)
+                        egui::RichText::new(renzora::egui_phosphor::regular::CLOUD_SLASH)
                             .size(24.0)
                             .color(muted),
                     );

@@ -21,10 +21,10 @@ impl Plugin for TerrainPlugin {
             .register_type::<data::TerrainData>()
             .register_type::<data::TerrainChunkData>()
             .register_type::<paint::PaintableSurfaceData>()
-            .register_type::<foliage::TerrainFoliageConfig>()
+            .register_type::<foliage::scatter::TerrainFoliageConfig>()
             .init_resource::<data::TerrainSettings>()
-            .init_resource::<data::TerrainToolState>()
             .init_resource::<data::TerrainSculptState>()
+            .init_resource::<data::StampBrushData>()
             .init_resource::<paint::SurfacePaintSettings>()
             .init_resource::<paint::SurfacePaintState>()
             .init_resource::<undo::TerrainUndoStack>()
@@ -40,5 +40,17 @@ impl Plugin for TerrainPlugin {
                     splatmap_systems::terrain_layer_texture_system,
                 ),
             );
+
+        #[cfg(feature = "editor")]
+        {
+            use renzora_editor_framework::{AppEditorExt, EntityPreset};
+            app.register_entity_preset(EntityPreset {
+                id: "terrain",
+                display_name: "Terrain",
+                icon: egui_phosphor::regular::MOUNTAINS,
+                category: "general",
+                spawn_fn: |world| mesh::spawn_terrain(world),
+            });
+        }
     }
 }

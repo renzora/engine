@@ -579,6 +579,108 @@ fn register_api(lua: &Lua) {
         }
     }).unwrap());
 
+    // -- Script Actions (generic events for domain crates) --
+    // action("name", { key = value, ... }) — triggers a ScriptAction event
+    let _ = globals.set("action", lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
+        let mut map = std::collections::HashMap::new();
+        if let Some(tbl) = args {
+            for pair in tbl.pairs::<String, LuaValue>() {
+                if let Ok((k, v)) = pair {
+                    map.insert(k, lua_to_action_value(&v));
+                }
+            }
+        }
+        push_command(ScriptCommand::Action {
+            name,
+            target_entity: None,
+            args: map,
+        });
+        Ok(())
+    }).unwrap());
+
+    // action_on("EntityName", "name", { key = value, ... }) — action targeting another entity
+    let _ = globals.set("action_on", lua.create_function(|_, (target, name, args): (String, String, Option<LuaTable>)| {
+        let mut map = std::collections::HashMap::new();
+        if let Some(tbl) = args {
+            for pair in tbl.pairs::<String, LuaValue>() {
+                if let Ok((k, v)) = pair {
+                    map.insert(k, lua_to_action_value(&v));
+                }
+            }
+        }
+        push_command(ScriptCommand::Action {
+            name,
+            target_entity: Some(target),
+            args: map,
+        });
+        Ok(())
+    }).unwrap());
+
+    // -- Component Reflection --
+    // get_component("ComponentType") — returns all fields as a table
+    let _ = globals.set("get_component", lua.create_function(|lua, component_type: String| {
+        match crate::get_handler::call_get_component(None, &component_type) {
+            Some(fields) => {
+                let t = lua.create_table()?;
+                for (key, val) in fields {
+                    match property_value_to_lua_result(lua, val) {
+                        Ok(lv) => { let _ = t.set(key, lv); }
+                        Err(_) => {}
+                    }
+                }
+                Ok(LuaValue::Table(t))
+            }
+            None => Ok(LuaValue::Nil),
+        }
+    }).unwrap());
+
+    // get_component_on("EntityName", "ComponentType") — returns all fields from named entity
+    let _ = globals.set("get_component_on", lua.create_function(|lua, (entity_name, component_type): (String, String)| {
+        match crate::get_handler::call_get_component(Some(&entity_name), &component_type) {
+            Some(fields) => {
+                let t = lua.create_table()?;
+                for (key, val) in fields {
+                    match property_value_to_lua_result(lua, val) {
+                        Ok(lv) => { let _ = t.set(key, lv); }
+                        Err(_) => {}
+                    }
+                }
+                Ok(LuaValue::Table(t))
+            }
+            None => Ok(LuaValue::Nil),
+        }
+    }).unwrap());
+
+    // get_components() — list all reflected component names on self
+    let _ = globals.set("get_components", lua.create_function(|lua, ()| {
+        let names = crate::get_handler::call_get_components(None);
+        let t = lua.create_table()?;
+        for (i, name) in names.iter().enumerate() {
+            t.set(i + 1, name.as_str())?;
+        }
+        Ok(t)
+    }).unwrap());
+
+    // get_components_on("EntityName") — list component names on named entity
+    let _ = globals.set("get_components_on", lua.create_function(|lua, entity_name: String| {
+        let names = crate::get_handler::call_get_components(Some(&entity_name));
+        let t = lua.create_table()?;
+        for (i, name) in names.iter().enumerate() {
+            t.set(i + 1, name.as_str())?;
+        }
+        Ok(t)
+    }).unwrap());
+
+    // has_component("ComponentType") — check if self has a component
+    let _ = globals.set("has_component", lua.create_function(|_, component_type: String| {
+        Ok(crate::get_handler::call_get_component(None, &component_type).is_some())
+    }).unwrap());
+
+    // has_component_on("EntityName", "ComponentType") — check on named entity
+    let _ = globals.set("has_component_on", lua.create_function(|_, (entity_name, component_type): (String, String)| {
+        Ok(crate::get_handler::call_get_component(Some(&entity_name), &component_type).is_some())
+    }).unwrap());
+
     // -- Math helpers --
     let _ = globals.set("vec3", lua.create_function(|lua, (x, y, z): (f32, f32, f32)| {
         let t = lua.create_table()?;
@@ -880,6 +982,25 @@ fn property_value_to_lua_result(lua: &Lua, value: crate::command::PropertyValue)
 }
 
 /// Extract a string argument from a LuaMultiValue by index.
+
+fn lua_to_action_value(value: &LuaValue) -> renzora_core::ScriptActionValue {
+    use renzora_core::ScriptActionValue;
+    match value {
+        LuaValue::Number(n) => ScriptActionValue::Float(*n as f32),
+        LuaValue::Integer(n) => ScriptActionValue::Int(*n),
+        LuaValue::Boolean(b) => ScriptActionValue::Bool(*b),
+        LuaValue::String(s) => ScriptActionValue::String(s.to_string_lossy().to_string()),
+        LuaValue::Table(t) => {
+            // Check if it's a vec3 table {x, y, z}
+            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f32>("x"), t.get::<f32>("y"), t.get::<f32>("z")) {
+                ScriptActionValue::Vec3([x, y, z])
+            } else {
+                ScriptActionValue::String(format!("{:?}", value))
+            }
+        }
+        _ => ScriptActionValue::String(format!("{:?}", value)),
+    }
+}
 
 fn to_display_name(name: &str) -> String {
     name.split('_')

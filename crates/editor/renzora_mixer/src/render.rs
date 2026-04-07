@@ -3,12 +3,12 @@
 //! Delegates to `mixer_channel_strip` for each bus, with custom bus management
 //! (add, rename, delete, drag-reorder).
 
-use bevy_egui::egui::{self, Color32, RichText, Sense, Stroke, Vec2};
+use renzora::bevy_egui::egui::{self, Color32, RichText, Sense, Stroke, Vec2};
 use renzora_audio::{ChannelStrip, MixerState};
-use renzora_editor::{
+use renzora::editor::{
     mixer_channel_strip, MixerStripConfig, MixerStripState,
 };
-use renzora_theme::Theme;
+use renzora::theme::Theme;
 
 /// Bus accent colors
 fn bus_accent(name: &str, custom_index: Option<usize>) -> Color32 {
@@ -88,7 +88,7 @@ pub fn render_mixer_content(
     muted_color: Color32,
 ) {
     // Get theme from egui data or use a default
-    let theme = renzora_theme::Theme::default();
+    let theme = renzora::theme::Theme::default();
 
     // Handle rename commit/cancel from previous frame
     if let Some(idx) = mixer.renaming_bus {

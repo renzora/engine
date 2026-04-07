@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor_framework::{inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 

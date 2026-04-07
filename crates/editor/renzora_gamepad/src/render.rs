@@ -1,7 +1,7 @@
 //! Gamepad debug panel rendering.
 
-use bevy_egui::egui::{self, Color32, RichText, Stroke, StrokeKind, Vec2};
-use renzora_theme::Theme;
+use renzora::bevy_egui::egui::{self, Color32, RichText, Stroke, StrokeKind, Vec2};
+use renzora::theme::Theme;
 
 use crate::state::{GamepadDebugState, GamepadInfo};
 

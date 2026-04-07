@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 use serde;
-use renzora_postprocess;
+use renzora::postprocess as renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora::editor as renzora_editor_framework;
+#[cfg(feature = "editor")]
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "frosted_glass.wgsl", name = "Frosted Glass", icon = "SNOWFLAKE")]
 pub struct FrostedGlassSettings {
@@ -12,6 +14,7 @@ pub struct FrostedGlassSettings {
     pub scale: f32,
 }
 
+#[derive(Default)]
 pub struct FrostedGlassPlugin;
 
 impl Plugin for FrostedGlassPlugin {
@@ -24,3 +27,5 @@ impl Plugin for FrostedGlassPlugin {
         app.register_inspectable::<FrostedGlassSettings>();
     }
 }
+
+renzora::add!(FrostedGlassPlugin);

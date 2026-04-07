@@ -3,6 +3,8 @@ pub mod properties;
 pub mod backend;
 pub mod character_controller;
 pub mod character_controller_systems;
+#[cfg(feature = "editor")]
+pub mod inspector;
 
 pub use data::*;
 pub use properties::*;
@@ -54,7 +56,6 @@ impl Plugin for PhysicsPlugin {
             character_controller_systems::auto_input_from_actions,
         )
             .chain()
-            .after(renzora_input::state::update_action_state)
             .run_if(not_editing));
         app.add_systems(Update,
             character_controller_systems::auto_init_character_controller,
@@ -78,6 +79,13 @@ impl Plugin for PhysicsPlugin {
                     .run_if(not_editing),
             );
         }
+
+        // Listen for editor pause/unpause events (decoupled from renzora_editor_framework)
+        app.add_observer(on_pause_physics)
+           .add_observer(on_unpause_physics);
+
+        #[cfg(feature = "editor")]
+        inspector::register_physics_inspectors(app);
     }
 }
 
@@ -168,6 +176,16 @@ fn sync_physics_data(
     for (entity, shape_data) in &changed_shapes {
         spawn_collision_shape(&mut commands, entity, shape_data);
     }
+}
+
+/// Observer: pause physics when the editor sends `PausePhysics`.
+fn on_pause_physics(_trigger: On<renzora_core::PausePhysics>, mut commands: Commands) {
+    commands.queue(|world: &mut World| pause(world));
+}
+
+/// Observer: unpause physics when the editor sends `UnpausePhysics`.
+fn on_unpause_physics(_trigger: On<renzora_core::UnpausePhysics>, mut commands: Commands) {
+    commands.queue(|world: &mut World| unpause(world));
 }
 
 /// Unpause the physics simulation.

@@ -1,29 +1,8 @@
-//! GLTF animation extraction — writes `.anim` RON files from AnimClip data.
-//!
-//! Provides utilities for creating `.anim` files from animation data.
-//! The actual GLTF parsing and clip extraction is done via Bevy's asset loading;
-//! this module provides the serialization and file-writing side.
+//! Animation extraction utilities — re-exports write_anim_file from renzora_core.
 
-use crate::clip::{AnimClip, BoneTrack};
-
-/// Write an AnimClip to a RON file at the given path.
-pub fn write_anim_file(clip: &AnimClip, path: &std::path::Path) -> Result<(), String> {
-    let ron_str = ron::ser::to_string_pretty(clip, ron::ser::PrettyConfig::default())
-        .map_err(|e| format!("RON serialization error: {}", e))?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
-    }
-
-    std::fs::write(path, ron_str)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
-
-    Ok(())
-}
+pub use renzora_core::{write_anim_file, AnimClip, BoneTrack};
 
 /// Create a minimal AnimClip with the given name and duration.
-/// Tracks can be added afterward.
 pub fn create_empty_clip(name: &str, duration: f32) -> AnimClip {
     AnimClip {
         name: name.to_string(),

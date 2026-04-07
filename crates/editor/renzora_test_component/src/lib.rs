@@ -8,7 +8,7 @@
 //! to avoid scheduling conflicts with the editor/egui plugins.
 
 use bevy::prelude::*;
-use renzora_editor::{AppEditorExt, Inspectable};
+use renzora::editor::{AppEditorExt, Inspectable};
 
 // ── Custom components ──────────────────────────────────────────────────────
 
@@ -40,6 +40,7 @@ pub struct Movement {
 
 /// Test component plugin — registers custom components with the inspector
 /// and spawns test entities to demonstrate the system.
+#[derive(Default)]
 pub struct TestComponentPlugin;
 
 impl Plugin for TestComponentPlugin {
@@ -49,3 +50,5 @@ impl Plugin for TestComponentPlugin {
         app.register_inspectable::<Movement>();
     }
 }
+
+renzora::add!(TestComponentPlugin);
