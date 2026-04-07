@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ProjectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+$ProjectRoot = (Resolve-Path "$PSScriptRoot\..\..").Path
 $AndroidDir = $PSScriptRoot
 $AndroidCrate = "$ProjectRoot\crates\platform\renzora_android"
 $JniLibsDir = "$AndroidDir\app\src\main\jniLibs"

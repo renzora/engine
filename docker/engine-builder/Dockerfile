@@ -135,6 +135,7 @@ COPY crates/ crates/
 COPY src/ src/
 COPY assets/ assets/
 
+COPY templates/ templates/
 COPY scripts/ scripts/
 RUN chmod +x scripts/*.sh
 

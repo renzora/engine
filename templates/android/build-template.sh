@@ -14,14 +14,14 @@ set -euo pipefail
 #        rustup target add x86_64-linux-android --toolchain nightly
 #
 # Usage:
-#   ./android/build-template.sh              # Android ARM64 (Vulkan)
-#   ./android/build-template.sh --x86_64     # Android x86_64 (Vulkan)
-#   ./android/build-template.sh --firetv     # Fire TV ARM64 (Vulkan)
-#   ./android/build-template.sh --all        # Build all templates
-#   ./android/build-template.sh --firetv --x86_64   # Multiple targets
+#   ./templates/android/build-template.sh              # Android ARM64 (Vulkan)
+#   ./templates/android/build-template.sh --x86_64     # Android x86_64 (Vulkan)
+#   ./templates/android/build-template.sh --firetv     # Fire TV ARM64 (Vulkan)
+#   ./templates/android/build-template.sh --all        # Build all templates
+#   ./templates/android/build-template.sh --firetv --x86_64   # Multiple targets
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ANDROID_DIR="$SCRIPT_DIR"
 ANDROID_CRATE="$PROJECT_ROOT/crates/platform/renzora_android"
 JNILIBS_DIR="$ANDROID_DIR/app/src/main/jniLibs"

@@ -14,13 +14,13 @@ set -euo pipefail
 #        rustup target add aarch64-apple-tvos --toolchain nightly
 #
 # Usage:
-#   ./ios/build-template.sh                    # iOS Device (ARM64)
-#   ./ios/build-template.sh --simulator        # iOS Simulator (ARM64)
-#   ./ios/build-template.sh --tvos             # Apple TV (ARM64)
-#   ./ios/build-template.sh --tvos-simulator   # Apple TV Simulator (ARM64)
+#   ./templates/ios/build-template.sh                    # iOS Device (ARM64)
+#   ./templates/ios/build-template.sh --simulator        # iOS Simulator (ARM64)
+#   ./templates/ios/build-template.sh --tvos             # Apple TV (ARM64)
+#   ./templates/ios/build-template.sh --tvos-simulator   # Apple TV Simulator (ARM64)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IOS_DIR="$SCRIPT_DIR"
 IOS_CRATE="$PROJECT_ROOT/crates/platform/renzora_ios"
 LIBS_DIR="$IOS_DIR/libs"
