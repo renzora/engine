@@ -68,18 +68,11 @@ pub struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
-        app.add_systems(Update, tick);
     }
 }
 
 fn setup(mut commands: Commands) {
     commands.spawn(PointLight::default());
-}
-
-fn tick(time: Res<Time>) {
-    if (time.elapsed_secs() % 5.0) < time.delta_secs() {
-        info!("[MyPlugin] tick at {:.0}s", time.elapsed_secs());
-    }
 }
 
 renzora::add!(MyPlugin);
