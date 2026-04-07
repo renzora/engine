@@ -118,6 +118,57 @@ Do **not** build plugins standalone from their own directory -- this produces a 
 
 The engine loads plugins from `<project>/plugins/` on startup (before `app.run()`). Restart the editor to pick up new plugins.
 
+## Creating Components
+
+Components are data types that attach to entities and show up in the editor inspector with editable fields.
+
+```rust
+use bevy::prelude::*;
+use renzora::prelude::*;
+
+#[derive(Component, Default, Reflect, Inspectable)]
+#[inspectable(name = "Health", icon = "HEART", category = "gameplay")]
+pub struct Health {
+    #[field(speed = 1.0, min = 0.0, max = 10000.0)]
+    pub current: f32,
+    #[field(speed = 1.0, min = 1.0, max = 10000.0)]
+    pub max: f32,
+    #[field(name = "Shield")]
+    pub has_shield: bool,
+}
+
+#[derive(Default)]
+pub struct HealthPlugin;
+
+impl Plugin for HealthPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_inspectable::<Health>();
+    }
+}
+
+renzora::add!(HealthPlugin);
+```
+
+Field types are inferred: `f32` renders as a drag slider, `bool` as a checkbox, `String` as a text input, `Vec3` as XYZ fields.
+
+`#[field(...)]` attributes: `speed`, `min`, `max`, `name`, `skip`, `readonly`
+
+`#[inspectable(...)]` attributes: `name`, `icon` (Phosphor icon name), `category`, `type_id`
+
+## Scripting
+
+The engine supports Rhai (all platforms) and Lua (native only) scripting. Components registered with `register_inspectable()` are automatically available to scripts -- no extra setup needed. The component is added to Bevy's ECS and reflection system, so scripts can read and write any field.
+
+```lua
+-- get a component field
+local hp = get(entity, "Health", "current")
+
+-- set a component field
+set(entity, "Health", "current", 50.0)
+```
+
+This works for any component from any plugin. If someone publishes a `Sun` plugin with a `SunLight` component, scripts can immediately do `set(entity, "SunLight", "intensity", 2.0)` without the plugin author writing any scripting glue.
+
 ## Workspaces and Stable ABI
 
 Rust does not have a stable ABI. This means two Rust binaries compiled separately cannot safely share types across a DLL boundary -- even if they use the same source code, different compilations can produce different memory layouts, vtable offsets, and `TypeId` values.

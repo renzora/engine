@@ -13,7 +13,7 @@ use renzora::editor::{AppEditorExt, Inspectable};
 // ── Custom components ──────────────────────────────────────────────────────
 
 /// Health component with current/max HP and a shield flag.
-#[derive(Component, Default, Inspectable)]
+#[derive(Component, Default, Reflect, Inspectable)]
 #[inspectable(name = "Health", icon = "HEART", category = "gameplay")]
 pub struct Health {
     #[field(speed = 1.0, min = 0.0, max = 10000.0)]
@@ -25,7 +25,7 @@ pub struct Health {
 }
 
 /// Movement component with speed, jump height, and a grounded flag.
-#[derive(Component, Default, Inspectable)]
+#[derive(Component, Default, Reflect, Inspectable)]
 #[inspectable(name = "Movement", icon = "SNEAKER_MOVE", category = "gameplay")]
 pub struct Movement {
     #[field(speed = 0.1, min = 0.0, max = 100.0)]

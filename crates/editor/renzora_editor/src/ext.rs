@@ -21,7 +21,8 @@ pub trait AppEditorExt {
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self;
 
     /// Register a component that implements `InspectableComponent` (from derive macro).
-    fn register_inspectable<T: InspectableComponent>(&mut self) -> &mut Self;
+    /// Also registers the type for Bevy reflection so scripts can access it.
+    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(&mut self) -> &mut Self;
 
     /// Register an `EntityPreset` with the `SpawnRegistry`.
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self;
@@ -48,7 +49,8 @@ impl AppEditorExt for App {
         self
     }
 
-    fn register_inspectable<T: InspectableComponent>(&mut self) -> &mut Self {
+    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(&mut self) -> &mut Self {
+        self.register_type::<T>();
         self.register_inspector(T::inspector_entry())
     }
 
