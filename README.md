@@ -10,11 +10,12 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Getting Started
 
+**Prerequisites:** [Rust](https://rustup.rs/), then `cargo install cargo-make`
+
 ```bash
-cargo install cargo-make          # one-time setup
 git clone https://github.com/renzora/engine
 cd engine
-makers run                        # build + run the editor
+makers run
 ```
 
 Linux: `sudo apt install libwayland-dev` before building.
