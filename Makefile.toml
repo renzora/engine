@@ -30,6 +30,20 @@ ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
 '''
 
 # =============================================================================
+# Docker — cross-platform release builds
+# =============================================================================
+
+[tasks.docker-build]
+description = "Build the Docker image"
+command = "docker"
+args = ["build", "-f", "docker/engine-builder/Dockerfile", "-t", "renzora/engine", "."]
+
+[tasks.docker-run]
+description = "Build all platforms via Docker to dist/"
+command = "docker"
+args = ["run", "--rm", "-v", "./dist:/output", "renzora/engine", "/app/scripts/build-all.sh", "/output"]
+
+# =============================================================================
 # Sync dist/ — copy build outputs to a clean distributable folder
 # =============================================================================
 
