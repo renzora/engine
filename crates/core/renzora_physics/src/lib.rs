@@ -84,8 +84,71 @@ impl Plugin for PhysicsPlugin {
         app.add_observer(on_pause_physics)
            .add_observer(on_unpause_physics);
 
-        #[cfg(feature = "editor")]
-        inspector::register_physics_inspectors(app);
+        #[cfg(feature = "avian")]
+        app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
+
+        // Listen for script actions (apply_force, apply_impulse, set_velocity)
+        app.add_observer(handle_physics_script_actions);
+    }
+}
+
+/// System to clear avian forces each frame (since we use ConstantForce for one-time pushes).
+#[cfg(feature = "avian")]
+fn clear_avian_forces(mut commands: Commands, query: Query<Entity, With<avian3d::prelude::ConstantForce>>) {
+    for entity in &query {
+        commands.entity(entity).remove::<avian3d::prelude::ConstantForce>();
+    }
+}
+
+/// Observer: handle physics commands (apply_force, apply_impulse, set_velocity) from scripts.
+fn handle_physics_script_actions(
+    trigger: On<renzora_core::ScriptAction>,
+    mut commands: Commands,
+) {
+    let action = trigger.event();
+    let name = action.name.as_str();
+    if !matches!(name, "apply_force" | "apply_impulse" | "set_velocity") {
+        return;
+    }
+
+    use renzora_core::ScriptActionValue;
+    let x = match action.args.get("x") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
+    let y = match action.args.get("y") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
+    let z = match action.args.get("z") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
+    let vec = Vec3::new(x, y, z);
+
+    // Default to the entity that triggered the action, or use target ID if provided
+    let target = if let Some(Some(ScriptActionValue::Int(id))) = action.args.get("entity_id").map(Some) {
+        Entity::from_bits(*id as u64)
+    } else {
+        action.entity
+    };
+
+    match name {
+        "apply_force" => {
+            #[cfg(feature = "avian")]
+            commands.entity(target).insert(avian3d::prelude::ConstantForce(vec));
+            #[cfg(feature = "rapier")]
+            { /* TODO: rapier apply_force */ }
+        }
+        "apply_impulse" => {
+            #[cfg(feature = "avian")]
+            {
+                // Avian 0.6.1 doesn't have a built-in one-shot impulse component in prelude.
+                // We'll apply it by inserting LinearVelocity which avian's solver will integrate.
+                // This is a simplified impulse. For a true additive impulse we'd need a solver hook.
+                commands.entity(target).insert(avian3d::prelude::LinearVelocity(vec));
+            }
+            #[cfg(feature = "rapier")]
+            { /* TODO: rapier apply_impulse */ }
+        }
+        "set_velocity" => {
+            #[cfg(feature = "avian")]
+            commands.entity(target).insert(avian3d::prelude::LinearVelocity(vec));
+            #[cfg(feature = "rapier")]
+            { /* TODO: rapier set_velocity */ }
+        }
+        _ => {}
     }
 }
 

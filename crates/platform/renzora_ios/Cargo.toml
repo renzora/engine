@@ -12,12 +12,4 @@ crate-type = ["staticlib"]
 renzora = { path = "../../..", default-features = false }
 bevy = { workspace = true }
 
-[profile.release]
-lto = "thin"
-strip = true
 
-[profile.dist]
-inherits = "release"
-lto = "fat"
-strip = true
-codegen-units = 1

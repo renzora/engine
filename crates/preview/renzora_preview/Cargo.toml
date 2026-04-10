@@ -61,9 +61,4 @@ console_error_panic_hook = "0.1"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
-[profile.release]
-lto = "fat"
-opt-level = "z"
-strip = true
-codegen-units = 1
-panic = "abort"
+

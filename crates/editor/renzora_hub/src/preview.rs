@@ -198,5 +198,6 @@ impl Plugin for HubPreviewPlugin {
             .init_resource::<HubShaderRequest>()
             .add_systems(PostStartup, setup_hub_preview)
             .add_systems(Update, apply_hub_shader);
+
     }
 }

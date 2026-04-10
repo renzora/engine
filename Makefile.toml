@@ -1,106 +1,156 @@
 [config]
 default_to_workspace = false
 
-# --- Dev ---
+# =============================================================================
+# Core commands — what devs use daily
+# =============================================================================
 
-[tasks.editor]
-description = "Run the editor"
+# makers build — compile everything (engine + plugins) with matching hashes, sync to dist/
+[tasks.build]
+description = "Build everything and sync to dist/"
+dependencies = ["build-cargo", "sync-dist"]
+
+[tasks.build-cargo]
+description = "Compile workspace (dist profile, unified features)"
 command = "cargo"
-args = ["run", "--bin", "renzora"]
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor,runtime,server"]
 
-[tasks.runtime]
-description = "Run the runtime (no editor)"
-command = "cargo"
-args = ["run", "--bin", "renzora-runtime", "--no-default-features"]
-
-[tasks.server]
-description = "Run the dedicated server"
-command = "cargo"
-args = ["run", "--bin", "renzora-server", "--no-default-features", "--features", "server"]
-
-# --- Dist builds ---
-
-[tasks.dist-runtime-build]
-description = "Build runtime with max optimization"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora-runtime", "--no-default-features", "--target-dir", "target"]
-
-[tasks.dist-runtime-copy]
-description = "Copy runtime template to target/templates"
-dependencies = ["dist-runtime-build"]
-[tasks.dist-runtime-copy.windows]
-script_runner = "@shell"
+# makers run — build + run the editor from dist/
+[tasks.run]
+description = "Build and run the editor"
+dependencies = ["build"]
+[tasks.run.windows]
+command = "dist\\windows-x64\\renzora.exe"
+[tasks.run.linux]
+command = "./dist/linux-x64/renzora"
+[tasks.run.mac]
 script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime.exe target/templates/renzora-runtime-windows-x64.exe
-echo "Template: target/templates/renzora-runtime-windows-x64.exe"
-'''
-[tasks.dist-runtime-copy.linux]
-script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime target/templates/renzora-runtime-linux-x64
-echo "Template: target/templates/renzora-runtime-linux-x64"
-'''
-[tasks.dist-runtime-copy.mac]
-script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
-echo "Template: target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')"
+ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
+./dist/macos-$ARCH/renzora
 '''
 
-[tasks.dist-runtime]
-description = "Build runtime template"
-dependencies = ["dist-runtime-copy"]
+# =============================================================================
+# Sync dist/ — copy build outputs to a clean distributable folder
+# =============================================================================
 
-[tasks.dist-server]
-description = "Build server with max optimization"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora-server", "--no-default-features", "--features", "server", "--target-dir", "target"]
+[tasks.sync-dist]
+description = "Copy build output from target/dist/ to dist/"
 
-[tasks.dist-editor]
-description = "Build editor with max optimization"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora", "--target-dir", "target"]
-
-[tasks.dist-build]
-description = "Build all three binaries (editor, runtime, server)"
-command = "cargo"
-args = ["build", "--profile", "dist", "--no-default-features", "--bin", "renzora", "--bin", "renzora-runtime", "--bin", "renzora-server", "--features", "editor,server", "--target-dir", "target"]
-
-# --- UPX compression ---
-
-[tasks.upx-compress]
-description = "Compress dist binaries with UPX"
-dependencies = ["dist-build"]
-
-[tasks.upx-compress.windows]
+[tasks.sync-dist.windows]
+script_runner = "powershell"
 script = '''
-echo Compressing binaries with UPX...
-upx --best target/dist/renzora.exe target/dist/renzora-runtime.exe target/dist/renzora-server.exe
-echo Done.
+$ErrorActionPreference = "Stop"
+$platform = "windows-x64"
+$dir = "dist/$platform"
+
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+New-Item -ItemType Directory -Force -Path $dir/plugins | Out-Null
+
+# Clean
+Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
+
+# Binaries
+Copy-Item target/dist/*.exe $dir/ -Force -ErrorAction SilentlyContinue
+
+# bevy_dylib
+Copy-Item target/dist/deps/bevy_dylib-*.dll $dir/ -Force -ErrorAction SilentlyContinue
+
+# Rust std
+$sysroot = (rustc --print sysroot)
+Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
+
+# SDK DLLs
+foreach ($dll in @("renzora.dll", "renzora_runtime.dll")) {
+    if (Test-Path "target/dist/$dll") { Copy-Item "target/dist/$dll" "$dir/$dll" -Force }
+}
+
+# Plugins — all other DLLs
+$skip = @("renzora.dll", "renzora_runtime.dll", "bevy_dylib.dll")
+Get-ChildItem target/dist/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
+}
+
+$root = (Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue).Count
+$plugins = (Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue).Count
+Write-Output "Synced to dist/$platform - $root root files, $plugins plugins"
 '''
 
-[tasks.upx-compress.linux]
+[tasks.sync-dist.linux]
 script = '''
-echo "Compressing binaries with UPX..."
-upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
-echo "Done."
+PLATFORM="linux-x64"
+DIR="dist/$PLATFORM"
+mkdir -p "$DIR" "$DIR/plugins"
+rm -f "$DIR"/*.so "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
+rm -f "$DIR"/plugins/*.so
+
+for f in target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/librenzora.so target/dist/librenzora_runtime.so; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/deps/libbevy_dylib-*.so; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+SYSROOT=$(rustc --print sysroot)
+for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/*.so; do
+    name=$(basename "$f")
+    [ "$name" = "librenzora.so" ] && continue
+    [ "$name" = "librenzora_runtime.so" ] && continue
+    cp "$f" "$DIR/plugins/"
+done
+
+echo "Synced to dist/$PLATFORM"
 '''
 
-[tasks.upx-compress.mac]
+[tasks.sync-dist.mac]
 script = '''
-echo "Compressing binaries with UPX..."
-upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
-echo "Done."
+ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
+PLATFORM="macos-$ARCH"
+DIR="dist/$PLATFORM"
+mkdir -p "$DIR" "$DIR/plugins"
+rm -f "$DIR"/*.dylib "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
+rm -f "$DIR"/plugins/*.dylib
+
+for f in target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/librenzora.dylib target/dist/librenzora_runtime.dylib; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/deps/libbevy_dylib-*.dylib; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
+for f in target/dist/*.dylib; do
+    name=$(basename "$f")
+    [ "$name" = "librenzora.dylib" ] && continue
+    [ "$name" = "librenzora_runtime.dylib" ] && continue
+    cp "$f" "$DIR/plugins/"
+done
+
+echo "Synced to dist/$PLATFORM"
 '''
 
-# --- WASM ---
+# =============================================================================
+# WASM
+# =============================================================================
 
 [tasks.ensure-wasm-tools]
-description = "Install wasm-bindgen, wasm-opt, and brotli if missing"
+description = "Install wasm-bindgen and wasm-opt if missing"
 script_runner = "@shell"
 script = '''
-command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --version 0.2.108
+command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --version 0.2.108 --locked
 command -v wasm-opt >/dev/null 2>&1 || cargo install wasm-opt
 '''
 
@@ -164,7 +214,9 @@ cd target/dist/web && zip ../renzora-runtime-web-wasm32.zip renzora-runtime.js r
 echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
 '''
 
-# --- Android ---
+# =============================================================================
+# Mobile / TV templates
+# =============================================================================
 
 [tasks.dist-android-arm64]
 description = "Build Android ARM64 template APK"
@@ -178,30 +230,6 @@ args = ["--arm64"]
 command = "./templates/android/build-template.sh"
 args = ["--arm64"]
 
-[tasks.dist-android-x86]
-description = "Build Android x86_64 template APK (emulators)"
-[tasks.dist-android-x86.windows]
-command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-x86"]
-[tasks.dist-android-x86.linux]
-command = "./templates/android/build-template.sh"
-args = ["--x86_64"]
-[tasks.dist-android-x86.mac]
-command = "./templates/android/build-template.sh"
-args = ["--x86_64"]
-
-[tasks.dist-android-firetv]
-description = "Build Fire TV ARM64 template APK"
-[tasks.dist-android-firetv.windows]
-command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-firetv"]
-[tasks.dist-android-firetv.linux]
-command = "./templates/android/build-template.sh"
-args = ["--firetv"]
-[tasks.dist-android-firetv.mac]
-command = "./templates/android/build-template.sh"
-args = ["--firetv"]
-
 [tasks.dist-android-all]
 description = "Build all Android template APKs"
 [tasks.dist-android-all.windows]
@@ -214,8 +242,6 @@ args = ["--all"]
 command = "./templates/android/build-template.sh"
 args = ["--all"]
 
-# --- iOS ---
-
 [tasks.dist-ios]
 description = "Build iOS ARM64 template (requires macOS + Xcode)"
 [tasks.dist-ios.mac]
@@ -225,42 +251,3 @@ script_runner = "@shell"
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
 [tasks.dist-ios.linux]
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-ios-sim]
-description = "Build iOS Simulator ARM64 template (requires macOS + Xcode)"
-[tasks.dist-ios-sim.mac]
-command = "./templates/ios/build-template.sh"
-args = ["--simulator"]
-[tasks.dist-ios-sim.windows]
-script_runner = "@shell"
-script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-ios-sim.linux]
-script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-tvos]
-description = "Build Apple TV ARM64 template (requires macOS + Xcode)"
-[tasks.dist-tvos.mac]
-command = "./templates/ios/build-template.sh"
-args = ["--tvos"]
-[tasks.dist-tvos.windows]
-script_runner = "@shell"
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-tvos.linux]
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-tvos-sim]
-description = "Build Apple TV Simulator ARM64 template (requires macOS + Xcode)"
-[tasks.dist-tvos-sim.mac]
-command = "./templates/ios/build-template.sh"
-args = ["--tvos-simulator"]
-[tasks.dist-tvos-sim.windows]
-script_runner = "@shell"
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-tvos-sim.linux]
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-
-# --- Main dist task ---
-
-[tasks.dist]
-description = "Build all binaries + compress with UPX"
-dependencies = ["upx-compress"]

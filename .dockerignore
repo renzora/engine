@@ -1,0 +1,15 @@
+**/target/
+**/build/
+**/.gradle/
+**/node_modules/
+**/*.log
+**/.DS_Store
+target/
+dist/
+.git/
+.claude/
+_legacy_src/
+*.pdb
+*.wasm
+*.wasm.br
+templates/web/node_modules/

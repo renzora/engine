@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Import overlay UI for 3D model import in the Renzora editor"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }

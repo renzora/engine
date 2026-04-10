@@ -1,18 +1,21 @@
 # Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
 # Run
-renzora = "run --profile dist --bin renzora"
-runtime = "run --profile dist --bin renzora-game --no-default-features --features runtime"
-server = "run --profile dist --bin renzora-server --no-default-features --features server"
+renzora = "run --profile dist --bin renzora --no-default-features --features editor,runtime,server"
+runtime = "run --profile dist --bin renzora-runtime --no-default-features --features editor,runtime,server"
+server = "run --profile dist --bin renzora-server --no-default-features --features editor,runtime,server"
 
 # Build
-build-editor = "build --profile dist --bin renzora"
-build-runtime = "build --profile dist --bin renzora-game --no-default-features --features runtime"
-build-server = "build --profile dist --bin renzora-server --no-default-features --features server"
+build-editor = "build --profile dist --bin renzora --no-default-features --features editor,runtime,server"
+build-runtime = "build --profile dist --bin renzora-runtime --no-default-features --features editor,runtime,server"
+build-server = "build --profile dist --bin renzora-server --no-default-features --features editor,runtime,server"
 build-all = "build --profile dist --workspace"
+build-plugins = "build --profile dist --workspace --no-default-features --features editor,runtime,server"
 
 # WASM
-build-web = "build --profile dist --bin renzora-game --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
+build-web = "build --profile dist --bin renzora-runtime --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
+dist-web-editor = "build --profile dist --bin renzora --no-default-features --features editor,wasm --target wasm32-unknown-unknown"
+dist-web-runtime = "build --profile dist --bin renzora-runtime --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
 
 # Android
 build-android = "build --profile dist --no-default-features --target aarch64-linux-android"
@@ -30,14 +33,6 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # across dylib boundaries (required for dynamic plugin system).
 # [target.x86_64-pc-windows-msvc]
 # rustflags = ["-C", "target-feature=+crt-static"]
-
-# DLSS SDK include path for bindgen (only used when building with --features solari)
-# Update this path if your DLSS SDK is installed elsewhere
-[env]
-BINDGEN_EXTRA_CLANG_ARGS = "-IC:\\DLSS_SDK\\include"
-
-# Note: rust-lld doesn't work with Bevy dynamic linking on Windows nightly
-# linker = "rust-lld.exe"
 
 # Faster linking for Linux (uses mold, 5x faster than lld)
 [target.x86_64-unknown-linux-gnu]

@@ -10,33 +10,51 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Getting Started
 
-**Install Rust** from [rustup.rs](https://rustup.rs/), then:
+**Prerequisites:**
+- [Rust](https://rustup.rs/)
+- cargo-make: `cargo install cargo-make`
 
 ```bash
-cargo renzora       # build + run the editor
-cargo runtime       # build + run the game runtime
-cargo server        # build + run the dedicated server
+git clone https://github.com/renzora/engine
+cd engine
+makers run          # build everything + run the editor
 ```
 
-Build only (no run):
+`makers run` compiles the entire workspace with the `dist` profile and unified features (`editor,runtime,server`), syncs binaries and plugins to `dist/<platform>/`, and launches the editor.
+
+| Command | What it does |
+|---|---|
+| `makers run` | Build + run the editor |
+| `makers build` | Build + sync to `dist/` (no run) |
+
+Output goes to `dist/windows-x64/`, `dist/linux-x64/`, or `dist/macos-<arch>/` depending on your platform.
+
+### Docker (Release Builds)
+
+The Docker image builds the engine for all platforms. Build the image once, then use it to produce release binaries:
 
 ```bash
-cargo build-editor
-cargo build-runtime
-cargo build-server
-cargo build-all     # everything including plugins
+# Build the image (first time only, or when Bevy/deps change)
+docker build -f docker/engine-builder/Dockerfile -t renzora/engine-builder:0.2.0 .
+
+# Produce release binaries for all platforms
+docker run --rm -v ./dist:/output renzora/engine-builder:0.2.0 /app/scripts/build-all.sh /output
 ```
 
-All commands use the `dist` profile. Don't use bare `cargo run` or `cargo build` -- these produce a different `bevy_dylib` hash and break plugin compatibility.
+Output uses the same `dist/` structure as local builds:
 
-### Cross-Platform
-
-```bash
-cargo build-web         # WASM (WebGPU)
-cargo build-android     # Android ARM64
-cargo build-ios         # iOS ARM64
-cargo build-tvos        # Apple TV
 ```
+dist/
+├── linux-x64/          # editor, runtime, server + .so libs + plugins
+├── windows-x64/        # editor, runtime + .dll libs + plugins
+├── macos-x64/          # editor, runtime + .dylib libs + plugins
+├── macos-arm64/        # editor, runtime + .dylib libs + plugins
+└── wasm/               # runtime .wasm + JS bindings
+```
+
+Local `makers build` fills in your current platform. Docker fills in the rest. Same folder, same structure.
+
+Push the image to a registry (`ghcr.io` or Docker Hub) so contributors can pull it instead of building from scratch.
 
 ### Linux
 
@@ -106,17 +124,21 @@ add!(MyPlugin, Runtime);       // exported games only
 
 ### Building Plugins
 
-Plugins **must** be built as part of the workspace:
+1. Create your plugin crate under `crates/` (or anywhere in the repo)
+2. Add it to the `[workspace]` members in the root `Cargo.toml`
+3. Run `makers build`
 
-```bash
-cargo build-all
-```
+That's it. The plugin DLL appears in `dist/plugins/` with a matching `bevy_dylib` hash. Copy it to your project's `plugins/` folder, or test it directly from `dist/`.
 
-Do **not** build plugins standalone from their own directory -- this produces a different `bevy_dylib` hash and the plugin won't load.
+Do **not** build plugins standalone (`cargo build -p my_plugin`) -- this may produce a different `bevy_dylib` hash and the plugin won't load.
 
 ### Loading
 
-The engine loads plugins from `<project>/plugins/` on startup (before `app.run()`). Restart the editor to pick up new plugins.
+The engine loads plugins from two locations on startup (before `app.run()`):
+- `dist/plugins/` -- engine-level plugins (next to the editor binary)
+- `<project>/plugins/` -- project-specific plugins
+
+If the same plugin exists in both locations, the first one loaded takes priority. Restart the editor to pick up new plugins.
 
 ## Creating Components
 

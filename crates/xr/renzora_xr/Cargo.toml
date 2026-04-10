@@ -21,6 +21,4 @@ openxr = "0.21"
 serde = { version = "1", features = ["derive"] }
 log = "*"
 
-[profile.dist]
-inherits = "release"
-opt-level = 2
+

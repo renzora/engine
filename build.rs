@@ -21,18 +21,24 @@ fn main() {
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
-        #[cfg(windows)]
-        {
-            let mut res = winres::WindowsResource::new();
-            res.set("ProductName", "Renzora Engine");
-            res.set("FileDescription", "Renzora Engine Editor");
-            res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
-            res.set("FileVersion", env!("CARGO_PKG_VERSION"));
-            if std::path::Path::new("icon.ico").exists() {
-                res.set_icon("icon.ico");
-            }
-            res.compile().expect("Failed to compile Windows resources");
+        let mut res = winres::WindowsResource::new();
+        res.set("ProductName", "Renzora Engine");
+        res.set("FileDescription", "Renzora Engine Editor");
+        let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+        res.set("ProductVersion", &version);
+        res.set("FileVersion", &version);
+        if std::path::Path::new("icon.ico").exists() {
+            res.set_icon("icon.ico");
         }
+
+        // Set windres path for cross-compilation if we are not on Windows
+        if std::env::consts::OS != "windows" {
+            res.set_toolkit_path("/usr/bin");
+            res.set_windres_path("/usr/bin/x86_64-w64-mingw32-windres");
+            res.set_ar_path("/usr/bin/x86_64-w64-mingw32-ar");
+        }
+
+        res.compile().expect("Failed to compile Windows resources");
     }
 }
 

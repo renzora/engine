@@ -103,6 +103,4 @@ name = "camera_plugin"
 path = "examples/camera_plugin.rs"
 crate-type = ["staticlib"]
 
-# Enable only a small amount of optimization in debug mode
-[profile.dev]
-opt-level = 1
+

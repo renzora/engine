@@ -1,9 +1,8 @@
 [workspace]
 members = [
     ".",
-    "examples/dynamic_plugin_example",
     "crates/renzora_runtime",
-    "crates/renzora_editor_runtime",
+    "crates/renzora_editor",
     "crates/renzora",
     "crates/postprocessing/renzora_vignette",
     "crates/postprocessing/renzora_chromatic_aberration",
@@ -38,7 +37,6 @@ members = [
     "crates/postprocessing/renzora_sharpen",
     "crates/postprocessing/renzora_toon",
     "crates/postprocessing/renzora_underwater",
-    "crates/postprocessing/renzora_solari",
     "crates/postprocessing/renzora_heat_haze",
     "crates/postprocessing/renzora_kaleidoscope",
     "crates/postprocessing/renzora_thermal",
@@ -62,8 +60,6 @@ members = [
     "crates/postprocessing/renzora_pcss",
     "crates/postprocessing/renzora_bluenoise",
     "crates/postprocessing/renzora_pool_water",
-    # XR
-    "crates/xr/renzora_xr",
     # Standalone editor plugins (loaded dynamically from plugins/)
     "crates/editor/renzora_debugger",
     "crates/editor/renzora_gamepad",
@@ -103,10 +99,10 @@ members = [
     "crates/editor/renzora_auth",
     "crates/editor/renzora_shape_library",
 ]
-# Note: crates/renzora_editor_runtime produces the `renzora_editor` dylib
+# Note: crates/renzora_editor produces the editor SDK
 
 [workspace.dependencies]
-bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "bevy_solari", "experimental_pbr_pcss", "dlss", "jpeg", "meshlet"] }
+bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "experimental_pbr_pcss", "jpeg", "meshlet"] }
 
 [package]
 name = "renzora_app"
@@ -123,7 +119,7 @@ name = "renzora"
 path = "src/editor.rs"
 
 [[bin]]
-name = "renzora-game"
+name = "renzora-runtime"
 path = "src/editor.rs"
 
 [[bin]]
@@ -136,7 +132,6 @@ editor = [
     "dep:renzora_editor",
     "renzora_editor/lua",
     "renzora_editor/editor",
-    "renzora_shape_library/editor",
 ]
 runtime = ["dep:renzora_runtime", "renzora_runtime/lua"]
 server = ["dep:renzora_runtime"]
@@ -168,8 +163,7 @@ bevy = { workspace = true }
 
 # Shared libraries — only ONE is linked per build (editor OR runtime, never both)
 renzora_runtime = { path = "crates/renzora_runtime", optional = true }
-renzora_editor = { path = "crates/renzora_editor_runtime", optional = true }
-renzora_shape_library = { path = "crates/editor/renzora_shape_library" }
+renzora_editor = { path = "crates/renzora_editor", optional = true }
 uuid = "1"
 
 # Misc
@@ -187,6 +181,13 @@ wasm-bindgen = "0.2.108"
 winres = "0.1"
 
 # Bevy recommended optimizations
+
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (including Bevy), even in debug mode
+[profile.dev.package."*"]
+opt-level = 3
 
 [profile.dist]
 inherits = "release"

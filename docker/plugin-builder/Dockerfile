@@ -50,7 +50,8 @@ RUN rustup target add x86_64-apple-darwin aarch64-apple-darwin
 # The SDK tarball must be created on a Mac using osxcross's packaging script:
 #   ./tools/gen_sdk_package_pbzx.sh /path/to/Xcode_16.xip
 # Then place the resulting .tar.xz in docker/sdk/ before building this image.
-ENV OSXCROSS_SDK=MacOSX15.2.sdk
+ENV OSXCROSS_SDK=MacOSX14.0.sdk
+ENV MACOSX_DEPLOYMENT_TARGET=14.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \

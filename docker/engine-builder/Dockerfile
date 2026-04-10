@@ -14,10 +14,10 @@
 #   docker run --rm -v /path/to/output:/output renzora/engine-builder:0.2.0 /app/scripts/build-all.sh /output
 #
 # Build specific target:
-#   docker run --rm renzora/engine-builder:0.2.0 cargo release-editor
-#   docker run --rm renzora/engine-builder:0.2.0 cargo dist-web
+#   docker run --rm renzora/engine-builder:0.2.0 cargo build-editor
+#   docker run --rm renzora/engine-builder:0.2.0 cargo build-web
 
-FROM rust:1.86-bookworm
+FROM rust:1.93.0-bookworm
 
 # ── System dependencies ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lld \
     # Windows cross-compilation
     gcc-mingw-w64-x86-64 \
+    g++-mingw-w64-x86-64 \
     # WASM post-processing
     binaryen \
     # General
@@ -57,12 +58,11 @@ RUN rustup target add \
 
 RUN rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
-# iOS / tvOS / visionOS (share the macOS SDK via osxcross)
+# iOS (share the macOS SDK via osxcross)
 RUN rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-RUN rustup target add aarch64-apple-tvos aarch64-apple-tvos-sim
 
 # ── WASM tooling ─────────────────────────────────────────────────────────────
-RUN cargo install wasm-bindgen-cli --version 0.2.108
+RUN cargo install wasm-bindgen-cli --version 0.2.108 --locked
 
 # ── Android NDK ──────────────────────────────────────────────────────────────
 ENV ANDROID_NDK_VERSION=r27c
@@ -74,8 +74,9 @@ RUN curl -sL https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_
     mv /opt/android-ndk-${ANDROID_NDK_VERSION} ${ANDROID_NDK_HOME} && \
     rm /tmp/ndk.zip
 
-# ── osxcross for macOS / iOS / tvOS cross-compilation ────────────────────────
-ENV OSXCROSS_SDK=MacOSX15.2.sdk
+# ── osxcross for macOS / iOS cross-compilation ──────────────────────────────
+ENV OSXCROSS_SDK=MacOSX14.0.sdk
+ENV MACOSX_DEPLOYMENT_TARGET=14.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
@@ -94,9 +95,43 @@ RUN cd /opt/osxcross && \
 
 ENV PATH="/opt/osxcross/target/bin:${PATH}"
 
+# Detect Darwin version and write a shell snippet that sets CC/AR env vars.
+# osxcross clang uses its binary name to detect the target triple, so we
+# must use the real names (e.g., x86_64-apple-darwin23-clang), not symlinks.
+# Docker ENV can't use shell expansion, so we write a script that cargo
+# invocations source via BASH_ENV.
+RUN DARWIN_VER=$(ls /opt/osxcross/target/bin/ | grep -oP 'darwin\K[0-9]+' | head -1) && \
+    echo "Detected osxcross Darwin version: ${DARWIN_VER}" && \
+    echo "${DARWIN_VER}" > /tmp/darwin_ver && \
+    cat > /etc/osxcross-env.sh <<EOF
+export CC_x86_64_apple_darwin=x86_64-apple-darwin${DARWIN_VER}-clang
+export CXX_x86_64_apple_darwin=x86_64-apple-darwin${DARWIN_VER}-clang++
+export AR_x86_64_apple_darwin=x86_64-apple-darwin${DARWIN_VER}-ar
+export CC_aarch64_apple_darwin=aarch64-apple-darwin${DARWIN_VER}-clang
+export CXX_aarch64_apple_darwin=aarch64-apple-darwin${DARWIN_VER}-clang++
+export AR_aarch64_apple_darwin=aarch64-apple-darwin${DARWIN_VER}-ar
+export CC_aarch64_apple_ios=aarch64-apple-darwin${DARWIN_VER}-clang
+export CXX_aarch64_apple_ios=aarch64-apple-darwin${DARWIN_VER}-clang++
+export AR_aarch64_apple_ios=aarch64-apple-darwin${DARWIN_VER}-ar
+export CC_aarch64_apple_ios_sim=aarch64-apple-darwin${DARWIN_VER}-clang
+export CXX_aarch64_apple_ios_sim=aarch64-apple-darwin${DARWIN_VER}-clang++
+export AR_aarch64_apple_ios_sim=aarch64-apple-darwin${DARWIN_VER}-ar
+export CC_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang
+export CXX_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++
+export AR_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+export CC_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang
+export CXX_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang++
+export AR_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+EOF
+
+# BASH_ENV is sourced by bash before every RUN command
+ENV BASH_ENV=/etc/osxcross-env.sh
+SHELL ["/bin/bash", "-c"]
+
 # ── Cargo linker config ─────────────────────────────────────────────────────
 WORKDIR /app
-RUN mkdir -p .cargo && cat > .cargo/config.toml <<'TOML'
+RUN DARWIN_VER=$(cat /tmp/darwin_ver) && \
+    mkdir -p .cargo && cat > .cargo/config.toml <<TOML
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
@@ -111,26 +146,21 @@ linker = "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-lin
 linker = "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang"
 
 [target.x86_64-apple-darwin]
-linker = "x86_64-apple-darwin24-clang"
+linker = "x86_64-apple-darwin${DARWIN_VER}-clang"
 
 [target.aarch64-apple-darwin]
-linker = "aarch64-apple-darwin24-clang"
+linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
 
 [target.aarch64-apple-ios]
-linker = "aarch64-apple-darwin24-clang"
+linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
 
 [target.aarch64-apple-ios-sim]
-linker = "aarch64-apple-darwin24-clang"
-
-[target.aarch64-apple-tvos]
-linker = "aarch64-apple-darwin24-clang"
-
-[target.aarch64-apple-tvos-sim]
-linker = "aarch64-apple-darwin24-clang"
+linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
 TOML
 
 # ── Copy engine source ──────────────────────────────────────────────────────
 COPY Cargo.toml Cargo.lock rust-toolchain.toml build.rs ./
+RUN rm rust-toolchain.toml
 COPY crates/ crates/
 COPY src/ src/
 COPY assets/ assets/
@@ -140,15 +170,17 @@ COPY scripts/ scripts/
 RUN chmod +x scripts/*.sh
 
 # ── Pre-build deps (cached layer) ───────────────────────────────────────────
-# Build the engine lib for each target to cache all dependencies.
-# Subsequent builds only recompile changed engine code.
-RUN cargo build --lib --release 2>&1 || true
-RUN cargo build --lib --release --target x86_64-pc-windows-gnu 2>&1 || true
-RUN cargo build --lib --release --target x86_64-apple-darwin --no-default-features 2>&1 || true
-RUN cargo build --lib --release --target aarch64-apple-darwin --no-default-features 2>&1 || true
-RUN cargo build --lib --release --target wasm32-unknown-unknown --no-default-features --features wasm 2>&1 || true
-RUN cargo build --lib --release --target aarch64-linux-android --no-default-features 2>&1 || true
-RUN cargo build --lib --release --target aarch64-apple-ios --no-default-features 2>&1 || true
-RUN cargo build --lib --release --target aarch64-apple-tvos --no-default-features 2>&1 || true
+# Build the engine libs for each target to cache all dependencies.
+# Desktop targets use unified features (editor,runtime,server) so all
+# binaries share the same bevy_dylib hash for plugin compatibility.
+# --workspace ensures plugin crate hashes match the engine binary.
+RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server
+RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target x86_64-pc-windows-gnu
+RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target x86_64-apple-darwin
+RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target aarch64-apple-darwin
+# WASM: build only the runtime binary (no dylib support)
+RUN cargo build -p renzora_app --bin renzora-runtime --profile dist --no-default-features --features wasm --target wasm32-unknown-unknown
+# Android and iOS are built via their template packages (templates/android/, templates/ios/)
+# and are not pre-cached here — build-all.sh handles them at runtime.
 
 CMD ["/bin/bash"]

@@ -28,6 +28,16 @@ templates/web/*.d.ts
 templates/web/renzora.js
 templates/web/node_modules/
 
+# Build output
+/dist/
+
+# SDKs (large binaries, not committed)
+docker/sdk/
+sdk/
+
+# Docker test files
+Dockerfile.test
+
 # Exported builds
 /export/
 
