@@ -34,6 +34,13 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # [target.x86_64-pc-windows-msvc]
 # rustflags = ["-C", "target-feature=+crt-static"]
 
+# macOS: embed @loader_path so binaries find dylibs next to themselves
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+
 # Faster linking for Linux (uses mold, 5x faster than lld)
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"

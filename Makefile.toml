@@ -146,6 +146,13 @@ for f in target/dist/deps/libbevy_dylib-*.dylib; do
     [ -f "$f" ] && cp "$f" "$DIR/"
 done
 
+# Rust std
+SYSROOT=$(rustc --print sysroot)
+RUST_ARCH=$(uname -m | sed 's/arm64/aarch64/;s/x86_64/x86_64/')
+for f in "$SYSROOT"/lib/rustlib/${RUST_ARCH}-apple-darwin/lib/libstd-*.dylib; do
+    [ -f "$f" ] && cp "$f" "$DIR/"
+done
+
 for f in target/dist/*.dylib; do
     name=$(basename "$f")
     [ "$name" = "librenzora.dylib" ] && continue

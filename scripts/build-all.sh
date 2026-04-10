@@ -139,12 +139,24 @@ if [ -n "$OSXCROSS_CLANG" ]; then
     cp target/x86_64-apple-darwin/dist/renzora-runtime "$OUTPUT_DIR/macos-x64/"
     copy_shared_libs "target/x86_64-apple-darwin/dist" "$OUTPUT_DIR/macos-x64" "dylib"
 
+    # Rust std for macOS x64
+    SYSROOT=$(rustc --print sysroot)
+    for f in "$SYSROOT"/lib/rustlib/x86_64-apple-darwin/lib/libstd-*.dylib; do
+        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-x64/"
+    done
+
     echo "=== Building macOS ARM binaries ==="
     mkdir -p "$OUTPUT_DIR/macos-arm64"
     cargo build --profile dist --workspace --bin renzora --bin renzora-runtime --no-default-features --features "$UNIFIED_FEATURES" --target aarch64-apple-darwin
     cp target/aarch64-apple-darwin/dist/renzora "$OUTPUT_DIR/macos-arm64/"
     cp target/aarch64-apple-darwin/dist/renzora-runtime "$OUTPUT_DIR/macos-arm64/"
     copy_shared_libs "target/aarch64-apple-darwin/dist" "$OUTPUT_DIR/macos-arm64" "dylib"
+
+    # Rust std for macOS ARM
+    SYSROOT=$(rustc --print sysroot)
+    for f in "$SYSROOT"/lib/rustlib/aarch64-apple-darwin/lib/libstd-*.dylib; do
+        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-arm64/"
+    done
 else
     echo "WARN: osxcross not found, skipping macOS builds"
 fi
