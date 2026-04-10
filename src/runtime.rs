@@ -87,8 +87,6 @@ pub fn add_engine_plugins(app: &mut App) {
     #[cfg(any(feature = "editor", not(feature = "server")))]
     {
         app.add_plugins(renzora_shared::renzora_lighting::LightingPlugin);
-        #[cfg(feature = "editor")]
-        app.add_plugins(renzora_shared::renzora_shape_library::ShapeLibraryPlugin);
         app.add_plugins(renzora_shared::renzora_water::WaterPlugin);
         app.add_plugins(renzora_shared::renzora_terrain::foliage::FoliagePlugin);
         app.add_plugins(renzora_shared::renzora_animation::AnimationPlugin);

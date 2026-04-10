@@ -61,7 +61,7 @@ fn main() {
 
     #[cfg(feature = "editor")]
     if is_editor {
-        // Editor framework + infrastructure
+        // Core editor infrastructure (must load before dynamic plugins)
         app.add_plugins(renzora_shared::renzora_splash::SplashPlugin);
         app.add_plugins(renzora_shared::renzora_editor_framework::RenzoraEditorPlugin);
         app.add_plugins(renzora_shared::renzora_grid::GridPlugin);
@@ -71,37 +71,7 @@ fn main() {
         app.add_plugins(renzora_shared::renzora_gizmo::GizmoPlugin);
         app.add_plugins(renzora_shared::renzora_scene::ScenePlugin);
 
-        // Editor panels (baked in)
-        app.add_plugins(renzora_shared::renzora_console::ConsolePlugin);
-        app.add_plugins(renzora_shared::renzora_inspector::InspectorPanelPlugin);
-        app.add_plugins(renzora_shared::renzora_hierarchy::HierarchyPanelPlugin);
-        app.add_plugins(renzora_shared::renzora_asset_browser::AssetBrowserPlugin);
-        app.add_plugins(renzora_shared::renzora_export::ExportPlugin);
-        app.add_plugins(renzora_shared::renzora_import_ui::ImportPlugin);
-        app.add_plugins(renzora_shared::renzora_settings::SettingsPlugin);
-        app.add_plugins(renzora_shared::renzora_material_editor::MaterialEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_shader_editor::ShaderEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_blueprint_editor::BlueprintEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_particle_editor::ParticleEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_terrain_editor::TerrainEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_foliage_editor::FoliageEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_animation_editor::AnimationEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_network_editor::NetworkEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_lifecycle_editor::LifecycleEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_code_editor::CodeEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_script_variables::ScriptVariablesPlugin);
-        app.add_plugins(renzora_shared::renzora_mixer::MixerPlugin);
-        app.add_plugins(renzora_shared::renzora_daw::DawPlugin);
-        app.add_plugins(renzora_shared::renzora_hub::HubPlugin);
-        app.add_plugins(renzora_shared::renzora_auth::AuthPlugin);
-        app.add_plugins(renzora_shared::renzora_level_presets::LevelPresetsPlugin);
-        app.add_plugins(renzora_shared::renzora_physics_playground::PhysicsPanelPlugin);
-        app.add_plugins(renzora_shared::renzora_gamepad::GamepadPlugin);
-        app.add_plugins(renzora_shared::renzora_debugger::DebuggerPlugin);
-        app.add_plugins(renzora_shared::renzora_widget_gallery::WidgetGalleryPlugin);
-        app.add_plugins(renzora_shared::renzora_tutorial::TutorialPlugin);
-        app.add_plugins(renzora_shared::renzora_test_component::TestComponentPlugin);
-        app.add_plugins(renzora_shared::renzora_test_extension::TestExtensionPlugin);
+        // All other panels are standalone plugin DLLs loaded from plugins/
 
         app.insert_resource(renzora_shared::renzora_splash::PendingProjectReopen);
 

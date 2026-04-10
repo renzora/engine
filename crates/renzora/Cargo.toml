@@ -5,7 +5,7 @@ edition = "2021"
 description = "Renzora plugin SDK — the single dylib for all plugin development"
 
 [lib]
-crate-type = ["dylib", "rlib"]
+crate-type = ["dylib"]
 
 [features]
 default = ["editor"]

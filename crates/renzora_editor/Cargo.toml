@@ -90,35 +90,4 @@ renzora_grid = { path = "../editor/renzora_grid" }
 renzora_scene = { path = "../editor/renzora_scene" }
 renzora_keybindings = { path = "../editor/renzora_keybindings" }
 
-# Editor panels (baked into the editor binary)
-renzora_console = { path = "../editor/renzora_console" }
-renzora_inspector = { path = "../editor/renzora_inspector" }
-renzora_hierarchy = { path = "../editor/renzora_hierarchy" }
-renzora_asset_browser = { path = "../editor/renzora_asset_browser" }
-renzora_export = { path = "../editor/renzora_export" }
-renzora_import_ui = { path = "../editor/renzora_import_ui" }
-renzora_settings = { path = "../editor/renzora_settings" }
-renzora_material_editor = { path = "../editor/renzora_material_editor" }
-renzora_shader_editor = { path = "../editor/renzora_shader_editor" }
-renzora_blueprint_editor = { path = "../editor/renzora_blueprint_editor" }
-renzora_particle_editor = { path = "../editor/renzora_particle_editor" }
-renzora_terrain_editor = { path = "../editor/renzora_terrain_editor" }
-renzora_foliage_editor = { path = "../editor/renzora_foliage_editor" }
-renzora_animation_editor = { path = "../editor/renzora_animation_editor" }
-renzora_network_editor = { path = "../editor/renzora_network_editor" }
-renzora_lifecycle_editor = { path = "../editor/renzora_lifecycle_editor" }
-renzora_code_editor = { path = "../editor/renzora_code_editor" }
-renzora_script_variables = { path = "../editor/renzora_script_variables" }
-renzora_mixer = { path = "../editor/renzora_mixer" }
-renzora_daw = { path = "../editor/renzora_daw" }
-renzora_hub = { path = "../editor/renzora_hub" }
-renzora_auth = { path = "../editor/renzora_auth" }
-renzora_level_presets = { path = "../editor/renzora_level_presets" }
-renzora_physics_playground = { path = "../editor/renzora_physics_playground" }
-renzora_gamepad = { path = "../editor/renzora_gamepad" }
-renzora_debugger = { path = "../editor/renzora_debugger" }
-renzora_widget_gallery = { path = "../editor/renzora_widget_gallery" }
-renzora_tutorial = { path = "../editor/renzora_tutorial" }
-renzora_test_component = { path = "../editor/renzora_test_component" }
-renzora_test_extension = { path = "../editor/renzora_test_extension" }
-renzora_shape_library = { path = "../editor/renzora_shape_library" }
+# All other editor panels are standalone plugin DLLs loaded from plugins/

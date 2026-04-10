@@ -6,7 +6,7 @@ default_to_workspace = false
 # =============================================================================
 
 # makers build — compile everything (engine + plugins) with matching hashes, sync to dist/
-[tasks.build]
+[tasks.dist]
 description = "Build everything and sync to dist/"
 dependencies = ["build-cargo", "sync-dist"]
 
@@ -18,7 +18,7 @@ args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "-
 # makers run — build + run the editor from dist/
 [tasks.run]
 description = "Build and run the editor"
-dependencies = ["build"]
+dependencies = ["dist"]
 [tasks.run.windows]
 command = "dist\\windows-x64\\renzora.exe"
 [tasks.run.linux]
@@ -51,7 +51,9 @@ args = ["run", "--rm", "-v", "./dist:/output", "renzora/engine", "/app/scripts/b
 description = "Copy build output from target/dist/ to dist/"
 
 [tasks.sync-dist.windows]
-script_runner = "powershell"
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
 script = '''
 $ErrorActionPreference = "Stop"
 $platform = "windows-x64"
@@ -74,13 +76,19 @@ Copy-Item target/dist/deps/bevy_dylib-*.dll $dir/ -Force -ErrorAction SilentlyCo
 $sysroot = (rustc --print sysroot)
 Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
 
-# SDK DLLs
-foreach ($dll in @("renzora.dll", "renzora_runtime.dll")) {
+# Root DLLs (SDK + core editor infrastructure)
+$rootDlls = @(
+    "renzora.dll", "renzora_runtime.dll",
+    "renzora_camera.dll", "renzora_console.dll", "renzora_gizmo.dll",
+    "renzora_grid.dll", "renzora_keybindings.dll", "renzora_scene.dll",
+    "renzora_viewport.dll", "renzora_shape_library.dll", "renzora_macros.dll"
+)
+foreach ($dll in $rootDlls) {
     if (Test-Path "target/dist/$dll") { Copy-Item "target/dist/$dll" "$dir/$dll" -Force }
 }
 
-# Plugins — all other DLLs
-$skip = @("renzora.dll", "renzora_runtime.dll", "bevy_dylib.dll")
+# Plugins — everything else
+$skip = $rootDlls + @("bevy_dylib.dll")
 Get-ChildItem target/dist/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
     if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
 }

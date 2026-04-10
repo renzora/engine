@@ -34,21 +34,16 @@ macro_rules! add {
         $crate::add!($plugin_type, EditorAndRuntime);
     };
     ($plugin_type:ty, $scope:ident) => {
-        // Only emit FFI exports when building as a dylib (community plugins).
-        // Baked-in plugins skip these to avoid duplicate symbol errors.
-        #[cfg(crate_type = "dylib")]
         #[no_mangle]
         pub extern "C" fn plugin_create() -> *mut dyn $crate::bevy::app::Plugin {
             Box::into_raw(Box::new(<$plugin_type>::default()) as Box<dyn $crate::bevy::app::Plugin>)
         }
 
-        #[cfg(crate_type = "dylib")]
         #[no_mangle]
         pub extern "C" fn plugin_scope() -> u8 {
             $crate::PluginScope::$scope as u8
         }
 
-        #[cfg(crate_type = "dylib")]
         #[no_mangle]
         pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
             let id = std::any::TypeId::of::<$crate::bevy::ecs::world::World>();

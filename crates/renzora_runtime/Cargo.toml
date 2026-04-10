@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Shared runtime library for the Renzora engine"
 
-[lib]
-crate-type = ["dylib", "rlib"]
 
 [features]
 default = []

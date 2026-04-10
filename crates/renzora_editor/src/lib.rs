@@ -45,43 +45,10 @@ pub use renzora_night_stars;
 pub use renzora_editor_framework;
 pub use renzora_splash;
 
-// Editor infrastructure
+// Critical editor infrastructure (must load before dynamic plugins)
 pub use renzora_viewport;
 pub use renzora_camera;
 pub use renzora_gizmo;
 pub use renzora_grid;
 pub use renzora_scene;
 pub use renzora_keybindings;
-
-// Editor panels (baked in)
-pub use renzora_console;
-pub use renzora_inspector;
-pub use renzora_hierarchy;
-pub use renzora_asset_browser;
-pub use renzora_export;
-pub use renzora_import_ui;
-pub use renzora_settings;
-pub use renzora_material_editor;
-pub use renzora_shader_editor;
-pub use renzora_blueprint_editor;
-pub use renzora_particle_editor;
-pub use renzora_terrain_editor;
-pub use renzora_foliage_editor;
-pub use renzora_animation_editor;
-pub use renzora_network_editor;
-pub use renzora_lifecycle_editor;
-pub use renzora_code_editor;
-pub use renzora_script_variables;
-pub use renzora_mixer;
-pub use renzora_daw;
-pub use renzora_hub;
-pub use renzora_auth;
-pub use renzora_level_presets;
-pub use renzora_physics_playground;
-pub use renzora_gamepad;
-pub use renzora_debugger;
-pub use renzora_widget_gallery;
-pub use renzora_tutorial;
-pub use renzora_test_component;
-pub use renzora_test_extension;
-pub use renzora_shape_library;

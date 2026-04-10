@@ -104,9 +104,15 @@ mod platform {
             };
 
             if !compatible {
+                let engine_hash = engine_bevy_hash();
+                let plugin_hash = unsafe {
+                    library.get::<BevyHashFn>(b"plugin_bevy_hash")
+                        .ok()
+                        .map(|f| (*f)())
+                };
                 warn!(
-                    "[dynamic-plugin] Skipping '{}' — incompatible bevy version (rebuild plugin with current engine)",
-                    stem
+                    "[dynamic-plugin] Skipping '{}' — incompatible bevy version (engine: {:?}, plugin: {:?})",
+                    stem, engine_hash, plugin_hash
                 );
                 if let Some(mut registry) = app.world_mut().get_resource_mut::<DynamicPluginRegistry>() {
                     registry.failed.push(FailedPlugin {
