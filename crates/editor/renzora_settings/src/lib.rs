@@ -1237,4 +1237,4 @@ fn render_plugins_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     ui.label(RichText::new("Restart the editor to load plugins from a new directory.").size(11.0).color(text_muted));
 }
 
-renzora::add!(SettingsPlugin);
+renzora::add!(SettingsPlugin, Editor);

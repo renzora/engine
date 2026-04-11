@@ -215,5 +215,3 @@ impl Plugin for ConsolePlugin {
         app.register_panel(ConsolePanel::new(arc));
     }
 }
-
-renzora::add!(ConsolePlugin);

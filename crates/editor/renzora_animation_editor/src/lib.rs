@@ -279,4 +279,4 @@ impl Plugin for AnimationEditorPlugin {
     }
 }
 
-renzora::add!(AnimationEditorPlugin);
+renzora::add!(AnimationEditorPlugin, Editor);

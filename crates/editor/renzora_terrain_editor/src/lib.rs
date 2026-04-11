@@ -165,4 +165,4 @@ fn terrain_data_entry() -> InspectorEntry {
 }
 
 
-renzora::add!(TerrainEditorPlugin);
+renzora::add!(TerrainEditorPlugin, Editor);

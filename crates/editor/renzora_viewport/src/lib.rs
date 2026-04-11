@@ -760,5 +760,3 @@ fn render_axis_gizmo(
     // Center dot
     painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
 }
-
-renzora::add!(ViewportPlugin);

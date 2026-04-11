@@ -40,6 +40,9 @@ editor = [
 [dependencies]
 bevy = { workspace = true }
 
+# Runtime (re-exported so editor builds can use build_runtime_app etc.)
+renzora_runtime = { path = "../renzora_runtime" }
+
 # Core (same as renzora_runtime)
 renzora_engine = { path = "../core/renzora_engine" }
 renzora_core = { path = "../core/renzora_core" }
@@ -89,5 +92,6 @@ renzora_gizmo = { path = "../editor/renzora_gizmo" }
 renzora_grid = { path = "../editor/renzora_grid" }
 renzora_scene = { path = "../editor/renzora_scene" }
 renzora_keybindings = { path = "../editor/renzora_keybindings" }
+renzora_console = { path = "../editor/renzora_console" }
 
 # All other editor panels are standalone plugin DLLs loaded from plugins/

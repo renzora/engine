@@ -1010,4 +1010,4 @@ fn register_lighting_presets(app: &mut App) {
     });
 }
 
-renzora::add!(LevelPresetsPlugin);
+renzora::add!(LevelPresetsPlugin, Editor);

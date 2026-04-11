@@ -218,4 +218,4 @@ fn consume_open_code_editor_file(
     commands.remove_resource::<renzora::core::OpenCodeEditorFile>();
 }
 
-renzora::add!(CodeEditorPlugin);
+renzora::add!(CodeEditorPlugin, Editor);

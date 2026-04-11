@@ -3,6 +3,8 @@
 //! Plugins and the editor binary link against this dylib instead of
 //! statically embedding each crate. Keeps plugin DLLs small.
 
+use bevy::prelude::*;
+
 // Core
 pub use renzora_engine;
 pub use renzora_core;
@@ -40,4 +42,95 @@ pub use renzora_atmosphere;
 pub use renzora_skybox;
 pub use renzora_clouds;
 pub use renzora_night_stars;
+
+// ── App setup (single source of truth for engine plugin registration) ────
+
+pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
+    #[cfg(target_os = "android")]
+    {
+        use bevy::render::settings::{Backends, WgpuSettings};
+        WgpuSettings {
+            backends: Some(Backends::VULKAN),
+            ..default()
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        use bevy::render::settings::{WgpuFeatures, WgpuSettings};
+        WgpuSettings {
+            features: WgpuFeatures::POLYGON_MODE_LINE,
+            ..default()
+        }
+    }
+}
+
+pub fn init_app() -> App {
+    let mut app = App::new();
+    renzora_engine::setup_asset_reader(&mut app);
+    app
+}
+
+pub fn add_default_rendering(app: &mut App) {
+    use bevy::render::{settings::RenderCreation, RenderPlugin};
+    app.add_plugins(
+        DefaultPlugins
+            .set(RenderPlugin {
+                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+                ..default()
+            })
+            .set(ImagePlugin {
+                default_sampler: bevy::image::ImageSamplerDescriptor {
+                    address_mode_u: bevy::image::ImageAddressMode::Repeat,
+                    address_mode_v: bevy::image::ImageAddressMode::Repeat,
+                    address_mode_w: bevy::image::ImageAddressMode::Repeat,
+                    ..default()
+                },
+                ..default()
+            })
+    );
+}
+
+pub fn add_engine_plugins(app: &mut App) {
+    app.add_plugins(renzora_engine::RuntimePlugin);
+    app.add_plugins(renzora_scripting::ScriptingPlugin::new());
+    app.add_plugins(renzora_blueprint::BlueprintPlugin);
+    app.add_plugins(renzora_input::InputPlugin);
+    app.add_plugins(renzora_physics::PhysicsPlugin);
+    app.add_plugins(renzora_lifecycle::LifecyclePlugin);
+    app.add_plugins(renzora_terrain::TerrainPlugin);
+    app.add_plugins(renzora_lighting::LightingPlugin);
+    app.add_plugins(renzora_water::WaterPlugin);
+    app.add_plugins(renzora_terrain::foliage::FoliagePlugin);
+    app.add_plugins(renzora_animation::AnimationPlugin);
+    app.add_plugins(renzora_game_ui::GameUiPlugin);
+    app.add_plugins(renzora_shader::material::MaterialPlugin);
+    app.add_plugins(renzora_gauges::GaugesPlugin);
+    app.add_plugins(renzora_hanabi::HanabiParticlePlugin);
+    app.add_plugins(renzora_network::NetworkPlugin);
+    app.add_plugins(renzora_audio::KiraPlugin);
+    app.add_plugins(renzora_shader::ShaderPlugin);
+    app.add_plugins(renzora_skybox::SkyboxPlugin);
+    app.add_plugins(renzora_night_stars::NightStarsPlugin);
+    app.add_plugins(renzora_clouds::CloudsPlugin);
+    app.add_plugins(renzora_tonemapping::TonemappingPlugin);
+    app.add_plugins(renzora_bloom_effect::BloomEffectPlugin);
+    app.add_plugins(renzora_dof::DepthOfFieldPlugin);
+    app.add_plugins(renzora_motion_blur::MotionBlurPlugin);
+    app.add_plugins(renzora_antialiasing::AntiAliasingPlugin);
+    app.add_plugins(renzora_distance_fog::DistanceFogPlugin);
+    app.add_plugins(renzora_atmosphere::AtmospherePlugin);
+    app.add_plugins(renzora_ssao::SsaoPlugin);
+    app.add_plugins(renzora_ssr::SsrPlugin);
+    app.add_plugins(renzora_auto_exposure::AutoExposurePlugin);
+    app.add_plugins(renzora_oit::OitPlugin);
+}
+
+/// Build the full runtime app (rendering + all engine plugins).
+pub fn build_runtime_app() -> App {
+    let mut app = init_app();
+    add_default_rendering(&mut app);
+    add_engine_plugins(&mut app);
+    app
+}
 

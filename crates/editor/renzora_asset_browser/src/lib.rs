@@ -842,4 +842,4 @@ impl Plugin for AssetBrowserPlugin {
     }
 }
 
-renzora::add!(AssetBrowserPlugin);
+renzora::add!(AssetBrowserPlugin, Editor);

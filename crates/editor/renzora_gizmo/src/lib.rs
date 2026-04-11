@@ -208,8 +208,10 @@ impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GizmoPlugin");
         bevy::asset::embedded_asset!(app, "shaders/gizmo_material.wgsl");
-        app.add_plugins(bevy_mod_outline::OutlinePlugin)
-            .add_plugins(MaterialPlugin::<GizmoMaterial>::default())
+        if !app.is_plugin_added::<bevy_mod_outline::OutlinePlugin>() {
+            app.add_plugins(bevy_mod_outline::OutlinePlugin);
+        }
+        app.add_plugins(MaterialPlugin::<GizmoMaterial>::default())
             .insert_gizmo_config(
                 OverlayGizmoGroup,
                 GizmoConfig {
@@ -1329,5 +1331,3 @@ fn render_box_selection(
             );
         });
 }
-
-renzora::add!(GizmoPlugin);

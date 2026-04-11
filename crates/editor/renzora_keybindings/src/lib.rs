@@ -202,5 +202,3 @@ mod tests {
         assert!(bindings.rebinding.is_none());
     }
 }
-
-renzora::add!(KeybindingsPlugin);

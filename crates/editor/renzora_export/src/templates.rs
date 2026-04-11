@@ -61,6 +61,26 @@ impl Platform {
         }
     }
 
+    /// Runtime binary name within the runtime/ directory.
+    pub fn runtime_binary_name(&self) -> &'static str {
+        match self {
+            Platform::WindowsX64 => "renzora-runtime.exe",
+            Platform::LinuxX64 => "renzora-runtime",
+            Platform::MacOSX64 | Platform::MacOSArm64 => "renzora-runtime",
+            _ => self.template_filename(),
+        }
+    }
+
+    /// Server binary name within the server/ directory.
+    pub fn server_binary_name_in_dir(&self) -> Option<&'static str> {
+        match self {
+            Platform::WindowsX64 => Some("renzora-server.exe"),
+            Platform::LinuxX64 => Some("renzora-server"),
+            Platform::MacOSX64 | Platform::MacOSArm64 => Some("renzora-server"),
+            _ => None,
+        }
+    }
+
     pub fn template_filename(&self) -> &'static str {
         match self {
             Platform::WindowsX64 => "renzora-runtime-windows-x64.exe",
@@ -137,21 +157,28 @@ pub struct ExportTemplate {
     pub is_server: bool,
 }
 
-/// Manages the template cache directory and available templates.
+/// Manages export templates from dist/{platform}/{target}/ directories.
+///
+/// Each target (runtime, server) is built separately with its own hash.
+/// Templates are found as sibling directories to the editor's folder.
 #[derive(Resource)]
 pub struct TemplateManager {
-    pub cache_dir: PathBuf,
+    /// Parent of the editor dir (e.g. dist/windows-x64/)
+    pub dist_dir: PathBuf,
     pub templates: Vec<ExportTemplate>,
-    pub download_url_base: String,
 }
 
 impl Default for TemplateManager {
     fn default() -> Self {
-        let cache_dir = dirs_cache_dir().join("templates");
+        // Editor runs from dist/{platform}/editor/ — go up one level to dist/{platform}/
+        let dist_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))  // editor/
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))  // {platform}/
+            .unwrap_or_else(|| PathBuf::from("."));
         let mut mgr = Self {
-            cache_dir,
+            dist_dir,
             templates: Vec::new(),
-            download_url_base: String::new(),
         };
         mgr.scan();
         mgr
@@ -159,39 +186,53 @@ impl Default for TemplateManager {
 }
 
 impl TemplateManager {
-    /// Scan the cache directory for available templates.
+    /// Scan for templates in runtime/ and server/ sibling directories.
     pub fn scan(&mut self) {
         self.templates.clear();
 
-        if !self.cache_dir.exists() {
-            return;
-        }
-
-        for platform in Platform::ALL {
-            // Runtime template
-            let path = self.cache_dir.join(platform.template_filename());
-            if path.exists() {
-                self.templates.push(ExportTemplate {
-                    platform: *platform,
-                    path,
-                    version: "local".to_string(),
-                    is_server: false,
-                });
-            }
-
-            // Server template
-            if let Some(server_filename) = platform.server_template_filename() {
-                let server_path = self.cache_dir.join(server_filename);
-                if server_path.exists() {
+        // Check runtime/ directory
+        let runtime_dir = self.dist_dir.join("runtime");
+        if runtime_dir.exists() {
+            for platform in Platform::ALL {
+                let path = runtime_dir.join(platform.runtime_binary_name());
+                if path.exists() {
                     self.templates.push(ExportTemplate {
                         platform: *platform,
-                        path: server_path,
+                        path: path.clone(),
                         version: "local".to_string(),
-                        is_server: true,
+                        is_server: false,
                     });
                 }
             }
         }
+
+        // Check server/ directory
+        let server_dir = self.dist_dir.join("server");
+        if server_dir.exists() {
+            for platform in Platform::ALL {
+                if let Some(name) = platform.server_binary_name_in_dir() {
+                    let path = server_dir.join(name);
+                    if path.exists() {
+                        self.templates.push(ExportTemplate {
+                            platform: *platform,
+                            path,
+                            version: "local".to_string(),
+                            is_server: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get the runtime plugins directory for a platform.
+    pub fn runtime_plugins_dir(&self) -> PathBuf {
+        self.dist_dir.join("runtime").join("plugins")
+    }
+
+    /// Get the runtime shared libs directory for a platform.
+    pub fn runtime_dir(&self) -> PathBuf {
+        self.dist_dir.join("runtime")
     }
 
     /// Check if a template is available for the given platform.
@@ -214,49 +255,4 @@ impl TemplateManager {
         self.get_server(platform).is_some()
     }
 
-    /// Install a template from a file path (copy into cache).
-    pub fn install_from_file(&mut self, platform: Platform, source: &std::path::Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.cache_dir)?;
-        let dest = self.cache_dir.join(platform.template_filename());
-        std::fs::copy(source, &dest)?;
-        self.scan();
-        Ok(())
-    }
-
-    /// Install a server template from a file path (copy into cache).
-    pub fn install_server_from_file(&mut self, platform: Platform, source: &std::path::Path) -> std::io::Result<()> {
-        let Some(filename) = platform.server_template_filename() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "No server template for this platform",
-            ));
-        };
-        std::fs::create_dir_all(&self.cache_dir)?;
-        let dest = self.cache_dir.join(filename);
-        std::fs::copy(source, &dest)?;
-        self.scan();
-        Ok(())
-    }
-}
-
-fn dirs_cache_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            return PathBuf::from(appdata).join("renzora");
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join("Library/Application Support/renzora");
-        }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(".config/renzora");
-        }
-    }
-    PathBuf::from(".renzora")
 }

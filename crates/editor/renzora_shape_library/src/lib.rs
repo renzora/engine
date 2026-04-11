@@ -199,4 +199,4 @@ impl Plugin for ShapeLibraryPlugin {
     }
 }
 
-renzora::add!(ShapeLibraryPlugin);
+renzora::add!(ShapeLibraryPlugin, Editor);

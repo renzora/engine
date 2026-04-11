@@ -26,4 +26,4 @@ impl Plugin for HubPlugin {
     }
 }
 
-renzora::add!(HubPlugin);
+renzora::add!(HubPlugin, Editor);

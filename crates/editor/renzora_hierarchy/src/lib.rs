@@ -473,4 +473,4 @@ fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String>
     None
 }
 
-renzora::add!(HierarchyPanelPlugin);
+renzora::add!(HierarchyPanelPlugin, Editor);

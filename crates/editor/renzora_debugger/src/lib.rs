@@ -413,4 +413,4 @@ impl Plugin for DebuggerPlugin {
     }
 }
 
-renzora::add!(DebuggerPlugin);
+renzora::add!(DebuggerPlugin, Editor);

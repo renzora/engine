@@ -182,7 +182,7 @@ fn tutorial_overlay_system(world: &mut World) {
     world.insert_resource(state);
 }
 
-renzora::add!(TutorialPlugin);
+renzora::add!(TutorialPlugin, Editor);
 
 // ── Panel rect computation ─────────────────────────────────────────────────────
 

@@ -66,4 +66,4 @@ impl Plugin for ShaderEditorPlugin {
     }
 }
 
-renzora::add!(ShaderEditorPlugin);
+renzora::add!(ShaderEditorPlugin, Editor);

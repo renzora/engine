@@ -619,4 +619,4 @@ pub fn try_restore_session() -> AuthSession {
     AuthSession::default()
 }
 
-renzora::add!(AuthPlugin);
+renzora::add!(AuthPlugin, Editor);

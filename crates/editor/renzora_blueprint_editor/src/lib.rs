@@ -28,4 +28,4 @@ impl Plugin for BlueprintEditorPlugin {
     }
 }
 
-renzora::add!(BlueprintEditorPlugin);
+renzora::add!(BlueprintEditorPlugin, Editor);

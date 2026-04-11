@@ -321,9 +321,13 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                                 .pick_file()
                             {
                                 let mut mgr = world.resource_mut::<TemplateManager>();
-                                if let Err(e) = mgr.install_from_file(platform, &path) {
+                                let runtime_dir = mgr.runtime_dir();
+                                let _ = std::fs::create_dir_all(&runtime_dir);
+                                let dest = runtime_dir.join(platform.runtime_binary_name());
+                                if let Err(e) = std::fs::copy(&path, &dest) {
                                     warn!("Failed to install template: {}", e);
                                 }
+                                mgr.scan();
                             }
                         }
                     });
@@ -515,8 +519,14 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                                                 .pick_file()
                                             {
                                                 let mut mgr = world.resource_mut::<TemplateManager>();
-                                                if let Err(e) = mgr.install_server_from_file(platform, &path) {
-                                                    warn!("Failed to install server template: {}", e);
+                                                if let Some(server_name) = platform.server_binary_name_in_dir() {
+                                                    let server_dir = mgr.dist_dir.join("server");
+                                                    let _ = std::fs::create_dir_all(&server_dir);
+                                                    let dest = server_dir.join(server_name);
+                                                    if let Err(e) = std::fs::copy(&path, &dest) {
+                                                        warn!("Failed to install server template: {}", e);
+                                                    }
+                                                    mgr.scan();
                                                 }
                                             }
                                         }
@@ -531,15 +541,12 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 // --- Plugins ---
                 drop(export_state);
 
-                // Scan plugins directory once
+                // Scan runtime plugins directory once
                 if !world.resource::<ExportOverlayState>().plugins_scanned {
                     let plugins_dir = world
-                        .get_resource::<renzora::editor::EditorSettings>()
-                        .map(|s| s.plugins_dir.clone())
-                        .unwrap_or_else(|| "plugins".to_string());
-                    let plugins = dynamic_plugin_loader::scan_plugins(
-                        &std::path::PathBuf::from(&plugins_dir),
-                    );
+                        .resource::<TemplateManager>()
+                        .runtime_plugins_dir();
+                    let plugins = dynamic_plugin_loader::scan_plugins(&plugins_dir);
                     let mut state = world.resource_mut::<ExportOverlayState>();
                     for p in &plugins {
                         state.selected_plugins.insert(p.id.clone());
@@ -556,17 +563,19 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                         ui.add_space(4.0);
 
                         let plugins: Vec<_> = state.available_plugins.iter().map(|p| (p.id.clone(), p.scope)).collect();
-                        for (id, scope) in &plugins {
-                            let mut checked = state.selected_plugins.contains(id.as_str());
-                            let label = format!("{} ({:?})", id, scope);
-                            if ui.checkbox(&mut checked, egui::RichText::new(label).size(12.0).color(text_primary)).changed() {
-                                if checked {
-                                    state.selected_plugins.insert(id.clone());
-                                } else {
-                                    state.selected_plugins.remove(id.as_str());
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            for (id, scope) in &plugins {
+                                let mut checked = state.selected_plugins.contains(id.as_str());
+                                let label = format!("{} ({:?})", id, scope);
+                                if ui.checkbox(&mut checked, egui::RichText::new(label).size(12.0).color(text_primary)).changed() {
+                                    if checked {
+                                        state.selected_plugins.insert(id.clone());
+                                    } else {
+                                        state.selected_plugins.remove(id.as_str());
+                                    }
                                 }
                             }
-                        }
+                        });
                     }
                 }
 
@@ -970,6 +979,9 @@ fn run_export(world: &mut World, project_name: &str) {
         .collect();
     let project_name = project_name.to_string();
 
+    // Get runtime directory for shared libs
+    let runtime_dir = world.resource::<TemplateManager>().runtime_dir();
+
     // Get template path before spawning thread
     let template_path = match world.resource::<TemplateManager>().get(platform) {
         Some(t) => t.path.clone(),
@@ -1023,6 +1035,7 @@ fn run_export(world: &mut World, project_name: &str) {
             template_path,
             server_template,
             selected_plugins,
+            runtime_dir,
         );
     });
 }
@@ -1049,6 +1062,7 @@ fn export_worker(
     template_path: std::path::PathBuf,
     server_template: Option<std::path::PathBuf>,
     selected_plugins: Vec<std::path::PathBuf>,
+    runtime_dir: std::path::PathBuf,
 ) {
     // Pack assets
     let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
@@ -1128,7 +1142,8 @@ fn export_worker(
     export_config.window.fullscreen = matches!(window_mode, WindowMode::Fullscreen);
     export_config.window.resizable = matches!(window_mode, WindowMode::Windowed);
 
-    // Create output directory
+    // Create output directory: output_dir/project_name/
+    let output_dir = output_dir.join(&project_name);
     if let Err(e) = std::fs::create_dir_all(&output_dir) {
         let _ = tx.send(ExportMsg::Error(format!(
             "Failed to create output dir: {}",
@@ -1212,39 +1227,42 @@ fn export_worker(
 
     match result {
         Ok(()) => {
-            // Copy selected plugins + bevy_dylib + std DLL
-            if !selected_plugins.is_empty() && !is_wasm {
-                let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
-                let plugins_out = output_dir.join("plugins");
-                let _ = std::fs::create_dir_all(&plugins_out);
-
-                for plugin_path in &selected_plugins {
-                    if let Some(filename) = plugin_path.file_name() {
-                        let dest = plugins_out.join(filename);
-                        if let Err(e) = std::fs::copy(plugin_path, &dest) {
-                            warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
-                        }
-                    }
-                }
-
-                // Copy bevy_dylib and std DLLs from the exe directory
-                if let Ok(exe_path) = std::env::current_exe() {
-                    if let Some(exe_dir) = exe_path.parent() {
-                        for entry in std::fs::read_dir(exe_dir).into_iter().flatten().flatten() {
-                            let name = entry.file_name();
-                            let name_str = name.to_string_lossy();
-                            if name_str.starts_with("bevy_dylib") || name_str.starts_with("std-") {
-                                if let Some(ext) = entry.path().extension() {
-                                    if ext == "dll" || ext == "so" || ext == "dylib" {
-                                        let _ = std::fs::copy(entry.path(), output_dir.join(&name));
-                                    }
-                                }
+            if !is_wasm {
+                // Copy shared libraries from runtime build (bevy_dylib + std + SDK)
+                let _ = tx.send(ExportMsg::Progress("Copying shared libraries...".into()));
+                for entry in std::fs::read_dir(&runtime_dir).into_iter().flatten().flatten() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if let Some(ext) = entry.path().extension() {
+                        let ext = ext.to_string_lossy();
+                        if ext == "dll" || ext == "so" || ext == "dylib" {
+                            // Copy SDK + bevy_dylib + std (not plugins/ or binaries)
+                            if name_str.starts_with("bevy_dylib") || name_str.starts_with("libbevy_dylib")
+                                || name_str.starts_with("std-") || name_str.starts_with("libstd-")
+                                || name_str.starts_with("renzora.") || name_str.starts_with("librenzora.")
+                            {
+                                let _ = std::fs::copy(entry.path(), output_dir.join(&name));
                             }
                         }
                     }
                 }
 
-                info!("[export] Copied {} plugins to output", selected_plugins.len());
+                // Copy selected plugins
+                if !selected_plugins.is_empty() {
+                    let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
+                    let plugins_out = output_dir.join("plugins");
+                    let _ = std::fs::create_dir_all(&plugins_out);
+
+                    for plugin_path in &selected_plugins {
+                        if let Some(filename) = plugin_path.file_name() {
+                            let dest = plugins_out.join(filename);
+                            if let Err(e) = std::fs::copy(plugin_path, &dest) {
+                                warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
+                            }
+                        }
+                    }
+                    info!("[export] Copied {} plugins to output", selected_plugins.len());
+                }
             }
 
             // Server export

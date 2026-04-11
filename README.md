@@ -23,23 +23,36 @@ Linux: `sudo apt install libwayland-dev` before building.
 | Command | What it does |
 |---|---|
 | `makers run` | Build + run the editor |
-| `makers build` | Build only (no run) |
-| `makers docker-build` | Build Docker image (first time — go make a cup of tea) |
-| `makers docker-run` | Build all platforms via Docker |
+| `makers build-editor` | Build the editor + plugins |
+| `makers build-runtime` | Build runtime export template + plugins |
+| `makers build-server` | Build dedicated server + plugins |
+| `makers docker-build` | Build Docker image (first time -- go make a cup of tea) |
+| `makers docker-run` | Build all platform export templates via Docker |
 
-Output goes to `dist/<platform>/` (e.g. `dist/windows-x64/`, `dist/linux-x64/`). Local builds fill in your platform, Docker fills in the rest.
+Each build is isolated with its own feature flag (`editor`, `runtime`, `server`). This ensures clean feature gating and matching plugin hashes per target.
+
+Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins.
 
 ## Architecture
 
-Three binaries share a common runtime library:
+One entry point, three build targets:
 
-- **`src/editor.rs`** -- Editor. Calls `build_runtime_app()` then adds editor UI plugins.
-- **`src/runtime.rs`** -- Shared runtime setup. Registers all core plugins.
-- **`src/server.rs`** -- Dedicated server. Headless mode (no window, no rendering, no audio).
+- **`src/main.rs`** -- Single binary, feature-gated for editor, runtime, or server.
+- **`src/runtime.rs`** -- Shared library. Core engine setup functions used by all targets.
+
+Build targets:
+
+- **`--features editor`** -- Full editor with splash screen, project selection, editor panels, and dynamic plugin loading.
+- **`--features runtime`** -- Lean game runtime. No editor UI. Loads runtime-scoped plugins only.
+- **`--features server`** -- Headless dedicated server. No window, no rendering, no audio.
+
+Core editor infrastructure (viewport, camera, gizmo, grid, scene, keybindings, console) is statically linked into the binary -- not loaded as plugins. All other editor panels are standalone dylib plugins in `plugins/`.
 
 ## Plugin SDK
 
 Plugins are Rust `dylib` crates that get full Bevy ECS access -- `Commands`, `Query`, `Res`, `ResMut`, `Assets`, everything. No FFI wrappers or translation layers.
+
+The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` macro, editor framework traits (`EditorPanel`, `ThemeManager`), and shared types. It does not re-export engine internals -- plugins interact with engine systems through the ECS.
 
 ### Writing a Plugin
 
@@ -95,17 +108,17 @@ add!(MyPlugin, Runtime);       // exported games only
 
 1. Create your plugin crate under `crates/` (or anywhere in the repo)
 2. Add it to the `[workspace]` members in the root `Cargo.toml`
-3. Run `makers build`
+3. Run `makers build-editor` (or `build-runtime` / `build-server`)
 
-That's it. The plugin DLL appears in `dist/plugins/` with a matching `bevy_dylib` hash. Copy it to your project's `plugins/` folder, or test it directly from `dist/`.
+The plugin DLL appears in `dist/<platform>/<target>/plugins/` with a matching `bevy_dylib` hash.
 
 Do **not** build plugins standalone (`cargo build -p my_plugin`) -- this may produce a different `bevy_dylib` hash and the plugin won't load.
 
 ### Loading
 
 The engine loads plugins from two locations on startup (before `app.run()`):
-- `dist/plugins/` -- engine-level plugins (next to the editor binary)
-- `<project>/plugins/` -- project-specific plugins
+- `plugins/` -- next to the binary
+- `<project>/plugins/` -- project-specific plugins (editor only)
 
 If the same plugin exists in both locations, the first one loaded takes priority. Restart the editor to pick up new plugins.
 
@@ -162,19 +175,19 @@ This works for any component from any plugin. If someone publishes a `Sun` plugi
 
 ## Workspaces and Stable ABI
 
-Rust does not have a stable ABI. This means two Rust binaries compiled separately cannot safely share types across a DLL boundary -- even if they use the same source code, different compilations can produce different memory layouts, vtable offsets, and `TypeId` values.
+Rust does not have a stable ABI. Two Rust binaries compiled separately cannot safely share types across a DLL boundary -- even with the same source code, different compilations can produce different memory layouts, vtable offsets, and `TypeId` values.
 
-Renzora solves this by using a **Cargo workspace**. The engine and all plugins are members of the same workspace, and they all depend on `bevy` via `workspace = true`. When built together (with `cargo build-all`), Cargo compiles Bevy exactly once into `bevy_dylib.dll`, and both the engine and plugins link against that same shared library. This gives them identical type layouts and `TypeId`s, so `Res<Time>`, `Query<&Transform>`, etc. work across the DLL boundary as if everything were statically linked.
+Renzora solves this with **isolated workspace builds**. The engine and all plugins are members of the same Cargo workspace. Each target (editor, runtime, server) is built separately with `--workspace` and a single feature flag. Within each build, Cargo compiles Bevy exactly once into `bevy_dylib`, and both the engine and plugins link against that same shared library. This gives them identical type layouts and `TypeId`s.
+
+After each build, stale artifacts are cleaned from `target/dist/` to prevent cross-build contamination. Each target's output is synced to its own directory (`dist/<platform>/editor/`, `runtime/`, `server/`), so hashes never mix.
 
 The catch: **plugins must be built with the same compiler, same Bevy version, and same build profile as the engine.** If any of these differ, the `TypeId`s won't match. The engine checks this at load time -- each plugin exports a `plugin_bevy_hash()` function that returns the `TypeId` of `bevy::ecs::world::World`, and the loader compares it against the engine's own hash. Mismatched plugins are rejected with a warning.
-
-This is why all build commands use the `dist` profile. Using a different profile (like `dev`) produces different hashes, and plugins built with one profile won't load in an engine built with another.
 
 ## Exporting
 
 The editor packages your game for any supported platform. It scans referenced assets, strips editor-only components, compresses everything into an `.rpak`, and bundles it with a pre-built runtime template.
 
-Export templates are built via Docker (`makers docker-run`). The editor uses these templates when exporting — you don't rebuild them unless you update Bevy or engine dependencies.
+Export templates are built via `makers build-runtime` (current platform) or Docker (`makers docker-run`, all platforms). The editor finds templates in the `runtime/` sibling directory next to its own folder. You can also install templates manually from the export overlay.
 
 ### Supported Platforms
 

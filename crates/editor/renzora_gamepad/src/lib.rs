@@ -83,4 +83,4 @@ impl Plugin for GamepadPlugin {
     }
 }
 
-renzora::add!(GamepadPlugin);
+renzora::add!(GamepadPlugin, Editor);

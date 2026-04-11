@@ -413,4 +413,4 @@ impl Plugin for TestExtensionPlugin {
     }
 }
 
-renzora::add!(TestExtensionPlugin);
+renzora::add!(TestExtensionPlugin, Editor);

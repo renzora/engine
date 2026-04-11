@@ -577,5 +577,3 @@ fn sync_orbit_snapshot(
         snapshot.pitch = orbit.pitch;
     }
 }
-
-renzora::add!(CameraPlugin);

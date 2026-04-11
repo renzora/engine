@@ -226,5 +226,3 @@ fn toggle_axis_visibility(
         *visibility = vis;
     }
 }
-
-renzora::add!(GridPlugin);

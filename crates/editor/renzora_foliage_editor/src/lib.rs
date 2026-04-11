@@ -44,4 +44,4 @@ fn ensure_density_maps(
     }
 }
 
-renzora::add!(FoliageEditorPlugin);
+renzora::add!(FoliageEditorPlugin, Editor);

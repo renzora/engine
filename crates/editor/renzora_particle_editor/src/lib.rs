@@ -25,4 +25,4 @@ impl Plugin for ParticleEditorPlugin {
     }
 }
 
-renzora::add!(ParticleEditorPlugin);
+renzora::add!(ParticleEditorPlugin, Editor);

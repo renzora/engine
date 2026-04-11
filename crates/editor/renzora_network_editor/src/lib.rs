@@ -378,4 +378,4 @@ impl Plugin for NetworkEditorPlugin {
     }
 }
 
-renzora::add!(NetworkEditorPlugin);
+renzora::add!(NetworkEditorPlugin, Editor);

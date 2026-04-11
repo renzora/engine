@@ -144,4 +144,4 @@ fn import_overlay_system(world: &mut World) {
     overlay::draw_import_overlay(world, &ctx);
 }
 
-renzora::add!(ImportPlugin);
+renzora::add!(ImportPlugin, Editor);

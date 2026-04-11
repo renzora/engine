@@ -454,5 +454,3 @@ impl Plugin for ScenePlugin {
             );
     }
 }
-
-renzora::add!(ScenePlugin);

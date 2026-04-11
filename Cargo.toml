@@ -4,62 +4,6 @@ members = [
     "crates/renzora_runtime",
     "crates/renzora_editor",
     "crates/renzora",
-    "crates/postprocessing/renzora_vignette",
-    "crates/postprocessing/renzora_chromatic_aberration",
-    "crates/postprocessing/renzora_color_grading",
-    "crates/postprocessing/renzora_crt",
-    "crates/postprocessing/renzora_distortion",
-    "crates/postprocessing/renzora_dithering",
-    "crates/postprocessing/renzora_edge_glow",
-    "crates/postprocessing/renzora_emboss",
-    "crates/postprocessing/renzora_film_grain",
-    "crates/postprocessing/renzora_forward_decal",
-    "crates/postprocessing/renzora_frosted_glass",
-    "crates/postprocessing/renzora_gaussian_blur",
-    "crates/postprocessing/renzora_glitch",
-    "crates/postprocessing/renzora_god_rays",
-    "crates/postprocessing/renzora_grayscale",
-    "crates/postprocessing/renzora_halftone",
-    "crates/postprocessing/renzora_hex_pixelate",
-    "crates/postprocessing/renzora_invert",
-    "crates/postprocessing/renzora_letterbox",
-    "crates/postprocessing/renzora_matrix",
-    "crates/postprocessing/renzora_night_vision",
-    "crates/postprocessing/renzora_oil_painting",
-    "crates/postprocessing/renzora_outline",
-    "crates/postprocessing/renzora_palette_quantization",
-    "crates/postprocessing/renzora_pillowbox",
-    "crates/postprocessing/renzora_pixelation",
-    "crates/postprocessing/renzora_posterize",
-    "crates/postprocessing/renzora_radial_blur",
-    "crates/postprocessing/renzora_scanlines",
-    "crates/postprocessing/renzora_sepia",
-    "crates/postprocessing/renzora_sharpen",
-    "crates/postprocessing/renzora_toon",
-    "crates/postprocessing/renzora_underwater",
-    "crates/postprocessing/renzora_heat_haze",
-    "crates/postprocessing/renzora_kaleidoscope",
-    "crates/postprocessing/renzora_thermal",
-    "crates/postprocessing/renzora_sketch",
-    "crates/postprocessing/renzora_mosaic",
-    "crates/postprocessing/renzora_swirl",
-    "crates/postprocessing/renzora_dream",
-    "crates/postprocessing/renzora_tilt_shift",
-    "crates/postprocessing/renzora_vibrance",
-    "crates/postprocessing/renzora_threshold",
-    "crates/postprocessing/renzora_kuwahara",
-    "crates/postprocessing/renzora_rain",
-    "crates/postprocessing/renzora_light_streaks",
-    "crates/postprocessing/renzora_sobel_edge",
-    "crates/postprocessing/renzora_color_split",
-    "crates/postprocessing/renzora_cross_hatch",
-    "crates/postprocessing/renzora_fog_overlay",
-    "crates/postprocessing/renzora_ascii",
-    "crates/postprocessing/renzora_chromatic_ring",
-    "crates/postprocessing/renzora_wave",
-    "crates/postprocessing/renzora_pcss",
-    "crates/postprocessing/renzora_bluenoise",
-    "crates/postprocessing/renzora_pool_water",
     # Standalone editor plugins (loaded dynamically from plugins/)
     "crates/editor/renzora_debugger",
     "crates/editor/renzora_gamepad",
@@ -116,15 +60,7 @@ path = "src/runtime.rs"
 
 [[bin]]
 name = "renzora"
-path = "src/editor.rs"
-
-[[bin]]
-name = "renzora-runtime"
-path = "src/editor.rs"
-
-[[bin]]
-name = "renzora-server"
-path = "src/server.rs"
+path = "src/main.rs"
 
 [features]
 default = ["editor"]

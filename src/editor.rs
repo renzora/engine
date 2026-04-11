@@ -70,6 +70,7 @@ fn main() {
         app.add_plugins(renzora_shared::renzora_camera::CameraPlugin);
         app.add_plugins(renzora_shared::renzora_gizmo::GizmoPlugin);
         app.add_plugins(renzora_shared::renzora_scene::ScenePlugin);
+        app.add_plugins(renzora_shared::renzora_console::ConsolePlugin);
 
         // All other panels are standalone plugin DLLs loaded from plugins/
 

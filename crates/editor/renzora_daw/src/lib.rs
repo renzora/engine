@@ -65,4 +65,4 @@ impl Plugin for DawPlugin {
     }
 }
 
-renzora::add!(DawPlugin);
+renzora::add!(DawPlugin, Editor);

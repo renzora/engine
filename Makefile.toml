@@ -5,28 +5,63 @@ default_to_workspace = false
 # Core commands — what devs use daily
 # =============================================================================
 
-# makers build — compile everything (engine + plugins) with matching hashes, sync to dist/
-[tasks.dist]
-description = "Build everything and sync to dist/"
-dependencies = ["build-cargo", "sync-dist"]
+# Clean stale build outputs (keeps deps/build/incremental cache)
+[tasks.clean-outputs]
+description = "Remove final artifacts from target/dist/ (keeps dep cache)"
+[tasks.clean-outputs.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+Get-ChildItem target/dist -File -ErrorAction SilentlyContinue | Remove-Item -Force
+'''
+[tasks.clean-outputs.linux]
+script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
+[tasks.clean-outputs.mac]
+script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
 
-[tasks.build-cargo]
-description = "Compile workspace (dist profile, unified features)"
+# makers build-editor — compile editor + plugins
+[tasks.build-editor]
+description = "Build editor and sync to dist/"
+dependencies = ["build-editor-cargo", "sync-dist-editor", "clean-outputs"]
+
+[tasks.build-editor-cargo]
+description = "Compile workspace (editor)"
 command = "cargo"
-args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor,runtime,server"]
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor"]
+
+# makers build-runtime — compile runtime + plugins (export template)
+[tasks.build-runtime]
+description = "Build runtime and sync to dist/"
+dependencies = ["build-runtime-cargo", "sync-dist-runtime", "clean-outputs"]
+
+[tasks.build-runtime-cargo]
+description = "Compile workspace (runtime)"
+command = "cargo"
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "runtime"]
+
+# makers build-server — compile server + plugins
+[tasks.build-server]
+description = "Build server and sync to dist/"
+dependencies = ["build-server-cargo", "sync-dist-server", "clean-outputs"]
+
+[tasks.build-server-cargo]
+description = "Compile workspace (server)"
+command = "cargo"
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "server"]
 
 # makers run — build + run the editor from dist/
 [tasks.run]
 description = "Build and run the editor"
-dependencies = ["dist"]
+dependencies = ["build-editor"]
 [tasks.run.windows]
-command = "dist\\windows-x64\\renzora.exe"
+command = "dist\\windows-x64\\editor\\renzora.exe"
 [tasks.run.linux]
-command = "./dist/linux-x64/renzora"
+command = "./dist/linux-x64/editor/renzora"
 [tasks.run.mac]
 script = '''
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
-./dist/macos-$ARCH/renzora
+./dist/macos-$ARCH/editor/renzora
 '''
 
 # =============================================================================
@@ -45,10 +80,27 @@ args = ["run", "--rm", "-v", "./dist:/output", "renzora/engine", "/app/scripts/b
 
 # =============================================================================
 # Sync dist/ — copy build outputs to a clean distributable folder
+# Each target (editor/runtime/server) gets its own subfolder per platform
 # =============================================================================
 
+[tasks.sync-dist-editor]
+description = "Sync editor build to dist/"
+env = { SYNC_TARGET = "editor" }
+run_task = "sync-dist"
+
+[tasks.sync-dist-runtime]
+description = "Sync runtime build to dist/"
+env = { SYNC_TARGET = "runtime" }
+run_task = "sync-dist"
+
+[tasks.sync-dist-server]
+description = "Sync server build to dist/"
+env = { SYNC_TARGET = "server" }
+run_task = "sync-dist"
+
 [tasks.sync-dist]
-description = "Copy build output from target/dist/ to dist/"
+description = "Copy build output from target/dist/ to dist/{platform}/{target}"
+private = true
 
 [tasks.sync-dist.windows]
 script_runner = "powershell.exe"
@@ -56,8 +108,9 @@ script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
 $ErrorActionPreference = "Stop"
+$target = $env:SYNC_TARGET
 $platform = "windows-x64"
-$dir = "dist/$platform"
+$dir = "dist/$platform/$target"
 
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 New-Item -ItemType Directory -Force -Path $dir/plugins | Out-Null
@@ -66,57 +119,58 @@ New-Item -ItemType Directory -Force -Path $dir/plugins | Out-Null
 Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
 Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
 
-# Binaries
-Copy-Item target/dist/*.exe $dir/ -Force -ErrorAction SilentlyContinue
+# Binary (rename based on target)
+$srcBin = "target/dist/renzora.exe"
+switch ($target) {
+    "editor"  { $destBin = "renzora.exe" }
+    "runtime" { $destBin = "renzora-runtime.exe" }
+    "server"  { $destBin = "renzora-server.exe" }
+}
+if (Test-Path $srcBin) { Copy-Item $srcBin "$dir/$destBin" -Force }
 
-# bevy_dylib
-Copy-Item target/dist/deps/bevy_dylib-*.dll $dir/ -Force -ErrorAction SilentlyContinue
+# bevy_dylib (newest only)
+Get-ChildItem target/dist/deps/bevy_dylib-*.dll -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName $dir/ -Force }
 
 # Rust std
 $sysroot = (rustc --print sysroot)
 Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
 
-# Root DLLs (SDK + core editor infrastructure)
-$rootDlls = @(
-    "renzora.dll", "renzora_runtime.dll",
-    "renzora_camera.dll", "renzora_console.dll", "renzora_gizmo.dll",
-    "renzora_grid.dll", "renzora_keybindings.dll", "renzora_scene.dll",
-    "renzora_viewport.dll", "renzora_shape_library.dll", "renzora_macros.dll"
-)
-foreach ($dll in $rootDlls) {
-    if (Test-Path "target/dist/$dll") { Copy-Item "target/dist/$dll" "$dir/$dll" -Force }
-}
+# SDK DLL
+if (Test-Path "target/dist/renzora.dll") { Copy-Item "target/dist/renzora.dll" "$dir/renzora.dll" -Force }
 
 # Plugins — everything else
-$skip = $rootDlls + @("bevy_dylib.dll")
+$skip = @("renzora.dll", "bevy_dylib.dll", "renzora_macros.dll")
 Get-ChildItem target/dist/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
     if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
 }
 
 $root = (Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue).Count
 $plugins = (Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue).Count
-Write-Output "Synced to dist/$platform - $root root files, $plugins plugins"
+Write-Output "Synced to dist/$platform/$target - $root root files, $plugins plugins"
 '''
 
 [tasks.sync-dist.linux]
 script = '''
+TARGET="${SYNC_TARGET}"
 PLATFORM="linux-x64"
-DIR="dist/$PLATFORM"
+DIR="dist/$PLATFORM/$TARGET"
 mkdir -p "$DIR" "$DIR/plugins"
 rm -f "$DIR"/*.so "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
 rm -f "$DIR"/plugins/*.so
 
-for f in target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# Binary (rename based on target)
+case "$TARGET" in
+    editor)  DEST="renzora" ;;
+    runtime) DEST="renzora-runtime" ;;
+    server)  DEST="renzora-server" ;;
+esac
+[ -f "target/dist/renzora" ] && cp "target/dist/renzora" "$DIR/$DEST"
 
-for f in target/dist/librenzora.so target/dist/librenzora_runtime.so; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# SDK
+[ -f "target/dist/librenzora.so" ] && cp "target/dist/librenzora.so" "$DIR/"
 
-for f in target/dist/deps/libbevy_dylib-*.so; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# bevy_dylib (newest only)
+ls -t target/dist/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
 
 SYSROOT=$(rustc --print sysroot)
 for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
@@ -126,33 +180,35 @@ done
 for f in target/dist/*.so; do
     name=$(basename "$f")
     [ "$name" = "librenzora.so" ] && continue
-    [ "$name" = "librenzora_runtime.so" ] && continue
     cp "$f" "$DIR/plugins/"
 done
 
-echo "Synced to dist/$PLATFORM"
+echo "Synced to dist/$PLATFORM/$TARGET"
 '''
 
 [tasks.sync-dist.mac]
 script = '''
+TARGET="${SYNC_TARGET}"
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
 PLATFORM="macos-$ARCH"
-DIR="dist/$PLATFORM"
+DIR="dist/$PLATFORM/$TARGET"
 mkdir -p "$DIR" "$DIR/plugins"
 rm -f "$DIR"/*.dylib "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
 rm -f "$DIR"/plugins/*.dylib
 
-for f in target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# Binary (rename based on target)
+case "$TARGET" in
+    editor)  DEST="renzora" ;;
+    runtime) DEST="renzora-runtime" ;;
+    server)  DEST="renzora-server" ;;
+esac
+[ -f "target/dist/renzora" ] && cp "target/dist/renzora" "$DIR/$DEST"
 
-for f in target/dist/librenzora.dylib target/dist/librenzora_runtime.dylib; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# SDK
+[ -f "target/dist/librenzora.dylib" ] && cp "target/dist/librenzora.dylib" "$DIR/"
 
-for f in target/dist/deps/libbevy_dylib-*.dylib; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
-done
+# bevy_dylib (newest only)
+ls -t target/dist/deps/libbevy_dylib-*.dylib 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
 
 # Rust std
 SYSROOT=$(rustc --print sysroot)
@@ -164,11 +220,10 @@ done
 for f in target/dist/*.dylib; do
     name=$(basename "$f")
     [ "$name" = "librenzora.dylib" ] && continue
-    [ "$name" = "librenzora_runtime.dylib" ] && continue
     cp "$f" "$DIR/plugins/"
 done
 
-echo "Synced to dist/$PLATFORM"
+echo "Synced to dist/$PLATFORM/$TARGET"
 '''
 
 # =============================================================================

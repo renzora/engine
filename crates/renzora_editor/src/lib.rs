@@ -3,6 +3,9 @@
 //! Editor panels are now standalone plugin DLLs loaded from the plugins/ folder.
 //! This crate only contains the core engine systems needed at runtime.
 
+// Runtime (app setup functions: init_app, build_runtime_app, etc.)
+pub use renzora_runtime;
+
 // Core engine systems
 pub use renzora_engine;
 pub use renzora_core;
@@ -52,3 +55,4 @@ pub use renzora_gizmo;
 pub use renzora_grid;
 pub use renzora_scene;
 pub use renzora_keybindings;
+pub use renzora_console;

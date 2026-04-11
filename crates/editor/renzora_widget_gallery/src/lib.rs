@@ -2149,4 +2149,4 @@ impl Plugin for WidgetGalleryPlugin {
     }
 }
 
-renzora::add!(WidgetGalleryPlugin);
+renzora::add!(WidgetGalleryPlugin, Editor);

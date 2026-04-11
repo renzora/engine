@@ -2743,4 +2743,4 @@ impl Plugin for PhysicsPanelPlugin {
     }
 }
 
-renzora::add!(PhysicsPanelPlugin);
+renzora::add!(PhysicsPanelPlugin, Editor);

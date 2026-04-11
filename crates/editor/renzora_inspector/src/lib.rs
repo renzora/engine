@@ -252,4 +252,4 @@ impl Plugin for InspectorPanelPlugin {
     }
 }
 
-renzora::add!(InspectorPanelPlugin);
+renzora::add!(InspectorPanelPlugin, Editor);

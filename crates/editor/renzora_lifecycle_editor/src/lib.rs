@@ -29,4 +29,4 @@ impl Plugin for LifecycleEditorPlugin {
     }
 }
 
-renzora::add!(LifecycleEditorPlugin);
+renzora::add!(LifecycleEditorPlugin, Editor);
