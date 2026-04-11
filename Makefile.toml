@@ -6,24 +6,41 @@ default_to_workspace = false
 # =============================================================================
 
 # Clean stale build outputs (keeps deps/build/incremental cache)
+[tasks.clean-outputs-editor]
+description = "Clean editor build outputs"
+env = { CLEAN_TARGET = "editor" }
+run_task = "clean-outputs"
+
+[tasks.clean-outputs-runtime]
+description = "Clean runtime build outputs"
+env = { CLEAN_TARGET = "runtime" }
+run_task = "clean-outputs"
+
+[tasks.clean-outputs-server]
+description = "Clean server build outputs"
+env = { CLEAN_TARGET = "server" }
+run_task = "clean-outputs"
+
 [tasks.clean-outputs]
-description = "Remove final artifacts from target/dist/ (keeps dep cache)"
+description = "Remove final artifacts from target/{target}/dist/ (keeps dep cache)"
+private = true
 [tasks.clean-outputs.windows]
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
-Get-ChildItem target/dist -File -ErrorAction SilentlyContinue | Remove-Item -Force
+$target = $env:CLEAN_TARGET
+Get-ChildItem "target/$target/dist" -File -ErrorAction SilentlyContinue | Remove-Item -Force
 '''
 [tasks.clean-outputs.linux]
-script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
+script = 'find target/${CLEAN_TARGET}/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
 [tasks.clean-outputs.mac]
 script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
 
 # makers build-editor — compile editor + plugins
 [tasks.build-editor]
 description = "Build editor and sync to dist/"
-dependencies = ["build-editor-cargo", "sync-dist-editor"]
+dependencies = ["clean-outputs-editor", "build-editor-cargo", "sync-dist-editor"]
 
 [tasks.build-editor-cargo]
 description = "Compile workspace (editor)"
@@ -33,7 +50,7 @@ args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "-
 # makers build-runtime — compile runtime + plugins (export template)
 [tasks.build-runtime]
 description = "Build runtime and sync to dist/"
-dependencies = ["build-runtime-cargo", "sync-dist-runtime"]
+dependencies = ["clean-outputs-runtime", "build-runtime-cargo", "sync-dist-runtime"]
 
 [tasks.build-runtime-cargo]
 description = "Compile workspace (runtime, excluding editor plugins)"
@@ -42,10 +59,16 @@ script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
-$excludes = Get-ChildItem crates/editor/*/Cargo.toml -ErrorAction SilentlyContinue | ForEach-Object {
-    (Select-String -Path $_.FullName -Pattern '^name\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
-} | ForEach-Object { "--exclude"; $_ }
-cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime @excludes
+$ErrorActionPreference = "Stop"
+$names = Get-ChildItem crates\editor\*\Cargo.toml | ForEach-Object {
+    $content = Get-Content $_.FullName
+    foreach ($line in $content) {
+        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
+    }
+}
+$args = @()
+foreach ($n in $names) { $args += "--exclude"; $args += $n }
+& cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime @args
 '''
 [tasks.build-runtime-cargo.linux]
 script = '''
@@ -61,7 +84,7 @@ cargo build --profile dist --workspace --no-default-features --features runtime 
 # makers build-server — compile server + plugins
 [tasks.build-server]
 description = "Build server and sync to dist/"
-dependencies = ["build-server-cargo", "sync-dist-server"]
+dependencies = ["clean-outputs-server", "build-server-cargo", "sync-dist-server"]
 
 [tasks.build-server-cargo]
 description = "Compile workspace (server, excluding editor plugins)"
@@ -70,10 +93,16 @@ script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
-$excludes = Get-ChildItem crates/editor/*/Cargo.toml -ErrorAction SilentlyContinue | ForEach-Object {
-    (Select-String -Path $_.FullName -Pattern '^name\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
-} | ForEach-Object { "--exclude"; $_ }
-cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server @excludes
+$ErrorActionPreference = "Stop"
+$names = Get-ChildItem crates\editor\*\Cargo.toml | ForEach-Object {
+    $content = Get-Content $_.FullName
+    foreach ($line in $content) {
+        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
+    }
+}
+$args = @()
+foreach ($n in $names) { $args += "--exclude"; $args += $n }
+& cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server @args
 '''
 [tasks.build-server-cargo.linux]
 script = '''

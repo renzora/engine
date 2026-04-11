@@ -7,8 +7,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::bevy_egui::egui::TextureId;
 use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
-use renzora::core::IsolatedCamera;
-use renzora_engine::{EditorLocked, HideInHierarchy};
+use renzora::core::{IsolatedCamera, EditorLocked, HideInHierarchy};
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;

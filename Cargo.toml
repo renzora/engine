@@ -128,4 +128,5 @@ opt-level = 3
 [profile.dist]
 inherits = "release"
 opt-level = 2
+strip = "symbols"
 

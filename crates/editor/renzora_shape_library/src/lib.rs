@@ -15,6 +15,31 @@ use renzora::core::{ShapeEntry, ShapeRegistry};
 // Built-in shape registration
 // ============================================================================
 
+/// Add icons to shapes already registered by the engine (editor only).
+fn add_shape_icons(registry: &mut ShapeRegistry) {
+    use renzora::egui_phosphor::regular;
+    let icons: &[(&str, &str)] = &[
+        ("cube", regular::CUBE), ("sphere", regular::GLOBE), ("cylinder", regular::CYLINDER),
+        ("plane", regular::SQUARE), ("cone", regular::TRIANGLE), ("torus", regular::CIRCLE),
+        ("capsule", regular::CYLINDER), ("hemisphere", regular::GLOBE),
+        ("wedge", regular::TRIANGLE), ("stairs", regular::STAIRS), ("arch", regular::CIRCLE),
+        ("half_cylinder", regular::CYLINDER), ("quarter_pipe", regular::POLYGON),
+        ("corner", regular::POLYGON), ("wall", regular::WALL), ("ramp", regular::TRIANGLE),
+        ("curved_wall", regular::WALL), ("doorway", regular::DOOR),
+        ("window_wall", regular::FRAME_CORNERS), ("l_shape", regular::POLYGON),
+        ("t_shape", regular::POLYGON), ("cross_shape", regular::PLUS),
+        ("spiral_stairs", regular::SPIRAL), ("pillar", regular::COLUMNS),
+        ("pipe", regular::PIPE), ("ring", regular::CIRCLE), ("funnel", regular::TRIANGLE),
+        ("gutter", regular::CYLINDER), ("prism", regular::HEXAGON), ("pyramid", regular::DIAMOND),
+    ];
+    for (id, icon) in icons {
+        if let Some(entry) = registry.get_mut(id) {
+            entry.icon = icon;
+        }
+    }
+}
+
+#[allow(dead_code)]
 fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     use procedural_meshes as pm;
 
@@ -192,7 +217,9 @@ pub struct ShapeLibraryPlugin;
 impl Plugin for ShapeLibraryPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShapeLibraryPlugin");
-        register_builtin_shapes(&mut app.world_mut().resource_mut::<ShapeRegistry>());
+
+        // Add icons to the shapes already registered by the engine
+        add_shape_icons(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
         use renzora::editor::AppEditorExt;
         app.register_panel(panel::ShapeLibraryPanel::default());

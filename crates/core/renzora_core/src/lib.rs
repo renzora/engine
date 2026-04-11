@@ -318,6 +318,11 @@ impl ShapeRegistry {
         self.entries.iter().find(|e| e.id == id)
     }
 
+    /// Look up a shape by ID (mutable).
+    pub fn get_mut(&mut self, id: &str) -> Option<&mut ShapeEntry> {
+        self.entries.iter_mut().find(|e| e.id == id)
+    }
+
     /// Iterate over all registered shapes.
     pub fn iter(&self) -> impl Iterator<Item = &ShapeEntry> {
         self.entries.iter()

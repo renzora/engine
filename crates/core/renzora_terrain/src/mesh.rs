@@ -217,6 +217,12 @@ pub fn rehydrate_terrain_chunks(
             continue;
         };
 
+        // Ensure parent has required hierarchy components (scene loader may omit them)
+        commands.entity(parent_entity).insert((
+            GlobalTransform::default(),
+            InheritedVisibility::default(),
+        ));
+
         let mesh = generate_chunk_mesh(terrain_data, chunk_data);
         let collider = generate_chunk_collider(terrain_data, chunk_data);
         let mesh_handle = meshes.add(mesh);

@@ -12,7 +12,6 @@ renzora = { path = "../../renzora", default-features = false, features = ["edito
 bevy_hanabi = { path = "../../third_party/bevy_hanabi" }
 renzora_ui = { path = "../../ui/renzora_ui" }
 renzora_hanabi = { path = "../../core/renzora_hanabi" }
-renzora_engine = { path = "../../core/renzora_engine" }
 ron = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
