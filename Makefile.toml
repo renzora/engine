@@ -23,32 +23,68 @@ script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/
 # makers build-editor — compile editor + plugins
 [tasks.build-editor]
 description = "Build editor and sync to dist/"
-dependencies = ["build-editor-cargo", "sync-dist-editor", "clean-outputs"]
+dependencies = ["build-editor-cargo", "sync-dist-editor"]
 
 [tasks.build-editor-cargo]
 description = "Compile workspace (editor)"
 command = "cargo"
-args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor"]
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor", "--target-dir", "target/editor"]
 
 # makers build-runtime — compile runtime + plugins (export template)
 [tasks.build-runtime]
 description = "Build runtime and sync to dist/"
-dependencies = ["build-runtime-cargo", "sync-dist-runtime", "clean-outputs"]
+dependencies = ["build-runtime-cargo", "sync-dist-runtime"]
 
 [tasks.build-runtime-cargo]
-description = "Compile workspace (runtime)"
-command = "cargo"
-args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "runtime"]
+description = "Compile workspace (runtime, excluding editor plugins)"
+[tasks.build-runtime-cargo.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$excludes = Get-ChildItem crates/editor/*/Cargo.toml -ErrorAction SilentlyContinue | ForEach-Object {
+    (Select-String -Path $_.FullName -Pattern '^name\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+} | ForEach-Object { "--exclude"; $_ }
+cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime @excludes
+'''
+[tasks.build-runtime-cargo.linux]
+script = '''
+EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
+'''
+[tasks.build-runtime-cargo.mac]
+script = '''
+EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
+'''
 
 # makers build-server — compile server + plugins
 [tasks.build-server]
 description = "Build server and sync to dist/"
-dependencies = ["build-server-cargo", "sync-dist-server", "clean-outputs"]
+dependencies = ["build-server-cargo", "sync-dist-server"]
 
 [tasks.build-server-cargo]
-description = "Compile workspace (server)"
-command = "cargo"
-args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "server"]
+description = "Compile workspace (server, excluding editor plugins)"
+[tasks.build-server-cargo.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$excludes = Get-ChildItem crates/editor/*/Cargo.toml -ErrorAction SilentlyContinue | ForEach-Object {
+    (Select-String -Path $_.FullName -Pattern '^name\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+} | ForEach-Object { "--exclude"; $_ }
+cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server @excludes
+'''
+[tasks.build-server-cargo.linux]
+script = '''
+EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
+'''
+[tasks.build-server-cargo.mac]
+script = '''
+EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
+'''
 
 # makers run — build + run the editor from dist/
 [tasks.run]
@@ -73,10 +109,79 @@ description = "Build the Docker image"
 command = "docker"
 args = ["build", "-f", "docker/engine-builder/Dockerfile", "-t", "renzora/engine", "."]
 
+[tasks.docker-create]
+description = "Create a persistent build container (first time only)"
+[tasks.docker-create.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$hash = (Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower()
+$name = "renzora-$hash"
+docker create --name $name -v "${PWD}:/app/src" -v "${PWD}/dist:/output" -w /app/src renzora/engine sleep infinity
+Write-Output "Created container: $name"
+'''
+[tasks.docker-create.linux]
+script = '''
+NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
+docker create --name "$NAME" -v "$PWD:/app/src" -v "$PWD/dist:/output" -w /app/src renzora/engine sleep infinity
+echo "Created container: $NAME"
+'''
+[tasks.docker-create.mac]
+script = '''
+NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
+docker create --name "$NAME" -v "$PWD:/app/src" -v "$PWD/dist:/output" -w /app/src renzora/engine sleep infinity
+echo "Created container: $NAME"
+'''
+
+[tasks.docker-start]
+description = "Start the build container"
+[tasks.docker-start.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = 'docker start "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())"'
+[tasks.docker-start.linux]
+script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+[tasks.docker-start.mac]
+script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+
 [tasks.docker-run]
-description = "Build all platforms via Docker to dist/"
-command = "docker"
-args = ["run", "--rm", "-v", "./dist:/output", "renzora/engine", "/app/scripts/build-all.sh", "/output"]
+description = "Build all platforms via persistent container"
+dependencies = ["docker-start"]
+[tasks.docker-run.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = 'docker exec "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())" /app/src/scripts/build-all.sh /output'
+[tasks.docker-run.linux]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh /output'
+[tasks.docker-run.mac]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh /output'
+
+[tasks.docker-clean]
+description = "Clean the container's build cache"
+[tasks.docker-clean.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = 'docker exec "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())" rm -rf target'
+[tasks.docker-clean.linux]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" rm -rf target'
+[tasks.docker-clean.mac]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" rm -rf target'
+
+[tasks.docker-destroy]
+description = "Remove the persistent build container"
+[tasks.docker-destroy.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = 'docker rm -f "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())"'
+[tasks.docker-destroy.linux]
+script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+[tasks.docker-destroy.mac]
+script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 
 # =============================================================================
 # Sync dist/ — copy build outputs to a clean distributable folder
@@ -110,6 +215,7 @@ script = '''
 $ErrorActionPreference = "Stop"
 $target = $env:SYNC_TARGET
 $platform = "windows-x64"
+$src = "target/$target/dist"
 $dir = "dist/$platform/$target"
 
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -120,7 +226,7 @@ Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue | Remove-Item
 Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
 
 # Binary (rename based on target)
-$srcBin = "target/dist/renzora.exe"
+$srcBin = "$src/renzora.exe"
 switch ($target) {
     "editor"  { $destBin = "renzora.exe" }
     "runtime" { $destBin = "renzora-runtime.exe" }
@@ -129,18 +235,18 @@ switch ($target) {
 if (Test-Path $srcBin) { Copy-Item $srcBin "$dir/$destBin" -Force }
 
 # bevy_dylib (newest only)
-Get-ChildItem target/dist/deps/bevy_dylib-*.dll -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName $dir/ -Force }
+Get-ChildItem $src/deps/bevy_dylib-*.dll -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName $dir/ -Force }
 
 # Rust std
 $sysroot = (rustc --print sysroot)
 Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
 
 # SDK DLL
-if (Test-Path "target/dist/renzora.dll") { Copy-Item "target/dist/renzora.dll" "$dir/renzora.dll" -Force }
+if (Test-Path "$src/renzora.dll") { Copy-Item "$src/renzora.dll" "$dir/renzora.dll" -Force }
 
 # Plugins — everything else
 $skip = @("renzora.dll", "bevy_dylib.dll", "renzora_macros.dll")
-Get-ChildItem target/dist/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
+Get-ChildItem $src/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
     if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
 }
 
@@ -153,6 +259,7 @@ Write-Output "Synced to dist/$platform/$target - $root root files, $plugins plug
 script = '''
 TARGET="${SYNC_TARGET}"
 PLATFORM="linux-x64"
+SRC="target/$TARGET/dist"
 DIR="dist/$PLATFORM/$TARGET"
 mkdir -p "$DIR" "$DIR/plugins"
 rm -f "$DIR"/*.so "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
@@ -164,20 +271,20 @@ case "$TARGET" in
     runtime) DEST="renzora-runtime" ;;
     server)  DEST="renzora-server" ;;
 esac
-[ -f "target/dist/renzora" ] && cp "target/dist/renzora" "$DIR/$DEST"
+[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$DIR/$DEST"
 
 # SDK
-[ -f "target/dist/librenzora.so" ] && cp "target/dist/librenzora.so" "$DIR/"
+[ -f "$SRC/librenzora.so" ] && cp "$SRC/librenzora.so" "$DIR/"
 
 # bevy_dylib (newest only)
-ls -t target/dist/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
+ls -t $SRC/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
 
 SYSROOT=$(rustc --print sysroot)
 for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
     [ -f "$f" ] && cp "$f" "$DIR/"
 done
 
-for f in target/dist/*.so; do
+for f in $SRC/*.so; do
     name=$(basename "$f")
     [ "$name" = "librenzora.so" ] && continue
     cp "$f" "$DIR/plugins/"
@@ -191,39 +298,86 @@ script = '''
 TARGET="${SYNC_TARGET}"
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
 PLATFORM="macos-$ARCH"
-DIR="dist/$PLATFORM/$TARGET"
-mkdir -p "$DIR" "$DIR/plugins"
-rm -f "$DIR"/*.dylib "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
-rm -f "$DIR"/plugins/*.dylib
+BASE="dist/$PLATFORM/$TARGET"
 
-# Binary (rename based on target)
+# App name and binary name per target
 case "$TARGET" in
-    editor)  DEST="renzora" ;;
-    runtime) DEST="renzora-runtime" ;;
-    server)  DEST="renzora-server" ;;
+    editor)  APP_NAME="Renzora.app";         BIN_NAME="renzora";         DISPLAY_NAME="Renzora" ;;
+    runtime) APP_NAME="Renzora Runtime.app";  BIN_NAME="renzora-runtime"; DISPLAY_NAME="Renzora Runtime" ;;
+    server)  APP_NAME="Renzora Server.app";   BIN_NAME="renzora-server";  DISPLAY_NAME="Renzora Server" ;;
 esac
-[ -f "target/dist/renzora" ] && cp "target/dist/renzora" "$DIR/$DEST"
+
+APP="$BASE/$APP_NAME"
+MACOS="$APP/Contents/MacOS"
+RES="$APP/Contents/Resources"
+
+# Clean and create .app structure
+rm -rf "$APP"
+mkdir -p "$MACOS" "$MACOS/plugins" "$RES"
+
+# Info.plist
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+cat > "$APP/Contents/Info.plist" << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>$DISPLAY_NAME</string>
+    <key>CFBundleDisplayName</key>
+    <string>$DISPLAY_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.renzora.$TARGET</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>CFBundleExecutable</key>
+    <string>$BIN_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+# Binary
+SRC="target/$TARGET/dist"
+[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$MACOS/$BIN_NAME"
+chmod +x "$MACOS/$BIN_NAME"
 
 # SDK
-[ -f "target/dist/librenzora.dylib" ] && cp "target/dist/librenzora.dylib" "$DIR/"
+[ -f "$SRC/librenzora.dylib" ] && cp "$SRC/librenzora.dylib" "$MACOS/"
 
 # bevy_dylib (newest only)
-ls -t target/dist/deps/libbevy_dylib-*.dylib 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
+ls -t $SRC/deps/libbevy_dylib-*.dylib 2>/dev/null | head -1 | xargs -I{} cp {} "$MACOS/"
 
 # Rust std
 SYSROOT=$(rustc --print sysroot)
 RUST_ARCH=$(uname -m | sed 's/arm64/aarch64/;s/x86_64/x86_64/')
 for f in "$SYSROOT"/lib/rustlib/${RUST_ARCH}-apple-darwin/lib/libstd-*.dylib; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
+    [ -f "$f" ] && cp "$f" "$MACOS/"
 done
 
-for f in target/dist/*.dylib; do
+# Plugins
+for f in $SRC/*.dylib; do
     name=$(basename "$f")
     [ "$name" = "librenzora.dylib" ] && continue
-    cp "$f" "$DIR/plugins/"
+    cp "$f" "$MACOS/plugins/"
 done
 
-echo "Synced to dist/$PLATFORM/$TARGET"
+# Icon (if exists)
+[ -f "assets/icon.icns" ] && cp "assets/icon.icns" "$RES/icon.icns"
+
+# Fix dylib rpaths to look in the same directory
+install_name_tool -add_rpath @executable_path "$MACOS/$BIN_NAME" 2>/dev/null || true
+
+echo "Synced to $APP"
 '''
 
 # =============================================================================

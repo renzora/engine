@@ -20,18 +20,28 @@ makers run
 
 Linux: `sudo apt install libwayland-dev` before building.
 
+### Local builds
+
 | Command | What it does |
 |---|---|
 | `makers run` | Build + run the editor |
 | `makers build-editor` | Build the editor + plugins |
 | `makers build-runtime` | Build runtime export template + plugins |
 | `makers build-server` | Build dedicated server + plugins |
-| `makers docker-build` | Build Docker image (first time -- go make a cup of tea) |
-| `makers docker-run` | Build all platform export templates via Docker |
 
-Each build is isolated with its own feature flag (`editor`, `runtime`, `server`). This ensures clean feature gating and matching plugin hashes per target.
+### Docker builds (all platforms)
 
-Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins.
+| Command | What it does |
+|---|---|
+| `makers docker-build` | Build the Docker image (toolchain -- first time only) |
+| `makers docker-create` | Create a persistent build container for this directory |
+| `makers docker-run` | Build all platforms (fast after first run -- cache persists) |
+| `makers docker-clean` | Wipe the container's build cache |
+| `makers docker-destroy` | Remove the container entirely |
+
+Each build target (editor, runtime, server) is isolated with its own feature flag and target directory. No feature unification, no hash mixing. Switching between local targets is instant after the first build of each.
+
+Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins. macOS builds produce proper `.app` bundles.
 
 ## Architecture
 
@@ -177,11 +187,32 @@ This works for any component from any plugin. If someone publishes a `Sun` plugi
 
 Rust does not have a stable ABI. Two Rust binaries compiled separately cannot safely share types across a DLL boundary -- even with the same source code, different compilations can produce different memory layouts, vtable offsets, and `TypeId` values.
 
-Renzora solves this with **isolated workspace builds**. The engine and all plugins are members of the same Cargo workspace. Each target (editor, runtime, server) is built separately with `--workspace` and a single feature flag. Within each build, Cargo compiles Bevy exactly once into `bevy_dylib`, and both the engine and plugins link against that same shared library. This gives them identical type layouts and `TypeId`s.
+Renzora solves this with **isolated workspace builds**. The engine and all plugins are members of the same Cargo workspace. Each target (editor, runtime, server) is built separately with `--workspace` and a single feature flag, into its own target directory (`target/editor/`, `target/runtime/`, `target/server/`). Within each build, Cargo compiles Bevy exactly once into `bevy_dylib`, and both the engine and plugins link against that same shared library. This gives them identical type layouts and `TypeId`s.
 
-After each build, stale artifacts are cleaned from `target/dist/` to prevent cross-build contamination. Each target's output is synced to its own directory (`dist/<platform>/editor/`, `runtime/`, `server/`), so hashes never mix.
+Separate target directories mean switching between targets doesn't invalidate the other's cache. After the first build of each target, subsequent builds only recompile what changed.
 
 The catch: **plugins must be built with the same compiler, same Bevy version, and same build profile as the engine.** If any of these differ, the `TypeId`s won't match. The engine checks this at load time -- each plugin exports a `plugin_bevy_hash()` function that returns the `TypeId` of `bevy::ecs::world::World`, and the loader compares it against the engine's own hash. Mismatched plugins are rejected with a warning.
+
+## Per-Project Docker Builds
+
+Docker builds are scoped per directory. Running `makers docker-create` creates a persistent container named after a hash of your directory path. This means:
+
+- Two engine forks in different directories get separate containers with separate build caches
+- The container persists between builds -- first `makers docker-run` compiles everything, subsequent runs only recompile what changed
+- Each fork produces its own editor, runtime, and server binaries with its own plugin hashes
+- No cross-contamination between forks, even if they share the same Docker image
+
+The Docker **image** (`makers docker-build`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross, MinGW, Android NDK), and system dependencies. The **container** is your build environment with cached compilation artifacts.
+
+```bash
+# In ~/projects/my-rpg-engine/
+makers docker-create    # container: renzora-a3f1b2c4
+makers docker-run       # builds all platforms for this fork
+
+# In ~/projects/my-racing-engine/
+makers docker-create    # container: renzora-7e9d0f12
+makers docker-run       # builds all platforms for this fork
+```
 
 ## Exporting
 

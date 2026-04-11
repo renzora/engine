@@ -5,9 +5,8 @@
 #
 # Usage: ./scripts/build-all.sh /path/to/output
 #
-# Desktop targets (Linux, Windows, macOS) are built with unified features
-# (editor,runtime,server) so all binaries share the same bevy_dylib hash
-# for plugin compatibility. WASM and Android are standalone.
+# Each target (editor, runtime, server) is built in isolation with its own
+# feature flag and target directory. No feature unification, no hash mixing.
 
 set -euo pipefail
 
@@ -18,157 +17,179 @@ fi
 
 OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir>}"
 
-UNIFIED_FEATURES="editor,runtime,server"
+# Editor plugins to exclude from runtime/server builds
+EDITOR_EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml 2>/dev/null | sed 's/name = "\(.*\)"/--exclude \1/')
 
 # ── Helper: copy shared libraries for a platform ────────────────────────────
-# Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext> <dylib-prefix>
+# Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext>
 copy_shared_libs() {
-    local TARGET_DIR="$1"
+    local SRC="$1"
     local OUT="$2"
     local EXT="$3"
 
     mkdir -p "$OUT/plugins"
 
-    # bevy_dylib
-    for f in "$TARGET_DIR"/deps/libbevy_dylib-*."$EXT" "$TARGET_DIR"/deps/bevy_dylib-*."$EXT"; do
+    # bevy_dylib (newest only)
+    ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 | xargs -I{} cp {} "$OUT/"
+
+    # SDK
+    for f in "$SRC/librenzora.$EXT" "$SRC/renzora.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
-    # Core SDK libs (renzora, renzora_runtime)
-    for name in renzora renzora_runtime renzora_macros; do
-        for f in "$TARGET_DIR/lib${name}.${EXT}" "$TARGET_DIR/${name}.${EXT}"; do
-            [ -f "$f" ] && cp "$f" "$OUT/"
-        done
-    done
-
-    # Editor core plugins (non-standalone, ship in root)
-    for name in renzora_camera renzora_console renzora_gizmo renzora_grid \
-                renzora_keybindings renzora_scene renzora_shape_library renzora_viewport; do
-        for f in "$TARGET_DIR/lib${name}.${EXT}" "$TARGET_DIR/${name}.${EXT}"; do
-            [ -f "$f" ] && cp "$f" "$OUT/"
-        done
-    done
-
-    # Everything else with the right extension goes to plugins/
-    for f in "$TARGET_DIR"/*."$EXT"; do
+    # Plugins — everything else
+    for f in "$SRC"/*."$EXT"; do
         [ -f "$f" ] || continue
         local base=$(basename "$f")
-        # Skip if already copied to root
         [[ "$base" == *bevy_dylib* ]] && continue
         [[ "$base" == *libstd-* ]] && continue
-        # Check if it's already in root
-        [ -f "$OUT/$base" ] && continue
+        [[ "$base" == *renzora_macros* ]] && continue
+        [[ "$base" == librenzora."$EXT" ]] && continue
+        [[ "$base" == renzora."$EXT" ]] && continue
         cp "$f" "$OUT/plugins/"
     done
 }
 
-# ── Linux (all three binaries in one invocation) ──────────────────────────
+# ── Build a desktop target ───────────────────────────────────────────────────
+# Usage: build_desktop <feature> <rust-target|native> <platform-name> <ext>
+build_desktop() {
+    local FEATURE="$1"
+    local RUST_TARGET="$2"
+    local PLATFORM="$3"
+    local EXT="$4"
 
-echo "=== Building Linux binaries ==="
-mkdir -p "$OUTPUT_DIR/linux-x64"
-cargo build --profile dist --workspace --bin renzora --bin renzora-runtime --bin renzora-server --no-default-features --features "$UNIFIED_FEATURES"
-cp target/dist/renzora "$OUTPUT_DIR/linux-x64/"
-cp target/dist/renzora-runtime "$OUTPUT_DIR/linux-x64/"
-cp target/dist/renzora-server "$OUTPUT_DIR/linux-x64/"
-copy_shared_libs "target/dist" "$OUTPUT_DIR/linux-x64" "so"
+    local TARGET_DIR_FLAG="--target-dir target/$FEATURE"
+    local TARGET_FLAG=""
+    local SRC="target/$FEATURE/dist"
 
-# Copy Rust std
-SYSROOT=$(rustc --print sysroot)
-for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
-    [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/linux-x64/"
-done
-
-# ── Windows (cross-compile) ───────────────────────────────────────────────
-
-echo "=== Building Windows binaries ==="
-mkdir -p "$OUTPUT_DIR/windows-x64"
-cargo build --profile dist --workspace --bin renzora --bin renzora-runtime --no-default-features --features "$UNIFIED_FEATURES" --target x86_64-pc-windows-gnu
-cp target/x86_64-pc-windows-gnu/dist/renzora.exe "$OUTPUT_DIR/windows-x64/"
-cp target/x86_64-pc-windows-gnu/dist/renzora-runtime.exe "$OUTPUT_DIR/windows-x64/"
-copy_shared_libs "target/x86_64-pc-windows-gnu/dist" "$OUTPUT_DIR/windows-x64" "dll"
-
-# MinGW runtime DLLs + Rust std for Windows
-SYSROOT=$(rustc --print sysroot)
-cp /usr/lib/gcc/x86_64-w64-mingw32/12-posix/libgcc_s_seh-1.dll "$OUTPUT_DIR/windows-x64/" 2>/dev/null || true
-cp /usr/lib/gcc/x86_64-w64-mingw32/12-posix/libstdc++-6.dll "$OUTPUT_DIR/windows-x64/" 2>/dev/null || true
-cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll "$OUTPUT_DIR/windows-x64/" 2>/dev/null || true
-for f in "$SYSROOT"/lib/rustlib/x86_64-pc-windows-gnu/lib/std-*.dll; do
-    [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/windows-x64/"
-done
-
-# ── WASM (standalone, no plugin hash needed) ──────────────────────────────
-
-echo "=== Building WASM Runtime (export template) ==="
-mkdir -p "$OUTPUT_DIR/wasm"
-cargo build --profile dist --bin renzora-runtime --no-default-features --features wasm --target wasm32-unknown-unknown
-WASM_FILE=$(find target/wasm32-unknown-unknown/dist -name "renzora-runtime.wasm" | head -1)
-if [ -n "$WASM_FILE" ]; then
-    wasm-bindgen --out-dir "$OUTPUT_DIR/wasm" --target web "$WASM_FILE"
-    if command -v wasm-opt &>/dev/null; then
-        wasm-opt -Oz "$OUTPUT_DIR/wasm/renzora-runtime_bg.wasm" \
-            -o "$OUTPUT_DIR/wasm/renzora-runtime_bg.wasm"
+    if [ "$RUST_TARGET" != "native" ]; then
+        TARGET_FLAG="--target $RUST_TARGET"
+        SRC="target/$FEATURE/$RUST_TARGET/dist"
     fi
-fi
 
-# ── Android (standalone, uses renzora-android package) ────────────────────
+    local EXCLUDES=""
+    if [ "$FEATURE" != "editor" ]; then
+        EXCLUDES="$EDITOR_EXCLUDES"
+    fi
 
-echo "=== Building Android ARM Runtime (export template) ==="
-cargo build --profile dist -p renzora-android --target aarch64-linux-android 2>&1 || echo "WARN: Android ARM build failed"
-if [ -f target/aarch64-linux-android/dist/libmain.so ]; then
-    mkdir -p "$OUTPUT_DIR/android-arm64"
-    cp target/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/"
-fi
+    echo "=== Building $PLATFORM ($FEATURE) ==="
+    cargo build --profile dist --workspace --no-default-features --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG $EXCLUDES
 
-echo "=== Building Android x86 Runtime (export template) ==="
-cargo build --profile dist -p renzora-android --target x86_64-linux-android 2>&1 || echo "WARN: Android x86 build failed"
-if [ -f target/x86_64-linux-android/dist/libmain.so ]; then
-    mkdir -p "$OUTPUT_DIR/android-x86"
-    cp target/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/"
-fi
+    local OUT="$OUTPUT_DIR/$PLATFORM/$FEATURE"
+    mkdir -p "$OUT"
 
-# ── macOS (cross-compile via osxcross, unified features) ──────────────────
+    # Binary (rename based on feature)
+    case "$FEATURE" in
+        editor)  DEST="renzora" ;;
+        runtime) DEST="renzora-runtime" ;;
+        server)  DEST="renzora-server" ;;
+    esac
 
-# Detect osxcross clang by looking for any darwin clang on PATH
+    if [ "$EXT" = "dll" ]; then
+        [ -f "$SRC/renzora.exe" ] && cp "$SRC/renzora.exe" "$OUT/$DEST.exe"
+    else
+        [ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$OUT/$DEST"
+        chmod +x "$OUT/$DEST" 2>/dev/null || true
+    fi
+
+    copy_shared_libs "$SRC" "$OUT" "$EXT"
+}
+
+# ── Linux ────────────────────────────────────────────────────────────────────
+
+for feature in editor runtime server; do
+    build_desktop "$feature" "native" "linux-x64" "so"
+
+    # Rust std
+    SYSROOT=$(rustc --print sysroot)
+    for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
+        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/linux-x64/$feature/"
+    done
+done
+
+# ── Windows (cross-compile) ──────────────────────────────────────────────────
+
+for feature in editor runtime server; do
+    build_desktop "$feature" "x86_64-pc-windows-gnu" "windows-x64" "dll"
+
+    OUT="$OUTPUT_DIR/windows-x64/$feature"
+
+    # MinGW runtime DLLs
+    cp /usr/lib/gcc/x86_64-w64-mingw32/12-posix/libgcc_s_seh-1.dll "$OUT/" 2>/dev/null || true
+    cp /usr/lib/gcc/x86_64-w64-mingw32/12-posix/libstdc++-6.dll "$OUT/" 2>/dev/null || true
+    cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll "$OUT/" 2>/dev/null || true
+
+    # Rust std for Windows
+    SYSROOT=$(rustc --print sysroot)
+    for f in "$SYSROOT"/lib/rustlib/x86_64-pc-windows-gnu/lib/std-*.dll; do
+        [ -f "$f" ] && cp "$f" "$OUT/"
+    done
+done
+
+# ── macOS (cross-compile via osxcross) ───────────────────────────────────────
+
 OSXCROSS_CLANG=$(command -v x86_64-apple-darwin23-clang 2>/dev/null || command -v x86_64-apple-darwin24-clang 2>/dev/null || true)
 
 if [ -n "$OSXCROSS_CLANG" ]; then
-    echo "=== Building macOS x64 binaries ==="
-    mkdir -p "$OUTPUT_DIR/macos-x64"
-    cargo build --profile dist --workspace --bin renzora --bin renzora-runtime --no-default-features --features "$UNIFIED_FEATURES" --target x86_64-apple-darwin
-    cp target/x86_64-apple-darwin/dist/renzora "$OUTPUT_DIR/macos-x64/"
-    cp target/x86_64-apple-darwin/dist/renzora-runtime "$OUTPUT_DIR/macos-x64/"
-    copy_shared_libs "target/x86_64-apple-darwin/dist" "$OUTPUT_DIR/macos-x64" "dylib"
+    for feature in editor runtime server; do
+        build_desktop "$feature" "x86_64-apple-darwin" "macos-x64" "dylib"
 
-    # Rust std for macOS x64
-    SYSROOT=$(rustc --print sysroot)
-    for f in "$SYSROOT"/lib/rustlib/x86_64-apple-darwin/lib/libstd-*.dylib; do
-        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-x64/"
+        SYSROOT=$(rustc --print sysroot)
+        for f in "$SYSROOT"/lib/rustlib/x86_64-apple-darwin/lib/libstd-*.dylib; do
+            [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-x64/$feature/"
+        done
     done
 
-    echo "=== Building macOS ARM binaries ==="
-    mkdir -p "$OUTPUT_DIR/macos-arm64"
-    cargo build --profile dist --workspace --bin renzora --bin renzora-runtime --no-default-features --features "$UNIFIED_FEATURES" --target aarch64-apple-darwin
-    cp target/aarch64-apple-darwin/dist/renzora "$OUTPUT_DIR/macos-arm64/"
-    cp target/aarch64-apple-darwin/dist/renzora-runtime "$OUTPUT_DIR/macos-arm64/"
-    copy_shared_libs "target/aarch64-apple-darwin/dist" "$OUTPUT_DIR/macos-arm64" "dylib"
+    for feature in editor runtime server; do
+        build_desktop "$feature" "aarch64-apple-darwin" "macos-arm64" "dylib"
 
-    # Rust std for macOS ARM
-    SYSROOT=$(rustc --print sysroot)
-    for f in "$SYSROOT"/lib/rustlib/aarch64-apple-darwin/lib/libstd-*.dylib; do
-        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-arm64/"
+        SYSROOT=$(rustc --print sysroot)
+        for f in "$SYSROOT"/lib/rustlib/aarch64-apple-darwin/lib/libstd-*.dylib; do
+            [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-arm64/$feature/"
+        done
     done
 else
     echo "WARN: osxcross not found, skipping macOS builds"
 fi
 
-# ── iOS (standalone, uses renzora-ios package) ────────────────────────────
+# ── WASM (runtime only, no plugins) ─────────────────────────────────────────
 
-if [ -n "$OSXCROSS_CLANG" ]; then
-    echo "=== Building iOS ARM Runtime (export template) ==="
-    cargo build --profile dist -p renzora-ios --target aarch64-apple-ios 2>&1 || echo "WARN: iOS build failed"
-    if [ -f target/aarch64-apple-ios/dist/librenzora_ios.a ]; then
-        mkdir -p "$OUTPUT_DIR/ios-arm64"
-        cp target/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/"
+echo "=== Building WASM Runtime ==="
+cargo build --profile dist -p renzora_app --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target/wasm
+WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
+if [ -n "$WASM_FILE" ]; then
+    mkdir -p "$OUTPUT_DIR/web-wasm32/runtime"
+    wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/runtime" --out-name renzora-runtime --target web "$WASM_FILE"
+    if command -v wasm-opt &>/dev/null; then
+        wasm-opt -Oz "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm" \
+            -o "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm"
+    fi
+fi
+
+# ── Android (runtime only) ──────────────────────────────────────────────────
+
+echo "=== Building Android ARM64 Runtime ==="
+cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
+if [ -f target/android/aarch64-linux-android/dist/libmain.so ]; then
+    mkdir -p "$OUTPUT_DIR/android-arm64/runtime"
+    cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/runtime/"
+fi
+
+echo "=== Building Android x86_64 Runtime ==="
+cargo build --profile dist -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
+if [ -f target/android/x86_64-linux-android/dist/libmain.so ]; then
+    mkdir -p "$OUTPUT_DIR/android-x86/runtime"
+    cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/runtime/"
+fi
+
+# ── iOS (runtime only) ──────────────────────────────────────────────────────
+
+if [ -n "${OSXCROSS_CLANG:-}" ]; then
+    echo "=== Building iOS ARM64 Runtime ==="
+    cargo build --profile dist -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
+    if [ -f target/ios/aarch64-apple-ios/dist/librenzora_ios.a ]; then
+        mkdir -p "$OUTPUT_DIR/ios-arm64/runtime"
+        cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/runtime/"
     fi
 fi
 
