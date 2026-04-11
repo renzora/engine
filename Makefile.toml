@@ -145,21 +145,23 @@ script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
-$hash = (Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower()
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
 $name = "renzora-$hash"
-docker create --name $name -v "${PWD}:/app/src" -v "${PWD}/dist:/output" -w /app/src renzora/engine sleep infinity
+docker create --name $name -v "${PWD}:/app/src" -w /app/src renzora/engine sleep infinity
 Write-Output "Created container: $name"
 '''
 [tasks.docker-create.linux]
 script = '''
 NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
-docker create --name "$NAME" -v "$PWD:/app/src" -v "$PWD/dist:/output" -w /app/src renzora/engine sleep infinity
+docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
 echo "Created container: $NAME"
 '''
 [tasks.docker-create.mac]
 script = '''
 NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
-docker create --name "$NAME" -v "$PWD:/app/src" -v "$PWD/dist:/output" -w /app/src renzora/engine sleep infinity
+docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
 echo "Created container: $NAME"
 '''
 
@@ -169,7 +171,12 @@ description = "Start the build container"
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
-script = 'docker start "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())"'
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker start "renzora-$hash"
+'''
 [tasks.docker-start.linux]
 script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 [tasks.docker-start.mac]
@@ -182,11 +189,16 @@ dependencies = ["docker-start"]
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
-script = 'docker exec "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())" /app/src/scripts/build-all.sh /output'
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker exec "renzora-$hash" /app/src/scripts/build-all.sh dist
+'''
 [tasks.docker-run.linux]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh /output'
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
 [tasks.docker-run.mac]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh /output'
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
 
 [tasks.docker-clean]
 description = "Clean the container's build cache"
@@ -194,11 +206,17 @@ description = "Clean the container's build cache"
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
-script = 'docker exec "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())" rm -rf target'
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+Write-Output "Cleaning build cache..."
+docker exec "renzora-$hash" bash -c "du -sh target 2>/dev/null; rm -rf target && echo 'Done.'"
+'''
 [tasks.docker-clean.linux]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" rm -rf target'
+script = 'echo "Cleaning build cache..." && docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "du -sh target 2>/dev/null; rm -rf target && echo Done."'
 [tasks.docker-clean.mac]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" rm -rf target'
+script = 'echo "Cleaning build cache..." && docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "du -sh target 2>/dev/null; rm -rf target && echo Done."'
 
 [tasks.docker-destroy]
 description = "Remove the persistent build container"
@@ -206,7 +224,12 @@ description = "Remove the persistent build container"
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
-script = 'docker rm -f "renzora-$((Get-FileHash -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path))) -Algorithm MD5).Hash.Substring(0,8).ToLower())"'
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker rm -f "renzora-$hash"
+'''
 [tasks.docker-destroy.linux]
 script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 [tasks.docker-destroy.mac]

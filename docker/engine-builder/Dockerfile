@@ -1,21 +1,18 @@
 # =============================================================================
-# Renzora Engine Builder — CI/CD Release Builds
+# Renzora Engine Builder — Cross-Platform Toolchain
 # =============================================================================
 #
-# Builds the full engine + export templates for all supported platforms:
-#   - Editor: Windows, macOS, Linux
-#   - Runtime/Export Templates: Windows, macOS, Linux, WASM, Android ARM, Android x86
-#   - Server: Linux (headless)
+# Provides the build toolchain for all supported platforms. No source code
+# baked in — the repo is mounted at runtime via a persistent container.
 #
 # Build image:
-#   docker build -f docker/engine-builder/Dockerfile -t renzora/engine-builder:0.2.0 .
+#   makers docker-build
 #
-# Build all targets:
-#   docker run --rm -v /path/to/output:/output renzora/engine-builder:0.2.0 /app/scripts/build-all.sh /output
+# Create persistent container:
+#   makers docker-create
 #
-# Build specific target:
-#   docker run --rm renzora/engine-builder:0.2.0 cargo build-editor
-#   docker run --rm renzora/engine-builder:0.2.0 cargo build-web
+# Build all platforms:
+#   makers docker-run
 
 FROM rust:1.93.0-bookworm
 
@@ -158,29 +155,8 @@ linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
 linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
 TOML
 
-# ── Copy engine source ──────────────────────────────────────────────────────
-COPY Cargo.toml Cargo.lock rust-toolchain.toml build.rs ./
-RUN rm rust-toolchain.toml
-COPY crates/ crates/
-COPY src/ src/
-COPY assets/ assets/
+# ── Working directory ───────────────────────────────────────────────────────
+# The persistent container mounts the repo at /app/src.
+# The image just provides the toolchain — no source code baked in.
 
-COPY templates/ templates/
-COPY scripts/ scripts/
-RUN chmod +x scripts/*.sh
-
-# ── Pre-build deps (cached layer) ───────────────────────────────────────────
-# Build the engine libs for each target to cache all dependencies.
-# Desktop targets use unified features (editor,runtime,server) so all
-# binaries share the same bevy_dylib hash for plugin compatibility.
-# --workspace ensures plugin crate hashes match the engine binary.
-RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server
-RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target x86_64-pc-windows-gnu
-RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target x86_64-apple-darwin
-RUN cargo build --workspace --lib --profile dist --no-default-features --features editor,runtime,server --target aarch64-apple-darwin
-# WASM: build only the runtime binary (no dylib support)
-RUN cargo build -p renzora_app --bin renzora-runtime --profile dist --no-default-features --features wasm --target wasm32-unknown-unknown
-# Android and iOS are built via their template packages (templates/android/, templates/ios/)
-# and are not pre-cached here — build-all.sh handles them at runtime.
-
-CMD ["/bin/bash"]
+CMD ["sleep", "infinity"]

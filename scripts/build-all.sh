@@ -16,9 +16,10 @@ if [ -f /etc/osxcross-env.sh ]; then
 fi
 
 OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir>}"
+mkdir -p "$OUTPUT_DIR"
 
 # Editor plugins to exclude from runtime/server builds
-EDITOR_EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml 2>/dev/null | sed 's/name = "\(.*\)"/--exclude \1/')
+EDITOR_EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml 2>/dev/null | tr -d '\r' | sed 's/name = "\(.*\)"/--exclude \1/')
 
 # ── Helper: copy shared libraries for a platform ────────────────────────────
 # Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext>
@@ -30,7 +31,8 @@ copy_shared_libs() {
     mkdir -p "$OUT/plugins"
 
     # bevy_dylib (newest only)
-    ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 | xargs -I{} cp {} "$OUT/"
+    local BEVY_DLL=$(ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 || true)
+    [ -n "$BEVY_DLL" ] && cp "$BEVY_DLL" "$OUT/"
 
     # SDK
     for f in "$SRC/librenzora.$EXT" "$SRC/renzora.$EXT"; do
