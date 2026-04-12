@@ -41,7 +41,15 @@ Linux: `sudo apt install libwayland-dev` before building.
 
 Each build target (editor, runtime, server) is isolated with its own feature flag and target directory. No feature unification, no hash mixing. Switching between local targets is instant after the first build of each.
 
-Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins. macOS builds produce proper `.app` bundles.
+Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins. macOS builds produce `.app` bundles; Linux editor builds produce `.AppImage`.
+
+#### Prerequisites for Docker builds
+
+The image cross-compiles to all platforms from a single `linux/amd64` container. A few one-time setup steps depending on your host:
+
+- **macOS cross-compilation**: Apple's SDK isn't redistributable, so you extract it from your own Xcode install once and drop the tarball at `docker/sdk/MacOSX26.2.sdk.tar.bz2`. See `docker/sdk/README.md` for the extraction command.
+- **Apple Silicon hosts (M1/M2/M3/M4)**: Docker Desktop's default QEMU emulation is flaky with `apt-get` (you'll see random I/O errors mid-install). Enable Rosetta instead: **Docker Desktop → Settings → General → Use Virtualization framework**, then **Features in development → Use Rosetta for x86_64/amd64 emulation**. [OrbStack](https://orbstack.dev) is a lighter alternative that handles this out of the box.
+- **Windows / x86_64 Linux hosts**: no extra setup — the image builds natively.
 
 ## Architecture
 

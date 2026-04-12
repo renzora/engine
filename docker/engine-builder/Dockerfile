@@ -14,7 +14,7 @@
 # Build all platforms:
 #   makers docker-run
 
-FROM rust:1.93.0-bookworm
+FROM --platform=linux/amd64 rust:1.93.0-bookworm
 
 # ── System dependencies ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -82,7 +82,7 @@ RUN curl -sL https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_
     rm /tmp/ndk.zip
 
 # ── osxcross for macOS / iOS cross-compilation ──────────────────────────────
-ENV OSXCROSS_SDK=MacOSX14.0.sdk
+ENV OSXCROSS_SDK=MacOSX26.2.sdk
 ENV MACOSX_DEPLOYMENT_TARGET=14.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -96,7 +96,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 https://github.com/tpoechtrager/osxcross /opt/osxcross
-COPY docker/sdk/${OSXCROSS_SDK}.tar.xz /opt/osxcross/tarballs/
+COPY docker/sdk/${OSXCROSS_SDK}.tar.bz2 /opt/osxcross/tarballs/
 RUN cd /opt/osxcross && \
     UNATTENDED=1 TARGET_DIR=/opt/osxcross/target ./build.sh
 
