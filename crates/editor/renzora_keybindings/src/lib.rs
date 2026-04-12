@@ -17,6 +17,9 @@ impl Plugin for KeybindingsPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] KeybindingsPlugin");
         app.init_resource::<KeyBindings>();
+        // Drain per-frame programmatic dispatches at end of frame so they
+        // don't leak into the next frame's input checks.
+        app.add_systems(Last, clear_dispatched_actions);
     }
 }
 

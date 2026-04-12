@@ -105,6 +105,11 @@ pub fn shortcut_dispatch_system(world: &mut World) {
             .entries
             .iter()
             .filter_map(|e| {
+                // Programmatic dispatch (command palette etc.) fires
+                // handlers directly without needing the chord to be pressed.
+                if bindings.is_plugin_dispatched(e.id) {
+                    return Some(e.handler.clone());
+                }
                 let b = bindings.plugin_bindings.get(e.id).unwrap_or(&e.default_binding);
                 let matches = keys.just_pressed(b.key)
                     && b.ctrl == ctrl

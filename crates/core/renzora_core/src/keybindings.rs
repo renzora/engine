@@ -4,7 +4,8 @@
 //! editor plugin DLLs can use these types without depending on each other.
 
 use bevy::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 /// Actions that can be bound to keys
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -273,6 +274,16 @@ pub struct KeyBindings {
     pub plugin_bindings: HashMap<&'static str, KeyBinding>,
     /// Plugin shortcut currently being rebound (if any).
     pub plugin_rebinding: Option<&'static str>,
+    /// Actions dispatched programmatically this frame (e.g. by the command
+    /// palette). Consumers see them via [`Self::just_pressed`] alongside
+    /// real keyboard presses; a clear system drains the set each frame.
+    /// `Arc<Mutex>` so callers can dispatch through a shared `Res<>` rather
+    /// than needing `ResMut<>`.
+    #[doc(hidden)]
+    pub dispatched: Arc<Mutex<HashSet<EditorAction>>>,
+    /// Mirror of `dispatched` for plugin shortcuts, keyed by id.
+    #[doc(hidden)]
+    pub dispatched_plugin: Arc<Mutex<HashSet<&'static str>>>,
 }
 
 impl Default for KeyBindings {
@@ -343,6 +354,8 @@ impl Default for KeyBindings {
             rebinding: None,
             plugin_bindings: HashMap::new(),
             plugin_rebinding: None,
+            dispatched: Arc::new(Mutex::new(HashSet::new())),
+            dispatched_plugin: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 }
@@ -357,8 +370,13 @@ impl KeyBindings {
         }
     }
 
-    /// Check if an action key was just pressed this frame (with exact modifier check)
+    /// Check if an action key was just pressed this frame (with exact modifier check).
+    /// Also returns true if the action was programmatically dispatched this
+    /// frame (e.g. from the command palette) via [`Self::dispatch`].
     pub fn just_pressed(&self, action: EditorAction, keyboard: &ButtonInput<KeyCode>) -> bool {
+        if self.dispatched.lock().map_or(false, |d| d.contains(&action)) {
+            return true;
+        }
         if let Some(binding) = self.bindings.get(&action) {
             let key_just_pressed = keyboard.just_pressed(binding.key);
             let ctrl_pressed = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
@@ -373,6 +391,28 @@ impl KeyBindings {
         } else {
             false
         }
+    }
+
+    /// Programmatically dispatch an action as if the bound key was pressed
+    /// this frame. Cleared automatically at end of frame by
+    /// [`clear_dispatched_actions`].
+    pub fn dispatch(&self, action: EditorAction) {
+        if let Ok(mut set) = self.dispatched.lock() {
+            set.insert(action);
+        }
+    }
+
+    /// Programmatically dispatch a plugin shortcut by id.
+    pub fn dispatch_plugin(&self, id: &'static str) {
+        if let Ok(mut set) = self.dispatched_plugin.lock() {
+            set.insert(id);
+        }
+    }
+
+    /// True if a plugin shortcut was dispatched this frame. Used by the
+    /// plugin shortcut dispatcher in the editor SDK.
+    pub fn is_plugin_dispatched(&self, id: &'static str) -> bool {
+        self.dispatched_plugin.lock().map_or(false, |d| d.contains(id))
     }
 
     /// Get the binding for an action
@@ -400,6 +440,17 @@ impl KeyBindings {
     /// when a plugin reloads.
     pub fn set_plugin_default(&mut self, id: &'static str, binding: KeyBinding) {
         self.plugin_bindings.entry(id).or_insert(binding);
+    }
+}
+
+/// System that clears the per-frame dispatch sets. Registered by the
+/// keybindings plugin in `Last`.
+pub fn clear_dispatched_actions(bindings: Res<KeyBindings>) {
+    if let Ok(mut set) = bindings.dispatched.lock() {
+        set.clear();
+    }
+    if let Ok(mut set) = bindings.dispatched_plugin.lock() {
+        set.clear();
     }
 }
 
