@@ -126,7 +126,7 @@ command = "./dist/linux-x64/editor/renzora"
 [tasks.run.mac]
 script = '''
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
-./dist/macos-$ARCH/editor/renzora
+./dist/macos-$ARCH/editor/Renzora.app/Contents/MacOS/renzora
 '''
 
 # =============================================================================
