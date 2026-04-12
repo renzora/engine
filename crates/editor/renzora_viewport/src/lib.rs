@@ -241,6 +241,12 @@ impl EditorPanel for ViewportPanel {
                 rect,
                 egui::Image::new(egui::load::SizedTexture::new(texture_id, size)),
             );
+
+            // CPU-projected overlays (grid, gizmos) paint on top of the 3D
+            // image, bypassing the Bevy render pipeline entirely.
+            if let Some(overlay) = world.get_resource::<renzora::editor::ViewportOverlayRegistry>() {
+                overlay.draw_all(ui, world, rect);
+            }
         } else {
             // Fallback while render target is being set up
             ui.painter()

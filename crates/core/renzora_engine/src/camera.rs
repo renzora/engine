@@ -1,10 +1,11 @@
 //! Runtime camera spawning and render target syncing.
 
 use bevy::prelude::*;
-use bevy::camera::RenderTarget;
+use bevy::camera::{Camera, RenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::view::Hdr;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use renzora_core::viewport_types::EditorCameraMatrix;
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.
@@ -75,4 +76,24 @@ pub fn sync_camera_render_target(
     } else {
         info!("[camera] ViewportRenderTarget changed — but image is None");
     }
+}
+
+/// Cache the editor camera's clip-from-world matrix into a resource each frame,
+/// so overlay systems (grid, gizmos) can CPU-project geometry without querying
+/// the camera themselves (which requires mutable World access).
+pub fn update_editor_camera_matrix(
+    cameras: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    mut mat: ResMut<EditorCameraMatrix>,
+) {
+    let Ok((camera, transform)) = cameras.single() else {
+        mat.valid = false;
+        return;
+    };
+    let view_from_world = transform.affine().inverse();
+    let clip_from_view = camera.clip_from_view();
+    mat.clip_from_world = clip_from_view * Mat4::from(view_from_world);
+    mat.world_from_clip = mat.clip_from_world.inverse();
+    mat.cam_pos = transform.translation();
+    mat.cam_forward = *transform.forward();
+    mat.valid = true;
 }

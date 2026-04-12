@@ -171,8 +171,12 @@ impl Plugin for RuntimePlugin {
 
         #[cfg(feature = "editor")]
         {
-            app.add_systems(Startup, camera::spawn_editor_camera)
-                .add_systems(Update, camera::sync_camera_render_target);
+            app.init_resource::<renzora_core::viewport_types::EditorCameraMatrix>()
+                .add_systems(Startup, camera::spawn_editor_camera)
+                .add_systems(Update, (
+                    camera::sync_camera_render_target,
+                    camera::update_editor_camera_matrix,
+                ));
             // Listen for save-scene event from the editor
             app.add_observer(on_save_current_scene);
         }

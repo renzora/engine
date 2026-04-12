@@ -44,7 +44,7 @@ impl Default for OrbitCameraState {
     fn default() -> Self {
         Self {
             focus: Vec3::ZERO,
-            distance: 10.0,
+            distance: 4.5,
             yaw: 0.3,
             pitch: 0.4,
             projection_mode: ProjectionMode::Perspective,

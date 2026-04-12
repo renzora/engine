@@ -72,6 +72,29 @@ pub struct CameraOrbitSnapshot {
     pub pitch: f32,
 }
 
+/// Cached clip-from-world matrix of the editor camera, plus camera world position.
+/// Updated every frame. Used by CPU-projected viewport overlays (grid, gizmos).
+#[derive(Resource, Debug, Clone)]
+pub struct EditorCameraMatrix {
+    pub clip_from_world: Mat4,
+    pub world_from_clip: Mat4,
+    pub cam_pos: Vec3,
+    pub cam_forward: Vec3,
+    pub valid: bool,
+}
+
+impl Default for EditorCameraMatrix {
+    fn default() -> Self {
+        Self {
+            clip_from_world: Mat4::IDENTITY,
+            world_from_clip: Mat4::IDENTITY,
+            cam_pos: Vec3::ZERO,
+            cam_forward: Vec3::NEG_Z,
+            valid: false,
+        }
+    }
+}
+
 /// Camera projection mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ProjectionMode {
@@ -232,7 +255,7 @@ impl Default for ViewportSettings {
             render_toggles: RenderToggles::default(),
             visualization_mode: VisualizationMode::default(),
             show_grid: true,
-            show_subgrid: false,
+            show_subgrid: true,
             show_axis_gizmo: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),

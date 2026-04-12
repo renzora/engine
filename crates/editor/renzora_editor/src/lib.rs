@@ -11,6 +11,7 @@ pub mod inspector_registry;
 pub mod selection;
 pub mod settings;
 pub mod spawn_registry;
+pub mod viewport_overlay;
 
 // Re-export full UI API so downstream crates can use `renzora_editor_framework::DockTree` etc.
 pub use renzora_ui::*;
@@ -22,6 +23,7 @@ pub use inspector_registry::{
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
+pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
@@ -165,7 +167,8 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
-            .init_resource::<ComponentIconRegistry>();
+            .init_resource::<ComponentIconRegistry>()
+            .init_resource::<ViewportOverlayRegistry>();
 
         // Register inspector entries and icons for core Bevy components
         bevy_inspectors::register_bevy_inspectors(
