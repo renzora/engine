@@ -1,5 +1,5 @@
 [package]
-name = "renzora_test_extension"
+name = "renzora_system_monitor"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,3 +9,5 @@ crate-type = ["dylib"]
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+sysinfo = "0.35"
+nvml-wrapper = "0.10"

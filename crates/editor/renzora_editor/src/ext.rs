@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use crate::inspector_registry::{InspectorEntry, InspectorRegistry};
 use crate::spawn_registry::{EntityPreset, SpawnRegistry};
-use renzora_ui::PanelRegistry;
+use renzora_ui::{PanelRegistry, StatusBarRegistry};
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
 ///
@@ -16,6 +16,9 @@ pub trait InspectableComponent: Component + Default + 'static {
 pub trait AppEditorExt {
     /// Register a panel with the `PanelRegistry`.
     fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self;
+
+    /// Register a status bar item with the `StatusBarRegistry`.
+    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static) -> &mut Self;
 
     /// Register an `InspectorEntry` directly.
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self;
@@ -40,6 +43,12 @@ impl AppEditorExt for App {
     fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self {
         self.init_resource::<PanelRegistry>();
         self.world_mut().resource_mut::<PanelRegistry>().register(panel);
+        self
+    }
+
+    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static) -> &mut Self {
+        self.init_resource::<StatusBarRegistry>();
+        self.world_mut().resource_mut::<StatusBarRegistry>().register(item);
         self
     }
 

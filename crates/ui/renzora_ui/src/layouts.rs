@@ -34,7 +34,6 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
             WorkspaceLayout { name: "Lifecycle".into(), tree: layout_lifecycle() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
-            WorkspaceLayout { name: "Hub".into(), tree: layout_hub() },
         ];
 
 
@@ -83,7 +82,7 @@ pub fn scene_layout() -> DockTree {
                     active_tab: 0,
                 },
                 DockTree::Leaf {
-                    tabs: vec!["assets".into(), "console".into(), "properties".into(), "mixer".into()],
+                    tabs: vec!["assets".into(), "hub_store".into(), "console".into(), "mixer".into()],
                     active_tab: 0,
                 },
                 0.72,
@@ -388,15 +387,6 @@ fn layout_lifecycle() -> DockTree {
             0.75,
         ),
         0.18,
-    )
-}
-
-/// Hub: MyLibrary | Store
-fn layout_hub() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("hub_library"),
-        DockTree::leaf("hub_store"),
-        0.22,
     )
 }
 

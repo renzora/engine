@@ -462,7 +462,7 @@ pub fn editor_ui_system(world: &mut World) {
     let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
     // 7. Status bar (bottom)
-    render_plugin_status_bar(&ctx, &theme, world);
+    renzora_ui::status_bar::render_status_bar(&ctx, &theme, world);
 
     // 8. Get current drag state (read-only snapshot for rendering)
     let drag_snapshot = world.get_resource::<DragState>().map(|d| DragState {
@@ -1049,29 +1049,3 @@ fn process_play_mode_requests(world: &mut World) {
         world.trigger(renzora_core::ResetScriptStates);
     }
 }
-
-
-/// Render the viewport texture fullscreen during play mode.
-
-fn render_plugin_status_bar(ctx: &egui::Context, theme: &renzora_theme::Theme, _world: &World) {
-    let text_color = theme.text.secondary.to_color32();
-    let border_color = theme.widgets.border.to_color32();
-    let panel_fill = theme.surfaces.panel.to_color32();
-
-    egui::TopBottomPanel::bottom("renzora_status_bar")
-        .exact_height(22.0)
-        .frame(
-            egui::Frame::NONE
-                .fill(panel_fill)
-                .stroke(egui::Stroke::new(1.0, border_color)),
-        )
-        .show(ctx, |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                ui.label(
-                    egui::RichText::new("Ready").size(11.0).color(text_color),
-                );
-            });
-        });
-}
-

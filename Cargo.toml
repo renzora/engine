@@ -11,7 +11,6 @@ members = [
     "crates/editor/renzora_tutorial",
     "crates/editor/renzora_inspector",
     "crates/editor/renzora_test_component",
-    "crates/editor/renzora_test_extension",
     "crates/editor/renzora_viewport",
     "crates/editor/renzora_hierarchy",
     "crates/editor/renzora_asset_browser",
@@ -42,6 +41,7 @@ members = [
     "crates/editor/renzora_hub",
     "crates/editor/renzora_auth",
     "crates/editor/renzora_shape_library",
+    "crates/editor/renzora_system_monitor",
 ]
 # Note: crates/renzora_editor produces the editor SDK
 

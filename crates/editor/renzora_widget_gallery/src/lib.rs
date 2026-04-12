@@ -2143,8 +2143,6 @@ impl Plugin for WidgetGalleryPlugin {
             .remove_resource::<LayoutManager>()
             .unwrap_or_default();
 
-        layouts.layouts.push(gallery_layout());
-
         world.insert_resource(layouts);
     }
 }

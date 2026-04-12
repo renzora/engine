@@ -69,6 +69,8 @@ pub mod prelude {
         AppEditorExt, InspectableComponent,
         // Panel system
         EditorPanel, PanelLocation,
+        // Status bar
+        StatusBarItem, StatusBarAlignment, StatusBarRegistry,
         // Inspector
         InspectorEntry, InspectorRegistry, FieldDef, FieldType, FieldValue,
         // Spawn & icons

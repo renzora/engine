@@ -73,6 +73,7 @@ pub fn init_app() -> App {
 
 pub fn add_default_rendering(app: &mut App) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
+    use bevy::window::{Window, WindowPlugin};
     app.add_plugins(
         DefaultPlugins
             .set(RenderPlugin {
@@ -88,7 +89,23 @@ pub fn add_default_rendering(app: &mut App) {
                 },
                 ..default()
             })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Renzora".into(),
+                    ..default()
+                }),
+                ..default()
+            })
     );
+    app.add_systems(Startup, maximize_primary_window);
+}
+
+fn maximize_primary_window(
+    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    if let Ok(mut window) = windows.single_mut() {
+        window.set_maximized(true);
+    }
 }
 
 pub fn add_engine_plugins(app: &mut App) {

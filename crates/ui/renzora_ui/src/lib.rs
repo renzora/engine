@@ -27,6 +27,7 @@ pub use drag_drop::{DragState, DropTarget};
 pub use floating::{FloatingPanel, FloatingPanels, FloatingRenderResult};
 pub use layouts::{LayoutManager, WorkspaceLayout};
 pub use panel::{EditorPanel, PanelLocation, PanelRegistry};
+pub use status_bar::{StatusBarAlignment, StatusBarItem, StatusBarRegistry};
 pub use title_bar::TitleBarAction;
 pub use toast::Toasts;
 
