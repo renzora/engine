@@ -4,9 +4,10 @@
 //! space between two children) or a Leaf (containing string-based tab IDs).
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Direction of a split in the dock tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitDirection {
     /// Children are side-by-side (left / right).
     Horizontal,
@@ -15,7 +16,7 @@ pub enum SplitDirection {
 }
 
 /// A node in the dock tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DockTree {
     Split {
         direction: SplitDirection,
@@ -302,6 +303,74 @@ impl Default for DockingState {
         // Use the Scene layout from LayoutManager so they start in sync.
         Self {
             tree: crate::layouts::scene_layout(),
+        }
+    }
+}
+
+// ── Layout persistence ─────────────────────────────────────────────────────
+//
+// The user's in-progress dock layout is auto-saved whenever panels are moved
+// or added, and restored on next launch. Storage is a single TOML file in
+// the user config dir — not per-project, so layouts follow the user across
+// projects.
+
+/// Path to the persisted layout file. Returns `None` if the user config
+/// directory is unavailable (rare — sandboxed environments).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn layout_config_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|p| p.join("renzora").join("layout.toml"))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn layout_config_path() -> Option<std::path::PathBuf> {
+    None
+}
+
+/// Load the last-saved workspace (all layouts + active index) from disk.
+/// Returns `None` if nothing is saved, the file is corrupt, or we're on
+/// a platform without filesystem access.
+pub fn load_saved_workspace() -> Option<crate::layouts::LayoutManager> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = layout_config_path()?;
+        let content = std::fs::read_to_string(&path).ok()?;
+        toml::from_str::<crate::layouts::LayoutManager>(&content).ok()
+    }
+    #[cfg(target_arch = "wasm32")]
+    { None }
+}
+
+/// Persist the workspace (all layouts + active index) to the user config
+/// file. Errors are logged but not propagated.
+pub fn save_workspace(manager: &crate::layouts::LayoutManager) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = layout_config_path() else { return };
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                warn!("[dock] couldn't create layout config dir: {e}");
+                return;
+            }
+        }
+        match toml::to_string_pretty(manager) {
+            Ok(content) => {
+                if let Err(e) = std::fs::write(&path, content) {
+                    warn!("[dock] couldn't save workspace: {e}");
+                }
+            }
+            Err(e) => warn!("[dock] couldn't serialise workspace: {e}"),
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    { let _ = manager; }
+}
+
+/// Delete the saved workspace file (used by "Reset Layout").
+pub fn delete_saved_workspace() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Some(path) = layout_config_path() {
+            let _ = std::fs::remove_file(path);
         }
     }
 }

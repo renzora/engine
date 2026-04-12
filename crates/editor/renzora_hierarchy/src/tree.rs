@@ -430,6 +430,26 @@ fn context_menu(
         ui.close();
     }
 
+    // Add Component — selects this entity and asks the context-menu plugin
+    // to open its component picker overlay at the cursor.
+    if ui.button(format!("{} Add Component…", regular::PLUS_CIRCLE)).clicked() {
+        let entity = node.entity;
+        let pos = ui
+            .ctx()
+            .pointer_latest_pos()
+            .unwrap_or(egui::pos2(100.0, 100.0));
+        let screen_pos = bevy::math::Vec2::new(pos.x, pos.y);
+        commands.push(move |world: &mut World| {
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.set(Some(entity));
+            }
+            world.insert_resource(
+                renzora::editor::OpenAddComponentMenuRequest { screen_pos },
+            );
+        });
+        ui.close();
+    }
+
     // ── Blueprint ──
     ui.separator();
     if node.has_blueprint {

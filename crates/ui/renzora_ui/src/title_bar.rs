@@ -29,6 +29,7 @@ pub enum TitleBarAction {
     StartTutorial,
     Undo,
     Redo,
+    ResetLayout,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 28.0;
@@ -121,6 +122,11 @@ pub fn render_title_bar(
                     }
                     if ui.button("Redo").clicked() {
                         action = TitleBarAction::Redo;
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Reset Layout").clicked() {
+                        action = TitleBarAction::ResetLayout;
                         ui.close();
                     }
                 });

@@ -1,18 +1,19 @@
 //! Workspace layout presets and layout manager.
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::dock_tree::{DockTree, DockingState};
 
 /// A named workspace layout.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceLayout {
     pub name: String,
     pub tree: DockTree,
 }
 
 /// Resource managing available workspace layouts.
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, Serialize, Deserialize)]
 pub struct LayoutManager {
     pub layouts: Vec<WorkspaceLayout>,
     pub active_index: usize,
@@ -26,7 +27,6 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
-            WorkspaceLayout { name: "Sandbox".into(), tree: layout_sandbox() },
             WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
             WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
@@ -53,11 +53,35 @@ impl LayoutManager {
             .unwrap_or("Default")
     }
 
-    /// Switch to a layout by index, replacing the docking tree.
+    /// Switch to a layout by index. The previous layout's current state is
+    /// saved back into its slot first so user edits persist across
+    /// switches, then the new layout's tree becomes the active dock.
     pub fn switch(&mut self, index: usize, docking: &mut DockingState) {
+        if let Some(current) = self.layouts.get_mut(self.active_index) {
+            current.tree = docking.tree.clone();
+        }
         if let Some(layout) = self.layouts.get(index) {
             docking.tree = layout.tree.clone();
             self.active_index = index;
+        }
+    }
+
+    /// Reset the active layout's tree to its hardcoded factory default.
+    /// Other layouts are untouched.
+    pub fn reset_active(&mut self, docking: &mut DockingState) {
+        let defaults = Self::default();
+        let Some(active) = self.layouts.get(self.active_index) else { return };
+        let Some(default) = defaults
+            .layouts
+            .iter()
+            .find(|l| l.name == active.name)
+            .map(|l| l.tree.clone())
+        else {
+            return;
+        };
+        docking.tree = default.clone();
+        if let Some(active) = self.layouts.get_mut(self.active_index) {
+            active.tree = default;
         }
     }
 }
@@ -237,28 +261,6 @@ fn layout_materials() -> DockTree {
         0.15,
     )
 }
-
-/// Sandbox: Hierarchy+Assets | Viewport | ShapeLibrary+Inspector
-fn layout_sandbox() -> DockTree {
-    DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("assets"),
-            0.55,
-        ),
-        DockTree::horizontal(
-            DockTree::leaf("viewport"),
-            DockTree::vertical(
-                DockTree::leaf("shape_library"),
-                DockTree::leaf("inspector"),
-                0.4,
-            ),
-            0.82,
-        ),
-        0.14,
-    )
-}
-
 
 /// Particles: ParticlePreview | ParticleEditor
 pub fn layout_particles() -> DockTree {

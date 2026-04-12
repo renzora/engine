@@ -23,7 +23,10 @@ use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora::editor::{ActiveTool, EditorSelection, SpawnRegistry, SplashState};
+use renzora::editor::{
+    ActiveTool, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
+    SpawnRegistry, SplashState,
+};
 use renzora::theme::ThemeManager;
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -60,8 +63,12 @@ pub enum MenuKind {
     /// Spawn a preset at this world position.
     AddHere { world_pos: Vec3 },
     /// Act on the current `EditorSelection` (Duplicate, Delete, Focus,
-    /// Deselect). Shown when at least one entity is selected.
+    /// Deselect, Add Component). Shown when at least one entity is selected.
     EntityActions,
+    /// Component picker — reached from the EntityActions menu via "Add
+    /// Component". Lists reflected components that can be attached to the
+    /// current selection.
+    AddComponent,
 }
 
 /// Drag threshold in pixels. Motion magnitude below this still counts as a tap.
@@ -79,7 +86,8 @@ impl Plugin for ContextMenuPlugin {
             .init_resource::<ContextMenuState>()
             .add_systems(
                 Update,
-                detect_right_click_tap.run_if(in_state(SplashState::Editor)),
+                (detect_right_click_tap, consume_add_component_request)
+                    .run_if(in_state(SplashState::Editor)),
             )
             .add_systems(
                 EguiPrimaryContextPass,
@@ -89,6 +97,23 @@ impl Plugin for ContextMenuPlugin {
 }
 
 renzora::add!(ContextMenuPlugin, Editor);
+
+/// Drain pending [`OpenAddComponentMenuRequest`] — set by hierarchy /
+/// inspector / any panel that wants to trigger the component picker.
+fn consume_add_component_request(
+    mut commands: Commands,
+    request: Option<Res<OpenAddComponentMenuRequest>>,
+    mut menu: ResMut<ContextMenuState>,
+) {
+    let Some(req) = request else { return };
+    menu.open = true;
+    menu.screen_pos = req.screen_pos;
+    menu.kind = MenuKind::AddComponent;
+    menu.query.clear();
+    menu.just_opened = true;
+    menu.open_counter = menu.open_counter.wrapping_add(1);
+    commands.remove_resource::<OpenAddComponentMenuRequest>();
+}
 
 // ── Right-click tap detection ──────────────────────────────────────────────
 
@@ -283,8 +308,24 @@ fn render_context_menu(world: &mut World) {
                         render_entity_menu(
                             ui, &query, enter_pressed,
                             text_primary, text_muted, hover,
-                            |action| {
-                                pending_action = Some(PendingAction::Act { action });
+                            |result| {
+                                pending_action = Some(match result {
+                                    EntityMenuResult::Action(action) => {
+                                        PendingAction::Act { action }
+                                    }
+                                    EntityMenuResult::Switch(next) => {
+                                        PendingAction::SwitchMenu(next)
+                                    }
+                                });
+                            },
+                        );
+                    }
+                    MenuKind::AddComponent => {
+                        render_add_component_menu(
+                            ui, world, &query, enter_pressed,
+                            text_primary, text_muted, hover,
+                            |type_id| {
+                                pending_action = Some(PendingAction::AddComponent { type_id });
                             },
                         );
                     }
@@ -301,15 +342,25 @@ fn render_context_menu(world: &mut World) {
         }
     }
 
-    if pending_action.is_some() {
+    // SwitchMenu is a navigation event — it shouldn't close the menu. All
+    // other actions close on commit.
+    let closes_menu = !matches!(pending_action, Some(PendingAction::SwitchMenu(_)));
+    if pending_action.is_some() && closes_menu {
         close = true;
     }
 
     // Commit query back + clear the `just_opened` flag after first render.
+    // When switching submenus, reset query + focus as if freshly opened.
     {
         let mut s = world.resource_mut::<ContextMenuState>();
         s.query = query;
         s.just_opened = false;
+        if let Some(PendingAction::SwitchMenu(next)) = &pending_action {
+            s.kind = *next;
+            s.query.clear();
+            s.just_opened = true;
+            s.open_counter = s.open_counter.wrapping_add(1);
+        }
         if close {
             s.open = false;
         }
@@ -328,6 +379,8 @@ fn matches_query(label: &str, query_lower: &str) -> bool {
 enum PendingAction {
     Spawn { id: &'static str, world_pos: Vec3 },
     Act { action: EntityAction },
+    SwitchMenu(MenuKind),
+    AddComponent { type_id: &'static str },
 }
 
 #[derive(Clone, Copy)]
@@ -432,6 +485,11 @@ fn group_presets(registry: &SpawnRegistry) -> Vec<(&'static str, Vec<PresetRow>)
 
 // ── Entity menu ────────────────────────────────────────────────────────────
 
+enum EntityMenuResult {
+    Action(EntityAction),
+    Switch(MenuKind),
+}
+
 fn render_entity_menu(
     ui: &mut egui::Ui,
     query: &str,
@@ -439,7 +497,7 @@ fn render_entity_menu(
     text_primary: Color32,
     text_muted: Color32,
     hover: Color32,
-    mut on_pick: impl FnMut(EntityAction),
+    mut on_pick: impl FnMut(EntityMenuResult),
 ) {
     ui.label(RichText::new("Entity").color(text_muted).size(14.0).monospace());
     ui.separator();
@@ -451,7 +509,6 @@ fn render_entity_menu(
         ("\u{E07A}", "Deselect (Esc)", EntityAction::Deselect),
         ("\u{E1A0}", "Delete (Del)", EntityAction::Delete),
     ];
-
     let visible: Vec<&(&str, &str, EntityAction)> = entries
         .iter()
         .filter(|(_, label, _)| matches_query(label, &q))
@@ -464,13 +521,13 @@ fn render_entity_menu(
 
     for (icon, label, action) in &visible {
         if menu_row(ui, icon, label, text_primary, hover) {
-            on_pick(*action);
+            on_pick(EntityMenuResult::Action(*action));
         }
     }
 
     if enter_pressed {
         if let Some((_, _, action)) = visible.first() {
-            on_pick(*action);
+            on_pick(EntityMenuResult::Action(*action));
         }
     }
 }
@@ -509,9 +566,6 @@ fn apply_action(world: &mut World, action: PendingAction) {
             spawn_preset_at(world, id, world_pos);
         }
         PendingAction::Act { action } => {
-            // Operates on the current EditorSelection — dispatch through
-            // KeyBindings so consumers react as if the bound key was pressed
-            // (rebinds + existing handlers apply).
             if let Some(kb) = world.get_resource::<KeyBindings>() {
                 match action {
                     EntityAction::Focus => kb.dispatch(EditorAction::FocusSelected),
@@ -520,6 +574,113 @@ fn apply_action(world: &mut World, action: PendingAction) {
                     EntityAction::Deselect => kb.dispatch(EditorAction::Deselect),
                 }
             }
+        }
+        PendingAction::SwitchMenu(_) => {
+            // Pure navigation — handled above by rewriting ContextMenuState.
+        }
+        PendingAction::AddComponent { type_id } => {
+            add_component_to_selection(world, type_id);
+        }
+    }
+}
+
+/// Invoke the `InspectorEntry::add_fn` for `type_id` on every entity in
+/// the current selection.
+fn add_component_to_selection(world: &mut World, type_id: &'static str) {
+    let entities: Vec<Entity> = world
+        .get_resource::<EditorSelection>()
+        .map(|s| s.get_all())
+        .unwrap_or_default();
+    if entities.is_empty() { return; }
+
+    let add_fn = world
+        .get_resource::<InspectorRegistry>()
+        .and_then(|r| r.iter().find(|e| e.type_id == type_id).and_then(|e| e.add_fn));
+    let Some(add_fn) = add_fn else {
+        warn!("[context_menu] '{}' has no add_fn registered", type_id);
+        return;
+    };
+
+    for entity in entities {
+        add_fn(world, entity);
+    }
+}
+
+// ── Add Component menu ─────────────────────────────────────────────────────
+//
+// Sourced from the editor's `InspectorRegistry` — same set of components
+// that the inspector shows, with their curated display names, icons,
+// categories, and `add_fn` registration.
+
+fn render_add_component_menu(
+    ui: &mut egui::Ui,
+    world: &World,
+    query: &str,
+    enter_pressed: bool,
+    text_primary: Color32,
+    text_muted: Color32,
+    hover: Color32,
+    mut on_pick: impl FnMut(&'static str),
+) {
+    ui.label(RichText::new("Add Component").color(text_muted).size(14.0).monospace());
+    ui.separator();
+
+    let Some(registry) = world.get_resource::<InspectorRegistry>() else {
+        ui.label(RichText::new("No InspectorRegistry").color(text_muted).size(14.0));
+        return;
+    };
+
+    // Target entity = current primary selection. Skip components that are
+    // already on it, or that have no `add_fn`.
+    let target = world
+        .get_resource::<EditorSelection>()
+        .and_then(|s| s.get());
+
+    let q = query.to_lowercase();
+    let mut groups: Vec<(&'static str, Vec<&renzora::editor::InspectorEntry>)> = Vec::new();
+    for entry in registry.iter() {
+        if entry.add_fn.is_none() { continue; }
+        if let Some(target) = target {
+            if (entry.has_fn)(world, target) { continue; }
+        }
+        let matches = matches_query(entry.display_name, &q) || matches_query(entry.category, &q);
+        if !matches { continue; }
+
+        if let Some(bucket) = groups.iter_mut().find(|(c, _)| *c == entry.category) {
+            bucket.1.push(entry);
+        } else {
+            groups.push((entry.category, vec![entry]));
+        }
+    }
+
+    if groups.is_empty() {
+        ui.label(RichText::new("No matches").color(text_muted).size(14.0));
+        return;
+    }
+
+    let mut first_visible: Option<&'static str> = None;
+    egui::ScrollArea::vertical()
+        .max_height(360.0)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            for (category, entries) in &groups {
+                if !category.is_empty() {
+                    ui.label(RichText::new(*category).color(text_muted).size(12.0).monospace());
+                }
+                for entry in entries {
+                    if first_visible.is_none() {
+                        first_visible = Some(entry.type_id);
+                    }
+                    if menu_row(ui, entry.icon, entry.display_name, text_primary, hover) {
+                        on_pick(entry.type_id);
+                    }
+                }
+            }
+        });
+
+    if enter_pressed {
+        if let Some(id) = first_visible {
+            on_pick(id);
         }
     }
 }

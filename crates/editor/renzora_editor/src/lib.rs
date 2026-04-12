@@ -37,6 +37,80 @@ pub struct EditorActionHooks {
     pub undo: Option<fn(&mut bevy::prelude::World)>,
     pub redo: Option<fn(&mut bevy::prelude::World)>,
 }
+
+/// Debounce state for the auto-save layout system — tracks "dirty since N
+/// frames ago". We delay the write a few frames after the last change so
+/// mid-drag updates don't hammer the disk.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct PendingLayoutSave {
+    pub dirty: bool,
+    pub frames_stable: u32,
+}
+
+/// Mirror `DockingState` into the active layout's slot + mark dirty for
+/// the debounced save. Runs every frame — when nothing changed, we just
+/// bump the stable-frame counter toward the flush threshold.
+fn mark_layout_dirty(
+    docking: bevy::prelude::Res<renzora_ui::DockingState>,
+    mut manager: bevy::prelude::ResMut<renzora_ui::LayoutManager>,
+    mut pending: bevy::prelude::ResMut<PendingLayoutSave>,
+) {
+    if docking.is_changed() {
+        // Keep the active layout slot in sync with the live dock so
+        // switching away and back preserves edits.
+        let idx = manager.active_index;
+        if let Some(slot) = manager.layouts.get_mut(idx) {
+            slot.tree = docking.tree.clone();
+        }
+        pending.dirty = true;
+        pending.frames_stable = 0;
+    } else if manager.is_changed() {
+        // active_index changed (layout switch) — persist that too.
+        pending.dirty = true;
+        pending.frames_stable = 0;
+    } else if pending.dirty {
+        pending.frames_stable = pending.frames_stable.saturating_add(1);
+    }
+}
+
+/// Write the workspace (all layouts + active index) to disk once it's
+/// been stable for a few frames — avoids fsync churn during drag gestures.
+fn flush_layout_save(
+    manager: bevy::prelude::Res<renzora_ui::LayoutManager>,
+    mut pending: bevy::prelude::ResMut<PendingLayoutSave>,
+) {
+    const SAVE_DELAY_FRAMES: u32 = 8;
+    if pending.dirty && pending.frames_stable >= SAVE_DELAY_FRAMES {
+        renzora_ui::save_workspace(&manager);
+        pending.dirty = false;
+        pending.frames_stable = 0;
+    }
+}
+
+/// Reset only the currently-active layout to its factory default. Other
+/// layouts keep their customisations. The saved workspace file is also
+/// deleted so the next launch starts clean.
+pub fn reset_layout(world: &mut bevy::prelude::World) {
+    world.resource_scope::<renzora_ui::LayoutManager, _>(|world, mut manager| {
+        if let Some(mut docking) = world.get_resource_mut::<renzora_ui::DockingState>() {
+            manager.reset_active(&mut docking);
+        }
+    });
+    if let Some(mut pending) = world.get_resource_mut::<PendingLayoutSave>() {
+        pending.dirty = false;
+        pending.frames_stable = 0;
+    }
+    renzora_ui::delete_saved_workspace();
+}
+
+/// Insert this as a resource to request the context-menu plugin open its
+/// "Add Component" overlay at a given screen position. Consumed (removed)
+/// by the plugin once opened. Lives in the SDK so any panel can fire the
+/// request without depending on the plugin crate directly.
+#[derive(bevy::prelude::Resource, Clone, Copy, Debug)]
+pub struct OpenAddComponentMenuRequest {
+    pub screen_pos: bevy::prelude::Vec2,
+}
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
@@ -177,12 +251,28 @@ impl Plugin for RenzoraEditorPlugin {
             .resource_mut::<EguiGlobalSettings>()
             .auto_create_primary_context = false;
 
+        // Restore the user's saved workspace (all layouts + active index)
+        // if one exists, otherwise use the factory defaults. The active
+        // layout's tree seeds `DockingState`.
+        let saved_manager = renzora_ui::load_saved_workspace();
+        let (initial_manager, initial_docking) = match saved_manager {
+            Some(manager) => {
+                let tree = manager
+                    .layouts
+                    .get(manager.active_index)
+                    .map(|l| l.tree.clone())
+                    .unwrap_or_else(|| renzora_ui::layouts::scene_layout());
+                (manager, DockingState { tree })
+            }
+            None => (LayoutManager::default(), DockingState::default()),
+        };
+
         app.init_state::<EditorState>()
             .init_resource::<ThemeManager>()
             .init_resource::<PanelRegistry>()
-            .init_resource::<DockingState>()
+            .insert_resource(initial_docking)
+            .insert_resource(initial_manager)
             .init_resource::<FloatingPanels>()
-            .init_resource::<LayoutManager>()
             .init_resource::<DocumentTabState>()
             .init_resource::<EditorSelection>()
             .init_resource::<EditorCommands>()
@@ -203,6 +293,14 @@ impl Plugin for RenzoraEditorPlugin {
             shortcut_registry::shortcut_dispatch_system
                 .run_if(in_state(SplashState::Editor)),
         );
+
+        // Auto-save the dock layout whenever it changes.
+        app.init_resource::<PendingLayoutSave>()
+            .add_systems(
+                Update,
+                (mark_layout_dirty, flush_layout_save)
+                    .run_if(in_state(SplashState::Editor)),
+            );
 
         // Register inspector entries and icons for core Bevy components
         bevy_inspectors::register_bevy_inspectors(
@@ -939,6 +1037,7 @@ pub fn editor_ui_system(world: &mut World) {
                 hook(world);
             }
         }
+        TitleBarAction::ResetLayout => reset_layout(world),
         TitleBarAction::None => {}
     }
 

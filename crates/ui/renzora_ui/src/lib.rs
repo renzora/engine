@@ -19,7 +19,10 @@ pub mod toast;
 pub mod widgets;
 
 // Re-export key types at crate root
-pub use dock_tree::{DockTree, DockingState, DropZone, SplitDirection};
+pub use dock_tree::{
+    delete_saved_workspace, load_saved_workspace, save_workspace, DockTree, DockingState,
+    DropZone, SplitDirection,
+};
 pub use document_tabs::{DocTabAction, DocumentTab, DocumentTabState};
 pub use asset_drag::{AssetDragPayload, AssetDropResult, asset_drop_target, draw_asset_drag_ghost};
 pub use shape_drag::{ShapeDragState, ShapeDragPreview, ShapeDragPreviewState, PendingShapeDrop};
