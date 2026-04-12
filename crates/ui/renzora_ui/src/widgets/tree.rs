@@ -141,7 +141,13 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
         painter.rect_filled(
             rect,
             0.0,
-            Color32::from_rgba_unmultiplied(r, g, b, 80),
+            Color32::from_rgba_unmultiplied(r, g, b, 160),
+        );
+        painter.rect_stroke(
+            rect.shrink(0.5),
+            0.0,
+            Stroke::new(1.0, Color32::from_rgb(r, g, b)),
+            egui::StrokeKind::Inside,
         );
     } else if response.hovered() {
         let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
