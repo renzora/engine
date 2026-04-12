@@ -126,7 +126,7 @@ command = "./dist/linux-x64/editor/renzora"
 [tasks.run.mac]
 script = '''
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
-./dist/macos-$ARCH/editor/Renzora.app/Contents/MacOS/renzora
+"./dist/macos-$ARCH/editor/Renzora Engine.app/Contents/MacOS/renzora"
 '''
 
 # =============================================================================
@@ -354,7 +354,7 @@ BASE="dist/$PLATFORM/$TARGET"
 
 # App name and binary name per target
 case "$TARGET" in
-    editor)  APP_NAME="Renzora.app";         BIN_NAME="renzora";         DISPLAY_NAME="Renzora" ;;
+    editor)  APP_NAME="Renzora Engine.app";   BIN_NAME="renzora";         DISPLAY_NAME="Renzora Engine" ;;
     runtime) APP_NAME="Renzora Runtime.app";  BIN_NAME="renzora-runtime"; DISPLAY_NAME="Renzora Runtime" ;;
     server)  APP_NAME="Renzora Server.app";   BIN_NAME="renzora-server";  DISPLAY_NAME="Renzora Server" ;;
 esac
@@ -439,6 +439,10 @@ fi
 
 # Fix dylib rpaths to look in the same directory
 install_name_tool -add_rpath @executable_path "$MACOS/$BIN_NAME" 2>/dev/null || true
+
+# Refresh Launch Services so Finder/Dock pick up the icon immediately
+touch "$APP"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
 
 echo "Synced to $APP"
 '''
