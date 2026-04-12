@@ -547,8 +547,14 @@ fn draw_line_gizmos(
     mode: Res<GizmoMode>,
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,
+    modal: Res<modal_transform::ModalTransformState>,
     transform_q: Query<&Transform, (Without<EditorCamera>, Without<GizmoRoot>, Without<GizmoMesh>)>,
 ) {
+    // Modal transforms (G/R/S) take over input — hide the gizmo's
+    // immediate-mode planes/axis lines so they don't sit under the modal
+    // HUD while the user is dragging.
+    if modal.active { return; }
+
     let Some(selected) = selection.get() else { return };
     let Ok(sel_t) = transform_q.get(selected) else { return };
     let pos = sel_t.translation;

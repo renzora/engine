@@ -332,8 +332,10 @@ impl Default for KeyBindings {
 
         // View defaults
         bindings.insert(EditorAction::ToggleBottomPanel, KeyBinding::new(KeyCode::Backquote).ctrl());
-        bindings.insert(EditorAction::ToggleWireframe, KeyBinding::new(KeyCode::KeyZ));
-        bindings.insert(EditorAction::ToggleLighting, KeyBinding::new(KeyCode::KeyZ).shift());
+        // Z alone used to toggle wireframe but clashed with stray Z presses
+        // near Ctrl+Z (undo) and the gizmo tools. Use Alt-modified forms.
+        bindings.insert(EditorAction::ToggleWireframe, KeyBinding::new(KeyCode::KeyZ).alt());
+        bindings.insert(EditorAction::ToggleLighting, KeyBinding::new(KeyCode::KeyZ).alt().shift());
         bindings.insert(EditorAction::ToggleGrid, KeyBinding::new(KeyCode::KeyH));
 
         // Play mode
@@ -373,9 +375,18 @@ impl KeyBindings {
     /// Check if an action key was just pressed this frame (with exact modifier check).
     /// Also returns true if the action was programmatically dispatched this
     /// frame (e.g. from the command palette) via [`Self::dispatch`].
+    ///
+    /// Programmatic dispatches are consumed on read (removed from the
+    /// pending set) so the action fires exactly once regardless of which
+    /// schedule the dispatch originated from. This avoids a frame-timing
+    /// issue where dispatches from `EguiPrimaryContextPass` could be
+    /// swept out by the `Last`-schedule cleaner before any Update-schedule
+    /// consumer ran.
     pub fn just_pressed(&self, action: EditorAction, keyboard: &ButtonInput<KeyCode>) -> bool {
-        if self.dispatched.lock().map_or(false, |d| d.contains(&action)) {
-            return true;
+        if let Ok(mut set) = self.dispatched.lock() {
+            if set.remove(&action) {
+                return true;
+            }
         }
         if let Some(binding) = self.bindings.get(&action) {
             let key_just_pressed = keyboard.just_pressed(binding.key);
@@ -410,9 +421,13 @@ impl KeyBindings {
     }
 
     /// True if a plugin shortcut was dispatched this frame. Used by the
-    /// plugin shortcut dispatcher in the editor SDK.
+    /// plugin shortcut dispatcher in the editor SDK. Consumes the entry
+    /// on read (same reason as [`Self::just_pressed`]).
     pub fn is_plugin_dispatched(&self, id: &'static str) -> bool {
-        self.dispatched_plugin.lock().map_or(false, |d| d.contains(id))
+        if let Ok(mut set) = self.dispatched_plugin.lock() {
+            return set.remove(id);
+        }
+        false
     }
 
     /// Get the binding for an action

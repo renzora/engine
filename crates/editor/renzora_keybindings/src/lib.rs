@@ -17,9 +17,11 @@ impl Plugin for KeybindingsPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] KeybindingsPlugin");
         app.init_resource::<KeyBindings>();
-        // Drain per-frame programmatic dispatches at end of frame so they
-        // don't leak into the next frame's input checks.
-        app.add_systems(Last, clear_dispatched_actions);
+        // Programmatic dispatches are consumed on read in
+        // `KeyBindings::just_pressed` / `is_plugin_dispatched`, so there's
+        // no need for a per-frame sweep — and having one created a frame-
+        // timing issue where dispatches made from EguiPrimaryContextPass
+        // were wiped before any Update-schedule consumer could see them.
     }
 }
 

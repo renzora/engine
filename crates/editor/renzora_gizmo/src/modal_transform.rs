@@ -322,12 +322,13 @@ pub fn modal_transform_input_system(
         pivot
     };
 
-    // Hide cursor for Grab/Rotate; Scale keeps cursor visible
-    if !matches!(mode, ModalTransformMode::Scale) {
-        if let Ok(mut cursor) = cursor_options.single_mut() {
-            cursor.visible = false;
-        }
+    // Hide cursor for all modal modes (Grab / Rotate / Scale). The warped
+    // pivot position is the anchor; the cursor itself isn't a useful
+    // visual during modal drag.
+    if let Ok(mut cursor) = cursor_options.single_mut() {
+        cursor.visible = false;
     }
+    let _ = mode;
 
     // Collect starting transforms (skip hidden entities)
     let start_transforms: Vec<EntityStartState> = selected

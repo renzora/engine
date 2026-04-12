@@ -63,6 +63,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
+            .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
                 handle_viewport_resize,
@@ -82,10 +83,69 @@ impl Plugin for ViewportPlugin {
                 shape_drop::handle_shape_spawn,
                 handle_view_shortcuts,
                 handle_play_shortcuts,
+                hide_cursor_for_brushes,
             ).run_if(in_state(renzora::editor::SplashState::Editor)));
+
+        // Register the crosshair overlay so the cursor goes to Crosshair
+        // whenever the pointer is over the viewport rect.
+        app.world_mut()
+            .resource_mut::<renzora::editor::ViewportOverlayRegistry>()
+            .register(150, draw_viewport_cursor_overlay);
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);
+    }
+}
+
+/// Egui overlay that sets the viewport cursor to a crosshair whenever the
+/// pointer is inside the viewport rect. Brush tools and modal transforms
+/// separately hide the OS cursor, so the crosshair is only actually seen
+/// in the "normal" gizmo-tool states, which is what we want.
+fn draw_viewport_cursor_overlay(
+    ui: &mut renzora::bevy_egui::egui::Ui,
+    _world: &World,
+    rect: renzora::bevy_egui::egui::Rect,
+) {
+    use renzora::bevy_egui::egui::CursorIcon;
+    let pointer_in = ui
+        .ctx()
+        .pointer_hover_pos()
+        .map_or(false, |p| rect.contains(p));
+    if pointer_in {
+        ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+    }
+}
+
+/// Tracks whether [`hide_cursor_for_brushes`] is currently the owner of the
+/// cursor-hidden state. Without this, we can't tell the difference between
+/// "we hid it" and "modal transform hid it", and would stomp on each other.
+#[derive(Resource, Default)]
+struct BrushCursorHiddenByUs(bool);
+
+/// Hide the OS cursor while a brush tool is active and the pointer is over
+/// the viewport. Only acts on transitions we own — if someone else (e.g.
+/// modal transform) has hidden the cursor, we don't touch it.
+fn hide_cursor_for_brushes(
+    active_tool: Option<Res<renzora::editor::ActiveTool>>,
+    viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
+    mut cursor_options: Query<&mut bevy::window::CursorOptions>,
+    mut ours: ResMut<BrushCursorHiddenByUs>,
+) {
+    use renzora::editor::ActiveTool;
+    let Ok(mut cursor) = cursor_options.single_mut() else { return };
+    let brush_active = matches!(
+        active_tool.as_deref(),
+        Some(ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint)
+    );
+    let hovered = viewport.as_deref().map_or(false, |v| v.hovered);
+    let should_hide = brush_active && hovered;
+
+    if should_hide && !ours.0 {
+        cursor.visible = false;
+        ours.0 = true;
+    } else if !should_hide && ours.0 {
+        cursor.visible = true;
+        ours.0 = false;
     }
 }
 
