@@ -168,14 +168,24 @@ pub struct GizmoState {
 }
 
 /// State for box/marquee selection (drag to select multiple entities).
+///
+/// A single click is also routed through this state: on press we arm
+/// `active` + optionally remember the entity under the cursor in
+/// `pending_pick`. On release, if the mouse barely moved, we commit the
+/// pending pick (or deselect on empty space); if it moved past the drag
+/// threshold, we finalise a box selection. This makes drag-select work
+/// whether the drag starts on an entity or on empty space.
 #[derive(Resource, Default, Clone, Copy)]
 pub struct BoxSelectionState {
-    /// Whether box selection is currently active.
+    /// Whether a click/drag gesture is in progress.
     pub active: bool,
     /// Start position in screen coordinates.
     pub start_pos: Vec2,
     /// Current position in screen coordinates.
     pub current_pos: Vec2,
+    /// Entity under the cursor at press time. Committed as a single-entity
+    /// selection on release if the gesture didn't become a drag.
+    pub pending_pick: Option<Entity>,
 }
 
 impl BoxSelectionState {
@@ -1207,11 +1217,9 @@ fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
     mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
-    selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
     nav_overlay: Option<Res<NavOverlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
@@ -1247,42 +1255,37 @@ fn entity_pick_system(
         || vp_local.x > viewport.screen_size.x || vp_local.y > viewport.screen_size.y
     { return; }
 
-    let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
-    let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
-
+    // Modifiers are read at release time in `box_selection_system` — on
+    // press we just arm the gesture.
     let Ok(ray) = camera.viewport_to_world(cam_gt, vp_local) else { return };
 
+    // Raycast and find the topmost selectable entity (if any). We do NOT
+    // commit the selection yet — we arm `box_sel` with this entity as a
+    // pending pick and wait for mouse-up to decide click vs drag.
     let hits = mesh_ray_cast.cast_ray(ray, &default());
-
+    let mut pending: Option<Entity> = None;
     for (entity, _hit) in hits.iter() {
         if gizmo_meshes.get(*entity).is_ok() { continue; }
         if hidden_entities.get(*entity).is_ok() { continue; }
 
-        let selectable = find_named_ancestor(*entity, &named_entities, &parent_query);
-        if let Some(target) = selectable {
+        if let Some(target) = find_named_ancestor(*entity, &named_entities, &parent_query) {
             if hidden_entities.get(target).is_ok() { continue; }
-            info!("[pick] Selected {:?} (hit {:?})", target, entity);
-            if ctrl {
-                selection.toggle(target);
-            } else if shift {
-                // Add to selection (only if not already selected)
-                if !selection.is_selected(target) {
-                    selection.toggle(target);
-                }
-            } else {
-                selection.set(Some(target));
-            }
-            return;
+            pending = Some(target);
+            break;
         }
     }
 
-    // Clicked empty space — start box selection in Select mode, else just deselect
-    if *mode == GizmoMode::Select {
+    // Arm the gesture. `box_selection_system` reads these fields each frame
+    // and finalises on release. Only arm from tools where box / click
+    // selection is meaningful.
+    if matches!(
+        *mode,
+        GizmoMode::Select | GizmoMode::Translate | GizmoMode::Rotate | GizmoMode::Scale
+    ) {
         box_sel.active = true;
         box_sel.start_pos = cursor;
         box_sel.current_pos = cursor;
-    } else if !shift && !ctrl {
-        selection.set(None);
+        box_sel.pending_pick = pending;
     }
 }
 
@@ -1321,16 +1324,32 @@ fn box_selection_system(
         return;
     }
 
-    // Mouse released — finalize box selection
+    // Mouse released — finalize gesture.
     box_sel.active = false;
+    let pending_pick = box_sel.pending_pick.take();
 
     let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     if !box_sel.is_drag() {
-        // Was just a click on empty space, not a drag
-        if !shift && !ctrl {
-            selection.set(None);
+        // Click (no drag): commit the pending pick, or deselect on empty space.
+        match pending_pick {
+            Some(target) => {
+                if ctrl {
+                    selection.toggle(target);
+                } else if shift {
+                    if !selection.is_selected(target) {
+                        selection.toggle(target);
+                    }
+                } else {
+                    selection.set(Some(target));
+                }
+            }
+            None => {
+                if !shift && !ctrl {
+                    selection.set(None);
+                }
+            }
         }
         return;
     }
