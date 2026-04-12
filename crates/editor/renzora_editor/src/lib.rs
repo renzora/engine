@@ -27,6 +27,16 @@ pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
 pub use shortcut_registry::{ShortcutEntry, ShortcutRegistry};
 pub use toolbar_registry::{ToolEntry, ToolSection, ToolbarRegistry};
+
+/// Late-bound hooks for actions that live in downstream crates the editor
+/// framework can't depend on directly (avoids a cycle with `renzora_undo`).
+/// Downstream crates install hooks in their `Plugin::build`; the menu /
+/// title bar handlers call them when present.
+#[derive(bevy::prelude::Resource, Default, Clone)]
+pub struct EditorActionHooks {
+    pub undo: Option<fn(&mut bevy::prelude::World)>,
+    pub redo: Option<fn(&mut bevy::prelude::World)>,
+}
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
@@ -181,7 +191,8 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ComponentIconRegistry>()
             .init_resource::<ViewportOverlayRegistry>()
             .init_resource::<ToolbarRegistry>()
-            .init_resource::<ShortcutRegistry>();
+            .init_resource::<ShortcutRegistry>()
+            .init_resource::<EditorActionHooks>();
 
         register_builtin_tools(
             &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
@@ -917,6 +928,16 @@ pub fn editor_ui_system(world: &mut World) {
         }
         TitleBarAction::StartTutorial => {
             world.insert_resource(renzora_core::TutorialRequested);
+        }
+        TitleBarAction::Undo => {
+            if let Some(hook) = world.get_resource::<EditorActionHooks>().and_then(|h| h.undo) {
+                hook(world);
+            }
+        }
+        TitleBarAction::Redo => {
+            if let Some(hook) = world.get_resource::<EditorActionHooks>().and_then(|h| h.redo) {
+                hook(world);
+            }
         }
         TitleBarAction::None => {}
     }

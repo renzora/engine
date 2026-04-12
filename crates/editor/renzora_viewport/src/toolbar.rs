@@ -111,21 +111,28 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                 // Divider before undo/redo
                 draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
 
-                // Undo | Redo (dimmed — no command history yet)
-                let disabled_color = Color32::from_rgba_unmultiplied(inactive_color.r(), inactive_color.g(), inactive_color.b(), 80);
-                let disabled_icon_color = Color32::from_white_alpha(40);
+                // Undo | Redo — enabled when the active undo stack has entries.
+                let stacks = world.get_resource::<renzora::undo::UndoStacks>();
+                let (can_undo, can_redo) = match stacks {
+                    Some(s) => (s.can_undo(&s.active), s.can_redo(&s.active)),
+                    None => (false, false),
+                };
 
                 let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
-                ui.allocate_rect(undo_rect, Sense::hover());
-                ui.painter().rect_filled(undo_rect, CornerRadius::same(3), disabled_color);
-                ui.painter().text(undo_rect.center(), egui::Align2::CENTER_CENTER, ARROW_U_UP_LEFT, FontId::proportional(16.0), disabled_icon_color);
-                ui.allocate_rect(undo_rect, Sense::hover()).on_hover_text("Undo (Ctrl+Z)");
+                let r = undo_redo_button(ui, undo_rect, ARROW_U_UP_LEFT, can_undo,
+                    inactive_color, hovered_color);
+                if r.clicked() {
+                    cmds.push(|w: &mut World| { renzora::undo::undo_once(w); });
+                }
+                r.on_hover_text("Undo (Ctrl+Z)");
 
                 let redo_rect = Rect::from_min_size(Pos2::new(col1_x, y), BTN_SIZE);
-                ui.allocate_rect(redo_rect, Sense::hover());
-                ui.painter().rect_filled(redo_rect, CornerRadius::same(3), disabled_color);
-                ui.painter().text(redo_rect.center(), egui::Align2::CENTER_CENTER, ARROW_U_UP_RIGHT, FontId::proportional(16.0), disabled_icon_color);
-                ui.allocate_rect(redo_rect, Sense::hover()).on_hover_text("Redo (Ctrl+Y)");
+                let r = undo_redo_button(ui, redo_rect, ARROW_U_UP_RIGHT, can_redo,
+                    inactive_color, hovered_color);
+                if r.clicked() {
+                    cmds.push(|w: &mut World| { renzora::undo::redo_once(w); });
+                }
+                r.on_hover_text("Redo (Ctrl+Y)");
                 y += row_step;
 
                 // Terrain section — only rendered if any entries are currently visible
@@ -271,6 +278,43 @@ fn render_tool_section(
     }
     // Advance y if last row only filled one column
     if tools.len() % 2 == 1 { *y += row_step; }
+}
+
+/// A toolbar button for undo/redo — enabled state accepts clicks; disabled
+/// state renders dimmed and only shows a tooltip.
+fn undo_redo_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    icon: &str,
+    enabled: bool,
+    inactive_color: Color32,
+    hovered_color: Color32,
+) -> egui::Response {
+    if !enabled {
+        let resp = ui.allocate_rect(rect, Sense::hover());
+        if ui.is_rect_visible(rect) {
+            let dim_bg = Color32::from_rgba_unmultiplied(
+                inactive_color.r(), inactive_color.g(), inactive_color.b(), 80,
+            );
+            ui.painter().rect_filled(rect, CornerRadius::same(3), dim_bg);
+            ui.painter().text(
+                rect.center(), egui::Align2::CENTER_CENTER, icon,
+                FontId::proportional(16.0), Color32::from_white_alpha(40),
+            );
+        }
+        return resp;
+    }
+    let resp = ui.allocate_rect(rect, Sense::click());
+    if resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+    if ui.is_rect_visible(rect) {
+        let bg = if resp.hovered() { hovered_color } else { inactive_color };
+        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        ui.painter().text(
+            rect.center(), egui::Align2::CENTER_CENTER, icon,
+            FontId::proportional(16.0), Color32::WHITE,
+        );
+    }
+    resp
 }
 
 fn viewport_tool_button(

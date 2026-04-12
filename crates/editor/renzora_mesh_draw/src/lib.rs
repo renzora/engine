@@ -390,7 +390,11 @@ fn handle_mouse_input(
                 let current_mode = state.tool_mode;
                 if let Some(cmds) = cmds {
                     cmds.push(move |world: &mut World| {
-                        spawn_drawn_mesh(world, recipe);
+                        renzora::undo::execute(
+                            world,
+                            renzora::undo::UndoContext::Scene,
+                            Box::new(SpawnDrawnMeshCmd { recipe, entity: None }),
+                        );
                         // Auto-deactivate after committing so the next click
                         // doesn't immediately start another shape.
                         deactivate_tool(world, current_mode);
@@ -548,8 +552,9 @@ fn draw_cursor_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
 
 // ── Commit drawn meshes ────────────────────────────────────────────────────
 
-fn spawn_drawn_mesh(world: &mut World, recipe: MeshDrawRecipe) {
-    let (mesh, pivot) = build_recipe_mesh(&recipe);
+/// Spawn a mesh built from `recipe` and return its entity.
+fn spawn_drawn_mesh(world: &mut World, recipe: &MeshDrawRecipe) -> Entity {
+    let (mesh, pivot) = build_recipe_mesh(recipe);
     let is_polygon = matches!(recipe.footprint, Footprint::Polygon { .. });
     let mesh_handle = world.resource_mut::<Assets<Mesh>>().add(mesh);
     let material_handle = world.resource_mut::<Assets<StandardMaterial>>().add(
@@ -562,14 +567,40 @@ fn spawn_drawn_mesh(world: &mut World, recipe: MeshDrawRecipe) {
             ..default()
         }
     );
-    world.spawn((
-        Name::new("DrawnMesh"),
-        Mesh3d(mesh_handle),
-        MeshMaterial3d(material_handle),
-        Transform::from_translation(pivot),
-        Visibility::default(),
-        recipe,
-    ));
+    world
+        .spawn((
+            Name::new("DrawnMesh"),
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(material_handle),
+            Transform::from_translation(pivot),
+            Visibility::default(),
+            recipe.clone(),
+        ))
+        .id()
+}
+
+/// Undoable spawn: `execute` creates the entity and remembers its id;
+/// `undo` despawns it; `execute` runs again on redo and respawns with the
+/// original recipe.
+struct SpawnDrawnMeshCmd {
+    recipe: MeshDrawRecipe,
+    entity: Option<Entity>,
+}
+
+impl renzora::undo::UndoCommand for SpawnDrawnMeshCmd {
+    fn label(&self) -> &str { "Draw Mesh" }
+
+    fn execute(&mut self, world: &mut World) {
+        self.entity = Some(spawn_drawn_mesh(world, &self.recipe));
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        if let Some(entity) = self.entity.take() {
+            if let Ok(ent) = world.get_entity_mut(entity) {
+                ent.despawn();
+            }
+        }
+    }
 }
 
 /// Build a mesh from a recipe. Returns `(mesh, pivot)` where pivot is the

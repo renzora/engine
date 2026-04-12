@@ -121,30 +121,47 @@ impl Plugin for UndoPlugin {
             .add_message::<RequestUndo>()
             .add_message::<RequestRedo>()
             .add_message::<UndoExhausted>()
+            // Ensure the hooks resource exists regardless of plugin order —
+            // RenzoraEditorPlugin also initialises it, but we can't rely on
+            // that running first.
+            .init_resource::<renzora_editor_framework::EditorActionHooks>()
             .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain());
+
+        // Register undo/redo as late-bound hooks so the editor framework's
+        // title bar / menu handlers can invoke them without taking a
+        // dependency on this crate (which would create a cycle).
+        let mut hooks = app
+            .world_mut()
+            .resource_mut::<renzora_editor_framework::EditorActionHooks>();
+        hooks.undo = Some(undo_once);
+        hooks.redo = Some(redo_once);
     }
 }
 
 fn shortcut_input(
     keys: Res<ButtonInput<KeyCode>>,
+    bindings: Option<Res<renzora_core::keybindings::KeyBindings>>,
     mut undo_w: MessageWriter<RequestUndo>,
     mut redo_w: MessageWriter<RequestRedo>,
 ) {
-    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight)
-        || keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight);
-    if !ctrl { return; }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    if keys.just_pressed(KeyCode::KeyZ) {
-        if shift { redo_w.write(RequestRedo); } else { undo_w.write(RequestUndo); }
-    } else if keys.just_pressed(KeyCode::KeyY) {
+    // Route through KeyBindings so:
+    //   - User-rebound Undo/Redo keys are respected
+    //   - Command palette dispatches (KeyBindings::dispatch) fire the messages
+    let Some(bindings) = bindings else { return };
+    use renzora_core::keybindings::EditorAction;
+    if bindings.just_pressed(EditorAction::Undo, &keys) {
+        undo_w.write(RequestUndo);
+    }
+    if bindings.just_pressed(EditorAction::Redo, &keys) {
         redo_w.write(RequestRedo);
     }
 }
 
-fn handle_undo(world: &mut World) {
-    let count = world.get_resource::<Messages<RequestUndo>>()
-        .map(|m| m.iter_current_update_messages().count()).unwrap_or(0);
-    if count == 0 { return; }
+/// Undo the most recent action on the active stack. Callable from anywhere
+/// with `&mut World` — bypasses the message bus so it works from deferred
+/// callers (toolbar clicks, menu items, command palette) without frame-timing
+/// concerns.
+pub fn undo_once(world: &mut World) {
     let active = world.resource::<UndoStacks>().active.clone();
     let cmd = world.resource_mut::<UndoStacks>().stacks
         .get_mut(&active).and_then(|s| s.undo.pop_back());
@@ -155,10 +172,8 @@ fn handle_undo(world: &mut World) {
     }
 }
 
-fn handle_redo(world: &mut World) {
-    let count = world.get_resource::<Messages<RequestRedo>>()
-        .map(|m| m.iter_current_update_messages().count()).unwrap_or(0);
-    if count == 0 { return; }
+/// Redo the most recently undone action on the active stack.
+pub fn redo_once(world: &mut World) {
     let active = world.resource::<UndoStacks>().active.clone();
     let cmd = world.resource_mut::<UndoStacks>().stacks
         .get_mut(&active).and_then(|s| s.redo.pop_back());
@@ -167,6 +182,20 @@ fn handle_redo(world: &mut World) {
     if let Some(s) = world.resource_mut::<UndoStacks>().stacks.get_mut(&active) {
         s.undo.push_back(cmd);
     }
+}
+
+fn handle_undo(world: &mut World) {
+    let count = world.get_resource::<Messages<RequestUndo>>()
+        .map(|m| m.iter_current_update_messages().count()).unwrap_or(0);
+    if count == 0 { return; }
+    undo_once(world);
+}
+
+fn handle_redo(world: &mut World) {
+    let count = world.get_resource::<Messages<RequestRedo>>()
+        .map(|m| m.iter_current_update_messages().count()).unwrap_or(0);
+    if count == 0 { return; }
+    redo_once(world);
 }
 
 // ──────────────────────────────────────────────────────────────────────────
