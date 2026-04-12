@@ -109,6 +109,52 @@ for feature in editor runtime server; do
     done
 done
 
+# Wrap the editor output into an AppDir + AppImage
+EDITOR_DIR="$OUTPUT_DIR/linux-x64/editor"
+if [ -f "$EDITOR_DIR/renzora" ]; then
+    APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
+    rm -rf "$APPDIR"
+    mkdir -p "$APPDIR/plugins"
+    # Move all artifacts into the AppDir
+    mv "$EDITOR_DIR/renzora" "$APPDIR/renzora"
+    for f in "$EDITOR_DIR"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/"; done
+    if [ -d "$EDITOR_DIR/plugins" ]; then
+        for f in "$EDITOR_DIR/plugins"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/plugins/"; done
+        rmdir "$EDITOR_DIR/plugins" 2>/dev/null || true
+    fi
+
+    cat > "$APPDIR/AppRun" << 'APPRUN'
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+exec "$HERE/renzora" "$@"
+APPRUN
+    chmod +x "$APPDIR/AppRun"
+
+    cat > "$APPDIR/renzora-engine.desktop" << 'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Renzora Engine
+Exec=renzora
+Icon=renzora-engine
+Categories=Development;Graphics;
+Terminal=false
+DESKTOP
+
+    if [ -f icon.png ]; then
+        cp icon.png "$APPDIR/renzora-engine.png"
+        cp icon.png "$APPDIR/.DirIcon"
+    fi
+
+    if command -v appimagetool >/dev/null 2>&1; then
+        ARCH=x86_64 appimagetool "$APPDIR" "$EDITOR_DIR/Renzora Engine-x86_64.AppImage" \
+            && echo "Built $EDITOR_DIR/Renzora Engine-x86_64.AppImage" \
+            || echo "WARN: appimagetool failed"
+    else
+        echo "WARN: appimagetool not found; AppDir left at $APPDIR"
+    fi
+fi
+
 # ── Windows (cross-compile) ──────────────────────────────────────────────────
 
 for feature in editor runtime server; do

@@ -122,7 +122,16 @@ dependencies = ["build-editor"]
 [tasks.run.windows]
 command = "dist\\windows-x64\\editor\\renzora.exe"
 [tasks.run.linux]
-command = "./dist/linux-x64/editor/renzora"
+script = '''
+APPIMAGE=$(ls dist/linux-x64/editor/*.AppImage 2>/dev/null | head -1)
+if [ -n "$APPIMAGE" ]; then
+    "$APPIMAGE"
+elif [ -x "dist/linux-x64/editor/Renzora Engine.AppDir/AppRun" ]; then
+    "dist/linux-x64/editor/Renzora Engine.AppDir/AppRun"
+else
+    ./dist/linux-x64/editor/renzora
+fi
+'''
 [tasks.run.mac]
 script = '''
 ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
@@ -312,37 +321,87 @@ script = '''
 TARGET="${SYNC_TARGET}"
 PLATFORM="linux-x64"
 SRC="target/$TARGET/dist"
-DIR="dist/$PLATFORM/$TARGET"
-mkdir -p "$DIR" "$DIR/plugins"
-rm -f "$DIR"/*.so "$DIR"/renzora "$DIR"/renzora-runtime "$DIR"/renzora-server
-rm -f "$DIR"/plugins/*.so
+BASE="dist/$PLATFORM/$TARGET"
 
-# Binary (rename based on target)
-case "$TARGET" in
-    editor)  DEST="renzora" ;;
-    runtime) DEST="renzora-runtime" ;;
-    server)  DEST="renzora-server" ;;
-esac
-[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$DIR/$DEST"
+# For editor, layout is an AppDir wrapped into AppImage; for runtime/server, loose dir.
+if [ "$TARGET" = "editor" ]; then
+    APPDIR="$BASE/Renzora Engine.AppDir"
+    rm -rf "$APPDIR" "$BASE"/*.AppImage
+    mkdir -p "$APPDIR/plugins"
+    ROOT="$APPDIR"
+    BIN_NAME="renzora"
+else
+    rm -f "$BASE"/*.so "$BASE"/renzora "$BASE"/renzora-runtime "$BASE"/renzora-server
+    rm -f "$BASE"/plugins/*.so
+    mkdir -p "$BASE/plugins"
+    ROOT="$BASE"
+    case "$TARGET" in
+        runtime) BIN_NAME="renzora-runtime" ;;
+        server)  BIN_NAME="renzora-server" ;;
+    esac
+fi
+
+# Binary
+[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$ROOT/$BIN_NAME"
+chmod +x "$ROOT/$BIN_NAME" 2>/dev/null || true
 
 # SDK
-[ -f "$SRC/librenzora.so" ] && cp "$SRC/librenzora.so" "$DIR/"
+[ -f "$SRC/librenzora.so" ] && cp "$SRC/librenzora.so" "$ROOT/"
 
 # bevy_dylib (newest only)
-ls -t $SRC/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$DIR/"
+ls -t $SRC/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$ROOT/"
 
+# Rust std
 SYSROOT=$(rustc --print sysroot)
 for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
-    [ -f "$f" ] && cp "$f" "$DIR/"
+    [ -f "$f" ] && cp "$f" "$ROOT/"
 done
 
+# Plugins
 for f in $SRC/*.so; do
     name=$(basename "$f")
     [ "$name" = "librenzora.so" ] && continue
-    cp "$f" "$DIR/plugins/"
+    cp "$f" "$ROOT/plugins/"
 done
 
-echo "Synced to dist/$PLATFORM/$TARGET"
+if [ "$TARGET" = "editor" ]; then
+    # AppRun
+    cat > "$APPDIR/AppRun" << 'APPRUN'
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+exec "$HERE/renzora" "$@"
+APPRUN
+    chmod +x "$APPDIR/AppRun"
+
+    # Desktop entry
+    cat > "$APPDIR/renzora-engine.desktop" << 'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Renzora Engine
+Exec=renzora
+Icon=renzora-engine
+Categories=Development;Graphics;
+Terminal=false
+DESKTOP
+
+    # Icon
+    if [ -f "icon.png" ]; then
+        cp "icon.png" "$APPDIR/renzora-engine.png"
+        cp "icon.png" "$APPDIR/.DirIcon"
+    fi
+
+    # Build AppImage if tool available
+    if command -v appimagetool >/dev/null 2>&1; then
+        ARCH=x86_64 appimagetool "$APPDIR" "$BASE/Renzora Engine-x86_64.AppImage" >/dev/null 2>&1 \
+            && echo "Built $BASE/Renzora Engine-x86_64.AppImage" \
+            || echo "appimagetool failed; AppDir left at $APPDIR"
+    else
+        echo "appimagetool not found; AppDir left at $APPDIR (install appimagetool or build via Docker)"
+    fi
+else
+    echo "Synced to $BASE"
+fi
 '''
 
 [tasks.sync-dist.mac]

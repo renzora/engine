@@ -41,7 +41,10 @@ rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
 
-# Faster linking for Linux (uses mold, 5x faster than lld)
+# Linux: mold linker + $ORIGIN rpath so binaries find dylibs next to themselves
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/usr/bin/mold",
+    "-C", "link-arg=-Wl,-rpath,$ORIGIN",
+]

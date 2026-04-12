@@ -43,7 +43,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # General
     curl \
     unzip \
+    file \
+    desktop-file-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# ── AppImage tooling ─────────────────────────────────────────────────────────
+RUN curl -sL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+    -o /usr/local/bin/appimagetool && \
+    chmod +x /usr/local/bin/appimagetool && \
+    cd /usr/local/bin && ./appimagetool --appimage-extract >/dev/null && \
+    mv squashfs-root /opt/appimagetool && \
+    ln -sf /opt/appimagetool/AppRun /usr/local/bin/appimagetool
 
 # ── All Rust targets ─────────────────────────────────────────────────────────
 RUN rustup target add \
