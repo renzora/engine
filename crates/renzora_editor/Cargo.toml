@@ -61,6 +61,7 @@ renzora_hanabi = { path = "../core/renzora_hanabi" }
 renzora_network = { path = "../core/renzora_network" }
 renzora_audio = { path = "../core/renzora_audio" }
 renzora_shader = { path = "../core/renzora_shader" }
+renzora_undo = { path = "../core/renzora_undo" }
 
 # Postprocess framework + vital effects (same as renzora_runtime)
 renzora_postprocess = { path = "../postprocessing/renzora_postprocess" }

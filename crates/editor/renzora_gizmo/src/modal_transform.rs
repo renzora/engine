@@ -354,6 +354,7 @@ pub fn modal_transform_keyboard_system(
     mut modal: ResMut<ModalTransformState>,
     mut transforms: Query<&mut Transform>,
     mut cursor_options: Query<&mut CursorOptions>,
+    mut commands: Commands,
 ) {
     if !modal.active {
         return;
@@ -434,6 +435,25 @@ pub fn modal_transform_keyboard_system(
         || keyboard.just_pressed(KeyCode::NumpadEnter)
         || mouse_button.just_pressed(MouseButton::Left)
     {
+        // Record a TransformCmd per changed entity for undo.
+        let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
+        for state in &modal.start_transforms {
+            let Ok(current) = transforms.get(state.entity) else { continue };
+            let old = state.transform;
+            let new = *current;
+            if old.translation == new.translation
+                && old.rotation == new.rotation
+                && old.scale == new.scale { continue; }
+            records.push((state.entity, old, new));
+        }
+        if !records.is_empty() {
+            commands.queue(move |world: &mut World| {
+                for (entity, old, new) in records {
+                    renzora::undo::record(world, renzora::undo::UndoContext::Scene,
+                        Box::new(renzora::undo::TransformCmd { entity, old, new }));
+                }
+            });
+        }
         modal.confirm();
         if let Ok(mut cursor) = cursor_options.single_mut() {
             cursor.visible = true;

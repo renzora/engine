@@ -590,9 +590,31 @@ fn handle_selection_shortcuts(
         let entities = selection.get_all();
         if !entities.is_empty() {
             selection.clear();
-            for entity in entities {
-                commands.entity(entity).despawn();
-            }
+            commands.queue(move |world: &mut World| {
+                let mut items = Vec::new();
+                let mut other = Vec::new();
+                for entity in &entities {
+                    let shape = world.get_entity(*entity).ok().and_then(|e| {
+                        let shape_id = e.get::<renzora::core::MeshPrimitive>()?.0.clone();
+                        let name = e.get::<Name>()?.as_str().to_string();
+                        let transform = *e.get::<Transform>()?;
+                        let color = e.get::<renzora::core::MeshColor>()?.0;
+                        Some(renzora::undo::DeletedShape {
+                            entity: *entity, shape_id, name, transform, color,
+                        })
+                    });
+                    match shape {
+                        Some(item) => items.push(item),
+                        None => other.push(*entity),
+                    }
+                }
+                for e in other {
+                    if let Ok(em) = world.get_entity_mut(e) { em.despawn(); }
+                }
+                if items.is_empty() { return; }
+                renzora::undo::execute(world, renzora::undo::UndoContext::Scene,
+                    Box::new(renzora::undo::DeleteShapesCmd { items }));
+            });
         }
     }
 
@@ -932,6 +954,7 @@ fn gizmo_drag(
     global_q: Query<&GlobalTransform, Without<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
+    mut commands: Commands,
 ) {
     if *mode == GizmoMode::Select {
         mouse_motion.clear();
@@ -971,6 +994,24 @@ fn gizmo_drag(
 
     // End drag
     if mouse_button.just_released(MouseButton::Left) && gizmo_state.active_axis.is_some() {
+        let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
+        for (entity, old_t, old_r, old_s) in &gizmo_state.drag_starts {
+            let Ok(t) = transform_q.get(*entity) else { continue };
+            let old = Transform { translation: *old_t, rotation: *old_r, scale: *old_s };
+            let new = *t;
+            if old.translation == new.translation
+                && old.rotation == new.rotation
+                && old.scale == new.scale { continue; }
+            records.push((*entity, old, new));
+        }
+        if !records.is_empty() {
+            commands.queue(move |world: &mut World| {
+                for (entity, old, new) in records {
+                    renzora::undo::record(world, renzora::undo::UndoContext::Scene,
+                        Box::new(renzora::undo::TransformCmd { entity, old, new }));
+                }
+            });
+        }
         gizmo_state.active_axis = None;
         gizmo_state.drag_starts.clear();
         mouse_motion.clear();

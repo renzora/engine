@@ -7,6 +7,22 @@ use renzora::editor::{
     FieldDef, FieldType, FieldValue,
 };
 use renzora::theme::Theme;
+use renzora::undo::{self, FieldChangeCmd, UndoContext};
+
+fn push_field_change(
+    cmds: &EditorCommands,
+    entity: Entity,
+    field_name: &'static str,
+    old: FieldValue,
+    new: FieldValue,
+    set_fn: fn(&mut World, Entity, FieldValue),
+) {
+    cmds.push(move |world| {
+        undo::execute(world, UndoContext::Scene, Box::new(FieldChangeCmd {
+            entity, field_name, old, new, set_fn,
+        }));
+    });
+}
 
 /// Render a single field row using the appropriate widget for its type.
 ///
@@ -40,7 +56,8 @@ pub fn render_field(
                         .range(min..=max),
                 );
                 if v != orig {
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Float(v)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Float(orig), FieldValue::Float(v), set_fn);
                 }
             });
         }
@@ -80,7 +97,8 @@ pub fn render_field(
                 ui.add_sized([w, 16.0], egui::DragValue::new(&mut v[2]).speed(speed));
 
                 if v != orig {
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Vec3(v)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Vec3(orig), FieldValue::Vec3(v), set_fn);
                 }
             });
         }
@@ -92,7 +110,8 @@ pub fn render_field(
                 let id = ui.id().with(field.name);
                 if toggle_switch(ui, id, v) {
                     let new_val = !v;
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Bool(new_val)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Bool(v), FieldValue::Bool(new_val), set_fn);
                 }
             });
         }
@@ -103,7 +122,8 @@ pub fn render_field(
             inline_property(ui, row_index, field.name, theme, |ui| {
                 let orig = rgb;
                 if ui.color_edit_button_rgb(&mut rgb).changed() && rgb != orig {
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Color(rgb)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Color(orig), FieldValue::Color(rgb), set_fn);
                 }
             });
         }
@@ -118,7 +138,8 @@ pub fn render_field(
                         .desired_width(ui.available_width()),
                 );
                 if s != orig {
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::String(s)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::String(orig), FieldValue::String(s), set_fn);
                 }
             });
         }
@@ -158,10 +179,14 @@ pub fn render_field(
                     } else {
                         path.to_string_lossy().to_string()
                     };
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Asset(Some(path_str))));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Asset(current.clone()),
+                        FieldValue::Asset(Some(path_str)), set_fn);
                 }
                 if drop_result.cleared {
-                    cmds.push(move |w| (set_fn)(w, entity, FieldValue::Asset(None)));
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Asset(current.clone()),
+                        FieldValue::Asset(None), set_fn);
                 }
             });
         }

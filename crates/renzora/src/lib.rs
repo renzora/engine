@@ -35,6 +35,8 @@ pub use renzora_theme as theme;
 #[cfg(feature = "editor")]
 pub use renzora_editor_framework as editor;
 #[cfg(feature = "editor")]
+pub use renzora_undo as undo;
+#[cfg(feature = "editor")]
 pub use bevy_egui;
 #[cfg(feature = "editor")]
 pub use egui_phosphor;

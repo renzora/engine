@@ -9,7 +9,7 @@ crate-type = ["dylib"]
 
 [features]
 default = ["editor"]
-editor = ["dep:renzora_editor_framework", "dep:bevy_egui", "dep:egui-phosphor"]
+editor = ["dep:renzora_editor_framework", "dep:renzora_undo", "dep:bevy_egui", "dep:egui-phosphor"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -22,6 +22,7 @@ dynamic_plugin_meta = { path = "../plugins/dynamic_plugin_meta" }
 
 # Editor framework (compiled into renzora.dll)
 renzora_editor_framework = { path = "../editor/renzora_editor", optional = true }
+renzora_undo = { path = "../core/renzora_undo", optional = true }
 renzora_theme = { path = "../ui/renzora_theme" }
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

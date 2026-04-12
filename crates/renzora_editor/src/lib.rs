@@ -24,6 +24,7 @@ pub use renzora_hanabi;
 pub use renzora_network;
 pub use renzora_audio;
 pub use renzora_shader;
+pub use renzora_undo;
 
 // Postprocess framework + vital effects
 pub use renzora_postprocess;

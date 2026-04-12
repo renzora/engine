@@ -14,6 +14,7 @@ use renzora::editor::{
 };
 use renzora::core::{MeshPrimitive, MeshColor, ShapeRegistry};
 use renzora::theme::ThemeManager;
+use renzora::undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
 
@@ -161,73 +162,47 @@ impl EditorPanel for HierarchyPanel {
                 OverlayAction::Selected(id) => {
                     state.show_add_overlay = false;
 
-                    // Try SpawnRegistry first (lights, cameras, etc.)
+                    // Classify id: preset, shape, or component-type.
                     let mut handled = false;
-                    if let Some(registry) = world.get_resource::<SpawnRegistry>() {
-                        if let Some(preset) = registry.iter().find(|p| p.id == id) {
-                            let spawn_fn = preset.spawn_fn;
+                    if world.get_resource::<SpawnRegistry>()
+                        .map_or(false, |r| r.iter().any(|p| p.id == id))
+                    {
+                        let preset_id = id.clone();
+                        commands.push(move |world: &mut World| {
+                            undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
+                                entity: Entity::PLACEHOLDER,
+                                kind: SpawnEntityKind::Preset { id: preset_id },
+                            }));
+                        });
+                        handled = true;
+                    }
+                    if !handled {
+                        if let Some(entry) = world.get_resource::<ShapeRegistry>().and_then(|r| r.get(&id)) {
+                            let name = entry.name.to_string();
+                            let shape_id = entry.id.to_string();
+                            let color = entry.default_color;
                             commands.push(move |world: &mut World| {
-                                let entity = spawn_fn(world);
-                                if let Some(sel) = world.get_resource::<EditorSelection>() {
-                                    sel.set(Some(entity));
-                                }
+                                undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+                                    entity: Entity::PLACEHOLDER,
+                                    shape_id, name, position: Vec3::ZERO, color,
+                                }));
                             });
                             handled = true;
                         }
                     }
-
-                    // Fall back to ShapeRegistry (meshes)
                     if !handled {
-                        if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
-                            if let Some(entry) = shape_reg.get(&id) {
-                                let create_mesh = entry.create_mesh;
-                                let color = entry.default_color;
-                                let name = entry.name;
-                                let shape_id = entry.id;
+                        if let Some(entry) = world.get_resource::<InspectorRegistry>()
+                            .and_then(|r| r.iter().find(|e| e.type_id == id))
+                        {
+                            if entry.add_fn.is_some() {
+                                let display_name = entry.display_name.to_string();
+                                let type_id = entry.type_id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-                                    let material = world
-                                        .resource_mut::<Assets<StandardMaterial>>()
-                                        .add(StandardMaterial {
-                                            base_color: color,
-                                            perceptual_roughness: 0.9,
-                                            ..default()
-                                        });
-                                    let entity = world.spawn((
-                                        Name::new(name),
-                                        Transform::default(),
-                                        Mesh3d(mesh),
-                                        MeshMaterial3d(material),
-                                        MeshPrimitive(shape_id.to_string()),
-                                        MeshColor(color),
-                                    )).id();
-                                    // ScriptComponent auto-inserted by renzora_scripting observer
-                                    // Default collider auto-inserted by renzora_physics observer on MeshPrimitive
-                                    if let Some(sel) = world.get_resource::<EditorSelection>() {
-                                        sel.set(Some(entity));
-                                    }
+                                    undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
+                                        entity: Entity::PLACEHOLDER,
+                                        kind: SpawnEntityKind::Component { type_id, display_name },
+                                    }));
                                 });
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // Fall back to InspectorRegistry (components as entities)
-                    if !handled {
-                        if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
-                            if let Some(entry) = inspector_reg.iter().find(|e| e.type_id == id) {
-                                if let Some(add_fn) = entry.add_fn {
-                                    let display_name = entry.display_name;
-                                    commands.push(move |world: &mut World| {
-                                        let entity = world
-                                            .spawn((Name::new(display_name), Transform::default()))
-                                            .id();
-                                        add_fn(world, entity);
-                                        if let Some(sel) = world.get_resource::<EditorSelection>() {
-                                            sel.set(Some(entity));
-                                        }
-                                    });
-                                }
                             }
                         }
                     }
@@ -289,6 +264,20 @@ impl EditorPanel for HierarchyPanel {
                 let drag_entities = std::mem::take(&mut state.drag_entities);
                 commands.push(move |world: &mut World| {
                     use renzora::editor::TreeDropZone;
+                    // Capture old parents + all root orders before mutation.
+                    let old_parents: Vec<(Entity, Option<Entity>)> = drag_entities.iter()
+                        .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
+                        .collect();
+                    let mut old_orders: Vec<(Entity, Option<u32>)> = Vec::new();
+                    for archetype in world.archetypes().iter() {
+                        for arch_entity in archetype.entities() {
+                            let e = arch_entity.id();
+                            if world.get::<Name>(e).is_none() { continue; }
+                            if world.get::<renzora::core::HideInHierarchy>(e).is_some() { continue; }
+                            let o = world.get::<HierarchyOrder>(e).map(|h| h.0);
+                            old_orders.push((e, o));
+                        }
+                    }
                     for entity in &drag_entities {
                         if *entity == target {
                             continue;
@@ -392,6 +381,25 @@ impl EditorPanel for HierarchyPanel {
                                 info!("[hierarchy] Children order of parent {:?}: {:?}", p, names);
                             }
                         }
+                    }
+                    // Record parent + order changes for undo.
+                    let mut cmds: Vec<Box<dyn UndoCommand>> = Vec::new();
+                    for (entity, old_parent) in old_parents {
+                        let new_parent = world.get::<ChildOf>(entity).map(|c| c.parent());
+                        if old_parent != new_parent {
+                            cmds.push(Box::new(ReparentCmd { entity, old_parent, new_parent }));
+                        }
+                    }
+                    for (entity, old) in old_orders {
+                        let new = world.get::<HierarchyOrder>(entity).map(|h| h.0);
+                        if old != new {
+                            cmds.push(Box::new(SetHierarchyOrderCmd { entity, old, new }));
+                        }
+                    }
+                    if !cmds.is_empty() {
+                        undo::record(world, UndoContext::Scene, Box::new(CompoundCmd {
+                            label: "Reorder".into(), cmds,
+                        }));
                     }
                 });
             } else {

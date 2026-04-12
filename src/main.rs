@@ -51,6 +51,7 @@ fn main() {
         app.add_plugins(renzora_shared::renzora_engine::crash::CrashReportPlugin);
 
         // Core editor infrastructure (must load before dynamic plugins)
+        app.add_plugins(renzora_shared::renzora_undo::UndoPlugin);
         app.add_plugins(renzora_shared::renzora_splash::SplashPlugin);
         app.add_plugins(renzora_shared::renzora_editor_framework::RenzoraEditorPlugin);
         app.add_plugins(renzora_shared::renzora_grid::GridPlugin);

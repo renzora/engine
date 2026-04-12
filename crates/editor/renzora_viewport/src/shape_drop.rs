@@ -9,7 +9,8 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use renzora::bevy_egui::egui;
 
-use renzora::core::{EditorCamera, MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora::core::{EditorCamera, ShapeRegistry};
+use renzora::undo::{self, SpawnShapeCmd, UndoContext};
 use renzora::editor::EditorSelection;
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
@@ -361,46 +362,24 @@ pub fn update_shape_drag_preview(
 
 /// System that spawns a shape entity when `pending_drop` is set.
 /// Runs every frame, consumes the pending drop.
-pub fn handle_shape_spawn(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut drag_state: ResMut<ShapeDragState>,
-    registry: Res<ShapeRegistry>,
-    selection: Res<EditorSelection>,
-) {
-    let Some(drop) = drag_state.pending_drop.take() else {
-        return;
+pub fn handle_shape_spawn(world: &mut World) {
+    let drop = {
+        let Some(mut state) = world.get_resource_mut::<ShapeDragState>() else { return };
+        let Some(d) = state.pending_drop.take() else { return };
+        d
     };
-
-    let Some(entry) = registry.get(drop.shape_id) else {
+    let Some((shape_id, name, default_color)) = world.get_resource::<ShapeRegistry>()
+        .and_then(|r| r.get(drop.shape_id))
+        .map(|e| (e.id.to_string(), e.name.to_string(), e.default_color))
+    else {
         warn!("Shape '{}' not found in registry", drop.shape_id);
         return;
     };
-
-    let mesh = (entry.create_mesh)(&mut meshes);
-    let material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.8, 0.7, 0.6),
-        ..default()
-    });
-
-    let normal = if drop.normal != Vec3::ZERO {
-        drop.normal
-    } else {
-        Vec3::Y
-    };
+    let normal = if drop.normal != Vec3::ZERO { drop.normal } else { Vec3::Y };
     let position = drop.position + normal * 0.5;
 
-    let entity = commands
-        .spawn((
-            Name::new(entry.name),
-            Transform::from_translation(position),
-            Mesh3d(mesh),
-            MeshMaterial3d(material),
-            MeshPrimitive(drop.shape_id.to_string()),
-            MeshColor(entry.default_color),
-        ))
-        .id();
-
-    selection.set(Some(entity));
+    undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+        entity: Entity::PLACEHOLDER,
+        shape_id, name, position, color: default_color,
+    }));
 }

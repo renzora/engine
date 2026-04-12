@@ -4,6 +4,7 @@ use renzora::egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
 use renzora::editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
 use renzora::theme::Theme;
+use renzora::undo::{self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, LockToggleCmd, RenameCmd, UndoContext, VisibilityToggleCmd};
 
 use crate::state::{EntityNode, HierarchyState};
 use crate::LABEL_COLORS;
@@ -123,13 +124,9 @@ fn render_node(
             let entity = node.entity;
             let currently_visible = node.is_visible;
             commands.push(move |world: &mut World| {
-                if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
-                    *vis = if currently_visible {
-                        Visibility::Hidden
-                    } else {
-                        Visibility::Inherited
-                    };
-                }
+                undo::execute(world, UndoContext::Scene, Box::new(VisibilityToggleCmd {
+                    entity, was_visible: currently_visible,
+                }));
             });
         }
         vis_resp.on_hover_text(if node.is_visible { "Hide" } else { "Show" });
@@ -163,11 +160,9 @@ fn render_node(
             let entity = node.entity;
             let currently_locked = node.is_locked;
             commands.push(move |world: &mut World| {
-                if currently_locked {
-                    world.entity_mut(entity).remove::<renzora::editor::EditorLocked>();
-                } else {
-                    world.entity_mut(entity).insert(renzora::editor::EditorLocked);
-                }
+                undo::execute(world, UndoContext::Scene, Box::new(LockToggleCmd {
+                    entity, was_locked: currently_locked,
+                }));
             });
         }
         lock_resp.on_hover_text(if node.is_locked { "Unlock" } else { "Lock" });
@@ -227,9 +222,12 @@ fn render_node(
             let new_name = state.rename_buffer.clone();
             if !new_name.is_empty() {
                 commands.push(move |world: &mut World| {
-                    if let Some(mut name) = world.get_mut::<Name>(entity) {
-                        *name = Name::new(new_name);
-                    }
+                    let old = world.get::<Name>(entity).map(|n| n.as_str().to_string())
+                        .unwrap_or_default();
+                    if old == new_name { return; }
+                    undo::execute(world, UndoContext::Scene, Box::new(RenameCmd {
+                        entity, old, new: new_name,
+                    }));
                 });
             }
             state.renaming_entity = None;
@@ -498,13 +496,14 @@ fn context_menu(
         if ui.button(format!("{} Group as Children", regular::FOLDER_SIMPLE)).clicked() {
             let selected = selection.get_all();
             commands.push(move |world: &mut World| {
-                let parent = world.spawn((Name::new("Group"), Transform::default(), Visibility::default())).id();
-                for entity in &selected {
-                    world.entity_mut(*entity).set_parent_in_place(parent);
-                }
-                if let Some(sel) = world.get_resource::<EditorSelection>() {
-                    sel.set(Some(parent));
-                }
+                let members: Vec<(Entity, Option<Entity>)> = selected.iter()
+                    .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
+                    .collect();
+                undo::execute(world, UndoContext::Scene, Box::new(GroupAsChildrenCmd {
+                    parent: Entity::PLACEHOLDER,
+                    group_name: "Group".to_string(),
+                    members,
+                }));
             });
             ui.close();
         }
@@ -624,14 +623,28 @@ fn context_menu(
             state.expanded.remove(entity);
         }
         commands.push(move |world: &mut World| {
+            let mut items = Vec::new();
+            let mut other = Vec::new();
             for entity in &entities {
-                if world.get_entity(*entity).is_ok() {
-                    world.despawn(*entity);
+                let shape = world.get_entity(*entity).ok().and_then(|e| {
+                    let shape_id = e.get::<renzora::core::MeshPrimitive>()?.0.clone();
+                    let name = e.get::<Name>()?.as_str().to_string();
+                    let transform = *e.get::<Transform>()?;
+                    let color = e.get::<renzora::core::MeshColor>()?.0;
+                    Some(DeletedShape { entity: *entity, shape_id, name, transform, color })
+                });
+                match shape {
+                    Some(item) => items.push(item),
+                    None => other.push(*entity),
                 }
             }
-            if let Some(sel) = world.get_resource::<EditorSelection>() {
-                sel.clear();
+            // Non-shape entities: despawn directly, not undoable for now.
+            for e in other {
+                if let Ok(em) = world.get_entity_mut(e) { em.despawn(); }
             }
+            if let Some(sel) = world.get_resource::<EditorSelection>() { sel.clear(); }
+            if items.is_empty() { return; }
+            undo::execute(world, UndoContext::Scene, Box::new(DeleteShapesCmd { items }));
         });
         ui.close();
     }

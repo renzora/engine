@@ -5,9 +5,10 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 use renzora::egui_phosphor::regular;
-use renzora::core::{MeshColor, MeshPrimitive, ShapeEntry, ShapeRegistry};
+use renzora::core::{ShapeEntry, ShapeRegistry};
 use renzora::editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
 use renzora::theme::ThemeManager;
+use renzora::undo::{self, SpawnShapeCmd, UndoContext};
 
 #[derive(Default)]
 struct ShapeLibraryState {
@@ -214,28 +215,14 @@ impl EditorPanel for ShapeLibraryPanel {
 
                             // Click to spawn at origin (fallback)
                             if response.clicked() && current_dragging.is_none() {
-                                let create_mesh = shape.create_mesh;
-                                let name = shape.name;
+                                let name = shape.name.to_string();
                                 let color = shape.default_color;
-                                let shape_id = shape.id;
+                                let shape_id = shape.id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    let mesh =
-                                        create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-                                    let material = world
-                                        .resource_mut::<Assets<StandardMaterial>>()
-                                        .add(StandardMaterial {
-                                            base_color: color,
-                                            perceptual_roughness: 0.9,
-                                            ..default()
-                                        });
-                                    world.spawn((
-                                        Name::new(name),
-                                        Transform::default(),
-                                        Mesh3d(mesh),
-                                        MeshMaterial3d(material),
-                                        MeshPrimitive(shape_id.to_string()),
-                                        MeshColor(color),
-                                    ));
+                                    undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+                                        entity: Entity::PLACEHOLDER,
+                                        shape_id, name, position: Vec3::ZERO, color,
+                                    }));
                                 });
                             }
                         }
@@ -246,3 +233,4 @@ impl EditorPanel for ShapeLibraryPanel {
         });
     }
 }
+
