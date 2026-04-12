@@ -275,7 +275,62 @@ impl Plugin for GizmoPlugin {
                 Update,
                 selection_visuals::terrain_chunk_selection_system
                     .run_if(in_state(renzora::editor::SplashState::Editor)),
+            )
+            .init_resource::<LastSelectionCount>()
+            .add_systems(
+                Update,
+                auto_switch_tool_on_selection
+                    .after(entity_pick_system)
+                    .after(box_selection_system)
+                    .run_if(in_state(renzora::editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
             );
+    }
+}
+
+/// Tracks the previous frame's selection size so the auto-switch system can
+/// detect empty → non-empty and non-empty → empty transitions without wiring
+/// change detection through the `RwLock`-backed `EditorSelection`.
+#[derive(Resource, Default)]
+struct LastSelectionCount(usize);
+
+/// When the user selects an entity, switch to the Translate tool so drag
+/// handles appear immediately. When the selection becomes empty, switch
+/// back to Select. Leaves the tool alone if the user has deliberately
+/// chosen Rotate, Scale, a brush, or a plugin tool.
+fn auto_switch_tool_on_selection(
+    selection: Res<renzora::editor::EditorSelection>,
+    mut active: ResMut<renzora::editor::ActiveTool>,
+    mut last: ResMut<LastSelectionCount>,
+) {
+    use renzora::editor::ActiveTool;
+
+    let current = selection.get_all().len();
+    if current == last.0 {
+        return;
+    }
+    let prev = last.0;
+    last.0 = current;
+
+    // Only react while a gizmo-style tool is active. Brushes and plugin
+    // tools (Terrain*, Foliage*, None) drive their own selection semantics.
+    let is_gizmo_tool = matches!(
+        *active,
+        ActiveTool::Select | ActiveTool::Translate | ActiveTool::Rotate | ActiveTool::Scale
+    );
+    if !is_gizmo_tool {
+        return;
+    }
+
+    if prev == 0 && current > 0 {
+        // Just selected something. Only promote Select → Translate; don't
+        // override a deliberate Rotate / Scale choice.
+        if *active == ActiveTool::Select {
+            *active = ActiveTool::Translate;
+        }
+    } else if prev > 0 && current == 0 {
+        // Cleared selection → back to Select.
+        *active = ActiveTool::Select;
     }
 }
 
