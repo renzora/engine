@@ -34,6 +34,60 @@ pub fn get_reflected_field(
     get_field_by_path(reflected, &parts)
 }
 
+/// Read a reflected `Vec<f32>` field from a component. Needed for reading
+/// large per-vertex arrays (terrain heightmaps etc.) that don't fit the
+/// single-value [`PropertyValue`] API.
+pub fn get_reflected_f32_vec(
+    world: &World,
+    entity: Entity,
+    component_type: &str,
+    field_path: &str,
+) -> Option<Vec<f32>> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+
+    let query = component_type.to_lowercase();
+    let registration = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    })?;
+    let reflect_component = registration.data::<ReflectComponent>()?;
+    let entity_ref = world.entity(entity);
+    let reflected = reflect_component.reflect(entity_ref)?;
+
+    let parts: Vec<&str> = field_path.split('.').collect();
+    let field = navigate_to_field(reflected, &parts)?;
+    match field.reflect_ref() {
+        ReflectRef::List(list) => {
+            let mut out = Vec::with_capacity(list.len());
+            for i in 0..list.len() {
+                let item = list.get(i)?;
+                let v = item.try_downcast_ref::<f32>()?;
+                out.push(*v);
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+fn navigate_to_field<'a>(
+    reflect: &'a dyn bevy::reflect::PartialReflect,
+    path: &[&str],
+) -> Option<&'a dyn bevy::reflect::PartialReflect> {
+    if path.is_empty() { return Some(reflect); }
+    let field_name = path[0];
+    let remaining = &path[1..];
+    match reflect.reflect_ref() {
+        ReflectRef::Struct(s) => {
+            let field = s.field(field_name)?;
+            if remaining.is_empty() { Some(field) } else { navigate_to_field(field, remaining) }
+        }
+        _ => None,
+    }
+}
+
 /// Recursively navigate a reflected struct by field path and read the value.
 fn get_field_by_path(
     reflect: &dyn bevy::reflect::PartialReflect,

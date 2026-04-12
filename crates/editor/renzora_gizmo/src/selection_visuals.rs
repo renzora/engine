@@ -358,18 +358,27 @@ pub fn terrain_chunk_selection_system(
                 let pos = chunk_gt.translation();
                 let y_offset = 0.15;
 
+                // Pull the heightmap so we can trace the real silhouette.
+                let heights = renzora::core::reflection::get_reflected_f32_vec(
+                    world, child, "TerrainChunkData", "heights",
+                );
+
                 // Draw outer border edges
                 if cz == 0 {
-                    draw_flat_edge(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, 0, true, color);
+                    draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+                        min_height, height_range, heights.as_deref(), 0, color);
                 }
                 if cz == chunks_z - 1 {
-                    draw_flat_edge(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, chunk_resolution - 1, false, color);
+                    draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+                        min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
                 }
                 if cx == 0 {
-                    draw_flat_edge_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, 0, true, color);
+                    draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+                        min_height, height_range, heights.as_deref(), 0, color);
                 }
                 if cx == chunks_x - 1 {
-                    draw_flat_edge_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, chunk_resolution - 1, false, color);
+                    draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+                        min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
                 }
             }
         }
@@ -413,54 +422,97 @@ pub fn terrain_chunk_selection_system(
             Color::srgba(1.0, 1.0, 0.0, 0.8)
         };
 
-        // Draw all 4 edges of the chunk border (flat — no heightmap sampling via reflection for simplicity)
-        draw_flat_edge(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, 0, true, color);
-        draw_flat_edge(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, chunk_resolution - 1, false, color);
-        draw_flat_edge_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, 0, true, color);
-        draw_flat_edge_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset, min_height, height_range, chunk_resolution - 1, false, color);
+        let heights = renzora::core::reflection::get_reflected_f32_vec(
+            world, entity, "TerrainChunkData", "heights",
+        );
+        // Draw all 4 edges of the chunk border, tracing the heightmap silhouette.
+        draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+            min_height, height_range, heights.as_deref(), 0, color);
+        draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+            min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
+        draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+            min_height, height_range, heights.as_deref(), 0, color);
+        draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
+            min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
     }
 }
 
-/// Draw a horizontal edge line along X at a fixed Z row.
-/// Since we can't efficiently read per-vertex heightmap via reflection,
-/// we draw a flat line at min_height + y_offset.
-fn draw_flat_edge(
+/// Trace an edge that runs along X at a fixed Z row, connecting each
+/// successive vertex with a line segment so the outline follows the
+/// heightmap silhouette. Falls back to a flat line at `min_height` if
+/// heights aren't available.
+fn draw_edge_along_x(
     gizmos: &mut Gizmos<OverlayGizmoGroup>,
     chunk_pos: Vec3,
     resolution: u32,
     spacing: f32,
     y_offset: f32,
-    _min_height: f32,
-    _height_range: f32,
+    min_height: f32,
+    height_range: f32,
+    heights: Option<&[f32]>,
     vz: u32,
-    _is_front: bool,
     color: Color,
 ) {
-    let y = chunk_pos.y + y_offset;
     let z = chunk_pos.z + vz as f32 * spacing;
-    let x_start = chunk_pos.x;
-    let x_end = chunk_pos.x + (resolution - 1) as f32 * spacing;
-    gizmos.line(Vec3::new(x_start, y, z), Vec3::new(x_end, y, z), color);
+    let sample_y = |vx: u32| -> f32 {
+        let base = match heights {
+            Some(h) => {
+                let idx = (vz * resolution + vx) as usize;
+                let norm = h.get(idx).copied().unwrap_or(0.0);
+                min_height + norm * height_range
+            }
+            None => min_height,
+        };
+        // Parent-relative: chunk_pos.y is the chunk's world Y (terrain origin).
+        chunk_pos.y + base + y_offset
+    };
+
+    for vx in 0..resolution.saturating_sub(1) {
+        let x0 = chunk_pos.x + vx as f32 * spacing;
+        let x1 = chunk_pos.x + (vx + 1) as f32 * spacing;
+        gizmos.line(
+            Vec3::new(x0, sample_y(vx), z),
+            Vec3::new(x1, sample_y(vx + 1), z),
+            color,
+        );
+    }
 }
 
-/// Draw a horizontal edge line along Z at a fixed X column.
-fn draw_flat_edge_z(
+/// Trace an edge that runs along Z at a fixed X column, sampling heights.
+fn draw_edge_along_z(
     gizmos: &mut Gizmos<OverlayGizmoGroup>,
     chunk_pos: Vec3,
     resolution: u32,
     spacing: f32,
     y_offset: f32,
-    _min_height: f32,
-    _height_range: f32,
+    min_height: f32,
+    height_range: f32,
+    heights: Option<&[f32]>,
     vx: u32,
-    _is_left: bool,
     color: Color,
 ) {
-    let y = chunk_pos.y + y_offset;
     let x = chunk_pos.x + vx as f32 * spacing;
-    let z_start = chunk_pos.z;
-    let z_end = chunk_pos.z + (resolution - 1) as f32 * spacing;
-    gizmos.line(Vec3::new(x, y, z_start), Vec3::new(x, y, z_end), color);
+    let sample_y = |vz: u32| -> f32 {
+        let base = match heights {
+            Some(h) => {
+                let idx = (vz * resolution + vx) as usize;
+                let norm = h.get(idx).copied().unwrap_or(0.0);
+                min_height + norm * height_range
+            }
+            None => min_height,
+        };
+        chunk_pos.y + base + y_offset
+    };
+
+    for vz in 0..resolution.saturating_sub(1) {
+        let z0 = chunk_pos.z + vz as f32 * spacing;
+        let z1 = chunk_pos.z + (vz + 1) as f32 * spacing;
+        gizmos.line(
+            Vec3::new(x, sample_y(vz), z0),
+            Vec3::new(x, sample_y(vz + 1), z1),
+            color,
+        );
+    }
 }
 
 /// Dynamically switch OverlayGizmoGroup between on-top (render layer 1) and
