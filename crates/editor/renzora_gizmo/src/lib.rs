@@ -489,7 +489,7 @@ fn draw_line_gizmos(
     let pos = sel_t.translation;
     let gs = gizmo_state.gizmo_scale;
 
-    if *mode == GizmoMode::Select { return; }
+    if matches!(*mode, GizmoMode::Select | GizmoMode::None) { return; }
 
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
     let highlight = Color::srgb(1.0, 1.0, 0.3);
@@ -498,7 +498,7 @@ fn draw_line_gizmos(
     let z_base = Color::srgb(0.2, 0.3, 1.0);
 
     match *mode {
-        GizmoMode::Select => unreachable!(),
+        GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
             // Plane squares
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
@@ -888,7 +888,7 @@ fn gizmo_hover_detect(
     modal: Res<modal_transform::ModalTransformState>,
 ) {
     if modal.active { gizmo_state.hovered_axis = None; return; }
-    if *mode == GizmoMode::Select { gizmo_state.hovered_axis = None; return; }
+    if matches!(*mode, GizmoMode::Select | GizmoMode::None) { gizmo_state.hovered_axis = None; return; }
     if gizmo_state.active_axis.is_some() { return; }
     gizmo_state.hovered_axis = None;
 
@@ -910,7 +910,7 @@ fn gizmo_hover_detect(
     let mut best: Option<(GizmoAxis, f32)> = None;
 
     match *mode {
-        GizmoMode::Select => unreachable!(),
+        GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
             // Plane squares first
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
@@ -972,7 +972,7 @@ fn gizmo_drag(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut commands: Commands,
 ) {
-    if *mode == GizmoMode::Select {
+    if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
         mouse_motion.clear();
         return;
     }
@@ -1060,7 +1060,7 @@ fn gizmo_drag(
     let distance = (cam_gt.translation() - center).length();
 
     match *mode {
-        GizmoMode::Select => unreachable!(),
+        GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
             let scale = match projection {
                 Projection::Perspective(persp) => distance * (persp.fov * 0.5).tan() * 2.0 / viewport.screen_size.y,
@@ -1169,6 +1169,8 @@ fn entity_pick_system(
     if !mouse_button.just_pressed(MouseButton::Left) { return; }
     if modal.active { return; }
     if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() { return; }
+    // GizmoMode::None means a plugin tool is driving — skip picking.
+    if *mode == GizmoMode::None { return; }
     // Don't pick while nav overlay pan/zoom buttons are being dragged
     if let Some(ref nav) = nav_overlay {
         if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)

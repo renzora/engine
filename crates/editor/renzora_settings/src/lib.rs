@@ -79,6 +79,21 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     let settings = world.get_resource::<EditorSettings>().cloned().unwrap_or_default();
     let custom_fonts = world.get_resource::<CustomFonts>().cloned().unwrap_or_default();
     let keybindings = world.get_resource::<KeyBindings>().cloned().unwrap_or_default();
+    // Snapshot plugin shortcut metadata so the Shortcuts tab can display
+    // plugin-registered shortcuts alongside built-in ones.
+    let plugin_shortcuts: Vec<PluginShortcutRow> = world
+        .get_resource::<renzora::editor::ShortcutRegistry>()
+        .map(|reg| {
+            reg.entries()
+                .iter()
+                .map(|e| PluginShortcutRow {
+                    id: e.id,
+                    display_name: e.display_name,
+                    category: e.category,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let viewport_settings = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
 
     // Project config snapshot + available scene files
@@ -166,9 +181,13 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     let mut keybindings_mut = keybindings.clone();
     let mut viewport_mut = viewport_settings.clone();
 
-    // Handle key capture for rebinding
+    // Handle key capture for rebinding (built-in actions)
     if let Some(action) = keybindings_mut.rebinding {
         capture_key_for_rebind(ctx, &mut keybindings_mut, action);
+    }
+    // Handle key capture for plugin shortcut rebinding
+    if let Some(plugin_id) = keybindings_mut.plugin_rebinding {
+        capture_key_for_plugin_rebind(ctx, &mut keybindings_mut, plugin_id);
     }
 
     let mut open = true;
@@ -196,7 +215,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                 match settings_mut.settings_tab {
                     SettingsTab::General => render_general_tab(ui, &mut settings_mut, &mut project_config_mut, &scene_files, &custom_fonts, &theme),
                     SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
-                    SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &theme),
+                    SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &plugin_shortcuts, &theme),
                     SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
                     SettingsTab::Input => render_input_tab(ui, &mut input_map_mut, &mut input_ui_state, &theme),
                     SettingsTab::Plugins => render_plugins_tab(ui, &mut settings_mut, &theme),
@@ -215,7 +234,11 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
         }
     }
 
-    if keybindings_mut.bindings != keybindings.bindings || keybindings_mut.rebinding != keybindings.rebinding {
+    if keybindings_mut.bindings != keybindings.bindings
+        || keybindings_mut.rebinding != keybindings.rebinding
+        || keybindings_mut.plugin_bindings != keybindings.plugin_bindings
+        || keybindings_mut.plugin_rebinding != keybindings.plugin_rebinding
+    {
         if let Some(mut res) = world.get_resource_mut::<KeyBindings>() {
             *res = keybindings_mut;
         }
@@ -635,7 +658,20 @@ fn render_viewport_tab(
 
 // ── Shortcuts tab ───────────────────────────────────────────────────────────
 
-fn render_shortcuts_tab(ui: &mut egui::Ui, keybindings: &mut KeyBindings, theme: &Theme) {
+/// Snapshot of one plugin-registered shortcut for the Settings UI.
+#[derive(Clone)]
+struct PluginShortcutRow {
+    id: &'static str,
+    display_name: &'static str,
+    category: &'static str,
+}
+
+fn render_shortcuts_tab(
+    ui: &mut egui::Ui,
+    keybindings: &mut KeyBindings,
+    plugin_shortcuts: &[PluginShortcutRow],
+    theme: &Theme,
+) {
     let text_primary = theme.text.primary.to_color32();
     let item_bg = theme.panels.item_bg.to_color32();
     let border_color = theme.widgets.border.to_color32();
@@ -657,6 +693,23 @@ fn render_shortcuts_tab(ui: &mut egui::Ui, keybindings: &mut KeyBindings, theme:
         render_category(ui, KEYBOARD, &category, CategoryStyle::shortcuts(), &format!("shortcuts_{}", category), true, theme, |ui| {
             for (i, action) in actions.iter().enumerate() {
                 render_keybinding_row(ui, i, keybindings, *action, theme);
+            }
+        });
+    }
+
+    // Plugin-registered shortcuts, grouped by their declared category.
+    let mut plugin_by_cat: Vec<(&str, Vec<&PluginShortcutRow>)> = Vec::new();
+    for entry in plugin_shortcuts {
+        if let Some(bucket) = plugin_by_cat.iter_mut().find(|(c, _)| *c == entry.category) {
+            bucket.1.push(entry);
+        } else {
+            plugin_by_cat.push((entry.category, vec![entry]));
+        }
+    }
+    for (category, entries) in plugin_by_cat {
+        render_category(ui, KEYBOARD, category, CategoryStyle::shortcuts(), &format!("shortcuts_plugin_{}", category), true, theme, |ui| {
+            for (i, entry) in entries.iter().enumerate() {
+                render_plugin_keybinding_row(ui, i, keybindings, entry, theme);
             }
         });
     }
@@ -728,6 +781,91 @@ fn render_keybinding_row(
                 });
             });
         });
+}
+
+fn render_plugin_keybinding_row(
+    ui: &mut egui::Ui,
+    row_index: usize,
+    keybindings: &mut KeyBindings,
+    entry: &PluginShortcutRow,
+    theme: &Theme,
+) {
+    let text_muted = theme.text.muted.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
+    let item_bg = theme.panels.item_bg.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let warning_color = theme.semantic.warning.to_color32();
+
+    let bg_color = if row_index % 2 == 0 {
+        theme.panels.inspector_row_even.to_color32()
+    } else {
+        theme.panels.inspector_row_odd.to_color32()
+    };
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(6, 3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_sized(
+                    [LABEL_WIDTH + 20.0, 18.0],
+                    egui::Label::new(RichText::new(entry.display_name).size(12.0)).truncate(),
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_rebinding = keybindings.plugin_rebinding == Some(entry.id);
+
+                    let button_text = if is_rebinding {
+                        RichText::new("Press key...").color(warning_color).size(11.0)
+                    } else if let Some(binding) = keybindings.get_plugin(entry.id) {
+                        RichText::new(binding.display()).color(accent_color).monospace().size(11.0)
+                    } else {
+                        RichText::new("Unbound").color(text_muted).size(11.0)
+                    };
+
+                    let rebind_bg = warning_color.gamma_multiply(0.3);
+                    let button = egui::Button::new(button_text)
+                        .fill(if is_rebinding { rebind_bg } else { item_bg })
+                        .stroke(Stroke::new(1.0, if is_rebinding { warning_color } else { border_color }))
+                        .corner_radius(CornerRadius::same(4))
+                        .min_size(Vec2::new(90.0, 20.0));
+
+                    if ui.add(button).clicked() {
+                        // Clear any in-progress built-in rebind so there's
+                        // only one active capture at a time.
+                        keybindings.rebinding = None;
+                        keybindings.plugin_rebinding = if is_rebinding { None } else { Some(entry.id) };
+                    }
+                });
+            });
+        });
+}
+
+fn capture_key_for_plugin_rebind(ctx: &egui::Context, keybindings: &mut KeyBindings, id: &'static str) {
+    let keys = bindable_keys();
+    ctx.input(|input| {
+        let ctrl = input.modifiers.ctrl;
+        let shift = input.modifiers.shift;
+        let alt = input.modifiers.alt;
+
+        for key in &keys {
+            if let Some(egui_key) = keycode_to_egui(*key) {
+                if input.key_pressed(egui_key) {
+                    let mut binding = KeyBinding::new(*key);
+                    if ctrl { binding = binding.ctrl(); }
+                    if shift { binding = binding.shift(); }
+                    if alt { binding = binding.alt(); }
+                    keybindings.set_plugin(id, binding);
+                    keybindings.plugin_rebinding = None;
+                    return;
+                }
+            }
+        }
+
+        if input.key_pressed(egui::Key::Escape) && !ctrl && !shift && !alt {
+            keybindings.plugin_rebinding = None;
+        }
+    });
 }
 
 fn capture_key_for_rebind(ctx: &egui::Context, keybindings: &mut KeyBindings, action: EditorAction) {

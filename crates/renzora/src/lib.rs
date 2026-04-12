@@ -79,6 +79,10 @@ pub mod prelude {
         EntityPreset, SpawnRegistry, ComponentIconEntry, ComponentIconRegistry,
         // Selection & commands
         EditorCommands, EditorSelection,
+        // Toolbar
+        ToolEntry, ToolSection, ToolbarRegistry,
+        // Shortcuts
+        ShortcutEntry, ShortcutRegistry,
         // Settings
         EditorSettings,
         // State

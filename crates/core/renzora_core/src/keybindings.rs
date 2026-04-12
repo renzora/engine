@@ -266,6 +266,13 @@ pub struct KeyBindings {
     pub bindings: HashMap<EditorAction, KeyBinding>,
     /// Action currently being rebound (if any)
     pub rebinding: Option<EditorAction>,
+    /// Plugin-registered shortcuts, keyed by stable id (e.g. `"mesh_draw.box"`).
+    /// Populated when plugins call `App::register_shortcut`. Stored here so
+    /// the Settings → Shortcuts UI can display + rebind them the same way
+    /// as built-in actions.
+    pub plugin_bindings: HashMap<&'static str, KeyBinding>,
+    /// Plugin shortcut currently being rebound (if any).
+    pub plugin_rebinding: Option<&'static str>,
 }
 
 impl Default for KeyBindings {
@@ -334,6 +341,8 @@ impl Default for KeyBindings {
         Self {
             bindings,
             rebinding: None,
+            plugin_bindings: HashMap::new(),
+            plugin_rebinding: None,
         }
     }
 }
@@ -374,6 +383,23 @@ impl KeyBindings {
     /// Set the binding for an action
     pub fn set(&mut self, action: EditorAction, binding: KeyBinding) {
         self.bindings.insert(action, binding);
+    }
+
+    /// Get the binding for a plugin shortcut by id.
+    pub fn get_plugin(&self, id: &'static str) -> Option<&KeyBinding> {
+        self.plugin_bindings.get(id)
+    }
+
+    /// Set the binding for a plugin shortcut by id.
+    pub fn set_plugin(&mut self, id: &'static str, binding: KeyBinding) {
+        self.plugin_bindings.insert(id, binding);
+    }
+
+    /// Insert a default binding only if the id isn't already present. Used at
+    /// plugin registration so user-customised bindings aren't overwritten
+    /// when a plugin reloads.
+    pub fn set_plugin_default(&mut self, id: &'static str, binding: KeyBinding) {
+        self.plugin_bindings.entry(id).or_insert(binding);
     }
 }
 

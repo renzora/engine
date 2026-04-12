@@ -10,7 +10,9 @@ pub mod ext;
 pub mod inspector_registry;
 pub mod selection;
 pub mod settings;
+pub mod shortcut_registry;
 pub mod spawn_registry;
+pub mod toolbar_registry;
 pub mod viewport_overlay;
 
 // Re-export full UI API so downstream crates can use `renzora_editor_framework::DockTree` etc.
@@ -23,6 +25,8 @@ pub use inspector_registry::{
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
+pub use shortcut_registry::{ShortcutEntry, ShortcutRegistry};
+pub use toolbar_registry::{ToolEntry, ToolSection, ToolbarRegistry};
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
@@ -64,6 +68,9 @@ pub enum GizmoMode {
     Translate,
     Rotate,
     Scale,
+    /// A plugin tool is driving viewport input. Built-in picking + box
+    /// selection skip themselves when they see this.
+    None,
 }
 
 /// Unified active tool — replaces scattered `GizmoMode`, `TerrainToolState`, `FoliageToolState`.
@@ -80,6 +87,10 @@ pub enum ActiveTool {
     TerrainSculpt,
     TerrainPaint,
     FoliagePaint,
+    /// No built-in tool active. Plugins that own their own input mode (mesh
+    /// draw, brush tools, etc.) set this so the gizmo + select-click systems
+    /// disengage while the plugin is driving.
+    None,
 }
 
 impl ActiveTool {
@@ -168,7 +179,19 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
             .init_resource::<ComponentIconRegistry>()
-            .init_resource::<ViewportOverlayRegistry>();
+            .init_resource::<ViewportOverlayRegistry>()
+            .init_resource::<ToolbarRegistry>()
+            .init_resource::<ShortcutRegistry>();
+
+        register_builtin_tools(
+            &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
+        );
+
+        app.add_systems(
+            Update,
+            shortcut_registry::shortcut_dispatch_system
+                .run_if(in_state(SplashState::Editor)),
+        );
 
         // Register inspector entries and icons for core Bevy components
         bevy_inspectors::register_bevy_inspectors(
@@ -216,6 +239,146 @@ fn show_script_reload_toasts(
     }
 }
 
+/// Returns true if an entity with a terrain-data component is currently selected.
+/// Used by terrain toolbar entries and the terrain tool panel to show
+/// context-sensitive UI only when a terrain is active.
+pub fn is_terrain_selected(world: &World) -> bool {
+    let Some(sel) = world.get_resource::<EditorSelection>() else { return false };
+    let Some(entity) = sel.get() else { return false };
+
+    fn has_terrain_component(world: &World, entity: Entity) -> bool {
+        let Ok(er) = world.get_entity(entity) else { return false };
+        let archetype = er.archetype();
+        for &component_id in archetype.components() {
+            if let Some(info) = world.components().get_info(component_id) {
+                let name = info.name();
+                if name.contains("TerrainData") || name.contains("TerrainChunkData") {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    if has_terrain_component(world, entity) {
+        return true;
+    }
+    if let Some(parent) = world.get::<ChildOf>(entity) {
+        if has_terrain_component(world, parent.0) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Register the built-in Transform + Terrain/Foliage tools with the
+/// [`ToolbarRegistry`]. Called once at plugin build time.
+fn register_builtin_tools(registry: &mut ToolbarRegistry) {
+    use egui_phosphor::regular::*;
+
+    // Transform section — always visible
+    registry.register(
+        ToolEntry::new("builtin.select", CURSOR, "Select (Q)", ToolSection::Transform)
+            .order(0)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::Select)
+            })
+            .on_activate(|w| { w.insert_resource(ActiveTool::Select); }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.translate", ARROWS_OUT_CARDINAL, "Move (W)", ToolSection::Transform)
+            .order(1)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::Translate)
+            })
+            .on_activate(|w| { w.insert_resource(ActiveTool::Translate); }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.rotate", ARROWS_COUNTER_CLOCKWISE, "Rotate (E)", ToolSection::Transform)
+            .order(2)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::Rotate)
+            })
+            .on_activate(|w| { w.insert_resource(ActiveTool::Rotate); }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.scale", ARROWS_OUT_SIMPLE, "Scale (R)", ToolSection::Transform)
+            .order(3)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::Scale)
+            })
+            .on_activate(|w| { w.insert_resource(ActiveTool::Scale); }),
+    );
+
+    // Terrain section — visible only when a terrain is selected. Clicking the
+    // active button a second time deactivates (reverts to Select).
+    registry.register(
+        ToolEntry::new("builtin.terrain_sculpt", MOUNTAINS, "Sculpt Terrain", ToolSection::Terrain)
+            .order(0)
+            .visible_if(is_terrain_selected)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::TerrainSculpt)
+            })
+            .on_activate(|w| {
+                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
+                let new = if cur == ActiveTool::TerrainSculpt {
+                    ActiveTool::Select
+                } else {
+                    ActiveTool::TerrainSculpt
+                };
+                w.insert_resource(new);
+            }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.terrain_paint", PAINT_BRUSH, "Paint Terrain Layers", ToolSection::Terrain)
+            .order(1)
+            .visible_if(is_terrain_selected)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::TerrainPaint)
+            })
+            .on_activate(|w| {
+                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
+                let new = if cur == ActiveTool::TerrainPaint {
+                    ActiveTool::Select
+                } else {
+                    ActiveTool::TerrainPaint
+                };
+                w.insert_resource(new);
+            }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.foliage_paint", TREE, "Paint Foliage", ToolSection::Terrain)
+            .order(2)
+            .visible_if(is_terrain_selected)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied()
+                    .map_or(false, |t| t == ActiveTool::FoliagePaint)
+            })
+            .on_activate(|w| {
+                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
+                let new = if cur == ActiveTool::FoliagePaint {
+                    ActiveTool::Select
+                } else {
+                    ActiveTool::FoliagePaint
+                };
+                w.insert_resource(new);
+            }),
+    );
+}
+
 /// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read
 /// `GizmoMode` continue to work during the migration.
 fn sync_active_tool_to_gizmo_mode(
@@ -229,6 +392,10 @@ fn sync_active_tool_to_gizmo_mode(
     if let Some(mode) = active_tool.gizmo_mode() {
         if *gizmo_mode != mode {
             *gizmo_mode = mode;
+        }
+    } else if *active_tool == ActiveTool::None {
+        if *gizmo_mode != GizmoMode::None {
+            *gizmo_mode = GizmoMode::None;
         }
     } else {
         if *gizmo_mode != GizmoMode::Select {

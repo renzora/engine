@@ -3,6 +3,8 @@
 use bevy::prelude::*;
 use crate::inspector_registry::{InspectorEntry, InspectorRegistry};
 use crate::spawn_registry::{EntityPreset, SpawnRegistry};
+use crate::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
+use crate::toolbar_registry::{ToolEntry, ToolbarRegistry};
 use renzora_ui::{PanelRegistry, StatusBarRegistry};
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
@@ -32,6 +34,12 @@ pub trait AppEditorExt {
 
     /// Register a component icon for the hierarchy tree.
     fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self;
+
+    /// Register a button on the viewport toolbar. See [`ToolEntry`].
+    fn register_tool(&mut self, entry: ToolEntry) -> &mut Self;
+
+    /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
+    fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self;
 
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
@@ -72,6 +80,24 @@ impl AppEditorExt for App {
     fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self {
         self.init_resource::<crate::ComponentIconRegistry>();
         self.world_mut().resource_mut::<crate::ComponentIconRegistry>().register(entry);
+        self
+    }
+
+    fn register_tool(&mut self, entry: ToolEntry) -> &mut Self {
+        self.init_resource::<ToolbarRegistry>();
+        self.world_mut().resource_mut::<ToolbarRegistry>().register(entry);
+        self
+    }
+
+    fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self {
+        self.init_resource::<ShortcutRegistry>();
+        // Seed KeyBindings.plugin_bindings with the default (no-op if user
+        // has already customised this id), then store the entry so the
+        // dispatcher + Settings UI can find it.
+        self.world_mut()
+            .resource_mut::<renzora_core::keybindings::KeyBindings>()
+            .set_plugin_default(entry.id, entry.default_binding);
+        self.world_mut().resource_mut::<ShortcutRegistry>().register(entry);
         self
     }
 

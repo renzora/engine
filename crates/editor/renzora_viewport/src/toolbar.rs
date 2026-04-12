@@ -11,7 +11,7 @@ use renzora::egui_phosphor::regular::*;
 use std::sync::atomic::Ordering;
 
 use renzora::core::PlayModeState;
-use renzora::editor::{ActiveTool, EditorCommands, EditorSelection};
+use renzora::editor::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
 
 use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
 
@@ -35,17 +35,42 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
     let panel_w = BTN_SIZE.x * 2.0 + BTN_GAP + PADDING * 2.0;
     let panel_pos = Pos2::new(content_rect.min.x + MARGIN, content_rect.min.y + MARGIN);
 
-    let in_terrain = !hide_tools && is_terrain_selected(world);
+    // Collect tool sections from the registry, in render order.
+    let registry = world.get_resource::<ToolbarRegistry>();
+    let transform_tools = registry
+        .map(|r| r.visible_in_section(world, &ToolSection::Transform))
+        .unwrap_or_default();
+    let terrain_tools = registry
+        .map(|r| r.visible_in_section(world, &ToolSection::Terrain))
+        .unwrap_or_default();
+    let custom_sections: Vec<(&'static str, Vec<ToolEntry>)> = registry
+        .map(|r| {
+            r.custom_sections()
+                .into_iter()
+                .map(|id| (id, r.visible_in_section(world, &ToolSection::Custom(id))))
+                .filter(|(_, tools)| !tools.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
 
-    // Panel height: 2 gizmo rows + divider + 1 undo/redo row + optional terrain tools
-    let terrain_section_h = if in_terrain {
-        // Sculpt | Paint + Foliage row = 2 rows
-        DIVIDER_GAP * 2.0 + 1.0 + row_step * 2.0
-    } else {
-        0.0
+    let section_height = |count: usize| -> f32 {
+        if count == 0 { return 0.0; }
+        let rows = ((count + 1) / 2) as f32;
+        row_step * rows - BTN_GAP
     };
-    let panel_h = row_step * 3.0 - BTN_GAP + PADDING * 2.0 + DIVIDER_GAP * 2.0 + 1.0
-        + terrain_section_h;
+
+    // Always-rendered: transform section + undo/redo row. Divider before undo/redo.
+    let transform_h = section_height(transform_tools.len());
+    let undo_h = row_step - BTN_GAP; // one row
+    let terrain_h = section_height(terrain_tools.len());
+    let custom_h: f32 = custom_sections.iter().map(|(_, t)| section_height(t.len())).sum();
+    let divider_count =
+        1 // before undo/redo
+        + if terrain_h > 0.0 { 1 } else { 0 }
+        + custom_sections.len();
+    let dividers_h = (divider_count as f32) * (DIVIDER_GAP * 2.0 + 1.0);
+
+    let panel_h = PADDING * 2.0 + transform_h + undo_h + terrain_h + custom_h + dividers_h;
 
     let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
 
@@ -76,36 +101,17 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                 let col1_x = col0_x + BTN_SIZE.x + BTN_GAP;
                 let mut y = panel_pos.y + PADDING;
 
-                let active_tool = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
-
-                // Row 0: Select | Move
-                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE),
-                    CURSOR, active_tool == ActiveTool::Select, active_color, inactive_color, hovered_color);
-                if r.clicked() { cmds.push(|w: &mut World| { w.insert_resource(ActiveTool::Select); }); }
-                r.on_hover_text("Select (Q)");
-
-                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), BTN_SIZE),
-                    ARROWS_OUT_CARDINAL, active_tool == ActiveTool::Translate, active_color, inactive_color, hovered_color);
-                if r.clicked() { cmds.push(|w: &mut World| { w.insert_resource(ActiveTool::Translate); }); }
-                r.on_hover_text("Move (W)");
-                y += row_step;
-
-                // Row 1: Rotate | Scale
-                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE),
-                    ARROWS_COUNTER_CLOCKWISE, active_tool == ActiveTool::Rotate, active_color, inactive_color, hovered_color);
-                if r.clicked() { cmds.push(|w: &mut World| { w.insert_resource(ActiveTool::Rotate); }); }
-                r.on_hover_text("Rotate (E)");
-
-                let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), BTN_SIZE),
-                    ARROWS_OUT_SIMPLE, active_tool == ActiveTool::Scale, active_color, inactive_color, hovered_color);
-                if r.clicked() { cmds.push(|w: &mut World| { w.insert_resource(ActiveTool::Scale); }); }
-                r.on_hover_text("Scale (R)");
-                y += row_step;
+                // Transform section
+                render_tool_section(
+                    ui, &transform_tools, cmds, world,
+                    col0_x, col1_x, &mut y, row_step,
+                    active_color, inactive_color, hovered_color,
+                );
 
                 // Divider before undo/redo
                 draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
 
-                // Row 2: Undo | Redo (dimmed — no command history yet)
+                // Undo | Redo (dimmed — no command history yet)
                 let disabled_color = Color32::from_rgba_unmultiplied(inactive_color.r(), inactive_color.g(), inactive_color.b(), 80);
                 let disabled_icon_color = Color32::from_white_alpha(40);
 
@@ -122,36 +128,24 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                 ui.allocate_rect(redo_rect, Sense::hover()).on_hover_text("Redo (Ctrl+Y)");
                 y += row_step;
 
-                // Terrain/Foliage tools — only when terrain is selected
-                if in_terrain {
+                // Terrain section — only rendered if any entries are currently visible
+                if !terrain_tools.is_empty() {
                     draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    render_tool_section(
+                        ui, &terrain_tools, cmds, world,
+                        col0_x, col1_x, &mut y, row_step,
+                        active_color, inactive_color, hovered_color,
+                    );
+                }
 
-                    // Row: Sculpt | Paint
-                    let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE),
-                        MOUNTAINS, active_tool == ActiveTool::TerrainSculpt, active_color, inactive_color, hovered_color);
-                    if r.clicked() {
-                        let new = if active_tool == ActiveTool::TerrainSculpt { ActiveTool::Select } else { ActiveTool::TerrainSculpt };
-                        cmds.push(move |w: &mut World| { w.insert_resource(new); });
-                    }
-                    r.on_hover_text("Sculpt Terrain");
-
-                    let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col1_x, y), BTN_SIZE),
-                        PAINT_BRUSH, active_tool == ActiveTool::TerrainPaint, active_color, inactive_color, hovered_color);
-                    if r.clicked() {
-                        let new = if active_tool == ActiveTool::TerrainPaint { ActiveTool::Select } else { ActiveTool::TerrainPaint };
-                        cmds.push(move |w: &mut World| { w.insert_resource(new); });
-                    }
-                    r.on_hover_text("Paint Terrain Layers");
-                    y += row_step;
-
-                    // Row: Foliage
-                    let r = viewport_tool_button(ui, Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE),
-                        TREE, active_tool == ActiveTool::FoliagePaint, active_color, inactive_color, hovered_color);
-                    if r.clicked() {
-                        let new = if active_tool == ActiveTool::FoliagePaint { ActiveTool::Select } else { ActiveTool::FoliagePaint };
-                        cmds.push(move |w: &mut World| { w.insert_resource(new); });
-                    }
-                    r.on_hover_text("Paint Foliage");
+                // Plugin-defined custom sections
+                for (_id, tools) in &custom_sections {
+                    draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    render_tool_section(
+                        ui, tools, cmds, world,
+                        col0_x, col1_x, &mut y, row_step,
+                        active_color, inactive_color, hovered_color,
+                    );
                 }
             });
     }
@@ -247,35 +241,36 @@ fn draw_divider(ui: &mut egui::Ui, y: &mut f32, panel_x: f32, panel_w: f32, bord
     *y += 1.0 + DIVIDER_GAP;
 }
 
-fn is_terrain_selected(world: &World) -> bool {
-    let Some(sel) = world.get_resource::<EditorSelection>() else { return false };
-    let Some(entity) = sel.get() else { return false };
-
-    // Check if entity or parent has a component whose type name contains "TerrainData"
-    fn has_terrain_component(world: &World, entity: Entity) -> bool {
-        let er = world.entity(entity);
-        let archetype = er.archetype();
-        for &component_id in archetype.components() {
-            if let Some(info) = world.components().get_info(component_id) {
-                let name = info.name();
-                if name.contains("TerrainData") || name.contains("TerrainChunkData") {
-                    return true;
-                }
-            }
+/// Render a toolbar section: lays entries out in a 2-column grid, top to
+/// bottom. Each entry's predicates and activator are invoked from the registry.
+fn render_tool_section(
+    ui: &mut egui::Ui,
+    tools: &[ToolEntry],
+    cmds: &EditorCommands,
+    world: &World,
+    col0_x: f32,
+    col1_x: f32,
+    y: &mut f32,
+    row_step: f32,
+    active_color: Color32,
+    inactive_color: Color32,
+    hovered_color: Color32,
+) {
+    for (i, entry) in tools.iter().enumerate() {
+        let col = i % 2;
+        let x = if col == 0 { col0_x } else { col1_x };
+        let rect = Rect::from_min_size(Pos2::new(x, *y), BTN_SIZE);
+        let is_active = (entry.is_active)(world);
+        let r = viewport_tool_button(ui, rect, entry.icon, is_active, active_color, inactive_color, hovered_color);
+        if r.clicked() {
+            let activate = entry.activate.clone();
+            cmds.push(move |w: &mut World| { (activate)(w); });
         }
-        false
+        r.on_hover_text(entry.tooltip);
+        if col == 1 { *y += row_step; }
     }
-
-    if has_terrain_component(world, entity) {
-        return true;
-    }
-    // Check parent chain
-    if let Some(parent) = world.get::<ChildOf>(entity) {
-        if has_terrain_component(world, parent.0) {
-            return true;
-        }
-    }
-    false
+    // Advance y if last row only filled one column
+    if tools.len() % 2 == 1 { *y += row_step; }
 }
 
 fn viewport_tool_button(
