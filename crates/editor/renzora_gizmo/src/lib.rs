@@ -221,6 +221,15 @@ impl Plugin for GizmoPlugin {
                     ..default()
                 },
             )
+            .insert_gizmo_config(
+                TransformGizmoGroup,
+                GizmoConfig {
+                    depth_bias: -1.0,
+                    line: GizmoLineConfig { width: 3.0, ..default() },
+                    render_layers: RenderLayers::layer(1),
+                    ..default()
+                },
+            )
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
@@ -461,8 +470,15 @@ use bevy::gizmos::AppGizmoBuilder;
 #[reflect(Default)]
 pub struct OverlayGizmoGroup;
 
+/// Dedicated group for transform gizmo line elements (rotate circles, scale
+/// cubes, translate plane squares). Always renders on top of the scene,
+/// independent of the selection-bounding-box `on_top` setting.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct TransformGizmoGroup;
+
 fn draw_line_gizmos(
-    mut gizmos: Gizmos<OverlayGizmoGroup>,
+    mut gizmos: Gizmos<TransformGizmoGroup>,
     mode: Res<GizmoMode>,
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,

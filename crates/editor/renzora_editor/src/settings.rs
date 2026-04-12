@@ -135,7 +135,7 @@ impl Default for EditorSettings {
         Self {
             settings_tab: SettingsTab::default(),
             selection_highlight_mode: SelectionHighlightMode::default(),
-            selection_boundary_on_top: false,
+            selection_boundary_on_top: true,
             font_size: 14.0,
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
