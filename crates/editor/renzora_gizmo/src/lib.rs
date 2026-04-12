@@ -62,6 +62,10 @@ impl Material for GizmoMaterial {
             depth_stencil.depth_compare = CompareFunction::Always;
             depth_stencil.depth_write_enabled = false;
         }
+        // Gizmo meshes get mirrored via negative root scale when axes flip
+        // to face the camera — disable backface culling so cone heads and
+        // scale cubes keep rendering correctly regardless of winding.
+        descriptor.primitive.cull_mode = None;
         Ok(())
     }
 }
@@ -89,6 +93,18 @@ impl GizmoAxis {
             Self::XY => Vec3::Z,
             Self::XZ => Vec3::Y,
             Self::YZ => Vec3::X,
+        }
+    }
+
+    /// Axis direction with per-axis signs applied so single-axis handles
+    /// (X/Y/Z) flip to face the camera. Plane normals are left alone —
+    /// the drag plane is the same regardless of viewing side.
+    fn signed_direction(self, signs: Vec3) -> Vec3 {
+        match self {
+            Self::X => Vec3::new(signs.x, 0.0, 0.0),
+            Self::Y => Vec3::new(0.0, signs.y, 0.0),
+            Self::Z => Vec3::new(0.0, 0.0, signs.z),
+            Self::XY | Self::XZ | Self::YZ => self.direction(),
         }
     }
 
@@ -157,7 +173,7 @@ struct GizmoMaterials {
     center_highlight: Handle<GizmoMaterial>,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct GizmoState {
     pub active_axis: Option<GizmoAxis>,
     pub hovered_axis: Option<GizmoAxis>,
@@ -165,6 +181,25 @@ pub struct GizmoState {
     pub drag_angle: f32,
     pub drag_scale_factor: f32,
     pub gizmo_scale: f32,
+    /// +1 or -1 per axis — flipped so each arrow points toward the camera
+    /// rather than away, keeping handles visible and pickable regardless of
+    /// the current viewing angle. Locked while a drag is in progress so
+    /// the handle direction doesn't flip mid-drag.
+    pub axis_signs: Vec3,
+}
+
+impl Default for GizmoState {
+    fn default() -> Self {
+        Self {
+            active_axis: None,
+            hovered_axis: None,
+            drag_starts: Vec::new(),
+            drag_angle: 0.0,
+            drag_scale_factor: 0.0,
+            gizmo_scale: 1.0,
+            axis_signs: Vec3::ONE,
+        }
+    }
 }
 
 /// State for box/marquee selection (drag to select multiple entities).
@@ -482,7 +517,20 @@ fn update_gizmo_transforms(
             if let Ok(cam_gt) = camera_query.single() {
                 let dist = (cam_gt.translation() - sel_t.translation).length().max(0.1);
                 let scale = dist / GIZMO_SCALE_REF_DIST;
-                root_transform.scale = Vec3::splat(scale);
+
+                // Per-axis signs: each axis arrow points toward the camera
+                // so handles stay visible. Locked while dragging so the
+                // axis doesn't flip out from under the user.
+                let cam_dir = cam_gt.translation() - sel_t.translation;
+                if gizmo_state.active_axis.is_none() {
+                    gizmo_state.axis_signs = Vec3::new(
+                        if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
+                        if cam_dir.y >= 0.0 { 1.0 } else { -1.0 },
+                        if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
+                    );
+                }
+                let s = gizmo_state.axis_signs;
+                root_transform.scale = Vec3::new(scale * s.x, scale * s.y, scale * s.z);
                 gizmo_state.gizmo_scale = scale;
             }
         }
@@ -662,9 +710,6 @@ fn handle_selection_shortcuts(
     mouse_button: Res<ButtonInput<MouseButton>>,
     gizmo_state: Res<GizmoState>,
     modal: Res<modal_transform::ModalTransformState>,
-    names: Query<&Name>,
-    transforms: Query<&Transform>,
-    parents: Query<&ChildOf>,
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
@@ -713,43 +758,89 @@ fn handle_selection_shortcuts(
         commands.insert_resource(renzora::core::CreateNodeRequested);
     }
 
+    // Copy (Ctrl+C) — snapshot the current selection into the clipboard.
+    if keybindings.just_pressed(EditorAction::Copy, &keyboard) {
+        let entities = selection.get_all();
+        if !entities.is_empty() {
+            commands.queue(move |world: &mut World| {
+                world.insert_resource(EditorClipboard { entities });
+            });
+        }
+    }
+
+    // Paste (Ctrl+V) — clone every entity on the clipboard (filtering out
+    // ones that have since been despawned) and select the copies. If the
+    // cursor is over the viewport, pasted entities are re-positioned to
+    // the ground-plane hit so paste follows the camera/cursor. Otherwise
+    // they land at their original world position.
+    if keybindings.just_pressed(EditorAction::Paste, &keyboard) {
+        commands.queue(move |world: &mut World| {
+            let sources = world
+                .get_resource::<EditorClipboard>()
+                .map(|c| c.entities.clone())
+                .unwrap_or_default();
+            if sources.is_empty() { return; }
+
+            let paste_target = compute_paste_target(world);
+            duplicate_entities(world, &sources);
+
+            if let Some(target) = paste_target {
+                let new_ids = world
+                    .get_resource::<EditorSelection>()
+                    .map(|s| s.get_all())
+                    .unwrap_or_default();
+                if new_ids.is_empty() { return; }
+                reposition_paste_group(world, &new_ids, target);
+            }
+        });
+    }
+
     // Duplicate (Ctrl+D)
     if keybindings.just_pressed(EditorAction::Duplicate, &keyboard) {
         let entities = selection.get_all();
-        for entity in entities {
-            let name = names
-                .get(entity)
-                .map(|n| format!("{} (Copy)", n.as_str()))
-                .unwrap_or_else(|_| "Entity (Copy)".to_string());
-            let transform = transforms.get(entity).copied().unwrap_or_default();
-            let parent = parents.get(entity).ok().map(|c| c.parent());
-            let new_entity = commands.spawn((Name::new(name), transform)).id();
-            if let Some(p) = parent {
-                commands.entity(new_entity).set_parent_in_place(p);
-            }
-            selection.set(Some(new_entity));
+        if !entities.is_empty() {
+            commands.queue(move |world: &mut World| {
+                duplicate_entities(world, &entities);
+            });
         }
     }
 
     // Duplicate & Move (Alt+D) — duplicate then enter grab mode
     if keybindings.just_pressed(EditorAction::DuplicateAndMove, &keyboard) {
         let entities = selection.get_all();
-        let has_entities = !entities.is_empty();
-        for entity in entities {
-            let name = names
-                .get(entity)
-                .map(|n| format!("{} (Copy)", n.as_str()))
-                .unwrap_or_else(|_| "Entity (Copy)".to_string());
-            let transform = transforms.get(entity).copied().unwrap_or_default();
-            let parent = parents.get(entity).ok().map(|c| c.parent());
-            let new_entity = commands.spawn((Name::new(name), transform)).id();
-            if let Some(p) = parent {
-                commands.entity(new_entity).set_parent_in_place(p);
-            }
-            selection.set(Some(new_entity));
-        }
-        if has_entities {
+        if !entities.is_empty() {
+            commands.queue(move |world: &mut World| {
+                duplicate_entities(world, &entities);
+            });
             commands.insert_resource(PendingModalGrab);
+        }
+    }
+}
+
+/// Deep-clone each selected entity (all components, via Bevy's
+/// `EntityWorldMut::clone_and_spawn`) and replace the selection with the
+/// new copies. The suffix " (Copy)" is appended to the `Name` so
+/// duplicates are distinguishable in the hierarchy.
+fn duplicate_entities(world: &mut World, sources: &[Entity]) {
+    let mut new_ids: Vec<Entity> = Vec::with_capacity(sources.len());
+    for src in sources {
+        let Ok(mut src_mut) = world.get_entity_mut(*src) else { continue };
+        let new = src_mut.clone_and_spawn();
+        // Append " (Copy)" to the cloned entity's Name.
+        if let Some(original) = world
+            .get::<Name>(new)
+            .map(|n| n.as_str().to_string())
+        {
+            if let Ok(mut ent) = world.get_entity_mut(new) {
+                ent.insert(Name::new(format!("{} (Copy)", original)));
+            }
+        }
+        new_ids.push(new);
+    }
+    if let Some(sel) = world.get_resource::<EditorSelection>() {
+        sel.clear();
+        for e in &new_ids {
+            sel.toggle(*e);
         }
     }
 }
@@ -757,6 +848,132 @@ fn handle_selection_shortcuts(
 /// One-shot resource to signal pending modal grab from duplicate-and-move.
 #[derive(Resource)]
 struct PendingModalGrab;
+
+/// Editor-wide clipboard for Copy/Paste of entities. Stores the source
+/// entity ids captured at copy time; paste deep-clones each via
+/// `EntityWorldMut::clone_and_spawn`, so all components transfer. Sources
+/// that have been despawned between copy and paste are silently skipped.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct EditorClipboard {
+    pub entities: Vec<Entity>,
+}
+
+/// Project the window cursor onto the ground plane (y=0) through the
+/// editor camera. Returns `None` if the cursor isn't over the viewport,
+/// the ray misses the ground plane, or any required resource is missing —
+/// callers fall back to pasting at the source's original position.
+/// Shift `entities` so the group's XZ centroid lands at `target.x/z` and
+/// the lowest point of the group's world-space AABB sits at `target.y`
+/// (i.e. the floor). Preserves relative layout within the group.
+fn reposition_paste_group(world: &mut World, entities: &[Entity], target: Vec3) {
+    use bevy::camera::primitives::Aabb;
+
+    // Centroid on XZ (where the cursor is).
+    let mut centroid_xz = Vec2::ZERO;
+    let mut count = 0u32;
+    for e in entities {
+        if let Some(t) = world.get::<Transform>(*e) {
+            centroid_xz += Vec2::new(t.translation.x, t.translation.z);
+            count += 1;
+        }
+    }
+    if count == 0 { return; }
+    centroid_xz /= count as f32;
+
+    // Lowest world-space AABB bottom across the group. Mesh entities
+    // carry `Aabb` in local space; transform into world space to get the
+    // bottom y. Non-mesh entities fall back to their translation.y.
+    let mut min_y = f32::INFINITY;
+    for e in entities {
+        let t_y = world.get::<Transform>(*e).map(|t| t.translation.y);
+        let bottom = if let (Some(aabb), Some(gt)) = (
+            world.get::<Aabb>(*e),
+            world.get::<GlobalTransform>(*e),
+        ) {
+            world_space_min_y(aabb, gt)
+        } else {
+            t_y.unwrap_or(f32::INFINITY)
+        };
+        if bottom < min_y {
+            min_y = bottom;
+        }
+    }
+    if !min_y.is_finite() {
+        // Nothing with a position — nothing to do.
+        return;
+    }
+
+    let delta = Vec3::new(
+        target.x - centroid_xz.x,
+        target.y - min_y,
+        target.z - centroid_xz.y,
+    );
+    for e in entities {
+        if let Ok(mut ent) = world.get_entity_mut(*e) {
+            if let Some(mut t) = ent.get_mut::<Transform>() {
+                t.translation += delta;
+            }
+        }
+    }
+}
+
+/// Transform the 8 corners of a local-space AABB by `gt` and return the
+/// minimum world-space y — the lowest point of the mesh as it currently
+/// sits in the world.
+fn world_space_min_y(aabb: &bevy::camera::primitives::Aabb, gt: &GlobalTransform) -> f32 {
+    let c = Vec3::from(aabb.center);
+    let h = Vec3::from(aabb.half_extents);
+    let mut min_y = f32::INFINITY;
+    for dx in [-1.0_f32, 1.0] {
+        for dy in [-1.0_f32, 1.0] {
+            for dz in [-1.0_f32, 1.0] {
+                let local = c + Vec3::new(dx * h.x, dy * h.y, dz * h.z);
+                let world = gt.transform_point(local);
+                if world.y < min_y { min_y = world.y; }
+            }
+        }
+    }
+    min_y
+}
+
+fn compute_paste_target(world: &mut World) -> Option<Vec3> {
+    // Read viewport fields into locals so the immutable borrow is dropped
+    // before we use `world.query_filtered` (which needs a mutable borrow).
+    let (vp_min, vp_size, current_size, hovered) = {
+        let vp = world.get_resource::<ViewportState>()?;
+        (vp.screen_position, vp.screen_size, vp.current_size, vp.hovered)
+    };
+    if !hovered { return None; }
+
+    let cursor = {
+        let mut window_q = world.query_filtered::<&Window, With<PrimaryWindow>>();
+        let window = window_q.single(world).ok()?;
+        window.cursor_position()?
+    };
+
+    if cursor.x < vp_min.x || cursor.y < vp_min.y
+        || cursor.x > vp_min.x + vp_size.x || cursor.y > vp_min.y + vp_size.y {
+        return None;
+    }
+
+    let ray = {
+        let mut cam_q =
+            world.query_filtered::<(&Camera, &GlobalTransform), With<EditorCamera>>();
+        let (camera, cam_xform) = cam_q.single(world).ok()?;
+        let viewport_pos = Vec2::new(
+            (cursor.x - vp_min.x) / vp_size.x * current_size.x as f32,
+            (cursor.y - vp_min.y) / vp_size.y * current_size.y as f32,
+        );
+        camera.viewport_to_world(cam_xform, viewport_pos).ok()?
+    };
+
+    let dir = ray.direction.as_vec3();
+    if dir.y.abs() <= 1e-6 { return None; }
+    let t = -ray.origin.y / dir.y;
+    if t <= 0.0 || t > 10_000.0 { return None; }
+    let hit = ray.origin + dir * t;
+    Some(Vec3::new(hit.x, 0.0, hit.z))
+}
 
 /// Handle file & edit keyboard shortcuts (save, open, settings, etc.).
 fn handle_file_shortcuts(
@@ -997,7 +1214,8 @@ fn gizmo_hover_detect(
             }
             if best.is_none() {
                 for axis in AXES {
-                    if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + axis.direction() * gizmo_size) {
+                    let dir = axis.signed_direction(gizmo_state.axis_signs);
+                    if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size) {
                         if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
                             best = Some((axis, dist));
                         }
@@ -1007,7 +1225,8 @@ fn gizmo_hover_detect(
         }
         GizmoMode::Scale => {
             for axis in AXES {
-                if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + axis.direction() * gizmo_size) {
+                let dir = axis.signed_direction(gizmo_state.axis_signs);
+                if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size) {
                     if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
                         best = Some((axis, dist));
                     }
@@ -1150,12 +1369,13 @@ fn gizmo_drag(
                 let db = if lb > 1e-4 { total_delta.dot(sb / lb) } else { 0.0 };
                 a * da * scale + b * db * scale
             } else {
+                let dir = axis.signed_direction(gizmo_state.axis_signs);
                 let cam_right = cam_gt.right().as_vec3();
                 let cam_up = cam_gt.up().as_vec3();
-                let sa = Vec2::new(axis.direction().dot(cam_right), -axis.direction().dot(cam_up));
+                let sa = Vec2::new(dir.dot(cam_right), -dir.dot(cam_up));
                 let len = sa.length();
                 if len < 1e-4 { return; }
-                axis.direction() * total_delta.dot(sa / len) * scale
+                dir * total_delta.dot(sa / len) * scale
             };
 
             for &entity in &selected_entities {

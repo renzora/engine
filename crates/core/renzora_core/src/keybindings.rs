@@ -42,6 +42,8 @@ pub enum EditorAction {
     Undo,
     Redo,
     CreateNode,
+    Copy,
+    Paste,
 
     // File operations
     SaveScene,
@@ -96,6 +98,8 @@ impl EditorAction {
             EditorAction::Undo => "Undo",
             EditorAction::Redo => "Redo",
             EditorAction::CreateNode => "Create Node",
+            EditorAction::Copy => "Copy",
+            EditorAction::Paste => "Paste",
             EditorAction::SaveScene => "Save Scene",
             EditorAction::SaveSceneAs => "Save Scene As",
             EditorAction::OpenScene => "Open Scene",
@@ -139,7 +143,11 @@ impl EditorAction {
 
             EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
 
-            EditorAction::Undo | EditorAction::Redo | EditorAction::CreateNode => "Edit",
+            EditorAction::Undo
+            | EditorAction::Redo
+            | EditorAction::CreateNode
+            | EditorAction::Copy
+            | EditorAction::Paste => "Edit",
 
             EditorAction::SaveScene
             | EditorAction::SaveSceneAs
@@ -189,6 +197,8 @@ impl EditorAction {
             EditorAction::Undo,
             EditorAction::Redo,
             EditorAction::CreateNode,
+            EditorAction::Copy,
+            EditorAction::Paste,
             EditorAction::SaveScene,
             EditorAction::SaveSceneAs,
             EditorAction::OpenScene,
@@ -322,6 +332,8 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::Undo, KeyBinding::new(KeyCode::KeyZ).ctrl());
         bindings.insert(EditorAction::Redo, KeyBinding::new(KeyCode::KeyY).ctrl());
         bindings.insert(EditorAction::CreateNode, KeyBinding::new(KeyCode::KeyA).ctrl());
+        bindings.insert(EditorAction::Copy, KeyBinding::new(KeyCode::KeyC).ctrl());
+        bindings.insert(EditorAction::Paste, KeyBinding::new(KeyCode::KeyV).ctrl());
 
         // File defaults
         bindings.insert(EditorAction::SaveScene, KeyBinding::new(KeyCode::KeyS).ctrl());
