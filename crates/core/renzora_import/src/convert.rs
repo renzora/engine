@@ -5,12 +5,37 @@ use std::path::Path;
 use crate::formats::{detect_format, ModelFormat};
 use crate::settings::ImportSettings;
 
+/// A texture pulled out of an embedded source file (e.g. an FBX with the
+/// image bytes stored inline). The caller writes `data` to
+/// `<model_dir>/textures/<name>.<extension>`; the GLB references it by URI.
+#[derive(Clone)]
+pub struct ExtractedTexture {
+    /// File stem (no extension), already sanitized for the filesystem.
+    pub name: String,
+    /// File extension without the dot, e.g. `"png"` or `"jpg"`.
+    pub extension: String,
+    pub data: Vec<u8>,
+}
+
 /// Result of a successful import.
 pub struct ImportResult {
     /// The GLB binary data, ready to write to disk.
     pub glb_bytes: Vec<u8>,
     /// Non-fatal warnings encountered during conversion.
     pub warnings: Vec<String>,
+    /// Textures extracted from the source file. Empty for formats that don't
+    /// embed textures or when the source had none.
+    pub extracted_textures: Vec<ExtractedTexture>,
+}
+
+impl Default for ImportResult {
+    fn default() -> Self {
+        Self {
+            glb_bytes: Vec::new(),
+            warnings: Vec::new(),
+            extracted_textures: Vec::new(),
+        }
+    }
 }
 
 /// Errors that can occur during import.

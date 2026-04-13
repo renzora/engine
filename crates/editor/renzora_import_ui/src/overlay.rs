@@ -809,6 +809,28 @@ fn import_worker(
                 let size_kb = glb_bytes.len() as f64 / 1024.0;
                 let warn_count = result.warnings.len();
 
+                // Write any embedded textures the converter pulled out of the
+                // source (e.g. textures bundled inside an FBX). Failures here
+                // surface as warnings rather than aborting the import.
+                if !result.extracted_textures.is_empty() {
+                    let tex_dir = model_dir.join("textures");
+                    if let Err(e) = std::fs::create_dir_all(&tex_dir) {
+                        all_warnings
+                            .push(format!("textures dir: {}", e));
+                    } else {
+                        for tex in &result.extracted_textures {
+                            let tex_path =
+                                tex_dir.join(format!("{}.{}", tex.name, tex.extension));
+                            if let Err(e) = std::fs::write(&tex_path, &tex.data) {
+                                all_warnings.push(format!(
+                                    "texture '{}': {}",
+                                    tex.name, e
+                                ));
+                            }
+                        }
+                    }
+                }
+
                 match std::fs::write(&output_path, &glb_bytes) {
                     Ok(()) => {
                         imported += 1;

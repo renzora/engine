@@ -119,11 +119,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     }
 
     let glb_bytes =
-        crate::obj::build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices)?;
+        crate::obj::build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }
 

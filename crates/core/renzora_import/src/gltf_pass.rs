@@ -20,7 +20,7 @@ pub fn convert_glb(path: &Path, _settings: &ImportSettings) -> Result<ImportResu
 
     Ok(ImportResult {
         glb_bytes: bytes,
-        warnings: vec![],
+        warnings: vec![], extracted_textures: Vec::new(),
     })
 }
 
@@ -76,7 +76,7 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }
 

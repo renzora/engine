@@ -106,11 +106,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         return Err(ImportError::ParseError("no valid geometry found in OBJ".into()));
     }
 
-    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices)?;
+    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }
 
@@ -162,6 +162,7 @@ pub(crate) fn build_glb(
     normals: &[f32],
     texcoords: &[f32],
     indices: &[u32],
+    materials: &MaterialBundle,
 ) -> Result<Vec<u8>, ImportError> {
     let vertex_count = positions.len() / 3;
     let mut min = [f32::MAX; 3];
@@ -329,11 +330,18 @@ pub(crate) fn build_glb(
         Index::new(2),
     );
 
+    emit_material_bundle(&mut root, materials);
+    let primitive_material = if materials.materials.is_empty() {
+        None
+    } else {
+        Some(Index::new(0))
+    };
+
     root.meshes.push(Mesh {
         primitives: vec![mesh::Primitive {
             attributes,
             indices: Some(Index::new(3)),
-            material: None,
+            material: primitive_material,
             mode: validation::Checked::Valid(mesh::Mode::Triangles),
             targets: None,
             extensions: None,
@@ -388,6 +396,33 @@ pub(crate) struct SkinJoint {
     pub inverse_bind_matrix: [f32; 16],
 }
 
+/// A material bundle consumed by the GLB builders. The builder emits one
+/// GLTF material entry per `PbrMaterialDef` and one image+texture per
+/// `TextureRef`; the mesh primitive references material 0 when the bundle
+/// is non-empty.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MaterialBundle {
+    pub materials: Vec<PbrMaterialDef>,
+    pub textures: Vec<TextureRef>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PbrMaterialDef {
+    pub name: String,
+    pub base_color: [f32; 4],
+    pub base_color_texture: Option<usize>,
+    pub normal_texture: Option<usize>,
+    pub metallic: f32,
+    pub roughness: f32,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TextureRef {
+    /// Asset-relative URI, e.g. `"textures/diffuse.png"`. The GLB stores this
+    /// as the image's `uri`; Bevy resolves it relative to the GLB file.
+    pub uri: String,
+}
+
 /// Build a GLB that contains a skinned mesh. `joint_indices` and `weights` must
 /// be the same length as the vertex count implied by `positions`. `joints` is
 /// the skeleton in flat order — children refer to parents via their index.
@@ -400,6 +435,7 @@ pub(crate) fn build_skinned_glb(
     joint_indices: &[[u16; 4]],
     weights: &[[f32; 4]],
     joints: &[SkinJoint],
+    materials: &MaterialBundle,
 ) -> Result<Vec<u8>, ImportError> {
     let vertex_count = positions.len() / 3;
     if joint_indices.len() != vertex_count || weights.len() != vertex_count {
@@ -647,11 +683,20 @@ pub(crate) fn build_skinned_glb(
         Index::new(5),
     );
 
+    // Emit GLTF materials/images/textures/samplers from the bundle. The mesh
+    // primitive uses material 0 when the bundle is non-empty.
+    emit_material_bundle(&mut root, materials);
+    let primitive_material = if materials.materials.is_empty() {
+        None
+    } else {
+        Some(Index::new(0))
+    };
+
     root.meshes.push(Mesh {
         primitives: vec![mesh::Primitive {
             attributes,
             indices: Some(Index::new(3)),
-            material: None,
+            material: primitive_material,
             mode: validation::Checked::Valid(mesh::Mode::Triangles),
             targets: None,
             extensions: None,
@@ -779,4 +824,75 @@ fn cast_u32_to_bytes(data: &[u32]) -> Vec<u8> {
         out.extend_from_slice(&v.to_le_bytes());
     }
     out
+}
+
+/// Push GLTF entries (image / sampler / texture / material) from the bundle.
+/// Images use external URIs (relative to the GLB); the caller writes the
+/// actual bytes to disk separately. One default sampler is shared by all
+/// textures.
+fn emit_material_bundle(root: &mut gltf_json::Root, bundle: &MaterialBundle) {
+    if bundle.materials.is_empty() && bundle.textures.is_empty() {
+        return;
+    }
+
+    use gltf_json::*;
+
+    // One linear/repeat sampler shared across all textures.
+    if !bundle.textures.is_empty() {
+        let mut sampler = texture::Sampler::default();
+        sampler.mag_filter = Some(validation::Checked::Valid(texture::MagFilter::Linear));
+        sampler.min_filter = Some(validation::Checked::Valid(texture::MinFilter::LinearMipmapLinear));
+        sampler.wrap_s = validation::Checked::Valid(texture::WrappingMode::Repeat);
+        sampler.wrap_t = validation::Checked::Valid(texture::WrappingMode::Repeat);
+        root.samplers.push(sampler);
+    }
+    let sampler_idx = if bundle.textures.is_empty() {
+        None
+    } else {
+        Some(Index::new(0))
+    };
+
+    for (i, tex) in bundle.textures.iter().enumerate() {
+        root.images.push(Image {
+            buffer_view: None,
+            mime_type: None,
+            name: None,
+            uri: Some(tex.uri.clone()),
+            extensions: None,
+            extras: Default::default(),
+        });
+        root.textures.push(Texture {
+            name: None,
+            sampler: sampler_idx,
+            source: Index::new(i as u32),
+            extensions: None,
+            extras: Default::default(),
+        });
+    }
+
+    for mat in &bundle.materials {
+        let base_tex = mat.base_color_texture.map(|i| texture::Info {
+            index: Index::new(i as u32),
+            tex_coord: 0,
+            extensions: None,
+            extras: Default::default(),
+        });
+        let normal_tex = mat.normal_texture.map(|i| material::NormalTexture {
+            index: Index::new(i as u32),
+            scale: 1.0,
+            tex_coord: 0,
+            extensions: None,
+            extras: Default::default(),
+        });
+        let mut m = Material::default();
+        m.alpha_mode = validation::Checked::Valid(material::AlphaMode::Opaque);
+        m.pbr_metallic_roughness.base_color_factor =
+            material::PbrBaseColorFactor(mat.base_color);
+        m.pbr_metallic_roughness.base_color_texture = base_tex;
+        m.pbr_metallic_roughness.metallic_factor = material::StrengthFactor(mat.metallic);
+        m.pbr_metallic_roughness.roughness_factor = material::StrengthFactor(mat.roughness);
+        m.normal_texture = normal_tex;
+        let _ = &mat.name; // name is behind the `names` feature; skip safely.
+        root.materials.push(m);
+    }
 }

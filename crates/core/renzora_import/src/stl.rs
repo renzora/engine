@@ -82,10 +82,10 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // STL has no UVs
     let texcoords = vec![0.0f32; vertex_count * 2];
 
-    let glb_bytes = build_glb(&positions, &vert_normals, &texcoords, &indices)?;
+    let glb_bytes = build_glb(&positions, &vert_normals, &texcoords, &indices, &crate::obj::MaterialBundle::default())?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }

@@ -110,7 +110,7 @@ pub fn convert(path: &Path, _settings: &ImportSettings) -> Result<ImportResult, 
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }
 

@@ -179,12 +179,20 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         ));
     }
 
+    // Pull embedded textures + PBR material info out of the scene. Textures
+    // become external files written next to the GLB; materials become GLTF
+    // material entries that reference them. External-only textures (no
+    // embedded content) are skipped — there's nothing to dump.
+    let (material_bundle, extracted_textures) = collect_textures_and_materials(scene_ref);
+
     let glb_bytes = if has_skin {
         log::info!(
-            "[import] {}: building skinned GLB with {} joints, {} vertices",
+            "[import] {}: building skinned GLB with {} joints, {} vertices, {} materials, {} textures",
             file_name,
             joints.len(),
             all_positions.len() / 3,
+            material_bundle.materials.len(),
+            extracted_textures.len(),
         );
         let joint_structs: Vec<crate::obj::SkinJoint> = joints
             .iter()
@@ -205,9 +213,16 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             &all_joints,
             &all_weights,
             &joint_structs,
+            &material_bundle,
         )?
     } else {
-        build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices)?
+        build_glb(
+            &all_positions,
+            &all_normals,
+            &all_texcoords,
+            &all_indices,
+            &material_bundle,
+        )?
     };
 
     log::info!(
@@ -218,7 +233,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_indices.len() / 3,
     );
 
-    Ok(ImportResult { glb_bytes, warnings })
+    Ok(ImportResult { glb_bytes, warnings, extracted_textures })
 }
 
 /// Extract every animation stack in an FBX file to a directory of `.anim` files.
@@ -503,4 +518,166 @@ fn load_scene(path: &Path, settings: &ImportSettings) -> Result<ufbx::SceneRoot,
     ufbx::load_file(path_str, opts).map_err(|e| {
         ImportError::ParseError(format!("ufbx load failed: {}", &*e.description))
     })
+}
+
+// ─── Texture + material extraction ─────────────────────────────────────────
+
+/// Sniff the image format from the first bytes. Returns `"png"` / `"jpg"` /
+/// `"tga"` / `"dds"` / `"bin"` (the last as a generic fallback so the file
+/// still gets written even if we don't recognize the magic).
+fn sniff_image_extension(data: &[u8]) -> &'static str {
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "png"
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "jpg"
+    } else if data.starts_with(b"DDS ") {
+        "dds"
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        "gif"
+    } else if data.starts_with(b"BM") {
+        "bmp"
+    } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else if data.len() > 18 && (data[1] == 0 || data[1] == 1) && (data[2] == 1 || data[2] == 2 || data[2] == 3 || data[2] == 9 || data[2] == 10) {
+        // Heuristic for TGA — there's no magic, so sniff the header layout.
+        "tga"
+    } else {
+        "bin"
+    }
+}
+
+/// Replace any character not allowed in a file name with `_`. Mixamo texture
+/// names sometimes contain spaces and colons.
+fn sanitize_name(input: &str) -> String {
+    if input.is_empty() {
+        return "texture".into();
+    }
+    input
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Walk `scene.textures` + `scene.materials`, producing a [`MaterialBundle`]
+/// for the GLB builder and a list of files to drop into `<model_dir>/textures/`.
+fn collect_textures_and_materials(
+    scene: &ufbx::Scene,
+) -> (crate::obj::MaterialBundle, Vec<crate::convert::ExtractedTexture>) {
+    use crate::convert::ExtractedTexture;
+    use crate::obj::{MaterialBundle, PbrMaterialDef, TextureRef};
+    use std::collections::HashMap;
+
+    let mut bundle = MaterialBundle::default();
+    let mut extracted: Vec<ExtractedTexture> = Vec::new();
+    // texture element_id → index into bundle.textures (and `extracted`).
+    let mut tex_index: HashMap<u32, usize> = HashMap::new();
+    // Track sanitized names to dedupe filenames across textures.
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for tex in &scene.textures {
+        // Embedded data lives either on the texture itself or its linked Video.
+        let bytes: &[u8] = if !tex.content.is_empty() {
+            &*tex.content
+        } else if let Some(video) = tex.video.as_ref() {
+            &*video.content
+        } else {
+            // External-only reference — nothing to extract. Skip silently;
+            // the user can drop the source texture into the project manually.
+            continue;
+        };
+        if bytes.is_empty() {
+            continue;
+        }
+
+        // Pick the best name we can find: prefer the FBX texture/video name,
+        // then fall back to the source filename's stem.
+        let base = {
+            let n = (&*tex.element.name).to_string();
+            if !n.is_empty() {
+                n
+            } else {
+                let stem = std::path::Path::new(&*tex.filename)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("texture")
+                    .to_string();
+                stem
+            }
+        };
+        let mut name = sanitize_name(&base);
+        if name.is_empty() {
+            name = "texture".into();
+        }
+        // Disambiguate duplicates.
+        let mut unique = name.clone();
+        let mut n = 1;
+        while used_names.contains(&unique) {
+            n += 1;
+            unique = format!("{}_{}", name, n);
+        }
+        used_names.insert(unique.clone());
+        name = unique;
+
+        let extension = sniff_image_extension(bytes).to_string();
+        let uri = format!("textures/{}.{}", name, extension);
+
+        let idx = bundle.textures.len();
+        bundle.textures.push(TextureRef { uri });
+        extracted.push(ExtractedTexture {
+            name,
+            extension,
+            data: bytes.to_vec(),
+        });
+        tex_index.insert(tex.element.element_id, idx);
+    }
+
+    for mat in &scene.materials {
+        let pbr = &mat.pbr;
+
+        let base_color_factor = if pbr.base_color.has_value {
+            let v = pbr.base_color.value_vec4;
+            [v.x as f32, v.y as f32, v.z as f32, v.w as f32]
+        } else {
+            [1.0, 1.0, 1.0, 1.0]
+        };
+
+        let base_color_texture = pbr
+            .base_color
+            .texture
+            .as_ref()
+            .and_then(|t| tex_index.get(&t.element.element_id).copied());
+        let normal_texture = pbr
+            .normal_map
+            .texture
+            .as_ref()
+            .and_then(|t| tex_index.get(&t.element.element_id).copied());
+
+        let metallic = if pbr.metalness.has_value {
+            pbr.metalness.value_vec4.x as f32
+        } else {
+            0.0
+        };
+        let roughness = if pbr.roughness.has_value {
+            pbr.roughness.value_vec4.x as f32
+        } else {
+            0.8
+        };
+
+        bundle.materials.push(PbrMaterialDef {
+            name: (&*mat.element.name).to_string(),
+            base_color: base_color_factor,
+            base_color_texture,
+            normal_texture,
+            metallic,
+            roughness,
+        });
+    }
+
+    (bundle, extracted)
 }

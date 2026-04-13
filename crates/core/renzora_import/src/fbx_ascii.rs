@@ -535,13 +535,13 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         log::warn!("[import] {}: {}", file_name, w);
     }
 
-    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices)?;
+    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
 
     log::info!("[import] {}: GLB output {} bytes", file_name, glb_bytes.len());
 
     Ok(ImportResult {
         glb_bytes,
-        warnings,
+        warnings, extracted_textures: Vec::new(),
     })
 }
 
