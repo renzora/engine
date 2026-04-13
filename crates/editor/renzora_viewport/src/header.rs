@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use renzora::egui_phosphor::regular::*;
 use renzora::editor::{
-    ActiveTool, EditorCommands, ToolOptionsRegistry, ToolSection, ToolbarRegistry,
+    ActiveTool, EditorCommands, ToolOptionsRegistry,
 };
 use renzora::theme::ThemeManager;
 
@@ -139,13 +139,8 @@ fn render_strip_contents(
         return;
     }
 
-    // ── Transform tools + Undo/Redo ───────────────────────────────────────
-    let tool_btn = Vec2::new(26.0, BTN_H);
-    let transform_tools = world.get_resource::<ToolbarRegistry>()
-        .map(|r| r.visible_in_section(world, &ToolSection::Transform))
-        .unwrap_or_default();
-    render_header_tools(ui, world, cmds, &transform_tools, tool_btn,
-        active, inactive, hovered);
+    // ── Viewport mode dropdown (Scene / Edit / Sculpt / Paint / Animate) ─
+    mode_dropdown(ui, settings, cmds, active, inactive, hovered);
 
     separator(ui);
 
@@ -166,15 +161,19 @@ fn render_strip_contents(
 
     // ── Inline snapping: T / R / S toggles with inline value editors ─────────
     let snap = settings.snap;
-    snap_pair(ui, ARROWS_OUT_CARDINAL, "Translate", snap.translate_enabled, snap.translate_snap, 0.01..=100.0, 0.1, 2, active, inactive, hovered, cmds,
+    snap_pair(ui, ARROWS_OUT_CARDINAL, "Translate", snap.translate_enabled, snap.translate_snap, 0.01..=100.0, 0.02, 2, active, inactive, hovered, cmds,
         |s, on| s.snap.translate_enabled = on,
         |s, v| s.snap.translate_snap = v);
-    snap_pair(ui, ARROW_CLOCKWISE, "Rotate", snap.rotate_enabled, snap.rotate_snap, 1.0..=90.0, 1.0, 0, active, inactive, hovered, cmds,
+    toggle_btn(ui, CORNERS_IN, snap.translate_edge_snap, "Edge Snap (align AABB min to grid)",
+        active, inactive, hovered, cmds, |s| &mut s.snap.translate_edge_snap);
+    snap_pair(ui, ARROW_CLOCKWISE, "Rotate", snap.rotate_enabled, snap.rotate_snap, 1.0..=90.0, 0.2, 0, active, inactive, hovered, cmds,
         |s, on| s.snap.rotate_enabled = on,
         |s, v| s.snap.rotate_snap = v);
-    snap_pair(ui, ARROWS_OUT, "Scale", snap.scale_enabled, snap.scale_snap, 0.01..=10.0, 0.05, 2, active, inactive, hovered, cmds,
+    snap_pair(ui, ARROWS_OUT, "Scale", snap.scale_enabled, snap.scale_snap, 0.01..=10.0, 0.01, 2, active, inactive, hovered, cmds,
         |s, on| s.snap.scale_enabled = on,
         |s, v| s.snap.scale_snap = v);
+    toggle_btn(ui, ALIGN_BOTTOM, snap.scale_bottom_anchor, "Scale from Bottom (keep AABB floor fixed on Y scale)",
+        active, inactive, hovered, cmds, |s| &mut s.snap.scale_bottom_anchor);
 
     separator(ui);
 
@@ -231,75 +230,71 @@ fn render_strip_contents(
     gizmo_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted, theme);
 }
 
-// ── Left tool-row helpers ────────────────────────────────────────────────────
+// ── Mode dropdown ────────────────────────────────────────────────────────────
 
-fn render_header_tools(
+fn mode_dropdown(
     ui: &mut egui::Ui,
-    world: &World,
+    settings: &ViewportSettings,
     cmds: &EditorCommands,
-    tools: &[renzora::editor::ToolEntry],
-    btn_size: Vec2,
     active: Color32,
     inactive: Color32,
     hovered: Color32,
 ) {
-    for entry in tools {
-        let (rect, resp) = ui.allocate_exact_size(btn_size, Sense::click());
-        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        let is_active = (entry.is_active)(world);
-        if ui.is_rect_visible(rect) {
-            let bg = if is_active { active } else if resp.hovered() { hovered } else { inactive };
-            ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, entry.icon,
-                FontId::proportional(14.0), Color32::WHITE);
-        }
-        let clicked = resp.clicked();
-        let _ = resp.on_hover_text(entry.tooltip);
-        if clicked {
-            let activate = entry.activate.clone();
-            cmds.push(move |w: &mut World| { (activate)(w); });
-        }
-    }
+    use renzora::core::viewport_types::ViewportMode;
 
-    separator(ui);
-
-    // Undo / Redo
-    let (can_undo, can_redo) = world.get_resource::<renzora::undo::UndoStacks>()
-        .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
-        .unwrap_or((false, false));
-
-    header_history_btn(ui, ARROW_U_UP_LEFT,  can_undo, "Undo (Ctrl+Z)", btn_size, inactive, hovered,
-        cmds, |w| renzora::undo::undo_once(w));
-    header_history_btn(ui, ARROW_U_UP_RIGHT, can_redo, "Redo (Ctrl+Y)", btn_size, inactive, hovered,
-        cmds, |w| renzora::undo::redo_once(w));
-}
-
-fn header_history_btn(
-    ui: &mut egui::Ui, icon: &str, enabled: bool, tip: &str, btn_size: Vec2,
-    inactive: Color32, hovered: Color32, cmds: &EditorCommands,
-    action: fn(&mut World),
-) {
-    let (rect, resp) = ui.allocate_exact_size(btn_size,
-        if enabled { Sense::click() } else { Sense::hover() });
-    if enabled && resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let current = settings.viewport_mode;
+    let label = current.label();
+    // Approximate width: label + caret.
+    let btn_size = Vec2::new(80.0, BTN_H);
+    let (rect, resp) = ui.allocate_exact_size(btn_size, Sense::click());
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let popup_id = ui.make_persistent_id("viewport_mode_dropdown");
     if ui.is_rect_visible(rect) {
-        let (bg, fg) = if !enabled {
-            (Color32::from_rgba_unmultiplied(inactive.r(), inactive.g(), inactive.b(), 80),
-             Color32::from_white_alpha(40))
-        } else if resp.hovered() {
-            (hovered, Color32::WHITE)
-        } else {
-            (inactive, Color32::WHITE)
-        };
+        let bg = if resp.hovered() { hovered } else { inactive };
         ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon,
-            FontId::proportional(14.0), fg);
+        let text_rect = Rect::from_min_max(
+            Pos2::new(rect.min.x + 6.0, rect.min.y),
+            Pos2::new(rect.max.x - 14.0, rect.max.y),
+        );
+        ui.painter().text(text_rect.left_center(), egui::Align2::LEFT_CENTER, label,
+            FontId::proportional(12.0), Color32::WHITE);
+        ui.painter().text(Pos2::new(rect.max.x - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(10.0), Color32::WHITE);
     }
-    let clicked = enabled && resp.clicked();
-    let _ = resp.on_hover_text(tip);
-    if clicked {
-        cmds.push(move |w: &mut World| action(w));
+    if resp.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|m| m.toggle_popup(popup_id));
     }
+    #[allow(deprecated)]
+    egui::popup_below_widget(ui, popup_id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+        ui.set_min_width(120.0);
+        ui.style_mut().spacing.item_spacing.y = 2.0;
+        for mode in ViewportMode::ALL {
+            let is_current = *mode == current;
+            let (row_rect, row_resp) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), BTN_H), Sense::click());
+            if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            if ui.is_rect_visible(row_rect) {
+                let bg = if is_current { active }
+                    else if row_resp.hovered() { hovered }
+                    else { Color32::TRANSPARENT };
+                ui.painter().rect_filled(row_rect, CornerRadius::same(3), bg);
+                ui.painter().text(
+                    Pos2::new(row_rect.min.x + 8.0, row_rect.center().y),
+                    egui::Align2::LEFT_CENTER, mode.label(),
+                    FontId::proportional(12.0), Color32::WHITE);
+            }
+            if row_resp.clicked() {
+                let m = *mode;
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        s.viewport_mode = m;
+                    }
+                });
+                ui.close();
+            }
+        }
+    });
 }
 
 // ── Inline helpers ───────────────────────────────────────────────────────────

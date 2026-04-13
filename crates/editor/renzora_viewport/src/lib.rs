@@ -138,12 +138,17 @@ fn draw_viewport_cursor_overlay(
         }
     }
 
-    let pointer_in = ui
-        .ctx()
-        .pointer_hover_pos()
-        .map_or(false, |p| rect.contains(p));
-    if pointer_in {
-        ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+    // Only show the crosshair when the pointer is actually over the viewport
+    // with nothing on top. `is_pointer_over_area` reports true when the pointer
+    // is over any floating egui Area — dropdowns, popups, context menus,
+    // tooltips, and the vertical toolbar / nav / play overlays. The viewport
+    // itself is drawn into a panel (not an Area), so this cleanly excludes
+    // overlays without excluding the viewport.
+    let ctx = ui.ctx();
+    let pointer_in = ctx.pointer_hover_pos().map_or(false, |p| rect.contains(p));
+    let obstructed = ctx.is_pointer_over_area() || ctx.wants_pointer_input();
+    if pointer_in && !obstructed {
+        ctx.set_cursor_icon(CursorIcon::Crosshair);
     }
 }
 

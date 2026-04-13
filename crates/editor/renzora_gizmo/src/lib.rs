@@ -949,6 +949,30 @@ fn world_space_min_y(aabb: &bevy::camera::primitives::Aabb, gt: &GlobalTransform
     min_y
 }
 
+/// Minimum-corner of a local-space AABB transformed by (translation, rotation,
+/// scale) into world space. Used by the translate/scale gizmo for edge-snap
+/// and bottom-anchor behaviors.
+fn world_aabb_min(
+    aabb: &bevy::camera::primitives::Aabb,
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+) -> Vec3 {
+    let c = Vec3::from(aabb.center);
+    let h = Vec3::from(aabb.half_extents);
+    let mut min = Vec3::splat(f32::INFINITY);
+    for dx in [-1.0_f32, 1.0] {
+        for dy in [-1.0_f32, 1.0] {
+            for dz in [-1.0_f32, 1.0] {
+                let local = c + Vec3::new(dx * h.x, dy * h.y, dz * h.z);
+                let world = translation + rotation * (local * scale);
+                min = min.min(world);
+            }
+        }
+    }
+    min
+}
+
 fn compute_paste_target(world: &mut World) -> Option<Vec3> {
     // Read viewport fields into locals so the immutable borrow is dropped
     // before we use `world.query_filtered` (which needs a mutable borrow).
@@ -1272,6 +1296,7 @@ fn gizmo_drag(
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     mut transform_q: Query<&mut Transform, (Without<EditorCamera>, Without<EditorLocked>, Without<GizmoRoot>, Without<GizmoMesh>)>,
     global_q: Query<&GlobalTransform, Without<EditorCamera>>,
+    aabb_q: Query<&bevy::camera::primitives::Aabb>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut commands: Commands,
@@ -1398,16 +1423,36 @@ fn gizmo_drag(
             let total_offset = gizmo_state.drag_offset;
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let start = gizmo_state.drag_starts.get(i).map(|(_, p, _, _)| *p)
-                        .unwrap_or(t.translation);
-                    let mut new_pos = start + total_offset;
+                    let (start_t, start_r, start_s) = gizmo_state.drag_starts.get(i)
+                        .map(|(_, p, r, s)| (*p, *r, *s))
+                        .unwrap_or((t.translation, t.rotation, t.scale));
+                    let mut new_pos = start_t + total_offset;
                     if snap.translate_enabled && snap.translate_snap > 0.0 {
                         let step = snap.translate_snap;
-                        new_pos = Vec3::new(
-                            (new_pos.x / step).round() * step,
-                            (new_pos.y / step).round() * step,
-                            (new_pos.z / step).round() * step,
-                        );
+                        // For edge-snap, snap the world-space AABB min corner
+                        // (computed from the drag-start transform since rot/scale
+                        // don't change during translate) to the grid, then derive
+                        // the required pivot position.
+                        let min_offset = if snap.translate_edge_snap {
+                            aabb_q.get(entity).ok().map(|aabb| {
+                                world_aabb_min(aabb, start_t, start_r, start_s) - start_t
+                            })
+                        } else { None };
+                        if let Some(off) = min_offset {
+                            let target = new_pos + off;
+                            let snapped = Vec3::new(
+                                (target.x / step).round() * step,
+                                (target.y / step).round() * step,
+                                (target.z / step).round() * step,
+                            );
+                            new_pos = snapped - off;
+                        } else {
+                            new_pos = Vec3::new(
+                                (new_pos.x / step).round() * step,
+                                (new_pos.y / step).round() * step,
+                                (new_pos.z / step).round() * step,
+                            );
+                        }
                     }
                     t.translation = new_pos;
                 }
@@ -1455,15 +1500,26 @@ fn gizmo_drag(
             };
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let start_scale = gizmo_state.drag_starts.get(i)
-                        .map(|(_, _, _, s)| *s)
-                        .unwrap_or(t.scale);
+                    let (start_t, start_r, start_scale) = gizmo_state.drag_starts.get(i)
+                        .map(|(_, p, r, s)| (*p, *r, *s))
+                        .unwrap_or((t.translation, t.rotation, t.scale));
+                    // Capture original world-space bottom Y before mutating scale
+                    // so we can shift the pivot to keep the bottom fixed.
+                    let start_bottom_y = if snap.scale_bottom_anchor && matches!(axis, GizmoAxis::Y) {
+                        aabb_q.get(entity).ok().map(|aabb| {
+                            world_aabb_min(aabb, start_t, start_r, start_scale).y
+                        })
+                    } else { None };
                     let f = gizmo_state.drag_scale_factor;
                     match axis {
                         GizmoAxis::X => t.scale.x = apply(start_scale.x + f, snap_step),
                         GizmoAxis::Y => t.scale.y = apply(start_scale.y + f, snap_step),
                         GizmoAxis::Z => t.scale.z = apply(start_scale.z + f, snap_step),
                         _ => {}
+                    }
+                    if let (Some(old_y), Ok(aabb)) = (start_bottom_y, aabb_q.get(entity)) {
+                        let new_y = world_aabb_min(aabb, start_t, t.rotation, t.scale).y;
+                        t.translation.y += old_y - new_y;
                     }
                 }
             }

@@ -103,6 +103,32 @@ pub enum ProjectionMode {
     Orthographic,
 }
 
+/// High-level viewport interaction mode (Blender-style mode switcher).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewportMode {
+    #[default]
+    Scene,
+    Edit,
+    Sculpt,
+    Paint,
+    Animate,
+}
+
+impl ViewportMode {
+    pub const ALL: &'static [ViewportMode] = &[
+        Self::Scene, Self::Edit, Self::Sculpt, Self::Paint, Self::Animate,
+    ];
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Scene => "Scene",
+            Self::Edit => "Edit",
+            Self::Sculpt => "Sculpt",
+            Self::Paint => "Paint",
+            Self::Animate => "Animate",
+        }
+    }
+}
+
 /// Visualization mode for debug rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VisualizationMode {
@@ -170,10 +196,16 @@ pub enum CollisionGizmoVisibility {
 pub struct SnapSettings {
     pub translate_enabled: bool,
     pub translate_snap: f32,
+    /// If true, snap the entity's world-space AABB min corner to the grid
+    /// instead of its pivot. Aligns cube edges to gridlines.
+    pub translate_edge_snap: bool,
     pub rotate_enabled: bool,
     pub rotate_snap: f32,
     pub scale_enabled: bool,
     pub scale_snap: f32,
+    /// If true, Y-axis scaling keeps the entity's world-space AABB bottom
+    /// fixed (scales upward from the floor instead of symmetrically).
+    pub scale_bottom_anchor: bool,
     pub object_snap_enabled: bool,
     pub object_snap_distance: f32,
     pub floor_snap_enabled: bool,
@@ -185,10 +217,12 @@ impl Default for SnapSettings {
         Self {
             translate_enabled: false,
             translate_snap: 1.0,
+            translate_edge_snap: true,
             rotate_enabled: false,
             rotate_snap: 15.0,
             scale_enabled: false,
             scale_snap: 0.25,
+            scale_bottom_anchor: true,
             object_snap_enabled: true,
             object_snap_distance: 0.5,
             floor_snap_enabled: true,
@@ -243,6 +277,7 @@ pub struct ViewportSettings {
     pub show_axis_gizmo: bool,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
+    pub viewport_mode: ViewportMode,
     pub camera: CameraSettingsState,
     pub snap: SnapSettings,
     /// Pending view angle command (consumed by camera system).
@@ -259,6 +294,7 @@ impl Default for ViewportSettings {
             show_axis_gizmo: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
+            viewport_mode: ViewportMode::default(),
             camera: CameraSettingsState::default(),
             snap: SnapSettings::default(),
             pending_view_angle: None,

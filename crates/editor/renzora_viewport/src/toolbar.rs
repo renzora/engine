@@ -35,9 +35,11 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
     let panel_w = BTN_SIZE.x + PADDING * 2.0;
     let panel_pos = Pos2::new(content_rect.min.x + MARGIN, content_rect.min.y + MARGIN);
 
-    // Collect tool sections from the registry. Transform + Undo/Redo live in the
-    // viewport header now, so the vertical panel only holds terrain + custom.
+    // Collect tool sections from the registry.
     let registry = world.get_resource::<ToolbarRegistry>();
+    let transform_tools = registry
+        .map(|r| r.visible_in_section(world, &ToolSection::Transform))
+        .unwrap_or_default();
     let terrain_tools = registry
         .map(|r| r.visible_in_section(world, &ToolSection::Terrain))
         .unwrap_or_default();
@@ -51,20 +53,27 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
         })
         .unwrap_or_default();
 
+    // Undo/Redo always shown when Transform section is visible.
+    let has_undo_redo = !transform_tools.is_empty();
+
     let section_height = |count: usize| -> f32 {
         if count == 0 { return 0.0; }
         row_step * count as f32 - BTN_GAP
     };
 
+    let transform_h = section_height(transform_tools.len());
+    let undo_redo_h = if has_undo_redo { section_height(2) } else { 0.0 };
     let terrain_h = section_height(terrain_tools.len());
     let custom_h: f32 = custom_sections.iter().map(|(_, t)| section_height(t.len())).sum();
-    // Divider between sections when both exist (terrain + each custom).
-    let section_count = (terrain_h > 0.0) as usize + custom_sections.len();
+    let section_count = (transform_h > 0.0) as usize
+        + (undo_redo_h > 0.0) as usize
+        + (terrain_h > 0.0) as usize
+        + custom_sections.len();
     let divider_count = section_count.saturating_sub(1);
     let dividers_h = (divider_count as f32) * (DIVIDER_GAP * 2.0 + 1.0);
 
     let has_tools = section_count > 0;
-    let panel_h = PADDING * 2.0 + terrain_h + custom_h + dividers_h;
+    let panel_h = PADDING * 2.0 + transform_h + undo_redo_h + terrain_h + custom_h + dividers_h;
 
     let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
 
@@ -76,10 +85,7 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
         let c = theme.widgets.border.to_color32();
         Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 120)
     };
-    let panel_bg = {
-        let c = theme.widgets.inactive_bg.to_color32();
-        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 255)
-    };
+    let panel_bg = theme.surfaces.panel.to_color32();
 
     if !hide_tools && has_tools {
         egui::Area::new(egui::Id::new("viewport_tool_overlay"))
@@ -95,6 +101,41 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                 let col1_x = col0_x + BTN_SIZE.x + BTN_GAP;
                 let mut y = panel_pos.y + PADDING;
                 let mut first_section = true;
+
+                // Transform section (Select / Translate / Rotate / Scale)
+                if !transform_tools.is_empty() {
+                    first_section = false;
+                    render_tool_section(
+                        ui, &transform_tools, cmds, world,
+                        col0_x, col1_x, &mut y, row_step,
+                        active_color, inactive_color, hovered_color,
+                    );
+                }
+
+                // Undo / Redo
+                if has_undo_redo {
+                    if !first_section {
+                        draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    }
+                    first_section = false;
+                    let (can_undo, can_redo) = world.get_resource::<renzora::undo::UndoStacks>()
+                        .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
+                        .unwrap_or((false, false));
+                    let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
+                    let r = undo_redo_button(ui, undo_rect, ARROW_U_UP_LEFT, can_undo, inactive_color, hovered_color);
+                    if can_undo && r.clicked() {
+                        cmds.push(|w: &mut World| renzora::undo::undo_once(w));
+                    }
+                    r.on_hover_text("Undo (Ctrl+Z)");
+                    y += row_step;
+                    let redo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
+                    let r = undo_redo_button(ui, redo_rect, ARROW_U_UP_RIGHT, can_redo, inactive_color, hovered_color);
+                    if can_redo && r.clicked() {
+                        cmds.push(|w: &mut World| renzora::undo::redo_once(w));
+                    }
+                    r.on_hover_text("Redo (Ctrl+Y)");
+                    y += row_step;
+                }
 
                 // Terrain section
                 if !terrain_tools.is_empty() {
@@ -253,16 +294,12 @@ fn undo_redo_button(
     rect: Rect,
     icon: &str,
     enabled: bool,
-    inactive_color: Color32,
+    _inactive_color: Color32,
     hovered_color: Color32,
 ) -> egui::Response {
     if !enabled {
         let resp = ui.allocate_rect(rect, Sense::hover());
         if ui.is_rect_visible(rect) {
-            let dim_bg = Color32::from_rgba_unmultiplied(
-                inactive_color.r(), inactive_color.g(), inactive_color.b(), 80,
-            );
-            ui.painter().rect_filled(rect, CornerRadius::same(3), dim_bg);
             ui.painter().text(
                 rect.center(), egui::Align2::CENTER_CENTER, icon,
                 FontId::proportional(16.0), Color32::from_white_alpha(40),
@@ -273,8 +310,9 @@ fn undo_redo_button(
     let resp = ui.allocate_rect(rect, Sense::click());
     if resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
     if ui.is_rect_visible(rect) {
-        let bg = if resp.hovered() { hovered_color } else { inactive_color };
-        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        if resp.hovered() {
+            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_color);
+        }
         ui.painter().text(
             rect.center(), egui::Align2::CENTER_CENTER, icon,
             FontId::proportional(16.0), Color32::WHITE,
@@ -285,13 +323,16 @@ fn undo_redo_button(
 
 fn viewport_tool_button(
     ui: &mut egui::Ui, rect: Rect, icon: &str, active: bool,
-    active_color: Color32, inactive_color: Color32, hovered_color: Color32,
+    active_color: Color32, _inactive_color: Color32, hovered_color: Color32,
 ) -> egui::Response {
     let resp = ui.allocate_rect(rect, Sense::click());
     if resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
     if ui.is_rect_visible(rect) {
-        let bg = if active { active_color } else if resp.hovered() { hovered_color } else { inactive_color };
-        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        if active {
+            ui.painter().rect_filled(rect, CornerRadius::same(3), active_color);
+        } else if resp.hovered() {
+            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_color);
+        }
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, FontId::proportional(16.0), Color32::WHITE);
     }
     resp
