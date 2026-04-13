@@ -11,9 +11,7 @@ crate-type = ["cdylib", "rlib"]
 default = []
 
 [dependencies]
-egui-phosphor = { workspace = true }
 renzora_macros = { path = "../renzora_macros" }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { version = "0.18", default-features = false, features = [
     "webgpu",
     "bevy_asset",

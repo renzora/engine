@@ -7,11 +7,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+egui-phosphor = { workspace = true }
 editor_plugin_api = { path = "../editor_plugin_api" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 crossbeam-channel = "0.5"
 tiny_http = "0.12"
-egui-phosphor = "0.11"
 
 [workspace]

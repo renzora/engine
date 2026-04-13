@@ -7,4 +7,3 @@ edition = "2021"
 bevy = { workspace = true }
 bevy_egui = "0.39"
 renzora_xr = { path = "../renzora_xr" }
-renzora_theme = { path = "../renzora_theme" }
