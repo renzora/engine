@@ -17,6 +17,23 @@ pub struct ExtractedTexture {
     pub data: Vec<u8>,
 }
 
+/// A PBR material pulled out of the source file. The caller turns this into
+/// a `.material` file (and decides which on-disk format to use) — this struct
+/// is deliberately just plain data so `renzora_import` stays independent of
+/// the material graph implementation.
+#[derive(Clone, Debug)]
+pub struct ExtractedPbrMaterial {
+    pub name: String,
+    pub base_color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
+    /// Project-relative URI to the base-color texture written alongside the
+    /// model (e.g. `"models/character/textures/diffuse.png"`), or `None` if
+    /// the source had no base-color map.
+    pub base_color_texture: Option<String>,
+    pub normal_texture: Option<String>,
+}
+
 /// Result of a successful import.
 pub struct ImportResult {
     /// The GLB binary data, ready to write to disk.
@@ -26,6 +43,9 @@ pub struct ImportResult {
     /// Textures extracted from the source file. Empty for formats that don't
     /// embed textures or when the source had none.
     pub extracted_textures: Vec<ExtractedTexture>,
+    /// Plain PBR material info. Downstream (editor-side) code turns these
+    /// into `.material` graph files.
+    pub extracted_materials: Vec<ExtractedPbrMaterial>,
 }
 
 impl Default for ImportResult {
@@ -34,6 +54,7 @@ impl Default for ImportResult {
             glb_bytes: Vec::new(),
             warnings: Vec::new(),
             extracted_textures: Vec::new(),
+            extracted_materials: Vec::new(),
         }
     }
 }

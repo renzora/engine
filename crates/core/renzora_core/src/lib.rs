@@ -264,6 +264,26 @@ impl EffectRouting {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MeshPrimitive(pub String);
 
+/// Event fired when a model importer has pulled PBR material data out of a
+/// source file and needs somewhere to persist it as a `.material` graph.
+/// `renzora_import_ui` triggers this per extracted material; a handler in
+/// `renzora_material` (or any other provider) observes and writes the file.
+/// Both sides communicate only through this type — no sibling crate deps.
+#[derive(Event, Debug, Clone)]
+pub struct PbrMaterialExtracted {
+    /// Human-friendly name for the material; becomes the `.material` filename.
+    pub name: String,
+    /// Absolute path of the directory to write the `.material` file into.
+    pub output_dir: std::path::PathBuf,
+    pub base_color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
+    /// Asset-relative URI to the base-color texture (e.g.
+    /// `"models/character/textures/diffuse.png"`), or `None`.
+    pub base_color_texture: Option<String>,
+    pub normal_texture: Option<String>,
+}
+
 /// Event fired when a file or folder is renamed/moved inside the project's
 /// asset tree. Subscribers should patch any stored asset-relative references
 /// from `old` to `new` (and, when `old` is a folder, any paths prefixed by it).

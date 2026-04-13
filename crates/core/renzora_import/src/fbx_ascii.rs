@@ -541,7 +541,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(),
+        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
     })
 }
 

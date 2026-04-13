@@ -13,10 +13,17 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         ..Default::default()
     };
 
-    let (models, _materials) = tobj::load_obj(path, &load_options)
+    let (models, materials_result) = tobj::load_obj(path, &load_options)
         .map_err(|e| ImportError::ParseError(format!("OBJ parse error: {}", e)))?;
 
     let mut warnings = Vec::new();
+    let mtl_materials = match materials_result {
+        Ok(m) => m,
+        Err(e) => {
+            warnings.push(format!("MTL parse: {} (materials skipped)", e));
+            Vec::new()
+        }
+    };
 
     if models.is_empty() {
         return Err(ImportError::ParseError("OBJ file contains no meshes".into()));
@@ -106,12 +113,207 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         return Err(ImportError::ParseError("no valid geometry found in OBJ".into()));
     }
 
-    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
+    // Walk MTL materials: copy referenced texture files into
+    // `extracted_textures` (so they land in `<model_dir>/textures/`), build
+    // the GLB's MaterialBundle, and emit plain PbrMaterialExtracted records.
+    let (material_bundle, extracted_textures, extracted_materials) =
+        if settings.extract_textures || settings.extract_materials {
+            extract_obj_materials(path, &mtl_materials, settings, &mut warnings)
+        } else {
+            (
+                MaterialBundle::default(),
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+
+    let glb_bytes = build_glb(
+        &all_positions,
+        &all_normals,
+        &all_texcoords,
+        &all_indices,
+        &material_bundle,
+    )?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(),
+        warnings,
+        extracted_textures,
+        extracted_materials,
     })
+}
+
+/// Read every MTL-referenced texture file relative to the OBJ, sniff the
+/// format, and build a [`MaterialBundle`] + [`ExtractedPbrMaterial`] list.
+/// Missing files surface as warnings; the material entry is still emitted
+/// without that particular map.
+fn extract_obj_materials(
+    obj_path: &Path,
+    mtl_materials: &[tobj::Material],
+    settings: &ImportSettings,
+    warnings: &mut Vec<String>,
+) -> (
+    MaterialBundle,
+    Vec<crate::convert::ExtractedTexture>,
+    Vec<crate::convert::ExtractedPbrMaterial>,
+) {
+    use crate::convert::{ExtractedPbrMaterial, ExtractedTexture};
+
+    let mut bundle = MaterialBundle::default();
+    let mut extracted_textures: Vec<ExtractedTexture> = Vec::new();
+    let mut extracted_materials: Vec<ExtractedPbrMaterial> = Vec::new();
+    // MTL texture path (relative to .obj) → index in `extracted_textures`.
+    let mut tex_paths: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let obj_dir = obj_path.parent().unwrap_or(Path::new("."));
+
+    // Helper that either finds an already-loaded texture or reads + sniffs a
+    // new one. Returns the index into bundle.textures / extracted_textures.
+    let mut load_texture = |rel_path: &str,
+                            bundle: &mut MaterialBundle,
+                            extracted_textures: &mut Vec<ExtractedTexture>,
+                            tex_paths: &mut std::collections::HashMap<String, usize>,
+                            used_names: &mut std::collections::HashSet<String>,
+                            warnings: &mut Vec<String>|
+     -> Option<usize> {
+        if let Some(&i) = tex_paths.get(rel_path) {
+            return Some(i);
+        }
+        let abs = obj_dir.join(rel_path);
+        let data = match std::fs::read(&abs) {
+            Ok(d) => d,
+            Err(e) => {
+                warnings.push(format!("texture '{}': {}", rel_path, e));
+                return None;
+            }
+        };
+        let extension_hint = std::path::Path::new(rel_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let extension = if !extension_hint.is_empty() {
+            extension_hint.to_lowercase()
+        } else {
+            sniff_image_ext(&data).to_string()
+        };
+        let stem = std::path::Path::new(rel_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("texture")
+            .to_string();
+        let base = sanitize_name(&stem);
+        let mut name = base.clone();
+        let mut n = 1;
+        while used_names.contains(&name) {
+            n += 1;
+            name = format!("{}_{}", base, n);
+        }
+        used_names.insert(name.clone());
+
+        let uri = format!("textures/{}.{}", name, extension);
+        let idx = bundle.textures.len();
+        bundle.textures.push(TextureRef { uri });
+        extracted_textures.push(ExtractedTexture {
+            name,
+            extension,
+            data,
+        });
+        tex_paths.insert(rel_path.to_string(), idx);
+        Some(idx)
+    };
+
+    for mat in mtl_materials {
+        let base_color = if let Some(d) = mat.diffuse {
+            [d[0], d[1], d[2], mat.dissolve.unwrap_or(1.0)]
+        } else {
+            [1.0, 1.0, 1.0, 1.0]
+        };
+
+        let base_tex = mat.diffuse_texture.as_ref().and_then(|p| {
+            if !settings.extract_textures {
+                return None;
+            }
+            load_texture(
+                p,
+                &mut bundle,
+                &mut extracted_textures,
+                &mut tex_paths,
+                &mut used_names,
+                warnings,
+            )
+        });
+        let normal_tex = mat.normal_texture.as_ref().and_then(|p| {
+            if !settings.extract_textures {
+                return None;
+            }
+            load_texture(
+                p,
+                &mut bundle,
+                &mut extracted_textures,
+                &mut tex_paths,
+                &mut used_names,
+                warnings,
+            )
+        });
+
+        // Crude roughness/metallic fallback: OBJ/MTL is pre-PBR. Map shininess
+        // into roughness (lower shininess → rougher) and leave metallic at 0.
+        let roughness = mat
+            .shininess
+            .map(|s| (1.0 - (s / 1000.0)).clamp(0.05, 1.0))
+            .unwrap_or(0.8);
+
+        if settings.extract_materials {
+            bundle.materials.push(PbrMaterialDef {
+                name: mat.name.clone(),
+                base_color,
+                base_color_texture: base_tex,
+                normal_texture: normal_tex,
+                metallic: 0.0,
+                roughness,
+            });
+            let lookup = |idx: Option<usize>| -> Option<String> {
+                idx.and_then(|i| bundle.textures.get(i).map(|t| t.uri.clone()))
+            };
+            extracted_materials.push(ExtractedPbrMaterial {
+                name: mat.name.clone(),
+                base_color,
+                metallic: 0.0,
+                roughness,
+                base_color_texture: lookup(base_tex),
+                normal_texture: lookup(normal_tex),
+            });
+        }
+    }
+
+    (bundle, extracted_textures, extracted_materials)
+}
+
+fn sanitize_name(input: &str) -> String {
+    if input.is_empty() {
+        return "texture".into();
+    }
+    input
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn sniff_image_ext(data: &[u8]) -> &'static str {
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
+    else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }
+    else if data.starts_with(b"DDS ") { "dds" }
+    else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { "gif" }
+    else if data.starts_with(b"BM") { "bmp" }
+    else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") { "webp" }
+    else { "bin" }
 }
 
 fn generate_flat_normals(positions: &[f32], indices: &[u32], vertex_count: usize) -> Vec<f32> {

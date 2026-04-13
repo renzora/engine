@@ -40,6 +40,10 @@ enum ImportMsg {
         label: String,
     },
     Log(ImportLogEntry),
+    /// Marshal a material-extraction event across the thread boundary; the
+    /// UI-side poller triggers it on `&mut World` so observers in other
+    /// crates can write the `.material` file without us depending on them.
+    MaterialExtracted(renzora::core::PbrMaterialExtracted),
     Done(String),
     Error(String),
 }
@@ -116,36 +120,49 @@ fn poll_import_task(world: &mut World) {
         }
     }
 
-    // Apply messages
-    let mut state = world.resource_mut::<ImportOverlayState>();
-    for msg in progress_updates {
-        match msg {
-            ImportMsg::Progress {
-                current,
-                total,
-                label,
-            } => {
-                state.progress = ImportProgress::Working {
+    // Apply messages. Material-extraction events need to fire on `&mut World`
+    // (observers can't be triggered while an exclusive resource borrow is
+    // held), so we split them out and deliver after releasing the state
+    // borrow.
+    let mut material_events: Vec<renzora::core::PbrMaterialExtracted> = Vec::new();
+    {
+        let mut state = world.resource_mut::<ImportOverlayState>();
+        for msg in progress_updates {
+            match msg {
+                ImportMsg::Progress {
                     current,
                     total,
                     label,
-                };
+                } => {
+                    state.progress = ImportProgress::Working {
+                        current,
+                        total,
+                        label,
+                    };
+                }
+                ImportMsg::Log(entry) => {
+                    state.log_entries.push(entry);
+                }
+                ImportMsg::MaterialExtracted(ev) => {
+                    material_events.push(ev);
+                }
+                ImportMsg::Done(msg) => {
+                    state.progress = ImportProgress::Done(msg);
+                    state.pending_files.clear();
+                }
+                ImportMsg::Error(msg) => {
+                    state.progress = ImportProgress::Error(msg);
+                }
             }
-            ImportMsg::Log(entry) => {
-                state.log_entries.push(entry);
-            }
-            ImportMsg::Done(msg) => {
-                state.progress = ImportProgress::Done(msg);
-                state.pending_files.clear();
-            }
-            ImportMsg::Error(msg) => {
-                state.progress = ImportProgress::Error(msg);
-            }
+        }
+
+        if finished {
+            state.active_task = None;
         }
     }
 
-    if finished {
-        state.active_task = None;
+    for ev in material_events {
+        world.trigger(ev);
     }
 }
 
@@ -459,6 +476,34 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     ui.checkbox(
                         &mut state.settings.generate_normals,
                         egui::RichText::new("Generate normals if missing").color(text_primary),
+                    );
+                }
+
+                ui.add_space(12.0);
+
+                // --- Extract ---
+                // Per-type toggles for what gets pulled out of the source file
+                // and written next to the GLB. Mesh is always extracted; the
+                // rest are opt-in/out so users can skip parts of an asset.
+                section_label(ui, regular::PUZZLE_PIECE, "Extract", text_primary);
+                ui.add_space(4.0);
+                {
+                    let mut state = world.resource_mut::<ImportOverlayState>();
+                    ui.checkbox(
+                        &mut state.settings.extract_skeleton,
+                        egui::RichText::new("Skeleton + skin weights").color(text_primary),
+                    );
+                    ui.checkbox(
+                        &mut state.settings.extract_animations,
+                        egui::RichText::new("Animations (→ animations/*.anim)").color(text_primary),
+                    );
+                    ui.checkbox(
+                        &mut state.settings.extract_textures,
+                        egui::RichText::new("Textures (→ textures/*.png)").color(text_primary),
+                    );
+                    ui.checkbox(
+                        &mut state.settings.extract_materials,
+                        egui::RichText::new("Materials (→ materials/*.material)").color(text_primary),
                     );
                 }
 
@@ -809,10 +854,44 @@ fn import_worker(
                 let size_kb = glb_bytes.len() as f64 / 1024.0;
                 let warn_count = result.warnings.len();
 
+                // Materials: fire a PbrMaterialExtracted event per material.
+                // Any crate observing it (e.g. renzora_material) writes the
+                // `.material` file; this overlay stays oblivious to the
+                // material graph format.
+                if settings.extract_materials && !result.extracted_materials.is_empty() {
+                    let mat_dir = model_dir.join("materials");
+                    let rewrite_uri = |uri: &Option<String>| -> Option<String> {
+                        // Textures live under the model folder, which itself
+                        // lives under `<target>/<stem>/`. Prefix the relative
+                        // URI so consumers can resolve it from the project
+                        // root.
+                        uri.as_ref().map(|u| {
+                            if target_dir.is_empty() {
+                                format!("{}/{}", stem, u)
+                            } else {
+                                format!("{}/{}/{}", target_dir, stem, u)
+                            }
+                        })
+                    };
+                    for mat in &result.extracted_materials {
+                        let _ = tx.send(ImportMsg::MaterialExtracted(
+                            renzora::core::PbrMaterialExtracted {
+                                name: mat.name.clone(),
+                                output_dir: mat_dir.clone(),
+                                base_color: mat.base_color,
+                                metallic: mat.metallic,
+                                roughness: mat.roughness,
+                                base_color_texture: rewrite_uri(&mat.base_color_texture),
+                                normal_texture: rewrite_uri(&mat.normal_texture),
+                            },
+                        ));
+                    }
+                }
+
                 // Write any embedded textures the converter pulled out of the
                 // source (e.g. textures bundled inside an FBX). Failures here
                 // surface as warnings rather than aborting the import.
-                if !result.extracted_textures.is_empty() {
+                if settings.extract_textures && !result.extracted_textures.is_empty() {
                     let tex_dir = model_dir.join("textures");
                     if let Err(e) = std::fs::create_dir_all(&tex_dir) {
                         all_warnings
@@ -846,6 +925,12 @@ fn import_worker(
                         }));
 
                         // --- Phase: extracting animations ---
+                        if !settings.extract_animations {
+                            // Skip animation extraction entirely when the
+                            // user has opted out.
+                            continue;
+                        }
+
                         let _ = tx.send(ImportMsg::Progress {
                             current: i + 1,
                             total,
@@ -909,14 +994,19 @@ fn import_worker(
                 let fallback_model_dir = dest.join(stem);
                 let anim_dir = fallback_model_dir.join("animations");
 
-                let anim_fallback_result: Option<Result<_, String>> = match ext_lower.as_str() {
-                    "fbx" => Some(renzora_import::extract_animations_from_fbx(source_path, &anim_dir)),
-                    "usd" | "usda" | "usdc" | "usdz" => {
-                        Some(renzora_import::extract_animations_from_usd(source_path, &anim_dir))
-                    }
-                    "bvh" => Some(renzora_import::extract_animations_from_bvh(source_path, &anim_dir)),
-                    _ => None,
-                };
+                let anim_fallback_result: Option<Result<_, String>> =
+                    if !settings.extract_animations {
+                        None
+                    } else {
+                        match ext_lower.as_str() {
+                            "fbx" => Some(renzora_import::extract_animations_from_fbx(source_path, &anim_dir)),
+                            "usd" | "usda" | "usdc" | "usdz" => {
+                                Some(renzora_import::extract_animations_from_usd(source_path, &anim_dir))
+                            }
+                            "bvh" => Some(renzora_import::extract_animations_from_bvh(source_path, &anim_dir)),
+                            _ => None,
+                        }
+                    };
 
                 let mut fallback_note: Option<String> = None;
                 if let Some(fb) = anim_fallback_result {

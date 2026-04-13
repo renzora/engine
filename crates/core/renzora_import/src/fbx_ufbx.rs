@@ -43,7 +43,13 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // Build the joint list once up-front so the same joint indices are valid
     // across every mesh. We include every bone node that appears as a cluster
     // target; this keeps the skeleton minimal to what actually drives skin.
-    let joints = collect_joints(scene_ref);
+    // Skip skeleton extraction entirely when the user has opted out — the
+    // resulting GLB is a plain static mesh even if the source was rigged.
+    let joints = if settings.extract_skeleton {
+        collect_joints(scene_ref)
+    } else {
+        Vec::new()
+    };
     let has_skin = !joints.is_empty();
     // element_id → joint index. Same key space as the parent-walk lookup.
     let eid_to_joint: std::collections::HashMap<u32, usize> = joints
@@ -183,7 +189,28 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // become external files written next to the GLB; materials become GLTF
     // material entries that reference them. External-only textures (no
     // embedded content) are skipped — there's nothing to dump.
-    let (material_bundle, extracted_textures) = collect_textures_and_materials(scene_ref);
+    // Textures/materials honor the extract toggles: dropping either before
+    // the GLB builder ensures the output doesn't reference files that won't
+    // exist on disk. The builder falls back to a plain unmaterialized mesh.
+    let (material_bundle, extracted_textures) = if settings.extract_textures
+        || settings.extract_materials
+    {
+        let (mut bundle, mut textures) = collect_textures_and_materials(scene_ref);
+        if !settings.extract_textures {
+            textures.clear();
+            bundle.textures.clear();
+            for m in bundle.materials.iter_mut() {
+                m.base_color_texture = None;
+                m.normal_texture = None;
+            }
+        }
+        if !settings.extract_materials {
+            bundle.materials.clear();
+        }
+        (bundle, textures)
+    } else {
+        (crate::obj::MaterialBundle::default(), Vec::new())
+    };
 
     let glb_bytes = if has_skin {
         log::info!(
@@ -233,7 +260,40 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_indices.len() / 3,
     );
 
-    Ok(ImportResult { glb_bytes, warnings, extracted_textures })
+    // Build plain-data PBR material records for the caller to turn into
+    // `.material` files. Texture URIs here are RELATIVE to the model's own
+    // folder (e.g. `textures/diffuse.png`) so they can be resolved from the
+    // `.material` file's location.
+    let extracted_materials: Vec<crate::convert::ExtractedPbrMaterial> = if settings
+        .extract_materials
+    {
+        material_bundle
+            .materials
+            .iter()
+            .map(|m| {
+                let lookup = |idx: Option<usize>| -> Option<String> {
+                    idx.and_then(|i| material_bundle.textures.get(i).map(|t| t.uri.clone()))
+                };
+                crate::convert::ExtractedPbrMaterial {
+                    name: m.name.clone(),
+                    base_color: m.base_color,
+                    metallic: m.metallic,
+                    roughness: m.roughness,
+                    base_color_texture: lookup(m.base_color_texture),
+                    normal_texture: lookup(m.normal_texture),
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(ImportResult {
+        glb_bytes,
+        warnings,
+        extracted_textures,
+        extracted_materials,
+    })
 }
 
 /// Extract every animation stack in an FBX file to a directory of `.anim` files.

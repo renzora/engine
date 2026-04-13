@@ -2,14 +2,16 @@
 
 use std::path::Path;
 
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ExtractedTexture, ImportError, ImportResult};
 use crate::settings::ImportSettings;
 
-/// GLB files: read the binary directly (passthrough).
-pub fn convert_glb(path: &Path, _settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+/// GLB files: read the binary directly, then extract any embedded images to
+/// sit alongside the GLB in `<model_dir>/textures/`. Embedded image entries
+/// are rewritten in the GLB's JSON to external URIs so the GLB and the
+/// loose texture files agree on the layout.
+pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
     let bytes = std::fs::read(path)?;
 
-    // Basic validation: GLB magic number is 0x46546C67 ("glTF")
     if bytes.len() < 12 {
         return Err(ImportError::ParseError("file too small for GLB".into()));
     }
@@ -18,10 +20,145 @@ pub fn convert_glb(path: &Path, _settings: &ImportSettings) -> Result<ImportResu
         return Err(ImportError::ParseError("invalid GLB magic number".into()));
     }
 
+    if !settings.extract_textures {
+        // Passthrough — keep the GLB exactly as-is (embedded textures
+        // included). The user can re-enable extraction later and re-import.
+        return Ok(ImportResult {
+            glb_bytes: bytes,
+            warnings: Vec::new(),
+            extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        });
+    }
+
+    let (rewritten, extracted_textures, warnings) =
+        extract_glb_textures(&bytes).unwrap_or_else(|e| {
+            (bytes.clone(), Vec::new(), vec![format!("texture extraction: {}", e)])
+        });
+
     Ok(ImportResult {
-        glb_bytes: bytes,
-        warnings: vec![], extracted_textures: Vec::new(),
+        glb_bytes: rewritten,
+        warnings,
+        extracted_textures, extracted_materials: Vec::new(),
     })
+}
+
+/// Parse a GLB, pull every `bufferView`-backed image out of the BIN chunk,
+/// and rewrite those image entries to reference external URIs instead.
+/// Returns the (possibly rewritten) GLB bytes, the extracted texture list,
+/// and any non-fatal warnings. On fatal parse failure returns an error and
+/// the caller falls back to passthrough.
+fn extract_glb_textures(
+    glb_bytes: &[u8],
+) -> Result<(Vec<u8>, Vec<ExtractedTexture>, Vec<String>), String> {
+    let glb = gltf::Glb::from_slice(glb_bytes)
+        .map_err(|e| format!("parse GLB: {}", e))?;
+
+    let json_slice = glb.json.as_ref();
+    let bin_slice: Option<&[u8]> = glb.bin.as_deref();
+
+    let mut root: gltf_json::Root = serde_json::from_slice(json_slice)
+        .map_err(|e| format!("parse GLB JSON: {}", e))?;
+
+    if root.images.is_empty() {
+        return Ok((glb_bytes.to_vec(), Vec::new(), Vec::new()));
+    }
+
+    let mut warnings = Vec::new();
+    let mut extracted: Vec<ExtractedTexture> = Vec::new();
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (i, image) in root.images.iter_mut().enumerate() {
+        // Skip images that already live as external files; nothing to do.
+        if image.uri.is_some() {
+            continue;
+        }
+        let Some(buffer_view_idx) = image.buffer_view.take() else {
+            continue;
+        };
+        let Some(bin) = bin_slice else {
+            warnings.push(format!(
+                "image {}: bufferView {} but GLB has no BIN chunk",
+                i,
+                buffer_view_idx.value()
+            ));
+            continue;
+        };
+
+        let view = match root.buffer_views.get(buffer_view_idx.value()) {
+            Some(v) => v,
+            None => {
+                warnings.push(format!(
+                    "image {}: bufferView {} out of range",
+                    i,
+                    buffer_view_idx.value()
+                ));
+                continue;
+            }
+        };
+        let byte_offset = view
+            .byte_offset
+            .map(|o| o.0 as usize)
+            .unwrap_or(0);
+        let byte_length = view.byte_length.0 as usize;
+        let end = byte_offset + byte_length;
+        if end > bin.len() {
+            warnings.push(format!(
+                "image {}: bufferView range {}..{} exceeds BIN size {}",
+                i,
+                byte_offset,
+                end,
+                bin.len()
+            ));
+            continue;
+        }
+        let data = bin[byte_offset..end].to_vec();
+
+        let extension = match image.mime_type.as_ref().map(|m| m.0.as_str()) {
+            Some("image/png") => "png",
+            Some("image/jpeg") => "jpg",
+            Some("image/webp") => "webp",
+            _ => sniff_image_extension(&data),
+        };
+        let mut name = format!("image_{}", i);
+        let mut n = 1;
+        while used_names.contains(&name) {
+            n += 1;
+            name = format!("image_{}_{}", i, n);
+        }
+        used_names.insert(name.clone());
+
+        let uri = format!("textures/{}.{}", name, extension);
+        image.uri = Some(uri);
+        image.mime_type = None;
+
+        extracted.push(ExtractedTexture {
+            name,
+            extension: extension.to_string(),
+            data,
+        });
+    }
+
+    if extracted.is_empty() {
+        return Ok((glb_bytes.to_vec(), Vec::new(), warnings));
+    }
+
+    let new_json = root
+        .to_vec()
+        .map_err(|e| format!("re-serialize GLB JSON: {}", e))?;
+    let new_glb = pack_glb(&new_json, bin_slice);
+    Ok((new_glb, extracted, warnings))
+}
+
+/// Very small magic-byte sniff — mirrors the ufbx path so GLB and FBX
+/// extractors agree on extensions.
+fn sniff_image_extension(data: &[u8]) -> &'static str {
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
+    else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }
+    else if data.starts_with(b"DDS ") { "dds" }
+    else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { "gif" }
+    else if data.starts_with(b"BM") { "bmp" }
+    else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") { "webp" }
+    else { "bin" }
 }
 
 /// GLTF files: read the JSON and all referenced buffers/images, pack into GLB.
@@ -76,7 +213,7 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(),
+        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
     })
 }
 

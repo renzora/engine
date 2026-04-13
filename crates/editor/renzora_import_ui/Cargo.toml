@@ -11,6 +11,7 @@ description = "Import overlay UI for 3D model import in the Renzora editor"
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_import = { path = "../../core/renzora_import" }
+renzora_material = { path = "../../core/renzora_material" }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

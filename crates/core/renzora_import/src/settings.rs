@@ -28,6 +28,19 @@ pub struct ImportSettings {
     pub optimize_overdraw: bool,
     /// Optimize vertex fetch (reorders vertices for cache).
     pub optimize_vertex_fetch: bool,
+
+    // ─── Per-asset-type extraction toggles ──────────────────────────────
+    // Let the user opt out of parts of a model they don't need. Mesh is
+    // required; everything else is optional.
+    /// Extract the skeleton + per-vertex skin weights when present.
+    pub extract_skeleton: bool,
+    /// Split animations out into sibling `.anim` files.
+    pub extract_animations: bool,
+    /// Dump embedded images to `<stem>/textures/`.
+    pub extract_textures: bool,
+    /// Emit `.material` files per PBR material (also controls GLTF material
+    /// records in the GLB — off means the mesh references no material).
+    pub extract_materials: bool,
 }
 
 impl Default for ImportSettings {
@@ -40,6 +53,10 @@ impl Default for ImportSettings {
             optimize_vertex_cache: true,
             optimize_overdraw: true,
             optimize_vertex_fetch: true,
+            extract_skeleton: true,
+            extract_animations: true,
+            extract_textures: true,
+            extract_materials: true,
         }
     }
 }
