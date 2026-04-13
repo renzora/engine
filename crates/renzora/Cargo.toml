@@ -15,14 +15,14 @@ editor = ["dep:renzora_editor_framework", "dep:renzora_undo", "dep:bevy_egui", "
 bevy = { workspace = true }
 
 # SDK sub-crates (compiled into renzora.dll)
-renzora_core = { path = "../core/renzora_core" }
-renzora_postprocess = { path = "../postprocessing/renzora_postprocess" }
-renzora_macros = { path = "../macros/renzora_macros" }
-dynamic_plugin_meta = { path = "../plugins/dynamic_plugin_meta" }
+renzora_core = { path = "../renzora_core" }
+renzora_postprocess = { path = "../renzora_postprocess" }
+renzora_macros = { path = "../renzora_macros" }
+dynamic_plugin_meta = { path = "../dynamic_plugin_meta" }
 
 # Editor framework (compiled into renzora.dll)
-renzora_editor_framework = { path = "../editor/renzora_editor", optional = true }
-renzora_undo = { path = "../core/renzora_undo", optional = true }
-renzora_theme = { path = "../ui/renzora_theme" }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_undo = { path = "../renzora_undo", optional = true }
+renzora_theme = { path = "../renzora_theme" }
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

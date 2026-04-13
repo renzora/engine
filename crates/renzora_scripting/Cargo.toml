@@ -1,0 +1,27 @@
+[package]
+name = "renzora_scripting"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["lua", "rhai"]
+lua = ["dep:mlua"]
+rhai = ["dep:rhai"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora_core = { path = "../renzora_core" }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_theme = { path = "../renzora_theme", optional = true }
+bevy_egui = { version = "0.39", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+
+# Rhai backend (pure Rust, works everywhere including WASM)
+rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# Lua backend (native only — requires C compiler, cannot target WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }

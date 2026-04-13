@@ -1,0 +1,8 @@
+[package]
+name = "renzora_postprocess"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora_core = { path = "../renzora_core" }

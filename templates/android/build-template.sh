@@ -23,7 +23,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ANDROID_DIR="$SCRIPT_DIR"
-ANDROID_CRATE="$PROJECT_ROOT/crates/platform/renzora_android"
+ANDROID_CRATE="$PROJECT_ROOT/crates/renzora_android"
 JNILIBS_DIR="$ANDROID_DIR/app/src/main/jniLibs"
 
 BUILD_ARM64=false

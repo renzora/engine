@@ -1,0 +1,16 @@
+[package]
+name = "renzora_clouds"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor"]
+
+[dependencies]
+bevy = { workspace = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_core = { path = "../renzora_core" }
+renzora_lighting = { path = "../renzora_lighting" }
+serde = { version = "1", features = ["derive"] }

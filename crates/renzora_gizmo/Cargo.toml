@@ -1,0 +1,10 @@
+[package]
+name = "renzora_gizmo"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+bevy_mod_outline = { path = "../bevy_mod_outline" }

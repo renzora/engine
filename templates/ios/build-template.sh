@@ -22,7 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IOS_DIR="$SCRIPT_DIR"
-IOS_CRATE="$PROJECT_ROOT/crates/platform/renzora_ios"
+IOS_CRATE="$PROJECT_ROOT/crates/renzora_ios"
 LIBS_DIR="$IOS_DIR/libs"
 
 MODE="ios"

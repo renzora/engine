@@ -1,0 +1,16 @@
+[package]
+name = "renzora_settings"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_viewport = { path = "../renzora_viewport" }
+renzora_splash = { path = "../renzora_splash" }
+renzora_input = { path = "../renzora_input" }
+rfd = "0.15"

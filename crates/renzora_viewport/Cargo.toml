@@ -1,0 +1,14 @@
+[package]
+name = "renzora_viewport"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_console = { path = "../renzora_console" }
+renzora_ui = { path = "../renzora_ui" }
+renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_animation = { path = "../renzora_animation" }
+renzora_terrain = { path = "../renzora_terrain" }

@@ -19,7 +19,7 @@ OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir>}"
 mkdir -p "$OUTPUT_DIR"
 
 # Editor plugins to exclude from runtime/server builds
-EDITOR_EXCLUDES=$(grep -h '^name' crates/editor/*/Cargo.toml 2>/dev/null | tr -d '\r' | sed 's/name = "\(.*\)"/--exclude \1/')
+EDITOR_EXCLUDES=$(grep -l 'features = \[\("[^"]*", \)*"editor"' crates/*/Cargo.toml 2>/dev/null | xargs grep -h '^name' 2>/dev/null | tr -d '\r' | sed 's/name = "\(.*\)"/--exclude \1/')
 
 # ── Helper: copy shared libraries for a platform ────────────────────────────
 # Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext>

@@ -1,0 +1,16 @@
+[package]
+name = "renzora_level_presets"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_lighting = { path = "../renzora_lighting" }
+renzora_bloom_effect = { path = "../renzora_bloom_effect" }
+renzora_atmosphere = { path = "../renzora_atmosphere" }
+renzora_clouds = { path = "../renzora_clouds" }
+renzora_distance_fog = { path = "../renzora_distance_fog" }
