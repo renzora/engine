@@ -23,7 +23,7 @@ use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::{NavOverlayState, ViewportState};
+use renzora::core::viewport_types::{NavOverlayState, SnapSettings, ViewportSettings, ViewportState};
 use renzora::editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -178,6 +178,7 @@ pub struct GizmoState {
     pub active_axis: Option<GizmoAxis>,
     pub hovered_axis: Option<GizmoAxis>,
     pub drag_starts: Vec<(Entity, Vec3, Quat, Vec3)>,
+    pub drag_offset: Vec3,
     pub drag_angle: f32,
     pub drag_scale_factor: f32,
     pub gizmo_scale: f32,
@@ -194,6 +195,7 @@ impl Default for GizmoState {
             active_axis: None,
             hovered_axis: None,
             drag_starts: Vec::new(),
+            drag_offset: Vec3::ZERO,
             drag_angle: 0.0,
             drag_scale_factor: 0.0,
             gizmo_scale: 1.0,
@@ -343,24 +345,35 @@ struct LastSelectionCount(usize);
 /// handles appear immediately. When the selection becomes empty, switch
 /// back to Select. Leaves the tool alone if the user has deliberately
 /// chosen Rotate, Scale, a brush, or a plugin tool.
-fn auto_switch_tool_on_selection(
-    selection: Res<renzora::editor::EditorSelection>,
-    mut active: ResMut<renzora::editor::ActiveTool>,
-    mut last: ResMut<LastSelectionCount>,
-) {
+fn auto_switch_tool_on_selection(world: &mut World) {
     use renzora::editor::ActiveTool;
 
-    let current = selection.get_all().len();
-    if current == last.0 {
+    let current = world.resource::<renzora::editor::EditorSelection>().get_all().len();
+    let prev = world.resource::<LastSelectionCount>().0;
+    if current == prev {
         return;
     }
-    let prev = last.0;
-    last.0 = current;
+    world.resource_mut::<LastSelectionCount>().0 = current;
 
-    // Only react while a gizmo-style tool is active. Brushes and plugin
-    // tools (Terrain*, Foliage*, None) drive their own selection semantics.
+    let active = *world.resource::<ActiveTool>();
+
+    // Brush tools only make sense while a terrain is selected; revert to
+    // Select if the user deselected (or selected a non-terrain entity).
+    let is_brush = matches!(
+        active,
+        ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
+    );
+    if is_brush {
+        if !renzora::editor::is_terrain_selected(world) {
+            world.insert_resource(ActiveTool::Select);
+        }
+        return;
+    }
+
+    // Only react while a gizmo-style tool is active. `None` drives its own
+    // selection semantics (e.g. mesh-draw).
     let is_gizmo_tool = matches!(
-        *active,
+        active,
         ActiveTool::Select | ActiveTool::Translate | ActiveTool::Rotate | ActiveTool::Scale
     );
     if !is_gizmo_tool {
@@ -370,12 +383,12 @@ fn auto_switch_tool_on_selection(
     if prev == 0 && current > 0 {
         // Just selected something. Only promote Select → Translate; don't
         // override a deliberate Rotate / Scale choice.
-        if *active == ActiveTool::Select {
-            *active = ActiveTool::Translate;
+        if active == ActiveTool::Select {
+            world.insert_resource(ActiveTool::Translate);
         }
     } else if prev > 0 && current == 0 {
         // Cleared selection → back to Select.
-        *active = ActiveTool::Select;
+        world.insert_resource(ActiveTool::Select);
     }
 }
 
@@ -1255,6 +1268,7 @@ fn gizmo_drag(
     mode: Res<GizmoMode>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
+    viewport_settings: Option<Res<ViewportSettings>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     mut transform_q: Query<&mut Transform, (Without<EditorCamera>, Without<EditorLocked>, Without<GizmoRoot>, Without<GizmoMesh>)>,
     global_q: Query<&GlobalTransform, Without<EditorCamera>>,
@@ -1262,6 +1276,7 @@ fn gizmo_drag(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut commands: Commands,
 ) {
+    let snap: SnapSettings = viewport_settings.as_deref().map(|s| s.snap).unwrap_or_default();
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
         mouse_motion.clear();
         return;
@@ -1291,6 +1306,7 @@ fn gizmo_drag(
             }
             gizmo_state.active_axis = Some(axis);
             gizmo_state.drag_starts = starts;
+            gizmo_state.drag_offset = Vec3::ZERO;
             gizmo_state.drag_angle = 0.0;
             gizmo_state.drag_scale_factor = 0.0;
             mouse_motion.clear();
@@ -1378,33 +1394,75 @@ fn gizmo_drag(
                 dir * total_delta.dot(sa / len) * scale
             };
 
-            for &entity in &selected_entities {
-                if let Ok(mut t) = transform_q.get_mut(entity) { t.translation += offset; }
+            gizmo_state.drag_offset += offset;
+            let total_offset = gizmo_state.drag_offset;
+            for (i, &entity) in selected_entities.iter().enumerate() {
+                if let Ok(mut t) = transform_q.get_mut(entity) {
+                    let start = gizmo_state.drag_starts.get(i).map(|(_, p, _, _)| *p)
+                        .unwrap_or(t.translation);
+                    let mut new_pos = start + total_offset;
+                    if snap.translate_enabled && snap.translate_snap > 0.0 {
+                        let step = snap.translate_snap;
+                        new_pos = Vec3::new(
+                            (new_pos.x / step).round() * step,
+                            (new_pos.y / step).round() * step,
+                            (new_pos.z / step).round() * step,
+                        );
+                    }
+                    t.translation = new_pos;
+                }
             }
         }
         GizmoMode::Rotate => {
             let delta_angle = screen_delta_to_angle(total_delta, axis.direction(), cam_gt);
             gizmo_state.drag_angle += delta_angle;
-            let rotation = Quat::from_axis_angle(axis.direction(), delta_angle);
-            for &entity in &selected_entities {
+
+            // If snap is on, snap the accumulated drag_angle to the step and
+            // apply the delta needed to reach the snapped value from starts.
+            let effective_angle = if snap.rotate_enabled && snap.rotate_snap > 0.0 {
+                let step = snap.rotate_snap.to_radians();
+                (gizmo_state.drag_angle / step).round() * step
+            } else {
+                gizmo_state.drag_angle
+            };
+            let rotation = Quat::from_axis_angle(axis.direction(), effective_angle);
+            for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
+                    let start = gizmo_state.drag_starts.get(i)
+                        .map(|(_, p, r, _)| (*p, *r))
+                        .unwrap_or((t.translation, t.rotation));
                     if selected_entities.len() == 1 {
-                        t.rotation = rotation * t.rotation;
+                        t.rotation = rotation * start.1;
                     } else {
-                        t.translation = center + rotation * (t.translation - center);
-                        t.rotation = rotation * t.rotation;
+                        t.translation = center + rotation * (start.0 - center);
+                        t.rotation = rotation * start.1;
                     }
                 }
             }
         }
         GizmoMode::Scale => {
             let delta_scale = screen_delta_to_scale(total_delta, axis.direction(), cam_gt);
-            for &entity in &selected_entities {
+            gizmo_state.drag_scale_factor += delta_scale;
+            let snap_step = if snap.scale_enabled && snap.scale_snap > 0.0 {
+                Some(snap.scale_snap)
+            } else { None };
+            let apply = |v: f32, step: Option<f32>| -> f32 {
+                let v = v.max(0.01);
+                match step {
+                    Some(s) => ((v / s).round() * s).max(s.min(0.01)),
+                    None => v,
+                }
+            };
+            for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
+                    let start_scale = gizmo_state.drag_starts.get(i)
+                        .map(|(_, _, _, s)| *s)
+                        .unwrap_or(t.scale);
+                    let f = gizmo_state.drag_scale_factor;
                     match axis {
-                        GizmoAxis::X => t.scale.x = (t.scale.x + delta_scale).max(0.01),
-                        GizmoAxis::Y => t.scale.y = (t.scale.y + delta_scale).max(0.01),
-                        GizmoAxis::Z => t.scale.z = (t.scale.z + delta_scale).max(0.01),
+                        GizmoAxis::X => t.scale.x = apply(start_scale.x + f, snap_step),
+                        GizmoAxis::Y => t.scale.y = apply(start_scale.y + f, snap_step),
+                        GizmoAxis::Z => t.scale.z = apply(start_scale.z + f, snap_step),
                         _ => {}
                     }
                 }

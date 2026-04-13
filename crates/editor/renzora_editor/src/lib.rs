@@ -12,6 +12,7 @@ pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
 pub mod spawn_registry;
+pub mod tool_options_registry;
 pub mod toolbar_registry;
 pub mod viewport_overlay;
 
@@ -111,6 +112,7 @@ pub fn reset_layout(world: &mut bevy::prelude::World) {
 pub struct OpenAddComponentMenuRequest {
     pub screen_pos: bevy::prelude::Vec2,
 }
+pub use tool_options_registry::{ToolOptionsDrawer, ToolOptionsRegistry};
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
@@ -161,7 +163,7 @@ pub enum GizmoMode {
 ///
 /// Only one tool is active at a time. The viewport toolbar sets this directly.
 /// Downstream crates read this to decide whether their systems should run.
-#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ActiveTool {
     #[default]
     Select,
@@ -281,6 +283,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ComponentIconRegistry>()
             .init_resource::<ViewportOverlayRegistry>()
             .init_resource::<ToolbarRegistry>()
+            .init_resource::<ToolOptionsRegistry>()
             .init_resource::<ShortcutRegistry>()
             .init_resource::<EditorActionHooks>();
 
@@ -502,13 +505,11 @@ fn sync_active_tool_to_gizmo_mode(
         if *gizmo_mode != mode {
             *gizmo_mode = mode;
         }
-    } else if *active_tool == ActiveTool::None {
+    } else {
+        // TerrainSculpt / TerrainPaint / FoliagePaint / None — plugin tool is
+        // driving; disengage gizmo + pick + box-select.
         if *gizmo_mode != GizmoMode::None {
             *gizmo_mode = GizmoMode::None;
-        }
-    } else {
-        if *gizmo_mode != GizmoMode::Select {
-            *gizmo_mode = GizmoMode::Select;
         }
     }
 }

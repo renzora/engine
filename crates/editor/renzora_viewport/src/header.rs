@@ -1,9 +1,11 @@
-//! Viewport header bar — render toggles and dropdown menus.
+//! Viewport header bar — render toggles, inline settings, and dropdown menus.
 
 use bevy::prelude::*;
 use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use renzora::egui_phosphor::regular::*;
-use renzora::editor::EditorCommands;
+use renzora::editor::{
+    ActiveTool, EditorCommands, ToolOptionsRegistry, ToolSection, ToolbarRegistry,
+};
 use renzora::theme::ThemeManager;
 
 use crate::settings::*;
@@ -11,40 +13,33 @@ use crate::settings::*;
 /// Height of the viewport header bar.
 pub const HEADER_HEIGHT: f32 = 28.0;
 
-
+/// Uniform height for every interactive control in the header strip.
+const BTN_H: f32 = 22.0;
 
 /// View angle preset for the camera.
 #[derive(Clone, Copy)]
 enum ViewAngle {
-    Front,
-    Back,
-    Left,
-    Right,
-    Top,
-    Bottom,
+    Front, Back, Left, Right, Top, Bottom,
 }
 
 impl ViewAngle {
     const ALL: &'static [ViewAngle] = &[
         Self::Front, Self::Back, Self::Left, Self::Right, Self::Top, Self::Bottom,
     ];
-
     fn label(&self) -> &'static str {
         match self {
-            Self::Front => "Front",  Self::Back => "Back",
-            Self::Left => "Left",    Self::Right => "Right",
-            Self::Top => "Top",      Self::Bottom => "Bottom",
+            Self::Front => "Front", Self::Back => "Back",
+            Self::Left => "Left",   Self::Right => "Right",
+            Self::Top => "Top",     Self::Bottom => "Bottom",
         }
     }
-
     fn shortcut(&self) -> &'static str {
         match self {
-            Self::Front => "Num1",      Self::Back => "Ctrl+Num1",
-            Self::Left => "Ctrl+Num3",  Self::Right => "Num3",
-            Self::Top => "Num7",        Self::Bottom => "Ctrl+Num7",
+            Self::Front => "Num1",     Self::Back => "Ctrl+Num1",
+            Self::Left => "Ctrl+Num3", Self::Right => "Num3",
+            Self::Top => "Num7",       Self::Bottom => "Ctrl+Num7",
         }
     }
-
     fn yaw_pitch(&self) -> (f32, f32) {
         use std::f32::consts::{FRAC_PI_2, PI};
         match self {
@@ -68,124 +63,423 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
     let rect = ui.available_rect_before_wrap();
     let header_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEADER_HEIGHT));
     ui.advance_cursor_after_rect(header_rect);
-
     ui.painter().rect_filled(header_rect, 0.0, theme.surfaces.panel.to_color32());
 
-    let active_color = theme.semantic.accent.to_color32();
-    let inactive_color = theme.widgets.inactive_bg.to_color32();
-    let hovered_color = theme.widgets.hovered_bg.to_color32();
-    let text_muted = theme.text.muted.to_color32();
+    let active = theme.semantic.accent.to_color32();
+    let inactive = theme.widgets.inactive_bg.to_color32();
+    let hovered = theme.widgets.hovered_bg.to_color32();
+    let muted = theme.text.muted.to_color32();
     let icon_color = theme.text.secondary.to_color32();
 
-    let btn_size = Vec2::new(28.0, 20.0);
-    let drop_size = Vec2::new(36.0, 20.0);
-    let btn_y = header_rect.min.y + (HEADER_HEIGHT - btn_size.y) / 2.0;
+    // Clamp the inner rect height to exactly BTN_H. Slight top-weighted
+    // padding nudges the whole strip down a hair so taller widgets
+    // (DragValue text, icon glyphs) read as visually centered.
+    const TOP_PAD: f32 = 6.0;
+    let bottom_pad = (header_rect.height() - BTN_H - TOP_PAD).max(0.0);
+    let inner = Rect::from_min_max(
+        egui::Pos2::new(header_rect.min.x + 8.0, header_rect.min.y + TOP_PAD),
+        egui::Pos2::new(header_rect.max.x - 8.0, header_rect.max.y - bottom_pad),
+    );
 
-    let total_w = btn_size.x * 4.0 + 2.0 * 3.0 + 4.0 + drop_size.x * 5.0 + 4.0 * 4.0;
-    let mut x = header_rect.center().x - total_w / 2.0;
+    // Render once per frame at a centered rect of the last measured width.
+    // Two-pass rendering was doubling popups (sizing pass still spawned Areas).
+    let width_id = ui.id().with("viewport_header_width");
+    let cached_w: f32 = ui.memory(|m| m.data.get_temp(width_id)).unwrap_or(600.0);
+    let content_w = cached_w.min(inner.width());
+    let content_x = inner.center().x - content_w / 2.0;
+    let centered_rect = Rect::from_min_size(
+        egui::Pos2::new(content_x, inner.min.y),
+        Vec2::new(content_w, inner.height()),
+    );
 
-    // === Render toggles ===
-    let toggles = &settings.render_toggles;
+    let mut strip = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(centered_rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    strip.set_height(BTN_H);
+    render_strip_contents(&mut strip, world, settings, cmds, theme,
+        active, inactive, hovered, muted, icon_color);
 
-    struct Toggle { icon: &'static str, active: bool, tip_on: &'static str, tip_off: &'static str, field: fn(&mut RenderToggles) -> &mut bool }
-    let toggle_defs = [
-        Toggle { icon: IMAGE,   active: toggles.textures,  tip_on: "Textures: ON",  tip_off: "Textures: OFF",  field: |t| &mut t.textures },
-        Toggle { icon: POLYGON, active: toggles.wireframe, tip_on: "Wireframe: ON", tip_off: "Wireframe: OFF", field: |t| &mut t.wireframe },
-        Toggle { icon: SUN,     active: toggles.lighting,  tip_on: "Lighting: ON",  tip_off: "Lighting: OFF",  field: |t| &mut t.lighting },
-        Toggle { icon: CLOUD,   active: toggles.shadows,   tip_on: "Shadows: ON",   tip_off: "Shadows: OFF",   field: |t| &mut t.shadows },
-    ];
-
-    for (i, t) in toggle_defs.iter().enumerate() {
-        let r = Rect::from_min_size(Pos2::new(x, btn_y), btn_size);
-        if tool_button(ui, r, t.icon, t.active, active_color, inactive_color, hovered_color) {
-            let field_fn = t.field;
-            cmds.push(move |w: &mut World| {
-                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                    let val = field_fn(&mut s.render_toggles);
-                    *val = !*val;
-                }
-            });
-        }
-        ui.allocate_rect(r, Sense::hover())
-            .on_hover_text(if t.active { t.tip_on } else { t.tip_off });
-        x += btn_size.x + if i < 3 { 2.0 } else { 4.0 };
+    let measured = strip.min_rect().width();
+    if (measured - cached_w).abs() > 0.5 {
+        ui.memory_mut(|m| m.data.insert_temp(width_id, measured));
     }
-
-    // === Dropdown buttons ===
-    let r = Rect::from_min_size(Pos2::new(x, btn_y), drop_size);
-    gizmo_dropdown(ui, r, settings, cmds, icon_color, inactive_color, hovered_color, text_muted, theme);
-    x += drop_size.x + 4.0;
-
-    let r = Rect::from_min_size(Pos2::new(x, btn_y), drop_size);
-    viz_dropdown(ui, r, settings, cmds, icon_color, inactive_color, hovered_color, text_muted);
-    x += drop_size.x + 4.0;
-
-    let r = Rect::from_min_size(Pos2::new(x, btn_y), drop_size);
-    view_dropdown(ui, r, settings, cmds, icon_color, inactive_color, hovered_color, text_muted);
-    x += drop_size.x + 4.0;
-
-    let r = Rect::from_min_size(Pos2::new(x, btn_y), drop_size);
-    camera_dropdown(ui, r, settings, cmds, icon_color, inactive_color, hovered_color, text_muted, theme);
-    x += drop_size.x + 4.0;
-
-    let r = Rect::from_min_size(Pos2::new(x, btn_y), drop_size);
-    let any_snap = settings.snap.translate_enabled
-        || settings.snap.rotate_enabled
-        || settings.snap.scale_enabled
-        || settings.snap.object_snap_enabled
-        || settings.snap.floor_snap_enabled;
-    let snap_bg = if any_snap { active_color } else { inactive_color };
-    snap_dropdown(ui, r, settings, cmds, Color32::WHITE, snap_bg, hovered_color, text_muted, theme);
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+fn render_strip_contents(
+    ui: &mut egui::Ui,
+    world: &World,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    theme: &renzora::theme::Theme,
+    active: Color32,
+    inactive: Color32,
+    hovered: Color32,
+    muted: Color32,
+    icon_color: Color32,
+) {
+    // Uniform height across buttons and drag-value sliders so the whole strip
+    // reads as one visual row.
+    ui.spacing_mut().interact_size.y = BTN_H;
+    ui.spacing_mut().item_spacing.x = 3.0;
+    ui.spacing_mut().item_spacing.y = 0.0;
+    // DragValue height = interact_size.y + button_padding.y * 2, so 0 vertical
+    // padding keeps sliders exactly as tall as our 22px icon buttons.
+    ui.spacing_mut().button_padding = Vec2::new(4.0, 0.0);
 
-fn tool_button(
-    ui: &mut egui::Ui, rect: Rect, icon: &str, active: bool,
-    active_color: Color32, inactive_color: Color32, hovered_color: Color32,
-) -> bool {
-    let resp = ui.allocate_rect(rect, Sense::click());
+    // ── Context-sensitive tool options (Photoshop-style) ─────────────────────
+    let active_tool = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
+    let tool_drawer = world
+        .get_resource::<ToolOptionsRegistry>()
+        .and_then(|r| r.drawer_for(active_tool));
+
+    if let Some(drawer) = tool_drawer {
+        drawer(ui, world);
+        return;
+    }
+
+    // ── Transform tools + Undo/Redo ───────────────────────────────────────
+    let tool_btn = Vec2::new(26.0, BTN_H);
+    let transform_tools = world.get_resource::<ToolbarRegistry>()
+        .map(|r| r.visible_in_section(world, &ToolSection::Transform))
+        .unwrap_or_default();
+    render_header_tools(ui, world, cmds, &transform_tools, tool_btn,
+        active, inactive, hovered);
+
+    separator(ui);
+
+    // ── Render flag toggles (textures/wireframe/lighting/shadows) ─────────────
+    let t = &settings.render_toggles;
+    toggle_btn(ui, IMAGE,   t.textures,  "Textures",  active, inactive, hovered, cmds, |s| &mut s.render_toggles.textures);
+    toggle_btn(ui, POLYGON, t.wireframe, "Wireframe", active, inactive, hovered, cmds, |s| &mut s.render_toggles.wireframe);
+    toggle_btn(ui, SUN,     t.lighting,  "Lighting",  active, inactive, hovered, cmds, |s| &mut s.render_toggles.lighting);
+    toggle_btn(ui, CLOUD,   t.shadows,   "Shadows",   active, inactive, hovered, cmds, |s| &mut s.render_toggles.shadows);
+
+    separator(ui);
+
+    // ── Overlay toggles (grid, axis gizmo) ────────────────────────────────────
+    toggle_btn(ui, GRID_FOUR, settings.show_grid, "Grid", active, inactive, hovered, cmds, |s| &mut s.show_grid);
+    toggle_btn(ui, ARROWS_OUT_CARDINAL, settings.show_axis_gizmo, "Axis Gizmo", active, inactive, hovered, cmds, |s| &mut s.show_axis_gizmo);
+
+    separator(ui);
+
+    // ── Inline snapping: T / R / S toggles with inline value editors ─────────
+    let snap = settings.snap;
+    snap_pair(ui, ARROWS_OUT_CARDINAL, "Translate", snap.translate_enabled, snap.translate_snap, 0.01..=100.0, 0.1, 2, active, inactive, hovered, cmds,
+        |s, on| s.snap.translate_enabled = on,
+        |s, v| s.snap.translate_snap = v);
+    snap_pair(ui, ARROW_CLOCKWISE, "Rotate", snap.rotate_enabled, snap.rotate_snap, 1.0..=90.0, 1.0, 0, active, inactive, hovered, cmds,
+        |s, on| s.snap.rotate_enabled = on,
+        |s, v| s.snap.rotate_snap = v);
+    snap_pair(ui, ARROWS_OUT, "Scale", snap.scale_enabled, snap.scale_snap, 0.01..=10.0, 0.05, 2, active, inactive, hovered, cmds,
+        |s, on| s.snap.scale_enabled = on,
+        |s, v| s.snap.scale_snap = v);
+
+    separator(ui);
+
+    // ── Camera speed inline drag (rendered as a pill to match snap groups) ─
+    let mut cam_speed = settings.camera.move_speed;
+    egui::Frame::default()
+        .fill(inactive)
+        .corner_radius(CornerRadius::same(3))
+        .inner_margin(egui::Margin::symmetric(2, 0))
+        .stroke(egui::Stroke::NONE)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.set_height(BTN_H);
+
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(18.0, BTN_H), Sense::hover());
+            if ui.is_rect_visible(rect) {
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+                    VIDEO_CAMERA, FontId::proportional(13.0), Color32::WHITE);
+            }
+
+            let resp = ui.scope(|ui| {
+                let w = &mut ui.style_mut().visuals.widgets;
+                w.inactive.bg_fill = Color32::TRANSPARENT;
+                w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                w.inactive.bg_stroke.width = 0.0;
+                w.hovered.bg_fill = Color32::from_black_alpha(40);
+                w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
+                w.hovered.bg_stroke.width = 0.0;
+                ui.add(
+                    egui::DragValue::new(&mut cam_speed)
+                        .range(0.1..=100.0)
+                        .speed(0.5)
+                        .max_decimals(1)
+                        .suffix(" u/s"),
+                )
+            }).inner;
+            if resp.changed() {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        s.camera.move_speed = cam_speed;
+                    }
+                });
+            }
+        });
+    let _ = muted;
+
+    separator(ui);
+
+    // ── Dropdowns ────────────────────────────────────────────────────────────
+    viz_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted);
+    view_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted);
+    camera_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted, theme);
+    snap_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted, theme);
+    gizmo_dropdown(ui, settings, cmds, icon_color, inactive, hovered, muted, theme);
+}
+
+// ── Left tool-row helpers ────────────────────────────────────────────────────
+
+fn render_header_tools(
+    ui: &mut egui::Ui,
+    world: &World,
+    cmds: &EditorCommands,
+    tools: &[renzora::editor::ToolEntry],
+    btn_size: Vec2,
+    active: Color32,
+    inactive: Color32,
+    hovered: Color32,
+) {
+    for entry in tools {
+        let (rect, resp) = ui.allocate_exact_size(btn_size, Sense::click());
+        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        let is_active = (entry.is_active)(world);
+        if ui.is_rect_visible(rect) {
+            let bg = if is_active { active } else if resp.hovered() { hovered } else { inactive };
+            ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, entry.icon,
+                FontId::proportional(14.0), Color32::WHITE);
+        }
+        let clicked = resp.clicked();
+        let _ = resp.on_hover_text(entry.tooltip);
+        if clicked {
+            let activate = entry.activate.clone();
+            cmds.push(move |w: &mut World| { (activate)(w); });
+        }
+    }
+
+    separator(ui);
+
+    // Undo / Redo
+    let (can_undo, can_redo) = world.get_resource::<renzora::undo::UndoStacks>()
+        .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
+        .unwrap_or((false, false));
+
+    header_history_btn(ui, ARROW_U_UP_LEFT,  can_undo, "Undo (Ctrl+Z)", btn_size, inactive, hovered,
+        cmds, |w| renzora::undo::undo_once(w));
+    header_history_btn(ui, ARROW_U_UP_RIGHT, can_redo, "Redo (Ctrl+Y)", btn_size, inactive, hovered,
+        cmds, |w| renzora::undo::redo_once(w));
+}
+
+fn header_history_btn(
+    ui: &mut egui::Ui, icon: &str, enabled: bool, tip: &str, btn_size: Vec2,
+    inactive: Color32, hovered: Color32, cmds: &EditorCommands,
+    action: fn(&mut World),
+) {
+    let (rect, resp) = ui.allocate_exact_size(btn_size,
+        if enabled { Sense::click() } else { Sense::hover() });
+    if enabled && resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if ui.is_rect_visible(rect) {
+        let (bg, fg) = if !enabled {
+            (Color32::from_rgba_unmultiplied(inactive.r(), inactive.g(), inactive.b(), 80),
+             Color32::from_white_alpha(40))
+        } else if resp.hovered() {
+            (hovered, Color32::WHITE)
+        } else {
+            (inactive, Color32::WHITE)
+        };
+        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon,
+            FontId::proportional(14.0), fg);
+    }
+    let clicked = enabled && resp.clicked();
+    let _ = resp.on_hover_text(tip);
+    if clicked {
+        cmds.push(move |w: &mut World| action(w));
+    }
+}
+
+// ── Inline helpers ───────────────────────────────────────────────────────────
+
+fn separator(ui: &mut egui::Ui) {
+    ui.add_space(3.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, BTN_H - 4.0), Sense::hover());
+    ui.painter().line_segment(
+        [rect.center_top(), rect.center_bottom()],
+        egui::Stroke::new(1.0, Color32::from_gray(60)),
+    );
+    ui.add_space(3.0);
+}
+
+fn toggle_btn(
+    ui: &mut egui::Ui, icon: &str, is_on: bool, tip: &str,
+    active: Color32, inactive: Color32, hovered: Color32,
+    cmds: &EditorCommands, field: fn(&mut ViewportSettings) -> &mut bool,
+) {
+    let size = Vec2::new(26.0, BTN_H);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if ui.is_rect_visible(rect) {
-        let bg = if active { active_color } else if resp.hovered() { hovered_color } else { inactive_color };
+        let bg = if is_on { active } else if resp.hovered() { hovered } else { inactive };
         ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, FontId::proportional(16.0), Color32::WHITE);
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon,
+            FontId::proportional(14.0), Color32::WHITE);
     }
-    resp.clicked()
+    let clicked = resp.clicked();
+    let _ = resp.on_hover_text(format!("{}: {}", tip, if is_on { "ON" } else { "OFF" }));
+    if clicked {
+        cmds.push(move |w: &mut World| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                let v = field(&mut s);
+                *v = !*v;
+            }
+        });
+    }
 }
 
-fn dropdown_button(
-    ui: &mut egui::Ui, rect: Rect, icon: &str,
+fn snap_pair(
+    ui: &mut egui::Ui, icon: &str, tip_name: &str, enabled: bool, value: f32,
+    range: std::ops::RangeInclusive<f32>, speed: f64, decimals: usize,
+    active: Color32, inactive: Color32, hovered: Color32,
+    cmds: &EditorCommands,
+    toggle_fn: fn(&mut ViewportSettings, bool),
+    value_fn: fn(&mut ViewportSettings, f32),
+) {
+    // Render the icon toggle and the drag value as a single pill: one shared
+    // background, icon on the left, slider on the right.
+    egui::Frame::default()
+        .fill(if enabled { active } else { inactive })
+        .corner_radius(CornerRadius::same(3))
+        .inner_margin(egui::Margin::symmetric(2, 0))
+        .stroke(egui::Stroke::NONE)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.set_height(BTN_H);
+
+            // Icon toggle
+            let (rect, resp) = ui.allocate_exact_size(Vec2::new(18.0, BTN_H), Sense::click());
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            if ui.is_rect_visible(rect) {
+                if resp.hovered() && !enabled {
+                    ui.painter().rect_filled(rect, CornerRadius::same(2), hovered);
+                }
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon,
+                    FontId::proportional(13.0), Color32::WHITE);
+            }
+            let clicked = resp.clicked();
+            let _ = resp.on_hover_text(format!("{} snap: {}", tip_name, if enabled { "ON" } else { "OFF" }));
+            if clicked {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        toggle_fn(&mut s, !enabled);
+                    }
+                });
+            }
+
+            // DragValue with transparent chrome so the pill shows through.
+            let mut v = value;
+            let dv = ui.scope(|ui| {
+                let w = &mut ui.style_mut().visuals.widgets;
+                w.inactive.bg_fill = Color32::TRANSPARENT;
+                w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                w.inactive.bg_stroke.width = 0.0;
+                w.hovered.bg_fill = Color32::from_black_alpha(40);
+                w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
+                w.hovered.bg_stroke.width = 0.0;
+                ui.add(
+                    egui::DragValue::new(&mut v)
+                        .range(range)
+                        .speed(speed)
+                        .max_decimals(decimals),
+                )
+            }).inner;
+            if dv.changed() {
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        value_fn(&mut s, v);
+                    }
+                });
+            }
+        });
+}
+
+// ── Dropdown helpers ────────────────────────────────────────────────────────
+
+fn dropdown_button_ui(
+    ui: &mut egui::Ui, icon: &str,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
 ) -> egui::Response {
-    let resp = ui.allocate_rect(rect, Sense::click());
+    let size = Vec2::new(36.0, BTN_H);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if ui.is_rect_visible(rect) {
         let fill = if resp.hovered() { hovered_color } else { bg_color };
         ui.painter().rect_filled(rect, CornerRadius::same(3), fill);
-        ui.painter().text(Pos2::new(rect.left() + 10.0, rect.center().y), egui::Align2::CENTER_CENTER, icon, FontId::proportional(11.0), icon_color);
-        ui.painter().text(Pos2::new(rect.right() - 8.0, rect.center().y), egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(8.0), caret_color);
+        ui.painter().text(Pos2::new(rect.left() + 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, icon, FontId::proportional(11.0), icon_color);
+        ui.painter().text(Pos2::new(rect.right() - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(8.0), caret_color);
     }
     resp
 }
 
-// ── Gizmo/Overlays dropdown ─────────────────────────────────────────────────
+// ── Viz dropdown ────────────────────────────────────────────────────────────
 
-fn gizmo_dropdown(
-    ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
+fn viz_dropdown(
+    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora::theme::Theme,
 ) {
-    let id = ui.make_persistent_id("vp_gizmo_drop");
-    let resp = dropdown_button(ui, rect, STACK, icon_color, bg_color, hovered_color, caret_color);
+    let id = ui.make_persistent_id("vp_viz_drop");
+    let resp = dropdown_button_ui(ui, EYE, icon_color, bg_color, hovered_color, caret_color);
     if resp.clicked() {
         #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(id));
     }
+    let resp = resp.on_hover_text(format!("View Mode: {}", settings.visualization_mode.label()));
+    let current = settings.visualization_mode;
+    #[allow(deprecated)]
+    egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+        ui.set_min_width(140.0);
+        ui.style_mut().spacing.item_spacing.y = 2.0;
+        for mode in VisualizationMode::ALL {
+            let selected = current == *mode;
+            let label = if selected { format!("• {}", mode.label()) } else { format!("  {}", mode.label()) };
+            if ui.add(egui::Button::new(&label).fill(Color32::TRANSPARENT)
+                .corner_radius(CornerRadius::same(2))
+                .min_size(Vec2::new(ui.available_width(), 0.0))).clicked()
+            {
+                let m = *mode;
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        s.visualization_mode = m;
+                    }
+                });
+                ui.close();
+            }
+        }
+    });
+}
+
+// ── Gizmo / overlays dropdown (collision settings only — overlays are inline) ─
+
+fn gizmo_dropdown(
+    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
+    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
+    theme: &renzora::theme::Theme,
+) {
+    let id = ui.make_persistent_id("vp_gizmo_drop");
+    let resp = dropdown_button_ui(ui, STACK, icon_color, bg_color, hovered_color, caret_color);
+    if resp.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(id));
+    }
+    let resp = resp.on_hover_text("Overlays & Collision");
     let label_color = theme.text.muted.to_color32();
-    let show_grid = settings.show_grid;
     let show_subgrid = settings.show_subgrid;
-    let show_axis = settings.show_axis_gizmo;
+    let show_grid = settings.show_grid;
     let collision_vis = settings.collision_gizmo_visibility;
 
     #[allow(deprecated)]
@@ -195,16 +489,6 @@ fn gizmo_dropdown(
 
         ui.label(RichText::new("Overlays").small().color(label_color));
         ui.add_space(4.0);
-
-        let mut grid = show_grid;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Grid").size(12.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.checkbox(&mut grid, ""); });
-        });
-        if grid != show_grid {
-            cmds.push(move |w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.show_grid = grid; } });
-        }
-
         let mut subgrid = show_subgrid;
         ui.horizontal(|ui| {
             ui.label(RichText::new("Sub-grid").size(12.0));
@@ -214,15 +498,6 @@ fn gizmo_dropdown(
         });
         if subgrid != show_subgrid {
             cmds.push(move |w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.show_subgrid = subgrid; } });
-        }
-
-        let mut axis = show_axis;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Axis Gizmo").size(12.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.checkbox(&mut axis, ""); });
-        });
-        if axis != show_axis {
-            cmds.push(move |w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.show_axis_gizmo = axis; } });
         }
 
         ui.add_space(4.0);
@@ -241,54 +516,19 @@ fn gizmo_dropdown(
     });
 }
 
-// ── Visualization Mode dropdown ─────────────────────────────────────────────
-
-fn viz_dropdown(
-    ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
-    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-) {
-    let id = ui.make_persistent_id("vp_viz_drop");
-    let resp = dropdown_button(ui, rect, EYE, icon_color, bg_color, hovered_color, caret_color);
-    if resp.clicked() {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(id));
-    }
-    let resp = resp.on_hover_text("Visualization Mode");
-
-    let current = settings.visualization_mode;
-
-    #[allow(deprecated)]
-    egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(120.0);
-        ui.style_mut().spacing.item_spacing.y = 2.0;
-        for mode in VisualizationMode::ALL {
-            let is_selected = current == *mode;
-            let label = if is_selected { format!("• {}", mode.label()) } else { format!("  {}", mode.label()) };
-            if ui.add(
-                egui::Button::new(&label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0)),
-            ).clicked() {
-                let m = *mode;
-                cmds.push(move |w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.visualization_mode = m; } });
-                ui.close();
-            }
-        }
-    });
-}
-
-// ── View Angles dropdown ────────────────────────────────────────────────────
+// ── View angles dropdown ────────────────────────────────────────────────────
 
 fn view_dropdown(
-    ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
+    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
 ) {
     let id = ui.make_persistent_id("vp_view_drop");
-    let resp = dropdown_button(ui, rect, CUBE, icon_color, bg_color, hovered_color, caret_color);
+    let resp = dropdown_button_ui(ui, CUBE, icon_color, bg_color, hovered_color, caret_color);
     if resp.clicked() {
         #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(id));
     }
     let resp = resp.on_hover_text("View Angle");
-
     let proj = settings.projection_mode;
 
     #[allow(deprecated)]
@@ -303,7 +543,6 @@ fn view_dropdown(
         if ui.add(egui::Button::new(persp_label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
             cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.projection_mode = ProjectionMode::Perspective; } });
         }
-
         let ortho_label = if proj == ProjectionMode::Orthographic { "• Orthographic" } else { "  Orthographic" };
         if ui.add(egui::Button::new(ortho_label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
             cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.projection_mode = ProjectionMode::Orthographic; } });
@@ -312,10 +551,8 @@ fn view_dropdown(
         ui.add_space(4.0);
         ui.separator();
         ui.add_space(4.0);
-
         ui.label(RichText::new("View Angles").small().color(Color32::from_gray(140)));
         ui.add_space(2.0);
-
         for view in ViewAngle::ALL {
             let label = format!("{}  ({})", view.label(), view.shortcut());
             if ui.add(egui::Button::new(&label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
@@ -331,32 +568,29 @@ fn view_dropdown(
     });
 }
 
-// ── Camera Settings dropdown ────────────────────────────────────────────────
+// ── Camera dropdown (advanced settings, since speed is inline) ──────────────
 
 fn camera_dropdown(
-    ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
+    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
     theme: &renzora::theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_camera_drop");
-    let resp = dropdown_button(ui, rect, VIDEO_CAMERA, icon_color, bg_color, hovered_color, caret_color);
+    let resp = dropdown_button_ui(ui, GEAR, icon_color, bg_color, hovered_color, caret_color);
     if resp.clicked() {
         #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(id));
     }
     let resp = resp.on_hover_text("Camera Settings");
-
     let label_color = theme.text.muted.to_color32();
     let mut cam = settings.camera;
 
     #[allow(deprecated)]
     egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(200.0);
+        ui.set_min_width(220.0);
         ui.style_mut().spacing.item_spacing.y = 4.0;
-
-        ui.label(RichText::new("Camera Settings").small().color(label_color));
+        ui.label(RichText::new("Camera Sensitivities").small().color(label_color));
         ui.add_space(4.0);
-
         let drag_row = |ui: &mut egui::Ui, label_text: &str, val: &mut f32, range: std::ops::RangeInclusive<f64>, speed: f64, decimals: usize| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(label_text).size(12.0));
@@ -365,17 +599,14 @@ fn camera_dropdown(
                 });
             });
         };
-
-        drag_row(ui, "Move Speed", &mut cam.move_speed, 0.1..=100.0, 0.5, 1);
-        drag_row(ui, "Look Sensitivity", &mut cam.look_sensitivity, 0.05..=2.0, 0.05, 2);
+        drag_row(ui, "Look Sensitivity",  &mut cam.look_sensitivity,  0.05..=2.0, 0.05, 2);
         drag_row(ui, "Orbit Sensitivity", &mut cam.orbit_sensitivity, 0.05..=2.0, 0.05, 2);
-        drag_row(ui, "Pan Sensitivity", &mut cam.pan_sensitivity, 0.1..=5.0, 0.1, 1);
-        drag_row(ui, "Zoom Sensitivity", &mut cam.zoom_sensitivity, 0.1..=5.0, 0.1, 1);
+        drag_row(ui, "Pan Sensitivity",   &mut cam.pan_sensitivity,   0.1..=5.0,  0.1,  1);
+        drag_row(ui, "Zoom Sensitivity",  &mut cam.zoom_sensitivity,  0.1..=5.0,  0.1,  1);
 
         ui.add_space(4.0);
         ui.separator();
         ui.add_space(4.0);
-
         ui.horizontal(|ui| {
             ui.label(RichText::new("Invert Y Axis").size(12.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.checkbox(&mut cam.invert_y, ""); });
@@ -384,44 +615,34 @@ fn camera_dropdown(
             ui.label(RichText::new("Distance Relative Speed").size(12.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.checkbox(&mut cam.distance_relative_speed, ""); });
         });
-
         ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-
-        if ui.add(egui::Button::new(RichText::new("Reset to Defaults").size(12.0)).min_size(Vec2::new(ui.available_width(), 24.0))).clicked() {
+        if ui.add(egui::Button::new(RichText::new("Reset to Defaults").size(12.0))
+            .min_size(Vec2::new(ui.available_width(), 24.0))).clicked()
+        {
             cam = CameraSettingsState::default();
         }
-
-        ui.add_space(4.0);
-        ui.label(RichText::new("Controls:").small().color(label_color));
-        ui.label(RichText::new("• RMB Drag: Look around").small().color(label_color));
-        ui.label(RichText::new("• RMB + WASD: Fly mode").small().color(label_color));
-        ui.label(RichText::new("• MMB Drag: Orbit").small().color(label_color));
-        ui.label(RichText::new("• Alt + LMB: Orbit").small().color(label_color));
-        ui.label(RichText::new("• Scroll: Zoom").small().color(label_color));
-
         cmds.push(move |w: &mut World| {
             if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.camera = cam; }
         });
     });
 }
 
-// ── Snap Settings dropdown ──────────────────────────────────────────────────
+// ── Snap dropdown (object/floor snap since T/R/S are inline) ────────────────
 
 fn snap_dropdown(
-    ui: &mut egui::Ui, rect: Rect, settings: &ViewportSettings, cmds: &EditorCommands,
+    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
     theme: &renzora::theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_snap_drop");
-    let resp = dropdown_button(ui, rect, MAGNET, icon_color, bg_color, hovered_color, caret_color);
+    let any_obj_snap = settings.snap.object_snap_enabled || settings.snap.floor_snap_enabled;
+    let snap_bg = if any_obj_snap { theme.semantic.accent.to_color32() } else { bg_color };
+    let resp = dropdown_button_ui(ui, MAGNET, icon_color, snap_bg, hovered_color, caret_color);
     if resp.clicked() {
         #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(id));
     }
-    let resp = resp.on_hover_text("Snap Settings");
-
+    let resp = resp.on_hover_text("Object / Floor Snapping");
     let active_btn = theme.semantic.accent.to_color32();
     let inactive_btn = theme.widgets.inactive_bg.to_color32();
     let label_color = theme.text.muted.to_color32();
@@ -429,53 +650,26 @@ fn snap_dropdown(
 
     #[allow(deprecated)]
     egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(180.0);
+        ui.set_min_width(200.0);
         ui.style_mut().spacing.item_spacing.y = 4.0;
-
-        ui.label(RichText::new("Snapping").small().color(label_color));
-        ui.add_space(4.0);
-
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Position").size(12.0)).fill(if snap.translate_enabled { active_btn } else { inactive_btn }).min_size(Vec2::new(70.0, 20.0))).clicked() {
-                snap.translate_enabled = !snap.translate_enabled;
-            }
-            ui.add(egui::DragValue::new(&mut snap.translate_snap).range(0.01..=100.0).speed(0.1).max_decimals(2));
-        });
-
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Rotation").size(12.0)).fill(if snap.rotate_enabled { active_btn } else { inactive_btn }).min_size(Vec2::new(70.0, 20.0))).clicked() {
-                snap.rotate_enabled = !snap.rotate_enabled;
-            }
-            ui.add(egui::DragValue::new(&mut snap.rotate_snap).range(1.0..=90.0).speed(1.0).max_decimals(0).suffix("°"));
-        });
-
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Scale").size(12.0)).fill(if snap.scale_enabled { active_btn } else { inactive_btn }).min_size(Vec2::new(70.0, 20.0))).clicked() {
-                snap.scale_enabled = !snap.scale_enabled;
-            }
-            ui.add(egui::DragValue::new(&mut snap.scale_snap).range(0.01..=10.0).speed(0.05).max_decimals(2));
-        });
-
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(4.0);
         ui.label(RichText::new("Object Snapping").small().color(label_color));
         ui.add_space(4.0);
-
         ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Objects").size(12.0)).fill(if snap.object_snap_enabled { active_btn } else { inactive_btn }).min_size(Vec2::new(70.0, 20.0))).clicked() {
+            if ui.add(egui::Button::new(RichText::new("Objects").size(12.0))
+                .fill(if snap.object_snap_enabled { active_btn } else { inactive_btn })
+                .min_size(Vec2::new(70.0, 20.0))).clicked() {
                 snap.object_snap_enabled = !snap.object_snap_enabled;
             }
             ui.add(egui::DragValue::new(&mut snap.object_snap_distance).range(0.1..=10.0).speed(0.1).max_decimals(1).suffix(" dist"));
         });
-
         ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Floor").size(12.0)).fill(if snap.floor_snap_enabled { active_btn } else { inactive_btn }).min_size(Vec2::new(70.0, 20.0))).clicked() {
+            if ui.add(egui::Button::new(RichText::new("Floor").size(12.0))
+                .fill(if snap.floor_snap_enabled { active_btn } else { inactive_btn })
+                .min_size(Vec2::new(70.0, 20.0))).clicked() {
                 snap.floor_snap_enabled = !snap.floor_snap_enabled;
             }
             ui.add(egui::DragValue::new(&mut snap.floor_y).range(-1000.0..=1000.0).speed(0.1).max_decimals(1).suffix(" Y"));
         });
-
         cmds.push(move |w: &mut World| {
             if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.snap = snap; }
         });

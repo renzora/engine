@@ -11,3 +11,4 @@ renzora_console = { path = "../renzora_console" }
 renzora_ui = { path = "../../ui/renzora_ui" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_animation = { path = "../../core/renzora_animation" }
+renzora_terrain = { path = "../../core/renzora_terrain" }

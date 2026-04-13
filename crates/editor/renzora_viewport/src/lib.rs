@@ -4,6 +4,7 @@
 //! and displays the result as an egui image inside the docking panel system.
 
 pub mod camera_preview;
+pub mod debug_material;
 pub mod effect_routing;
 pub mod header;
 pub mod model_drop;
@@ -16,7 +17,8 @@ pub mod toolbar;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use bevy::prelude::*;
-use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
+use bevy::asset::embedded_asset;
+use bevy::pbr::{MaterialPlugin, wireframe::{WireframeConfig, WireframePlugin}};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::bevy_egui::egui;
 use renzora::bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
@@ -44,7 +46,9 @@ pub struct ViewportPlugin;
 impl Plugin for ViewportPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ViewportPlugin");
+        embedded_asset!(app, "viewport_debug.wgsl");
         app.add_plugins(WireframePlugin::default())
+            .add_plugins(MaterialPlugin::<debug_material::ViewportDebugMaterial>::default())
             .insert_resource(WireframeConfig {
                 global: false,
                 default_color: bevy::color::Color::WHITE,
@@ -57,7 +61,16 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<render_systems::OriginalMaterialStates>()
-            .init_resource::<render_systems::LastRenderState>()
+            .init_resource::<render_systems::LastToggleState>()
+            // Per-material-type viz-swap state (one of each per registered type).
+            .init_resource::<render_systems::LastVizState<StandardMaterial>>()
+            .init_resource::<render_systems::DebugMaterialCache<StandardMaterial>>()
+            .init_resource::<render_systems::LastVizState<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
+            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
+            .init_resource::<render_systems::LastVizState<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+            .init_resource::<render_systems::LastVizState<renzora_terrain::foliage::material::GrassMaterial>>()
+            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::foliage::material::GrassMaterial>>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
             .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
@@ -68,6 +81,12 @@ impl Plugin for ViewportPlugin {
                 update_input_focus,
                 handle_viewport_resize,
                 render_systems::update_render_toggles,
+                (
+                    render_systems::apply_visualization_mode_for::<StandardMaterial>,
+                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>,
+                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::material::TerrainCheckerboardMaterial>,
+                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::foliage::material::GrassMaterial>,
+                ),
                 render_systems::update_shadow_settings,
                 camera_preview::update_camera_preview,
                 play_mode::handle_play_mode_transitions,
@@ -103,10 +122,22 @@ impl Plugin for ViewportPlugin {
 /// in the "normal" gizmo-tool states, which is what we want.
 fn draw_viewport_cursor_overlay(
     ui: &mut renzora::bevy_egui::egui::Ui,
-    _world: &World,
+    world: &World,
     rect: renzora::bevy_egui::egui::Rect,
 ) {
     use renzora::bevy_egui::egui::CursorIcon;
+    use renzora::editor::ActiveTool;
+
+    // Brushes hide the cursor entirely; don't fight them with a crosshair icon.
+    if let Some(tool) = world.get_resource::<ActiveTool>() {
+        if matches!(
+            *tool,
+            ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
+        ) {
+            return;
+        }
+    }
+
     let pointer_in = ui
         .ctx()
         .pointer_hover_pos()

@@ -15,10 +15,10 @@ use renzora::editor::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
 
 use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
 
-const BTN_SIZE: Vec2 = Vec2::new(36.0, 36.0);
+const BTN_SIZE: Vec2 = Vec2::new(32.0, 32.0);
 const BTN_GAP: f32 = 1.0;
 const PADDING: f32 = 3.0;
-const DIVIDER_GAP: f32 = 5.0;
+const DIVIDER_GAP: f32 = 4.0;
 const MARGIN: f32 = 8.0;
 
 /// Render the vertical tool overlay on top of the viewport content area.
@@ -32,14 +32,12 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
     let hide_tools = is_playing;
 
     let row_step = BTN_SIZE.y + BTN_GAP;
-    let panel_w = BTN_SIZE.x * 2.0 + BTN_GAP + PADDING * 2.0;
+    let panel_w = BTN_SIZE.x + PADDING * 2.0;
     let panel_pos = Pos2::new(content_rect.min.x + MARGIN, content_rect.min.y + MARGIN);
 
-    // Collect tool sections from the registry, in render order.
+    // Collect tool sections from the registry. Transform + Undo/Redo live in the
+    // viewport header now, so the vertical panel only holds terrain + custom.
     let registry = world.get_resource::<ToolbarRegistry>();
-    let transform_tools = registry
-        .map(|r| r.visible_in_section(world, &ToolSection::Transform))
-        .unwrap_or_default();
     let terrain_tools = registry
         .map(|r| r.visible_in_section(world, &ToolSection::Terrain))
         .unwrap_or_default();
@@ -55,22 +53,18 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
 
     let section_height = |count: usize| -> f32 {
         if count == 0 { return 0.0; }
-        let rows = ((count + 1) / 2) as f32;
-        row_step * rows - BTN_GAP
+        row_step * count as f32 - BTN_GAP
     };
 
-    // Always-rendered: transform section + undo/redo row. Divider before undo/redo.
-    let transform_h = section_height(transform_tools.len());
-    let undo_h = row_step - BTN_GAP; // one row
     let terrain_h = section_height(terrain_tools.len());
     let custom_h: f32 = custom_sections.iter().map(|(_, t)| section_height(t.len())).sum();
-    let divider_count =
-        1 // before undo/redo
-        + if terrain_h > 0.0 { 1 } else { 0 }
-        + custom_sections.len();
+    // Divider between sections when both exist (terrain + each custom).
+    let section_count = (terrain_h > 0.0) as usize + custom_sections.len();
+    let divider_count = section_count.saturating_sub(1);
     let dividers_h = (divider_count as f32) * (DIVIDER_GAP * 2.0 + 1.0);
 
-    let panel_h = PADDING * 2.0 + transform_h + undo_h + terrain_h + custom_h + dividers_h;
+    let has_tools = section_count > 0;
+    let panel_h = PADDING * 2.0 + terrain_h + custom_h + dividers_h;
 
     let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
 
@@ -87,7 +81,7 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
         Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 255)
     };
 
-    if !hide_tools {
+    if !hide_tools && has_tools {
         egui::Area::new(egui::Id::new("viewport_tool_overlay"))
             .fixed_pos(panel_pos)
             .order(egui::Order::Foreground)
@@ -100,44 +94,14 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                 let col0_x = panel_pos.x + PADDING;
                 let col1_x = col0_x + BTN_SIZE.x + BTN_GAP;
                 let mut y = panel_pos.y + PADDING;
+                let mut first_section = true;
 
-                // Transform section
-                render_tool_section(
-                    ui, &transform_tools, cmds, world,
-                    col0_x, col1_x, &mut y, row_step,
-                    active_color, inactive_color, hovered_color,
-                );
-
-                // Divider before undo/redo
-                draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
-
-                // Undo | Redo — enabled when the active undo stack has entries.
-                let stacks = world.get_resource::<renzora::undo::UndoStacks>();
-                let (can_undo, can_redo) = match stacks {
-                    Some(s) => (s.can_undo(&s.active), s.can_redo(&s.active)),
-                    None => (false, false),
-                };
-
-                let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
-                let r = undo_redo_button(ui, undo_rect, ARROW_U_UP_LEFT, can_undo,
-                    inactive_color, hovered_color);
-                if r.clicked() {
-                    cmds.push(|w: &mut World| { renzora::undo::undo_once(w); });
-                }
-                r.on_hover_text("Undo (Ctrl+Z)");
-
-                let redo_rect = Rect::from_min_size(Pos2::new(col1_x, y), BTN_SIZE);
-                let r = undo_redo_button(ui, redo_rect, ARROW_U_UP_RIGHT, can_redo,
-                    inactive_color, hovered_color);
-                if r.clicked() {
-                    cmds.push(|w: &mut World| { renzora::undo::redo_once(w); });
-                }
-                r.on_hover_text("Redo (Ctrl+Y)");
-                y += row_step;
-
-                // Terrain section — only rendered if any entries are currently visible
+                // Terrain section
                 if !terrain_tools.is_empty() {
-                    draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    if !first_section {
+                        draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    }
+                    first_section = false;
                     render_tool_section(
                         ui, &terrain_tools, cmds, world,
                         col0_x, col1_x, &mut y, row_step,
@@ -147,7 +111,10 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
 
                 // Plugin-defined custom sections
                 for (_id, tools) in &custom_sections {
-                    draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    if !first_section {
+                        draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
+                    }
+                    first_section = false;
                     render_tool_section(
                         ui, tools, cmds, world,
                         col0_x, col1_x, &mut y, row_step,
@@ -157,7 +124,7 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
             });
     }
 
-    // Play button — below tools in edit mode, bottom-center in play mode
+    // Play button — top-left in edit mode (tools are in the header), bottom-center in play.
     let play_panel_w = BTN_SIZE.x + PADDING * 2.0;
     let play_panel_h = BTN_SIZE.y + PADDING * 2.0;
     let play_panel_pos = if hide_tools {
@@ -165,8 +132,10 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
             content_rect.center().x - play_panel_w / 2.0,
             content_rect.max.y - play_panel_h - MARGIN,
         )
-    } else {
+    } else if has_tools {
         Pos2::new(panel_pos.x, panel_pos.y + panel_h + 4.0)
+    } else {
+        Pos2::new(panel_pos.x, panel_pos.y)
     };
     let play_panel_rect = Rect::from_min_size(play_panel_pos, Vec2::new(play_panel_w, play_panel_h));
 
@@ -263,10 +232,9 @@ fn render_tool_section(
     inactive_color: Color32,
     hovered_color: Color32,
 ) {
-    for (i, entry) in tools.iter().enumerate() {
-        let col = i % 2;
-        let x = if col == 0 { col0_x } else { col1_x };
-        let rect = Rect::from_min_size(Pos2::new(x, *y), BTN_SIZE);
+    let _ = col1_x;
+    for entry in tools.iter() {
+        let rect = Rect::from_min_size(Pos2::new(col0_x, *y), BTN_SIZE);
         let is_active = (entry.is_active)(world);
         let r = viewport_tool_button(ui, rect, entry.icon, is_active, active_color, inactive_color, hovered_color);
         if r.clicked() {
@@ -274,10 +242,8 @@ fn render_tool_section(
             cmds.push(move |w: &mut World| { (activate)(w); });
         }
         r.on_hover_text(entry.tooltip);
-        if col == 1 { *y += row_step; }
+        *y += row_step;
     }
-    // Advance y if last row only filled one column
-    if tools.len() % 2 == 1 { *y += row_step; }
 }
 
 /// A toolbar button for undo/redo — enabled state accepts clicks; disabled

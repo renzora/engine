@@ -2,11 +2,12 @@
 
 mod panel;
 mod systems;
+mod tool_options;
 mod tool_panel;
 
 use bevy::prelude::*;
 use renzora::egui_phosphor::regular;
-use renzora::editor::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora::editor::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, ToolOptionsRegistry};
 use renzora_terrain::data::TerrainData;
 
 #[derive(Default)]
@@ -17,6 +18,16 @@ impl Plugin for TerrainEditorPlugin {
         info!("[editor] TerrainEditorPlugin");
         app.register_panel(tool_panel::ToolSettingsPanel::new())
             .register_inspector(terrain_data_entry())
+            .init_resource::<ToolOptionsRegistry>();
+
+        // Register context-sensitive viewport-header options for brush tools.
+        {
+            let mut reg = app.world_mut().resource_mut::<ToolOptionsRegistry>();
+            reg.register(ActiveTool::TerrainSculpt, tool_options::draw_sculpt_options);
+            reg.register(ActiveTool::TerrainPaint,  tool_options::draw_paint_options);
+        }
+
+        app
             // Sculpt systems — active when ActiveTool is TerrainSculpt
             .add_systems(
                 Update,
