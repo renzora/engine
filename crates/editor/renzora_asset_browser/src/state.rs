@@ -55,6 +55,13 @@ pub struct AssetBrowserState {
     pub zoom: f32,
     /// Width of the folder tree pane.
     pub tree_width: f32,
+    /// When `true`, the folder tree also lists files inline — used by the
+    /// narrow tree-only layout where there's no grid pane for files.
+    pub tree_show_files: bool,
+    /// Drag payload built by the tree's file rows. Consumed by the panel and
+    /// inserted as a world resource so the viewport drop handler can pick it
+    /// up. Mirrors the grid's drag flow.
+    pub pending_drag_payload: Option<renzora::editor::AssetDragPayload>,
     /// Cached project root directory.
     pub project_root: Option<PathBuf>,
     /// Navigation history for back button.
@@ -146,6 +153,8 @@ impl Default for AssetBrowserState {
             search: String::new(),
             zoom: 0.75,
             tree_width: 200.0,
+            tree_show_files: false,
+            pending_drag_payload: None,
             project_root: None,
             history: Vec::new(),
             view_mode: ViewMode::default(),

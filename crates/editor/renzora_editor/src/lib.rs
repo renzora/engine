@@ -12,6 +12,7 @@ pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
 pub mod spawn_registry;
+pub mod mode_options_registry;
 pub mod tool_options_registry;
 pub mod toolbar_registry;
 pub mod viewport_overlay;
@@ -112,6 +113,7 @@ pub fn reset_layout(world: &mut bevy::prelude::World) {
 pub struct OpenAddComponentMenuRequest {
     pub screen_pos: bevy::prelude::Vec2,
 }
+pub use mode_options_registry::{ModeOptionsDrawer, ViewportModeOptionsRegistry};
 pub use tool_options_registry::{ToolOptionsDrawer, ToolOptionsRegistry};
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -284,6 +286,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ViewportOverlayRegistry>()
             .init_resource::<ToolbarRegistry>()
             .init_resource::<ToolOptionsRegistry>()
+            .init_resource::<ViewportModeOptionsRegistry>()
             .init_resource::<ShortcutRegistry>()
             .init_resource::<EditorActionHooks>();
 

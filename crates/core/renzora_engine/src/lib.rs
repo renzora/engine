@@ -39,6 +39,11 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora_core::EntityTag>()
             .register_type::<Sun>();
 
+        // Asset-path rename/move notifications. Observers (MeshInstanceData,
+        // AnimatorComponent, etc.) listen and patch stored asset-relative
+        // paths so moved assets don't leave dangling references in the scene.
+        app.add_observer(apply_asset_path_changes_to_mesh_instances);
+
         app.add_plugins(debug_log::DebugLogPlugin);
 
         #[cfg(not(feature = "editor"))]
@@ -334,4 +339,25 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
         }
     }
     None
+}
+
+/// Rewrites [`MeshInstanceData::model_path`] on every entity when an asset
+/// is renamed or moved, so scene references stay valid without a user-
+/// initiated save. Animation paths are handled analogously in `renzora_animation`.
+fn apply_asset_path_changes_to_mesh_instances(
+    trigger: On<renzora_core::AssetPathChanged>,
+    mut query: Query<&mut MeshInstanceData>,
+) {
+    let ev = trigger.event();
+    for mut data in query.iter_mut() {
+        if let Some(ref path) = data.model_path {
+            if let Some(new_path) = ev.rewrite(path) {
+                info!(
+                    "[asset-move] rewriting MeshInstanceData '{}' → '{}'",
+                    path, new_path
+                );
+                data.model_path = Some(new_path);
+            }
+        }
+    }
 }

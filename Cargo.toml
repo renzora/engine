@@ -12,6 +12,7 @@ members = [
     "crates/editor/renzora_inspector",
     "crates/editor/renzora_test_component",
     "crates/editor/renzora_mesh_draw",
+    "crates/editor/renzora_mesh_edit",
     "crates/editor/renzora_command_palette",
     "crates/editor/renzora_context_menu",
     "crates/editor/renzora_viewport",

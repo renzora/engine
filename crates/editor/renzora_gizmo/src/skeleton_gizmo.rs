@@ -72,23 +72,18 @@ pub fn draw_skeleton_gizmo(
 ) {
     let Some(selected) = selection.get() else { return };
 
-    // Only draw if the selected entity has an AnimatorComponent
+    // Only draw if the selected entity has an AnimatorComponent. The
+    // previous implementation also required `AnimatorState.initialized` via
+    // reflection, but `AnimatorState` doesn't derive `Reflect`, so that
+    // lookup always failed and the gizmo never rendered. The bone-count
+    // fallback below handles the uninitialized case naturally: no bones
+    // means nothing to draw.
     if !has_component_by_name(world, selected, "AnimatorComponent") {
         return;
     }
 
-    // Check if AnimatorState exists and is initialized
-    let has_state = has_component_by_name(world, selected, "AnimatorState");
-    if !has_state {
-        return;
-    }
-    let initialized = get_reflected_bool_field(world, selected, "AnimatorState", "initialized");
-    if !initialized.unwrap_or(false) {
-        return;
-    }
-
-    let default_color = Color::srgba(0.9, 0.9, 0.9, 0.6);
-    let hovered_color = Color::srgb(1.0, 1.0, 0.3);
+    let default_color = Color::srgba(0.85, 0.85, 0.9, 0.85);
+    let hovered_color = Color::srgb(1.0, 0.85, 0.3);
     let selected_color = Color::srgb(0.3, 1.0, 1.0);
 
     // Collect all animation target entities in the hierarchy
@@ -107,19 +102,89 @@ pub fn draw_skeleton_gizmo(
             default_color
         };
 
-        // Draw sphere at joint position
-        gizmos.sphere(Isometry3d::from_translation(bone_pos), 0.02, color);
+        // For leaf bones (bones whose children are NOT themselves bones) we
+        // still need to show something, so draw a small diamond at the joint.
+        let has_bone_child = children_q
+            .get(bone)
+            .ok()
+            .map(|children| children.iter().any(|c| target_q.get(c).is_ok()))
+            .unwrap_or(false);
 
-        // Draw line to parent if parent is also a bone
+        // Draw an octahedral bone from each bone's position to its parent's
+        // position. That means each non-root bone draws ONE octahedron
+        // between itself and its parent — no doubled lines, no overlaps.
         if let Ok(child_of) = parent_q.get(bone) {
             let parent = child_of.parent();
             if target_q.get(parent).is_ok() {
                 if let Ok(parent_gt) = global_transforms.get(parent) {
-                    gizmos.line(parent_gt.translation(), bone_pos, color);
+                    draw_octahedral_bone(
+                        &mut gizmos,
+                        parent_gt.translation(),
+                        bone_pos,
+                        color,
+                    );
                 }
             }
         }
+
+        if !has_bone_child {
+            gizmos.sphere(Isometry3d::from_translation(bone_pos), 0.01, color);
+        }
     }
+}
+
+/// Draw an 8-edge octahedral bone between `head` (parent joint) and `tail`
+/// (child joint), Blender-style. The "waist" ring sits ~15% of the bone
+/// length from the head; this gives bones a clearly directed shape.
+fn draw_octahedral_bone(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    head: Vec3,
+    tail: Vec3,
+    color: Color,
+) {
+    let axis = tail - head;
+    let length = axis.length();
+    if length < 1e-5 {
+        return;
+    }
+    let forward = axis / length;
+
+    // Perpendicular basis for the waist ring. Pick the world axis least
+    // aligned with `forward` to avoid degenerate cross products.
+    let up_hint = if forward.y.abs() < 0.95 {
+        Vec3::Y
+    } else {
+        Vec3::X
+    };
+    let right = forward.cross(up_hint).normalize();
+    let up = right.cross(forward).normalize();
+
+    let waist_center = head + forward * (length * 0.15);
+    // Radius scales with bone length; capped so tiny finger bones don't vanish.
+    let radius = (length * 0.1).clamp(0.004, 0.03);
+
+    let p_right = waist_center + right * radius;
+    let p_up = waist_center + up * radius;
+    let p_left = waist_center - right * radius;
+    let p_down = waist_center - up * radius;
+
+    // 4 edges from head to waist ring.
+    gizmos.line(head, p_right, color);
+    gizmos.line(head, p_up, color);
+    gizmos.line(head, p_left, color);
+    gizmos.line(head, p_down, color);
+
+    // 4 edges from waist ring to tail.
+    gizmos.line(p_right, tail, color);
+    gizmos.line(p_up, tail, color);
+    gizmos.line(p_left, tail, color);
+    gizmos.line(p_down, tail, color);
+
+    // 4 edges around the waist ring.
+    gizmos.line(p_right, p_up, color);
+    gizmos.line(p_up, p_left, color);
+    gizmos.line(p_left, p_down, color);
+    gizmos.line(p_down, p_right, color);
 }
 
 /// Recursively collect entities with AnimationTargetId.

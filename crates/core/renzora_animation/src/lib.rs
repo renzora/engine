@@ -67,6 +67,7 @@ impl Plugin for AnimationPlugin {
                 (
                     systems::rehydrate_animators,
                     systems::initialize_animation_graphs,
+                    systems::ensure_animation_targets,
                     systems::auto_play_default,
                     systems::process_animation_commands,
                     systems::update_state_machines,
@@ -76,5 +77,51 @@ impl Plugin for AnimationPlugin {
                 )
                     .chain(),
             );
+
+        app.add_observer(apply_asset_path_changes_to_animators);
+    }
+}
+
+/// Patch `AnimatorComponent` clip / state-machine paths when an asset is
+/// renamed or moved. Keeps scene references valid without forcing the user
+/// to manually re-point every animator.
+fn apply_asset_path_changes_to_animators(
+    trigger: On<renzora_core::AssetPathChanged>,
+    mut animators: Query<(&mut AnimatorComponent, Option<&mut AnimatorState>)>,
+) {
+    let ev = trigger.event();
+    for (mut animator, state) in animators.iter_mut() {
+        let mut touched = false;
+        for slot in animator.clips.iter_mut() {
+            if let Some(new_path) = ev.rewrite(&slot.path) {
+                info!(
+                    "[asset-move] rewriting AnimClipSlot '{}' → '{}'",
+                    slot.path, new_path
+                );
+                slot.path = new_path;
+                touched = true;
+            }
+        }
+        if let Some(ref sm) = animator.state_machine.clone() {
+            if let Some(new_path) = ev.rewrite(sm) {
+                info!(
+                    "[asset-move] rewriting state_machine '{}' → '{}'",
+                    sm, new_path
+                );
+                animator.state_machine = Some(new_path);
+                touched = true;
+            }
+        }
+        // Force re-initialization so the new paths get loaded.
+        if touched {
+            if let Some(mut state) = state {
+                state.initialized = false;
+                state.frames_since_init = 0;
+                state.node_indices.clear();
+                state.graph_handle = None;
+                state.current_clip = None;
+                state.clip_handles.clear();
+            }
+        }
     }
 }

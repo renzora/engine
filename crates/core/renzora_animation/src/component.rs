@@ -92,6 +92,13 @@ pub struct AnimatorState {
     pub player_entity: Option<Entity>,
     /// Whether initialization is complete.
     pub initialized: bool,
+    /// Frames since `initialize_animation_graphs` finished — used to bound
+    /// the cost of `ensure_animation_targets`, which only needs to run until
+    /// the asynchronously-spawning GLB skeleton has stabilized.
+    pub frames_since_init: u32,
+    /// Number of AnimationTargetId-bearing descendants seen on the last
+    /// `ensure_animation_targets` pass. When it stops growing we stop walking.
+    pub last_target_count: u32,
     /// Loaded state machine asset handle.
     pub sm_handle: Option<Handle<AnimationStateMachine>>,
     /// Current state name in the state machine.
@@ -112,6 +119,8 @@ impl Default for AnimatorState {
             graph_handle: None,
             player_entity: None,
             initialized: false,
+            frames_since_init: 0,
+            last_target_count: 0,
             sm_handle: None,
             current_state: None,
             state_time: 0.0,

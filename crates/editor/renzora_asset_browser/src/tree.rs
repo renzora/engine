@@ -4,7 +4,7 @@ use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, 
 use renzora::egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
 use renzora::theme::Theme;
 
-use crate::state::{folder_icon_color, is_hidden, AssetBrowserState};
+use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
 
 /// Row height for tree entries.
 const ROW_HEIGHT: f32 = 20.0;
@@ -12,7 +12,14 @@ const ROW_HEIGHT: f32 = 20.0;
 const INDENT: f32 = 14.0;
 
 /// Renders the folder tree in the left pane (legacy-matching style).
-pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) {
+/// Returns a populated [`renzora::editor::AssetDragPayload`] when the user
+/// starts dragging a file row, mirroring the grid's drag behavior so the
+/// viewport can spawn the dragged asset on release.
+pub fn tree_ui(
+    ui: &mut egui::Ui,
+    state: &mut AssetBrowserState,
+    theme: &Theme,
+) -> Option<renzora::editor::AssetDragPayload> {
     let root = state.root();
     let root_name = root
         .file_name()
@@ -22,6 +29,10 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
 
     // Clear tree folder rects for drop hit-testing
     state.tree_folder_rects.clear();
+    // Rebuild the flat visible order so shift-range selection works against
+    // the same list the user actually sees in the tree (folders first, then
+    // files inside each, depth-first).
+    state.visible_item_order.clear();
 
     egui::ScrollArea::vertical()
         .id_salt("asset_tree")
@@ -163,7 +174,7 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
             let icon = if is_expanded { FOLDER_OPEN } else { HOUSE };
             let color = folder_icon_color(&root_name);
 
-            let (clicked, row_rect) = render_folder_row(
+            let (clicked, right_clicked, _drag_started, row_rect) = render_folder_row(
                 ui,
                 &root_name,
                 icon,
@@ -185,9 +196,21 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
             if clicked {
                 state.current_folder = Some(root.clone());
             }
+            if right_clicked {
+                state.selected_assets.clear();
+                state.selected_assets.insert(root.clone());
+                state.selected_path = Some(root.clone());
+                state.context_menu_pos = ui.ctx().pointer_latest_pos();
+            }
 
             if is_expanded {
-                render_folder_children(ui, state, &root.clone(), 1, theme);
+                let root_owned = root.clone();
+                render_folder_children(ui, state, &root_owned, 1, theme);
+                // The root folder's own files are missed by `render_folder_children`
+                // (which only iterates subfolders), so render them here too.
+                if state.tree_show_files {
+                    render_folder_files(ui, state, &root_owned, 1, theme);
+                }
             }
         });
 
@@ -230,6 +253,8 @@ pub fn tree_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) 
             // If no tree target, leave drag_moving for grid/list to handle
         }
     }
+
+    state.pending_drag_payload.take()
 }
 
 fn render_folder_children(
@@ -286,11 +311,13 @@ fn render_folder_children(
         }
 
         let is_expanded = state.expanded_folders.contains(folder);
-        let is_current = state.current_folder.as_ref() == Some(folder);
+        let is_current = state.current_folder.as_ref() == Some(folder)
+            || state.selected_assets.contains(folder);
         let is_drop_target = state.drop_target_folder.as_ref() == Some(folder);
         let (icon, color) = get_folder_icon(is_expanded, &name);
+        state.visible_item_order.push(folder.clone());
 
-        let (clicked, row_rect) = render_folder_row(
+        let (clicked, right_clicked, drag_started, row_rect) = render_folder_row(
             ui,
             &name,
             icon,
@@ -305,18 +332,234 @@ fn render_folder_children(
 
         state.tree_folder_rects.push((folder.clone(), row_rect));
 
+        let (ctrl_held, shift_held) =
+            ui.ctx().input(|i| (i.modifiers.ctrl, i.modifiers.shift));
+
         if clicked {
-            toggle_expanded(&mut state.expanded_folders, folder);
-            state.current_folder = Some(folder.clone());
+            if shift_held {
+                // Shift-click on a folder selects the folder + every
+                // descendant (files and subfolders), so the user can grab a
+                // whole branch in one click and drag it.
+                state.selected_assets.insert(folder.clone());
+                collect_descendants_into(folder, &mut state.selected_assets);
+                state.selection_anchor = Some(folder.clone());
+                state.selected_path = Some(folder.clone());
+            } else if ctrl_held {
+                state.handle_click(folder, true, false);
+            } else {
+                toggle_expanded(&mut state.expanded_folders, folder);
+                state.current_folder = Some(folder.clone());
+            }
+        }
+
+        if right_clicked {
+            // Selecting a folder via right-click matches grid behavior so the
+            // context menu's actions (rename / delete / etc.) target this row.
+            // If the folder is already part of a multi-selection, leave the
+            // selection alone so the menu can act on the whole set.
+            if !state.selected_assets.contains(folder) {
+                state.selected_assets.clear();
+                state.selected_assets.insert(folder.clone());
+                state.selected_path = Some(folder.clone());
+            }
+            state.context_menu_pos = ui.ctx().pointer_latest_pos();
+        }
+
+        if drag_started {
+            // If the dragged folder is part of a multi-selection, drag the
+            // whole selection together; otherwise just this folder.
+            if state.selected_assets.contains(folder) && state.selected_assets.len() > 1 {
+                state.drag_moving = state.selected_assets.iter().cloned().collect();
+            } else {
+                state.drag_moving = vec![folder.clone()];
+            }
+
+            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+            state.pending_drag_payload = Some(renzora::editor::AssetDragPayload {
+                path: folder.clone(),
+                name: name.clone(),
+                icon: icon.to_string(),
+                color,
+                origin,
+                is_detached: false,
+                drag_count: state.drag_moving.len(),
+            });
         }
 
         if is_expanded {
             render_folder_children(ui, state, folder, depth + 1, theme);
+            if state.tree_show_files {
+                render_folder_files(ui, state, folder, depth + 1, theme);
+            }
         }
     }
 }
 
-/// Render a single folder row. Returns (clicked, row_rect).
+/// List non-hidden files inside `parent`, indented at `depth`. Shown only when
+/// `state.tree_show_files` is on (narrow tree-only layout).
+#[cfg(not(target_arch = "wasm32"))]
+fn render_folder_files(
+    ui: &mut egui::Ui,
+    state: &mut AssetBrowserState,
+    parent: &PathBuf,
+    depth: usize,
+    theme: &Theme,
+) {
+    let mut files: Vec<PathBuf> = match std::fs::read_dir(parent) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+            .filter(|e| !is_hidden(&e.path()))
+            .map(|e| e.path())
+            .collect(),
+        Err(_) => return,
+    };
+    files.sort_by(|a, b| {
+        a.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(
+                &b.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_lowercase(),
+            )
+    });
+
+    for file in &files {
+        let name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("???")
+            .to_string();
+
+        if !state.search.is_empty()
+            && !name.to_lowercase().contains(&state.search.to_lowercase())
+        {
+            continue;
+        }
+
+        let is_selected = state.selected_assets.contains(file);
+        state.visible_item_order.push(file.clone());
+        let (clicked, drag_started, right_clicked) =
+            render_file_row(ui, &name, file, depth, is_selected, theme);
+
+        let (ctrl_held, shift_held) = ui.ctx().input(|i| (i.modifiers.ctrl, i.modifiers.shift));
+
+        if clicked {
+            state.handle_click(file, ctrl_held, shift_held);
+        }
+
+        if right_clicked {
+            // Match grid behavior: right-click on an unselected item picks it
+            // first so the menu acts on the right-clicked item, not whatever
+            // happened to be selected before.
+            if !state.selected_assets.contains(file) {
+                state.selected_assets.clear();
+                state.selected_assets.insert(file.clone());
+                state.selected_path = Some(file.clone());
+            }
+            state.context_menu_pos = ui.ctx().pointer_latest_pos();
+        }
+
+        if drag_started {
+            // Match grid behavior: include all selected items if the dragged
+            // file is part of the multi-selection, otherwise just this one.
+            if state.selected_assets.contains(file) && state.selected_assets.len() > 1 {
+                state.drag_moving = state.selected_assets.iter().cloned().collect();
+            } else {
+                state.drag_moving = vec![file.clone()];
+            }
+
+            let (icon, color) = file_icon(file);
+            let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+            state.pending_drag_payload = Some(renzora::editor::AssetDragPayload {
+                path: file.clone(),
+                name: name.clone(),
+                icon: icon.to_string(),
+                color,
+                origin,
+                is_detached: false,
+                drag_count: state.drag_moving.len(),
+            });
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn render_folder_files(
+    _ui: &mut egui::Ui,
+    _state: &mut AssetBrowserState,
+    _parent: &PathBuf,
+    _depth: usize,
+    _theme: &Theme,
+) {}
+
+/// Render a single file row — no expand arrow, file-type icon. Returns
+/// `(clicked, drag_started, right_clicked)` so the caller can wire
+/// selection, drag, and context-menu flow.
+fn render_file_row(
+    ui: &mut egui::Ui,
+    name: &str,
+    path: &PathBuf,
+    depth: usize,
+    is_selected: bool,
+    theme: &Theme,
+) -> (bool, bool, bool) {
+    let selection_bg = theme.semantic.selection.to_color32();
+    let item_hover = theme.panels.item_hover.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+
+    let indent = depth as f32 * INDENT;
+
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), ROW_HEIGHT),
+        Sense::click_and_drag(),
+    );
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+
+    let painter = ui.painter();
+    if is_selected {
+        painter.rect_filled(rect, 2.0, selection_bg);
+    } else if response.hovered() {
+        painter.rect_filled(rect, 2.0, item_hover);
+    }
+
+    // Match the folder-row layout: arrow slot (blank for files) + icon + name.
+    let arrow_x = rect.min.x + indent + 8.0;
+    let icon_x = arrow_x + 12.0;
+    let (file_glyph, file_color) = file_icon(path);
+    let _ = text_muted;
+    painter.text(
+        Pos2::new(icon_x, rect.center().y),
+        Align2::LEFT_CENTER,
+        file_glyph,
+        FontId::proportional(12.0),
+        file_color,
+    );
+
+    let text_x = icon_x + 16.0;
+    let max_text_width = (rect.max.x - text_x - 4.0).max(0.0);
+    let text_y = rect.center().y - 11.0 * 0.5;
+    paint_truncated_text(
+        painter,
+        Pos2::new(text_x, text_y),
+        name,
+        FontId::proportional(11.0),
+        text_secondary,
+        max_text_width,
+    );
+
+    (response.clicked(), response.drag_started(), response.secondary_clicked())
+}
+
+/// Render a single folder row. Returns
+/// `(clicked, right_clicked, drag_started, row_rect)`.
 fn render_folder_row(
     ui: &mut egui::Ui,
     name: &str,
@@ -328,7 +571,7 @@ fn render_folder_row(
     depth: usize,
     path: &PathBuf,
     theme: &Theme,
-) -> (bool, egui::Rect) {
+) -> (bool, bool, bool, egui::Rect) {
     let selection_bg = theme.semantic.selection.to_color32();
     let item_hover = theme.panels.item_hover.to_color32();
     let text_secondary = theme.text.secondary.to_color32();
@@ -404,8 +647,36 @@ fn render_folder_row(
     let text_y = rect.center().y - 11.0 * 0.5; // vertically center for proportional 11
     paint_truncated_text(painter, Pos2::new(text_x, text_y), name, FontId::proportional(11.0), text_secondary, max_text_width);
 
-    // Return (clicked, row_rect)
-    (arrow_resp.clicked() || response.clicked(), rect)
+    (
+        arrow_resp.clicked() || response.clicked(),
+        response.secondary_clicked(),
+        response.drag_started(),
+        rect,
+    )
+}
+
+/// Recursively add every file and subfolder under `root` to `out`. Used by
+/// shift-click on a folder so the user can select a whole branch at once.
+fn collect_descendants_into(
+    root: &PathBuf,
+    out: &mut std::collections::HashSet<PathBuf>,
+) {
+    let entries = match std::fs::read_dir(root) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if is_hidden(&path) {
+            continue;
+        }
+        if path.is_dir() {
+            out.insert(path.clone());
+            collect_descendants_into(&path, out);
+        } else {
+            out.insert(path);
+        }
+    }
 }
 
 fn get_folder_icon(is_expanded: bool, name: &str) -> (&'static str, Color32) {

@@ -6,9 +6,12 @@ use renzora::theme::Theme;
 use crate::state::{AssetBrowserState, SortDirection, SortMode, ViewMode};
 
 /// Renders the toolbar: breadcrumb path, search bar, import, view toggle, zoom slider.
+/// When the panel is narrow (tree-only layout), the toolbar collapses to the
+/// essentials — search and import only — so controls don't overflow.
 pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) {
     let text_primary = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
+    let compact = state.tree_show_files;
 
     ui.horizontal_centered(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
@@ -22,130 +25,155 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
             .unwrap_or("Project")
             .to_string();
 
-        if let Some(ref current) = state.current_folder.clone() {
-            // Root segment
-            let is_root = current == &root;
-            let root_resp = ui.add(
-                egui::Label::new(
-                    RichText::new(format!("{} {}", regular::HOUSE, root_name))
-                        .size(11.0)
-                        .color(if is_root { text_primary } else { text_muted }),
-                )
-                .selectable(false)
-                .sense(egui::Sense::click()),
-            );
-            if root_resp.clicked() {
-                state.navigate_to(root.clone());
-            }
-            if root_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
+        // Breadcrumb (hidden in compact mode — the tree already gives a clear
+        // sense of hierarchy, and the breadcrumb crowds the narrow toolbar).
+        if !compact {
+            if let Some(ref current) = state.current_folder.clone() {
+                let is_root = current == &root;
+                let root_resp = ui.add(
+                    egui::Label::new(
+                        RichText::new(format!("{} {}", regular::HOUSE, root_name))
+                            .size(11.0)
+                            .color(if is_root { text_primary } else { text_muted }),
+                    )
+                    .selectable(false)
+                    .sense(egui::Sense::click()),
+                );
+                if root_resp.clicked() {
+                    state.navigate_to(root.clone());
+                }
+                if root_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
 
-            // Sub-path segments
-            if let Ok(rel) = current.strip_prefix(&root) {
-                let mut accumulated = root.clone();
-                for component in rel.components() {
-                    let segment = component.as_os_str().to_string_lossy();
-                    accumulated = accumulated.join(component);
-                    let target = accumulated.clone();
+                if let Ok(rel) = current.strip_prefix(&root) {
+                    let mut accumulated = root.clone();
+                    for component in rel.components() {
+                        let segment = component.as_os_str().to_string_lossy();
+                        accumulated = accumulated.join(component);
+                        let target = accumulated.clone();
 
-                    ui.label(RichText::new(regular::CARET_RIGHT).size(10.0).color(text_muted));
+                        ui.label(RichText::new(regular::CARET_RIGHT).size(10.0).color(text_muted));
 
-                    let resp = ui.add(
-                        egui::Label::new(
-                            RichText::new(segment.as_ref())
-                                .size(11.0)
-                                .color(text_primary),
-                        )
-                        .selectable(false)
-                        .sense(egui::Sense::click()),
-                    );
-                    if resp.clicked() {
-                        state.navigate_to(target);
-                    }
-                    if resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        let resp = ui.add(
+                            egui::Label::new(
+                                RichText::new(segment.as_ref())
+                                    .size(11.0)
+                                    .color(text_primary),
+                            )
+                            .selectable(false)
+                            .sense(egui::Sense::click()),
+                        );
+                        if resp.clicked() {
+                            state.navigate_to(target);
+                        }
+                        if resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
                     }
                 }
+            } else {
+                ui.label(RichText::new("No folder selected").size(11.0).color(text_muted));
             }
-        } else {
-            ui.label(RichText::new("No folder selected").size(11.0).color(text_muted));
         }
 
-        // Right-aligned: search + import + view toggle + zoom
+        // Right-aligned controls. In compact mode we drop zoom / view toggle
+        // / sort (they're irrelevant to the tree-only layout) and squeeze the
+        // import button down to an icon so search has room to breathe.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(8.0);
 
-            // Zoom slider (only in grid mode)
-            if state.view_mode == ViewMode::Grid {
-                ui.spacing_mut().slider_width = 60.0;
+            let accent = theme.semantic.accent.to_color32();
+
+            if compact {
+                // Same framed button as the wide layout, just placed first
+                // so the search field can fill the remainder.
+                let import_resp = ui.add(
+                    egui::Button::new(
+                        RichText::new(format!("{} Import", regular::DOWNLOAD_SIMPLE))
+                            .size(11.0)
+                            .color(accent),
+                    )
+                    .rounding(4.0)
+                    .stroke(egui::Stroke::new(1.0, accent.linear_multiply(0.4))),
+                );
+                if import_resp.on_hover_text("Import 3D model").clicked() {
+                    state.import_clicked = true;
+                }
+
+                ui.add_space(4.0);
+
+                let avail = ui.available_width().max(60.0);
                 ui.add(
-                    egui::Slider::new(&mut state.zoom, 0.5..=1.5)
-                        .show_value(false)
-                        .text(""),
+                    egui::TextEdit::singleline(&mut state.search)
+                        .desired_width(avail - 8.0)
+                        .hint_text(format!("{}", regular::MAGNIFYING_GLASS)),
+                );
+            } else {
+                if state.view_mode == ViewMode::Grid {
+                    ui.spacing_mut().slider_width = 60.0;
+                    ui.add(
+                        egui::Slider::new(&mut state.zoom, 0.5..=1.5)
+                            .show_value(false)
+                            .text(""),
+                    );
+                }
+
+                let grid_color = if state.view_mode == ViewMode::Grid { text_primary } else { text_muted };
+                let list_color = if state.view_mode == ViewMode::List { text_primary } else { text_muted };
+                if icon_button(ui, regular::LIST, "List view", list_color) {
+                    state.view_mode = ViewMode::List;
+                }
+                if icon_button(ui, regular::SQUARES_FOUR, "Grid view", grid_color) {
+                    state.view_mode = ViewMode::Grid;
+                }
+
+                ui.add_space(4.0);
+
+                let import_resp = ui.add(
+                    egui::Button::new(
+                        RichText::new(format!("{} Import", regular::DOWNLOAD_SIMPLE))
+                            .size(11.0)
+                            .color(accent),
+                    )
+                    .rounding(4.0)
+                    .stroke(egui::Stroke::new(1.0, accent.linear_multiply(0.4))),
+                );
+                if import_resp.on_hover_text("Import 3D model").clicked() {
+                    state.import_clicked = true;
+                }
+
+                ui.add_space(4.0);
+
+                let sort_icon = match state.sort_direction {
+                    SortDirection::Ascending => regular::SORT_ASCENDING,
+                    SortDirection::Descending => regular::SORT_DESCENDING,
+                };
+                if icon_button(ui, sort_icon, "Toggle sort direction", text_muted) {
+                    state.sort_direction = match state.sort_direction {
+                        SortDirection::Ascending => SortDirection::Descending,
+                        SortDirection::Descending => SortDirection::Ascending,
+                    };
+                }
+
+                egui::ComboBox::from_id_salt("sort_mode")
+                    .selected_text(RichText::new(state.sort_mode.label()).size(11.0).color(text_muted))
+                    .width(55.0)
+                    .height(120.0)
+                    .show_ui(ui, |ui| {
+                        for mode in [SortMode::Name, SortMode::DateModified, SortMode::Type, SortMode::Size] {
+                            ui.selectable_value(&mut state.sort_mode, mode, mode.label());
+                        }
+                    });
+
+                ui.add_space(4.0);
+
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.search)
+                        .desired_width(120.0)
+                        .hint_text(format!("{} Search...", regular::MAGNIFYING_GLASS)),
                 );
             }
-
-            // View mode toggle
-            let grid_color = if state.view_mode == ViewMode::Grid { text_primary } else { text_muted };
-            let list_color = if state.view_mode == ViewMode::List { text_primary } else { text_muted };
-            if icon_button(ui, regular::LIST, "List view", list_color) {
-                state.view_mode = ViewMode::List;
-            }
-            if icon_button(ui, regular::SQUARES_FOUR, "Grid view", grid_color) {
-                state.view_mode = ViewMode::Grid;
-            }
-
-            ui.add_space(4.0);
-
-            // Import button
-            let accent = theme.semantic.accent.to_color32();
-            let import_resp = ui.add(
-                egui::Button::new(
-                    RichText::new(format!("{} Import", regular::DOWNLOAD_SIMPLE))
-                        .size(11.0)
-                        .color(accent),
-                )
-                .rounding(4.0)
-                .stroke(egui::Stroke::new(1.0, accent.linear_multiply(0.4))),
-            );
-            if import_resp.on_hover_text("Import 3D model").clicked() {
-                state.import_clicked = true;
-            }
-
-            ui.add_space(4.0);
-
-            // Sort direction toggle
-            let sort_icon = match state.sort_direction {
-                SortDirection::Ascending => regular::SORT_ASCENDING,
-                SortDirection::Descending => regular::SORT_DESCENDING,
-            };
-            if icon_button(ui, sort_icon, "Toggle sort direction", text_muted) {
-                state.sort_direction = match state.sort_direction {
-                    SortDirection::Ascending => SortDirection::Descending,
-                    SortDirection::Descending => SortDirection::Ascending,
-                };
-            }
-
-            // Sort mode combo
-            egui::ComboBox::from_id_salt("sort_mode")
-                .selected_text(RichText::new(state.sort_mode.label()).size(11.0).color(text_muted))
-                .width(55.0)
-                .height(120.0)
-                .show_ui(ui, |ui| {
-                    for mode in [SortMode::Name, SortMode::DateModified, SortMode::Type, SortMode::Size] {
-                        ui.selectable_value(&mut state.sort_mode, mode, mode.label());
-                    }
-                });
-
-            ui.add_space(4.0);
-
-            // Search bar
-            ui.add(
-                egui::TextEdit::singleline(&mut state.search)
-                    .desired_width(120.0)
-                    .hint_text(format!("{} Search...", regular::MAGNIFYING_GLASS)),
-            );
         });
     });
 }

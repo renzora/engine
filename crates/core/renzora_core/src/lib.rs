@@ -264,6 +264,39 @@ impl EffectRouting {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MeshPrimitive(pub String);
 
+/// Event fired when a file or folder is renamed/moved inside the project's
+/// asset tree. Subscribers should patch any stored asset-relative references
+/// from `old` to `new` (and, when `old` is a folder, any paths prefixed by it).
+/// Paths are asset-relative (no leading project root, forward slashes).
+#[derive(Event, Debug, Clone)]
+pub struct AssetPathChanged {
+    pub old: String,
+    pub new: String,
+    /// `true` when the moved item was a directory — consumers should perform
+    /// prefix matching on stored paths. `false` matches the exact path.
+    pub is_dir: bool,
+}
+
+impl AssetPathChanged {
+    /// If `path` references the moved asset (or something under it when
+    /// `is_dir`), return the rewritten path. Otherwise `None`.
+    pub fn rewrite(&self, path: &str) -> Option<String> {
+        if self.is_dir {
+            if let Some(rest) = path.strip_prefix(&self.old) {
+                let sep = rest.starts_with('/') || rest.is_empty();
+                if sep {
+                    return Some(format!("{}{}", self.new, rest));
+                }
+            }
+            None
+        } else if path == self.old {
+            Some(self.new.clone())
+        } else {
+            None
+        }
+    }
+}
+
 /// Serializable marker for an imported 3D model (GLTF/GLB).
 ///
 /// Stored on the parent entity; the actual `SceneRoot` is a child.

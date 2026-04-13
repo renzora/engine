@@ -100,74 +100,90 @@ impl EditorPanel for AssetBrowserPanel {
             return;
         }
 
-        // Split: tree (left) + grid (right) with draggable splitter
-        let tree_width = state.tree_width.clamp(100.0, (content_rect.width() - 100.0).max(100.0));
-        state.tree_width = tree_width;
+        // Collapse to tree-only when the panel is too narrow for a usable
+        // grid alongside the folder tree. Below the threshold we give the
+        // tree the full width and the grid a zero-size rect; downstream
+        // drag/overlay code falls back to `content_rect` naturally.
+        const TREE_ONLY_WIDTH: f32 = 310.0;
+        let tree_only = content_rect.width() < TREE_ONLY_WIDTH;
+        state.tree_show_files = tree_only;
+
         let splitter_width = 4.0;
 
-        let tree_rect = egui::Rect::from_min_max(
-            content_rect.min,
-            egui::pos2(content_rect.min.x + tree_width, content_rect.max.y),
-        );
-        let splitter_rect = egui::Rect::from_min_max(
-            egui::pos2(tree_rect.max.x, content_rect.min.y),
-            egui::pos2(tree_rect.max.x + splitter_width, content_rect.max.y),
-        );
-        let grid_rect = egui::Rect::from_min_max(
-            egui::pos2(splitter_rect.max.x + 5.0, content_rect.min.y),
-            content_rect.max,
-        );
-
-        // Draggable splitter
-        let splitter_id = ui.id().with("asset_splitter");
-        let splitter_resp =
-            ui.interact(splitter_rect, splitter_id, egui::Sense::click_and_drag());
-        if splitter_resp.dragged() {
-            state.tree_width = (state.tree_width + splitter_resp.drag_delta().x)
-                .clamp(100.0, (content_rect.width() - 100.0).max(100.0));
-        }
-        if splitter_resp.hovered() || splitter_resp.dragged() {
-            ui.ctx()
-                .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-        }
-
-        // Draw splitter line
-        let splitter_color = if splitter_resp.hovered() || splitter_resp.dragged() {
-            theme.semantic.accent.to_color32()
+        let (tree_rect, grid_rect);
+        if tree_only {
+            tree_rect = content_rect;
+            // Zero-width rect docked at the right edge — drag/hover
+            // predicates report `false` for any pointer position, which is
+            // what we want when there's no visible grid.
+            grid_rect = egui::Rect::from_min_max(content_rect.max, content_rect.max);
         } else {
-            theme.widgets.border.to_color32()
-        };
-        ui.painter().vline(
-            splitter_rect.center().x,
-            splitter_rect.y_range(),
-            Stroke::new(1.0, splitter_color),
-        );
+            let tree_width = state
+                .tree_width
+                .clamp(100.0, (content_rect.width() - 100.0).max(100.0));
+            state.tree_width = tree_width;
 
-        // Tree pane
-        let mut tree_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(tree_rect),
-        );
-        tree::tree_ui(&mut tree_ui, &mut state, &theme);
+            tree_rect = egui::Rect::from_min_max(
+                content_rect.min,
+                egui::pos2(content_rect.min.x + tree_width, content_rect.max.y),
+            );
+            let splitter_rect = egui::Rect::from_min_max(
+                egui::pos2(tree_rect.max.x, content_rect.min.y),
+                egui::pos2(tree_rect.max.x + splitter_width, content_rect.max.y),
+            );
+            grid_rect = egui::Rect::from_min_max(
+                egui::pos2(splitter_rect.max.x + 5.0, content_rect.min.y),
+                content_rect.max,
+            );
 
-        // Build thumbnail lookup from the cache resource
-        let thumb_lookup = {
-            let cache = world.get_resource::<thumbnails::ThumbnailCache>();
-            grid::ThumbnailLookup {
-                ids: cache
-                    .map(|c| c.texture_id_map())
-                    .unwrap_or_default(),
+            let splitter_id = ui.id().with("asset_splitter");
+            let splitter_resp =
+                ui.interact(splitter_rect, splitter_id, egui::Sense::click_and_drag());
+            if splitter_resp.dragged() {
+                state.tree_width = (state.tree_width + splitter_resp.drag_delta().x)
+                    .clamp(100.0, (content_rect.width() - 100.0).max(100.0));
             }
-        };
+            if splitter_resp.hovered() || splitter_resp.dragged() {
+                ui.ctx()
+                    .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
 
-        // Grid pane
-        let mut grid_child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(grid_rect),
-        );
-        let grid_result = match state.view_mode {
-            ViewMode::Grid => grid::grid_ui_interactive(&mut grid_child, &mut state, &theme, &thumb_lookup),
-            ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
+            let splitter_color = if splitter_resp.hovered() || splitter_resp.dragged() {
+                theme.semantic.accent.to_color32()
+            } else {
+                theme.widgets.border.to_color32()
+            };
+            ui.painter().vline(
+                splitter_rect.center().x,
+                splitter_rect.y_range(),
+                Stroke::new(1.0, splitter_color),
+            );
+        }
+
+        let mut tree_ui = ui.new_child(egui::UiBuilder::new().max_rect(tree_rect));
+        let tree_drag_payload = tree::tree_ui(&mut tree_ui, &mut state, &theme);
+
+        let grid_result = if tree_only {
+            grid::GridResult::default()
+        } else {
+            let thumb_lookup = {
+                let cache = world.get_resource::<thumbnails::ThumbnailCache>();
+                grid::ThumbnailLookup {
+                    ids: cache.map(|c| c.texture_id_map()).unwrap_or_default(),
+                }
+            };
+
+            let mut grid_child =
+                ui.new_child(egui::UiBuilder::new().max_rect(grid_rect));
+            match state.view_mode {
+                ViewMode::Grid => grid::grid_ui_interactive(
+                    &mut grid_child,
+                    &mut state,
+                    &theme,
+                    &thumb_lookup,
+                ),
+                ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
+            }
         };
 
         // --- File drops from desktop ---
@@ -443,14 +459,16 @@ impl EditorPanel for AssetBrowserPanel {
         if let Some((old_path, new_name)) = state.pending_rename.take() {
             if let Some(parent) = old_path.parent() {
                 let new_path = parent.join(&new_name);
+                let is_dir = old_path.is_dir();
                 match std::fs::rename(&old_path, &new_path) {
                     Ok(_) => {
                         // Update selection to new path
                         state.selected_assets.remove(&old_path);
                         state.selected_assets.insert(new_path.clone());
                         if state.selected_path.as_ref() == Some(&old_path) {
-                            state.selected_path = Some(new_path);
+                            state.selected_path = Some(new_path.clone());
                         }
+                        emit_asset_path_change(world, &old_path, &new_path, is_dir);
                     }
                     Err(e) => {
                         state.last_error = Some(format!("Rename failed: {}", e));
@@ -473,8 +491,12 @@ impl EditorPanel for AssetBrowserPanel {
                     if dest.starts_with(source) {
                         continue;
                     }
+                    let is_dir = source.is_dir();
                     match std::fs::rename(source, &dest) {
-                        Ok(_) => moved += 1,
+                        Ok(_) => {
+                            moved += 1;
+                            emit_asset_path_change(world, source, &dest, is_dir);
+                        }
                         Err(e) => {
                             state.last_error = Some(format!("Move failed: {}", e));
                             state.error_timeout = 3.0;
@@ -543,7 +565,10 @@ impl EditorPanel for AssetBrowserPanel {
                 });
             }
         }
-        if let Some(payload) = grid_result.drag_payload {
+        // Either pane can produce a drag payload; the tree wins if both fire
+        // in the same frame, since tree-only mode is the only context where
+        // the tree is the sole source of drags.
+        if let Some(payload) = tree_drag_payload.or(grid_result.drag_payload) {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     world.insert_resource(payload);
@@ -840,6 +865,36 @@ impl Plugin for AssetBrowserPlugin {
             .add_systems(Update, thumbnails::update_thumbnail_cache)
             .register_panel(AssetBrowserPanel::default());
     }
+}
+
+/// Fire an `AssetPathChanged` event via `EditorCommands` so scene entities
+/// that reference the moved asset patch their stored paths. Paths are
+/// computed asset-relative (to the current project) before the event fires.
+fn emit_asset_path_change(
+    world: &World,
+    old_abs: &std::path::Path,
+    new_abs: &std::path::Path,
+    is_dir: bool,
+) {
+    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
+        return;
+    };
+    let old_rel = project.make_asset_relative(old_abs);
+    let new_rel = project.make_asset_relative(new_abs);
+    if old_rel.is_empty() || new_rel.is_empty() || old_rel == new_rel {
+        return;
+    }
+
+    let Some(cmds) = world.get_resource::<EditorCommands>() else {
+        return;
+    };
+    cmds.push(move |world: &mut bevy::prelude::World| {
+        world.trigger(renzora::core::AssetPathChanged {
+            old: old_rel,
+            new: new_rel,
+            is_dir,
+        });
+    });
 }
 
 renzora::add!(AssetBrowserPlugin, Editor);

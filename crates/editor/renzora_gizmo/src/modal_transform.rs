@@ -227,6 +227,7 @@ pub fn modal_transform_input_system(
     keybindings: Res<KeyBindings>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
+    viewport_settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     mut modal: ResMut<ModalTransformState>,
     transforms: Query<&Transform>,
     global_transforms: Query<&GlobalTransform>,
@@ -238,6 +239,15 @@ pub fn modal_transform_input_system(
     hidden: Query<(), With<HideInHierarchy>>,
 ) {
     if modal.active {
+        return;
+    }
+    // Modal G/R/S only operates on entity transforms while the viewport is
+    // in Scene mode. Any other mode (Edit / Sculpt / Paint / Animate — current
+    // or future) is owned by whichever plugin drives it.
+    if !matches!(
+        viewport_settings.as_deref().map(|s| s.viewport_mode),
+        None | Some(renzora::core::viewport_types::ViewportMode::Scene)
+    ) {
         return;
     }
     if keybindings.rebinding.is_some() {

@@ -787,11 +787,24 @@ fn import_worker(
                 };
 
                 // --- Phase: writing ---
+                // Each imported model gets its own folder so all derived
+                // assets (animations, textures, materials) live together.
                 let stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
-                let output_path = dest.join(format!("{}.glb", stem));
+                let model_dir = dest.join(stem);
+                if let Err(e) = std::fs::create_dir_all(&model_dir) {
+                    let msg = format!("failed to create model folder: {}", e);
+                    errors.push(format!("{}: {}", file_name, msg));
+                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                        file_name: file_name.clone(),
+                        success: false,
+                        message: msg,
+                    }));
+                    continue;
+                }
+                let output_path = model_dir.join(format!("{}.glb", stem));
 
                 let size_kb = glb_bytes.len() as f64 / 1024.0;
                 let warn_count = result.warnings.len();
@@ -817,7 +830,7 @@ fn import_worker(
                             label: format!("Extracting animations from {}", file_name),
                         });
 
-                        let anim_dir = dest.join("animations");
+                        let anim_dir = model_dir.join("animations");
                         match renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir) {
                             Ok(anim_result) => {
                                 for anim_path in &anim_result.written_files {
@@ -859,51 +872,74 @@ fn import_worker(
             Err(e) => {
                 // If geometry conversion failed for an FBX file, still try
                 // extracting animations directly (animation-only FBX files
-                // have no mesh geometry).
+                // have no mesh geometry). Animation-only imports still get
+                // their own per-stem folder so clips stay grouped.
                 let ext_lower = source_path
                     .extension()
                     .and_then(|ext| ext.to_str())
                     .unwrap_or("")
                     .to_lowercase();
 
-                let anim_fallback_result = match ext_lower.as_str() {
-                    "fbx" => {
-                        let anim_dir = dest.join("animations");
-                        renzora_import::extract_animations_from_fbx(source_path, &anim_dir).ok()
-                    }
+                let stem = source_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("model");
+                let fallback_model_dir = dest.join(stem);
+                let anim_dir = fallback_model_dir.join("animations");
+
+                let anim_fallback_result: Option<Result<_, String>> = match ext_lower.as_str() {
+                    "fbx" => Some(renzora_import::extract_animations_from_fbx(source_path, &anim_dir)),
                     "usd" | "usda" | "usdc" | "usdz" => {
-                        let anim_dir = dest.join("animations");
-                        renzora_import::extract_animations_from_usd(source_path, &anim_dir).ok()
+                        Some(renzora_import::extract_animations_from_usd(source_path, &anim_dir))
                     }
-                    "bvh" => {
-                        let anim_dir = dest.join("animations");
-                        renzora_import::extract_animations_from_bvh(source_path, &anim_dir).ok()
-                    }
+                    "bvh" => Some(renzora_import::extract_animations_from_bvh(source_path, &anim_dir)),
                     _ => None,
                 };
 
-                if let Some(anim_result) = anim_fallback_result {
-                    if !anim_result.written_files.is_empty() {
-                        imported += 1;
-                        for anim_path in &anim_result.written_files {
-                            let _ = tx.send(ImportMsg::Log(ImportLogEntry {
-                                file_name: std::path::Path::new(anim_path)
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("animation")
-                                    .to_string(),
-                                success: true,
-                                message: "animation extracted".to_string(),
-                            }));
+                let mut fallback_note: Option<String> = None;
+                if let Some(fb) = anim_fallback_result {
+                    match fb {
+                        Ok(anim_result) => {
+                            if !anim_result.written_files.is_empty() {
+                                imported += 1;
+                                for anim_path in &anim_result.written_files {
+                                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                                        file_name: std::path::Path::new(anim_path)
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("animation")
+                                            .to_string(),
+                                        success: true,
+                                        message: "animation extracted".to_string(),
+                                    }));
+                                }
+                                for w in &anim_result.warnings {
+                                    all_warnings.push(w.clone());
+                                }
+                                continue;
+                            }
+                            if !anim_result.warnings.is_empty() {
+                                fallback_note = Some(format!(
+                                    "animation fallback: {}",
+                                    anim_result.warnings.join("; ")
+                                ));
+                            } else {
+                                fallback_note =
+                                    Some("animation fallback: no animation data found".into());
+                            }
                         }
-                        for w in &anim_result.warnings {
-                            all_warnings.push(w.clone());
+                        Err(fb_err) => {
+                            fallback_note =
+                                Some(format!("animation fallback failed: {}", fb_err));
                         }
-                        continue;
                     }
                 }
 
-                let msg = format!("{}", e);
+                let msg = if let Some(note) = fallback_note {
+                    format!("{} ({})", e, note)
+                } else {
+                    format!("{}", e)
+                };
                 errors.push(format!("{}: {}", file_name, msg));
                 let _ = tx.send(ImportMsg::Log(ImportLogEntry {
                     file_name: file_name.clone(),

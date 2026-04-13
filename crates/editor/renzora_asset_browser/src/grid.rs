@@ -16,6 +16,7 @@ pub(crate) struct GridEntry {
 }
 
 /// Result from the grid interaction.
+#[derive(Default)]
 pub struct GridResult {
     pub drag_payload: Option<AssetDragPayload>,
     /// File path if a non-directory file was double-clicked.

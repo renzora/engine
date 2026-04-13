@@ -12,6 +12,7 @@ use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
 use renzora::editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
+use crate::model_flatten::{ImportedRoot, PendingFlatten};
 use crate::ViewportState;
 
 /// Extensions accepted as droppable 3D models.
@@ -113,15 +114,20 @@ fn compute_ground_position(
 
 /// Initiate loading a model file — called from a deferred `EditorCommands` closure.
 fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_position: Vec3) {
-    // Compute asset-relative path
+    // Compute asset-relative path. Each model gets its own folder under
+    // `assets/models/<stem>/` so derived assets (animations, textures,
+    // materials) from the proper import pipeline stay grouped with it.
     let asset_path = if let Some(project) = world.get_resource::<CurrentProject>() {
-        let models_dir = project.path.join("models");
-
-        // Copy to project assets/models/ if not already there
-        let _ = std::fs::create_dir_all(&models_dir);
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("model")
+            .to_string();
+        let model_dir = project.path.join("models").join(&stem);
+        let _ = std::fs::create_dir_all(&model_dir);
 
         let file_name = path.file_name().unwrap_or_default();
-        let dest = models_dir.join(file_name);
+        let dest = model_dir.join(file_name);
 
         if !dest.exists() || path.canonicalize().ok() != dest.canonicalize().ok() {
             if let Err(e) = std::fs::copy(&path, &dest) {
@@ -190,6 +196,7 @@ pub fn spawn_loaded_gltfs(
                 MeshInstanceData {
                     model_path: Some(load.asset_path.clone()),
                 },
+                ImportedRoot,
             ))
             .id();
 
@@ -203,13 +210,15 @@ pub fn spawn_loaded_gltfs(
             );
         }
 
-        // Spawn the GLTF scene as a child
+        // Spawn the GLTF scene as a child. PendingFlatten triggers the
+        // flatten pass once the scene spawner has populated the subtree.
         commands.spawn((
             Name::new("SceneRoot"),
             bevy::scene::SceneRoot(scene),
             Transform::default(),
             Visibility::default(),
             ChildOf(parent),
+            PendingFlatten::default(),
         ));
 
         // Attach ground alignment marker

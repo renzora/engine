@@ -8,6 +8,7 @@ pub mod debug_material;
 pub mod effect_routing;
 pub mod header;
 pub mod model_drop;
+pub mod model_flatten;
 pub mod play_mode;
 pub mod shape_drop;
 pub mod render_systems;
@@ -92,6 +93,7 @@ impl Plugin for ViewportPlugin {
                 play_mode::handle_play_mode_transitions,
                 effect_routing::update_effect_routing,
                 model_drop::spawn_loaded_gltfs,
+                model_flatten::flatten_pending_scenes,
                 model_drop::auto_discover_animations,
                 model_drop::align_models_to_ground,
                 shape_drop::shape_drag_ground_tracking

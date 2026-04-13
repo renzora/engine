@@ -26,6 +26,9 @@ pub use dynamic_plugin_meta::add;
 // ── Proc macros ─────────────────────────────────────────────────────────
 pub use renzora_macros::{Inspectable, post_process};
 
+// ── SDK helpers (run-conditions, ergonomic wrappers) ───────────────────
+pub mod sdk;
+
 // ── Core types (always available) ───────────────────────────────────────
 pub use renzora_core as core;
 pub use renzora_postprocess as postprocess;
@@ -81,6 +84,9 @@ pub mod prelude {
         EditorCommands, EditorSelection,
         // Toolbar
         ToolEntry, ToolSection, ToolbarRegistry,
+        // Mode / tool header drawers
+        ModeOptionsDrawer, ViewportModeOptionsRegistry,
+        ToolOptionsDrawer, ToolOptionsRegistry,
         // Shortcuts
         ShortcutEntry, ShortcutRegistry,
         // Settings

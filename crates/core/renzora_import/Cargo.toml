@@ -14,9 +14,9 @@ tobj = "4"
 stl_io = "0.10"
 ply-rs = "0.1"
 
-# FBX (pure Rust)
-fbxcel-dom = "0.0.10"
-fbxcel = "0.9"
+# FBX — ufbx handles FBX 3.0 through 7.7, binary and ASCII, with Maya/3ds Max/
+# Blender/Mixamo quirks normalized. Vendored C source compiled via cc-rs.
+ufbx = "0.10"
 
 # Core types (AnimClip, BoneTrack, write_anim_file)
 renzora_core = { path = "../renzora_core" }

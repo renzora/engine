@@ -41,6 +41,22 @@ pub trait AppEditorExt {
     /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
     fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self;
 
+    /// Register a header drawer that takes over the horizontal viewport
+    /// toolbar when the viewport is in the given mode.
+    fn register_mode_options(
+        &mut self,
+        mode: renzora_core::viewport_types::ViewportMode,
+        drawer: crate::ModeOptionsDrawer,
+    ) -> &mut Self;
+
+    /// Register a header drawer for a specific [`ActiveTool`] (Photoshop-style
+    /// tool-options bar).
+    fn register_tool_options(
+        &mut self,
+        tool: crate::ActiveTool,
+        drawer: crate::ToolOptionsDrawer,
+    ) -> &mut Self;
+
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
     where
@@ -86,6 +102,30 @@ impl AppEditorExt for App {
     fn register_tool(&mut self, entry: ToolEntry) -> &mut Self {
         self.init_resource::<ToolbarRegistry>();
         self.world_mut().resource_mut::<ToolbarRegistry>().register(entry);
+        self
+    }
+
+    fn register_mode_options(
+        &mut self,
+        mode: renzora_core::viewport_types::ViewportMode,
+        drawer: crate::ModeOptionsDrawer,
+    ) -> &mut Self {
+        self.init_resource::<crate::ViewportModeOptionsRegistry>();
+        self.world_mut()
+            .resource_mut::<crate::ViewportModeOptionsRegistry>()
+            .register(mode, drawer);
+        self
+    }
+
+    fn register_tool_options(
+        &mut self,
+        tool: crate::ActiveTool,
+        drawer: crate::ToolOptionsDrawer,
+    ) -> &mut Self {
+        self.init_resource::<crate::ToolOptionsRegistry>();
+        self.world_mut()
+            .resource_mut::<crate::ToolOptionsRegistry>()
+            .register(tool, drawer);
         self
     }
 

@@ -409,15 +409,18 @@ pub fn sync_preview_model(
     info!("[studio_preview] Loaded model '{}' into preview", model_path);
 }
 
-/// Continuously propagate `RenderLayers` to all descendants of preview model
-/// entities. GLTF scenes spawn children asynchronously over multiple frames
-/// and those children get default `RenderLayers` (layer 0), so we must
-/// overwrite them with the preview layer.
+/// Continuously propagate `RenderLayers` + `HideInHierarchy` to all
+/// descendants of preview model entities. GLTF scenes spawn children
+/// asynchronously over multiple frames and those children get default
+/// `RenderLayers` (layer 0) and no `HideInHierarchy` — so they'd leak into
+/// the main viewport render and show up in the hierarchy panel as if they
+/// were loose scene entities. We walk the subtree each frame and fix both.
 pub fn propagate_preview_layer(
     mut commands: Commands,
     preview_roots: Query<Entity, With<StudioPreviewModel>>,
     children_query: Query<&Children>,
     layer_query: Query<&RenderLayers>,
+    hide_query: Query<(), With<HideInHierarchy>>,
 ) {
     let target = RenderLayers::layer(STUDIO_PREVIEW_LAYER);
 
@@ -428,13 +431,16 @@ pub fn propagate_preview_layer(
         }
 
         while let Some(child) = stack.pop() {
-            // Overwrite if missing or set to a different layer
-            let needs_update = match layer_query.get(child) {
+            let needs_layer = match layer_query.get(child) {
                 Ok(layers) => *layers != target,
                 Err(_) => true,
             };
-            if needs_update {
+            if needs_layer {
                 commands.entity(child).insert(target.clone());
+            }
+
+            if hide_query.get(child).is_err() {
+                commands.entity(child).insert(HideInHierarchy);
             }
 
             if let Ok(grandchildren) = children_query.get(child) {

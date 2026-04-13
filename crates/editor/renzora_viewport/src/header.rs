@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use renzora::egui_phosphor::regular::*;
 use renzora::editor::{
-    ActiveTool, EditorCommands, ToolOptionsRegistry,
+    ActiveTool, EditorCommands, ToolOptionsRegistry, ViewportModeOptionsRegistry,
 };
 use renzora::theme::ThemeManager;
 
@@ -128,6 +128,19 @@ fn render_strip_contents(
     // padding keeps sliders exactly as tall as our 22px icon buttons.
     ui.spacing_mut().button_padding = Vec2::new(4.0, 0.0);
 
+    // ── Viewport mode dropdown (always first so users can always switch back) ─
+    mode_dropdown(ui, settings, cmds, active, inactive, hovered);
+    separator(ui);
+
+    // ── Mode-specific header (Edit / Sculpt / Paint / Animate) ──────────────
+    let mode_drawer = world
+        .get_resource::<ViewportModeOptionsRegistry>()
+        .and_then(|r| r.drawer_for(settings.viewport_mode));
+    if let Some(drawer) = mode_drawer {
+        drawer(ui, world);
+        return;
+    }
+
     // ── Context-sensitive tool options (Photoshop-style) ─────────────────────
     let active_tool = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
     let tool_drawer = world
@@ -138,11 +151,6 @@ fn render_strip_contents(
         drawer(ui, world);
         return;
     }
-
-    // ── Viewport mode dropdown (Scene / Edit / Sculpt / Paint / Animate) ─
-    mode_dropdown(ui, settings, cmds, active, inactive, hovered);
-
-    separator(ui);
 
     // ── Render flag toggles (textures/wireframe/lighting/shadows) ─────────────
     let t = &settings.render_toggles;

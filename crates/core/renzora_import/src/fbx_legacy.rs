@@ -40,7 +40,13 @@ pub(crate) struct FbxNode {
 // ─── Binary parser ─────────────────────────────────────────────────────────
 
 const HEADER_LEN: u64 = 27; // 23 magic + 2 padding + 4 version
-const NULL_RECORD_LEN: usize = 13; // 3×u32 + 1×u8 all zero
+const NULL_RECORD_LEN_V32: usize = 13; // 3×u32 + 1×u8 all zero (FBX < 7.5)
+const NULL_RECORD_LEN_V64: usize = 25; // 3×u64 + 1×u8 all zero (FBX >= 7.5)
+
+/// FBX 7.5 switched node record headers from u32 to u64 for end_offset,
+/// num_properties, and property_list_len. Files at or above this version
+/// use the wider header layout.
+const FBX_VERSION_U64_HEADER: u32 = 7500;
 
 fn read_u8(r: &mut Cursor<&[u8]>) -> Result<u8, ImportError> {
     let mut buf = [0u8; 1];
@@ -187,17 +193,37 @@ fn parse_property(r: &mut Cursor<&[u8]>) -> Result<FbxProp, ImportError> {
     }
 }
 
-fn parse_node(r: &mut Cursor<&[u8]>, file_len: u64) -> Result<Option<FbxNode>, ImportError> {
+fn parse_node(
+    r: &mut Cursor<&[u8]>,
+    file_len: u64,
+    use_u64_headers: bool,
+) -> Result<Option<FbxNode>, ImportError> {
     let start = r.position();
 
+    let null_record_len = if use_u64_headers {
+        NULL_RECORD_LEN_V64
+    } else {
+        NULL_RECORD_LEN_V32
+    };
+
     // Check if we have enough bytes for a record header
-    if start + NULL_RECORD_LEN as u64 > file_len {
+    if start + null_record_len as u64 > file_len {
         return Ok(None);
     }
 
-    let end_offset = read_u32_le(r)? as u64;
-    let num_properties = read_u32_le(r)? as u32;
-    let property_list_len = read_u32_le(r)? as u64;
+    let (end_offset, num_properties, property_list_len) = if use_u64_headers {
+        (
+            read_i64_le(r)? as u64,
+            read_i64_le(r)? as u32,
+            read_i64_le(r)? as u64,
+        )
+    } else {
+        (
+            read_u32_le(r)? as u64,
+            read_u32_le(r)? as u32,
+            read_u32_le(r)? as u64,
+        )
+    };
     let name_len = read_u8(r)? as usize;
 
     // Null sentinel: all zeros
@@ -230,10 +256,10 @@ fn parse_node(r: &mut Cursor<&[u8]>, file_len: u64) -> Result<Option<FbxNode>, I
     let mut children = Vec::new();
     while r.position() < end_offset {
         // Check for null sentinel
-        if r.position() + NULL_RECORD_LEN as u64 > end_offset {
+        if r.position() + null_record_len as u64 > end_offset {
             break;
         }
-        match parse_node(r, file_len)? {
+        match parse_node(r, file_len, use_u64_headers)? {
             Some(child) => children.push(child),
             None => break, // null sentinel
         }
@@ -255,6 +281,7 @@ pub(crate) fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportE
     }
 
     let version = u32::from_le_bytes([data[23], data[24], data[25], data[26]]);
+    let use_u64_headers = version >= FBX_VERSION_U64_HEADER;
 
     let mut r = Cursor::new(data);
     r.seek(SeekFrom::Start(HEADER_LEN))?;
@@ -262,7 +289,7 @@ pub(crate) fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportE
     let file_len = data.len() as u64;
     let mut nodes = Vec::new();
     while r.position() < file_len {
-        match parse_node(&mut r, file_len)? {
+        match parse_node(&mut r, file_len, use_u64_headers)? {
             Some(node) => nodes.push(node),
             None => break,
         }

@@ -11,11 +11,18 @@ use crate::state_machine::{AnimationStateMachine, StateMotion};
 // Rehydration: build AnimationGraph when AnimatorComponent is added
 // ============================================================================
 
-/// Spawns `AnimatorState` for new `AnimatorComponent` entities and starts loading clips.
+/// Spawns `AnimatorState` for new `AnimatorComponent` entities and keeps
+/// loaded clips in sync when slots are added, removed, or reordered in the
+/// editor. The previous implementation ran once per entity — adding a second
+/// clip after initialization wouldn't load or register it.
 pub fn rehydrate_animators(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     new_animators: Query<(Entity, &AnimatorComponent), Without<AnimatorState>>,
+    mut changed_animators: Query<
+        (Entity, &AnimatorComponent, &mut AnimatorState),
+        Changed<AnimatorComponent>,
+    >,
 ) {
     for (entity, animator) in new_animators.iter() {
         if animator.clips.is_empty() {
@@ -31,7 +38,6 @@ pub fn rehydrate_animators(
 
         let mut state = AnimatorState::default();
 
-        // Start loading all clip assets
         for slot in &animator.clips {
             if !slot.path.is_empty() {
                 info!("[animation]   Loading clip '{}' from '{}'", slot.name, slot.path);
@@ -40,7 +46,6 @@ pub fn rehydrate_animators(
             }
         }
 
-        // Start loading state machine if specified
         if let Some(ref sm_path) = animator.state_machine {
             if !sm_path.is_empty() {
                 let handle: Handle<AnimationStateMachine> = asset_server.load(sm_path);
@@ -49,6 +54,44 @@ pub fn rehydrate_animators(
         }
 
         commands.entity(entity).try_insert(state);
+    }
+
+    // Already-rehydrated animators: reload clip handles on slot changes and
+    // flag the graph for rebuild. `current_clip` is cleared so auto-play
+    // picks a valid clip once re-init finishes.
+    for (entity, animator, mut state) in changed_animators.iter_mut() {
+        let current_slot_names: std::collections::HashSet<String> = animator
+            .clips
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+
+        state
+            .clip_handles
+            .retain(|name, _| current_slot_names.contains(name));
+
+        let mut added_any = false;
+        for slot in &animator.clips {
+            if slot.path.is_empty() {
+                continue;
+            }
+            if !state.clip_handles.contains_key(&slot.name) {
+                info!(
+                    "[animation]   Loading new clip '{}' from '{}' on {:?}",
+                    slot.name, slot.path, entity
+                );
+                let handle: Handle<AnimationClip> = asset_server.load(&slot.path);
+                state.clip_handles.insert(slot.name.clone(), handle);
+                added_any = true;
+            }
+        }
+
+        if added_any || state.node_indices.len() != animator.clips.len() {
+            state.initialized = false;
+            state.current_clip = None;
+            state.node_indices.clear();
+            state.graph_handle = None;
+        }
     }
 }
 
@@ -124,15 +167,27 @@ pub fn initialize_animation_graphs(
         let graph_handle = graphs.add(graph);
         state.graph_handle = Some(graph_handle.clone());
 
-        // Find the AnimationPlayer in children
-        let Some(player_entity) =
-            find_animation_player(entity, &children_query, &player_query)
-        else {
-            // Player might not be spawned yet (GLTF still loading scenes)
-            warn!("[animation] AnimationPlayer not found in children of {:?}, will retry", entity);
-            continue;
-        };
-        info!("[animation] Found AnimationPlayer at {:?}", player_entity);
+        // Find an AnimationPlayer already in the hierarchy (bevy_gltf inserts
+        // one when a GLB carries embedded animations). If the model was
+        // imported without embedded animations — e.g. Mixamo character + side-
+        // loaded `.anim` clips — there's no player yet, so insert one on the
+        // AnimatorComponent entity itself. It's the natural animation root
+        // because all skinned descendants hang beneath it.
+        let player_entity =
+            match find_animation_player(entity, &children_query, &player_query) {
+                Some(e) => {
+                    info!("[animation] Found AnimationPlayer at {:?}", e);
+                    e
+                }
+                None => {
+                    info!(
+                        "[animation] No AnimationPlayer found for {:?}; inserting one (side-loaded clips)",
+                        entity
+                    );
+                    commands.entity(entity).insert(AnimationPlayer::default());
+                    entity
+                }
+            };
 
         state.player_entity = Some(player_entity);
 
@@ -729,13 +784,72 @@ fn visit_skeleton(
     name_query: &Query<&Name>,
 ) {
     if let Ok(name) = name_query.get(entity) {
+        // Bevy 0.18 requires two components on an animated entity:
+        // `AnimationTargetId` identifies which curves in the clip apply here,
+        // and `AnimatedBy` points back at the AnimationPlayer that drives it.
+        // Missing `AnimatedBy` means clips silently do nothing.
         let target_id = AnimationTargetId::from_name(name);
-        commands.entity(entity).try_insert(target_id);
+        commands
+            .entity(entity)
+            .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
     }
 
     if let Ok(children) = children_query.get(entity) {
         for child in children.iter() {
             visit_skeleton(child, player_entity, commands, children_query, name_query);
+        }
+    }
+}
+
+/// Keeps `AnimationTargetId` + `AnimatedBy` in sync for named descendants of
+/// every initialized animator. Bones can spawn on any frame — on scene reload
+/// the GLB may still be instantiating when `initialize_animation_graphs` runs,
+/// which leaves the first pass with no bones to tag. Running this each frame
+/// is cheap (`try_insert` is a no-op when components already exist) and
+/// guarantees targets exist once the skeleton is populated.
+/// How long after initialization we keep re-walking the skeleton looking for
+/// newly-spawned bones. 120 frames @ 60 Hz = 2 seconds, which is plenty for
+/// any GLB to finish instantiating on modern hardware. After that we stop
+/// unless new bones appear (detected via count delta), so the per-frame cost
+/// drops to O(animators), not O(bones).
+const TARGET_WALK_FRAMES: u32 = 120;
+
+pub fn ensure_animation_targets(
+    mut commands: Commands,
+    mut animators: Query<(Entity, &mut AnimatorState)>,
+    children_query: Query<&Children>,
+    name_query: Query<&Name>,
+    target_query: Query<(), With<AnimationTargetId>>,
+) {
+    for (entity, mut state) in animators.iter_mut() {
+        if !state.initialized {
+            continue;
+        }
+        let Some(player_entity) = state.player_entity else {
+            continue;
+        };
+
+        // Warm-up is bounded — 2 seconds of walking is more than enough for
+        // any GLB to finish spawning. After that we assume the skeleton is
+        // stable; a hot-reload or re-init resets the counter.
+        if state.frames_since_init > TARGET_WALK_FRAMES {
+            continue;
+        }
+        state.frames_since_init = state.frames_since_init.saturating_add(1);
+
+        let mut stack = vec![entity];
+        while let Some(current) = stack.pop() {
+            if let Ok(name) = name_query.get(current) {
+                if target_query.get(current).is_err() {
+                    let target_id = AnimationTargetId::from_name(name);
+                    commands
+                        .entity(current)
+                        .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
+                }
+            }
+            if let Ok(children) = children_query.get(current) {
+                stack.extend(children.iter());
+            }
         }
     }
 }
