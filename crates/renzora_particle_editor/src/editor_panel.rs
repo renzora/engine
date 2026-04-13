@@ -452,7 +452,7 @@ fn render_effect_editor(
     let mut modified = false;
     let mut save_requested = false;
     let mut save_as_requested = false;
-    let text_color = theme.text.primary.to_color32();
+    let _text_color = theme.text.primary.to_color32();
 
     // Header with save buttons
     ui.horizontal(|ui| {

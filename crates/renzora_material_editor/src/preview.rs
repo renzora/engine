@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! Material preview panel — renders the compiled material on a preview sphere
 //! with orbit camera, displayed via render-to-texture in an egui panel.
 

@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables)] // Legacy FBX parser kept for reference after ufbx swap.
+
 //! FBX skin + skeleton extraction.
 //!
 //! Parses the raw FBX node tree to extract:
@@ -19,7 +21,7 @@
 use std::collections::HashMap;
 
 use crate::fbx_legacy::{
-    extract_f32_array, extract_f64_array, extract_i32_array, find_child, get_i64_prop,
+    extract_f64_array, extract_i32_array, find_child, get_i64_prop,
     get_string_prop, FbxNode, FbxProp,
 };
 

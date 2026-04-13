@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 //! Collada (.dae) → GLB converter.
 //!
 //! Parses Collada XML files and extracts mesh geometry (positions, normals,

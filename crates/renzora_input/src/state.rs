@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis};
-use std::collections::HashMap;
 
 use crate::action::{ActionKind, InputBinding};
 use crate::map::InputMap;

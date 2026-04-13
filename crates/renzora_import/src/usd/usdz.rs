@@ -1,3 +1,5 @@
+#![allow(unused_mut)]
+
 //! USDZ archive parser.
 //!
 //! USDZ is a ZIP archive (uncompressed) containing one USDA/USDC file

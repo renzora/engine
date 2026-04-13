@@ -1,3 +1,7 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Renzora Settings — floating overlay window for editor settings.
 //!
 //! Reads from decentralized resources (`EditorSettings`, `KeyBindings`,

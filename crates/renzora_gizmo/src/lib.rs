@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables)]
+
 //! Renzora Gizmo — 3D transform gizmos for the editor viewport.
 //!
 //! Spawns real mesh entities (cylinders, cones, cubes) with an always-on-top
@@ -1295,7 +1297,7 @@ fn gizmo_drag(
     viewport_settings: Option<Res<ViewportSettings>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     mut transform_q: Query<&mut Transform, (Without<EditorCamera>, Without<EditorLocked>, Without<GizmoRoot>, Without<GizmoMesh>)>,
-    global_q: Query<&GlobalTransform, Without<EditorCamera>>,
+    _global_q: Query<&GlobalTransform, Without<EditorCamera>>,
     aabb_q: Query<&bevy::camera::primitives::Aabb>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,

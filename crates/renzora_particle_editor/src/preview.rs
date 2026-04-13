@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Particle preview system — isolated viewport for particle effect preview.
 
 use bevy::prelude::*;

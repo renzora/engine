@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_assignments, dead_code)]
+
 //! Renzora Game UI — bevy_ui game interface components and (optionally) editor panels.
 //!
 //! **Runtime** (always available):

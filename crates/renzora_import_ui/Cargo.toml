@@ -5,7 +5,6 @@ edition = "2021"
 
 [lib]
 crate-type = ["dylib"]
-description = "Import overlay UI for 3D model import in the Renzora editor"
 
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }

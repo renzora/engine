@@ -1,3 +1,7 @@
+#![allow(unused_variables, dead_code)]
+
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! UI Canvas panel — 2D visual editor for laying out bevy_ui widgets.
 //!
 //! Renders an egui canvas that mirrors the bevy_ui hierarchy. Each UiWidget

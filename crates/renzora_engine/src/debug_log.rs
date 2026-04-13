@@ -1,3 +1,5 @@
+#![allow(private_interfaces)]
+
 //! Rendering debug logger — extensive console logging for cameras,
 //! render targets, play mode, post-processing, scene loading, and rehydration.
 //!

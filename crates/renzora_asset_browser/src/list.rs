@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 use std::path::PathBuf;
 
 use bevy_egui::egui::{self, Sense};

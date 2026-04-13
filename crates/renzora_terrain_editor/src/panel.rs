@@ -1,3 +1,5 @@
+#![allow(dead_code, deprecated)] // WIP file — many helpers staged for future panel layouts.
+
 //! Terrain Tools panel — Sculpt & Paint tabs with tool grids, layer management, brush config.
 
 use std::sync::RwLock;
@@ -8,7 +10,7 @@ use egui_phosphor::regular::{
     MOUNTAINS, WAVES, EQUALS, ARROW_FAT_LINE_UP, TREE, DROP, WAVEFORM,
     STAIRS, ARROWS_IN_CARDINAL, ACTIVITY, GRAPH, CHART_BAR,
     CIRCLE, SQUARE, DIAMOND, CARET_DOWN, CARET_RIGHT,
-    ARROWS_OUT_CARDINAL, ERASER, PAINT_BRUSH, PALETTE, PLUS, TRASH,
+    ARROWS_OUT_CARDINAL, ERASER, PAINT_BRUSH, PALETTE, PLUS,
 };
 
 use renzora_terrain::data::*;
@@ -307,7 +309,7 @@ fn render_paint_tab(
     cmds: &EditorCommands,
 ) {
     let paint_settings = world.get_resource::<SurfacePaintSettings>();
-    let paint_state = world.get_resource::<SurfacePaintState>();
+    let _paint_state = world.get_resource::<SurfacePaintState>();
 
     // ── Paint Brush Tools ────────────────────────────────────────────────
     if let Some(ps) = paint_settings {
@@ -609,7 +611,7 @@ fn render_tool_settings(
     text_secondary: Color32,
     text_primary: Color32,
     _accent: Color32,
-    theme: &Theme,
+    _theme: &Theme,
     cmds: &EditorCommands,
 ) {
     let label_width = 100.0;

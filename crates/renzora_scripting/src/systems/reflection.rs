@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables)]
+
 //! Exclusive system that applies generic reflection-based component field writes.
 
 use bevy::prelude::*;

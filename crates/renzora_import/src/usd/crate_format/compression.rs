@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC compression -- Pixar's integer coding + LZ4.
 //!
 //! The compression is a two-stage pipeline:

@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 //! USDA recursive descent parser.
 //!
 //! Parses tokenized USDA into a UsdStage by walking the token stream

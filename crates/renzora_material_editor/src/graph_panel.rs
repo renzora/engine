@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! Material Graph Panel — selection-driven node graph editor.
 //!
 //! Selecting a mesh entity in the viewport loads its material into this panel.

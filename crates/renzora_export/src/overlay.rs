@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! Export overlay UI — a modal dialog for configuring and running project exports.
 
 use std::sync::{mpsc, Mutex};

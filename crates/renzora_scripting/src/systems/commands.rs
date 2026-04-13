@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_mut)]
+
 //! Command processing system — applies transform writes and routes ScriptCommands.
 
 use bevy::prelude::*;

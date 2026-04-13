@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_assignments, dead_code)]
+
 //! BVH (Biovision Hierarchy) → animation clip converter.
 //!
 //! BVH is an animation-only format containing a skeleton hierarchy

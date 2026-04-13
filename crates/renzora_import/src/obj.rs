@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables)]
+
 //! OBJ (Wavefront) → GLB converter.
 
 use std::path::Path;

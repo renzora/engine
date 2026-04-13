@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP file — many helpers staged for future panel layouts.
+
 //! Widget Gallery — showcases every widget in `renzora_widgets`.
 //!
 //! Add `WidgetGalleryPlugin` to your app to register the gallery panels.
@@ -2139,7 +2141,7 @@ impl Plugin for WidgetGalleryPlugin {
 
         // Add gallery layout
         let world = app.world_mut();
-        let mut layouts = world
+        let layouts = world
             .remove_resource::<LayoutManager>()
             .unwrap_or_default();
 

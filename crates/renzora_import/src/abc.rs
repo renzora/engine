@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_assignments, dead_code)]
+
 //! Alembic (.abc) → GLB converter.
 //!
 //! Pure-Rust parser for the Ogawa container format used by Alembic files.

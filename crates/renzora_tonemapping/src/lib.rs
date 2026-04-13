@@ -1,3 +1,5 @@
+#![allow(dead_code)] // MODE_LABELS used by editor inspector only.
+
 use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::camera::Exposure;

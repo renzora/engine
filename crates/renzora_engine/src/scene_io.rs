@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables)]
+
 //! Shared scene load/save and rehydration — used by both editor and runtime.
 
 use bevy::ecs::world::FilteredEntityRef;

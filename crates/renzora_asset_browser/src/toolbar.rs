@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular;
 use renzora_editor_framework::icon_button;

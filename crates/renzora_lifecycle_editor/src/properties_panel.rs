@@ -68,7 +68,7 @@ impl EditorPanel for LifecyclePropertiesPanel {
         };
 
         let pins = (def.pins)();
-        let header_color = egui::Color32::from_rgb(def.color[0], def.color[1], def.color[2]);
+        let _header_color = egui::Color32::from_rgb(def.color[0], def.color[1], def.color[2]);
 
         // Gather input pins (non-exec)
         let input_pins: Vec<&PinTemplate> = pins

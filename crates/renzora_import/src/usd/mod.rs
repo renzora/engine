@@ -1,3 +1,5 @@
+#![allow(unused_mut)]
+
 //! Pure-Rust USD/USDA/USDC/USDZ parser.
 //!
 //! Parses Universal Scene Description files into a rich intermediate

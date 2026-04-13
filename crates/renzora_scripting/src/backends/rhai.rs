@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};

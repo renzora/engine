@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 //! Top title/menu bar with centered layout tabs.
 
 use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Vec2};

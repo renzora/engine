@@ -10,7 +10,7 @@ use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
 use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
-use renzora_shader::runtime::{CodeShaderMaterial, CodeShaderState, ShaderCache};
+use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
 use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;

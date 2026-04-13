@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_assignments, dead_code)]
+
 //! Widget spawn functions — each creates the correct entity hierarchy for a widget type.
 
 use std::path::Path;

@@ -1,7 +1,7 @@
 //! Inspector registration for AnimatorComponent.
 
 use bevy::prelude::*;
-use renzora_editor_framework::{InspectorEntry, FieldDef, FieldType, FieldValue};
+use renzora_editor_framework::InspectorEntry;
 
 use crate::component::AnimatorComponent;
 

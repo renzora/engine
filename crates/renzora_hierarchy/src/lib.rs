@@ -9,10 +9,10 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor_framework::{
-    search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
+    search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
     HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
-use renzora::core::{MeshPrimitive, MeshColor, ShapeRegistry};
+use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
 use renzora_undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 

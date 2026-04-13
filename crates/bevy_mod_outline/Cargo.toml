@@ -22,3 +22,9 @@ wgpu-types = "27"
 [features]
 default = ["reflect"]
 reflect = []
+
+# Two features the upstream source references but never declares — adding
+# them here silences `unexpected_cfgs` warnings without changing behavior
+# (we don't enable them, the gated branches stay inactive).
+interpolation = []
+flood = []

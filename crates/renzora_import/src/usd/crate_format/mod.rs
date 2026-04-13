@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC (binary Crate format) parser.
 //!
 //! Parses the Pixar USD binary container format. The format consists of:

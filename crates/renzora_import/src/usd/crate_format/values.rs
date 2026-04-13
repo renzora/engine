@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC value types and decoding.
 //!
 //! USD supports ~50 value types. We implement the subset needed for

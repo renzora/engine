@@ -1,3 +1,7 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
+#![allow(dead_code)] // WIP file — many helpers staged for future panel layouts.
+
 //! Unified Tool Settings panel — contextual content based on ActiveTool.
 //!
 //! Replaces the separate TerrainToolsPanel and FoliagePanel.
@@ -159,7 +163,7 @@ fn render_sculpt(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorC
             let mut octaves = settings.noise_octaves;
             let mut lac = settings.noise_lacunarity;
             let mut pers = settings.noise_persistence;
-            let mut seed = settings.noise_seed;
+            let seed = settings.noise_seed;
             let mut noise_mode = settings.noise_mode;
 
             inline_property(ui, row, "Mode", theme, |ui| {
@@ -553,7 +557,7 @@ fn render_layer_list(
 // ── Foliage mode ────────────────────────────────────────────────────────────
 
 fn render_foliage(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
-    let accent = theme.semantic.accent.to_color32();
+    let _accent = theme.semantic.accent.to_color32();
     let config = world.get_resource::<FoliageConfig>().cloned().unwrap_or_default();
     let settings = world.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default();
 

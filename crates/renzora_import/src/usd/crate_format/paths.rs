@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC path table parser.
 //!
 //! PATHS section (v0.4.0+):

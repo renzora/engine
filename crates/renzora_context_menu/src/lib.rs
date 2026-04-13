@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Viewport context menu — right-click-tap to open.
 //!
 //! Two modes, chosen by what's under the cursor at press:

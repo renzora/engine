@@ -20,7 +20,7 @@ use crate::{
 pub fn register_physics_inspectors(app: &mut App) {
     // Auto-insert default collider on new MeshPrimitive entities
     app.add_observer(auto_insert_collider_for_shape);
-    use renzora_editor_framework::{AppEditorExt, ComponentIconEntry, EntityPreset};
+    use renzora_editor_framework::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
        .register_inspector(collision_shape_entry())

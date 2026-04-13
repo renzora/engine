@@ -1,6 +1,5 @@
 use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
 use renzora_hanabi::node_graph::*;
-use renzora_theme::Theme;
 use renzora_ui::widgets::node_graph::{
     node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
     PinDef, PinDirection, PinShape,

@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! Node Graph Particle Editor Panel — Niagara-style visual node editor.
 
 use std::cell::RefCell;

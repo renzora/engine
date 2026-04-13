@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP file — many helpers staged for future panel layouts.
+
 //! Foliage painting panel — type palette, brush tools, settings.
 
 use std::sync::RwLock;
@@ -9,7 +11,7 @@ use egui_phosphor::regular::{TREE, PAINT_BRUSH, ERASER, PLUS, TRASH};
 use renzora_theme::ThemeManager;
 use renzora_editor_framework::EditorPanel;
 use renzora_terrain::foliage::{FoliageConfig, FoliageDensityMap, FoliageType};
-use renzora_terrain::data::{TerrainChunkData, TerrainData};
+use renzora_terrain::data::TerrainChunkData;
 use renzora_editor_framework::EditorCommands;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliagePaintSettings};

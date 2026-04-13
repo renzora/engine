@@ -5,7 +5,6 @@ edition = "2021"
 
 [lib]
 crate-type = ["dylib"]
-description = "Export overlay for packaging Renzora projects"
 
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }

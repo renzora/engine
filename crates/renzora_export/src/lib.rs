@@ -46,7 +46,7 @@ struct ExportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'s
 #[cfg(not(target_arch = "wasm32"))]
 fn export_overlay_system(world: &mut World) {
     use bevy::ecs::system::SystemState;
-    use bevy_egui::EguiContexts;
+    
 
     if !world.contains_resource::<ExportEguiState>() {
         let s = ExportEguiState(SystemState::new(world));

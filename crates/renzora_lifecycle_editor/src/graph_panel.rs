@@ -1,3 +1,5 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
 //! Lifecycle Graph Panel — the main editor panel with toolbar + node graph canvas.
 
 use std::cell::RefCell;
@@ -591,7 +593,7 @@ fn render_toolbar(
     ui: &mut egui::Ui,
     graph: &mut LifecycleGraph,
     state: &mut GraphEditorState,
-    cmds: &EditorCommands,
+    _cmds: &EditorCommands,
     theme: &Theme,
     world: &World,
 ) -> bool {

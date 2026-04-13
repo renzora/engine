@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Skeleton gizmo — draws bone hierarchy for entities with AnimatorComponent.
 //!
 //! When the selected entity has an `AnimatorComponent` with an initialized

@@ -1,3 +1,5 @@
+#![allow(unreachable_patterns)]
+
 //! Blueprint graph interpreter.
 //!
 //! Walks the graph starting from event nodes, evaluates data pins,

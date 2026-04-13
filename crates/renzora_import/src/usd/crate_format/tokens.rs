@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC token table parser.
 //!
 //! The TOKENS section contains all unique strings used in the file

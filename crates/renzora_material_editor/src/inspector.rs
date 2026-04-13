@@ -2,7 +2,7 @@
 //! and editable pin values (constants, colors, sliders).
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText, Slider};
+use bevy_egui::egui::{self, RichText};
 use renzora_editor_framework::{
     collapsible_section, inline_property, empty_state,
     EditorCommands, EditorPanel, PanelLocation,

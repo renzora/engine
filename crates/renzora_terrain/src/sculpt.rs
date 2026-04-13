@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 //! Terrain sculpt brush algorithms — 16 brush types with noise utilities.
 //!
 //! Pure data operations on heightmaps. No systems here — those live in the editor crate.

@@ -1,3 +1,5 @@
+#![allow(dead_code)] // USD Crate format reader — partial implementation, helpers staged.
+
 //! USDC field and fieldset parsing.
 //!
 //! FIELDS section:

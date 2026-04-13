@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables)]
+
 //! Packing: create `.rpak` archives from a project directory.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};

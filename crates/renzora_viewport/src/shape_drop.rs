@@ -11,7 +11,6 @@ use bevy_egui::egui;
 
 use renzora::core::{EditorCamera, ShapeRegistry};
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
-use renzora_editor_framework::EditorSelection;
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
 };

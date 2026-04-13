@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Virtual filesystem — transparently reads from `.rpak` or disk.
 //!
 //! At startup the runtime checks:

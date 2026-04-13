@@ -10,7 +10,6 @@ pub use bevy_gauge;
 pub use bevy_gauge::prelude::*;
 
 use bevy::prelude::*;
-use bevy_gauge::prelude::InstantExt;
 
 mod script_extension;
 

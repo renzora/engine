@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
-use crate::edit_mesh::{EditMesh, EdgeId, Face, FaceId, Vertex, VertexId};
+use crate::edit_mesh::{EditMesh, EdgeId, Face, FaceId, VertexId};
 use crate::selection::{MeshSelection, SelectMode};
 
 /// Output of an extrude op. The caller uses these to:

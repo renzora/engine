@@ -1,3 +1,5 @@
+#![allow(unused_variables, unused_assignments, dead_code)]
+
 use bevy::prelude::*;
 use std::path::PathBuf;
 

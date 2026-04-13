@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use bevy::prelude::*;
 use avian3d::prelude::*;
 use serde::{Deserialize, Serialize};

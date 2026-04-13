@@ -1,3 +1,7 @@
+#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
+
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Command Palette — fuzzy-searchable modal listing every registered tool
 //! and shortcut. Press `Ctrl+P` to open, type to filter, arrow keys to
 //! navigate, Enter to execute, Escape to dismiss.

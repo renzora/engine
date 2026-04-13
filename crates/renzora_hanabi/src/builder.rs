@@ -11,7 +11,7 @@ use crate::data::{
     SimulationSpace as OurSimulationSpace,
     SimulationCondition as OurSimulationCondition,
     ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
-    MotionIntegrationMode, KillZone, OrbitSettings,
+    MotionIntegrationMode, KillZone,
 };
 
 fn map_dimension(dim: OurShapeDimension) -> ShapeDimension {

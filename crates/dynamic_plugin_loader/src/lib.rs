@@ -34,6 +34,12 @@ mod platform {
     use std::ffi::OsStr;
     use libloading::Library;
 
+    // `*mut dyn Plugin` is a fat pointer (data + vtable). Passing it across
+    // an FFI boundary is technically not C-ABI-safe, but Renzora's plugin
+    // loader and the `add!` macro both produce/consume the same fat pointer
+    // shape from Rust code compiled against the same bevy version, so the
+    // ABI mismatch the compiler warns about can't actually occur in practice.
+    #[allow(improper_ctypes_definitions)]
     type CreatePluginFn = extern "C" fn() -> *mut dyn Plugin;
     type ScopePluginFn = extern "C" fn() -> u8;
     type BevyHashFn = extern "C" fn() -> [u64; 2];

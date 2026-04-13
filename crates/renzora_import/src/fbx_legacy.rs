@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Legacy FBX parser kept for reference after ufbx swap.
+
 //! FBX binary parser for legacy versions (< 7400).
 //!
 //! The fbxcel library only supports FBX 7.4+. This module handles older binary

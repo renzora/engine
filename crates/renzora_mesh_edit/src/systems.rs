@@ -1,3 +1,5 @@
+#![allow(unused_mut, dead_code, unused_variables, unused_assignments)]
+
 //! Edit-mode lifecycle, picking, grab translation, and bake-to-asset.
 
 use bevy::prelude::*;

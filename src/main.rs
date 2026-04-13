@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use bevy::prelude::*;
 use renzora_app::{renzora_shared, init_app, add_default_rendering, add_engine_plugins};
 

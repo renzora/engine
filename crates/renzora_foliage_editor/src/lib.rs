@@ -4,7 +4,7 @@ mod panel;
 pub mod systems;
 
 use bevy::prelude::*;
-use renzora_editor_framework::{ActiveTool, AppEditorExt};
+use renzora_editor_framework::ActiveTool;
 use renzora_terrain::foliage::{FoliageDensityMap, FoliagePaintSettings};
 use renzora_terrain::data::TerrainChunkData;
 

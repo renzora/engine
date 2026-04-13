@@ -5,7 +5,6 @@ use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{EditorPanel, PanelLocation};
-use renzora_network::NetworkStatus;
 use renzora_theme::ThemeManager;
 
 pub struct LifecycleSettingsPanel;

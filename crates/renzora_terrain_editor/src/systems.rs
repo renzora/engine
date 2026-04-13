@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP file — many helpers staged for future panel layouts.
+
 //! Terrain sculpting & painting systems — hover detection, brush application, gizmo rendering.
 
 use bevy::prelude::*;
@@ -576,7 +578,7 @@ pub fn terrain_paint_hover_system(
 
     for (hit_entity, hit) in hits.iter() {
         // Check if this entity is a terrain chunk
-        if let Some((_, chunk_data, chunk_of, chunk_transform)) =
+        if let Some((_, _chunk_data, chunk_of, chunk_transform)) =
             chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity)
         {
             let terrain_entity = chunk_of.0;
@@ -624,7 +626,7 @@ pub fn terrain_paint_system(
     paint_state: Res<SurfacePaintState>,
     paint_settings: Res<SurfacePaintSettings>,
     time: Res<Time>,
-    terrain_query: Query<(&TerrainData, &GlobalTransform)>,
+    _terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(
         &mut PaintableSurfaceData,
         &TerrainChunkOf,
@@ -669,7 +671,7 @@ pub fn terrain_paint_system(
     let dt = time.delta_secs();
 
     // Get the chunk's surface data
-    let Ok((mut surface, chunk_of, splatmap_active)) = chunk_query.get_mut(chunk_entity) else {
+    let Ok((mut surface, _chunk_of, splatmap_active)) = chunk_query.get_mut(chunk_entity) else {
         return;
     };
 
@@ -694,7 +696,7 @@ pub fn terrain_paint_activate_system(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
-    settings: Res<TerrainSettings>,
+    _settings: Res<TerrainSettings>,
     chunk_query: Query<
         (Entity, &TerrainChunkData, &TerrainChunkOf),
         Without<SplatmapActive>,
@@ -702,7 +704,7 @@ pub fn terrain_paint_activate_system(
     surface_query: Query<&PaintableSurfaceData>,
     layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
 ) {
-    for (chunk_entity, _chunk_data, chunk_of) in chunk_query.iter() {
+    for (chunk_entity, _chunk_data, _chunk_of) in chunk_query.iter() {
         // Check if parent terrain has PaintableSurfaceData, or add one
         // For simplicity, add PaintableSurfaceData to each chunk that lacks it
         if let Ok(surface) = surface_query.get(chunk_entity) {
@@ -947,7 +949,7 @@ pub fn terrain_undo_redo_system(
                 chunk_snapshots: Vec::new(),
                 splatmap_snapshots: Vec::new(),
             };
-            for mut chunk in chunk_query.iter_mut() {
+            for chunk in chunk_query.iter_mut() {
                 redo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.heights.clone()));
             }
             for (entity, surface) in surface_query.iter() {
@@ -965,7 +967,7 @@ pub fn terrain_undo_redo_system(
                 chunk_snapshots: Vec::new(),
                 splatmap_snapshots: Vec::new(),
             };
-            for mut chunk in chunk_query.iter_mut() {
+            for chunk in chunk_query.iter_mut() {
                 undo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.heights.clone()));
             }
             for (entity, surface) in surface_query.iter() {
@@ -1012,7 +1014,7 @@ pub fn terrain_foliage_scatter_system(
     foliage_query: Query<(Entity, &TerrainFoliageConfig)>,
     existing_batches: Query<(Entity, &FoliageBatch)>,
     asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    _meshes: ResMut<Assets<Mesh>>,
 ) {
     // Only process if there are foliage configs
     if foliage_query.is_empty() {
@@ -1032,7 +1034,7 @@ pub fn terrain_foliage_scatter_system(
 
         let mesh_handle: Handle<Mesh> = asset_server.load(&config.mesh_path);
 
-        for (chunk_entity, chunk_data, chunk_of, chunk_transform, surface) in chunk_query.iter() {
+        for (_chunk_entity, chunk_data, chunk_of, chunk_transform, surface) in chunk_query.iter() {
             let Ok((_, terrain_data)) = terrain_query.get(chunk_of.0) else { continue };
 
             // Check if this chunk's splatmap is dirty or batch doesn't exist

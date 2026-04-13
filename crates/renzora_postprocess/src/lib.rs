@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 //! Unified post-process pipeline that supports multiple simultaneous effects.
 //!
 //! Instead of adding a separate render graph node per effect, all effects are
@@ -17,10 +19,9 @@ use bevy::render::{
         ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
         UniformComponentPlugin,
     },
-    render_asset::RenderAssets,
     render_graph::{
         InternedRenderLabel, InternedRenderSubGraph, NodeRunError, RenderGraphContext,
-        RenderGraphError, RenderGraphExt, RenderLabel, RenderSubGraph, ViewNode, ViewNodeRunner,
+        RenderGraphExt, RenderLabel, RenderSubGraph, ViewNode, ViewNodeRunner,
     },
     render_resource::{
         binding_types::{sampler, texture_2d, uniform_buffer},
@@ -32,7 +33,6 @@ use bevy::render::{
         TextureSampleType,
     },
     renderer::{RenderContext, RenderDevice},
-    texture::{FallbackImage, GpuImage},
     view::ViewTarget,
     RenderApp, RenderStartup,
 };

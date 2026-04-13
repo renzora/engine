@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public surface area kept for upcoming features.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
