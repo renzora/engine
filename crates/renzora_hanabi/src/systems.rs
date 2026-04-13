@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::builder::build_complete_effect;
 use crate::data::*;
-use renzora_core::CurrentProject;
+use renzora::CurrentProject;
 
 /// Resolve an effect definition from its source.
 fn resolve_effect_definition(source: &EffectSource, project: Option<&CurrentProject>) -> HanabiEffectDefinition {

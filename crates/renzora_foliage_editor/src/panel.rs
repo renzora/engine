@@ -3,14 +3,14 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular::{TREE, PAINT_BRUSH, ERASER, PLUS, TRASH};
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular::{TREE, PAINT_BRUSH, ERASER, PLUS, TRASH};
 
-use renzora::theme::ThemeManager;
-use renzora::editor::EditorPanel;
+use renzora_theme::ThemeManager;
+use renzora_editor_framework::EditorPanel;
 use renzora_terrain::foliage::{FoliageConfig, FoliageDensityMap, FoliageType};
 use renzora_terrain::data::{TerrainChunkData, TerrainData};
-use renzora::editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliagePaintSettings};
 use crate::systems::FoliageToolState;
@@ -56,8 +56,8 @@ impl EditorPanel for FoliagePanel {
         Some(TREE)
     }
 
-    fn default_location(&self) -> renzora::editor::PanelLocation {
-        renzora::editor::PanelLocation::Left
+    fn default_location(&self) -> renzora_editor_framework::PanelLocation {
+        renzora_editor_framework::PanelLocation::Left
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -247,7 +247,7 @@ fn collapsible(
     color: egui::Color32,
 ) -> bool {
     let resp = ui.horizontal(|ui| {
-        let arrow = if *open { renzora::egui_phosphor::regular::CARET_DOWN } else { renzora::egui_phosphor::regular::CARET_RIGHT };
+        let arrow = if *open { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
         let btn = ui.button(RichText::new(arrow).color(color).size(12.0));
         ui.label(RichText::new(label).color(color).size(12.0).strong());
         btn.clicked()

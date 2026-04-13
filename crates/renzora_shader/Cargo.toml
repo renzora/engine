@@ -11,4 +11,4 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 naga = { version = "27", features = ["wgsl-in", "wgsl-out", "glsl-in"] }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }

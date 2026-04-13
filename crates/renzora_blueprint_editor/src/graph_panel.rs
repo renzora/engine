@@ -3,14 +3,14 @@
 use std::cell::RefCell;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular::{
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular::{
     PLUS, CROSSHAIR, MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
     FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
 };
 
-use renzora::editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_theme::ThemeManager;
 use renzora_blueprint::BlueprintGraph;
 
 use crate::BlueprintEditorState;
@@ -183,7 +183,7 @@ fn render_toolbar(
     entity_name: &str,
     has_blueprint: bool,
     entity: Entity,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
     project_path: &Option<std::path::PathBuf>,
 ) -> bool {
     let mut modified = false;

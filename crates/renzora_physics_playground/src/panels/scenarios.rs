@@ -1,7 +1,7 @@
 //! Scenario Presets panel — one-click spawning of classic physics test scenes
 
-use renzora::bevy_egui::egui::{self, CursorIcon, RichText, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, CursorIcon, RichText, Vec2};
+use renzora_theme::Theme;
 
 use crate::state::{ScenarioCommand, ScenarioType, ScenariosState};
 

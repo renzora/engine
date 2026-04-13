@@ -3,12 +3,12 @@
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui;
+use egui_phosphor::regular;
 use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_rpak::{pack_project_with_progress, pack_project_filtered, RpakPacker, SERVER_EXTENSIONS};
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::templates::{Platform, TemplateManager};
 

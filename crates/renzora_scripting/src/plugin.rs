@@ -75,7 +75,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
             .init_resource::<CharacterCommandQueue>()
-            .init_resource::<renzora_core::TransformWriteQueue>()
+            .init_resource::<renzora::TransformWriteQueue>()
             .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
@@ -146,7 +146,7 @@ impl Plugin for ScriptingPlugin {
 
 /// Reset all script runtime states when the editor sends `ResetScriptStates`.
 fn handle_reset_script_states(
-    _trigger: On<renzora_core::ResetScriptStates>,
+    _trigger: On<renzora::ResetScriptStates>,
     mut query: Query<&mut ScriptComponent>,
 ) {
     for mut sc in &mut query {
@@ -162,7 +162,7 @@ fn handle_reset_script_states(
 /// In editor: only when PlayModeState says scripts are running.
 /// In standalone runtime (no PlayModeState): always run.
 fn scripts_should_run(
-    play_mode: Option<Res<renzora_core::PlayModeState>>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
 ) -> bool {
     match play_mode {
         Some(pm) => pm.is_scripts_running(),
@@ -218,7 +218,7 @@ fn check_script_hot_reload(
     if !reload_events.reloaded.is_empty() {
         let names = reload_events.reloaded.clone();
         commands.queue(move |world: &mut World| {
-            world.trigger(renzora_core::ScriptsReloaded { names });
+            world.trigger(renzora::ScriptsReloaded { names });
         });
     }
 }
@@ -229,7 +229,7 @@ struct ScriptsFolderSynced(Option<PathBuf>);
 
 /// System that sets the scripts folder on the engine when a project is loaded.
 fn sync_scripts_folder(
-    project: Option<Res<renzora_core::CurrentProject>>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut engine: ResMut<ScriptEngine>,
     mut synced: Local<Option<PathBuf>>,
 ) {

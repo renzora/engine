@@ -34,8 +34,8 @@ impl Plugin for InputPlugin {
 
 /// Try to load `input_map.ron` from the project directory on startup.
 fn load_input_map_on_startup(
-    project: Option<Res<renzora_core::CurrentProject>>,
-    vfs: Option<Res<renzora_core::VirtualFileReader>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    vfs: Option<Res<renzora::VirtualFileReader>>,
     mut input_map: ResMut<InputMap>,
 ) {
     // Try VFS first (rpak archive)
@@ -83,7 +83,7 @@ fn load_input_map_on_startup(
 
 /// Save the input map to the project directory.
 /// Called by the editor when the input map is modified.
-pub fn save_input_map(input_map: &InputMap, project: &renzora_core::CurrentProject) -> Result<(), String> {
+pub fn save_input_map(input_map: &InputMap, project: &renzora::CurrentProject) -> Result<(), String> {
     let path = project.resolve_path("input_map.ron");
     let content = ron::ser::to_string_pretty(input_map, ron::ser::PrettyConfig::default())
         .map_err(|e| format!("Failed to serialize input map: {}", e))?;

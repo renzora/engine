@@ -9,12 +9,12 @@ pub mod state;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
 use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
-use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_lighting::Sun;
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use state::*;
 
@@ -40,7 +40,7 @@ impl Default for LevelPresetsBridge {
     }
 }
 
-fn get_theme(world: &World) -> renzora::theme::Theme {
+fn get_theme(world: &World) -> renzora_theme::Theme {
     world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.active_theme.clone())
@@ -68,7 +68,7 @@ impl LevelPresetsPanel {
 impl EditorPanel for LevelPresetsPanel {
     fn id(&self) -> &str { "level_presets" }
     fn title(&self) -> &str { "Level Presets" }
-    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::MAP_TRIFOLD) }
+    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MAP_TRIFOLD) }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -166,7 +166,7 @@ impl Plugin for LevelPresetsPlugin {
         let arc = bridge.pending.clone();
         app.insert_resource(bridge);
 
-        use renzora::editor::SplashState;
+        use renzora_editor_framework::SplashState;
         app.add_systems(
             Update,
             (sync_bridge, process_level_commands).run_if(in_state(SplashState::Editor)),
@@ -954,8 +954,8 @@ fn spawn_terrain(
 // ── Self-registered spawn presets ──────────────────────────────────────────
 
 fn register_lighting_presets(app: &mut App) {
-    use renzora::editor::{AppEditorExt, EntityPreset};
-    use renzora::egui_phosphor::regular;
+    use renzora_editor_framework::{AppEditorExt, EntityPreset};
+    use egui_phosphor::regular;
 
     app.register_entity_preset(EntityPreset {
         id: "world_environment",

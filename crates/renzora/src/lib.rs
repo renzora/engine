@@ -1,99 +1,37 @@
-//! Renzora Plugin SDK — the single dependency for all plugin development.
+//! Renzora — the contracts crate. Types, events, components, resources.
+//!
+//! `renzora` is the foundation every other crate in the engine depends on.
+//! It has zero dependencies of its own beyond Bevy + serde, so it cannot
+//! introduce circular dependencies and any crate is free to swap any other
+//! crate as long as both honor the contracts defined here.
+//!
+//! Plugins that want extra functionality (post-process effects, editor
+//! framework, theming, etc.) depend on those crates explicitly:
 //!
 //! ```toml
 //! [dependencies]
 //! bevy = { workspace = true }
-//! renzora = { path = "..." }
-//! ```
-//!
-//! ```rust
-//! use bevy::prelude::*;
-//! use renzora::prelude::*;
-//!
-//! renzora::add!(MyPlugin);
-//!
-//! impl Plugin for MyPlugin {
-//!     fn build(&self, app: &mut App) {
-//!         app.register_panel(MyPanel);
-//!         app.add_systems(Update, my_system);
-//!     }
-//! }
+//! renzora = { path = "..." }                 # types + events
+//! renzora_editor_framework = { path = "..." } # editor panels, inspector
+//! renzora_postprocess = { path = "..." }      # post-process effect derive
 //! ```
 
-// ── Plugin macro ────────────────────────────────────────────────────────
-pub use dynamic_plugin_meta::add;
+// Re-export bevy so the `add!` macro can reach it as `$crate::bevy::...`
+// and plugin authors can write `use renzora::bevy::prelude::*;` to skip
+// a separate workspace dep if they want.
+pub use bevy;
 
-// ── Proc macros ─────────────────────────────────────────────────────────
-pub use renzora_macros::{Inspectable, post_process};
+// ── Core types ───────────────────────────────────────────────────────────
+// Everything that used to live in `renzora_core`. Re-exported at the crate
+// root so callers write `renzora::Foo` instead of `renzora::core::Foo`.
+pub mod core;
+pub use core::*;
 
-// ── SDK helpers (run-conditions, ergonomic wrappers) ───────────────────
-pub mod sdk;
-
-// ── Core types (always available) ───────────────────────────────────────
-pub use renzora_core as core;
-pub use renzora_postprocess as postprocess;
-pub use renzora_theme as theme;
-
-// ── Editor framework (only with editor feature) ────────────────────────
-#[cfg(feature = "editor")]
-pub use renzora_editor_framework as editor;
-#[cfg(feature = "editor")]
-pub use renzora_undo as undo;
-#[cfg(feature = "editor")]
-pub use bevy_egui;
-#[cfg(feature = "editor")]
-pub use egui_phosphor;
-
-// ── Prelude ─────────────────────────────────────────────────────────────
-
-pub mod prelude {
-    // Core types
-    pub use renzora_core::{
-        CurrentProject, DefaultCamera, EditorCamera, EditorLocked, EntityTag,
-        HideInHierarchy, MeshColor, MeshPrimitive, PlayModeState, PlayState,
-        SceneCamera, ViewportRenderTarget, ShapeRegistry,
-        // Decoupling events
-        PausePhysics, UnpausePhysics, ResetScriptStates, SaveCurrentScene,
-        ScriptAction, ScriptActionValue, ScriptsReloaded,
-        CharacterCommand, CharacterCommandQueue,
-    };
-
-    // Plugin macro
-    pub use dynamic_plugin_meta::add;
-
-    // Proc macros
-    pub use renzora_macros::{Inspectable, post_process};
-
-    // Postprocess
-    pub use renzora_postprocess::PostProcessEffect;
-
-    // Editor framework (panel traits, registries, commands)
-    #[cfg(feature = "editor")]
-    pub use renzora_editor_framework::{
-        // Extension trait
-        AppEditorExt, InspectableComponent,
-        // Panel system
-        EditorPanel, PanelLocation,
-        // Status bar
-        StatusBarItem, StatusBarAlignment, StatusBarRegistry,
-        // Inspector
-        InspectorEntry, InspectorRegistry, FieldDef, FieldType, FieldValue,
-        // Spawn & icons
-        EntityPreset, SpawnRegistry, ComponentIconEntry, ComponentIconRegistry,
-        // Selection & commands
-        EditorCommands, EditorSelection,
-        // Toolbar
-        ToolEntry, ToolSection, ToolbarRegistry,
-        // Mode / tool header drawers
-        ModeOptionsDrawer, ViewportModeOptionsRegistry,
-        ToolOptionsDrawer, ToolOptionsRegistry,
-        // Shortcuts
-        ShortcutEntry, ShortcutRegistry,
-        // Settings
-        EditorSettings,
-        // State
-        SplashState,
-        // UI re-exports (from renzora_ui)
-        DockingState,
-    };
-}
+// ── Dynamic plugin FFI macro ────────────────────────────────────────────
+// `renzora::add!(MyPlugin)` exports the FFI symbols a Renzora editor /
+// runtime loader needs to instantiate the plugin from a `.dll` / `.so` /
+// `.dylib`. Originally lived in a separate `dynamic_plugin_meta` crate;
+// folded in here so plugin authors only ever need `bevy` + `renzora`.
+mod plugin_meta;
+pub use plugin_meta::PluginScope;
+// `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.

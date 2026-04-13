@@ -17,7 +17,7 @@ impl Plugin for ImportPlugin {
         info!("[editor] ImportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use renzora::bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
             if !_app.is_plugin_added::<EguiPlugin>() {
                 _app.add_plugins(EguiPlugin::default());
@@ -31,7 +31,7 @@ impl Plugin for ImportPlugin {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
-struct ImportEguiState(bevy::ecs::system::SystemState<renzora::bevy_egui::EguiContexts<'static, 'static>>);
+struct ImportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
 
 #[cfg(not(target_arch = "wasm32"))]
 fn import_overlay_system(world: &mut World) {
@@ -111,27 +111,27 @@ fn import_overlay_system(world: &mut World) {
 
         if has_3d_hover && !world.resource::<overlay::ImportOverlayState>().visible {
             let screen = ctx.input(|i| i.viewport_rect());
-            let painter = ctx.layer_painter(renzora::bevy_egui::egui::LayerId::new(
-                renzora::bevy_egui::egui::Order::Foreground,
-                renzora::bevy_egui::egui::Id::new("import_drop_hint"),
+            let painter = ctx.layer_painter(bevy_egui::egui::LayerId::new(
+                bevy_egui::egui::Order::Foreground,
+                bevy_egui::egui::Id::new("import_drop_hint"),
             ));
             painter.rect_filled(
                 screen,
                 0.0,
-                renzora::bevy_egui::egui::Color32::from_rgba_premultiplied(30, 80, 200, 40),
+                bevy_egui::egui::Color32::from_rgba_premultiplied(30, 80, 200, 40),
             );
             painter.rect_stroke(
                 screen.shrink(4.0),
                 8.0,
-                renzora::bevy_egui::egui::Stroke::new(2.0, renzora::bevy_egui::egui::Color32::from_rgb(80, 140, 255)),
-                renzora::bevy_egui::egui::StrokeKind::Outside,
+                bevy_egui::egui::Stroke::new(2.0, bevy_egui::egui::Color32::from_rgb(80, 140, 255)),
+                bevy_egui::egui::StrokeKind::Outside,
             );
             painter.text(
                 screen.center(),
-                renzora::bevy_egui::egui::Align2::CENTER_CENTER,
+                bevy_egui::egui::Align2::CENTER_CENTER,
                 "Drop 3D model to import",
-                renzora::bevy_egui::egui::FontId::proportional(20.0),
-                renzora::bevy_egui::egui::Color32::from_rgb(180, 210, 255),
+                bevy_egui::egui::FontId::proportional(20.0),
+                bevy_egui::egui::Color32::from_rgb(180, 210, 255),
             );
         }
     }

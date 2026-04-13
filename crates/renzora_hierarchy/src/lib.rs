@@ -6,15 +6,15 @@ mod tree;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
-use renzora::egui_phosphor::regular;
-use renzora::editor::{
+use bevy_egui::egui;
+use egui_phosphor::regular;
+use renzora_editor_framework::{
     search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection, EntityPreset,
     HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
 };
 use renzora::core::{MeshPrimitive, MeshColor, ShapeRegistry};
-use renzora::theme::ThemeManager;
-use renzora::undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
+use renzora_theme::ThemeManager;
+use renzora_undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 
 use state::{build_entity_tree, filter_tree, HierarchyState};
 
@@ -169,7 +169,7 @@ impl EditorPanel for HierarchyPanel {
                     {
                         let preset_id = id.clone();
                         commands.push(move |world: &mut World| {
-                            undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
+                            renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
                                 entity: Entity::PLACEHOLDER,
                                 kind: SpawnEntityKind::Preset { id: preset_id },
                             }));
@@ -182,7 +182,7 @@ impl EditorPanel for HierarchyPanel {
                             let shape_id = entry.id.to_string();
                             let color = entry.default_color;
                             commands.push(move |world: &mut World| {
-                                undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+                                renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
                                     entity: Entity::PLACEHOLDER,
                                     shape_id, name, position: Vec3::ZERO, color,
                                 }));
@@ -198,7 +198,7 @@ impl EditorPanel for HierarchyPanel {
                                 let display_name = entry.display_name.to_string();
                                 let type_id = entry.type_id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
+                                    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
                                         entity: Entity::PLACEHOLDER,
                                         kind: SpawnEntityKind::Component { type_id, display_name },
                                     }));
@@ -263,7 +263,7 @@ impl EditorPanel for HierarchyPanel {
             if let Some((target, zone)) = state.drop_target.take() {
                 let drag_entities = std::mem::take(&mut state.drag_entities);
                 commands.push(move |world: &mut World| {
-                    use renzora::editor::TreeDropZone;
+                    use renzora_editor_framework::TreeDropZone;
                     // Capture old parents + all root orders before mutation.
                     let old_parents: Vec<(Entity, Option<Entity>)> = drag_entities.iter()
                         .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
@@ -397,7 +397,7 @@ impl EditorPanel for HierarchyPanel {
                         }
                     }
                     if !cmds.is_empty() {
-                        undo::record(world, UndoContext::Scene, Box::new(CompoundCmd {
+                        renzora_undo::record(world, UndoContext::Scene, Box::new(CompoundCmd {
                             label: "Reorder".into(), cmds,
                         }));
                     }
@@ -415,9 +415,9 @@ impl EditorPanel for HierarchyPanel {
                     let target_name = find_node_name(&nodes, target_entity)
                         .unwrap_or_else(|| format!("{:?}", target_entity));
                     match zone {
-                        renzora::editor::TreeDropZone::Before => format!("Move above {}", target_name),
-                        renzora::editor::TreeDropZone::After => format!("Move below {}", target_name),
-                        renzora::editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
+                        renzora_editor_framework::TreeDropZone::Before => format!("Move above {}", target_name),
+                        renzora_editor_framework::TreeDropZone::After => format!("Move below {}", target_name),
+                        renzora_editor_framework::TreeDropZone::AsChild => format!("Move into {}", target_name),
                     }
                 } else {
                     let count = state.drag_entities.len();
@@ -461,7 +461,7 @@ impl Plugin for HierarchyPanelPlugin {
         app.register_panel(HierarchyPanel::default());
 
         // Spawn presets are now self-registered by their owning crates:
-        // - Bevy types (Empty, lights, camera): renzora::editor::bevy_inspectors
+        // - Bevy types (Empty, lights, camera): renzora_editor_framework::bevy_inspectors
         // - Physics: renzora_physics::inspector (editor feature)
         // - Terrain: renzora_terrain (editor feature)
         // - World Environment/Sun: renzora_level_presets

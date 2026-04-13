@@ -60,7 +60,7 @@ impl Plugin for NetworkPlugin {
 
         // Shared status resource (read by editor panels, scripts, blueprints)
         app.init_resource::<NetworkStatus>();
-        app.init_resource::<renzora_core::NetworkBridge>();
+        app.init_resource::<renzora::NetworkBridge>();
 
         // Register networked component types for scene deny list
         app.register_type::<components::Networked>();
@@ -71,7 +71,7 @@ impl Plugin for NetworkPlugin {
             // Lightyear client infrastructure
             let tick_rate = app
                 .world()
-                .get_resource::<renzora_core::CurrentProject>()
+                .get_resource::<renzora::CurrentProject>()
                 .and_then(|p| p.config.network.as_ref())
                 .map(|n| n.tick_rate)
                 .unwrap_or(64);
@@ -153,7 +153,7 @@ fn process_pending_connect(world: &mut World) {
             LocalAddr(local_addr),
             netcode_client,
             Name::new("NetworkClient"),
-            renzora_core::HideInHierarchy,
+            renzora::HideInHierarchy,
         ))
         .id();
 
@@ -193,7 +193,7 @@ fn process_pending_disconnect(world: &mut World) {
 #[cfg(not(target_arch = "wasm32"))]
 fn sync_network_bridge(
     status: Res<NetworkStatus>,
-    mut bridge: ResMut<renzora_core::NetworkBridge>,
+    mut bridge: ResMut<renzora::NetworkBridge>,
 ) {
     bridge.is_server = status.is_server;
     bridge.is_connected = status.is_connected();

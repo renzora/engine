@@ -2,11 +2,16 @@
 name = "renzora_macros"
 version = "0.1.0"
 edition = "2021"
+description = "Proc-macros for Renzora (Inspectable derive, post_process attribute)."
 
 [lib]
 proc-macro = true
 
 [dependencies]
+# Proc-macro crates only need the syn/quote toolchain — paths emitted by
+# the macros (e.g. `renzora_editor_framework::FieldDef`) are resolved in
+# the user crate, so we don't depend on those crates here. That avoids a
+# cycle with editor_framework, which itself uses these macros.
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"

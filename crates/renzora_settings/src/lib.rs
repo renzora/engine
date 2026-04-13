@@ -5,18 +5,18 @@
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
-use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Stroke, Vec2};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
-use renzora::egui_phosphor::regular::{
+use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP,
     FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
     WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER,
 };
 
-use renzora::editor::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
+use renzora_editor_framework::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 use renzora_keybindings::{bindable_keys, EditorAction, KeyBinding, KeyBindings};
-use renzora::theme::{Theme, ThemeManager};
+use renzora_theme::{Theme, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
 
 const LABEL_WIDTH: f32 = 100.0;
@@ -32,7 +32,7 @@ impl Plugin for SettingsPlugin {
         app.add_systems(
             EguiPrimaryContextPass,
             settings_overlay_system
-                .run_if(in_state(renzora::editor::SplashState::Editor)),
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
     }
 }
@@ -82,7 +82,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     // Snapshot plugin shortcut metadata so the Shortcuts tab can display
     // plugin-registered shortcuts alongside built-in ones.
     let plugin_shortcuts: Vec<PluginShortcutRow> = world
-        .get_resource::<renzora::editor::ShortcutRegistry>()
+        .get_resource::<renzora_editor_framework::ShortcutRegistry>()
         .map(|reg| {
             reg.entries()
                 .iter()
@@ -1035,7 +1035,7 @@ fn render_theme_color_section(
     theme: &Theme,
     row_even: Color32,
     row_odd: Color32,
-    colors: &mut [(&str, &mut renzora::theme::ThemeColor)],
+    colors: &mut [(&str, &mut renzora_theme::ThemeColor)],
 ) {
     render_category(ui, icon, label, style, id_source, false, theme, |ui| {
         for (i, (name, color)) in colors.iter_mut().enumerate() {
@@ -1048,7 +1048,7 @@ fn theme_color_row_mut(
     ui: &mut egui::Ui,
     row_index: usize,
     label: &str,
-    color: &mut renzora::theme::ThemeColor,
+    color: &mut renzora_theme::ThemeColor,
     row_even: Color32,
     row_odd: Color32,
 ) {
@@ -1068,7 +1068,7 @@ fn theme_color_row_mut(
                     let [r, g, b, a] = color.0.to_array();
                     let mut srgba = [r, g, b, a];
                     if ui.color_edit_button_srgba_unmultiplied(&mut srgba).changed() {
-                        *color = renzora::theme::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
+                        *color = renzora_theme::ThemeColor::with_alpha(srgba[0], srgba[1], srgba[2], srgba[3]);
                     }
                 });
             });

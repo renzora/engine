@@ -30,7 +30,7 @@ impl Default for PcssSettings {
 fn sync_pcss_camera(
     mut commands: Commands,
     sources: Query<(Entity, Ref<PcssSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -60,7 +60,7 @@ fn sync_pcss_camera(
 
 fn sync_pcss_lights(
     sources: Query<&PcssSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut point_lights: Query<&mut PointLight>,
     mut spot_lights: Query<&mut SpotLight>,
@@ -95,7 +95,7 @@ fn sync_pcss_lights(
 fn cleanup_pcss(
     mut commands: Commands,
     mut removed: RemovedComponents<PcssSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

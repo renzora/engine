@@ -1,11 +1,11 @@
 //! Shader compiler log panel — displays compilation errors and warnings.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, FontFamily, RichText};
-use renzora::egui_phosphor::regular::{CHECK_CIRCLE, WARNING};
+use bevy_egui::egui::{self, FontFamily, RichText};
+use egui_phosphor::regular::{CHECK_CIRCLE, WARNING};
 
-use renzora::editor::{EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
 
@@ -21,7 +21,7 @@ impl EditorPanel for ShaderCompilerLogPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::TERMINAL)
+        Some(egui_phosphor::regular::TERMINAL)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

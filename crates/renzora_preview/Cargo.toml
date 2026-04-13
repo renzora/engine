@@ -11,6 +11,9 @@ crate-type = ["cdylib", "rlib"]
 default = []
 
 [dependencies]
+egui-phosphor = { workspace = true }
+renzora_macros = { path = "../renzora_macros" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { version = "0.18", default-features = false, features = [
     "webgpu",
     "bevy_asset",
@@ -39,7 +42,7 @@ renzora_shader = { path = "../renzora_shader" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_hanabi = { path = "../renzora_hanabi" }
 renzora_animation = { path = "../renzora_animation" }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 
 # WASM bridge
 wasm-bindgen = "0.2.108"

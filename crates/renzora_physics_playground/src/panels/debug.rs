@@ -1,7 +1,7 @@
 //! Physics debug panel
 
-use renzora::bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Stroke, Vec2};
+use renzora_theme::Theme;
 
 use crate::state::{ColliderShapeType, PhysicsDebugState};
 

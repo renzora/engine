@@ -79,7 +79,7 @@ fn scan_script_files_inner(
 }
 
 fn make_relative(abs: std::path::PathBuf, world: &World) -> std::path::PathBuf {
-    if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+    if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
         if let Ok(rel) = abs.strip_prefix(&project.path) {
             return rel.to_path_buf();
         }
@@ -398,7 +398,7 @@ fn script_component_ui(
 
     if show_overlay {
         let available = world
-            .get_resource::<renzora_core::CurrentProject>()
+            .get_resource::<renzora::CurrentProject>()
             .map(|p| scan_script_files(&p.path))
             .unwrap_or_default();
 

@@ -7,11 +7,11 @@
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
 use renzora::core::{EditorCamera, ShapeRegistry};
-use renzora::undo::{self, SpawnShapeCmd, UndoContext};
-use renzora::editor::EditorSelection;
+use renzora_undo::{self, SpawnShapeCmd, UndoContext};
+use renzora_editor_framework::EditorSelection;
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
 };
@@ -45,7 +45,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
                 .unwrap_or(Vec3::ZERO);
             let normal = drag_state.drag_surface_normal;
 
-            if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                 cmds.push(move |world: &mut World| {
                     let state = world.resource_mut::<ShapeDragState>();
                     state.into_inner().pending_drop = Some(PendingShapeDrop {
@@ -57,7 +57,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
             }
         }
         // Clear dragging in both cases (drop or cancel)
-        if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+        if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
             cmds.push(|world: &mut World| {
                 let mut state = world.resource_mut::<ShapeDragState>();
                 state.dragging_shape = None;
@@ -378,7 +378,7 @@ pub fn handle_shape_spawn(world: &mut World) {
     let normal = if drop.normal != Vec3::ZERO { drop.normal } else { Vec3::Y };
     let position = drop.position + normal * 0.5;
 
-    undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
         entity: Entity::PLACEHOLDER,
         shape_id, name, position, color: default_color,
     }));

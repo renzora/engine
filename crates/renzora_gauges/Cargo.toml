@@ -10,7 +10,7 @@ editor = ["dep:renzora_editor_framework", "dep:renzora_theme", "dep:egui-phospho
 [dependencies]
 bevy = { workspace = true }
 bevy_gauge = "0.4"
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 
 # Editor (optional)
 renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }

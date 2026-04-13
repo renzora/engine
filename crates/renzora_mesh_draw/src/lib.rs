@@ -18,10 +18,10 @@ use bevy::prelude::*;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::asset::RenderAssetUsages;
 use bevy::window::PrimaryWindow;
-use renzora::bevy_egui::egui::{self, Color32 as EColor, CursorIcon as ECursor};
+use bevy_egui::egui::{self, Color32 as EColor, CursorIcon as ECursor};
 use renzora::core::EditorCamera;
 use renzora::core::viewport_types::ViewportState;
-use renzora::editor::{
+use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry,
     ToolEntry, ToolSection, ViewportOverlayRegistry,
 };
@@ -390,9 +390,9 @@ fn handle_mouse_input(
                 let current_mode = state.tool_mode;
                 if let Some(cmds) = cmds {
                     cmds.push(move |world: &mut World| {
-                        renzora::undo::execute(
+                        renzora_undo::execute(
                             world,
-                            renzora::undo::UndoContext::Scene,
+                            renzora_undo::UndoContext::Scene,
                             Box::new(SpawnDrawnMeshCmd { recipe, entity: None }),
                         );
                         // Auto-deactivate after committing so the next click
@@ -587,7 +587,7 @@ struct SpawnDrawnMeshCmd {
     entity: Option<Entity>,
 }
 
-impl renzora::undo::UndoCommand for SpawnDrawnMeshCmd {
+impl renzora_undo::UndoCommand for SpawnDrawnMeshCmd {
     fn label(&self) -> &str { "Draw Mesh" }
 
     fn execute(&mut self, world: &mut World) {

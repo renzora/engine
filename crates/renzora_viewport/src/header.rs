@@ -1,12 +1,12 @@
 //! Viewport header bar — render toggles, inline settings, and dropdown menus.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
-use renzora::egui_phosphor::regular::*;
-use renzora::editor::{
+use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
+use egui_phosphor::regular::*;
+use renzora_editor_framework::{
     ActiveTool, EditorCommands, ToolOptionsRegistry, ViewportModeOptionsRegistry,
 };
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::settings::*;
 
@@ -112,7 +112,7 @@ fn render_strip_contents(
     world: &World,
     settings: &ViewportSettings,
     cmds: &EditorCommands,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
     active: Color32,
     inactive: Color32,
     hovered: Color32,
@@ -471,7 +471,7 @@ fn viz_dropdown(
 fn gizmo_dropdown(
     ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_gizmo_drop");
     let resp = dropdown_button_ui(ui, STACK, icon_color, bg_color, hovered_color, caret_color);
@@ -576,7 +576,7 @@ fn view_dropdown(
 fn camera_dropdown(
     ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_camera_drop");
     let resp = dropdown_button_ui(ui, GEAR, icon_color, bg_color, hovered_color, caret_color);
@@ -635,7 +635,7 @@ fn camera_dropdown(
 fn snap_dropdown(
     ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
     icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_snap_drop");
     let any_obj_snap = settings.snap.object_snap_enabled || settings.snap.floor_snap_enabled;

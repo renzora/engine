@@ -1,10 +1,10 @@
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2};
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2};
+use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora::editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
-use renzora::theme::Theme;
-use renzora::undo::{self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, LockToggleCmd, RenameCmd, UndoContext, VisibilityToggleCmd};
+use renzora_editor_framework::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
+use renzora_theme::Theme;
+use renzora_undo::{self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, LockToggleCmd, RenameCmd, UndoContext, VisibilityToggleCmd};
 
 use crate::state::{EntityNode, HierarchyState};
 use crate::LABEL_COLORS;
@@ -66,7 +66,7 @@ fn render_node(
     // Track entity order for range selection
     state.building_entity_order.push(node.entity);
 
-    let result = renzora::editor::tree_row(
+    let result = renzora_editor_framework::tree_row(
         ui,
         &TreeRowConfig {
             stable_id: Some(egui::Id::new(("hierarchy_row", node.entity))),
@@ -124,7 +124,7 @@ fn render_node(
             let entity = node.entity;
             let currently_visible = node.is_visible;
             commands.push(move |world: &mut World| {
-                undo::execute(world, UndoContext::Scene, Box::new(VisibilityToggleCmd {
+                renzora_undo::execute(world, UndoContext::Scene, Box::new(VisibilityToggleCmd {
                     entity, was_visible: currently_visible,
                 }));
             });
@@ -160,7 +160,7 @@ fn render_node(
             let entity = node.entity;
             let currently_locked = node.is_locked;
             commands.push(move |world: &mut World| {
-                undo::execute(world, UndoContext::Scene, Box::new(LockToggleCmd {
+                renzora_undo::execute(world, UndoContext::Scene, Box::new(LockToggleCmd {
                     entity, was_locked: currently_locked,
                 }));
             });
@@ -225,7 +225,7 @@ fn render_node(
                     let old = world.get::<Name>(entity).map(|n| n.as_str().to_string())
                         .unwrap_or_default();
                     if old == new_name { return; }
-                    undo::execute(world, UndoContext::Scene, Box::new(RenameCmd {
+                    renzora_undo::execute(world, UndoContext::Scene, Box::new(RenameCmd {
                         entity, old, new: new_name,
                     }));
                 });
@@ -303,11 +303,11 @@ fn render_node(
                 let edge_zone = 20.0 / 3.0;
 
                 let drop_pos = if relative_y < edge_zone {
-                    renzora::editor::TreeDropZone::Before
+                    renzora_editor_framework::TreeDropZone::Before
                 } else if relative_y > 20.0 - edge_zone {
-                    renzora::editor::TreeDropZone::After
+                    renzora_editor_framework::TreeDropZone::After
                 } else {
-                    renzora::editor::TreeDropZone::AsChild
+                    renzora_editor_framework::TreeDropZone::AsChild
                 };
 
                 state.drop_target = Some((node.entity, drop_pos));
@@ -320,21 +320,21 @@ fn render_node(
                 let accent = theme.semantic.accent.to_color32();
 
                 match drop_pos {
-                    renzora::editor::TreeDropZone::Before => {
+                    renzora_editor_framework::TreeDropZone::Before => {
                         let y = result.rect.min.y + 1.0;
                         fg.line_segment(
                             [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
                             Stroke::new(3.0, accent),
                         );
                     }
-                    renzora::editor::TreeDropZone::After => {
+                    renzora_editor_framework::TreeDropZone::After => {
                         let y = result.rect.max.y - 1.0;
                         fg.line_segment(
                             [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
                             Stroke::new(3.0, accent),
                         );
                     }
-                    renzora::editor::TreeDropZone::AsChild => {
+                    renzora_editor_framework::TreeDropZone::AsChild => {
                         // Border drawn after children (see group_top handling below)
                     }
                 }
@@ -344,7 +344,7 @@ fn render_node(
 
     // Track AsChild group border top
     let is_as_child_target = state.drop_target.as_ref().map_or(false, |(e, z)| {
-        *e == node.entity && *z == renzora::editor::TreeDropZone::AsChild
+        *e == node.entity && *z == renzora_editor_framework::TreeDropZone::AsChild
     });
     let group_top = if is_as_child_target {
         Some(result.rect.min.y)
@@ -444,7 +444,7 @@ fn context_menu(
                 sel.set(Some(entity));
             }
             world.insert_resource(
-                renzora::editor::OpenAddComponentMenuRequest { screen_pos },
+                renzora_editor_framework::OpenAddComponentMenuRequest { screen_pos },
             );
         });
         ui.close();
@@ -519,7 +519,7 @@ fn context_menu(
                 let members: Vec<(Entity, Option<Entity>)> = selected.iter()
                     .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
                     .collect();
-                undo::execute(world, UndoContext::Scene, Box::new(GroupAsChildrenCmd {
+                renzora_undo::execute(world, UndoContext::Scene, Box::new(GroupAsChildrenCmd {
                     parent: Entity::PLACEHOLDER,
                     group_name: "Group".to_string(),
                     members,
@@ -546,7 +546,7 @@ fn context_menu(
             if clear_resp.on_hover_text("Clear").clicked() {
                 let entity = node.entity;
                 commands.push(move |world: &mut World| {
-                    world.entity_mut(entity).remove::<renzora::editor::EntityLabelColor>();
+                    world.entity_mut(entity).remove::<renzora_editor_framework::EntityLabelColor>();
                 });
                 ui.close();
             }
@@ -570,7 +570,7 @@ fn context_menu(
                 if swatch_resp.on_hover_text(name).clicked() {
                     let entity = node.entity;
                     commands.push(move |world: &mut World| {
-                        world.entity_mut(entity).insert(renzora::editor::EntityLabelColor(color));
+                        world.entity_mut(entity).insert(renzora_editor_framework::EntityLabelColor(color));
                     });
                     ui.close();
                 }
@@ -664,7 +664,7 @@ fn context_menu(
             }
             if let Some(sel) = world.get_resource::<EditorSelection>() { sel.clear(); }
             if items.is_empty() { return; }
-            undo::execute(world, UndoContext::Scene, Box::new(DeleteShapesCmd { items }));
+            renzora_undo::execute(world, UndoContext::Scene, Box::new(DeleteShapesCmd { items }));
         });
         ui.close();
     }

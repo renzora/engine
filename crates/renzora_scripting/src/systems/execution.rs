@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_core::EntityTag;
+use renzora::EntityTag;
 
 use crate::command::ScriptCommand;
 use crate::component::ScriptComponent;
@@ -56,8 +56,8 @@ pub struct ScriptLogEntry {
     pub message: String,
 }
 
-// Re-export from renzora_core
-pub use renzora_core::TransformWrite;
+// Re-export from renzora
+pub use renzora::TransformWrite;
 
 /// Exclusive system that executes scripts on all entities with a ScriptComponent.
 ///

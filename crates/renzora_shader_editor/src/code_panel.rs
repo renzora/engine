@@ -1,16 +1,16 @@
 //! Shader code editor panel — syntax-highlighted code editing with multi-language support.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
+use bevy_egui::egui::{self, RichText};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
-use renzora::egui_phosphor::regular::{
+use egui_phosphor::regular::{
     FLOPPY_DISK, LIGHTNING, PLAY, FILE_PLUS, FOLDER_OPEN,
 };
 
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::file::{ShaderFile, ShaderType};
 use renzora_shader::registry::ShaderBackendRegistry;
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
 
@@ -102,7 +102,7 @@ impl EditorPanel for ShaderCodePanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::CODE)
+        Some(egui_phosphor::regular::CODE)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

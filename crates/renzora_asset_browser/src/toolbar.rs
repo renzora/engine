@@ -1,7 +1,7 @@
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular;
-use renzora::editor::icon_button;
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular;
+use renzora_editor_framework::icon_button;
+use renzora_theme::Theme;
 
 use crate::state::{AssetBrowserState, SortDirection, SortMode, ViewMode};
 

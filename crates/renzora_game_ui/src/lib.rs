@@ -217,7 +217,7 @@ impl Plugin for GameUiPlugin {
 /// they stay proportional to the viewport.
 fn update_ui_scale(
     canvases: Query<&UiCanvas>,
-    render_target: Option<Res<renzora_core::ViewportRenderTarget>>,
+    render_target: Option<Res<renzora::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut ui_scale: ResMut<bevy::ui::UiScale>,
@@ -397,7 +397,7 @@ fn ensure_ui_visibility_components(
 #[cfg(feature = "editor")]
 fn sync_ui_canvas_visibility(
     mut commands: Commands,
-    play_mode: Res<renzora_core::PlayModeState>,
+    play_mode: Res<renzora::PlayModeState>,
     mut canvases: Query<
         (
             Entity,
@@ -444,7 +444,7 @@ fn sync_ui_canvas_visibility(
 
 #[cfg(feature = "editor")]
 fn debug_ui_tree(
-    play_mode: Res<renzora_core::PlayModeState>,
+    play_mode: Res<renzora::PlayModeState>,
     canvases: Query<
         (
             Entity,

@@ -67,7 +67,7 @@ fn main() {
         if let Some(ref path) = project_path {
             log::info!("[ENGINE] Opening project: {}", path.display());
             let project_toml = path.join("project.toml");
-            match renzora_shared::renzora_core::open_project(&project_toml) {
+            match renzora_shared::renzora::open_project(&project_toml) {
                 Ok(project) => {
                     log::info!("[ENGINE] Project opened successfully");
                     app.insert_resource(project);
@@ -160,7 +160,7 @@ fn run_splash() {
 
     app.add_systems(
         bevy::app::Update,
-        |project: Option<Res<renzora_shared::renzora_core::CurrentProject>>| {
+        |project: Option<Res<renzora_shared::renzora::CurrentProject>>| {
             if let Some(proj) = project {
                 let exe = std::env::current_exe().expect("Failed to get exe path");
                 let _ = std::process::Command::new(&exe)
@@ -180,7 +180,7 @@ fn run_splash() {
 #[cfg(feature = "server")]
 fn load_server_config() -> renzora_shared::renzora_network::NetworkConfig {
     use renzora_shared::renzora_network;
-    use renzora_shared::renzora_core;
+    use renzora_shared::renzora;
 
     let mut config = renzora_network::NetworkConfig::default();
     let args: Vec<String> = std::env::args().collect();
@@ -225,7 +225,7 @@ fn load_server_config() -> renzora_shared::renzora_network::NetworkConfig {
     let project_toml = std::path::PathBuf::from("project.toml");
     if project_toml.exists() {
         if let Ok(content) = std::fs::read_to_string(&project_toml) {
-            if let Ok(project_config) = toml::from_str::<renzora_core::ProjectConfig>(&content) {
+            if let Ok(project_config) = toml::from_str::<renzora::ProjectConfig>(&content) {
                 if let Some(net) = &project_config.network {
                     if !args.iter().any(|a| a == "--port") {
                         config.port = net.port;

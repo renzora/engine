@@ -2,12 +2,12 @@
 //! with a vertical toolbar for toggle controls.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
-use renzora::bevy_egui::EguiUserTextures;
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
+use bevy_egui::EguiUserTextures;
+use egui_phosphor::regular;
 
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 use crate::studio_preview::{StudioPreviewImage, StudioPreviewOrbit, StudioPreviewSettings};
 

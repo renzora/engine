@@ -35,7 +35,7 @@ impl Default for BloomSettings {
 fn sync_bloom(
     mut commands: Commands,
     sources: Query<(Entity, Ref<BloomSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -132,7 +132,7 @@ fn inspector_entry() -> InspectorEntry {
 fn cleanup_bloom(
     mut commands: Commands,
     mut removed: RemovedComponents<BloomSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

@@ -7,6 +7,8 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+renzora_theme = { path = "../renzora_theme" }
+bevy_egui = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 serde = { version = "1", features = ["derive"] }

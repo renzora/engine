@@ -7,7 +7,7 @@
 //! mode is active, and the bake-to-`Mesh` path captures the final result.
 
 use bevy::prelude::*;
-use renzora::undo::UndoCommand;
+use renzora_undo::UndoCommand;
 
 use crate::edit_mesh::EditMesh;
 use crate::selection::MeshSelection;

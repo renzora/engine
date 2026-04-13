@@ -1,13 +1,13 @@
 //! Blueprint Node Properties — side panel for editing selected node's input values.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
 
 use renzora_blueprint::graph::*;
 use renzora_blueprint::{BlueprintGraph, nodes};
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 use crate::BlueprintEditorState;
 
@@ -251,7 +251,7 @@ fn render_pin_editor(
     _pin_name: &str,
     pin_type: PinType,
     current: &PinValue,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
 ) -> Option<PinValue> {
     let mut changed = None;
 

@@ -11,6 +11,6 @@ editor = ["dep:renzora_editor_framework", "dep:egui-phosphor"]
 bevy = { workspace = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 renzora_lighting = { path = "../renzora_lighting" }
 serde = { version = "1", features = ["derive"] }

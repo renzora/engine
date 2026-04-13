@@ -64,7 +64,7 @@ impl Default for DistanceFogSettings {
 fn sync_distance_fog(
     mut commands: Commands,
     sources: Query<(Entity, Ref<DistanceFogSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -301,7 +301,7 @@ fn fog_custom_ui(
 fn cleanup_distance_fog(
     mut commands: Commands,
     mut removed: RemovedComponents<DistanceFogSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

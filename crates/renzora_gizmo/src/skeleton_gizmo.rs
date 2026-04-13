@@ -13,7 +13,7 @@
 use bevy::prelude::*;
 use bevy::animation::AnimationTargetId;
 
-use renzora::editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 
 use crate::OverlayGizmoGroup;
 

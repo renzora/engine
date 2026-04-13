@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// ── Re-export shared graph types from renzora_core ─────────────────────────
-pub use renzora_core::{
+// ── Re-export shared graph types from renzora ─────────────────────────
+pub use renzora::{
     NodeId, PinType, PinDir, PinValue, PinTemplate, BlueprintNodeDef,
     BlueprintConnection, BlueprintNode,
 };

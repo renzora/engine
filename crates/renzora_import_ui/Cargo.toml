@@ -8,6 +8,9 @@ crate-type = ["dylib"]
 description = "Import overlay UI for 3D model import in the Renzora editor"
 
 [dependencies]
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_import = { path = "../renzora_import" }

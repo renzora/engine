@@ -5,11 +5,11 @@ use super::{inspectors, render};
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
 use renzora_audio::{ChannelStrip, MixerState};
-use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 // ---------------------------------------------------------------------------
 // Shared state bridge
@@ -125,7 +125,7 @@ impl MixerPanel {
 impl EditorPanel for MixerPanel {
     fn id(&self) -> &str { "mixer" }
     fn title(&self) -> &str { "Mixer" }
-    fn icon(&self) -> Option<&str> { Some(renzora::egui_phosphor::regular::SLIDERS_HORIZONTAL) }
+    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SLIDERS_HORIZONTAL) }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(mixer) = world.get_resource::<MixerState>() {
@@ -185,11 +185,11 @@ pub fn build(app: &mut App) {
     app.insert_resource(bridge);
     app.add_systems(
         Update,
-        sync_mixer_bridge.run_if(in_state(renzora::editor::SplashState::Editor)),
+        sync_mixer_bridge.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
     app.register_panel(MixerPanel::new(arc));
-    app.init_resource::<renzora::editor::InspectorRegistry>();
+    app.init_resource::<renzora_editor_framework::InspectorRegistry>();
     inspectors::register_audio_inspectors(
-        &mut app.world_mut().resource_mut::<renzora::editor::InspectorRegistry>(),
+        &mut app.world_mut().resource_mut::<renzora_editor_framework::InspectorRegistry>(),
     );
 }

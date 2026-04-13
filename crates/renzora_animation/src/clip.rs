@@ -1,3 +1,3 @@
-//! `.anim` file format — re-exported from renzora_core.
+//! `.anim` file format — re-exported from renzora.
 
-pub use renzora_core::{AnimClip, BoneTrack};
+pub use renzora::{AnimClip, BoneTrack};

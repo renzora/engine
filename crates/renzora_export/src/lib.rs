@@ -26,7 +26,7 @@ impl Plugin for ExportPlugin {
         info!("[editor] ExportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use renzora::bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
             if !_app.is_plugin_added::<EguiPlugin>() {
                 _app.add_plugins(EguiPlugin::default());
@@ -41,12 +41,12 @@ impl Plugin for ExportPlugin {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
-struct ExportEguiState(bevy::ecs::system::SystemState<renzora::bevy_egui::EguiContexts<'static, 'static>>);
+struct ExportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
 
 #[cfg(not(target_arch = "wasm32"))]
 fn export_overlay_system(world: &mut World) {
     use bevy::ecs::system::SystemState;
-    use renzora::bevy_egui::EguiContexts;
+    use bevy_egui::EguiContexts;
 
     if !world.contains_resource::<ExportEguiState>() {
         let s = ExportEguiState(SystemState::new(world));

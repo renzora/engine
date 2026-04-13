@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 log = "0.4"

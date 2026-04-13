@@ -10,7 +10,7 @@ editor = []
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

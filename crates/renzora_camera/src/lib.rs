@@ -18,7 +18,7 @@ use renzora::core::viewport_types::{
     CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode,
     ViewportSettings, ViewportState,
 };
-use renzora::editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 use renzora::core::EditorCamera;
 
 /// Orbit camera state for the editor viewport.
@@ -155,7 +155,7 @@ impl Plugin for CameraPlugin {
                 update_camera_projection,
                 sync_orbit_snapshot,
                 apply_orbit_on_change,
-            ).chain().run_if(in_state(renzora::editor::SplashState::Editor)));
+            ).chain().run_if(in_state(renzora_editor_framework::SplashState::Editor)));
     }
 }
 
@@ -285,7 +285,7 @@ fn camera_controller(
     settings: Res<CameraSettings>,
     mut drag: ResMut<CameraDragState>,
     viewport: Option<Res<ViewportState>>,
-    active_tool: Option<Res<renzora::editor::ActiveTool>>,
+    active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,

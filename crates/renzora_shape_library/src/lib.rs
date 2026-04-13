@@ -17,7 +17,7 @@ use renzora::core::{ShapeEntry, ShapeRegistry};
 
 /// Add icons to shapes already registered by the engine (editor only).
 fn add_shape_icons(registry: &mut ShapeRegistry) {
-    use renzora::egui_phosphor::regular;
+    use egui_phosphor::regular;
     let icons: &[(&str, &str)] = &[
         ("cube", regular::CUBE), ("sphere", regular::GLOBE), ("cylinder", regular::CYLINDER),
         ("plane", regular::SQUARE), ("cone", regular::TRIANGLE), ("torus", regular::CIRCLE),
@@ -43,7 +43,7 @@ fn add_shape_icons(registry: &mut ShapeRegistry) {
 fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     use procedural_meshes as pm;
 
-    use renzora::egui_phosphor::regular;
+    use egui_phosphor::regular;
 
     macro_rules! icon {
         ($name:ident) => { regular::$name };
@@ -221,7 +221,7 @@ impl Plugin for ShapeLibraryPlugin {
         // Add icons to the shapes already registered by the engine
         add_shape_icons(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
-        use renzora::editor::AppEditorExt;
+        use renzora_editor_framework::AppEditorExt;
         app.register_panel(panel::ShapeLibraryPanel::default());
     }
 }

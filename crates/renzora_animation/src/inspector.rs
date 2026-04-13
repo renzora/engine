@@ -211,7 +211,7 @@ fn animator_custom_ui(
             // Strip .anim extension from the display name
             let clip_name = name.strip_suffix(".anim").unwrap_or(&name).to_string();
 
-            if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+            if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
                 let asset_path = project.make_asset_relative(&path);
                 cmds.push(move |world: &mut World| {
                     if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {

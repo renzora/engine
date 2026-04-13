@@ -20,14 +20,14 @@ pub fn apply_script_commands(
     mut log_buffer: ResMut<ScriptLogBuffer>,
     mut pending_env: ResMut<ScriptEnvironmentCommands>,
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
-    mut pending_scene: ResMut<renzora_core::PendingSceneLoad>,
+    mut pending_scene: ResMut<renzora::PendingSceneLoad>,
     mut character_queue: ResMut<CharacterCommandQueue>,
     mut cursor_query: Query<&mut CursorOptions>,
-    mut tw_queue: ResMut<renzora_core::TransformWriteQueue>,
+    mut tw_queue: ResMut<renzora::TransformWriteQueue>,
     mut ran_once: Local<bool>,
 ) {
     if !*ran_once {
-        renzora_core::clog_info!("ScriptCmd", "apply_script_commands is RUNNING (first time)");
+        renzora::clog_info!("ScriptCmd", "apply_script_commands is RUNNING (first time)");
         *ran_once = true;
     }
 
@@ -39,12 +39,12 @@ pub fn apply_script_commands(
     // 1. Apply transform writes
     let tw_count = cmd_queue.transform_writes.len();
     if tw_count > 0 {
-        renzora_core::clog_info!("ScriptCmd", "apply_script_commands: {} transform_writes", tw_count);
+        renzora::clog_info!("ScriptCmd", "apply_script_commands: {} transform_writes", tw_count);
     }
     for tw in cmd_queue.transform_writes.drain(..) {
-        renzora_core::clog_info!("ScriptCmd", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
+        renzora::clog_info!("ScriptCmd", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
         let Ok(mut t) = transforms.get_mut(tw.entity) else {
-            renzora_core::clog_warn!("ScriptCmd", "Entity {:?} NOT FOUND in query!", tw.entity);
+            renzora::clog_warn!("ScriptCmd", "Entity {:?} NOT FOUND in query!", tw.entity);
             continue;
         };
 
@@ -136,9 +136,9 @@ pub fn apply_script_commands(
             // === Debug ===
             ScriptCommand::Log { level, message } => {
                 match level.as_str() {
-                    "warn" => renzora_core::clog_warn!("Script", "{}", message),
-                    "error" => renzora_core::clog_error!("Script", "{}", message),
-                    _ => renzora_core::clog_info!("Script", "{}", message),
+                    "warn" => renzora::clog_warn!("Script", "{}", message),
+                    "error" => renzora::clog_error!("Script", "{}", message),
+                    _ => renzora::clog_info!("Script", "{}", message),
                 }
                 log_buffer.entries.push(ScriptLogEntry {
                     level: level.clone(),
@@ -157,10 +157,10 @@ pub fn apply_script_commands(
                 // Route via ScriptAction so renzora_lighting can observe it
                 let entity = source_entity;
                 let mut args = std::collections::HashMap::new();
-                args.insert("azimuth".to_string(), renzora_core::ScriptActionValue::Float(azimuth));
-                args.insert("elevation".to_string(), renzora_core::ScriptActionValue::Float(elevation));
+                args.insert("azimuth".to_string(), renzora::ScriptActionValue::Float(azimuth));
+                args.insert("elevation".to_string(), renzora::ScriptActionValue::Float(elevation));
                 commands.queue(move |world: &mut World| {
-                    world.trigger(renzora_core::ScriptAction {
+                    world.trigger(renzora::ScriptAction {
                         name: "set_sun_angles".to_string(),
                         entity,
                         target_entity: None,
@@ -183,7 +183,7 @@ pub fn apply_script_commands(
 
             // === Scene ===
             ScriptCommand::LoadScene { path } => {
-                renzora_core::clog_info!("Scene", "LoadScene requested: {}", path);
+                renzora::clog_info!("Scene", "LoadScene requested: {}", path);
                 pending_scene.requests.push(path);
             }
 
@@ -217,7 +217,7 @@ pub fn apply_script_commands(
             ScriptCommand::Action { name, target_entity, args } => {
                 let entity = source_entity;
                 commands.queue(move |world: &mut World| {
-                    world.trigger(renzora_core::ScriptAction {
+                    world.trigger(renzora::ScriptAction {
                         name,
                         entity,
                         target_entity,
@@ -233,7 +233,7 @@ pub fn apply_script_commands(
                 let debug_msg = format!("{:?}", other);
                 if let Some((name, args)) = script_command_to_action(other) {
                     commands.queue(move |world: &mut World| {
-                        world.trigger(renzora_core::ScriptAction {
+                        world.trigger(renzora::ScriptAction {
                             name,
                             entity,
                             target_entity: None,
@@ -252,8 +252,8 @@ pub fn apply_script_commands(
 /// Returns None for commands that can't be meaningfully converted.
 fn script_command_to_action(
     cmd: ScriptCommand,
-) -> Option<(String, std::collections::HashMap<String, renzora_core::ScriptActionValue>)> {
-    use renzora_core::ScriptActionValue as V;
+) -> Option<(String, std::collections::HashMap<String, renzora::ScriptActionValue>)> {
+    use renzora::ScriptActionValue as V;
     let mut args = std::collections::HashMap::new();
 
     let name = match cmd {

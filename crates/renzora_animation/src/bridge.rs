@@ -4,7 +4,7 @@
 //! into AnimationCommands. This decouples animation from the scripting crate.
 
 use bevy::prelude::*;
-use renzora_core::ScriptAction;
+use renzora::ScriptAction;
 
 use crate::systems::{AnimationCommand, AnimationCommandQueue};
 use crate::tween::{EasingFunction, ProceduralTween, TweenProperty};
@@ -15,7 +15,7 @@ pub fn handle_animation_script_actions(
     mut anim_queue: ResMut<AnimationCommandQueue>,
     mut commands: Commands,
 ) {
-    use renzora_core::ScriptActionValue as V;
+    use renzora::ScriptActionValue as V;
     let action = trigger.event();
 
     let get_entity = || -> Entity {

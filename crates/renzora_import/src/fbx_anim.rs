@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use renzora_core::{AnimClip, BoneTrack};
-use renzora_core::write_anim_file;
+use renzora::{AnimClip, BoneTrack};
+use renzora::write_anim_file;
 
 use crate::anim_extract::AnimExtractResult;
 use crate::fbx_legacy::{

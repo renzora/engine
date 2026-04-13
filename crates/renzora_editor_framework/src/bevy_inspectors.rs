@@ -102,7 +102,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         category: "camera",
         spawn_fn: |world| {
             let mut count = 0u32;
-            let mut q = world.query_filtered::<(), With<renzora_core::SceneCamera>>();
+            let mut q = world.query_filtered::<(), With<renzora::SceneCamera>>();
             for _ in q.iter(world) {
                 count += 1;
             }
@@ -120,7 +120,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                         is_active: false,
                         ..default()
                     },
-                    renzora_core::SceneCamera,
+                    renzora::SceneCamera,
                 ))
                 .id()
         },

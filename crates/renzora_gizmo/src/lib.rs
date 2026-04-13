@@ -24,7 +24,7 @@ use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{NavOverlayState, SnapSettings, ViewportSettings, ViewportState};
-use renzora::editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
+use renzora_editor_framework::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ impl Material for GizmoMaterial {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
-pub use renzora::editor::GizmoMode;
+pub use renzora_editor_framework::GizmoMode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoAxis {
@@ -309,19 +309,19 @@ impl Plugin for GizmoPlugin {
                     box_selection_system,
                 )
                     .chain()
-                    .run_if(in_state(renzora::editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             )
             .add_systems(
                 Update,
                 render_box_selection
                     .after(box_selection_system)
-                    .run_if(in_state(renzora::editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(
                 Update,
                 selection_visuals::terrain_chunk_selection_system
-                    .run_if(in_state(renzora::editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .init_resource::<LastSelectionCount>()
             .add_systems(
@@ -329,7 +329,7 @@ impl Plugin for GizmoPlugin {
                 auto_switch_tool_on_selection
                     .after(entity_pick_system)
                     .after(box_selection_system)
-                    .run_if(in_state(renzora::editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             );
     }
@@ -346,9 +346,9 @@ struct LastSelectionCount(usize);
 /// back to Select. Leaves the tool alone if the user has deliberately
 /// chosen Rotate, Scale, a brush, or a plugin tool.
 fn auto_switch_tool_on_selection(world: &mut World) {
-    use renzora::editor::ActiveTool;
+    use renzora_editor_framework::ActiveTool;
 
-    let current = world.resource::<renzora::editor::EditorSelection>().get_all().len();
+    let current = world.resource::<renzora_editor_framework::EditorSelection>().get_all().len();
     let prev = world.resource::<LastSelectionCount>().0;
     if current == prev {
         return;
@@ -364,7 +364,7 @@ fn auto_switch_tool_on_selection(world: &mut World) {
         ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
     );
     if is_brush {
-        if !renzora::editor::is_terrain_selected(world) {
+        if !renzora_editor_framework::is_terrain_selected(world) {
             world.insert_resource(ActiveTool::Select);
         }
         return;
@@ -744,7 +744,7 @@ fn handle_selection_shortcuts(
                         let name = e.get::<Name>()?.as_str().to_string();
                         let transform = *e.get::<Transform>()?;
                         let color = e.get::<renzora::core::MeshColor>()?.0;
-                        Some(renzora::undo::DeletedShape {
+                        Some(renzora_undo::DeletedShape {
                             entity: *entity, shape_id, name, transform, color,
                         })
                     });
@@ -757,8 +757,8 @@ fn handle_selection_shortcuts(
                     if let Ok(em) = world.get_entity_mut(e) { em.despawn(); }
                 }
                 if items.is_empty() { return; }
-                renzora::undo::execute(world, renzora::undo::UndoContext::Scene,
-                    Box::new(renzora::undo::DeleteShapesCmd { items }));
+                renzora_undo::execute(world, renzora_undo::UndoContext::Scene,
+                    Box::new(renzora_undo::DeleteShapesCmd { items }));
             });
         }
     }
@@ -1068,7 +1068,7 @@ fn switch_gizmo_mode(
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
     mut mode: ResMut<GizmoMode>,
-    mut active_tool: ResMut<renzora::editor::ActiveTool>,
+    mut active_tool: ResMut<renzora_editor_framework::ActiveTool>,
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
@@ -1076,19 +1076,19 @@ fn switch_gizmo_mode(
     if modal.active { return; }
     if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) {
         *mode = GizmoMode::Select;
-        *active_tool = renzora::editor::ActiveTool::Select;
+        *active_tool = renzora_editor_framework::ActiveTool::Select;
     }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) {
         *mode = GizmoMode::Translate;
-        *active_tool = renzora::editor::ActiveTool::Translate;
+        *active_tool = renzora_editor_framework::ActiveTool::Translate;
     }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) {
         *mode = GizmoMode::Rotate;
-        *active_tool = renzora::editor::ActiveTool::Rotate;
+        *active_tool = renzora_editor_framework::ActiveTool::Rotate;
     }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) {
         *mode = GizmoMode::Scale;
-        *active_tool = renzora::editor::ActiveTool::Scale;
+        *active_tool = renzora_editor_framework::ActiveTool::Scale;
     }
 }
 
@@ -1354,8 +1354,8 @@ fn gizmo_drag(
         if !records.is_empty() {
             commands.queue(move |world: &mut World| {
                 for (entity, old, new) in records {
-                    renzora::undo::record(world, renzora::undo::UndoContext::Scene,
-                        Box::new(renzora::undo::TransformCmd { entity, old, new }));
+                    renzora_undo::record(world, renzora_undo::UndoContext::Scene,
+                        Box::new(renzora_undo::TransformCmd { entity, old, new }));
                 }
             });
         }
@@ -1773,34 +1773,34 @@ fn find_named_ancestor(
 
 fn render_box_selection(
     box_sel: Res<BoxSelectionState>,
-    mut ctx: renzora::bevy_egui::EguiContexts,
+    mut ctx: bevy_egui::EguiContexts,
 ) {
     if !box_sel.active || !box_sel.is_drag() { return; }
 
     let Some(ctx) = ctx.ctx_mut().ok() else { return; };
     let (min, max) = box_sel.get_rect();
 
-    let rect = renzora::bevy_egui::egui::Rect::from_min_max(
-        renzora::bevy_egui::egui::Pos2::new(min.x, min.y),
-        renzora::bevy_egui::egui::Pos2::new(max.x, max.y),
+    let rect = bevy_egui::egui::Rect::from_min_max(
+        bevy_egui::egui::Pos2::new(min.x, min.y),
+        bevy_egui::egui::Pos2::new(max.x, max.y),
     );
 
-    renzora::bevy_egui::egui::Area::new(renzora::bevy_egui::egui::Id::new("box_selection"))
+    bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("box_selection"))
         .fixed_pos(rect.min)
-        .order(renzora::bevy_egui::egui::Order::Foreground)
+        .order(bevy_egui::egui::Order::Foreground)
         .interactable(false)
         .show(ctx, |ui| {
             let painter = ui.painter();
             painter.rect_filled(
                 rect,
-                renzora::bevy_egui::egui::CornerRadius::ZERO,
-                renzora::bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
+                bevy_egui::egui::CornerRadius::ZERO,
+                bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
             );
             painter.rect_stroke(
                 rect,
-                renzora::bevy_egui::egui::CornerRadius::ZERO,
-                renzora::bevy_egui::egui::Stroke::new(1.0, renzora::bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
-                renzora::bevy_egui::egui::StrokeKind::Outside,
+                bevy_egui::egui::CornerRadius::ZERO,
+                bevy_egui::egui::Stroke::new(1.0, bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
+                bevy_egui::egui::StrokeKind::Outside,
             );
         });
 }

@@ -86,7 +86,7 @@ impl Plugin for AnimationPlugin {
 /// renamed or moved. Keeps scene references valid without forcing the user
 /// to manually re-point every animator.
 fn apply_asset_path_changes_to_animators(
-    trigger: On<renzora_core::AssetPathChanged>,
+    trigger: On<renzora::AssetPathChanged>,
     mut animators: Query<(&mut AnimatorComponent, Option<&mut AnimatorState>)>,
 ) {
     let ev = trigger.event();

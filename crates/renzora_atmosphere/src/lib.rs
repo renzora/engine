@@ -43,7 +43,7 @@ fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
     sources: Query<(Entity, Ref<AtmosphereComponentSettings>, Option<&AtmosphereMediumHandle>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -101,7 +101,7 @@ fn sync_atmosphere(
 fn cleanup_atmosphere(
     mut commands: Commands,
     mut removed: RemovedComponents<AtmosphereComponentSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     for entity in removed.read() {
         if let Ok(mut ec) = commands.get_entity(entity) {

@@ -983,8 +983,8 @@ fn property_value_to_lua_result(lua: &Lua, value: crate::command::PropertyValue)
 
 /// Extract a string argument from a LuaMultiValue by index.
 
-fn lua_to_action_value(value: &LuaValue) -> renzora_core::ScriptActionValue {
-    use renzora_core::ScriptActionValue;
+fn lua_to_action_value(value: &LuaValue) -> renzora::ScriptActionValue {
+    use renzora::ScriptActionValue;
     match value {
         LuaValue::Number(n) => ScriptActionValue::Float(*n as f32),
         LuaValue::Integer(n) => ScriptActionValue::Int(*n),

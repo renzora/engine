@@ -3,12 +3,12 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
+use egui_phosphor::regular;
 use renzora::core::{ShapeEntry, ShapeRegistry};
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
-use renzora::theme::ThemeManager;
-use renzora::undo::{self, SpawnShapeCmd, UndoContext};
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
+use renzora_theme::ThemeManager;
+use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
 #[derive(Default)]
 struct ShapeLibraryState {
@@ -219,7 +219,7 @@ impl EditorPanel for ShapeLibraryPanel {
                                 let color = shape.default_color;
                                 let shape_id = shape.id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
+                                    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
                                         entity: Entity::PLACEHOLDER,
                                         shape_id, name, position: Vec3::ZERO, color,
                                     }));

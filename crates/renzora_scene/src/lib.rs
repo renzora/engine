@@ -8,7 +8,7 @@ use renzora::core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, Ne
 use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_engine::scene_io;
-use renzora::editor::SplashState;
+use renzora_editor_framework::SplashState;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};

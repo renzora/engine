@@ -7,8 +7,8 @@ use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::bevy_egui::egui::TextureId;
-use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::egui::TextureId;
+use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};

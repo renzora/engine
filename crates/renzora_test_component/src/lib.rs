@@ -8,7 +8,7 @@
 //! to avoid scheduling conflicts with the editor/egui plugins.
 
 use bevy::prelude::*;
-use renzora::editor::{AppEditorExt, Inspectable};
+use renzora_editor_framework::{AppEditorExt, Inspectable};
 
 // ── Custom components ──────────────────────────────────────────────────────
 

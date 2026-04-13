@@ -10,7 +10,7 @@
 //! ```
 
 use bevy::prelude::*;
-use renzora_core::ScriptAction;
+use renzora::ScriptAction;
 
 use bevy_gauge::prelude::InstantExt;
 use crate::{AttributesMut, Modifier, InstantModifierSet};
@@ -20,7 +20,7 @@ pub fn handle_gauge_script_actions(
     trigger: On<ScriptAction>,
     mut attrs: AttributesMut,
 ) {
-    use renzora_core::ScriptActionValue;
+    use renzora::ScriptActionValue;
     let action = trigger.event();
 
     let get_str = |key: &str| -> String {

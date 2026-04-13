@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+egui-phosphor = { workspace = true }
+renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 bevy_egui = "0.39"
 serde = { version = "1.0", features = ["derive"] }

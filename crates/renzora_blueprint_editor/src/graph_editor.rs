@@ -1,9 +1,9 @@
 //! Syncs the BlueprintGraph data model with the renzora_ui NodeGraphState widget.
 
-use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
+use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
 use renzora_blueprint::graph::*;
 use renzora_blueprint::{BlueprintNodeDef, nodes};
-use renzora::theme::Theme;
+use renzora_theme::Theme;
 use renzora_ui::widgets::node_graph::{
     node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
     PinDef, PinDirection, PinShape,
@@ -47,22 +47,22 @@ fn header_color(def: &BlueprintNodeDef) -> Color32 {
 
 pub fn category_icon(category: &str) -> &'static str {
     match category {
-        "Event" => renzora::egui_phosphor::regular::LIGHTNING,
-        "Flow" => renzora::egui_phosphor::regular::FLOW_ARROW,
-        "Math" => renzora::egui_phosphor::regular::CALCULATOR,
-        "Transform" => renzora::egui_phosphor::regular::ARROWS_OUT_CARDINAL,
-        "Input" => renzora::egui_phosphor::regular::KEYBOARD,
-        "Entity" => renzora::egui_phosphor::regular::CUBE,
-        "Component" => renzora::egui_phosphor::regular::PUZZLE_PIECE,
-        "Physics" => renzora::egui_phosphor::regular::ATOM,
-        "Audio" => renzora::egui_phosphor::regular::SPEAKER_HIGH,
-        "UI" => renzora::egui_phosphor::regular::LAYOUT,
-        "Scene" => renzora::egui_phosphor::regular::FILM_STRIP,
-        "Debug" => renzora::egui_phosphor::regular::BUG,
-        "Variable" => renzora::egui_phosphor::regular::DATABASE,
-        "Rendering" => renzora::egui_phosphor::regular::EYE,
-        "Animation" => renzora::egui_phosphor::regular::PLAY,
-        _ => renzora::egui_phosphor::regular::CIRCLE,
+        "Event" => egui_phosphor::regular::LIGHTNING,
+        "Flow" => egui_phosphor::regular::FLOW_ARROW,
+        "Math" => egui_phosphor::regular::CALCULATOR,
+        "Transform" => egui_phosphor::regular::ARROWS_OUT_CARDINAL,
+        "Input" => egui_phosphor::regular::KEYBOARD,
+        "Entity" => egui_phosphor::regular::CUBE,
+        "Component" => egui_phosphor::regular::PUZZLE_PIECE,
+        "Physics" => egui_phosphor::regular::ATOM,
+        "Audio" => egui_phosphor::regular::SPEAKER_HIGH,
+        "UI" => egui_phosphor::regular::LAYOUT,
+        "Scene" => egui_phosphor::regular::FILM_STRIP,
+        "Debug" => egui_phosphor::regular::BUG,
+        "Variable" => egui_phosphor::regular::DATABASE,
+        "Rendering" => egui_phosphor::regular::EYE,
+        "Animation" => egui_phosphor::regular::PLAY,
+        _ => egui_phosphor::regular::CIRCLE,
     }
 }
 
@@ -398,7 +398,7 @@ fn render_context_menu(
                     );
                     painter.text(
                         Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
-                        renzora::egui_phosphor::regular::CARET_RIGHT,
+                        egui_phosphor::regular::CARET_RIGHT,
                         egui::FontId::proportional(12.0),
                         Color32::from_rgb(120, 120, 130),
                     );

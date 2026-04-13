@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_core::{NodeId, PinValue, ScriptAction, ScriptActionValue};
+use renzora::{NodeId, PinValue, ScriptAction, ScriptActionValue};
 
 use crate::graph::LifecycleGraph;
 use crate::nodes;
@@ -518,7 +518,7 @@ pub fn run_lifecycle(world: &mut World) {
 
     // Check network status via bridge resource (avoids renzora_network dependency).
     let (net_is_server, net_is_connected, net_player_count) = world
-        .get_resource::<renzora_core::NetworkBridge>()
+        .get_resource::<renzora::NetworkBridge>()
         .map(|b| (b.is_server, b.is_connected, b.player_count))
         .unwrap_or((false, false, 0));
 
@@ -622,7 +622,7 @@ pub fn run_lifecycle(world: &mut World) {
 
     // Push scene load requests to PendingSceneLoad resource.
     if !scene_actions.is_empty() {
-        let mut pending = world.resource_mut::<renzora_core::PendingSceneLoad>();
+        let mut pending = world.resource_mut::<renzora::PendingSceneLoad>();
         for action in scene_actions {
             if let Some(ScriptActionValue::String(path)) = action.args.get("path") {
                 pending.requests.push(path.clone());
@@ -640,7 +640,7 @@ pub fn run_lifecycle(world: &mut World) {
 
 /// Detects when a scene finishes loading and sets `scene_just_loaded`.
 pub fn detect_scene_loaded(
-    pending: Res<renzora_core::PendingSceneLoad>,
+    pending: Res<renzora::PendingSceneLoad>,
     mut runtime: ResMut<LifecycleRuntimeState>,
     mut last_requests: Local<Vec<String>>,
 ) {
@@ -656,8 +656,8 @@ pub fn detect_scene_loaded(
 
 /// Reset lifecycle runtime state when play mode starts.
 pub fn reset_lifecycle_on_play_start(
-    play_mode: Option<Res<renzora_core::PlayModeState>>,
-    project: Option<Res<renzora_core::CurrentProject>>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut runtime: ResMut<LifecycleRuntimeState>,
     mut was_running: Local<bool>,
 ) {

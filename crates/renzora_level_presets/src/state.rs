@@ -34,7 +34,7 @@ impl LevelPreset {
     }
 
     pub fn icon(&self) -> &'static str {
-        use renzora::egui_phosphor::regular::*;
+        use egui_phosphor::regular::*;
         match self {
             Self::FPS => CROSSHAIR,
             Self::ThirdPerson => PERSON,

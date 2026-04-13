@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use renzora::core::EditorCamera;
 use renzora::core::viewport_types::ViewportState;
-use renzora::editor::{ActiveTool, EditorSelection};
+use renzora_editor_framework::{ActiveTool, EditorSelection};
 
 use crate::edit_mesh::{EditMesh, VertexId};
 use crate::operators;
@@ -291,9 +291,9 @@ pub fn extrude_system(
         after_sel,
     };
     commands.queue(move |world: &mut World| {
-        renzora::undo::record(
+        renzora_undo::record(
             world,
-            renzora::undo::UndoContext::Scene,
+            renzora_undo::UndoContext::Scene,
             Box::new(cmd),
         );
     });
@@ -437,7 +437,7 @@ pub fn grab_update(
     if mouse.just_pressed(MouseButton::Right) || keys.just_pressed(KeyCode::Escape) {
         if seeded_by_op {
             commands.queue(|world: &mut World| {
-                renzora::undo::undo_once(world);
+                renzora_undo::undo_once(world);
             });
         } else {
             for (id, start) in &starts {
@@ -465,9 +465,9 @@ pub fn grab_update(
         if !deltas.is_empty() {
             let cmd = crate::undo::VertexMoveCmd { entity: target, deltas };
             commands.queue(move |world: &mut World| {
-                renzora::undo::record(
+                renzora_undo::record(
                     world,
-                    renzora::undo::UndoContext::Scene,
+                    renzora_undo::UndoContext::Scene,
                     Box::new(cmd),
                 );
             });

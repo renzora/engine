@@ -8,7 +8,7 @@
 
 use bevy::prelude::{Resource, World};
 use bevy_egui::egui;
-use renzora_core::viewport_types::ViewportMode;
+use renzora::viewport_types::ViewportMode;
 use std::collections::HashMap;
 
 pub type ModeOptionsDrawer = fn(&mut egui::Ui, &World);

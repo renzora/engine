@@ -6,11 +6,11 @@
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
 use renzora_animation::{AnimClip, AnimatorComponent, AnimatorState};
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 use renzora_ui::widgets::{collapsible_section, inline_property};
 
 use crate::AnimEditorAction;
@@ -42,7 +42,7 @@ impl EditorPanel for AnimationPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::SLIDERS_HORIZONTAL)
+        Some(egui_phosphor::regular::SLIDERS_HORIZONTAL)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -73,7 +73,7 @@ impl EditorPanel for AnimationPanel {
         let Some(entity) = selected_entity else {
             ui.vertical_centered(|ui| {
                 ui.add_space(ui.available_height() * 0.3);
-                ui.label(egui::RichText::new(renzora::egui_phosphor::regular::FILM_STRIP)
+                ui.label(egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
                     .size(24.0).color(muted_color));
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new("Select an entity with")
@@ -118,7 +118,7 @@ impl EditorPanel for AnimationPanel {
                     if let Some(slot) = animator.clips.iter().find(|s| &s.name == clip_name) {
                         collapsible_section(
                             ui,
-                            renzora::egui_phosphor::regular::FILM_STRIP,
+                            egui_phosphor::regular::FILM_STRIP,
                             "Clip Properties",
                             "rendering",
                             t,
@@ -149,9 +149,9 @@ impl EditorPanel for AnimationPanel {
 
                                 inline_property(ui, row, "Looping", t, |ui| {
                                     let icon = if slot.looping {
-                                        renzora::egui_phosphor::regular::CHECK_CIRCLE
+                                        egui_phosphor::regular::CHECK_CIRCLE
                                     } else {
-                                        renzora::egui_phosphor::regular::CIRCLE
+                                        egui_phosphor::regular::CIRCLE
                                     };
                                     let color = if slot.looping { accent_color } else { muted_color };
                                     ui.label(egui::RichText::new(icon).size(12.0).color(color));
@@ -190,7 +190,7 @@ impl EditorPanel for AnimationPanel {
                 // ── Clip Library ──
                 collapsible_section(
                     ui,
-                    renzora::egui_phosphor::regular::LIST_BULLETS,
+                    egui_phosphor::regular::LIST_BULLETS,
                     "Clip Library",
                     "rendering",
                     t,
@@ -221,10 +221,10 @@ impl EditorPanel for AnimationPanel {
                                     let resp = ui.horizontal(|ui| {
                                         // Status icon
                                         if is_playing {
-                                            ui.label(egui::RichText::new(renzora::egui_phosphor::regular::PLAY_CIRCLE)
+                                            ui.label(egui::RichText::new(egui_phosphor::regular::PLAY_CIRCLE)
                                                 .size(12.0).color(accent_color));
                                         } else {
-                                            ui.label(egui::RichText::new(renzora::egui_phosphor::regular::CIRCLE)
+                                            ui.label(egui::RichText::new(egui_phosphor::regular::CIRCLE)
                                                 .size(12.0).color(muted_color));
                                         }
 
@@ -241,9 +241,9 @@ impl EditorPanel for AnimationPanel {
                                         // Right side info
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                             let loop_icon = if slot.looping {
-                                                renzora::egui_phosphor::regular::REPEAT
+                                                egui_phosphor::regular::REPEAT
                                             } else {
-                                                renzora::egui_phosphor::regular::ARROW_RIGHT
+                                                egui_phosphor::regular::ARROW_RIGHT
                                             };
                                             ui.label(egui::RichText::new(loop_icon)
                                                 .size(10.0).color(muted_color));
@@ -280,7 +280,7 @@ impl EditorPanel for AnimationPanel {
                 if let Some(ref clip) = clip_data {
                     collapsible_section(
                         ui,
-                        renzora::egui_phosphor::regular::BONE,
+                        egui_phosphor::regular::BONE,
                         &format!("Bone Tracks ({})", clip.tracks.len()),
                         "transform",
                         t,
@@ -330,7 +330,7 @@ impl EditorPanel for AnimationPanel {
                 if animator.state_machine.is_some() {
                     collapsible_section(
                         ui,
-                        renzora::egui_phosphor::regular::GRAPH,
+                        egui_phosphor::regular::GRAPH,
                         "State Machine",
                         "scripting",
                         t,
@@ -378,7 +378,7 @@ impl EditorPanel for AnimationPanel {
                     if has_params {
                         collapsible_section(
                             ui,
-                            renzora::egui_phosphor::regular::FADERS,
+                            egui_phosphor::regular::FADERS,
                             "Parameters",
                             "scripting",
                             t,
@@ -398,9 +398,9 @@ impl EditorPanel for AnimationPanel {
                                 for (name, value) in &anim_state.params.bools {
                                     inline_property(ui, row, name, t, |ui| {
                                         let icon = if *value {
-                                            renzora::egui_phosphor::regular::CHECK_CIRCLE
+                                            egui_phosphor::regular::CHECK_CIRCLE
                                         } else {
-                                            renzora::egui_phosphor::regular::CIRCLE
+                                            egui_phosphor::regular::CIRCLE
                                         };
                                         let color = if *value { accent_color } else { muted_color };
                                         ui.label(egui::RichText::new(icon).size(12.0).color(color));
@@ -432,7 +432,7 @@ impl EditorPanel for AnimationPanel {
                 if !animator.layers.is_empty() {
                     collapsible_section(
                         ui,
-                        renzora::egui_phosphor::regular::STACK,
+                        egui_phosphor::regular::STACK,
                         &format!("Layers ({})", animator.layers.len()),
                         "rendering",
                         t,
@@ -485,7 +485,7 @@ impl EditorPanel for AnimationPanel {
                 // ── Animator Settings ──
                 collapsible_section(
                     ui,
-                    renzora::egui_phosphor::regular::GEAR,
+                    egui_phosphor::regular::GEAR,
                     "Animator Settings",
                     "rendering",
                     t,
@@ -524,9 +524,9 @@ impl EditorPanel for AnimationPanel {
                             inline_property(ui, row, "Initialized", t, |ui| {
                                 let color = if anim_state.initialized { accent_color } else { muted_color };
                                 let icon = if anim_state.initialized {
-                                    renzora::egui_phosphor::regular::CHECK_CIRCLE
+                                    egui_phosphor::regular::CHECK_CIRCLE
                                 } else {
-                                    renzora::egui_phosphor::regular::WARNING_CIRCLE
+                                    egui_phosphor::regular::WARNING_CIRCLE
                                 };
                                 ui.label(egui::RichText::new(icon).size(12.0).color(color));
                             });

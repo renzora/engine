@@ -38,15 +38,15 @@ impl EditorSelection {
         sel.clear();
         if let Some(e) = entity {
             sel.push(e);
-            renzora_core::console_log::console_info("Selection", &format!("Selected {:?}", e));
+            renzora::console_log::console_info("Selection", &format!("Selected {:?}", e));
         } else {
-            renzora_core::console_log::console_info("Selection", "Selection cleared");
+            renzora::console_log::console_info("Selection", "Selection cleared");
         }
     }
 
     /// Set multiple selected entities.
     pub fn set_multiple(&self, entities: Vec<Entity>) {
-        renzora_core::console_log::console_info(
+        renzora::console_log::console_info(
             "Selection",
             &format!("Multi-select: {} entities {:?}", entities.len(), entities),
         );
@@ -58,10 +58,10 @@ impl EditorSelection {
         let mut sel = self.selected.write().unwrap();
         if let Some(pos) = sel.iter().position(|&e| e == entity) {
             sel.remove(pos);
-            renzora_core::console_log::console_info("Selection", &format!("Deselected {:?}", entity));
+            renzora::console_log::console_info("Selection", &format!("Deselected {:?}", entity));
         } else {
             sel.push(entity);
-            renzora_core::console_log::console_info("Selection", &format!("Added {:?} to selection", entity));
+            renzora::console_log::console_info("Selection", &format!("Added {:?} to selection", entity));
         }
     }
 

@@ -45,7 +45,7 @@ pub trait AppEditorExt {
     /// toolbar when the viewport is in the given mode.
     fn register_mode_options(
         &mut self,
-        mode: renzora_core::viewport_types::ViewportMode,
+        mode: renzora::viewport_types::ViewportMode,
         drawer: crate::ModeOptionsDrawer,
     ) -> &mut Self;
 
@@ -107,7 +107,7 @@ impl AppEditorExt for App {
 
     fn register_mode_options(
         &mut self,
-        mode: renzora_core::viewport_types::ViewportMode,
+        mode: renzora::viewport_types::ViewportMode,
         drawer: crate::ModeOptionsDrawer,
     ) -> &mut Self {
         self.init_resource::<crate::ViewportModeOptionsRegistry>();
@@ -135,7 +135,7 @@ impl AppEditorExt for App {
         // has already customised this id), then store the entry so the
         // dispatcher + Settings UI can find it.
         self.world_mut()
-            .resource_mut::<renzora_core::keybindings::KeyBindings>()
+            .resource_mut::<renzora::keybindings::KeyBindings>()
             .set_plugin_default(entry.id, entry.default_binding);
         self.world_mut().resource_mut::<ShortcutRegistry>().register(entry);
         self

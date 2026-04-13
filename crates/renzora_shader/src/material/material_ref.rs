@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// Re-export from renzora_core
-pub use renzora_core::MaterialRef;
+// Re-export from renzora
+pub use renzora::MaterialRef;
 
 /// Per-instance parameter overrides applied on top of the material's defaults.
 ///

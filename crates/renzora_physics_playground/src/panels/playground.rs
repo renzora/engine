@@ -1,7 +1,7 @@
 //! Physics Playground panel — stress-test spawner
 
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, RichText};
+use renzora_theme::Theme;
 
 use crate::state::{PlaygroundCommand, PlaygroundShape, PlaygroundState, SpawnPattern};
 

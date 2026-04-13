@@ -8,10 +8,10 @@ mod tree;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
-use renzora::egui_phosphor::regular;
-use renzora::editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
+use egui_phosphor::regular;
+use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
 
@@ -578,7 +578,7 @@ impl EditorPanel for AssetBrowserPanel {
         // Import button clicked — request import overlay
         if state.import_clicked {
             state.import_clicked = false;
-            if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                 let target_dir = state.current_folder.as_ref().and_then(|folder| {
                     let project = world.get_resource::<renzora::core::CurrentProject>()?;
                     folder.strip_prefix(&project.path).ok().map(|rel| {
@@ -619,7 +619,7 @@ impl EditorPanel for AssetBrowserPanel {
 fn render_context_menu(
     ui: &mut egui::Ui,
     state: &mut AssetBrowserState,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
     pos: egui::Pos2,
 ) {
     let ctx = ui.ctx().clone();

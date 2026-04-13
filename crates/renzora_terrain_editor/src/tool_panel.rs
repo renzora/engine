@@ -6,15 +6,15 @@
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding};
-use renzora::egui_phosphor::regular::*;
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding};
+use egui_phosphor::regular::*;
 
 use renzora_terrain::data::*;
 use renzora_terrain::paint::*;
-use renzora::theme::{Theme, ThemeManager};
-use renzora::editor::{ActiveTool, EditorCommands};
-use renzora::editor::{EditorPanel, PanelLocation, collapsible_section, inline_property};
-use renzora::editor::{asset_drop_target, AssetDragPayload};
+use renzora_theme::{Theme, ThemeManager};
+use renzora_editor_framework::{ActiveTool, EditorCommands};
+use renzora_editor_framework::{EditorPanel, PanelLocation, collapsible_section, inline_property};
+use renzora_editor_framework::{asset_drop_target, AssetDragPayload};
 use renzora::core::CurrentProject;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType};

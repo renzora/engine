@@ -39,7 +39,7 @@ impl Plugin for LifecyclePlugin {
 /// Load lifecycle.json from the project root at startup.
 fn load_lifecycle_graph(world: &mut World) {
     let graph = world
-        .get_resource::<renzora_core::CurrentProject>()
+        .get_resource::<renzora::CurrentProject>()
         .and_then(|project| {
             let path = project.path.join("lifecycle.json");
             info!("[lifecycle] Loading from {}", path.display());
@@ -48,7 +48,7 @@ fn load_lifecycle_graph(world: &mut World) {
         .unwrap_or_default();
 
     if graph.has_game_start() {
-        world.insert_resource(renzora_core::LifecycleHandlesBoot);
+        world.insert_resource(renzora::LifecycleHandlesBoot);
     }
 
     world.insert_resource(graph);
@@ -56,7 +56,7 @@ fn load_lifecycle_graph(world: &mut World) {
 
 /// Reload lifecycle.json when the project changes (e.g. opening a new project in the editor).
 fn reload_lifecycle_on_project_change(
-    project: Option<Res<renzora_core::CurrentProject>>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut graph: ResMut<LifecycleGraph>,
     mut runtime: ResMut<LifecycleRuntimeState>,
     mut cmds: Commands,
@@ -75,9 +75,9 @@ fn reload_lifecycle_on_project_change(
     );
 
     if new_graph.has_game_start() {
-        cmds.insert_resource(renzora_core::LifecycleHandlesBoot);
+        cmds.insert_resource(renzora::LifecycleHandlesBoot);
     } else {
-        cmds.remove_resource::<renzora_core::LifecycleHandlesBoot>();
+        cmds.remove_resource::<renzora::LifecycleHandlesBoot>();
     }
 
     *graph = new_graph;
@@ -85,7 +85,7 @@ fn reload_lifecycle_on_project_change(
 }
 
 /// Run condition: lifecycle executes when scripts would.
-fn lifecycle_should_run(play_mode: Option<Res<renzora_core::PlayModeState>>) -> bool {
+fn lifecycle_should_run(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
     match play_mode {
         Some(pm) => pm.is_scripts_running(),
         None => true,

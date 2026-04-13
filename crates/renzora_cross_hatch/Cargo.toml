@@ -11,6 +11,8 @@ default = ["editor"]
 editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [dependencies]
+renzora_postprocess = { path = "../renzora_postprocess" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

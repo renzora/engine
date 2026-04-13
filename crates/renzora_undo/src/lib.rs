@@ -11,7 +11,7 @@ use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
-use renzora_core::{MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_editor_framework::{
     EditorLocked, EditorSelection, FieldValue, InspectorRegistry, SpawnRegistry,
 };
@@ -140,7 +140,7 @@ impl Plugin for UndoPlugin {
 
 fn shortcut_input(
     keys: Res<ButtonInput<KeyCode>>,
-    bindings: Option<Res<renzora_core::keybindings::KeyBindings>>,
+    bindings: Option<Res<renzora::keybindings::KeyBindings>>,
     mut undo_w: MessageWriter<RequestUndo>,
     mut redo_w: MessageWriter<RequestRedo>,
 ) {
@@ -148,7 +148,7 @@ fn shortcut_input(
     //   - User-rebound Undo/Redo keys are respected
     //   - Command palette dispatches (KeyBindings::dispatch) fire the messages
     let Some(bindings) = bindings else { return };
-    use renzora_core::keybindings::EditorAction;
+    use renzora::keybindings::EditorAction;
     if bindings.just_pressed(EditorAction::Undo, &keys) {
         undo_w.write(RequestUndo);
     }

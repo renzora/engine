@@ -1,14 +1,14 @@
 //! Lifecycle Node Properties — inspector for the selected node's input values.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
 
 use renzora_blueprint::graph::*;
 use renzora_lifecycle::graph::LifecycleGraph;
 use renzora_lifecycle::nodes;
-use renzora::editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 use renzora_ui::{AssetDragPayload, asset_drop_target};
 
 use crate::LifecycleEditorState;
@@ -250,7 +250,7 @@ fn render_pin_editor(
     pin_name: &str,
     pin_type: PinType,
     current: &PinValue,
-    theme: &renzora::theme::Theme,
+    theme: &renzora_theme::Theme,
     world: &World,
 ) -> Option<PinValue> {
     let mut changed = None;

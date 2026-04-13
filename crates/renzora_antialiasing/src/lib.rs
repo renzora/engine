@@ -48,7 +48,7 @@ fn idx_to_sensitivity(i: u32) -> Sensitivity {
 fn sync_fxaa(
     mut commands: Commands,
     sources: Query<(Entity, Ref<FxaaSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -93,7 +93,7 @@ impl Default for SmaaSettings {
 fn sync_smaa(
     mut commands: Commands,
     sources: Query<(Entity, Ref<SmaaSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -140,7 +140,7 @@ impl Default for TaaSettings {
 fn sync_taa(
     mut commands: Commands,
     sources: Query<(Entity, Ref<TaaSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -167,7 +167,7 @@ fn sync_taa(
 fn cleanup_taa(
     mut commands: Commands,
     mut removed: RemovedComponents<TaaSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -199,7 +199,7 @@ impl Default for CasSettings {
 fn sync_cas(
     mut commands: Commands,
     sources: Query<(Entity, Ref<CasSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {

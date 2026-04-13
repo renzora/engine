@@ -16,7 +16,7 @@
 //! ```
 
 use bevy::prelude::*;
-use renzora_core::ScriptAction;
+use renzora::ScriptAction;
 
 use crate::components::*;
 
@@ -34,7 +34,7 @@ pub fn handle_ui_script_actions(
     mut bg_colors: Query<(&Name, &mut BackgroundColor), With<UiWidget>>,
     mut commands: Commands,
 ) {
-    use renzora_core::ScriptActionValue;
+    use renzora::ScriptActionValue;
     let action = trigger.event();
 
     // Helper to extract a string arg

@@ -4,13 +4,13 @@ use bevy::prelude::*;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::RenderAssetUsages;
 use std::collections::HashMap;
-use renzora_core::console_log::console_info;
+use renzora::console_log::console_info;
 
 use avian3d::prelude::{Collider, RigidBody};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
-use renzora_core::MaterialRef;
+use renzora::MaterialRef;
 
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {

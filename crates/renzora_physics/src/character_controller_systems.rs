@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use renzora_core::{ActionState, CharacterCommand, CharacterCommandQueue};
+use renzora::{ActionState, CharacterCommand, CharacterCommandQueue};
 
 use crate::character_controller::*;
 use crate::data::*;

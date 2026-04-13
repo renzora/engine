@@ -14,9 +14,9 @@ impl Plugin for BlueprintPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] BlueprintPlugin");
         // Ensure shared resources exist (they may also be init'd by scripting).
-        app.init_resource::<renzora_core::TransformWriteQueue>()
-            .init_resource::<renzora_core::CharacterCommandQueue>()
-            .init_resource::<renzora_core::ScriptInput>()
+        app.init_resource::<renzora::TransformWriteQueue>()
+            .init_resource::<renzora::CharacterCommandQueue>()
+            .init_resource::<renzora::ScriptInput>()
             .register_type::<BlueprintGraph>()
             .register_type::<BlueprintNode>()
             .register_type::<BlueprintConnection>()
@@ -34,7 +34,7 @@ impl Plugin for BlueprintPlugin {
 
 /// Reset all blueprint runtime state when play mode starts, so On Ready fires again.
 fn reset_blueprint_runtime_on_play_start(
-    play_mode: Option<Res<renzora_core::PlayModeState>>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
     mut states: Query<&mut interpreter::BlueprintRuntimeState>,
     mut was_running: Local<bool>,
 ) {
@@ -49,7 +49,7 @@ fn reset_blueprint_runtime_on_play_start(
 
 /// Run condition: blueprints execute when scripts would.
 fn blueprints_should_run(
-    play_mode: Option<Res<renzora_core::PlayModeState>>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
 ) -> bool {
     match play_mode {
         Some(pm) => pm.is_scripts_running(),

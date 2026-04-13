@@ -1,9 +1,9 @@
 //! Header drawer shown when the viewport is in Edit mode.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, FontId, Sense, Vec2};
-use renzora::editor::EditorCommands;
-use renzora::theme::ThemeManager;
+use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Sense, Vec2};
+use renzora_editor_framework::EditorCommands;
+use renzora_theme::ThemeManager;
 
 use crate::selection::{MeshSelection, SelectMode};
 

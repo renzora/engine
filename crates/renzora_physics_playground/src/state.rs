@@ -292,7 +292,7 @@ impl ScenarioType {
         }
     }
     pub fn icon(&self) -> &'static str {
-        use renzora::egui_phosphor::regular::*;
+        use egui_phosphor::regular::*;
         match self {
             Self::NewtonsCradle => ATOM,
             Self::DominoChain => CARDS,
@@ -636,7 +636,7 @@ impl ArenaType {
     }
 
     pub fn icon(&self) -> &'static str {
-        use renzora::egui_phosphor::regular::*;
+        use egui_phosphor::regular::*;
         match self {
             Self::Walled => SQUARE,
             Self::StairFall => STAIRS,

@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use renzora::bevy_egui::egui;
-use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::egui;
+use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora_shader::material::graph::PinValue;
 

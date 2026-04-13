@@ -1,9 +1,9 @@
 //! Console panel rendering — toolbar, log entries, and input bar.
 
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Key, RichText, ScrollArea};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Key, RichText, ScrollArea};
+use renzora_theme::Theme;
 
-use renzora::egui_phosphor::regular::{
+use egui_phosphor::regular::{
     ARROW_ELBOW_DOWN_LEFT, CARET_RIGHT, CHECK_CIRCLE, CLIPBOARD, CLOCK, FUNNEL,
     HASH, INFO, MAGNIFYING_GLASS, TAG, TRASH, WARNING, X_CIRCLE,
 };

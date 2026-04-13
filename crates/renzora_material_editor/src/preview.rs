@@ -5,13 +5,13 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::bevy_egui::egui::{self, RichText, TextureId};
-use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::egui::{self, RichText, TextureId};
+use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
-use renzora::editor::{EditorPanel, PanelLocation};
+use renzora_editor_framework::{EditorPanel, PanelLocation};
 use renzora_shader::material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, GRAPH_MATERIAL_FRAG_HANDLE, new_graph_material};
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::MaterialEditorState;
 
@@ -66,11 +66,11 @@ impl PreviewShape {
 
     pub fn icon(self) -> &'static str {
         match self {
-            Self::Sphere => renzora::egui_phosphor::regular::GLOBE_HEMISPHERE_EAST,
-            Self::Cube => renzora::egui_phosphor::regular::CUBE,
-            Self::Cylinder => renzora::egui_phosphor::regular::CYLINDER,
-            Self::Torus => renzora::egui_phosphor::regular::CIRCLE_DASHED,
-            Self::Plane => renzora::egui_phosphor::regular::SQUARE,
+            Self::Sphere => egui_phosphor::regular::GLOBE_HEMISPHERE_EAST,
+            Self::Cube => egui_phosphor::regular::CUBE,
+            Self::Cylinder => egui_phosphor::regular::CYLINDER,
+            Self::Torus => egui_phosphor::regular::CIRCLE_DASHED,
+            Self::Plane => egui_phosphor::regular::SQUARE,
         }
     }
 }
@@ -425,7 +425,7 @@ impl EditorPanel for MaterialPreviewPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::CUBE)
+        Some(egui_phosphor::regular::CUBE)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -476,7 +476,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     for &s in PreviewShape::ALL {
                         if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
                             let shape = s;
-                            if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+                            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                                 cmds.push(move |world: &mut World| {
                                     world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
                                 });
@@ -489,9 +489,9 @@ impl EditorPanel for MaterialPreviewPanel {
 
                 // Auto-rotate toggle
                 let rotate_icon = if orbit.auto_rotate {
-                    renzora::egui_phosphor::regular::ARROWS_CLOCKWISE
+                    egui_phosphor::regular::ARROWS_CLOCKWISE
                 } else {
-                    renzora::egui_phosphor::regular::ARROW_CLOCKWISE
+                    egui_phosphor::regular::ARROW_CLOCKWISE
                 };
                 let rotate_color = if orbit.auto_rotate {
                     egui::Color32::from_rgb(80, 200, 120)
@@ -503,7 +503,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     .clicked()
                 {
                     let new_val = !orbit.auto_rotate;
-                    if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             world.resource_mut::<MaterialPreviewOrbit>().auto_rotate = new_val;
                         });
@@ -512,16 +512,16 @@ impl EditorPanel for MaterialPreviewPanel {
 
                 // Background toggle
                 let bg_icon = if orbit.dark_bg {
-                    renzora::egui_phosphor::regular::MOON
+                    egui_phosphor::regular::MOON
                 } else {
-                    renzora::egui_phosphor::regular::SUN
+                    egui_phosphor::regular::SUN
                 };
                 if ui.add(egui::Button::new(RichText::new(bg_icon).size(11.0).color(text_muted)))
                     .on_hover_text("Toggle background")
                     .clicked()
                 {
                     let new_val = !orbit.dark_bg;
-                    if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             world.resource_mut::<MaterialPreviewOrbit>().dark_bg = new_val;
                         });
@@ -566,7 +566,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     || (new_pitch - orbit.pitch).abs() > 1e-5
                     || (new_distance - orbit.distance).abs() > 1e-5
                 {
-                    if let Some(cmds) = world.get_resource::<renzora::editor::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             let mut orbit = world.resource_mut::<MaterialPreviewOrbit>();
                             orbit.yaw = new_yaw;

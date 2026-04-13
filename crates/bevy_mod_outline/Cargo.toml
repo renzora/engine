@@ -6,6 +6,7 @@ license = "MIT OR Apache-2.0"
 description = "A mesh outlining plugin for Bevy."
 
 [dependencies]
+egui-phosphor = { workspace = true }
 bevy = { version = "0.18", default-features = false, features = [
     "std",
     "async_executor",

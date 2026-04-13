@@ -29,7 +29,7 @@ impl Default for MotionBlurSettings {
 fn sync_motion_blur(
     mut commands: Commands,
     sources: Query<(Entity, Ref<MotionBlurSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -101,7 +101,7 @@ fn inspector_entry() -> InspectorEntry {
 fn cleanup_motion_blur(
     mut commands: Commands,
     mut removed: RemovedComponents<MotionBlurSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

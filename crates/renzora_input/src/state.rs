@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::action::{ActionKind, InputBinding};
 use crate::map::InputMap;
 
-// Re-export from renzora_core
-pub use renzora_core::{ActionData, ActionState};
+// Re-export from renzora
+pub use renzora::{ActionData, ActionState};
 
 /// System that computes `ActionState` from `InputMap` + raw Bevy input each frame.
 pub fn update_action_state(

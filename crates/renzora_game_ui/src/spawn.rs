@@ -2315,7 +2315,7 @@ pub fn spawn_image_at(
 
     // Convert to asset-relative path (e.g. "textures/player.png") for portability.
     // Works in editor via EmbeddedAssetReader and in standalone runtime.
-    let load_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
         project.make_asset_relative(asset_path)
     } else {
         asset_path.to_string_lossy().replace('\\', "/")

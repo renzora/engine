@@ -223,14 +223,14 @@ fn apply_value_to_reflect(
 /// Read a reflected component field value from the world.
 /// Returns None if the component/field doesn't exist.
 ///
-/// Delegates to `renzora_core::reflection::get_reflected_field`.
+/// Delegates to `renzora::reflection::get_reflected_field`.
 pub fn get_reflected_field(
     world: &World,
     entity: Entity,
     component_type: &str,
     field_path: &str,
 ) -> Option<PropertyValue> {
-    renzora_core::reflection::get_reflected_field(world, entity, component_type, field_path)
+    renzora::reflection::get_reflected_field(world, entity, component_type, field_path)
 }
 
 /// Read ALL fields of a reflected component, returning a flat HashMap.

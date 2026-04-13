@@ -6,8 +6,8 @@ mod tool_options;
 mod tool_panel;
 
 use bevy::prelude::*;
-use renzora::egui_phosphor::regular;
-use renzora::editor::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, ToolOptionsRegistry};
+use egui_phosphor::regular;
+use renzora_editor_framework::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, ToolOptionsRegistry};
 use renzora_terrain::data::TerrainData;
 
 #[derive(Default)]

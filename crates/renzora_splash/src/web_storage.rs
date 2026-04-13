@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use renzora_core::{CurrentProject, ProjectConfig, WindowConfig};
+use renzora::{CurrentProject, ProjectConfig, WindowConfig};
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;

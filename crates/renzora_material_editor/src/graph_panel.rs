@@ -6,15 +6,15 @@
 use std::cell::RefCell;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular::{
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular::{
     PLUS, CROSSHAIR,
     MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
     FLOW_ARROW, CUBE,
 };
 
-use renzora::editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
-use renzora::theme::{Theme, ThemeManager};
+use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_theme::{Theme, ThemeManager};
 use renzora_shader::material::graph::{MaterialGraph, PinValue};
 use renzora_shader::material::codegen;
 use renzora_shader::material::material_ref::MaterialRef;
@@ -86,9 +86,9 @@ impl EditorPanel for MaterialGraphPanel {
         // ── Inactive state — show empty message ─────────────────────────
         if matches!(editor_state.edit_mode, MaterialEditMode::Inactive) {
             let text_muted = theme.text.muted.to_color32();
-            renzora::editor::empty_state(
+            renzora_editor_framework::empty_state(
                 ui,
-                renzora::egui_phosphor::regular::CUBE,
+                egui_phosphor::regular::CUBE,
                 "No mesh selected",
                 "Select a mesh entity to edit its material",
                 &theme,
@@ -289,7 +289,7 @@ fn render_toolbar(
     graph: &mut MaterialGraph,
     state: &mut GraphEditorState,
     editor_state: &MaterialEditorState,
-    cmds: &renzora::editor::EditorCommands,
+    cmds: &renzora_editor_framework::EditorCommands,
     world: &World,
     theme: &Theme,
 ) -> bool {
@@ -304,18 +304,18 @@ fn render_toolbar(
 
         // ── Material name ──
         let name_icon = match &editor_state.edit_mode {
-            MaterialEditMode::Pending { .. } => renzora::egui_phosphor::regular::PENCIL_SIMPLE,
-            MaterialEditMode::Existing { .. } => renzora::egui_phosphor::regular::FILE,
-            MaterialEditMode::Inactive => renzora::egui_phosphor::regular::CUBE,
+            MaterialEditMode::Pending { .. } => egui_phosphor::regular::PENCIL_SIMPLE,
+            MaterialEditMode::Existing { .. } => egui_phosphor::regular::FILE,
+            MaterialEditMode::Inactive => egui_phosphor::regular::CUBE,
         };
         ui.label(RichText::new(format!("{name_icon} {}", graph.name)).size(12.0).color(text_color));
 
         // ── Apply / Apply All ──
         if !matches!(editor_state.edit_mode, MaterialEditMode::Inactive) {
             let apply_label = if editor_state.is_dirty {
-                format!("{} Apply*", renzora::egui_phosphor::regular::CHECK)
+                format!("{} Apply*", egui_phosphor::regular::CHECK)
             } else {
-                format!("{} Apply", renzora::egui_phosphor::regular::CHECK)
+                format!("{} Apply", egui_phosphor::regular::CHECK)
             };
             let apply_color = if editor_state.is_dirty { accent } else { text_muted };
             if ui.add(egui::Button::new(RichText::new(apply_label).size(12.0).color(apply_color)))
@@ -330,7 +330,7 @@ fn render_toolbar(
             let selected_count = selection.map(|s| s.get_all().len()).unwrap_or(0);
             if selected_count > 1 {
                 if ui.add(egui::Button::new(
-                    RichText::new(format!("{} Apply All ({})", renzora::egui_phosphor::regular::CHECKS, selected_count))
+                    RichText::new(format!("{} Apply All ({})", egui_phosphor::regular::CHECKS, selected_count))
                         .size(12.0).color(accent),
                 )).on_hover_text("Apply this material to all selected meshes").clicked() {
                     let entities = selection.unwrap().get_all();
@@ -449,13 +449,13 @@ fn render_toolbar(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if editor_state.compile_errors.is_empty() {
                 if editor_state.compiled_wgsl.is_some() {
-                    ui.label(RichText::new(format!("{} Compiled", renzora::egui_phosphor::regular::CHECK_CIRCLE))
+                    ui.label(RichText::new(format!("{} Compiled", egui_phosphor::regular::CHECK_CIRCLE))
                         .size(11.0).color(egui::Color32::from_rgb(80, 200, 120)));
                 }
             } else {
                 let err_count = editor_state.compile_errors.len();
                 let tip = editor_state.compile_errors.join("\n");
-                ui.label(RichText::new(format!("{} {} error(s)", renzora::egui_phosphor::regular::WARNING_CIRCLE, err_count))
+                ui.label(RichText::new(format!("{} {} error(s)", egui_phosphor::regular::WARNING_CIRCLE, err_count))
                     .size(11.0).color(egui::Color32::from_rgb(255, 100, 80)))
                     .on_hover_text(tip);
             }
@@ -543,7 +543,7 @@ fn handle_texture_drop(
         painter.text(
             label_pos,
             egui::Align2::CENTER_BOTTOM,
-            format!("{} Drop to create texture node", renzora::egui_phosphor::regular::IMAGE),
+            format!("{} Drop to create texture node", egui_phosphor::regular::IMAGE),
             egui::FontId::proportional(12.0),
             accent,
         );

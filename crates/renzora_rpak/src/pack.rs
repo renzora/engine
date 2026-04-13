@@ -379,7 +379,7 @@ impl RpakPacker {
 const SERVER_KEEP_PREFIXES: &[&str] = &[
     "bevy_ecs::",
     "bevy_transform::",
-    "renzora_core::",
+    "renzora::",
     "renzora_scripting::",
     "renzora_physics::",
     "renzora_blueprint::",
@@ -392,9 +392,9 @@ const SERVER_KEEP_PREFIXES: &[&str] = &[
 /// Components from server-kept prefixes that still reference visual assets
 /// and should be stripped from headless server scenes.
 const SERVER_STRIP_EXACT: &[&str] = &[
-    "renzora_core::MeshInstanceData",
-    "renzora_core::MeshColor",
-    "renzora_core::MeshPrimitive",
+    "renzora::MeshInstanceData",
+    "renzora::MeshColor",
+    "renzora::MeshPrimitive",
 ];
 
 /// Editor-only crate prefixes — stripped from runtime (client) exports so

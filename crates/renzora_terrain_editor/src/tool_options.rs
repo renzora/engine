@@ -5,10 +5,10 @@
 //! is active, mirroring Photoshop's tool options bar.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::editor::EditorCommands;
-use renzora::egui_phosphor::regular::*;
-use renzora::theme::ThemeManager;
+use bevy_egui::egui::{self, RichText};
+use renzora_editor_framework::EditorCommands;
+use egui_phosphor::regular::*;
+use renzora_theme::ThemeManager;
 use renzora_terrain::data::{BrushFalloffType, BrushShape, TerrainSettings};
 use renzora_terrain::paint::SurfacePaintSettings;
 

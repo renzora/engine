@@ -6,11 +6,11 @@
 use std::sync::{mpsc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2};
 use renzora_auth::marketplace::{AssetSummary, Category, MarketplaceListResponse};
 use renzora_auth::session::AuthSession;
-use renzora::editor::{EditorPanel, PanelLocation};
-use renzora::theme::Theme;
+use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_theme::Theme;
 
 use crate::images::ImageCache;
 use crate::overlay::AssetOverlay;
@@ -167,7 +167,7 @@ impl EditorPanel for HubStorePanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::STOREFRONT)
+        Some(egui_phosphor::regular::STOREFRONT)
     }
 
     fn closable(&self) -> bool {
@@ -185,7 +185,7 @@ impl EditorPanel for HubStorePanel {
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         self.poll_results(ui.ctx());
 
-        let theme = match world.get_resource::<renzora::theme::ThemeManager>() {
+        let theme = match world.get_resource::<renzora_theme::ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
             None => return,
         };
@@ -250,7 +250,7 @@ impl HubStorePanel {
                     .desired_width(180.0)
                     .hint_text(format!(
                         "{} Search assets...",
-                        renzora::egui_phosphor::regular::MAGNIFYING_GLASS
+                        egui_phosphor::regular::MAGNIFYING_GLASS
                     )),
             );
             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -300,7 +300,7 @@ impl HubStorePanel {
             if let Some(err) = state.error.take() {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("{} {}", renzora::egui_phosphor::regular::WARNING, err))
+                        RichText::new(format!("{} {}", egui_phosphor::regular::WARNING, err))
                             .size(11.0)
                             .color(Color32::from_rgb(239, 68, 68)),
                     );
@@ -311,7 +311,7 @@ impl HubStorePanel {
                     ui.label(
                         RichText::new(format!(
                             "{} {}",
-                            renzora::egui_phosphor::regular::CHECK_CIRCLE,
+                            egui_phosphor::regular::CHECK_CIRCLE,
                             msg
                         ))
                         .size(11.0)
@@ -428,7 +428,7 @@ impl HubStorePanel {
                     ui.painter().text(
                         egui::pos2(rect.min.x + 10.0, rect.center().y),
                         egui::Align2::LEFT_CENTER,
-                        format!("{}  All", renzora::egui_phosphor::regular::SQUARES_FOUR),
+                        format!("{}  All", egui_phosphor::regular::SQUARES_FOUR),
                         egui::FontId::proportional(11.0),
                         text_color,
                     );
@@ -470,7 +470,7 @@ impl HubStorePanel {
                     ui.painter().text(
                         egui::pos2(rect.min.x + 10.0, rect.center().y),
                         egui::Align2::LEFT_CENTER,
-                        format!("{}  {}", renzora::egui_phosphor::regular::TAG, name),
+                        format!("{}  {}", egui_phosphor::regular::TAG, name),
                         egui::FontId::proportional(11.0),
                         text_color,
                     );
@@ -509,7 +509,7 @@ impl HubStorePanel {
                     ui.vertical_centered(|ui| {
                         ui.add_space(60.0);
                         ui.label(
-                            RichText::new(renzora::egui_phosphor::regular::PACKAGE)
+                            RichText::new(egui_phosphor::regular::PACKAGE)
                                 .size(40.0)
                                 .color(text_muted),
                         );
@@ -625,7 +625,7 @@ impl HubStorePanel {
                                 ui.painter().text(
                                     thumb_rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    renzora::egui_phosphor::regular::IMAGE,
+                                    egui_phosphor::regular::IMAGE,
                                     egui::FontId::proportional(22.0),
                                     darken(text_muted, 30),
                                 );
@@ -712,7 +712,7 @@ impl HubStorePanel {
                                 .button(
                                     RichText::new(format!(
                                         "{} Prev",
-                                        renzora::egui_phosphor::regular::CARET_LEFT
+                                        egui_phosphor::regular::CARET_LEFT
                                     ))
                                     .size(11.0),
                                 )
@@ -731,7 +731,7 @@ impl HubStorePanel {
                                 .button(
                                     RichText::new(format!(
                                         "Next {}",
-                                        renzora::egui_phosphor::regular::CARET_RIGHT
+                                        egui_phosphor::regular::CARET_RIGHT
                                     ))
                                     .size(11.0),
                                 )

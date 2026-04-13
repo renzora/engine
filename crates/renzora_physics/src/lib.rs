@@ -11,7 +11,7 @@ pub use properties::*;
 pub use character_controller::*;
 
 use bevy::prelude::*;
-use renzora_core::PlayModeState;
+use renzora::PlayModeState;
 
 /// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
 fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
@@ -102,7 +102,7 @@ fn clear_avian_forces(mut commands: Commands, query: Query<Entity, With<avian3d:
 
 /// Observer: handle physics commands (apply_force, apply_impulse, set_velocity) from scripts.
 fn handle_physics_script_actions(
-    trigger: On<renzora_core::ScriptAction>,
+    trigger: On<renzora::ScriptAction>,
     mut commands: Commands,
 ) {
     let action = trigger.event();
@@ -111,7 +111,7 @@ fn handle_physics_script_actions(
         return;
     }
 
-    use renzora_core::ScriptActionValue;
+    use renzora::ScriptActionValue;
     let x = match action.args.get("x") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
     let y = match action.args.get("y") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
     let z = match action.args.get("z") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
@@ -215,7 +215,7 @@ fn auto_init_physics(
         let label = name.map(|n| n.as_str()).unwrap_or("unnamed");
         info!("[Physics] Initialized physics on '{}' {:?} (body={}, shape={})",
             label, entity, body.is_some(), shape.is_some());
-        renzora_core::console_log::console_info("Physics",
+        renzora::console_log::console_info("Physics",
             format!("Initialized physics on '{}' (body={}, shape={})", label, body.is_some(), shape.is_some()));
         if let Some(b) = body {
             spawn_physics_body(&mut commands, entity, b);
@@ -242,19 +242,19 @@ fn sync_physics_data(
 }
 
 /// Observer: pause physics when the editor sends `PausePhysics`.
-fn on_pause_physics(_trigger: On<renzora_core::PausePhysics>, mut commands: Commands) {
+fn on_pause_physics(_trigger: On<renzora::PausePhysics>, mut commands: Commands) {
     commands.queue(|world: &mut World| pause(world));
 }
 
 /// Observer: unpause physics when the editor sends `UnpausePhysics`.
-fn on_unpause_physics(_trigger: On<renzora_core::UnpausePhysics>, mut commands: Commands) {
+fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Commands) {
     commands.queue(|world: &mut World| unpause(world));
 }
 
 /// Unpause the physics simulation.
 pub fn unpause(world: &mut World) {
     info!("[Physics] Unpausing physics simulation");
-    renzora_core::console_log::console_info("Physics", "Physics simulation unpaused");
+    renzora::console_log::console_info("Physics", "Physics simulation unpaused");
     #[cfg(feature = "avian")]
     {
         use avian3d::schedule::PhysicsTime;
@@ -271,7 +271,7 @@ pub fn unpause(world: &mut World) {
 /// Pause the physics simulation.
 pub fn pause(world: &mut World) {
     info!("[Physics] Pausing physics simulation");
-    renzora_core::console_log::console_info("Physics", "Physics simulation paused");
+    renzora::console_log::console_info("Physics", "Physics simulation paused");
     #[cfg(feature = "avian")]
     {
         use avian3d::schedule::PhysicsTime;

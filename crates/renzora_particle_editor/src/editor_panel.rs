@@ -3,15 +3,15 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
-use renzora::egui_phosphor::regular::{
+use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
+use egui_phosphor::regular::{
     PLUS, MINUS, FLOPPY_DISK, FOLDER_OPEN,
     SPARKLE, TIMER, SHAPES, ARROWS_OUT, WIND, RESIZE, PALETTE, CUBE, GEAR, CODE,
     PROHIBIT, ATOM, SPIRAL, PLANET, GAUGE,
 };
 
-use renzora::editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
-use renzora::theme::{Theme, ThemeManager};
+use renzora_editor_framework::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
+use renzora_theme::{Theme, ThemeManager};
 
 use renzora_hanabi::{
     HanabiEffectDefinition, HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
@@ -71,7 +71,7 @@ impl EditorPanel for ParticleEditorPanel {
             let label = if is_advanced { "Switch to Simple" } else { "Switch to Advanced" };
             if ui.small_button(label).clicked() {
                 cmds.push(move |world: &mut World| {
-                    use renzora::editor::dock_tree::DockingState;
+                    use renzora_editor_framework::dock_tree::DockingState;
                     let mut state = world.resource_mut::<ParticleEditorState>();
                     if is_advanced {
                         state.editor_mode = EditorMode::Simple;
@@ -88,9 +88,9 @@ impl EditorPanel for ParticleEditorPanel {
                     // Swap layout
                     if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
                         docking.tree = if is_advanced {
-                            renzora::editor::layouts::layout_particles()
+                            renzora_editor_framework::layouts::layout_particles()
                         } else {
-                            renzora::editor::layouts::layout_particles_advanced()
+                            renzora_editor_framework::layouts::layout_particles_advanced()
                         };
                     }
                 });

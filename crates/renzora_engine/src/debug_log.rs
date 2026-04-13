@@ -2,12 +2,12 @@
 //! render targets, play mode, post-processing, scene loading, and rehydration.
 //!
 //! Enable by inserting the [`RenderingDebugLog`] resource with `enabled: true`.
-//! All output goes to the editor console panel via `renzora_core::console_log`.
+//! All output goes to the editor console panel via `renzora::console_log`.
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::console_log::*;
-use renzora_core::{
+use renzora::console_log::*;
+use renzora::{
     DefaultCamera, EditorCamera, EffectRouting, IsolatedCamera, PlayModeCamera, PlayModeState,
     PlayState, SceneCamera, ViewportRenderTarget,
 };
@@ -545,7 +545,7 @@ struct PostProcessDebugState {
 
 /// Logs when meshes are rehydrated from MeshPrimitive.
 pub fn debug_log_rehydrate_meshes(
-    query: Query<(Entity, &renzora_core::MeshPrimitive, Option<&Name>), Without<Mesh3d>>,
+    query: Query<(Entity, &renzora::MeshPrimitive, Option<&Name>), Without<Mesh3d>>,
     debug: Option<Res<RenderingDebugLog>>,
 ) {
     if !is_enabled(&debug) {

@@ -5,13 +5,13 @@
 //! Play button sits in its own panel below.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, Sense, Stroke, Vec2};
-use renzora::egui_phosphor::regular::*;
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use egui_phosphor::regular::*;
 
 use std::sync::atomic::Ordering;
 
 use renzora::core::PlayModeState;
-use renzora::editor::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
+use renzora_editor_framework::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
 
 use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
 
@@ -23,7 +23,7 @@ const MARGIN: f32 = 8.0;
 
 /// Render the vertical tool overlay on top of the viewport content area.
 pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rect) {
-    let Some(theme_mgr) = world.get_resource::<renzora::theme::ThemeManager>() else { return };
+    let Some(theme_mgr) = world.get_resource::<renzora_theme::ThemeManager>() else { return };
     let theme = &theme_mgr.active_theme;
     let Some(cmds) = world.get_resource::<EditorCommands>() else { return };
 
@@ -118,20 +118,20 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                         draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
                     }
                     first_section = false;
-                    let (can_undo, can_redo) = world.get_resource::<renzora::undo::UndoStacks>()
+                    let (can_undo, can_redo) = world.get_resource::<renzora_undo::UndoStacks>()
                         .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
                         .unwrap_or((false, false));
                     let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
                     let r = undo_redo_button(ui, undo_rect, ARROW_U_UP_LEFT, can_undo, inactive_color, hovered_color);
                     if can_undo && r.clicked() {
-                        cmds.push(|w: &mut World| renzora::undo::undo_once(w));
+                        cmds.push(|w: &mut World| renzora_undo::undo_once(w));
                     }
                     r.on_hover_text("Undo (Ctrl+Z)");
                     y += row_step;
                     let redo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
                     let r = undo_redo_button(ui, redo_rect, ARROW_U_UP_RIGHT, can_redo, inactive_color, hovered_color);
                     if can_redo && r.clicked() {
-                        cmds.push(|w: &mut World| renzora::undo::redo_once(w));
+                        cmds.push(|w: &mut World| renzora_undo::redo_once(w));
                     }
                     r.on_hover_text("Redo (Ctrl+Y)");
                     y += row_step;
@@ -340,7 +340,7 @@ fn viewport_tool_button(
 
 /// Nav overlay: pan/zoom drag-buttons on the right side, below the axis gizmo.
 pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect) {
-    let Some(theme_mgr) = world.get_resource::<renzora::theme::ThemeManager>() else { return };
+    let Some(theme_mgr) = world.get_resource::<renzora_theme::ThemeManager>() else { return };
     let theme = &theme_mgr.active_theme;
     let Some(nav) = world.get_resource::<NavOverlayState>() else { return };
 

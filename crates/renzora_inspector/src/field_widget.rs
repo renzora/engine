@@ -1,13 +1,13 @@
 //! Generic field rendering — maps FieldType to the appropriate egui widget.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
-use renzora::editor::{
+use bevy_egui::egui;
+use renzora_editor_framework::{
     asset_drop_target, inline_property, toggle_switch, AssetDragPayload, EditorCommands,
     FieldDef, FieldType, FieldValue,
 };
-use renzora::theme::Theme;
-use renzora::undo::{self, FieldChangeCmd, UndoContext};
+use renzora_theme::Theme;
+use renzora_undo::{self, FieldChangeCmd, UndoContext};
 
 fn push_field_change(
     cmds: &EditorCommands,
@@ -18,7 +18,7 @@ fn push_field_change(
     set_fn: fn(&mut World, Entity, FieldValue),
 ) {
     cmds.push(move |world| {
-        undo::execute(world, UndoContext::Scene, Box::new(FieldChangeCmd {
+        renzora_undo::execute(world, UndoContext::Scene, Box::new(FieldChangeCmd {
             entity, field_name, old, new, set_fn,
         }));
     });

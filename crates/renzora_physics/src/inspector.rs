@@ -682,9 +682,9 @@ fn character_controller_ui(
 
 /// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
 fn auto_insert_collider_for_shape(
-    trigger: On<Insert, renzora_core::MeshPrimitive>,
+    trigger: On<Insert, renzora::MeshPrimitive>,
     mut commands: Commands,
-    query: Query<&renzora_core::MeshPrimitive, Without<CollisionShapeData>>,
+    query: Query<&renzora::MeshPrimitive, Without<CollisionShapeData>>,
 ) {
     let entity = trigger.entity;
     if let Ok(prim) = query.get(entity) {

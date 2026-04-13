@@ -2,8 +2,8 @@ use bevy::prelude::*;
 
 use crate::extension::ScriptExtensionCommand;
 
-// Re-export from renzora_core for backwards compatibility
-pub use renzora_core::{CharacterCommand, CharacterCommandQueue};
+// Re-export from renzora for backwards compatibility
+pub use renzora::{CharacterCommand, CharacterCommandQueue};
 
 /// Commands that scripts can issue, processed after execution.
 /// Language-agnostic — all backends produce these same commands.
@@ -176,7 +176,7 @@ pub enum ScriptCommand {
     Action {
         name: String,
         target_entity: Option<String>,
-        args: std::collections::HashMap<String, renzora_core::ScriptActionValue>,
+        args: std::collections::HashMap<String, renzora::ScriptActionValue>,
     },
 
     // === Extension (legacy) ===
@@ -185,5 +185,5 @@ pub enum ScriptCommand {
     Extension(Box<dyn ScriptExtensionCommand>),
 }
 
-// Re-export PropertyValue from renzora_core for backwards compatibility
-pub use renzora_core::PropertyValue;
+// Re-export PropertyValue from renzora for backwards compatibility
+pub use renzora::PropertyValue;

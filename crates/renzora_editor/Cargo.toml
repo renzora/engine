@@ -45,7 +45,7 @@ renzora_runtime = { path = "../renzora_runtime" }
 
 # Core (same as renzora_runtime)
 renzora_engine = { path = "../renzora_engine" }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting" }
 renzora_blueprint = { path = "../renzora_blueprint" }
 renzora_input = { path = "../renzora_input" }

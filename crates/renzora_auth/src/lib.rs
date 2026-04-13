@@ -9,9 +9,9 @@ pub mod session;
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
-use renzora::bevy_egui::EguiContexts;
-use renzora::bevy_egui::egui::{self, Color32, CursorIcon, Sense};
-use renzora::theme::{Theme, ThemeManager};
+use bevy_egui::EguiContexts;
+use bevy_egui::egui::{self, Color32, CursorIcon, Sense};
+use renzora_theme::{Theme, ThemeManager};
 
 pub use session::AuthSession;
 

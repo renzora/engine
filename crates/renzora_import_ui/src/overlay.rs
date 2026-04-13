@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui;
+use egui_phosphor::regular;
 use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::{ImportSettings, UpAxis};
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 /// Import progress state.
 #[derive(Debug, Clone, PartialEq)]

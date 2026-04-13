@@ -1,6 +1,6 @@
-//! Animation extraction utilities — re-exports write_anim_file from renzora_core.
+//! Animation extraction utilities — re-exports write_anim_file from renzora.
 
-pub use renzora_core::{write_anim_file, AnimClip, BoneTrack};
+pub use renzora::{write_anim_file, AnimClip, BoneTrack};
 
 /// Create a minimal AnimClip with the given name and duration.
 pub fn create_empty_clip(name: &str, duration: f32) -> AnimClip {

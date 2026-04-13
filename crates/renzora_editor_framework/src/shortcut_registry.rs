@@ -11,7 +11,7 @@
 //!      have rebound it) key chord is pressed.
 
 use bevy::prelude::*;
-use renzora_core::keybindings::{KeyBinding, KeyBindings};
+use renzora::keybindings::{KeyBinding, KeyBindings};
 use std::sync::Arc;
 
 pub type ShortcutHandler = Arc<dyn Fn(&mut World) + Send + Sync>;
@@ -79,7 +79,7 @@ impl ShortcutRegistry {
 /// Skips firing while egui has keyboard focus (typing in text fields).
 pub fn shortcut_dispatch_system(world: &mut World) {
     let has_focus = world
-        .get_resource::<renzora_core::InputFocusState>()
+        .get_resource::<renzora::InputFocusState>()
         .map_or(false, |f| f.egui_wants_keyboard);
     if has_focus {
         return;

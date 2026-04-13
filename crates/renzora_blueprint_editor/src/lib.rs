@@ -5,7 +5,7 @@ mod graph_panel;
 mod properties_panel;
 
 use bevy::prelude::*;
-use renzora::editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 
 /// Tracks which entity's blueprint is currently open in the editor.
 #[derive(Resource, Default)]

@@ -15,16 +15,16 @@ impl Plugin for MaterialPlugin {
         info!("[runtime] MaterialPlugin");
         app.add_plugins(runtime::GraphMaterialPlugin);
         app.add_plugins(resolver::MaterialResolverPlugin);
-        // Observe the shared extraction event defined in renzora_core. Any
+        // Observe the shared extraction event defined in renzora. Any
         // importer that fires `PbrMaterialExtracted` gets a `.material` file
         // written — without the importer knowing this crate exists.
         app.add_observer(on_pbr_material_extracted);
     }
 }
 
-/// Turn a [`renzora_core::PbrMaterialExtracted`] event into a `.material`
+/// Turn a [`renzora::PbrMaterialExtracted`] event into a `.material`
 /// graph file on disk. Failures are logged; the observer never panics.
-fn on_pbr_material_extracted(trigger: On<renzora_core::PbrMaterialExtracted>) {
+fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
     let ev = trigger.event();
     if let Err(e) = std::fs::create_dir_all(&ev.output_dir) {
         warn!(

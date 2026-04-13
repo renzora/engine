@@ -12,7 +12,7 @@ use bevy::window::{CursorOptions, PrimaryWindow};
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
-use renzora::editor::{EditorSelection, EditorCamera, HideInHierarchy};
+use renzora_editor_framework::{EditorSelection, EditorCamera, HideInHierarchy};
 
 use crate::OverlayGizmoGroup;
 
@@ -460,8 +460,8 @@ pub fn modal_transform_keyboard_system(
         if !records.is_empty() {
             commands.queue(move |world: &mut World| {
                 for (entity, old, new) in records {
-                    renzora::undo::record(world, renzora::undo::UndoContext::Scene,
-                        Box::new(renzora::undo::TransformCmd { entity, old, new }));
+                    renzora_undo::record(world, renzora_undo::UndoContext::Scene,
+                        Box::new(renzora_undo::TransformCmd { entity, old, new }));
                 }
             });
         }

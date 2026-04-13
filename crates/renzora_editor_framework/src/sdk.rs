@@ -8,18 +8,17 @@
 //! The typical use is as Bevy `run_if` conditions:
 //!
 //! ```ignore
-//! use renzora::sdk::conditions::*;
+//! use renzora_editor_framework::sdk::conditions::*;
 //! use renzora::core::viewport_types::ViewportMode;
 //!
 //! app.add_systems(Update, my_edit_system.run_if(in_mode(ViewportMode::Edit)));
 //! app.add_systems(Update, my_overlay.run_if(viewport_hovered));
 //! ```
 
-#[cfg(feature = "editor")]
 pub mod conditions {
     use bevy::prelude::*;
-    use renzora_core::viewport_types::{ViewportMode, ViewportSettings, ViewportState};
-    use renzora_editor_framework::{ActiveTool, EditorSelection};
+    use renzora::viewport_types::{ViewportMode, ViewportSettings, ViewportState};
+    use crate::{ActiveTool, EditorSelection};
 
     /// Run only when the viewport is in the given [`ViewportMode`]
     /// (Scene / Edit / Sculpt / Paint / Animate).
@@ -53,6 +52,6 @@ pub mod conditions {
 
     /// Run only when at least one entity is selected in the editor.
     pub fn has_selection(sel: Option<Res<EditorSelection>>) -> bool {
-        sel.map(|s| s.get().is_some()).unwrap_or(false)
+        sel.map(|s: Res<EditorSelection>| s.get().is_some()).unwrap_or(false)
     }
 }

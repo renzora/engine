@@ -8,6 +8,9 @@ crate-type = ["dylib"]
 description = "Export overlay for packaging Renzora projects"
 
 [dependencies]
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_rpak = { path = "../renzora_rpak" }

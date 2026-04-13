@@ -6,5 +6,5 @@ description = "Loads Bevy plugins from DLLs at startup. Full &mut App access."
 
 [dependencies]
 bevy = { workspace = true }
-dynamic_plugin_meta = { path = "../dynamic_plugin_meta" }
+renzora = { path = "../renzora", default-features = false }
 libloading = "0.8"

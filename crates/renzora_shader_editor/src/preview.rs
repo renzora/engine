@@ -5,13 +5,13 @@ use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::bevy_egui::egui::{self, RichText, TextureId};
-use renzora::bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::egui::{self, RichText, TextureId};
+use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
-use renzora::editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::runtime::{CodeShaderMaterial, CodeShaderState, ShaderCache};
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
 
@@ -298,7 +298,7 @@ impl EditorPanel for ShaderPreviewPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::MONITOR)
+        Some(egui_phosphor::regular::MONITOR)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

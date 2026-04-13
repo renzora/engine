@@ -1,9 +1,10 @@
-//! Macros and types for Renzora dynamic plugins.
+//! Dynamic plugin macro + scope enum.
 //!
-//! Plugin authors implement `Plugin` for their type and call `add!(MyPlugin)`.
-//! The macro generates the FFI export. The plugin code is standard Bevy.
-
-pub use bevy;
+//! Every Renzora plugin uses [`add!`] to expose itself across the FFI
+//! boundary so the editor (or runtime) can load it from a `.dll` / `.so` /
+//! `.dylib` at startup. Originally lived in a separate `dynamic_plugin_meta`
+//! crate; consolidated here so plugin authors only need `bevy` + `renzora`
+//! as dependencies.
 
 /// Plugin scope — determines when the plugin is loaded.
 #[repr(u8)]
@@ -20,13 +21,13 @@ pub enum PluginScope {
 ///
 /// ```rust,ignore
 /// // Loads in both editor and exported games (default)
-/// add!(MyPlugin);
+/// renzora::add!(MyPlugin);
 ///
 /// // Editor only — won't ship with exported games
-/// add!(MyEditorTool, Editor);
+/// renzora::add!(MyEditorTool, Editor);
 ///
 /// // Runtime only — gameplay systems, no editor UI
-/// add!(MyGameplay, Runtime);
+/// renzora::add!(MyGameplay, Runtime);
 /// ```
 #[macro_export]
 macro_rules! add {

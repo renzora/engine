@@ -5,6 +5,11 @@ edition = "2021"
 
 
 [dependencies]
+renzora_undo = { path = "../renzora_undo" }
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_console = { path = "../renzora_console" }

@@ -385,7 +385,7 @@ pub struct PostProcessPlugin<T: PostProcessEffect> {
 fn proxy_effect_to_camera<T: PostProcessEffect>(
     mut commands: Commands,
     sources: Query<(Entity, &T)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
     mut removed: RemovedComponents<T>,
 ) {
     let any_removed = removed.read().next().is_some();
@@ -410,7 +410,7 @@ fn proxy_effect_to_camera<T: PostProcessEffect>(
 fn cleanup_proxy_effect<T: PostProcessEffect>(
     mut commands: Commands,
     sources: Query<(), With<T>>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if sources.is_empty() {
         for (target, _) in routing.iter() {

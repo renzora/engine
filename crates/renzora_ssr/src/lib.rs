@@ -23,7 +23,7 @@ impl Default for SsrSettings {
 fn sync_ssr(
     mut commands: Commands,
     sources: Query<(Entity, Ref<SsrSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -54,7 +54,7 @@ fn sync_ssr(
 fn cleanup_ssr(
     mut commands: Commands,
     mut removed: RemovedComponents<SsrSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

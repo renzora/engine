@@ -1,7 +1,7 @@
 //! System profiler panel — frame time breakdown and schedule timing
 
-use renzora::bevy_egui::egui::{self, Color32, RichText, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, RichText, Vec2};
+use renzora_theme::Theme;
 
 use crate::state::{DiagnosticsState, SystemTimingState, RenderStats};
 
@@ -211,7 +211,7 @@ fn render_profiler_links(ui: &mut egui::Ui, theme: &Theme) {
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(renzora::egui_phosphor::regular::MAGNIFYING_GLASS).size(12.0));
+                ui.label(RichText::new(egui_phosphor::regular::MAGNIFYING_GLASS).size(12.0));
                 ui.label(RichText::new("Tracy Profiler").size(11.0).color(theme.text.primary.to_color32()));
             });
             ui.label(RichText::new("Best for per-system timing and GPU profiling").size(9.0).color(theme.text.muted.to_color32()));
@@ -220,7 +220,7 @@ fn render_profiler_links(ui: &mut egui::Ui, theme: &Theme) {
             ui.add_space(8.0);
 
             ui.horizontal(|ui| {
-                ui.label(RichText::new(renzora::egui_phosphor::regular::CHART_BAR).size(12.0));
+                ui.label(RichText::new(egui_phosphor::regular::CHART_BAR).size(12.0));
                 ui.label(RichText::new("Chrome Tracing").size(11.0).color(theme.text.primary.to_color32()));
             });
             ui.label(RichText::new("Export traces to chrome://tracing").size(9.0).color(theme.text.muted.to_color32()));

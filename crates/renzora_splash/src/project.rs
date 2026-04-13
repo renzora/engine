@@ -1,4 +1,4 @@
-pub use renzora_core::{CurrentProject, ProjectConfig, WindowConfig, open_project};
+pub use renzora::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 
 use std::path::Path;
 

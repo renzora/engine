@@ -1,6 +1,6 @@
 //! Lifecycle node type definitions and registry.
 
-use renzora_core::{BlueprintNodeDef, PinTemplate, PinType, PinValue};
+use renzora::{BlueprintNodeDef, PinTemplate, PinType, PinValue};
 
 pub const CAT_LIFECYCLE: &str = "Lifecycle";
 

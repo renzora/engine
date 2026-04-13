@@ -6,6 +6,7 @@
 pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
+pub mod sdk;
 pub mod ext;
 pub mod inspector_registry;
 pub mod selection;
@@ -119,7 +120,7 @@ pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
-pub use renzora_core::{HideInHierarchy, EditorLocked, EditorCamera};
+pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera};
 pub use renzora_splash::SplashState;
 
 /// Optional label color for an entity row in the hierarchy.
@@ -131,7 +132,7 @@ pub struct EntityLabelColor(pub [u8; 3]);
 #[derive(Component, Clone, Copy)]
 pub struct HierarchyOrder(pub u32);
 
-pub use renzora_core::EntityTag;
+pub use renzora::EntityTag;
 
 /// Filter mode for the hierarchy panel. Other panels can set this to restrict
 /// which entities are shown (e.g. UI workspace only shows cameras + canvases).
@@ -343,7 +344,7 @@ impl Plugin for RenzoraEditorPlugin {
 
 /// Observer: show toast notifications when scripts are hot-reloaded.
 fn show_script_reload_toasts(
-    trigger: On<renzora_core::ScriptsReloaded>,
+    trigger: On<renzora::ScriptsReloaded>,
     mut toasts: ResMut<renzora_ui::Toasts>,
 ) {
     let event = trigger.event();
@@ -520,7 +521,7 @@ fn sync_active_tool_to_gizmo_mode(
 /// When the editor state is entered, tell the ThemeManager about the project
 /// directory so it can discover custom `.toml` themes in `<project>/themes/`.
 fn wire_theme_project_path(
-    project: Option<Res<renzora_core::CurrentProject>>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut theme_manager: ResMut<ThemeManager>,
 ) {
     if let Some(project) = project {
@@ -534,7 +535,7 @@ const PROJECT_SCAN_INTERVAL: f64 = 2.0;
 /// Scan the project's `fonts/` directory for custom `.ttf`/`.otf` files,
 /// load any new ones into egui's font data, and update the `CustomFonts` resource.
 fn load_project_custom_fonts(world: &mut World, ctx: &egui::Context) {
-    let fonts_dir = match world.get_resource::<renzora_core::CurrentProject>() {
+    let fonts_dir = match world.get_resource::<renzora::CurrentProject>() {
         Some(project) => project.resolve_path("fonts"),
         None => return,
     };
@@ -694,11 +695,11 @@ pub fn editor_ui_system(world: &mut World) {
 
     // 4.5. Check play mode — in Playing mode, skip editor UI and show play overlay
     let play_state = world
-        .get_resource::<renzora_core::PlayModeState>()
+        .get_resource::<renzora::PlayModeState>()
         .map(|pm| pm.state)
-        .unwrap_or(renzora_core::PlayState::Editing);
+        .unwrap_or(renzora::PlayState::Editing);
 
-    if matches!(play_state, renzora_core::PlayState::Playing | renzora_core::PlayState::Paused) {
+    if matches!(play_state, renzora::PlayState::Playing | renzora::PlayState::Paused) {
         world.insert_resource(registry);
 
         // Game camera renders directly to window, UI camera is disabled.
@@ -721,7 +722,7 @@ pub fn editor_ui_system(world: &mut World) {
 
     // 5. Title bar (top) — returns action
     let play_info = world
-        .get_resource::<renzora_core::PlayModeState>()
+        .get_resource::<renzora::PlayModeState>()
         .map(|pm| renzora_ui::title_bar::PlayModeInfo {
             is_playing: pm.is_playing(),
             is_paused: pm.is_paused(),
@@ -730,7 +731,7 @@ pub fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
     // Auth state comes from the AuthBridge resource (synced by AuthPlugin).
     let auth_bridge = world
-        .get_resource::<renzora_core::AuthBridge>()
+        .get_resource::<renzora::AuthBridge>()
         .cloned()
         .unwrap_or_default();
     let sign_in_open = auth_bridge.window_open;
@@ -974,19 +975,19 @@ pub fn editor_ui_system(world: &mut World) {
         TitleBarAction::NewProject => handle_new_project(world),
         TitleBarAction::OpenProject => handle_open_project(world),
         TitleBarAction::NewScene => {
-            world.insert_resource(renzora_core::NewSceneRequested);
+            world.insert_resource(renzora::NewSceneRequested);
         }
         TitleBarAction::OpenScene => {
-            world.insert_resource(renzora_core::OpenSceneRequested);
+            world.insert_resource(renzora::OpenSceneRequested);
         }
         TitleBarAction::Save => {
-            world.insert_resource(renzora_core::SaveSceneRequested);
+            world.insert_resource(renzora::SaveSceneRequested);
         }
         TitleBarAction::SaveAs => {
-            world.insert_resource(renzora_core::SaveAsSceneRequested);
+            world.insert_resource(renzora::SaveAsSceneRequested);
         }
         TitleBarAction::Export => {
-            world.insert_resource(renzora_core::ExportRequested);
+            world.insert_resource(renzora::ExportRequested);
         }
         TitleBarAction::ToggleSettings => {
             if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
@@ -994,7 +995,7 @@ pub fn editor_ui_system(world: &mut World) {
             }
         }
         TitleBarAction::ToggleSignIn => {
-            world.insert_resource(renzora_core::AuthToggleWindowRequest);
+            world.insert_resource(renzora::AuthToggleWindowRequest);
         }
         TitleBarAction::OpenUserSettings => {
             if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
@@ -1006,30 +1007,30 @@ pub fn editor_ui_system(world: &mut World) {
             switch_layout_by_name(world, "Hub");
         }
         TitleBarAction::SignOut => {
-            world.insert_resource(renzora_core::AuthSignOutRequest);
+            world.insert_resource(renzora::AuthSignOutRequest);
         }
         TitleBarAction::Play => {
-            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+            if let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() {
                 pm.request_play = true;
             }
         }
         TitleBarAction::Stop => {
-            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+            if let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() {
                 pm.request_stop = true;
             }
         }
         TitleBarAction::Pause => {
-            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+            if let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() {
                 pm.request_pause = true;
             }
         }
         TitleBarAction::ScriptsOnly => {
-            if let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() {
+            if let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() {
                 pm.request_scripts_only = true;
             }
         }
         TitleBarAction::StartTutorial => {
-            world.insert_resource(renzora_core::TutorialRequested);
+            world.insert_resource(renzora::TutorialRequested);
         }
         TitleBarAction::Undo => {
             if let Some(hook) = world.get_resource::<EditorActionHooks>().and_then(|h| h.undo) {
@@ -1052,7 +1053,7 @@ pub fn editor_ui_system(world: &mut World) {
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.activate_tab(idx));
             if let Some((old_id, new_id)) = ids {
-                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
         }
         DocTabAction::Close(idx) => {
@@ -1077,7 +1078,7 @@ pub fn editor_ui_system(world: &mut World) {
                 if let Some(mut ts) = world.get_resource_mut::<DocumentTabState>() {
                     ts.active_tab = new_active;
                 }
-                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
 
             // Close the tab and clean up buffer
@@ -1085,7 +1086,7 @@ pub fn editor_ui_system(world: &mut World) {
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.close_tab(idx));
             if let Some(id) = closed_id {
-                if let Some(mut buffers) = world.get_resource_mut::<renzora_core::SceneTabBuffers>() {
+                if let Some(mut buffers) = world.get_resource_mut::<renzora::SceneTabBuffers>() {
                     buffers.buffers.remove(&id);
                 }
             }
@@ -1108,7 +1109,7 @@ pub fn editor_ui_system(world: &mut World) {
                 }
             };
             if old_id != 0 {
-                world.insert_resource(renzora_core::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
         }
         DocTabAction::None => {}
@@ -1117,7 +1118,7 @@ pub fn editor_ui_system(world: &mut World) {
 
     // Auth window rendering is handled by AuthPlugin (renzora_auth).
     // React to successful sign-in by switching to the Hub layout.
-    if world.remove_resource::<renzora_core::AuthJustSignedIn>().is_some() {
+    if world.remove_resource::<renzora::AuthJustSignedIn>().is_some() {
         switch_layout_by_name(world, "Hub");
     }
 
@@ -1130,7 +1131,7 @@ pub fn editor_ui_system(world: &mut World) {
     }
 
     // J2) Handle one-shot shortcut resources
-    if world.remove_resource::<renzora_core::ToggleSettingsRequested>().is_some() {
+    if world.remove_resource::<renzora::ToggleSettingsRequested>().is_some() {
         if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
             settings.show_settings = !settings.show_settings;
         }
@@ -1220,7 +1221,7 @@ fn undock_panel_to_floating(world: &mut World, panel_id: &str, pos: egui::Pos2) 
 
 /// Handle "New Project" — close current project and return to splash screen.
 fn handle_new_project(world: &mut World) {
-    world.remove_resource::<renzora_core::CurrentProject>();
+    world.remove_resource::<renzora::CurrentProject>();
     world
         .resource_mut::<NextState<SplashState>>()
         .set(SplashState::Splash);
@@ -1238,7 +1239,7 @@ fn handle_open_project(world: &mut World) {
 
         let Some(file) = file else { return };
 
-        let project = match renzora_core::open_project(&file) {
+        let project = match renzora::open_project(&file) {
             Ok(p) => p,
             Err(e) => {
                 error!("Failed to open project: {}", e);
@@ -1274,7 +1275,7 @@ fn handle_open_project(world: &mut World) {
 
 /// Process play mode request flags and apply state transitions.
 fn process_play_mode_requests(world: &mut World) {
-    use renzora_core::PlayState;
+    use renzora::PlayState;
 
     // Only handle ScriptsOnly transitions here.
     // Playing/Paused/Stop are handled by renzora_viewport::play_mode::handle_play_mode_transitions
@@ -1283,7 +1284,7 @@ fn process_play_mode_requests(world: &mut World) {
     enum PhysicsAction { None, Unpause, Pause }
 
     let (needs_reset, physics_action) = {
-        let Some(mut pm) = world.get_resource_mut::<renzora_core::PlayModeState>() else {
+        let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() else {
             return;
         };
 
@@ -1334,12 +1335,12 @@ fn process_play_mode_requests(world: &mut World) {
 
     // Trigger physics events (decoupled — renzora_physics observes these)
     match physics_action {
-        PhysicsAction::Unpause => { world.trigger(renzora_core::UnpausePhysics); }
-        PhysicsAction::Pause => { world.trigger(renzora_core::PausePhysics); }
+        PhysicsAction::Unpause => { world.trigger(renzora::UnpausePhysics); }
+        PhysicsAction::Pause => { world.trigger(renzora::PausePhysics); }
         PhysicsAction::None => {}
     }
 
     if needs_reset {
-        world.trigger(renzora_core::ResetScriptStates);
+        world.trigger(renzora::ResetScriptStates);
     }
 }

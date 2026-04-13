@@ -6,7 +6,7 @@ pub mod properties;
 pub mod preview;
 
 use bevy::prelude::*;
-use renzora::editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 use renzora_shader::backend::ShaderCompileError;
 use renzora_shader::file::ShaderFile;
 

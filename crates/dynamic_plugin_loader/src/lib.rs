@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 use bevy::prelude::*;
 
-pub use dynamic_plugin_meta::PluginScope;
+pub use renzora::PluginScope;
 
 #[derive(Debug, Clone)]
 pub struct DynamicPluginInfo {

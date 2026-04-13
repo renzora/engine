@@ -8,7 +8,7 @@ pub use renzora_runtime;
 
 // Core engine systems
 pub use renzora_engine;
-pub use renzora_core;
+pub use renzora;
 pub use renzora_scripting;
 pub use renzora_blueprint;
 pub use renzora_input;

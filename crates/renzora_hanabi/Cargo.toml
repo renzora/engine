@@ -9,7 +9,7 @@ editor = ["dep:renzora_editor_framework", "dep:renzora_theme", "dep:bevy_egui", 
 [dependencies]
 bevy = { workspace = true }
 bevy_hanabi = { path = "../bevy_hanabi" }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ron = "0.8"

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::Color32;
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui::Color32;
+use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora::editor::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
-use renzora::editor::TreeDropZone;
+use renzora_editor_framework::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
+use renzora_editor_framework::TreeDropZone;
 
 /// Persistent UI state for the hierarchy panel.
 pub struct HierarchyState {

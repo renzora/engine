@@ -1,4 +1,4 @@
-//! Editor keybinding types — shared between editor plugins via renzora_core.
+//! Editor keybinding types — shared between editor plugins via renzora.
 //!
 //! Moved here from `renzora_keybindings` so that camera, gizmo, and other
 //! editor plugin DLLs can use these types without depending on each other.

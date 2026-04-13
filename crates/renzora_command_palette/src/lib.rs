@@ -9,14 +9,14 @@
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Align, Color32, Layout, RichText};
-use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::egui::{self, Align, Color32, Layout, RichText};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::editor::{
+use renzora_editor_framework::{
     AppEditorExt, EditorCommands, ShortcutEntry, ShortcutRegistry, SplashState,
     ToolEntry, ToolbarRegistry,
 };
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 // ── State ──────────────────────────────────────────────────────────────────
 

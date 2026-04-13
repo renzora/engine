@@ -7,11 +7,11 @@ use bevy::render::{
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora::postprocess::PostProcessEffect;
+use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora::editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -102,7 +102,7 @@ impl Plugin for EdgeGlowPlugin {
         info!("[runtime] EdgeGlowPlugin");
         bevy::asset::embedded_asset!(app, "edge_glow.wgsl");
         app.register_type::<EdgeGlowSettings>();
-        app.add_plugins(renzora::postprocess::PostProcessPlugin::<EdgeGlowSettings>::default());
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<EdgeGlowSettings>::default());
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

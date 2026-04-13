@@ -35,7 +35,7 @@ pub fn foliage_paint_hover_system(
     mouse: Res<ButtonInput<MouseButton>>,
     mut paint_state: ResMut<FoliagePaintState>,
     mut ray_cast: MeshRayCast,
-    camera_query: Query<(&Camera, &GlobalTransform), With<renzora::editor::EditorCamera>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<renzora_editor_framework::EditorCamera>>,
     windows: Query<&Window>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
     chunk_query: Query<(Entity, &GlobalTransform), With<TerrainChunkData>>,

@@ -6,14 +6,14 @@ mod state;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText};
-use renzora::egui_phosphor::regular;
-use renzora::editor::{
+use bevy_egui::egui::{self, RichText};
+use egui_phosphor::regular;
+use renzora_editor_framework::{
     collapsible_section, collapsible_section_removable, empty_state, search_overlay,
     AppEditorExt, EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
     OverlayAction, OverlayEntry, PanelLocation,
 };
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use state::InspectorState;
 

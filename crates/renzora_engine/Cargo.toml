@@ -7,8 +7,11 @@ edition = "2021"
 editor = ["dep:bevy_egui"]
 
 [dependencies]
+egui-phosphor = { workspace = true }
+renzora_macros = { path = "../renzora_macros" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 renzora_physics = { path = "../renzora_physics" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_shader = { path = "../renzora_shader" }

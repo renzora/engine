@@ -12,7 +12,7 @@ bevy = { workspace = true }
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_theme = { path = "../renzora_theme", optional = true }
 serde = { version = "1", features = ["derive"] }

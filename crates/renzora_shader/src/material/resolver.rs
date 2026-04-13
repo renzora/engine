@@ -45,7 +45,7 @@ impl Plugin for MaterialResolverPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] MaterialResolverPlugin");
         app.init_resource::<MaterialCache>()
-            .init_resource::<renzora_core::VirtualFileReader>()
+            .init_resource::<renzora::VirtualFileReader>()
             .register_type::<MaterialRef>()
             .register_type::<super::material_ref::MaterialOverrides>()
             .register_type::<super::material_ref::ParamValue>()
@@ -66,8 +66,8 @@ fn resolve_material_refs(
     shader_cache: Option<ResMut<ShaderCache>>,
     shader_registry: Option<Res<crate::registry::ShaderBackendRegistry>>,
     fallback_texture: Option<Res<FallbackTexture>>,
-    project: Option<Res<renzora_core::CurrentProject>>,
-    file_reader: Option<Res<renzora_core::VirtualFileReader>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    file_reader: Option<Res<renzora::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
     let Some(mut graph_materials) = graph_materials else { return; };
@@ -76,7 +76,7 @@ fn resolve_material_refs(
     let Some(mut shader_state) = shader_state else { return; };
     let Some(mut shader_cache) = shader_cache else { return; };
     let Some(shader_registry) = shader_registry else { return; };
-    let default_reader = renzora_core::VirtualFileReader::default();
+    let default_reader = renzora::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
@@ -191,7 +191,7 @@ fn resolve_code_shader(
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
     registry: &crate::registry::ShaderBackendRegistry,
-    reader: &renzora_core::VirtualFileReader,
+    reader: &renzora::VirtualFileReader,
 ) -> Option<Handle<CodeShaderMaterial>> {
     let content = match reader.read_string(path) {
         Some(c) => c,
@@ -240,7 +240,7 @@ fn resolve_raw_shader(
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
     registry: &crate::registry::ShaderBackendRegistry,
-    reader: &renzora_core::VirtualFileReader,
+    reader: &renzora::VirtualFileReader,
 ) -> Option<Handle<CodeShaderMaterial>> {
     let source = match reader.read_string(path) {
         Some(c) => c,
@@ -277,7 +277,7 @@ fn resolve_graph_material(
     _shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
-    reader: &renzora_core::VirtualFileReader,
+    reader: &renzora::VirtualFileReader,
 ) -> Option<Handle<GraphMaterial>> {
     let content = match reader.read_string(path) {
         Some(c) => c,

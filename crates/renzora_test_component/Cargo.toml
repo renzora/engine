@@ -7,5 +7,8 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+egui-phosphor = { workspace = true }
+renzora_macros = { path = "../renzora_macros" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }

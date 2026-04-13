@@ -40,7 +40,7 @@ use {
 fn sync_rt_lighting(
     mut commands: Commands,
     sources: Query<(Entity, Ref<RtLighting>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -82,7 +82,7 @@ fn sync_rt_lighting(
 fn cleanup_rt_lighting(
     mut commands: Commands,
     mut removed: RemovedComponents<RtLighting>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

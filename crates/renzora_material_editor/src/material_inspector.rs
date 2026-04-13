@@ -3,13 +3,13 @@
 //! Registered automatically by `MaterialEditorPlugin`.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
-use renzora::egui_phosphor::regular;
-use renzora::editor::{
+use bevy_egui::egui;
+use egui_phosphor::regular;
+use renzora_editor_framework::{
     asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry,
 };
 use renzora_shader::material::material_ref::MaterialRef;
-use renzora::theme::Theme;
+use renzora_theme::Theme;
 
 use crate::{MaterialEditorState, MaterialEditMode};
 

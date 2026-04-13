@@ -19,7 +19,7 @@ ply-rs = "0.1"
 ufbx = "0.10"
 
 # Core types (AnimClip, BoneTrack, write_anim_file)
-renzora_core = { path = "../renzora_core" }
+renzora = { path = "../renzora", default-features = false }
 
 # USDZ archive extraction
 zip = "2"

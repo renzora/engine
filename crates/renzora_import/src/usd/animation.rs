@@ -3,7 +3,7 @@
 //! Converts UsdAnimation data to renzora_animation::AnimClip format.
 
 use super::scene::UsdAnimation;
-use renzora_core::{AnimClip, BoneTrack};
+use renzora::{AnimClip, BoneTrack};
 
 /// Convert a UsdAnimation to a renzora AnimClip.
 pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {

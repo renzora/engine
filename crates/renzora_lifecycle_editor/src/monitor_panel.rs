@@ -1,13 +1,13 @@
 //! Lifecycle Monitor Panel — live state during play mode.
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
-use renzora::editor::{EditorPanel, PanelLocation};
+use renzora_editor_framework::{EditorPanel, PanelLocation};
 use renzora_lifecycle::LifecycleRuntimeState;
 use renzora_network::NetworkStatus;
 use renzora_network::status::ConnectionState;
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 pub struct LifecycleMonitorPanel;
 
@@ -21,7 +21,7 @@ impl EditorPanel for LifecycleMonitorPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::MONITOR)
+        Some(egui_phosphor::regular::MONITOR)
     }
 
     fn default_location(&self) -> PanelLocation {
@@ -56,7 +56,7 @@ impl EditorPanel for LifecycleMonitorPanel {
                     };
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(renzora::egui_phosphor::regular::FILM_STRIP)
+                            egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
                                 .size(12.0)
                                 .color(muted),
                         );

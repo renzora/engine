@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_core::{NodeId, PinValue};
+use renzora::{NodeId, PinValue};
 
 /// A simple countdown timer (avoids Bevy Timer API changes).
 #[derive(Clone, Debug)]

@@ -1,7 +1,7 @@
 //! Culling debug panel
 
-use renzora::bevy_egui::egui::{self, Color32, RichText};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, RichText};
+use renzora_theme::Theme;
 
 use crate::state::CullingDebugState;
 

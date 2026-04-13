@@ -18,16 +18,16 @@
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::bevy_egui::egui::{self, Color32, Pos2, RichText};
-use renzora::bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::egui::{self, Color32, Pos2, RichText};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora::editor::{
+use renzora_editor_framework::{
     ActiveTool, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
 };
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -637,7 +637,7 @@ fn render_add_component_menu(
         .and_then(|s| s.get());
 
     let q = query.to_lowercase();
-    let mut groups: Vec<(&'static str, Vec<&renzora::editor::InspectorEntry>)> = Vec::new();
+    let mut groups: Vec<(&'static str, Vec<&renzora_editor_framework::InspectorEntry>)> = Vec::new();
     for entry in registry.iter() {
         if entry.add_fn.is_none() { continue; }
         if let Some(target) = target {

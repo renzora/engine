@@ -12,7 +12,7 @@ mod thumbnails;
 
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
-use renzora::editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
@@ -90,12 +90,12 @@ impl Plugin for MaterialEditorPlugin {
 /// When the Materials layout is active, only show mesh entities in the hierarchy.
 fn sync_hierarchy_filter_for_materials(
     layout_mgr: Res<renzora_ui::layouts::LayoutManager>,
-    mut filter: ResMut<renzora::editor::HierarchyFilter>,
+    mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
 ) {
     let is_materials = layout_mgr.active_name() == "Materials";
     if is_materials {
         // Use the full reflect short_path — Bevy registers Mesh3d under "bevy_mesh" crate
-        let desired = renzora::editor::HierarchyFilter::OnlyWithComponents(vec!["Mesh3d"]);
+        let desired = renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["Mesh3d"]);
         if *filter != desired {
             *filter = desired;
         }

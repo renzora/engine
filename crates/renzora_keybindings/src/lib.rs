@@ -1,13 +1,13 @@
 //! Renzora Keybindings — configurable keyboard shortcuts for the editor.
 //!
 //! The type definitions (EditorAction, KeyBinding, KeyBindings) now live in
-//! `renzora_core::keybindings` so that other editor plugin DLLs can use them
+//! `renzora::keybindings` so that other editor plugin DLLs can use them
 //! without depending on this crate. This crate re-exports everything and
 //! provides the plugin that initializes the resource.
 
 use bevy::prelude::*;
 
-// Re-export all types from renzora_core::keybindings
+// Re-export all types from renzora::keybindings
 pub use renzora::core::keybindings::*;
 
 #[derive(Default)]

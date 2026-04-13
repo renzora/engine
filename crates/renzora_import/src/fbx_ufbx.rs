@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use renzora_core::{AnimClip, BoneTrack, write_anim_file};
+use renzora::{AnimClip, BoneTrack, write_anim_file};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ImportError, ImportResult};

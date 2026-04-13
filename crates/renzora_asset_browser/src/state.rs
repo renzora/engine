@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use renzora::bevy_egui::egui::{self, Color32};
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui::{self, Color32};
+use egui_phosphor::regular;
 
 /// View mode for the asset browser content pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -61,7 +61,7 @@ pub struct AssetBrowserState {
     /// Drag payload built by the tree's file rows. Consumed by the panel and
     /// inserted as a world resource so the viewport drop handler can pick it
     /// up. Mirrors the grid's drag flow.
-    pub pending_drag_payload: Option<renzora::editor::AssetDragPayload>,
+    pub pending_drag_payload: Option<renzora_editor_framework::AssetDragPayload>,
     /// Cached project root directory.
     pub project_root: Option<PathBuf>,
     /// Navigation history for back button.

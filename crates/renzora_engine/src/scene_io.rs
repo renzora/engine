@@ -2,8 +2,8 @@
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora_core::console_log::*;
-use renzora_core::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget};
+use renzora::console_log::*;
+use renzora::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget};
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
 use std::collections::BTreeSet;
@@ -420,10 +420,10 @@ pub fn load_scene(world: &mut World, path: &Path) {
 
 /// Load the current project's main scene.
 ///
-/// Skipped when [`LifecycleHandlesBoot`](renzora_core::LifecycleHandlesBoot) is present,
+/// Skipped when [`LifecycleHandlesBoot`](renzora::LifecycleHandlesBoot) is present,
 /// because the lifecycle graph's `On Game Start` node controls the boot scene.
 pub fn load_current_scene(world: &mut World) {
-    if world.get_resource::<renzora_core::LifecycleHandlesBoot>().is_some() {
+    if world.get_resource::<renzora::LifecycleHandlesBoot>().is_some() {
         info!("load_current_scene: skipped (lifecycle handles boot)");
         return;
     }
@@ -516,7 +516,7 @@ pub fn rehydrate_cameras(
         // During play mode, configure the default camera as the play mode camera
         // with the viewport render target (mirrors what enter_play_mode does).
         if in_play_mode && is_active {
-            use renzora_core::console_log::*;
+            use renzora::console_log::*;
             let name = commands.entity(entity).id();
             console_info("Rehydration", format!(
                 "Play mode active — configuring {:?} as play mode camera", name
@@ -540,7 +540,7 @@ pub fn sync_play_mode_camera(
     let Some(mut play_mode) = play_mode else { return; };
     for entity in &query {
         if play_mode.active_game_camera != Some(entity) {
-            renzora_core::console_log::console_info("PlayMode", format!(
+            renzora::console_log::console_info("PlayMode", format!(
                 "Play mode camera updated: {:?} -> {:?}", play_mode.active_game_camera, entity
             ));
             play_mode.active_game_camera = Some(entity);
@@ -743,7 +743,7 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
                 .map(|n| n.to_string())
                 .unwrap_or_else(|| "unnamed".into());
             let has_default = world.get::<DefaultCamera>(src).is_some();
-            renzora_core::console_log::console_info(
+            renzora::console_log::console_info(
                 "PostProcess",
                 format!(
                     "Sync source camera: {:?} \"{}\" default={}",

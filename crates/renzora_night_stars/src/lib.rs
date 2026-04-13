@@ -114,7 +114,7 @@ fn sync_night_stars(
     stars_query: Query<&NightStarsData>,
     camera_query: Query<
         &Transform,
-        (With<Camera3d>, Without<renzora_core::IsolatedCamera>),
+        (With<Camera3d>, Without<renzora::IsolatedCamera>),
     >,
     sun_query: Query<&renzora_lighting::Sun>,
     mut meshes: ResMut<Assets<Mesh>>,

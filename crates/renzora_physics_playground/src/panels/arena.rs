@@ -1,7 +1,7 @@
 //! Arena Presets panel — spawn pre-built arena environments
 
-use renzora::bevy_egui::egui::{self, CursorIcon, RichText, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, CursorIcon, RichText, Vec2};
+use renzora_theme::Theme;
 
 use crate::state::{ArenaCommand, ArenaPresetsState, ArenaType};
 

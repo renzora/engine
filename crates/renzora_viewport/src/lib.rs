@@ -21,16 +21,16 @@ use bevy::prelude::*;
 use bevy::asset::embedded_asset;
 use bevy::pbr::{MaterialPlugin, wireframe::{WireframeConfig, WireframePlugin}};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::bevy_egui::egui;
-use renzora::bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
-use renzora::egui_phosphor::regular;
-use renzora::editor::{AppEditorExt, EditorPanel, PanelLocation};
+use bevy_egui::egui;
+use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
+use egui_phosphor::regular;
+use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 pub use camera_preview::CameraPreviewState;
-// Re-export all viewport types from core (they now live in renzora_core::viewport_types)
+// Re-export all viewport types from core (they now live in renzora::viewport_types)
 pub use renzora::core::viewport_types::{
     CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, NavOverlayState,
     ProjectionMode, RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings,
@@ -105,12 +105,12 @@ impl Plugin for ViewportPlugin {
                 handle_view_shortcuts,
                 handle_play_shortcuts,
                 hide_cursor_for_brushes,
-            ).run_if(in_state(renzora::editor::SplashState::Editor)));
+            ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
 
         // Register the crosshair overlay so the cursor goes to Crosshair
         // whenever the pointer is over the viewport rect.
         app.world_mut()
-            .resource_mut::<renzora::editor::ViewportOverlayRegistry>()
+            .resource_mut::<renzora_editor_framework::ViewportOverlayRegistry>()
             .register(150, draw_viewport_cursor_overlay);
 
         app.register_panel(ViewportPanel);
@@ -123,12 +123,12 @@ impl Plugin for ViewportPlugin {
 /// separately hide the OS cursor, so the crosshair is only actually seen
 /// in the "normal" gizmo-tool states, which is what we want.
 fn draw_viewport_cursor_overlay(
-    ui: &mut renzora::bevy_egui::egui::Ui,
+    ui: &mut bevy_egui::egui::Ui,
     world: &World,
-    rect: renzora::bevy_egui::egui::Rect,
+    rect: bevy_egui::egui::Rect,
 ) {
-    use renzora::bevy_egui::egui::CursorIcon;
-    use renzora::editor::ActiveTool;
+    use bevy_egui::egui::CursorIcon;
+    use renzora_editor_framework::ActiveTool;
 
     // Brushes hide the cursor entirely; don't fight them with a crosshair icon.
     if let Some(tool) = world.get_resource::<ActiveTool>() {
@@ -164,12 +164,12 @@ struct BrushCursorHiddenByUs(bool);
 /// the viewport. Only acts on transitions we own — if someone else (e.g.
 /// modal transform) has hidden the cursor, we don't touch it.
 fn hide_cursor_for_brushes(
-    active_tool: Option<Res<renzora::editor::ActiveTool>>,
+    active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
     mut cursor_options: Query<&mut bevy::window::CursorOptions>,
     mut ours: ResMut<BrushCursorHiddenByUs>,
 ) {
-    use renzora::editor::ActiveTool;
+    use renzora_editor_framework::ActiveTool;
     let Ok(mut cursor) = cursor_options.single_mut() else { return };
     let brush_active = matches!(
         active_tool.as_deref(),
@@ -342,7 +342,7 @@ impl EditorPanel for ViewportPanel {
 
             // CPU-projected overlays (grid, gizmos) paint on top of the 3D
             // image, bypassing the Bevy render pipeline entirely.
-            if let Some(overlay) = world.get_resource::<renzora::editor::ViewportOverlayRegistry>() {
+            if let Some(overlay) = world.get_resource::<renzora_editor_framework::ViewportOverlayRegistry>() {
                 overlay.draw_all(ui, world, rect);
             }
         } else {

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use renzora::bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
-use renzora::egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
+use egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
+use renzora_theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
 
@@ -12,14 +12,14 @@ const ROW_HEIGHT: f32 = 20.0;
 const INDENT: f32 = 14.0;
 
 /// Renders the folder tree in the left pane (legacy-matching style).
-/// Returns a populated [`renzora::editor::AssetDragPayload`] when the user
+/// Returns a populated [`renzora_editor_framework::AssetDragPayload`] when the user
 /// starts dragging a file row, mirroring the grid's drag behavior so the
 /// viewport can spawn the dragged asset on release.
 pub fn tree_ui(
     ui: &mut egui::Ui,
     state: &mut AssetBrowserState,
     theme: &Theme,
-) -> Option<renzora::editor::AssetDragPayload> {
+) -> Option<renzora_editor_framework::AssetDragPayload> {
     let root = state.root();
     let root_name = root
         .file_name()
@@ -375,7 +375,7 @@ fn render_folder_children(
             }
 
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            state.pending_drag_payload = Some(renzora::editor::AssetDragPayload {
+            state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
                 path: folder.clone(),
                 name: name.clone(),
                 icon: icon.to_string(),
@@ -474,7 +474,7 @@ fn render_folder_files(
 
             let (icon, color) = file_icon(file);
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            state.pending_drag_payload = Some(renzora::editor::AssetDragPayload {
+            state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
                 path: file.clone(),
                 name: name.clone(),
                 icon: icon.to_string(),

@@ -238,12 +238,12 @@ pub struct LightingPlugin;
 
 /// Observer: handle sun angle changes from scripts via ScriptAction.
 fn handle_sun_script_actions(
-    trigger: On<renzora_core::ScriptAction>,
+    trigger: On<renzora::ScriptAction>,
     mut sun_query: Query<&mut Sun>,
 ) {
     let action = trigger.event();
     if action.name != "set_sun_angles" { return; }
-    use renzora_core::ScriptActionValue;
+    use renzora::ScriptActionValue;
     let azimuth = match action.args.get("azimuth") {
         Some(ScriptActionValue::Float(v)) => *v,
         _ => return,

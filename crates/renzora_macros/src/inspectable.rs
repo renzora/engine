@@ -87,12 +87,12 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
 
         if field_attrs.readonly {
             field_defs.push(quote! {
-                renzora::editor::FieldDef {
+                renzora_editor_framework::FieldDef {
                     name: #display,
-                    field_type: renzora::editor::FieldType::ReadOnly,
+                    field_type: renzora_editor_framework::FieldType::ReadOnly,
                     get_fn: |world, entity| {
                         world.get::<#struct_name>(entity)
-                            .map(|s| renzora::editor::FieldValue::ReadOnly(format!("{:?}", s.#field_ident)))
+                            .map(|s| renzora_editor_framework::FieldValue::ReadOnly(format!("{:?}", s.#field_ident)))
                     },
                     set_fn: |_world, _entity, _val| {},
                 }
@@ -106,71 +106,71 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
                 let speed = field_attrs.speed.unwrap_or(0.01);
                 let min = field_attrs.min.unwrap_or(f32::MIN);
                 let max = field_attrs.max.unwrap_or(f32::MAX);
-                quote! { renzora::editor::FieldType::Float { speed: #speed, min: #min, max: #max } }
+                quote! { renzora_editor_framework::FieldType::Float { speed: #speed, min: #min, max: #max } }
             }
-            "Bool" => quote! { renzora::editor::FieldType::Bool },
+            "Bool" => quote! { renzora_editor_framework::FieldType::Bool },
             "Vec3" => {
                 let speed = field_attrs.speed.unwrap_or(0.1);
-                quote! { renzora::editor::FieldType::Vec3 { speed: #speed } }
+                quote! { renzora_editor_framework::FieldType::Vec3 { speed: #speed } }
             }
-            "String" => quote! { renzora::editor::FieldType::String },
-            "Color" => quote! { renzora::editor::FieldType::Color },
-            _ => quote! { renzora::editor::FieldType::ReadOnly },
+            "String" => quote! { renzora_editor_framework::FieldType::String },
+            "Color" => quote! { renzora_editor_framework::FieldType::Color },
+            _ => quote! { renzora_editor_framework::FieldType::ReadOnly },
         };
 
         let get_fn = match ft {
             "Float" => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::Float(s.#field_ident))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::Float(s.#field_ident))
             },
             "Bool" => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::Bool(s.#field_ident))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::Bool(s.#field_ident))
             },
             "Vec3" => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::Vec3(s.#field_ident.into()))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::Vec3(s.#field_ident.into()))
             },
             "String" => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::String(s.#field_ident.clone()))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::String(s.#field_ident.clone()))
             },
             "Color" => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::Color(s.#field_ident.into()))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::Color(s.#field_ident.into()))
             },
             _ => quote! {
-                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora::editor::FieldValue::ReadOnly(format!("{:?}", s.#field_ident)))
+                |world, entity| world.get::<#struct_name>(entity).map(|s| renzora_editor_framework::FieldValue::ReadOnly(format!("{:?}", s.#field_ident)))
             },
         };
 
         let set_fn = match ft {
             "Float" => quote! {
                 |world, entity, val| {
-                    if let renzora::editor::FieldValue::Float(v) = val {
+                    if let renzora_editor_framework::FieldValue::Float(v) = val {
                         if let Some(mut s) = world.get_mut::<#struct_name>(entity) { s.#field_ident = v; }
                     }
                 }
             },
             "Bool" => quote! {
                 |world, entity, val| {
-                    if let renzora::editor::FieldValue::Bool(v) = val {
+                    if let renzora_editor_framework::FieldValue::Bool(v) = val {
                         if let Some(mut s) = world.get_mut::<#struct_name>(entity) { s.#field_ident = v; }
                     }
                 }
             },
             "Vec3" => quote! {
                 |world, entity, val| {
-                    if let renzora::editor::FieldValue::Vec3(v) = val {
+                    if let renzora_editor_framework::FieldValue::Vec3(v) = val {
                         if let Some(mut s) = world.get_mut::<#struct_name>(entity) { s.#field_ident = v.into(); }
                     }
                 }
             },
             "String" => quote! {
                 |world, entity, val| {
-                    if let renzora::editor::FieldValue::String(v) = val {
+                    if let renzora_editor_framework::FieldValue::String(v) = val {
                         if let Some(mut s) = world.get_mut::<#struct_name>(entity) { s.#field_ident = v; }
                     }
                 }
             },
             "Color" => quote! {
                 |world, entity, val| {
-                    if let renzora::editor::FieldValue::Color(v) = val {
+                    if let renzora_editor_framework::FieldValue::Color(v) = val {
                         if let Some(mut s) = world.get_mut::<#struct_name>(entity) { s.#field_ident = v.into(); }
                     }
                 }
@@ -179,7 +179,7 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
         };
 
         field_defs.push(quote! {
-            renzora::editor::FieldDef {
+            renzora_editor_framework::FieldDef {
                 name: #display,
                 field_type: #field_type_expr,
                 get_fn: #get_fn,
@@ -192,12 +192,12 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let icon_ident = syn::Ident::new(&icon, proc_macro2::Span::call_site());
 
     Ok(quote! {
-        impl renzora::editor::InspectableComponent for #struct_name {
-            fn inspector_entry() -> renzora::editor::InspectorEntry {
-                renzora::editor::InspectorEntry {
+        impl renzora_editor_framework::InspectableComponent for #struct_name {
+            fn inspector_entry() -> renzora_editor_framework::InspectorEntry {
+                renzora_editor_framework::InspectorEntry {
                     type_id: #type_id,
                     display_name: #display_name,
-                    icon: renzora::egui_phosphor::regular::#icon_ident,
+                    icon: egui_phosphor::regular::#icon_ident,
                     category: #category,
                     has_fn: |world, entity| world.get::<#struct_name>(entity).is_some(),
                     add_fn: Some(|world, entity| { world.entity_mut(entity).insert(#struct_name::default()); }),

@@ -13,7 +13,7 @@ pub mod scene_io;
 pub mod vfs;
 
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
-pub use renzora_core::{CurrentProject, MeshInstanceData, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora::{CurrentProject, MeshInstanceData, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_engine::audio types
@@ -35,8 +35,8 @@ impl Plugin for RuntimePlugin {
             .register_type::<MeshColor>()
             .register_type::<MeshInstanceData>()
             .register_type::<SceneCamera>()
-            .register_type::<renzora_core::DefaultCamera>()
-            .register_type::<renzora_core::EntityTag>()
+            .register_type::<renzora::DefaultCamera>()
+            .register_type::<renzora::EntityTag>()
             .register_type::<Sun>();
 
         // Asset-path rename/move notifications. Observers (MeshInstanceData,
@@ -79,7 +79,7 @@ impl Plugin for RuntimePlugin {
                 // Provide a VirtualFileReader backed by Vfs so material/shader
                 // resolution reads from the rpak archive instead of disk.
                 let vfs_for_reader = vfs.clone();
-                app.insert_resource(renzora_core::VirtualFileReader::new(move |path| {
+                app.insert_resource(renzora::VirtualFileReader::new(move |path| {
                     vfs_for_reader.read_string(path)
                 }));
                 app.insert_resource(vfs);
@@ -164,8 +164,8 @@ impl Plugin for RuntimePlugin {
             reg.register(ShapeEntry { id: "pyramid", name: "Pyramid", icon: "", category: "Advanced", create_mesh: |m| m.add(pm::create_pyramid_mesh()), default_color: Color::srgb(0.7, 0.5, 0.5) });
             app.insert_resource(reg);
         }
-        app.init_resource::<renzora_core::EffectRouting>();
-        app.init_resource::<renzora_core::PendingSceneLoad>();
+        app.init_resource::<renzora::EffectRouting>();
+        app.init_resource::<renzora::PendingSceneLoad>();
         app.add_systems(Update, process_pending_scene_loads);
 
         // In standalone (non-editor) mode, populate EffectRouting from scene cameras.
@@ -176,7 +176,7 @@ impl Plugin for RuntimePlugin {
 
         #[cfg(feature = "editor")]
         {
-            app.init_resource::<renzora_core::viewport_types::EditorCameraMatrix>()
+            app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
                 .add_systems(Startup, camera::spawn_editor_camera)
                 .add_systems(Update, (
                     camera::sync_camera_render_target,
@@ -190,7 +190,7 @@ impl Plugin for RuntimePlugin {
 
 #[cfg(feature = "editor")]
 fn on_save_current_scene(
-    _trigger: On<renzora_core::SaveCurrentScene>,
+    _trigger: On<renzora::SaveCurrentScene>,
     mut commands: Commands,
 ) {
     commands.queue(|world: &mut World| {
@@ -221,7 +221,7 @@ fn setup_vfs_script_reader(
 /// (and all non-camera entities with Settings) to the active rendering camera.
 #[cfg(not(feature = "editor"))]
 fn update_runtime_effect_routing(
-    mut routing: ResMut<renzora_core::EffectRouting>,
+    mut routing: ResMut<renzora::EffectRouting>,
     cameras: Query<(Entity, Option<&DefaultCamera>, &Camera), With<SceneCamera>>,
     all_entities: Query<Entity, Without<Camera>>,
 ) {
@@ -257,7 +257,7 @@ fn update_runtime_effect_routing(
 /// then loads the requested scene.
 fn process_pending_scene_loads(world: &mut World) {
     let requests = {
-        let mut pending = world.resource_mut::<renzora_core::PendingSceneLoad>();
+        let mut pending = world.resource_mut::<renzora::PendingSceneLoad>();
         if pending.requests.is_empty() {
             return;
         }
@@ -270,11 +270,11 @@ fn process_pending_scene_loads(world: &mut World) {
     let scene_path = if let Some(project) = world.get_resource::<CurrentProject>() {
         project.resolve_path(scene_name)
     } else {
-        renzora_core::console_log::console_error("Scene", "No project loaded — cannot load scene");
+        renzora::console_log::console_error("Scene", "No project loaded — cannot load scene");
         return;
     };
 
-    renzora_core::console_log::console_info(
+    renzora::console_log::console_info(
         "Scene",
         format!("Loading scene '{}' → {}", scene_name, scene_path.display()),
     );
@@ -292,7 +292,7 @@ fn process_pending_scene_loads(world: &mut World) {
         }
     }
 
-    renzora_core::console_log::console_info(
+    renzora::console_log::console_info(
         "Scene",
         format!("Despawning {} entities from current scene", to_despawn.len()),
     );
@@ -345,7 +345,7 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
 /// is renamed or moved, so scene references stay valid without a user-
 /// initiated save. Animation paths are handled analogously in `renzora_animation`.
 fn apply_asset_path_changes_to_mesh_instances(
-    trigger: On<renzora_core::AssetPathChanged>,
+    trigger: On<renzora::AssetPathChanged>,
     mut query: Query<&mut MeshInstanceData>,
 ) {
     let ev = trigger.event();

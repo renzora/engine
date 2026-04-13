@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+egui-phosphor = { workspace = true }
 editor_plugin_api = { path = "../editor_plugin_api" }
 tungstenite = "0.24"
 url = "2.5"

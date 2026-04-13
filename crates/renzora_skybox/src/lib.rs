@@ -467,8 +467,8 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
 fn sync_skybox(
     mut commands: Commands,
     skybox_query: Query<&SkyboxData>,
-    cameras: Query<Entity, (With<Camera3d>, Without<renzora_core::IsolatedCamera>)>,
-    mut camera_query: Query<&mut Camera, (With<Camera3d>, Without<renzora_core::IsolatedCamera>)>,
+    cameras: Query<Entity, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
+    mut camera_query: Query<&mut Camera, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
     asset_server: Res<AssetServer>,
     mut skybox_state: ResMut<SkyboxState>,
     mut images: ResMut<Assets<Image>>,
@@ -824,7 +824,7 @@ fn skybox_custom_ui(
             }
 
             if let Some(dropped_path) = drop_result.dropped_path {
-                pano.panorama_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                pano.panorama_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
                     project.make_asset_relative(&dropped_path)
                 } else {
                     dropped_path.to_string_lossy().to_string()
@@ -839,7 +839,7 @@ fn skybox_custom_ui(
                     .set_title("Select Sky Texture")
                     .pick_file()
                 {
-                    pano.panorama_path = if let Some(project) = world.get_resource::<renzora_core::CurrentProject>() {
+                    pano.panorama_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
                         project.make_asset_relative(&texture_path)
                     } else {
                         texture_path.to_string_lossy().to_string()

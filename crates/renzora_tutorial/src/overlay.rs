@@ -1,7 +1,7 @@
 //! Overlay rendering — animated arrows, pulsing highlights, tooltip cards, and backdrop.
 
-use renzora::bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use renzora_theme::Theme;
 
 use crate::steps::{ArrowDirection, TutorialStep, TutorialTarget};
 use crate::TutorialState;
@@ -442,9 +442,9 @@ fn draw_card(
                             let is_last = current + 1 >= total;
                             let next_label = if is_last { "Finish" } else { "Next" };
                             let next_icon = if is_last {
-                                renzora::egui_phosphor::regular::CHECK
+                                egui_phosphor::regular::CHECK
                             } else {
-                                renzora::egui_phosphor::regular::ARROW_RIGHT
+                                egui_phosphor::regular::ARROW_RIGHT
                             };
 
                             if ui
@@ -470,7 +470,7 @@ fn draw_card(
                                         egui::Button::new(
                                             egui::RichText::new(format!(
                                                 "{}  Back",
-                                                renzora::egui_phosphor::regular::ARROW_LEFT
+                                                egui_phosphor::regular::ARROW_LEFT
                                             ))
                                             .font(FontId::proportional(13.0))
                                             .color(theme.text.primary.to_color32()),

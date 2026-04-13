@@ -6,12 +6,12 @@ pub use state::*;
 use std::sync::{Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui;
+use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
-use renzora::editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor_framework::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_scripting::ScriptComponent;
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 
 use crate::render::render_code_editor_content;
 
@@ -60,7 +60,7 @@ impl EditorPanel for CodeEditorPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::CODE)
+        Some(egui_phosphor::regular::CODE)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -193,7 +193,7 @@ impl Plugin for CodeEditorPlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        use renzora::editor::SplashState;
+        use renzora_editor_framework::SplashState;
         app.add_systems(
             Update,
             (

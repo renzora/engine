@@ -2,27 +2,25 @@
 name = "renzora"
 version = "0.1.0"
 edition = "2021"
-description = "Renzora plugin SDK — the single dylib for all plugin development"
+description = "Renzora — types, events, and contracts shared across the engine."
 
 [lib]
 crate-type = ["dylib"]
 
 [features]
-default = ["editor"]
-editor = ["dep:renzora_editor_framework", "dep:renzora_undo", "dep:bevy_egui", "dep:egui-phosphor"]
+default = []
+# Enables editor-only contracts (e.g. `EditorPanel` trait, `PanelRegistry`
+# resource — landing here in a follow-up). Runtime / server builds leave
+# this off so the shipped binary carries no editor surface area.
+editor = []
 
 [dependencies]
+# `renzora` is the king of the engine — every other crate depends on it,
+# nothing depends back. The dep list stays at bevy + serialization only so
+# adding a new feature crate can never introduce a cycle, and bumping any
+# feature crate never forces a renzora rebuild (or an ABI break for
+# plugins that don't use that crate).
 bevy = { workspace = true }
-
-# SDK sub-crates (compiled into renzora.dll)
-renzora_core = { path = "../renzora_core" }
-renzora_postprocess = { path = "../renzora_postprocess" }
-renzora_macros = { path = "../renzora_macros" }
-dynamic_plugin_meta = { path = "../dynamic_plugin_meta" }
-
-# Editor framework (compiled into renzora.dll)
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
-renzora_undo = { path = "../renzora_undo", optional = true }
-renzora_theme = { path = "../renzora_theme" }
-bevy_egui = { version = "0.39", optional = true }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+ron = "0.8"

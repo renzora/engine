@@ -2,12 +2,12 @@
 //! and editable pin values (constants, colors, sliders).
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, RichText, Slider};
-use renzora::editor::{
+use bevy_egui::egui::{self, RichText, Slider};
+use renzora_editor_framework::{
     collapsible_section, inline_property, empty_state,
     EditorCommands, EditorPanel, PanelLocation,
 };
-use renzora::theme::ThemeManager;
+use renzora_theme::ThemeManager;
 use renzora_shader::material::graph::*;
 use renzora_shader::material::nodes;
 use renzora_ui::asset_drag::{asset_drop_target, AssetDragPayload};
@@ -26,7 +26,7 @@ impl EditorPanel for MaterialInspectorPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(renzora::egui_phosphor::regular::SLIDERS_HORIZONTAL)
+        Some(egui_phosphor::regular::SLIDERS_HORIZONTAL)
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -45,7 +45,7 @@ impl EditorPanel for MaterialInspectorPanel {
         // ── Material section ──
         collapsible_section(
             ui,
-            renzora::egui_phosphor::regular::CUBE,
+            egui_phosphor::regular::CUBE,
             "Material",
             "rendering",
             &theme,
@@ -77,7 +77,7 @@ impl EditorPanel for MaterialInspectorPanel {
 
         // ── Selected node properties ──
         let Some(selected_id) = editor_state.selected_node else {
-            empty_state(ui, renzora::egui_phosphor::regular::CURSOR_CLICK, "No node selected", "Select a node to edit its properties", &theme);
+            empty_state(ui, egui_phosphor::regular::CURSOR_CLICK, "No node selected", "Select a node to edit its properties", &theme);
             return;
         };
 

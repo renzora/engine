@@ -31,7 +31,7 @@ impl Default for OitSettings {
 fn sync_oit(
     mut commands: Commands,
     sources: Query<(Entity, Ref<OitSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -67,7 +67,7 @@ fn sync_oit(
 fn cleanup_oit(
     mut commands: Commands,
     mut removed: RemovedComponents<OitSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

@@ -1,8 +1,8 @@
 //! Physics Properties panel — global simulation settings
 
-use renzora::bevy_egui::egui::{self, RichText};
+use bevy_egui::egui::{self, RichText};
 use renzora_physics::{GravityPreset, PhysicsPropertiesState, PhysicsPropertyCommand};
-use renzora::theme::Theme;
+use renzora_theme::Theme;
 
 pub fn render_properties_content(
     ui: &mut egui::Ui,

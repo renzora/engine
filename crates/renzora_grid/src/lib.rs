@@ -121,7 +121,7 @@ impl Plugin for GridPlugin {
                     toggle_subgrid_visibility,
                     update_fade_distance,
                 )
-                    .run_if(in_state(renzora::editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             );
     }
 }
@@ -289,7 +289,7 @@ fn toggle_subgrid_visibility(
 /// patch of the grid, Blender-style.
 fn update_fade_distance(
     orbit: Option<Res<renzora::core::viewport_types::CameraOrbitSnapshot>>,
-    cam_q: Query<&GlobalTransform, With<renzora::editor::EditorCamera>>,
+    cam_q: Query<&GlobalTransform, With<renzora_editor_framework::EditorCamera>>,
     mut config: ResMut<GridConfig>,
     mut materials: ResMut<Assets<GridMaterial>>,
     grid_entities: Query<&MeshMaterial3d<GridMaterial>>,

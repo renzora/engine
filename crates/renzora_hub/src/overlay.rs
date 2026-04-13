@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use renzora::bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 use renzora_auth::marketplace::{AssetComment, AssetDetail, AssetRating, CommentsResponse};
 use renzora_auth::session::AuthSession;
-use renzora::editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 
 
 use crate::images::ImageCache;
@@ -533,7 +533,7 @@ impl AssetOverlay {
             return;
         }
 
-        let theme = match world.get_resource::<renzora::theme::ThemeManager>() {
+        let theme = match world.get_resource::<renzora_theme::ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
             None => return,
         };
@@ -646,7 +646,7 @@ impl AssetOverlay {
                                 |ui| {
                                     let close = ui.add(
                                         egui::Button::new(
-                                            RichText::new(renzora::egui_phosphor::regular::X)
+                                            RichText::new(egui_phosphor::regular::X)
                                                 .size(14.0)
                                                 .color(text_muted),
                                         )
@@ -842,7 +842,7 @@ impl AssetOverlay {
                                     ui.painter().text(
                                         rect.center(),
                                         egui::Align2::CENTER_CENTER,
-                                        renzora::egui_phosphor::regular::IMAGE,
+                                        egui_phosphor::regular::IMAGE,
                                         egui::FontId::proportional(36.0),
                                         text_muted,
                                     );
@@ -860,7 +860,7 @@ impl AssetOverlay {
                                                 ui.label(
                                                     RichText::new(format!(
                                                         "{} Audio",
-                                                        renzora::egui_phosphor::regular::WAVEFORM
+                                                        egui_phosphor::regular::WAVEFORM
                                                     ))
                                                     .size(10.5)
                                                     .color(text_secondary),
@@ -878,7 +878,7 @@ impl AssetOverlay {
                                                                     egui::Button::new(
                                                                         RichText::new(format!(
                                                                             "{} Stop",
-                                                                            renzora::egui_phosphor::regular::STOP
+                                                                            egui_phosphor::regular::STOP
                                                                         ))
                                                                         .size(10.0)
                                                                         .color(Color32::WHITE),
@@ -900,7 +900,7 @@ impl AssetOverlay {
                                                                     egui::Button::new(
                                                                         RichText::new(format!(
                                                                             "{} Play",
-                                                                            renzora::egui_phosphor::regular::PLAY
+                                                                            egui_phosphor::regular::PLAY
                                                                         ))
                                                                         .size(10.0)
                                                                         .color(Color32::WHITE),
@@ -951,7 +951,7 @@ impl AssetOverlay {
                                             ui.label(
                                                 RichText::new(format!(
                                                     "{} {}",
-                                                    renzora::egui_phosphor::regular::TAG,
+                                                    egui_phosphor::regular::TAG,
                                                     &detail.category
                                                 ))
                                                 .size(10.0)
@@ -967,7 +967,7 @@ impl AssetOverlay {
                                     ui.label(
                                         RichText::new(format!(
                                             "{} {}",
-                                            renzora::egui_phosphor::regular::DOWNLOAD_SIMPLE,
+                                            egui_phosphor::regular::DOWNLOAD_SIMPLE,
                                             format_count(detail.downloads)
                                         ))
                                         .size(10.0)
@@ -982,7 +982,7 @@ impl AssetOverlay {
                                 ui.label(
                                     RichText::new(format!(
                                         "{} Installs to: {}/",
-                                        renzora::egui_phosphor::regular::FOLDER_OPEN,
+                                        egui_phosphor::regular::FOLDER_OPEN,
                                         install_dir
                                     ))
                                     .size(10.0)
@@ -1005,12 +1005,12 @@ impl AssetOverlay {
                                     let install_text = if installing {
                                         format!(
                                             "{} Installing...",
-                                            renzora::egui_phosphor::regular::SPINNER
+                                            egui_phosphor::regular::SPINNER
                                         )
                                     } else {
                                         format!(
                                             "{} Install to Project",
-                                            renzora::egui_phosphor::regular::DOWNLOAD_SIMPLE
+                                            egui_phosphor::regular::DOWNLOAD_SIMPLE
                                         )
                                     };
                                     let btn = ui.add_sized(
@@ -1034,7 +1034,7 @@ impl AssetOverlay {
                                     ui.label(
                                         RichText::new(format!(
                                             "{} Owned",
-                                            renzora::egui_phosphor::regular::CHECK_CIRCLE
+                                            egui_phosphor::regular::CHECK_CIRCLE
                                         ))
                                         .size(10.5)
                                         .color(Color32::from_rgb(34, 197, 94)),
@@ -1043,7 +1043,7 @@ impl AssetOverlay {
                                     ui.label(
                                         RichText::new(format!(
                                             "{} Sign in to purchase",
-                                            renzora::egui_phosphor::regular::SIGN_IN
+                                            egui_phosphor::regular::SIGN_IN
                                         ))
                                         .size(11.0)
                                         .color(text_muted),
@@ -1068,12 +1068,12 @@ impl AssetOverlay {
                                         let confirm_label = if detail.price_credits == 0 {
                                             format!(
                                                 "{} Get for Free",
-                                                renzora::egui_phosphor::regular::GIFT
+                                                egui_phosphor::regular::GIFT
                                             )
                                         } else {
                                             format!(
                                                 "{} Confirm",
-                                                renzora::egui_phosphor::regular::CHECK
+                                                egui_phosphor::regular::CHECK
                                             )
                                         };
                                         if ui
@@ -1108,7 +1108,7 @@ impl AssetOverlay {
                                     let price_label = if detail.price_credits == 0 {
                                         format!(
                                             "{} Get for Free",
-                                            renzora::egui_phosphor::regular::GIFT
+                                            egui_phosphor::regular::GIFT
                                         )
                                     } else {
                                         format!(
@@ -1141,7 +1141,7 @@ impl AssetOverlay {
                                     ui.label(
                                         RichText::new(format!(
                                             "{} {}",
-                                            renzora::egui_phosphor::regular::WARNING,
+                                            egui_phosphor::regular::WARNING,
                                             err
                                         ))
                                         .size(10.5)
@@ -1153,7 +1153,7 @@ impl AssetOverlay {
                                     ui.label(
                                         RichText::new(format!(
                                             "{} {}",
-                                            renzora::egui_phosphor::regular::CHECK_CIRCLE,
+                                            egui_phosphor::regular::CHECK_CIRCLE,
                                             msg
                                         ))
                                         .size(10.5)
@@ -1180,9 +1180,9 @@ impl AssetOverlay {
                                             let half =
                                                 !filled && (i as f32 - 0.5) <= r.average;
                                             let icon = if filled || half {
-                                                renzora::egui_phosphor::regular::STAR
+                                                egui_phosphor::regular::STAR
                                             } else {
-                                                renzora::egui_phosphor::regular::STAR
+                                                egui_phosphor::regular::STAR
                                             };
                                             let color = if filled {
                                                 Color32::from_rgb(250, 204, 21) // yellow
@@ -1243,7 +1243,7 @@ impl AssetOverlay {
                                             let star = ui.add(
                                                 egui::Button::new(
                                                     RichText::new(
-                                                        renzora::egui_phosphor::regular::STAR,
+                                                        egui_phosphor::regular::STAR,
                                                     )
                                                     .size(15.0)
                                                     .color(color),
@@ -1284,7 +1284,7 @@ impl AssetOverlay {
                                 ui.label(
                                     RichText::new(format!(
                                         "{} Comments ({})",
-                                        renzora::egui_phosphor::regular::CHAT_TEXT,
+                                        egui_phosphor::regular::CHAT_TEXT,
                                         comments.len()
                                     ))
                                     .size(12.0)

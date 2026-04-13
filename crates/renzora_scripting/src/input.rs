@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton};
 use std::collections::HashMap;
 
-// Re-export ScriptInput from renzora_core
-pub use renzora_core::ScriptInput;
+// Re-export ScriptInput from renzora
+pub use renzora::ScriptInput;
 
 /// System to update ScriptInput from Bevy input resources
 pub fn update_script_input(

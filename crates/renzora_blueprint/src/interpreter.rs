@@ -3,12 +3,12 @@
 //! Walks the graph starting from event nodes, evaluates data pins,
 //! and produces `ScriptAction` events and `TransformWrite`s.
 //!
-//! This crate depends only on `renzora_core` — not on `renzora_scripting`.
+//! This crate depends only on `renzora` — not on `renzora_scripting`.
 
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use renzora_core::{
+use renzora::{
     ActionState, CharacterCommand, CharacterCommandQueue,
     PropertyValue, ScriptAction, ScriptActionValue, ScriptInput,
     TransformWrite, TransformWriteQueue,
@@ -362,7 +362,7 @@ impl<'a> EvalContext<'a> {
 
             // ── Character Controller reads (via reflection) ─────────
             "character/is_grounded" => {
-                let grounded = renzora_core::reflection::get_reflected_field(
+                let grounded = renzora::reflection::get_reflected_field(
                     self.world, self.entity, "CharacterControllerState", "is_grounded"
                 ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
                 .unwrap_or(false);
@@ -371,15 +371,15 @@ impl<'a> EvalContext<'a> {
             "character/get_velocity" => {
                 match pin_name {
                     "velocity" => {
-                        let vx = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vy = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vz = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vx = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vy = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vz = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
                         PinValue::Vec3([vx, vy, vz])
                     }
                     "speed" => {
-                        let vx = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vy = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vz = renzora_core::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vx = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vy = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
+                        let vz = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
                         let v = Vec3::new(vx, vy, vz);
                         PinValue::Float(Vec3::new(v.x, 0.0, v.z).length())
                     }
@@ -428,7 +428,7 @@ impl<'a> EvalContext<'a> {
 
                 match target {
                     Some(e) => {
-                        let result = renzora_core::reflection::get_reflected_field(
+                        let result = renzora::reflection::get_reflected_field(
                             self.world, e, &component, &field,
                         );
                         match result {
@@ -997,39 +997,39 @@ impl<'a> EvalContext<'a> {
             "ui/set_progress" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.push_action_mixed("ui_set_progress", &[("name", renzora_core::ScriptActionValue::String(name))], &[("value", value)]);
+                self.push_action_mixed("ui_set_progress", &[("name", renzora::ScriptActionValue::String(name))], &[("value", value)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_health" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let current = self.resolve_input(node_id, "current").as_float();
                 let max = self.resolve_input(node_id, "max").as_float();
-                self.push_action_mixed("ui_set_health", &[("name", renzora_core::ScriptActionValue::String(name))], &[("current", current), ("max", max)]);
+                self.push_action_mixed("ui_set_health", &[("name", renzora::ScriptActionValue::String(name))], &[("current", current), ("max", max)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_slider" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.push_action_mixed("ui_set_slider", &[("name", renzora_core::ScriptActionValue::String(name))], &[("value", value)]);
+                self.push_action_mixed("ui_set_slider", &[("name", renzora::ScriptActionValue::String(name))], &[("value", value)]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_checkbox" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let checked = self.resolve_input(node_id, "checked").as_bool();
-                self.push_action_mixed("ui_set_checkbox", &[("name", renzora_core::ScriptActionValue::String(name)), ("checked", renzora_core::ScriptActionValue::Bool(checked))], &[]);
+                self.push_action_mixed("ui_set_checkbox", &[("name", renzora::ScriptActionValue::String(name)), ("checked", renzora::ScriptActionValue::Bool(checked))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_toggle" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let on = self.resolve_input(node_id, "on").as_bool();
-                self.push_action_mixed("ui_set_toggle", &[("name", renzora_core::ScriptActionValue::String(name)), ("on", renzora_core::ScriptActionValue::Bool(on))], &[]);
+                self.push_action_mixed("ui_set_toggle", &[("name", renzora::ScriptActionValue::String(name)), ("on", renzora::ScriptActionValue::Bool(on))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_visible" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let name = if name.is_empty() { self.entity_name.clone() } else { name };
                 let visible = self.resolve_input(node_id, "visible").as_bool();
-                self.push_action_mixed("ui_set_visible", &[("name", renzora_core::ScriptActionValue::String(name)), ("visible", renzora_core::ScriptActionValue::Bool(visible))], &[]);
+                self.push_action_mixed("ui_set_visible", &[("name", renzora::ScriptActionValue::String(name)), ("visible", renzora::ScriptActionValue::Bool(visible))], &[]);
                 self.follow_exec(node_id, "then");
             }
             "ui/set_theme" => {
@@ -1040,7 +1040,7 @@ impl<'a> EvalContext<'a> {
             "ui/set_color" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let color = self.resolve_input(node_id, "color").as_color();
-                self.push_action_mixed("ui_set_color", &[("name", renzora_core::ScriptActionValue::String(name))], &[("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3])]);
+                self.push_action_mixed("ui_set_color", &[("name", renzora::ScriptActionValue::String(name))], &[("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3])]);
                 self.follow_exec(node_id, "then");
             }
 
@@ -1119,7 +1119,7 @@ impl<'a> EvalContext<'a> {
             "network/spawn" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let pos = self.resolve_input(node_id, "position").as_vec3();
-                self.push_action_mixed("net_spawn", &[("name", renzora_core::ScriptActionValue::String(name))], &[("x", pos[0]), ("y", pos[1]), ("z", pos[2])]);
+                self.push_action_mixed("net_spawn", &[("name", renzora::ScriptActionValue::String(name))], &[("x", pos[0]), ("y", pos[1]), ("z", pos[2])]);
                 self.follow_exec(node_id, "then");
             }
 
@@ -1166,7 +1166,7 @@ pub fn run_blueprints(world: &mut World) {
         return;
     }
 
-    renzora_core::clog_info!("Blueprint", "Running {} blueprint(s)", bp_entities.len());
+    renzora::clog_info!("Blueprint", "Running {} blueprint(s)", bp_entities.len());
 
     for bpe in &bp_entities {
         // Take BlueprintGraph and runtime state off the entity.
@@ -1235,9 +1235,9 @@ pub fn run_blueprints(world: &mut World) {
         runtime.initialized = true;
 
         // Push transform writes into the shared TransformWriteQueue.
-        renzora_core::clog_info!("Blueprint", "entity='{}' actions={} tw={} cc={}", bpe.entity_name, actions.len(), transform_writes.len(), character_commands.len());
+        renzora::clog_info!("Blueprint", "entity='{}' actions={} tw={} cc={}", bpe.entity_name, actions.len(), transform_writes.len(), character_commands.len());
         for tw in &transform_writes {
-            renzora_core::clog_info!("Blueprint", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
+            renzora::clog_info!("Blueprint", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
         }
         {
             let mut tw_queue = world.resource_mut::<TransformWriteQueue>();

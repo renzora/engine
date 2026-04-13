@@ -35,7 +35,7 @@ impl Default for AutoExposureSettings {
 fn sync_auto_exposure(
     mut commands: Commands,
     sources: Query<(Entity, Ref<AutoExposureSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -65,7 +65,7 @@ fn sync_auto_exposure(
 fn cleanup_auto_exposure(
     mut commands: Commands,
     mut removed: RemovedComponents<AutoExposureSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use serde;
-use renzora::postprocess as renzora_postprocess;
+use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora::editor as renzora_editor_framework;
 #[cfg(feature = "editor")]

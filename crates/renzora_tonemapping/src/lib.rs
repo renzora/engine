@@ -73,7 +73,7 @@ const MODE_LABELS: [&str; 8] = [
 fn sync_tonemapping(
     mut commands: Commands,
     sources: Query<(Entity, Ref<TonemappingSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -203,7 +203,7 @@ impl Default for DebandDitherSettings {
 fn sync_deband_dither(
     mut commands: Commands,
     sources: Query<(Entity, Ref<DebandDitherSettings>)>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -224,7 +224,7 @@ fn sync_deband_dither(
 fn cleanup_deband_dither(
     mut commands: Commands,
     mut removed: RemovedComponents<DebandDitherSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -262,7 +262,7 @@ fn deband_dither_entry() -> InspectorEntry {
 fn cleanup_tonemapping(
     mut commands: Commands,
     mut removed: RemovedComponents<TonemappingSettings>,
-    routing: Res<renzora_core::EffectRouting>,
+    routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {

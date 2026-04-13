@@ -5,7 +5,7 @@ use bevy::camera::{Camera, RenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::view::Hdr;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
-use renzora_core::viewport_types::EditorCameraMatrix;
+use renzora::viewport_types::EditorCameraMatrix;
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.

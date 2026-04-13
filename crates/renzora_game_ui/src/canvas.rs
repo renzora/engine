@@ -34,7 +34,7 @@ pub struct UiCanvasPreview {
     pub previewing: Option<Entity>,
 }
 
-use renzora_core::UiCanvasPreviewCamera;
+use renzora::UiCanvasPreviewCamera;
 
 /// Sets up the canvas preview render target. Called once from GameUiPlugin build.
 pub fn setup_canvas_preview(
@@ -77,8 +77,8 @@ pub fn update_canvas_preview(
     selection: Res<EditorSelection>,
     mut preview: ResMut<UiCanvasPreview>,
     scene_cameras: Query<
-        (Entity, &GlobalTransform, &Projection, Option<&renzora_core::DefaultCamera>),
-        (With<Camera3d>, Without<UiCanvasPreviewCamera>, Without<renzora_core::EditorCamera>),
+        (Entity, &GlobalTransform, &Projection, Option<&renzora::DefaultCamera>),
+        (With<Camera3d>, Without<UiCanvasPreviewCamera>, Without<renzora::EditorCamera>),
     >,
     mut preview_cameras: Query<
         (Entity, &mut Transform, &mut Projection),
@@ -86,7 +86,7 @@ pub fn update_canvas_preview(
     >,
     editor_cameras: Query<
         (Option<&bevy::core_pipeline::Skybox>, &Camera),
-        (With<renzora_core::EditorCamera>, Without<UiCanvasPreviewCamera>),
+        (With<renzora::EditorCamera>, Without<UiCanvasPreviewCamera>),
     >,
 ) {
     let selected = selection.get();
@@ -145,9 +145,9 @@ pub fn update_canvas_preview(
                     cam_proj.clone(),
                     cam_transform,
                     UiCanvasPreviewCamera,
-                    renzora_core::IsolatedCamera,
-                    renzora_core::HideInHierarchy,
-                    renzora_core::EditorLocked,
+                    renzora::IsolatedCamera,
+                    renzora::HideInHierarchy,
+                    renzora::EditorLocked,
                     Name::new("UI Canvas Preview Camera"),
                 ));
                 if let Some(skybox) = editor_skybox {

@@ -2,8 +2,8 @@
 //!
 //! Displays Bevy's render graph as an interactive node graph with live timing overlays.
 
-use renzora::bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Stroke, Vec2};
-use renzora::theme::Theme;
+use bevy_egui::egui::{self, Color32, Pos2, Rect, RichText, Stroke, Vec2};
+use renzora_theme::Theme;
 
 use crate::state::{RenderGraphEdge, RenderGraphNode, RenderPipelineGraphData, RenderStats, auto_layout};
 

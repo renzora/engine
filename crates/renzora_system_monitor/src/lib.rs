@@ -5,11 +5,11 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use nvml_wrapper::Nvml;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
-use renzora::bevy_egui::egui;
-use renzora::egui_phosphor::regular;
+use bevy_egui::egui;
+use egui_phosphor::regular;
 
-use renzora::editor::{AppEditorExt, StatusBarItem, StatusBarAlignment, SplashState};
-use renzora::theme::ThemeManager;
+use renzora_editor_framework::{AppEditorExt, StatusBarItem, StatusBarAlignment, SplashState};
+use renzora_theme::ThemeManager;
 
 // ============================================================================
 // State

@@ -12,8 +12,8 @@ use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ImportError, ImportResult};
 use crate::settings::ImportSettings;
 
-use renzora_core::{AnimClip, BoneTrack};
-use renzora_core::write_anim_file;
+use renzora::{AnimClip, BoneTrack};
+use renzora::write_anim_file;
 
 /// BVH has no mesh geometry — always fails so the animation fallback kicks in.
 pub fn convert(_path: &Path, _settings: &ImportSettings) -> Result<ImportResult, ImportError> {
