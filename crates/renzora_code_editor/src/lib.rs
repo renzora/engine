@@ -123,6 +123,11 @@ impl EditorPanel for CodeEditorPanel {
                     open_files: local.open_files.clone(),
                     active_tab: local.active_tab,
                     font_size: local.font_size,
+                    find_open: local.find_open,
+                    find_text: local.find_text.clone(),
+                    replace_text: local.replace_text.clone(),
+                    find_case_sensitive: local.find_case_sensitive,
+                    find_focus_requested: local.find_focus_requested,
                 });
             }
         }

@@ -4,7 +4,7 @@ use renzora_theme::Theme;
 
 use std::path::PathBuf;
 
-use egui_phosphor::regular::{CODE, FILE_PLUS, FLOPPY_DISK, WARNING, X};
+use egui_phosphor::regular::{CODE, FILE_PLUS, FLOPPY_DISK, MAGNIFYING_GLASS, WARNING, X};
 
 use crate::state::CodeEditorState;
 
@@ -190,6 +190,17 @@ pub fn render_code_editor_content(
                     }
                 }
 
+                let find_btn = ui
+                    .button(RichText::new(MAGNIFYING_GLASS).size(12.0))
+                    .on_hover_text("Find / Replace (Ctrl+F)");
+                if find_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if find_btn.clicked() {
+                    state.find_open = !state.find_open;
+                    state.find_focus_requested = state.find_open;
+                }
+
                 ui.separator();
 
                 // Zoom controls
@@ -232,8 +243,28 @@ pub fn render_code_editor_content(
                 if should_save {
                     state.save_active();
                 }
+
+                let (ctrl_f, ctrl_h, esc) = ui.ctx().input(|i| {
+                    (
+                        i.modifiers.ctrl && i.key_pressed(egui::Key::F),
+                        i.modifiers.ctrl && i.key_pressed(egui::Key::H),
+                        i.key_pressed(egui::Key::Escape),
+                    )
+                });
+                if ctrl_f || ctrl_h {
+                    state.find_open = true;
+                    state.find_focus_requested = true;
+                }
+                if esc && state.find_open {
+                    state.find_open = false;
+                }
             });
         });
+
+    // --- Find/Replace bar ---
+    if state.find_open {
+        render_find_bar(ui, state, theme);
+    }
 
     // Handle Ctrl+scroll zoom
     let panel_hovered = ui.rect_contains_pointer(ui.max_rect());
@@ -387,6 +418,110 @@ pub fn render_code_editor_content(
                     secondary,
                 );
             }
+        }
+    }
+}
+
+fn render_find_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme) {
+    let surface_faint = theme.surfaces.faint.to_color32();
+    let muted = theme.text.muted.to_color32();
+
+    egui::Frame::new()
+        .fill(surface_faint)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Find").size(11.0).color(muted));
+                let find_resp = ui.add(
+                    egui::TextEdit::singleline(&mut state.find_text)
+                        .desired_width(180.0)
+                        .hint_text("search..."),
+                );
+                if state.find_focus_requested {
+                    find_resp.request_focus();
+                    state.find_focus_requested = false;
+                }
+
+                let next_clicked = ui.small_button("Next").clicked()
+                    || (find_resp.lost_focus()
+                        && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)));
+
+                ui.checkbox(&mut state.find_case_sensitive, RichText::new("Aa").size(11.0))
+                    .on_hover_text("Case sensitive");
+
+                ui.separator();
+
+                ui.label(RichText::new("Replace").size(11.0).color(muted));
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.replace_text)
+                        .desired_width(180.0)
+                        .hint_text("replace with..."),
+                );
+
+                let replace_clicked = ui.small_button("Replace").clicked();
+                let replace_all_clicked = ui.small_button("Replace All").clicked();
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new(RichText::new(X).size(11.0)).frame(false))
+                        .clicked()
+                    {
+                        state.find_open = false;
+                    }
+                });
+
+                if next_clicked {
+                    find_next_active(state);
+                }
+                if replace_clicked {
+                    replace_current_active(state);
+                }
+                if replace_all_clicked {
+                    let n = state.replace_all_active();
+                    log::info!("Replaced {} occurrences", n);
+                }
+            });
+        });
+}
+
+fn find_next_active(state: &mut CodeEditorState) {
+    let Some(idx) = state.active_tab else { return };
+    let Some(file) = state.open_files.get(idx) else { return };
+    if state.find_text.is_empty() {
+        return;
+    }
+    let from = 0;
+    if let Some(_pos) = CodeEditorState::find_next_in(
+        &file.content,
+        &state.find_text,
+        from,
+        state.find_case_sensitive,
+    ) {
+        // Match exists; underlying CodeEditor widget doesn't expose cursor placement,
+        // so this acts as a presence check for now.
+        log::debug!("match found in {}", file.name);
+    }
+}
+
+fn replace_current_active(state: &mut CodeEditorState) {
+    // Without cursor API from the editor widget, "Replace" behaves as
+    // "replace first occurrence". Replace All handles the bulk case.
+    let Some(idx) = state.active_tab else { return };
+    let Some(file) = state.open_files.get_mut(idx) else { return };
+    if state.find_text.is_empty() {
+        return;
+    }
+    let pos = CodeEditorState::find_next_in(
+        &file.content,
+        &state.find_text,
+        0,
+        state.find_case_sensitive,
+    );
+    if let Some(start) = pos {
+        let end = start + state.find_text.len();
+        if end <= file.content.len() {
+            file.content.replace_range(start..end, &state.replace_text);
+            file.is_modified = true;
         }
     }
 }

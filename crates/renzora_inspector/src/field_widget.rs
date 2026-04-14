@@ -24,6 +24,24 @@ fn push_field_change(
     });
 }
 
+/// Render a small reset-to-default button. Returns true if clicked.
+fn reset_button(ui: &mut egui::Ui, theme: &Theme) -> bool {
+    use egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE;
+    let resp = ui.add(
+        egui::Button::new(
+            egui::RichText::new(ARROW_COUNTER_CLOCKWISE)
+                .size(10.0)
+                .color(theme.text.disabled.to_color32()),
+        )
+        .frame(false)
+        .min_size(egui::vec2(14.0, 14.0)),
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.on_hover_text("Reset to default").clicked()
+}
+
 /// Render a single field row using the appropriate widget for its type.
 ///
 /// Reads the current value via `field.get_fn`, renders an editable widget,
@@ -58,6 +76,11 @@ pub fn render_field(
                 if v != orig {
                     push_field_change(cmds, entity, field.name,
                         FieldValue::Float(orig), FieldValue::Float(v), set_fn);
+                }
+                if reset_button(ui, theme) {
+                    let new = FieldValue::Float(orig).type_default();
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Float(orig), new, set_fn);
                 }
             });
         }
@@ -100,6 +123,10 @@ pub fn render_field(
                     push_field_change(cmds, entity, field.name,
                         FieldValue::Vec3(orig), FieldValue::Vec3(v), set_fn);
                 }
+                if reset_button(ui, theme) {
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Vec3(orig), FieldValue::Vec3([0.0; 3]), set_fn);
+                }
             });
         }
 
@@ -113,6 +140,10 @@ pub fn render_field(
                     push_field_change(cmds, entity, field.name,
                         FieldValue::Bool(v), FieldValue::Bool(new_val), set_fn);
                 }
+                if reset_button(ui, theme) {
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Bool(v), FieldValue::Bool(false), set_fn);
+                }
             });
         }
 
@@ -124,6 +155,10 @@ pub fn render_field(
                 if ui.color_edit_button_rgb(&mut rgb).changed() && rgb != orig {
                     push_field_change(cmds, entity, field.name,
                         FieldValue::Color(orig), FieldValue::Color(rgb), set_fn);
+                }
+                if reset_button(ui, theme) {
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Color(orig), FieldValue::Color([1.0; 3]), set_fn);
                 }
             });
         }
@@ -139,7 +174,11 @@ pub fn render_field(
                 );
                 if s != orig {
                     push_field_change(cmds, entity, field.name,
-                        FieldValue::String(orig), FieldValue::String(s), set_fn);
+                        FieldValue::String(orig.clone()), FieldValue::String(s), set_fn);
+                }
+                if reset_button(ui, theme) {
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::String(orig), FieldValue::String(String::new()), set_fn);
                 }
             });
         }
@@ -184,6 +223,11 @@ pub fn render_field(
                         FieldValue::Asset(Some(path_str)), set_fn);
                 }
                 if drop_result.cleared {
+                    push_field_change(cmds, entity, field.name,
+                        FieldValue::Asset(current.clone()),
+                        FieldValue::Asset(None), set_fn);
+                }
+                if reset_button(ui, theme) {
                     push_field_change(cmds, entity, field.name,
                         FieldValue::Asset(current.clone()),
                         FieldValue::Asset(None), set_fn);

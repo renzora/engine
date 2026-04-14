@@ -1,7 +1,10 @@
 //! Inspector panel — shows and edits component properties for the selected entity.
 
+mod clipboard;
 mod field_widget;
 mod state;
+
+pub use clipboard::ComponentClipboard;
 
 use std::sync::RwLock;
 
@@ -15,7 +18,92 @@ use renzora_editor_framework::{
 };
 use renzora_theme::ThemeManager;
 
+use renzora_editor_framework::{FieldValue, InspectorEntry};
 use state::InspectorState;
+
+fn render_component_body(
+    ui: &mut egui::Ui,
+    entry: &InspectorEntry,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &renzora_theme::Theme,
+) {
+    // Copy/paste row
+    let clipboard = world.get_resource::<ComponentClipboard>();
+    let paste_enabled = clipboard
+        .map(|c| c.matches(entry.type_id))
+        .unwrap_or(false);
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let muted = theme.text.muted.to_color32();
+
+        let copy_btn = ui.add(
+            egui::Button::new(
+                RichText::new(format!("{} Copy", regular::COPY))
+                    .size(10.0)
+                    .color(muted),
+            )
+            .frame(false),
+        );
+        if copy_btn.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if copy_btn.clicked() {
+            let snapshot: Vec<(&'static str, FieldValue)> = entry
+                .fields
+                .iter()
+                .filter_map(|f| (f.get_fn)(world, entity).map(|v| (f.name, v)))
+                .collect();
+            let type_id = entry.type_id;
+            cmds.push(move |world: &mut World| {
+                if let Some(mut cb) = world.get_resource_mut::<ComponentClipboard>() {
+                    cb.set(type_id, snapshot);
+                }
+            });
+        }
+
+        let paste_color = if paste_enabled { muted } else { theme.text.disabled.to_color32() };
+        let paste_btn = ui.add_enabled(
+            paste_enabled,
+            egui::Button::new(
+                RichText::new(format!("{} Paste", regular::CLIPBOARD))
+                    .size(10.0)
+                    .color(paste_color),
+            )
+            .frame(false),
+        );
+        if paste_enabled && paste_btn.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if paste_btn.clicked() {
+            let type_id = entry.type_id;
+            let set_fns: Vec<(&'static str, fn(&mut World, Entity, FieldValue))> =
+                entry.fields.iter().map(|f| (f.name, f.set_fn)).collect();
+            cmds.push(move |world: &mut World| {
+                let snapshot = world
+                    .get_resource::<ComponentClipboard>()
+                    .filter(|c| c.matches(type_id))
+                    .map(|c| c.fields.clone());
+                let Some(snapshot) = snapshot else { return };
+                for (name, value) in snapshot {
+                    if let Some((_, set_fn)) = set_fns.iter().find(|(n, _)| *n == name) {
+                        set_fn(world, entity, value);
+                    }
+                }
+            });
+        }
+    });
+
+    if let Some(custom_fn) = entry.custom_ui_fn {
+        custom_fn(ui, world, entity, cmds, theme);
+    } else {
+        for (i, field) in entry.fields.iter().enumerate() {
+            field_widget::render_field(ui, field, world, entity, cmds, theme, i);
+        }
+    }
+}
 
 /// Inspector panel — displays component fields for the selected entity.
 pub struct InspectorPanel {
@@ -148,15 +236,7 @@ impl EditorPanel for InspectorPanel {
                             true,
                             is_disabled,
                             |ui| {
-                                if let Some(custom_fn) = entry.custom_ui_fn {
-                                    custom_fn(ui, world, entity, cmds, &theme);
-                                } else {
-                                    for (i, field) in entry.fields.iter().enumerate() {
-                                        field_widget::render_field(
-                                            ui, field, world, entity, cmds, &theme, i,
-                                        );
-                                    }
-                                }
+                                render_component_body(ui, entry, world, entity, cmds, &theme);
                             },
                         );
                         if action.remove_clicked {
@@ -182,15 +262,7 @@ impl EditorPanel for InspectorPanel {
                             &format!("inspector_{}", entry.type_id),
                             true,
                             |ui| {
-                                if let Some(custom_fn) = entry.custom_ui_fn {
-                                    custom_fn(ui, world, entity, cmds, &theme);
-                                } else {
-                                    for (i, field) in entry.fields.iter().enumerate() {
-                                        field_widget::render_field(
-                                            ui, field, world, entity, cmds, &theme, i,
-                                        );
-                                    }
-                                }
+                                render_component_body(ui, entry, world, entity, cmds, &theme);
                             },
                         );
                     }
@@ -246,6 +318,7 @@ impl Plugin for InspectorPanelPlugin {
         // - Scripts: renzora_scripting::inspector (editor feature)
         // - Material: renzora_material_editor::material_inspector
         app.init_resource::<InspectorRegistry>();
+        app.init_resource::<ComponentClipboard>();
 
         // Register the panel
         app.register_panel(InspectorPanel::default());

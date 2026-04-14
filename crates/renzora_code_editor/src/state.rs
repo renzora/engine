@@ -30,6 +30,11 @@ pub struct CodeEditorState {
     pub open_files: Vec<OpenFile>,
     pub active_tab: Option<usize>,
     pub font_size: f32,
+    pub find_open: bool,
+    pub find_text: String,
+    pub replace_text: String,
+    pub find_case_sensitive: bool,
+    pub find_focus_requested: bool,
 }
 
 impl Default for CodeEditorState {
@@ -38,8 +43,76 @@ impl Default for CodeEditorState {
             open_files: Vec::new(),
             active_tab: None,
             font_size: DEFAULT_FONT_SIZE,
+            find_open: false,
+            find_text: String::new(),
+            replace_text: String::new(),
+            find_case_sensitive: false,
+            find_focus_requested: false,
         }
     }
+}
+
+impl CodeEditorState {
+    /// Find the next match of `find_text` in the active file's content starting from `from`.
+    /// Returns the byte index of the match start.
+    pub fn find_next_in(content: &str, needle: &str, from: usize, case_sensitive: bool) -> Option<usize> {
+        if needle.is_empty() || from > content.len() {
+            return None;
+        }
+        if case_sensitive {
+            content[from..].find(needle).map(|i| from + i)
+                .or_else(|| content[..from.min(content.len())].find(needle))
+        } else {
+            let hay_lower = content.to_lowercase();
+            let needle_lower = needle.to_lowercase();
+            hay_lower[from..].find(&needle_lower).map(|i| from + i)
+                .or_else(|| hay_lower[..from.min(hay_lower.len())].find(&needle_lower))
+        }
+    }
+
+    /// Replace all occurrences in active file. Returns count replaced.
+    pub fn replace_all_active(&mut self) -> usize {
+        let Some(idx) = self.active_tab else { return 0 };
+        let Some(file) = self.open_files.get_mut(idx) else { return 0 };
+        if self.find_text.is_empty() {
+            return 0;
+        }
+        let (new_content, count) = if self.find_case_sensitive {
+            let c = file.content.matches(&self.find_text).count();
+            (file.content.replace(&self.find_text, &self.replace_text), c)
+        } else {
+            replace_all_case_insensitive(&file.content, &self.find_text, &self.replace_text)
+        };
+        if count > 0 {
+            file.content = new_content;
+            file.is_modified = true;
+        }
+        count
+    }
+}
+
+fn replace_all_case_insensitive(haystack: &str, needle: &str, replacement: &str) -> (String, usize) {
+    if needle.is_empty() {
+        return (haystack.to_string(), 0);
+    }
+    let hay_lower = haystack.to_lowercase();
+    let needle_lower = needle.to_lowercase();
+    let mut out = String::with_capacity(haystack.len());
+    let mut i = 0;
+    let mut count = 0;
+    while i <= hay_lower.len() {
+        if let Some(pos) = hay_lower[i..].find(&needle_lower) {
+            let abs = i + pos;
+            out.push_str(&haystack[i..abs]);
+            out.push_str(replacement);
+            i = abs + needle.len();
+            count += 1;
+        } else {
+            out.push_str(&haystack[i..]);
+            break;
+        }
+    }
+    (out, count)
 }
 
 impl CodeEditorState {

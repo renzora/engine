@@ -15,6 +15,22 @@ pub enum FieldValue {
     Asset(Option<String>),
 }
 
+impl FieldValue {
+    /// A type-appropriate zero / empty default, used by the inspector's
+    /// "reset to default" action when a field doesn't provide its own default.
+    pub fn type_default(&self) -> FieldValue {
+        match self {
+            FieldValue::Float(_) => FieldValue::Float(0.0),
+            FieldValue::Vec3(_) => FieldValue::Vec3([0.0; 3]),
+            FieldValue::Bool(_) => FieldValue::Bool(false),
+            FieldValue::Color(_) => FieldValue::Color([1.0; 3]),
+            FieldValue::String(_) => FieldValue::String(String::new()),
+            FieldValue::ReadOnly(s) => FieldValue::ReadOnly(s.clone()),
+            FieldValue::Asset(_) => FieldValue::Asset(None),
+        }
+    }
+}
+
 /// Metadata about a field's type, used to select the correct widget.
 #[derive(Debug, Clone)]
 pub enum FieldType {
