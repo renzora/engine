@@ -50,7 +50,7 @@ members = [
 # Note: crates/renzora_editor produces the editor SDK
 
 [workspace.dependencies]
-bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "experimental_pbr_pcss", "jpeg", "meshlet"] }
+bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "experimental_pbr_pcss", "jpeg"] }
 # Shared external deps. Plugins opt in by name (`bevy_egui = { workspace = true }`)
 # so versions stay locked across the workspace.
 bevy_egui = "0.39"
