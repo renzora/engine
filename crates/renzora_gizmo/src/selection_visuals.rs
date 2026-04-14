@@ -71,6 +71,7 @@ pub fn update_selection_outlines(
     modal: Res<ModalTransformState>,
     settings: Res<EditorSettings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mesh_entities: Query<Entity, With<Mesh3d>>,
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
@@ -84,9 +85,11 @@ pub fn update_selection_outlines(
     let in_play = play_mode
         .as_ref()
         .map_or(false, |pm| pm.is_in_play_mode());
+    let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
 
     let should_show = !modal.active
         && !in_play
+        && !editing_collider
         && settings.selection_highlight_mode != SelectionHighlightMode::Gizmo;
 
     // Remove all existing outlines
@@ -186,6 +189,7 @@ pub fn draw_selection_bounding_box(
     modal: Res<ModalTransformState>,
     settings: Res<EditorSettings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     mesh_aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_query: Query<&Children>,
@@ -193,6 +197,9 @@ pub fn draw_selection_bounding_box(
     world: &World,
 ) {
     if modal.active {
+        return;
+    }
+    if collider_edit.map(|c| c.active).unwrap_or(false) {
         return;
     }
 

@@ -91,9 +91,8 @@ pub fn render_field(
 
             inline_property(ui, row_index, field.name, theme, |ui| {
                 let orig = v;
-                let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
-
                 ui.spacing_mut().item_spacing.x = 2.0;
+                let w = ((ui.available_width() - 66.0) / 3.0).max(30.0);
 
                 // X
                 ui.label(
@@ -170,7 +169,7 @@ pub fn render_field(
                 let orig = s.clone();
                 ui.add(
                     egui::TextEdit::singleline(&mut s)
-                        .desired_width(ui.available_width()),
+                        .desired_width((ui.available_width() - 28.0).max(40.0)),
                 );
                 if s != orig {
                     push_field_change(cmds, entity, field.name,

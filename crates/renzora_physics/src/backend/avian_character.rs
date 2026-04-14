@@ -12,13 +12,14 @@ pub fn character_ground_check(
         &CharacterControllerData,
         &mut CharacterControllerState,
         &GlobalTransform,
+        &mut Transform,
         Option<&Collider>,
     )>,
     time: Res<Time>,
 ) {
     let dt = time.delta_secs();
 
-    for (entity, cc_data, mut state, global_transform, collider) in &mut controllers {
+    for (entity, cc_data, mut state, global_transform, mut transform, collider) in &mut controllers {
         state.was_grounded = state.is_grounded;
 
         // Raycast origin: bottom of the character
@@ -33,7 +34,12 @@ pub fn character_ground_check(
 
         let ray_origin = position;
         let ray_direction = Dir3::NEG_Y;
-        let max_distance = half_height + cc_data.ground_distance;
+        // Extend the ray by next-frame downward displacement so the character
+        // can't teleport past the surface between ticks when gravity has
+        // accelerated it. Also adds a generous floor so slow-moving objects
+        // still resnap on first ground contact.
+        let lookahead = state.velocity.y.min(0.0).abs() * dt * 2.0;
+        let max_distance = half_height + cc_data.ground_distance + lookahead;
 
         // Cast ray downward, excluding self
         let filter = SpatialQueryFilter::from_excluded_entities([entity]);
@@ -51,6 +57,17 @@ pub fn character_ground_check(
                 state.is_grounded = true;
                 state.ground_normal = normal;
                 state.airborne_timer = 0.0;
+
+                // Snap the character's feet to the ground. Without this, after
+                // a frame where gravity has pushed the body below the surface,
+                // the body would stay below since we only kill downward
+                // velocity (it never climbs back up).
+                let feet_y = position.y - half_height;
+                let ground_y = position.y - hit.distance;
+                let penetration = ground_y - feet_y;
+                if penetration.abs() > 0.0001 {
+                    transform.translation.y += penetration;
+                }
             } else {
                 // On a slope too steep to stand on
                 state.is_grounded = false;

@@ -16,3 +16,4 @@ renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_blueprint = { path = "../renzora_blueprint" }
+renzora_physics = { path = "../renzora_physics" }

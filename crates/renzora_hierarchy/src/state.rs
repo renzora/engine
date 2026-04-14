@@ -26,6 +26,12 @@ pub struct HierarchyState {
     // Visible entity order — for Shift+click range selection
     pub visible_entity_order: Vec<Entity>,
     pub building_entity_order: Vec<Entity>,
+
+    /// Selection snapshot from the previous frame. Used to detect selection
+    /// changes so we can auto-expand the ancestors of newly selected entities
+    /// (otherwise clicking a mesh in the viewport selects a parent that's
+    /// collapsed in the tree, and the user sees nothing).
+    pub last_selection: Vec<Entity>,
 }
 
 impl Default for HierarchyState {
@@ -42,6 +48,7 @@ impl Default for HierarchyState {
             rename_focus_set: false,
             visible_entity_order: Vec::new(),
             building_entity_order: Vec::new(),
+            last_selection: Vec::new(),
         }
     }
 }

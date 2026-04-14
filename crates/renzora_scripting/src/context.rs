@@ -113,6 +113,13 @@ pub struct ScriptContext {
     pub gamepad_buttons: [bool; 16],
     pub gamepad_buttons_just_pressed: [bool; 16],
 
+    // Action-based input (unified keyboard + mouse + gamepad via InputMap).
+    pub action_pressed: HashMap<String, bool>,
+    pub action_just_pressed: HashMap<String, bool>,
+    pub action_just_released: HashMap<String, bool>,
+    pub action_axis_1d: HashMap<String, f32>,
+    pub action_axis_2d: HashMap<String, Vec2>,
+
     // Hierarchy
     pub has_parent: bool,
     pub parent_entity: Option<Entity>,
@@ -206,6 +213,11 @@ impl ScriptContext {
             gamepad_right_trigger: 0.0,
             gamepad_buttons: [false; 16],
             gamepad_buttons_just_pressed: [false; 16],
+            action_pressed: HashMap::new(),
+            action_just_pressed: HashMap::new(),
+            action_just_released: HashMap::new(),
+            action_axis_1d: HashMap::new(),
+            action_axis_2d: HashMap::new(),
             has_parent: false,
             parent_entity: None,
             parent_position: Vec3::ZERO,

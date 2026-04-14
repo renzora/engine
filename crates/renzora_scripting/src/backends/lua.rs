@@ -366,6 +366,36 @@ fn register_api(lua: &Lua) {
         Ok(pressed)
     }).unwrap());
 
+    // Action-based input — reads the InputMap's ActionState by name so scripts
+    // work identically with keyboard and gamepad.
+    let _ = globals.set("input_button_pressed", lua.create_function(|lua, name: String| {
+        let t: LuaTable = lua.globals().get("_action_pressed")?;
+        Ok(t.get::<bool>(name).unwrap_or(false))
+    }).unwrap());
+    let _ = globals.set("input_button_just_pressed", lua.create_function(|lua, name: String| {
+        let t: LuaTable = lua.globals().get("_action_just_pressed")?;
+        Ok(t.get::<bool>(name).unwrap_or(false))
+    }).unwrap());
+    let _ = globals.set("input_button_just_released", lua.create_function(|lua, name: String| {
+        let t: LuaTable = lua.globals().get("_action_just_released")?;
+        Ok(t.get::<bool>(name).unwrap_or(false))
+    }).unwrap());
+    let _ = globals.set("input_axis_1d", lua.create_function(|lua, name: String| {
+        let t: LuaTable = lua.globals().get("_action_axis_1d")?;
+        Ok(t.get::<f64>(name).unwrap_or(0.0))
+    }).unwrap());
+    // Returns two values (x, y). Use: `local mx, my = input_axis_2d("move")`.
+    let _ = globals.set("input_axis_2d", lua.create_function(|lua, name: String| {
+        let t: LuaTable = lua.globals().get("_action_axis_2d")?;
+        if let Ok(pair) = t.get::<LuaTable>(name) {
+            let x: f64 = pair.get(1).unwrap_or(0.0);
+            let y: f64 = pair.get(2).unwrap_or(0.0);
+            Ok((x, y))
+        } else {
+            Ok((0.0, 0.0))
+        }
+    }).unwrap());
+
     // -- Audio --
     let _ = globals.set("play_sound", lua.create_function(|_, args: LuaMultiValue| {
         let path: String = args.get(0).and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default();
@@ -809,6 +839,35 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
             let _ = keys_table.set(key.clone(), released);
         }
         let _ = g.set("_keys_just_released", keys_table);
+    }
+
+    // Action-based input (InputMap). Exposed as _action_* tables keyed by
+    // action name; Lua side reads via `input_button_pressed("jump")` etc.
+    if let Ok(t) = lua.create_table() {
+        for (k, &v) in &ctx.action_pressed { let _ = t.set(k.clone(), v); }
+        let _ = g.set("_action_pressed", t);
+    }
+    if let Ok(t) = lua.create_table() {
+        for (k, &v) in &ctx.action_just_pressed { let _ = t.set(k.clone(), v); }
+        let _ = g.set("_action_just_pressed", t);
+    }
+    if let Ok(t) = lua.create_table() {
+        for (k, &v) in &ctx.action_just_released { let _ = t.set(k.clone(), v); }
+        let _ = g.set("_action_just_released", t);
+    }
+    if let Ok(t) = lua.create_table() {
+        for (k, &v) in &ctx.action_axis_1d { let _ = t.set(k.clone(), v as f64); }
+        let _ = g.set("_action_axis_1d", t);
+    }
+    if let Ok(t) = lua.create_table() {
+        for (k, v) in &ctx.action_axis_2d {
+            if let Ok(pair) = lua.create_table() {
+                let _ = pair.set(1, v.x as f64);
+                let _ = pair.set(2, v.y as f64);
+                let _ = t.set(k.clone(), pair);
+            }
+        }
+        let _ = g.set("_action_axis_2d", t);
     }
 
     // Collisions

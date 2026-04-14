@@ -70,6 +70,25 @@ pub fn run_scripts(world: &mut World) {
     let input = world.resource::<ScriptInput>().clone();
     let timers_finished = world.resource::<ScriptTimers>().get_just_finished();
 
+    // Snapshot the InputMap's action state so scripts can read it by name.
+    // `renzora::ActionState` is populated each frame by renzora_input's
+    // `update_action_state` system. If the resource isn't present (running
+    // without the InputPlugin) we just expose empty maps.
+    let mut action_pressed: HashMap<String, bool> = HashMap::new();
+    let mut action_just_pressed: HashMap<String, bool> = HashMap::new();
+    let mut action_just_released: HashMap<String, bool> = HashMap::new();
+    let mut action_axis_1d: HashMap<String, f32> = HashMap::new();
+    let mut action_axis_2d: HashMap<String, Vec2> = HashMap::new();
+    if let Some(state) = world.get_resource::<renzora::ActionState>() {
+        for (name, data) in &state.actions {
+            action_pressed.insert(name.clone(), data.pressed);
+            action_just_pressed.insert(name.clone(), data.just_pressed);
+            action_just_released.insert(name.clone(), data.just_released);
+            action_axis_1d.insert(name.clone(), data.axis_1d);
+            action_axis_2d.insert(name.clone(), data.axis_2d);
+        }
+    }
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -223,6 +242,13 @@ pub fn run_scripts(world: &mut World) {
             ctx.keys_just_released = keys_just_released.clone();
             ctx.mouse_buttons_pressed = mouse_buttons_pressed;
             ctx.mouse_buttons_just_pressed = mouse_buttons_just_pressed;
+
+            // Actions (InputMap-based, unified keyboard + gamepad)
+            ctx.action_pressed = action_pressed.clone();
+            ctx.action_just_pressed = action_just_pressed.clone();
+            ctx.action_just_released = action_just_released.clone();
+            ctx.action_axis_1d = action_axis_1d.clone();
+            ctx.action_axis_2d = action_axis_2d.clone();
 
             // Gamepad
             ctx.gamepad_left_stick = gamepad_left;

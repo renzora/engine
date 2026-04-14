@@ -85,6 +85,28 @@ impl EditorPanel for HierarchyPanel {
 
         let mut state = self.state.write().unwrap();
 
+        // Auto-expand ancestors of newly selected entities so viewport picks
+        // stay visible in the tree even when their parent groups are collapsed.
+        // Only insert ancestors that actually appear in the tree (have `Name`
+        // and aren't `HideInHierarchy`) — the tree reparents children across
+        // unnamed intermediaries like GLTF's SceneRoot, so we must mirror that.
+        let current: Vec<Entity> = selection.get_all();
+        if current != state.last_selection {
+            for &entity in &current {
+                let mut cur = entity;
+                while let Some(child_of) = world.get::<ChildOf>(cur) {
+                    let parent = child_of.parent();
+                    let named = world.get::<Name>(parent).is_some();
+                    let hidden = world.get::<renzora_editor_framework::HideInHierarchy>(parent).is_some();
+                    if named && !hidden {
+                        state.expanded.insert(parent);
+                    }
+                    cur = parent;
+                }
+            }
+            state.last_selection = current;
+        }
+
         // Check for CreateNode shortcut (Ctrl+A)
         if world.get_resource::<renzora::core::CreateNodeRequested>().is_some() {
             state.show_add_overlay = true;
@@ -117,6 +139,33 @@ impl EditorPanel for HierarchyPanel {
             }
         });
         ui.add_space(4.0);
+
+        // Collider stamp progress strip — shown while a bulk stamp is in flight.
+        if let Some(queue) = world.get_resource::<renzora_physics::ColliderStampQueue>() {
+            if queue.is_active() {
+                let progress = queue.progress();
+                let done = queue.total.saturating_sub(queue.remaining.len());
+                let total = queue.total;
+                ui.horizontal(|ui| {
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(format!("{} Stamping {}/{}", regular::TREE_STRUCTURE, done, total))
+                            .size(10.0)
+                            .color(theme.text.secondary.to_color32()),
+                    );
+                });
+                let (_, bar_rect) = ui.allocate_space(egui::vec2(ui.available_width() - 8.0, 4.0));
+                let painter = ui.painter();
+                let bg = theme.surfaces.overlay.to_color32();
+                let fg = egui::Color32::from_rgb(100, 200, 120);
+                painter.rect_filled(bar_rect, 1.0, bg);
+                let mut fill = bar_rect;
+                fill.set_width(bar_rect.width() * progress);
+                painter.rect_filled(fill, 1.0, fg);
+                ui.add_space(4.0);
+                ui.ctx().request_repaint();
+            }
+        }
 
         // Add Entity overlay
         if state.show_add_overlay {

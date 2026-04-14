@@ -129,8 +129,45 @@ fn animator_custom_ui(
         frame.show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                // Clip name (editable)
-                ui.label(egui::RichText::new(&slot.name).size(11.0).color(text_color));
+                // Clip name — editable. Persist the edit buffer across frames
+                // in egui memory so keystrokes aren't lost when the inspector
+                // rebuilds each frame. Commit on focus loss or Enter.
+                let edit_id = egui::Id::new(("anim_clip_name", entity, i));
+                let mut name_buf: String = ui.data(|d| d.get_temp::<String>(edit_id)).unwrap_or_else(|| slot.name.clone());
+                // If the underlying slot name changed externally (e.g. undo),
+                // reset the buffer unless this field is currently focused.
+                let is_focused = ui.memory(|m| m.focused()) == Some(edit_id);
+                if !is_focused && name_buf != slot.name {
+                    name_buf = slot.name.clone();
+                }
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut name_buf)
+                        .id(edit_id)
+                        .desired_width(140.0)
+                        .font(egui::FontId::proportional(11.0)),
+                );
+                ui.data_mut(|d| d.insert_temp(edit_id, name_buf.clone()));
+
+                let committed = response.lost_focus();
+                if committed && name_buf != slot.name {
+                    let trimmed = name_buf.trim().to_string();
+                    let original = slot.name.clone();
+                    if !trimmed.is_empty() && !clips.iter().enumerate().any(|(j, s)| j != i && s.name == trimmed) {
+                        cmds.push(move |world: &mut World| {
+                            if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {
+                                if let Some(slot) = a.clips.get_mut(i) {
+                                    slot.name = trimmed.clone();
+                                }
+                                if a.default_clip.as_deref() == Some(original.as_str()) {
+                                    a.default_clip = Some(trimmed);
+                                }
+                            }
+                        });
+                    } else {
+                        // Rejected — reset the persisted buffer so it reverts visually.
+                        ui.data_mut(|d| d.remove::<String>(edit_id));
+                    }
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Remove button

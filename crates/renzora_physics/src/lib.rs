@@ -3,6 +3,32 @@ pub mod properties;
 pub mod backend;
 pub mod character_controller;
 pub mod character_controller_systems;
+pub mod auto_fit;
+
+/// When `active`, the editor enters "edit collider" mode for the selected entity:
+/// the transform gizmo is hidden and (later) collider resize/move handles take over.
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct ColliderEditMode {
+    pub active: bool,
+}
+
+/// Background queue for bulk-stamping mesh colliders on a hierarchy, chunked
+/// across frames so the UI can show progress. Populated by the inspector's
+/// "Stamp Mesh Colliders" button; drained by `drain_collider_stamp_queue`.
+#[derive(Resource, Default)]
+pub struct ColliderStampQueue {
+    pub root: Option<Entity>,
+    pub remaining: Vec<Entity>,
+    pub total: usize,
+}
+
+impl ColliderStampQueue {
+    pub fn progress(&self) -> f32 {
+        if self.total == 0 { return 1.0; }
+        (self.total - self.remaining.len()) as f32 / self.total as f32
+    }
+    pub fn is_active(&self) -> bool { !self.remaining.is_empty() }
+}
 #[cfg(feature = "editor")]
 pub mod inspector;
 
@@ -16,6 +42,36 @@ use renzora::PlayModeState;
 /// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
 fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
     play_mode.map_or(true, |pm| !pm.is_editing())
+}
+
+/// Stamps up to `BATCH` entities per frame from the queue. Keeps the UI
+/// responsive on huge scenes (thousands of meshes) and lets the hierarchy
+/// panel draw a live progress bar.
+#[cfg(feature = "editor")]
+fn drain_collider_stamp_queue(
+    mut commands: Commands,
+    mut queue: ResMut<ColliderStampQueue>,
+    existing_shapes: Query<(), With<CollisionShapeData>>,
+) {
+    const BATCH: usize = 24;
+    if queue.remaining.is_empty() { return; }
+    for _ in 0..BATCH {
+        let Some(e) = queue.remaining.pop() else { break };
+        // Skip if the entity has gained a collision shape since we queued it.
+        if existing_shapes.get(e).is_ok() { continue; }
+        commands.entity(e).insert((
+            PhysicsBodyData::static_body(),
+            CollisionShapeData::mesh(),
+        ));
+    }
+    if queue.remaining.is_empty() {
+        renzora::console_log::console_success(
+            "Physics",
+            format!("Stamped Mesh Colliders on {} entities", queue.total),
+        );
+        queue.root = None;
+        queue.total = 0;
+    }
 }
 
 #[cfg(not(any(feature = "avian", feature = "rapier")))]
@@ -49,6 +105,10 @@ impl Plugin for PhysicsPlugin {
         app.add_plugins(backend::rapier::RapierBackendPlugin { start_paused });
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
+        app.add_systems(Update, (
+            auto_fit::mark_new_collision_shapes,
+            auto_fit::auto_fit_collision_shapes,
+        ).chain());
 
         // Character controller systems — only active during play mode.
         app.add_systems(PreUpdate, (
@@ -89,6 +149,14 @@ impl Plugin for PhysicsPlugin {
 
         // Listen for script actions (apply_force, apply_impulse, set_velocity)
         app.add_observer(handle_physics_script_actions);
+
+        #[cfg(feature = "editor")]
+        {
+            app.init_resource::<ColliderEditMode>();
+            app.init_resource::<ColliderStampQueue>();
+            app.add_systems(Update, drain_collider_stamp_queue);
+            inspector::register_physics_inspectors(app);
+        }
     }
 }
 

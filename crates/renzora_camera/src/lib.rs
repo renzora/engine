@@ -19,7 +19,7 @@ use renzora::core::viewport_types::{
     ViewportSettings, ViewportState,
 };
 use renzora_editor_framework::EditorSelection;
-use renzora::core::EditorCamera;
+use renzora::core::{EditorCamera, PlayModeCamera};
 
 /// Orbit camera state for the editor viewport.
 ///
@@ -550,20 +550,11 @@ fn update_camera_projection(
 /// Apply orbit transform when the resource is replaced (e.g. after scene load).
 fn apply_orbit_on_change(
     orbit: Res<OrbitCameraState>,
-    mut cameras: Query<(Entity, &mut Transform, &Camera), With<EditorCamera>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut cameras: Query<&mut Transform, (With<EditorCamera>, Without<PlayModeCamera>)>,
 ) {
     if !orbit.is_changed() { return; }
-    let is_playing = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
-    for (entity, mut transform, camera) in &mut cameras {
-        let new_t = orbit.calculate_transform();
-        renzora::core::console_log::console_info("Camera", format!(
-            "apply_orbit_on_change: entity={:?} active={} playing={} pos={:?} -> {:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3}",
-            entity, camera.is_active, is_playing,
-            transform.translation, new_t.translation,
-            orbit.focus, orbit.distance, orbit.yaw, orbit.pitch
-        ));
-        *transform = new_t;
+    for mut transform in &mut cameras {
+        *transform = orbit.calculate_transform();
     }
 }
 

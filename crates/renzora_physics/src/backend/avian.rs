@@ -19,8 +19,57 @@ impl Plugin for AvianBackendPlugin {
         }
 
         app.init_resource::<PhysicsPropertiesState>()
-            .add_systems(Update, sync_physics_properties);
+            .add_systems(Update, sync_physics_properties)
+            .add_systems(Update, init_avian_mesh_colliders);
     }
+}
+
+/// Marker: this entity has `CollisionShapeData { shape_type: Mesh }` but no
+/// actual avian `Collider` yet — waiting for the Mesh asset to be ready.
+#[derive(Component)]
+pub struct PendingMeshCollider;
+
+/// Build `Collider::trimesh_from_mesh` from the entity's `Mesh3d` once the
+/// asset loads. Runs every frame; removes the marker on success.
+fn init_avian_mesh_colliders(
+    mut commands: Commands,
+    meshes: Res<Assets<Mesh>>,
+    pending: Query<(Entity, &Mesh3d, &CollisionShapeData), With<PendingMeshCollider>>,
+) {
+    for (entity, mesh_ref, shape) in &pending {
+        let Some(mesh) = meshes.get(&mesh_ref.0) else { continue };
+        let Some(collider) = trimesh_from_mesh(mesh) else { continue };
+
+        let mut ec = commands.entity(entity);
+        ec.try_insert((
+            collider,
+            Friction::new(shape.friction),
+            Restitution::new(shape.restitution),
+        ));
+        if shape.is_sensor {
+            ec.try_insert(Sensor);
+        }
+        ec.remove::<PendingMeshCollider>();
+    }
+}
+
+/// Build an avian trimesh `Collider` from a Bevy `Mesh` (TriangleList only).
+fn trimesh_from_mesh(mesh: &Mesh) -> Option<Collider> {
+    use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
+    if mesh.primitive_topology() != PrimitiveTopology::TriangleList {
+        return None;
+    }
+    let positions = match mesh.attribute(Mesh::ATTRIBUTE_POSITION)? {
+        VertexAttributeValues::Float32x3(v) => v,
+        _ => return None,
+    };
+    let vertices: Vec<Vec3> = positions.iter().map(|p| Vec3::new(p[0], p[1], p[2])).collect();
+    let indices: Vec<[u32; 3]> = match mesh.indices()? {
+        Indices::U32(idx) => idx.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect(),
+        Indices::U16(idx) => idx.chunks_exact(3).map(|c| [c[0] as u32, c[1] as u32, c[2] as u32]).collect(),
+    };
+    if indices.is_empty() { return None; }
+    Some(Collider::trimesh(vertices, indices))
 }
 
 fn pause_physics(mut time: ResMut<Time<Physics>>) {
@@ -91,6 +140,11 @@ pub fn spawn_collision_shape(commands: &mut Commands, entity: Entity, shape_data
         }
         CollisionShapeType::Cylinder => {
             Collider::cylinder(shape_data.radius, shape_data.half_height * 2.0)
+        }
+        CollisionShapeType::Mesh => {
+            // Built later by `init_avian_mesh_colliders`, which has access to Assets<Mesh>.
+            commands.entity(entity).try_insert(PendingMeshCollider);
+            return;
         }
     };
 

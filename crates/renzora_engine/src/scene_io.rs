@@ -93,6 +93,22 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<renzora_network::Networked>()
         .deny_component::<renzora_network::NetworkOwner>()
         .deny_component::<renzora_network::NetworkId>()
+        // Avian runtime components are regenerated on load from our
+        // serializable PhysicsBodyData + CollisionShapeData. Persisting them
+        // causes duplicate-reflect-type errors during deserialization.
+        .deny_component::<avian3d::prelude::Collider>()
+        .deny_component::<avian3d::collision::collider::ColliderAabb>()
+        .deny_component::<avian3d::prelude::RigidBody>()
+        .deny_component::<avian3d::prelude::LinearVelocity>()
+        .deny_component::<avian3d::prelude::AngularVelocity>()
+        .deny_component::<avian3d::prelude::Mass>()
+        .deny_component::<avian3d::prelude::Friction>()
+        .deny_component::<avian3d::prelude::Restitution>()
+        .deny_component::<avian3d::prelude::GravityScale>()
+        .deny_component::<avian3d::prelude::LinearDamping>()
+        .deny_component::<avian3d::prelude::AngularDamping>()
+        .deny_component::<avian3d::prelude::LockedAxes>()
+        .deny_component::<avian3d::prelude::Sensor>()
         .extract_entities(entities.into_iter())
         .build();
 
@@ -104,6 +120,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 // Filter editor-only types by name (not available as deps in runtime)
                 let type_name = component.reflect_type_path();
                 if type_name.starts_with("bevy_mod_outline::") {
+                    return false;
+                }
+                // Never serialize avian runtime components — they're regenerated
+                // on load from PhysicsBodyData + CollisionShapeData. Persisting
+                // them causes duplicate-reflect-type errors on deserialize.
+                if type_name.starts_with("avian3d::") {
                     return false;
                 }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
@@ -188,6 +210,22 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<renzora_network::Networked>()
         .deny_component::<renzora_network::NetworkOwner>()
         .deny_component::<renzora_network::NetworkId>()
+        // Avian runtime components are regenerated on load from our
+        // serializable PhysicsBodyData + CollisionShapeData. Persisting them
+        // causes duplicate-reflect-type errors during deserialization.
+        .deny_component::<avian3d::prelude::Collider>()
+        .deny_component::<avian3d::collision::collider::ColliderAabb>()
+        .deny_component::<avian3d::prelude::RigidBody>()
+        .deny_component::<avian3d::prelude::LinearVelocity>()
+        .deny_component::<avian3d::prelude::AngularVelocity>()
+        .deny_component::<avian3d::prelude::Mass>()
+        .deny_component::<avian3d::prelude::Friction>()
+        .deny_component::<avian3d::prelude::Restitution>()
+        .deny_component::<avian3d::prelude::GravityScale>()
+        .deny_component::<avian3d::prelude::LinearDamping>()
+        .deny_component::<avian3d::prelude::AngularDamping>()
+        .deny_component::<avian3d::prelude::LockedAxes>()
+        .deny_component::<avian3d::prelude::Sensor>()
         .extract_entities(entities.into_iter())
         .build();
 

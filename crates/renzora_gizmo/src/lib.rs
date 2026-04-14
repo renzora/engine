@@ -10,6 +10,8 @@ mod camera_gizmo;
 pub mod modal_transform;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
+pub mod collider_gizmo;
+pub mod collider_handles;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
@@ -325,6 +327,22 @@ impl Plugin for GizmoPlugin {
                 selection_visuals::terrain_chunk_selection_system
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
+            .init_resource::<collider_handles::ColliderHandleState>()
+            .add_systems(
+                Update,
+                collider_gizmo::draw_collider_gizmos
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            .add_systems(
+                Update,
+                (
+                    collider_handles::pick_and_drag_handles,
+                    collider_handles::spawn_handle_meshes,
+                ).chain()
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
             .init_resource::<LastSelectionCount>()
             .add_systems(
                 Update,
@@ -501,6 +519,7 @@ fn update_gizmo_transforms(
     selection: Res<EditorSelection>,
     mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmo_state: ResMut<GizmoState>,
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
@@ -509,10 +528,12 @@ fn update_gizmo_transforms(
 ) {
     let Ok((mut root_transform, mut root_vis)) = gizmo_root.single_mut() else { return };
 
+    let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
     let selected = selection.get();
     // Hide mesh gizmos during modal transform and when in Scale mode (drawn via immediate gizmos)
     let show_meshes = selected.is_some()
         && !modal.active
+        && !editing_collider
         && matches!(*mode, GizmoMode::Translate);
     *root_vis = if show_meshes { Visibility::Visible } else { Visibility::Hidden };
 
@@ -611,12 +632,14 @@ fn draw_line_gizmos(
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     transform_q: Query<&Transform, (Without<EditorCamera>, Without<GizmoRoot>, Without<GizmoMesh>)>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the gizmo's
     // immediate-mode planes/axis lines so they don't sit under the modal
     // HUD while the user is dragging.
     if modal.active { return; }
+    if collider_edit.map(|c| c.active).unwrap_or(false) { return; }
 
     let Some(selected) = selection.get() else { return };
     let Ok(sel_t) = transform_q.get(selected) else { return };
@@ -638,30 +661,38 @@ fn draw_line_gizmos(
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
             let po = GIZMO_PLANE_OFFSET * gs;
 
-            let xy_color = if active == Some(GizmoAxis::XY) { highlight } else { Color::srgb(0.9, 0.9, 0.2) };
-            let xz_color = if active == Some(GizmoAxis::XZ) { highlight } else { Color::srgb(0.9, 0.2, 0.9) };
-            let yz_color = if active == Some(GizmoAxis::YZ) { highlight } else { Color::srgb(0.2, 0.9, 0.9) };
+            let xy_outline = if active == Some(GizmoAxis::XY) { highlight } else { Color::srgb(0.9, 0.9, 0.2) };
+            let xz_outline = if active == Some(GizmoAxis::XZ) { highlight } else { Color::srgb(0.9, 0.2, 0.9) };
+            let yz_outline = if active == Some(GizmoAxis::YZ) { highlight } else { Color::srgb(0.2, 0.9, 0.9) };
+            let fill_alpha = if active.is_some() { 0.45 } else { 0.22 };
+            let with_alpha = |c: Color, a: f32| {
+                let s = c.to_srgba();
+                Color::srgba(s.red, s.green, s.blue, a)
+            };
 
-            // XY
+            // XY plane
             let c = pos + Vec3::new(po, po, 0.0);
-            gizmos.line(c + Vec3::new(-plane_half, -plane_half, 0.0), c + Vec3::new(plane_half, -plane_half, 0.0), xy_color);
-            gizmos.line(c + Vec3::new(plane_half, -plane_half, 0.0), c + Vec3::new(plane_half, plane_half, 0.0), xy_color);
-            gizmos.line(c + Vec3::new(plane_half, plane_half, 0.0), c + Vec3::new(-plane_half, plane_half, 0.0), xy_color);
-            gizmos.line(c + Vec3::new(-plane_half, plane_half, 0.0), c + Vec3::new(-plane_half, -plane_half, 0.0), xy_color);
+            draw_filled_quad(
+                &mut gizmos,
+                c, Vec3::X, Vec3::Y, plane_half,
+                xy_outline, with_alpha(xy_outline, fill_alpha),
+            );
 
-            // XZ
+            // XZ plane
             let c = pos + Vec3::new(po, 0.0, po);
-            gizmos.line(c + Vec3::new(-plane_half, 0.0, -plane_half), c + Vec3::new(plane_half, 0.0, -plane_half), xz_color);
-            gizmos.line(c + Vec3::new(plane_half, 0.0, -plane_half), c + Vec3::new(plane_half, 0.0, plane_half), xz_color);
-            gizmos.line(c + Vec3::new(plane_half, 0.0, plane_half), c + Vec3::new(-plane_half, 0.0, plane_half), xz_color);
-            gizmos.line(c + Vec3::new(-plane_half, 0.0, plane_half), c + Vec3::new(-plane_half, 0.0, -plane_half), xz_color);
+            draw_filled_quad(
+                &mut gizmos,
+                c, Vec3::X, Vec3::Z, plane_half,
+                xz_outline, with_alpha(xz_outline, fill_alpha),
+            );
 
-            // YZ
+            // YZ plane
             let c = pos + Vec3::new(0.0, po, po);
-            gizmos.line(c + Vec3::new(0.0, -plane_half, -plane_half), c + Vec3::new(0.0, plane_half, -plane_half), yz_color);
-            gizmos.line(c + Vec3::new(0.0, plane_half, -plane_half), c + Vec3::new(0.0, plane_half, plane_half), yz_color);
-            gizmos.line(c + Vec3::new(0.0, plane_half, plane_half), c + Vec3::new(0.0, -plane_half, plane_half), yz_color);
-            gizmos.line(c + Vec3::new(0.0, -plane_half, plane_half), c + Vec3::new(0.0, -plane_half, -plane_half), yz_color);
+            draw_filled_quad(
+                &mut gizmos,
+                c, Vec3::Y, Vec3::Z, plane_half,
+                yz_outline, with_alpha(yz_outline, fill_alpha),
+            );
         }
         GizmoMode::Rotate => {
             let radius = GIZMO_SIZE * gs * 0.7;
@@ -807,6 +838,21 @@ fn handle_selection_shortcuts(
                 if new_ids.is_empty() { return; }
                 reposition_paste_group(world, &new_ids, target);
             }
+        });
+    }
+
+    // Move selection to cursor (V): teleports the selected entities so their
+    // centroid sits under the viewport cursor, bottom snapped to the hit point.
+    // Reuses the paste-placement helpers for consistent behavior.
+    if keybindings.just_pressed(EditorAction::MoveSelectionToCursor, &keyboard) {
+        commands.queue(move |world: &mut World| {
+            let selected = world
+                .get_resource::<EditorSelection>()
+                .map(|s| s.get_all())
+                .unwrap_or_default();
+            if selected.is_empty() { return; }
+            let Some(target) = compute_paste_target(world) else { return };
+            reposition_paste_group(world, &selected, target);
         });
     }
 
@@ -1293,6 +1339,7 @@ fn gizmo_drag(
     mut gizmo_state: ResMut<GizmoState>,
     mode: Res<GizmoMode>,
     selection: Res<EditorSelection>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     viewport: Option<Res<ViewportState>>,
     viewport_settings: Option<Res<ViewportSettings>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
@@ -1305,6 +1352,12 @@ fn gizmo_drag(
 ) {
     let snap: SnapSettings = viewport_settings.as_deref().map(|s| s.snap).unwrap_or_default();
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
+        mouse_motion.clear();
+        return;
+    }
+    if collider_edit.map(|c| c.active).unwrap_or(false) {
+        gizmo_state.active_axis = None;
+        gizmo_state.drag_starts.clear();
         mouse_motion.clear();
         return;
     }
@@ -1529,6 +1582,36 @@ fn gizmo_drag(
     }
 }
 
+/// Draw a filled square centered at `center`, spanning ±`half` along `axis_a`
+/// and `axis_b`. Uses densely-spaced parallel lines for the fill (Bevy's
+/// immediate-mode gizmos don't support triangles) plus a bright outline.
+fn draw_filled_quad(
+    gizmos: &mut Gizmos<TransformGizmoGroup>,
+    center: Vec3,
+    axis_a: Vec3,
+    axis_b: Vec3,
+    half: f32,
+    outline: Color,
+    fill: Color,
+) {
+    const FILL_LINES: usize = 18;
+    // Fill: parallel lines along axis_a stepping across axis_b.
+    for i in 0..=FILL_LINES {
+        let t = (i as f32 / FILL_LINES as f32) * 2.0 - 1.0; // -1..1
+        let row = center + axis_b * (half * t);
+        gizmos.line(row - axis_a * half, row + axis_a * half, fill);
+    }
+    // Outline border.
+    let c00 = center - axis_a * half - axis_b * half;
+    let c10 = center + axis_a * half - axis_b * half;
+    let c11 = center + axis_a * half + axis_b * half;
+    let c01 = center - axis_a * half + axis_b * half;
+    gizmos.line(c00, c10, outline);
+    gizmos.line(c10, c11, outline);
+    gizmos.line(c11, c01, outline);
+    gizmos.line(c01, c00, outline);
+}
+
 fn screen_delta_to_angle(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransform) -> f32 {
     let cam_fwd = cam.forward().as_vec3();
     let dot = axis_world.dot(cam_fwd).abs();
@@ -1559,6 +1642,8 @@ fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
     mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
+    handle_state: Option<Res<collider_handles::ColliderHandleState>>,
     viewport: Option<Res<ViewportState>>,
     nav_overlay: Option<Res<NavOverlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -1574,6 +1659,13 @@ fn entity_pick_system(
     if !mouse_button.just_pressed(MouseButton::Left) { return; }
     if modal.active { return; }
     if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() { return; }
+    // Suspend picking while editing a collider — clicks drive handle drags instead.
+    if collider_edit.map(|c| c.active).unwrap_or(false) {
+        // If a handle is hovered or being dragged, fully consume the click.
+        // Otherwise still suppress to avoid deselecting while the user is tweaking.
+        return;
+    }
+    let _ = handle_state;
     // GizmoMode::None means a plugin tool is driving — skip picking.
     if *mode == GizmoMode::None { return; }
     // Don't pick while nav overlay pan/zoom buttons are being dragged
@@ -1637,6 +1729,7 @@ fn box_selection_system(
     mut box_sel: ResMut<BoxSelectionState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     viewport: Option<Res<ViewportState>>,
     nav_overlay: Option<Res<NavOverlayState>>,
@@ -1646,6 +1739,10 @@ fn box_selection_system(
     hidden_entities: Query<(), With<HideInHierarchy>>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
 ) {
+    if collider_edit.map(|c| c.active).unwrap_or(false) {
+        box_sel.active = false;
+        return;
+    }
     if !box_sel.active { return; }
     // Cancel box selection if nav overlay is being used
     if let Some(ref nav) = nav_overlay {
@@ -1757,18 +1854,20 @@ fn find_named_ancestor(
     named: &Query<Entity, With<Name>>,
     parents: &Query<&ChildOf>,
 ) -> Option<Entity> {
-    if named.get(entity).is_ok() {
-        return Some(entity);
-    }
+    // Walk the full chain to the root, remembering the topmost named entity
+    // we encountered. Clicking on a mesh nested inside a group should select
+    // the group, not the leaf mesh — otherwise selection disappears when the
+    // hierarchy node is collapsed.
+    let mut topmost = named.get(entity).ok();
     let mut current = entity;
     while let Ok(child_of) = parents.get(current) {
         let parent = child_of.parent();
         if named.get(parent).is_ok() {
-            return Some(parent);
+            topmost = Some(parent);
         }
         current = parent;
     }
-    None
+    topmost
 }
 
 // ── Box selection overlay ────────────────────────────────────────────────────

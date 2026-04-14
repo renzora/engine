@@ -370,6 +370,14 @@ pub fn process_animation_commands(
                     continue;
                 }
 
+                // Idempotent: scripts re-call `play_animation` every frame
+                // because the Lua state doesn't persist locals. Skip if the
+                // clip is already the current one so looping clips don't
+                // restart every frame.
+                if state.current_clip.as_deref() == Some(name.as_str()) && !state.is_paused {
+                    continue;
+                }
+
                 let Some(&node_idx) = state.node_indices.get(&name) else {
                     warn!("AnimationCommand::Play: clip '{}' not found", name);
                     continue;

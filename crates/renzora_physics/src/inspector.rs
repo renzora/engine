@@ -6,17 +6,98 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor_framework::{
-    inline_property, toggle_switch, EditorCommands, InspectorEntry,
+    inline_property, toggle_switch, EditorCommands, EditorSelection, InspectorEntry,
+    ToolEntry, ToolSection,
 };
 use renzora_theme::Theme;
 
 use crate::{
     CharacterControllerData, CharacterControllerState, CharacterControllerInput,
     CollisionShapeData, CollisionShapeType,
+    ColliderEditMode,
     PhysicsBodyData, PhysicsBodyType,
 };
 
 /// Register all physics inspector entries, spawn presets, icons, and observers via `AppEditorExt`.
+/// Queue `root` and every descendant with a `Mesh3d` (lacking a collision
+/// shape) into `ColliderStampQueue`. A background system drains it a batch
+/// per frame so the hierarchy panel can show a live progress bar.
+fn stamp_mesh_colliders_on_descendants(world: &mut World, root: Entity) {
+    let mut stack = vec![root];
+    let mut targets: Vec<Entity> = Vec::new();
+    while let Some(e) = stack.pop() {
+        let has_mesh = world.entity(e).contains::<bevy::prelude::Mesh3d>();
+        let has_shape = world.entity(e).contains::<CollisionShapeData>();
+        if has_mesh && !has_shape {
+            targets.push(e);
+        }
+        if let Some(children) = world.get::<bevy::prelude::Children>(e) {
+            for c in children.iter() {
+                stack.push(c);
+            }
+        }
+    }
+    let total = targets.len();
+    if total == 0 {
+        renzora::console_log::console_warn(
+            "Physics",
+            "No descendant mesh entities found to stamp",
+        );
+        return;
+    }
+    if let Some(mut queue) = world.get_resource_mut::<crate::ColliderStampQueue>() {
+        queue.root = Some(root);
+        queue.total = total;
+        queue.remaining = targets;
+    }
+    renzora::console_log::console_info(
+        "Physics",
+        format!("Queued {} entities for mesh collider stamping", total),
+    );
+}
+
+/// Remove `PhysicsBodyData` + `CollisionShapeData` from `root` and every
+/// descendant that currently has them. Also despawns the avian backend
+/// components via `despawn_physics_components` to keep things clean.
+fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
+    let mut stack = vec![root];
+    let mut targets: Vec<Entity> = Vec::new();
+    while let Some(e) = stack.pop() {
+        let has_body = world.entity(e).contains::<PhysicsBodyData>();
+        let has_shape = world.entity(e).contains::<CollisionShapeData>();
+        if has_body || has_shape {
+            targets.push(e);
+        }
+        if let Some(children) = world.get::<bevy::prelude::Children>(e) {
+            for c in children.iter() {
+                stack.push(c);
+            }
+        }
+    }
+    let count = targets.len();
+    for e in &targets {
+        world.entity_mut(*e)
+            .remove::<PhysicsBodyData>()
+            .remove::<CollisionShapeData>()
+            .remove::<crate::data::RuntimePhysics>();
+        let mut cmds = world.commands();
+        crate::despawn_physics_components(&mut cmds, *e);
+    }
+    // Clear any pending stamp queue entries that reference the just-stripped root
+    // so a strip immediately after a stamp doesn't keep adding components.
+    if let Some(mut queue) = world.get_resource_mut::<crate::ColliderStampQueue>() {
+        queue.remaining.retain(|e| !targets.contains(e));
+        if queue.remaining.is_empty() {
+            queue.root = None;
+            queue.total = 0;
+        }
+    }
+    renzora::console_log::console_success(
+        "Physics",
+        format!("Stripped colliders from {} descendant entities", count),
+    );
+}
+
 pub fn register_physics_inspectors(app: &mut App) {
     // Auto-insert default collider on new MeshPrimitive entities
     app.add_observer(auto_insert_collider_for_shape);
@@ -25,6 +106,27 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_inspector(physics_body_entry())
        .register_inspector(collision_shape_entry())
        .register_inspector(character_controller_entry());
+
+    app.register_tool(
+        ToolEntry::new(
+            "physics.edit_collider",
+            regular::PENCIL_SIMPLE,
+            "Edit Collider — drag handles to resize/move",
+            ToolSection::Custom("physics"),
+        )
+        .visible_if(|world| {
+            let Some(sel) = world.resource::<EditorSelection>().get() else { return false };
+            world.get::<CollisionShapeData>(sel).is_some()
+        })
+        .active_if(|world| {
+            world.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false)
+        })
+        .on_activate(|world| {
+            if let Some(mut m) = world.get_resource_mut::<ColliderEditMode>() {
+                m.active = !m.active;
+            }
+        }),
+    );
 
     // Spawn presets
     app.register_entity_preset(EntityPreset {
@@ -365,6 +467,36 @@ fn collision_shape_ui(
     let Some(shape) = world.get::<CollisionShapeData>(entity) else { return };
     let shape = shape.clone();
 
+    // Edit Collider toggle
+    let edit_active = world.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false);
+    inline_property(ui, 0, "Edit Collider", theme, |ui| {
+        let label = if edit_active { "Editing…" } else { "Edit" };
+        if ui.button(format!("{} {}", regular::PENCIL_SIMPLE, label)).clicked() {
+            cmds.push(move |w: &mut World| {
+                if let Some(mut m) = w.get_resource_mut::<ColliderEditMode>() {
+                    m.active = !m.active;
+                }
+            });
+        }
+    });
+
+    // Bulk-apply Mesh Collider to every descendant with a Mesh3d. Useful for
+    // imported scenes (GLB/GLTF) where each mesh is a child entity.
+    inline_property(ui, 1, "Apply to children", theme, |ui| {
+        ui.horizontal(|ui| {
+            if ui.button(format!("{} Stamp", regular::TREE_STRUCTURE)).clicked() {
+                cmds.push(move |w: &mut World| {
+                    stamp_mesh_colliders_on_descendants(w, entity);
+                });
+            }
+            if ui.button(format!("{} Strip", regular::TRASH)).clicked() {
+                cmds.push(move |w: &mut World| {
+                    strip_colliders_on_descendants(w, entity);
+                });
+            }
+        });
+    });
+
     // Shape type combo
     inline_property(ui, 0, "Shape", theme, |ui| {
         let current = match shape.shape_type {
@@ -372,6 +504,7 @@ fn collision_shape_ui(
             CollisionShapeType::Sphere => "Sphere",
             CollisionShapeType::Capsule => "Capsule",
             CollisionShapeType::Cylinder => "Cylinder",
+            CollisionShapeType::Mesh => "Mesh",
         };
         egui::ComboBox::from_id_salt("collision_shape_type")
             .selected_text(current)
@@ -382,6 +515,7 @@ fn collision_shape_ui(
                     (CollisionShapeType::Sphere, "Sphere"),
                     (CollisionShapeType::Capsule, "Capsule"),
                     (CollisionShapeType::Cylinder, "Cylinder"),
+                    (CollisionShapeType::Mesh, "Mesh"),
                 ] {
                     if ui.selectable_label(shape.shape_type == st, label).clicked() {
                         cmds.push(move |w: &mut World| {
@@ -444,6 +578,14 @@ fn collision_shape_ui(
                     });
                 }
             });
+        }
+        CollisionShapeType::Mesh => {
+            ui.add_space(2.0);
+            ui.label(
+                egui::RichText::new("Uses the entity's mesh as a trimesh collider.")
+                    .size(11.0)
+                    .color(theme.text.muted.to_color32()),
+            );
         }
     }
 

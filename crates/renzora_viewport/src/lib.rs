@@ -10,6 +10,7 @@ pub mod header;
 pub mod model_drop;
 pub mod model_flatten;
 pub mod play_mode;
+pub mod play_console_overlay;
 pub mod shape_drop;
 pub mod render_systems;
 pub mod settings;
@@ -78,6 +79,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .init_resource::<BrushCursorHiddenByUs>()
+            .init_resource::<play_console_overlay::PlayConsoleOverlayState>()
             .add_systems(Update, (
                 update_input_focus,
                 handle_viewport_resize,
@@ -106,6 +108,12 @@ impl Plugin for ViewportPlugin {
                 handle_play_shortcuts,
                 hide_cursor_for_brushes,
             ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+
+        app.add_systems(Update, (
+            play_console_overlay::toggle_play_console_overlay,
+            play_console_overlay::manage_play_console_overlay,
+            play_console_overlay::update_play_console_text,
+        ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
 
         // Register the crosshair overlay so the cursor goes to Crosshair
         // whenever the pointer is over the viewport rect.

@@ -37,6 +37,8 @@ pub enum EditorAction {
     Duplicate,
     DuplicateAndMove,
     Deselect,
+    /// Teleport the selected entity to the point under the mouse cursor.
+    MoveSelectionToCursor,
 
     // Edit operations
     Undo,
@@ -95,6 +97,7 @@ impl EditorAction {
             EditorAction::Duplicate => "Duplicate",
             EditorAction::DuplicateAndMove => "Duplicate & Move",
             EditorAction::Deselect => "Deselect",
+            EditorAction::MoveSelectionToCursor => "Move Selection to Cursor",
             EditorAction::Undo => "Undo",
             EditorAction::Redo => "Redo",
             EditorAction::CreateNode => "Create Node",
@@ -141,7 +144,7 @@ impl EditorAction {
             | EditorAction::ModalRotate
             | EditorAction::ModalScale => "Transform",
 
-            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect => "Selection",
+            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect | EditorAction::MoveSelectionToCursor => "Selection",
 
             EditorAction::Undo
             | EditorAction::Redo
@@ -194,6 +197,7 @@ impl EditorAction {
             EditorAction::Duplicate,
             EditorAction::DuplicateAndMove,
             EditorAction::Deselect,
+            EditorAction::MoveSelectionToCursor,
             EditorAction::Undo,
             EditorAction::Redo,
             EditorAction::CreateNode,
@@ -362,6 +366,7 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::ViewTop, KeyBinding::new(KeyCode::Numpad7));
         bindings.insert(EditorAction::ViewBottom, KeyBinding::new(KeyCode::Numpad7).ctrl());
         bindings.insert(EditorAction::ToggleProjection, KeyBinding::new(KeyCode::Numpad5));
+        bindings.insert(EditorAction::MoveSelectionToCursor, KeyBinding::new(KeyCode::KeyV));
 
         Self {
             bindings,

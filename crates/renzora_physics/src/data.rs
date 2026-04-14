@@ -73,6 +73,8 @@ pub enum CollisionShapeType {
     Sphere,
     Capsule,
     Cylinder,
+    /// Trimesh generated from the entity's `Mesh3d`. No size fields apply.
+    Mesh,
 }
 
 /// Serializable collision shape data — backend-agnostic.
@@ -129,6 +131,13 @@ impl CollisionShapeData {
             shape_type: CollisionShapeType::Cylinder,
             radius,
             half_height,
+            ..Default::default()
+        }
+    }
+
+    pub fn mesh() -> Self {
+        Self {
+            shape_type: CollisionShapeType::Mesh,
             ..Default::default()
         }
     }
