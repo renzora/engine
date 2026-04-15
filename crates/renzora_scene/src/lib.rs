@@ -13,11 +13,14 @@ use renzora_editor_framework::SplashState;
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
 
+mod panel;
+pub use panel::ScenesPanel;
+
 // ============================================================================
 // Tab Switch System
 // ============================================================================
 
-fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
+pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
     let mut to_despawn = Vec::new();
     {
         let mut query = world.query_filtered::<Entity, (
@@ -127,7 +130,7 @@ fn stamp_orbit_on_scene_camera(world: &mut World) {
 
 /// Extract `OrbitCameraState` from the `SceneCamera` entity after loading,
 /// apply it to the resource, and remove the component.
-fn extract_orbit_from_scene_camera(world: &mut World) {
+pub(crate) fn extract_orbit_from_scene_camera(world: &mut World) {
     let mut query = world.query_filtered::<(Entity, &OrbitCameraState), With<SceneCamera>>();
     let result: Option<(Entity, OrbitCameraState)> = query
         .iter(world)
@@ -438,6 +441,8 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScenePlugin");
+        use renzora_editor_framework::AppEditorExt;
+        app.register_panel(panel::ScenesPanel::default());
         app.init_resource::<SceneTabBuffers>()
             .add_systems(OnEnter(SplashState::Editor), load_scene_on_enter)
             .add_systems(

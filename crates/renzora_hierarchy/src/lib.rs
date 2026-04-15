@@ -90,6 +90,14 @@ impl EditorPanel for HierarchyPanel {
         // Only insert ancestors that actually appear in the tree (have `Name`
         // and aren't `HideInHierarchy`) — the tree reparents children across
         // unnamed intermediaries like GLTF's SceneRoot, so we must mirror that.
+        // Drain any external expand requests (e.g. from spawn_widget) so newly
+        // spawned children are revealed under their parent.
+        if let Some(requests) = world.get_resource::<renzora_editor_framework::HierarchyExpandRequests>() {
+            for entity in requests.drain() {
+                state.expanded.insert(entity);
+            }
+        }
+
         let current: Vec<Entity> = selection.get_all();
         if current != state.last_selection {
             for &entity in &current {

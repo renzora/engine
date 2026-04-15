@@ -460,48 +460,6 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "success");
                 }
             }
-            "lifecycle/show_loader" => {
-                self.actions.push(ScriptAction {
-                    name: "loader_show".into(),
-                    entity: Entity::PLACEHOLDER,
-                    target_entity: None,
-                    args: HashMap::new(),
-                });
-                self.follow_exec(node_id, "success");
-            }
-            "lifecycle/hide_loader" => {
-                self.actions.push(ScriptAction {
-                    name: "loader_hide".into(),
-                    entity: Entity::PLACEHOLDER,
-                    target_entity: None,
-                    args: HashMap::new(),
-                });
-                self.follow_exec(node_id, "success");
-            }
-            "lifecycle/set_loader_progress" => {
-                let progress = self.resolve_input(node_id, "progress").as_float();
-                self.actions.push(ScriptAction {
-                    name: "loader_set_progress".into(),
-                    entity: Entity::PLACEHOLDER,
-                    target_entity: None,
-                    args: HashMap::from([
-                        ("progress".into(), ScriptActionValue::Float(progress)),
-                    ]),
-                });
-                self.follow_exec(node_id, "success");
-            }
-            "lifecycle/set_loader_message" => {
-                let message = self.resolve_input(node_id, "message").as_string();
-                self.actions.push(ScriptAction {
-                    name: "loader_set_message".into(),
-                    entity: Entity::PLACEHOLDER,
-                    target_entity: None,
-                    args: HashMap::from([
-                        ("message".into(), ScriptActionValue::String(message)),
-                    ]),
-                });
-                self.follow_exec(node_id, "success");
-            }
             "lifecycle/global_set" => {
                 let key = self.resolve_input(node_id, "key").as_string();
                 let value = self.resolve_input(node_id, "value");

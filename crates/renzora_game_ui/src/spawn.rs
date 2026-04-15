@@ -23,9 +23,9 @@ fn pct_h(px: f32, r: &Ref) -> Val {
     Val::Percent(px / r.h * 100.0)
 }
 
-/// Spawn any widget by type, parenting to a canvas.
-pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Option<Entity>) {
-    // Find or create canvas
+/// Spawn any widget by type, parenting to a canvas. Returns the spawned entity.
+pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Option<Entity>) -> Entity {
+    // Find or create canvas.
     let canvas_entity = {
         let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
         match parent.or_else(|| q.iter(world).next()) {
@@ -103,14 +103,25 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
         UiWidgetType::Wedge => spawn_wedge(world, &r),
     };
 
-    // Mark as themed + parent to canvas
+    // Mark as themed + parent to canvas. Use `set_parent_in_place` to match
+    // the pattern used by composite widget spawners elsewhere in this file —
+    // bare `insert(ChildOf)` doesn't fire the Children-update hook at runtime.
     world.entity_mut(entity).insert(UiThemed);
-    world.entity_mut(canvas_entity).add_child(entity);
+    world.entity_mut(entity).set_parent_in_place(canvas_entity);
 
     #[cfg(feature = "editor")]
-    if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
-        sel.set(Some(entity));
+    {
+        if let Some(requests) =
+            world.get_resource::<renzora_editor_framework::HierarchyExpandRequests>()
+        {
+            requests.push(canvas_entity);
+        }
+        if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+            sel.set(Some(entity));
+        }
     }
+
+    entity
 }
 
 fn spawn_container(world: &mut World, r: &Ref) -> Entity {
@@ -2285,7 +2296,7 @@ pub fn spawn_image_at(
     grid: f32,
     parent: Option<Entity>,
 ) {
-    // Find or create canvas
+    // Find or create canvas.
     let canvas_entity = {
         let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
         match parent.or_else(|| q.iter(world).next()) {

@@ -132,6 +132,24 @@ pub struct EntityLabelColor(pub [u8; 3]);
 #[derive(Component, Clone, Copy)]
 pub struct HierarchyOrder(pub u32);
 
+/// Pending entities to expand in the hierarchy panel next time it renders.
+/// Systems that spawn entities as children can push the parent entity here so
+/// the panel reveals the newly spawned child even if the user hasn't toggled
+/// expansion manually.
+#[derive(Resource, Default)]
+pub struct HierarchyExpandRequests {
+    entries: std::sync::RwLock<Vec<Entity>>,
+}
+
+impl HierarchyExpandRequests {
+    pub fn push(&self, entity: Entity) {
+        self.entries.write().unwrap().push(entity);
+    }
+    pub fn drain(&self) -> Vec<Entity> {
+        std::mem::take(&mut *self.entries.write().unwrap())
+    }
+}
+
 pub use renzora::EntityTag;
 
 /// Filter mode for the hierarchy panel. Other panels can set this to restrict
@@ -328,6 +346,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
+            .init_resource::<HierarchyExpandRequests>()
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(

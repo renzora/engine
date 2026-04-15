@@ -41,11 +41,7 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &GET_PLAYER_COUNT,
     &GET_VARIABLE,
     &SET_VARIABLE,
-    // ── Loader UI ──
-    &SHOW_LOADER,
-    &HIDE_LOADER,
-    &SET_LOADER_PROGRESS,
-    &SET_LOADER_MESSAGE,
+    // ── Scene load progress ──
     &GET_LOAD_PROGRESS,
     // ── Global store ──
     &GLOBAL_GET,
@@ -394,62 +390,10 @@ static SET_VARIABLE: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_LIFECYCLE,
 };
 
-// ── Loader UI nodes ─────────────────────────────────────────────────────────
+// ── Scene load progress ─────────────────────────────────────────────────────
 
 const CLR_LOADER: [u8; 3] = [70, 140, 200];
 const CLR_GLOBALS: [u8; 3] = [200, 150, 70];
-
-static SHOW_LOADER: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "lifecycle/show_loader",
-    display_name: "Show Loader",
-    category: CAT_LIFECYCLE,
-    description: "Show the persistent loading screen UI",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::exec_out("success", "Success"),
-    ],
-    color: CLR_LOADER,
-};
-
-static HIDE_LOADER: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "lifecycle/hide_loader",
-    display_name: "Hide Loader",
-    category: CAT_LIFECYCLE,
-    description: "Hide the loading screen UI",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::exec_out("success", "Success"),
-    ],
-    color: CLR_LOADER,
-};
-
-static SET_LOADER_PROGRESS: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "lifecycle/set_loader_progress",
-    display_name: "Set Loader Progress",
-    category: CAT_LIFECYCLE,
-    description: "Set loading bar progress (0..1)",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::input("progress", "Progress", PinType::Float)
-            .with_default(PinValue::Float(0.0)),
-        PinTemplate::exec_out("success", "Success"),
-    ],
-    color: CLR_LOADER,
-};
-
-static SET_LOADER_MESSAGE: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "lifecycle/set_loader_message",
-    display_name: "Set Loader Message",
-    category: CAT_LIFECYCLE,
-    description: "Set loading-screen message text",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::input("message", "Message", PinType::String)
-            .with_default(PinValue::String(String::new())),
-        PinTemplate::exec_out("success", "Success"),
-    ],
-    color: CLR_LOADER,
-};
 
 static GET_LOAD_PROGRESS: BlueprintNodeDef = BlueprintNodeDef {
     node_type: "lifecycle/get_load_progress",

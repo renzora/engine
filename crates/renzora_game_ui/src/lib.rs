@@ -13,7 +13,6 @@
 //! - Play-mode visibility sync, debug tree logging
 
 pub mod components;
-pub mod loader;
 pub mod script_extension;
 pub mod shapes;
 pub mod spawn;
@@ -117,9 +116,6 @@ impl Plugin for GameUiPlugin {
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
 
-        // ── Persistent loader layer ────────────────────────────────────
-        app.add_plugins(loader::LoaderPlugin);
-
         // ── Canvas scaler ───────────────────────────────────────────────
         app.add_systems(Update, (update_ui_scale, rehydrate_ui_images, sync_ui_zindex));
 
@@ -172,6 +168,7 @@ impl Plugin for GameUiPlugin {
             info!("[editor] GameUiPlugin (editor panels)");
 
             app.register_panel(palette::WidgetPalettePanel::default());
+            register_ui_presets(app);
             app.init_resource::<canvas::UiCanvasPreviewEnabled>();
             app.init_resource::<UiWorkspaceActive>();
             app.register_panel(canvas::UiCanvasPanel::default());
@@ -571,6 +568,96 @@ fn debug_ui_tree(
 }
 
 /// Registers `ImageNode` handles from UiWidget entities with egui so the canvas
+/// Register UI Canvas + all UI widget types as entity presets in the hierarchy
+/// "Add Entity" overlay. Each widget preset spawns via `spawn::spawn_widget`,
+/// which finds (or creates) a canvas and parents the new widget to it.
+#[cfg(feature = "editor")]
+fn register_ui_presets(app: &mut App) {
+    use renzora_editor_framework::{AppEditorExt, EntityPreset};
+
+    // UI Canvas — always spawned at root.
+    app.register_entity_preset(EntityPreset {
+        id: "ui_canvas",
+        display_name: "UI Canvas",
+        icon: egui_phosphor::regular::FRAME_CORNERS,
+        category: "ui",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("UI Canvas"),
+                    components::UiCanvas::default(),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                ))
+                .id()
+        },
+    });
+
+    macro_rules! widget_preset {
+        ($variant:ident, $id:literal, $label:literal) => {{
+            fn spawn_fn(world: &mut World) -> Entity {
+                crate::spawn::spawn_widget(world, &UiWidgetType::$variant, None)
+            }
+            app.register_entity_preset(EntityPreset {
+                id: $id,
+                display_name: $label,
+                icon: UiWidgetType::$variant.icon(),
+                category: "ui",
+                spawn_fn,
+            });
+        }};
+    }
+
+    widget_preset!(Container, "ui_container", "Container");
+    widget_preset!(Panel, "ui_panel", "Panel");
+    widget_preset!(ScrollView, "ui_scroll_view", "Scroll View");
+    widget_preset!(Text, "ui_text", "Text");
+    widget_preset!(Image, "ui_image", "Image");
+    widget_preset!(Button, "ui_button", "Button");
+    widget_preset!(Slider, "ui_slider", "Slider");
+    widget_preset!(Checkbox, "ui_checkbox", "Checkbox");
+    widget_preset!(Toggle, "ui_toggle", "Toggle");
+    widget_preset!(RadioButton, "ui_radio_button", "Radio Button");
+    widget_preset!(Dropdown, "ui_dropdown", "Dropdown");
+    widget_preset!(TextInput, "ui_text_input", "Text Input");
+    widget_preset!(ProgressBar, "ui_progress_bar", "Progress Bar");
+    widget_preset!(HealthBar, "ui_health_bar", "Health Bar");
+    widget_preset!(Spinner, "ui_spinner", "Spinner");
+    widget_preset!(TabBar, "ui_tab_bar", "Tab Bar");
+    widget_preset!(Tooltip, "ui_tooltip", "Tooltip");
+    widget_preset!(Modal, "ui_modal", "Modal");
+    widget_preset!(DraggableWindow, "ui_draggable_window", "Draggable Window");
+    widget_preset!(Crosshair, "ui_crosshair", "Crosshair");
+    widget_preset!(AmmoCounter, "ui_ammo_counter", "Ammo Counter");
+    widget_preset!(Compass, "ui_compass", "Compass");
+    widget_preset!(StatusEffectBar, "ui_status_effects", "Status Effects");
+    widget_preset!(NotificationFeed, "ui_notifications", "Notifications");
+    widget_preset!(RadialMenu, "ui_radial_menu", "Radial Menu");
+    widget_preset!(Minimap, "ui_minimap", "Minimap");
+    widget_preset!(InventoryGrid, "ui_inventory_grid", "Inventory Grid");
+    widget_preset!(DialogBox, "ui_dialog_box", "Dialog Box");
+    widget_preset!(ObjectiveTracker, "ui_objective_tracker", "Objective Tracker");
+    widget_preset!(LoadingScreen, "ui_loading_screen", "Loading Screen");
+    widget_preset!(KeybindRow, "ui_keybind_row", "Keybind Row");
+    widget_preset!(SettingsRow, "ui_settings_row", "Settings Row");
+    widget_preset!(Separator, "ui_separator", "Separator");
+    widget_preset!(NumberInput, "ui_number_input", "Number Input");
+    widget_preset!(VerticalSlider, "ui_vertical_slider", "Vertical Slider");
+    widget_preset!(Scrollbar, "ui_scrollbar", "Scrollbar");
+    widget_preset!(List, "ui_list", "List");
+    widget_preset!(Circle, "ui_circle", "Circle");
+    widget_preset!(Arc, "ui_arc", "Arc");
+    widget_preset!(RadialProgress, "ui_radial_progress", "Radial Progress");
+    widget_preset!(Line, "ui_line", "Line");
+    widget_preset!(Triangle, "ui_triangle", "Triangle");
+    widget_preset!(Polygon, "ui_polygon", "Polygon");
+    widget_preset!(Wedge, "ui_wedge", "Wedge");
+}
+
 /// panel can display image previews.
 #[cfg(feature = "editor")]
 fn register_ui_image_textures(
