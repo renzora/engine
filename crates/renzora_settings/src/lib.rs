@@ -15,7 +15,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP,
     FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
-    WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER,
+    WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER, INFO, PLUS, TRASH, LIST_PLUS, X,
 };
 
 use renzora_editor_framework::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -196,38 +196,127 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
 
     let mut open = true;
     let screen = ctx.input(|i| i.screen_rect());
-    let default_size = egui::Vec2::new(420.0, 500.0);
+    let default_size = egui::Vec2::new(880.0, 620.0);
     let default_pos = egui::Pos2::new(
         (screen.width() - default_size.x) / 2.0,
         (screen.height() - default_size.y) / 2.0,
     );
 
+    let mut close_clicked = false;
     egui::Window::new("Settings")
         .open(&mut open)
-        .default_size(default_size)
+        .title_bar(false)
+        .fixed_size(default_size)
         .default_pos(default_pos)
-        .resizable(true)
+        .resizable(false)
         .collapsible(false)
-        .frame(egui::Frame::window(&ctx.style()).fill(theme.surfaces.panel.to_color32()))
+        .frame(egui::Frame::window(&ctx.style())
+            .fill(theme.surfaces.extreme.to_color32())
+            .corner_radius(CornerRadius { nw: 6, ne: 0, sw: 0, se: 0 })
+            .inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
-            render_tabs_inline(ui, &mut settings_mut, &theme);
-            ui.add_space(8.0);
+            // Custom title bar — no separator line.
+            let mut close_hovered = false;
+            let header_resp = egui::Frame::new()
+                .fill(theme.surfaces.extreme.to_color32().gamma_multiply(0.55))
+                .corner_radius(CornerRadius { nw: 6, ne: 0, sw: 0, se: 0 })
+                .inner_margin(egui::Margin { left: 12, right: 8, top: 6, bottom: 6 })
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Settings").size(14.0).strong().color(theme.text.heading.to_color32()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let btn_size = egui::vec2(22.0, 22.0);
+                            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+                            if resp.hovered() {
+                                close_hovered = true;
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+                            let bg = if resp.hovered() {
+                                theme.semantic.error.to_color32().gamma_multiply(0.25)
+                            } else {
+                                theme.surfaces.extreme.to_color32().gamma_multiply(0.8)
+                            };
+                            let fg = if resp.hovered() {
+                                theme.semantic.error.to_color32()
+                            } else {
+                                theme.text.muted.to_color32()
+                            };
+                            ui.painter().rect_filled(rect, CornerRadius::same(4), bg);
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                X,
+                                egui::FontId::proportional(14.0),
+                                fg,
+                            );
+                            if resp.clicked() {
+                                close_clicked = true;
+                            }
+                        });
+                    });
+                }).response;
+            let header_hover = ui.interact(header_resp.rect, ui.id().with("settings_header_hover"), egui::Sense::hover());
+            if header_hover.hovered() && !close_hovered {
+                ui.ctx().set_cursor_icon(CursorIcon::Move);
+            }
+            ui.add_space(4.0);
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.set_width(ui.available_width());
+            ui.horizontal_top(|ui| {
+                ui.add_space(6.0);
+                // Left: vertical tab rail
+                egui::Frame::new()
+                    .fill(theme.surfaces.extreme.to_color32())
+                    .inner_margin(egui::Margin::symmetric(6, 8))
+                    .show(ui, |ui| {
+                        ui.set_width(160.0);
+                        ui.set_min_height(ui.available_height());
+                        render_tabs_vertical(ui, &mut settings_mut, &theme);
+                    });
 
-                match settings_mut.settings_tab {
-                    SettingsTab::General => render_general_tab(ui, &mut settings_mut, &mut project_config_mut, &scene_files, &custom_fonts, &theme),
-                    SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
-                    SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &plugin_shortcuts, &theme),
-                    SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
-                    SettingsTab::Input => render_input_tab(ui, &mut input_map_mut, &mut input_ui_state, &theme),
-                    SettingsTab::Plugins => render_plugins_tab(ui, &mut settings_mut, &theme),
-                }
+                ui.add_space(8.0);
+
+                // Right: content — paint lighter background behind the pane.
+                let content_rect = ui.available_rect_before_wrap();
+                let content_corners = CornerRadius { nw: 6, ne: 0, sw: 0, se: 0 };
+                ui.painter().rect_filled(
+                    content_rect,
+                    content_corners,
+                    theme.surfaces.panel.to_color32(),
+                );
+                ui.painter().rect_stroke(
+                    content_rect,
+                    content_corners,
+                    Stroke::new(1.0, theme.widgets.border.to_color32().gamma_multiply(0.5)),
+                    egui::StrokeKind::Inside,
+                );
+                ui.vertical(|ui| {
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 12 })
+                        .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false; 2])
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+
+                            match settings_mut.settings_tab {
+                                SettingsTab::Project => render_project_tab(ui, &mut project_config_mut, &scene_files, &theme),
+                                SettingsTab::Interface => render_interface_tab(ui, &mut settings_mut, &custom_fonts, &theme),
+                                SettingsTab::Editor => render_editor_tab(ui, &mut settings_mut, &theme),
+                                SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
+                                SettingsTab::Scripting => render_scripting_tab(ui, &mut settings_mut, &theme),
+                                SettingsTab::Assets => render_assets_tab(ui, &mut settings_mut, &theme),
+                                SettingsTab::Input => render_input_tab(ui, &mut input_map_mut, &mut input_ui_state, &theme),
+                                SettingsTab::Shortcuts => render_shortcuts_tab(ui, &mut keybindings_mut, &plugin_shortcuts, &theme),
+                                SettingsTab::Theme => render_theme_tab(ui, &mut theme_edit, &theme),
+                                SettingsTab::Plugins => render_plugins_tab(ui, &mut settings_mut, &theme),
+                            }
+                        });
+                        });
+                });
             });
         });
 
-    if !open {
+    if !open || close_clicked {
         settings_mut.show_settings = false;
     }
 
@@ -371,10 +460,10 @@ fn render_category(
                 }
 
                 if state.is_open() {
-                    ui.add_space(4.0);
                     egui::Frame::new()
                         .inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 4 })
                         .show(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
                             add_contents(ui);
                         });
                 }
@@ -393,9 +482,9 @@ fn settings_row<R>(
     add_widget: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
     let bg_color = if row_index % 2 == 0 {
-        theme.panels.inspector_row_even.to_color32()
+        theme.panels.inspector_row_even.to_color32().gamma_multiply(0.8)
     } else {
-        theme.panels.inspector_row_odd.to_color32()
+        theme.panels.inspector_row_odd.to_color32().gamma_multiply(0.8)
     };
     let available_width = ui.available_width();
 
@@ -419,93 +508,123 @@ fn settings_row<R>(
 
 // ── Tab bar ─────────────────────────────────────────────────────────────────
 
-fn render_tabs_inline(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
+fn render_tabs_vertical(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
     let text_primary = theme.text.primary.to_color32();
     let text_muted = theme.text.muted.to_color32();
     let accent_color = theme.semantic.accent.to_color32();
     let tab_active_bg = theme.panels.tab_active.to_color32();
-    let tab_inactive_bg = theme.panels.tab_inactive.to_color32();
 
     let tabs: &[(SettingsTab, &str, &str)] = &[
-        (SettingsTab::General,   DESKTOP,          "General"),
+        (SettingsTab::Project,   FOLDER_OPEN,      "Project"),
+        (SettingsTab::Interface, TEXT_AA,          "Interface"),
+        (SettingsTab::Editor,    WRENCH,           "Editor"),
         (SettingsTab::Viewport,  CUBE,             "Viewport"),
+        (SettingsTab::Scripting, CODE,             "Scripting"),
+        (SettingsTab::Assets,    DESKTOP,          "Assets"),
+        (SettingsTab::Input,     GAME_CONTROLLER,  "Input"),
         (SettingsTab::Shortcuts, KEYBOARD,         "Shortcuts"),
         (SettingsTab::Theme,     PALETTE,          "Theme"),
-        (SettingsTab::Input,     GAME_CONTROLLER,  "Input"),
     ];
 
-    ui.horizontal(|ui| {
+    let tab_hover_bg = theme.panels.tab_hover.to_color32();
+
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
         for (tab, icon, label) in tabs {
             let is_active = settings.settings_tab == *tab;
-            let text_color = if is_active { text_primary } else { text_muted };
-            let bg_color = if is_active { tab_active_bg } else { tab_inactive_bg };
+            let size = egui::vec2(ui.available_width(), 30.0);
+            let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
-            let button = egui::Button::new(
-                RichText::new(format!("{} {}", icon, label)).color(text_color).size(12.0),
-            )
-            .fill(bg_color)
-            .corner_radius(CornerRadius::same(4))
-            .stroke(if is_active { Stroke::new(1.0, accent_color) } else { Stroke::NONE });
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
 
-            if ui.add(button).clicked() {
+            let bg_color = if is_active {
+                tab_active_bg
+            } else if response.hovered() {
+                tab_hover_bg
+            } else {
+                Color32::TRANSPARENT
+            };
+            let text_color = if is_active || response.hovered() { text_primary } else { text_muted };
+
+            let painter = ui.painter();
+            painter.rect_filled(rect, CornerRadius::same(4), bg_color);
+            if is_active {
+                painter.rect_stroke(rect, CornerRadius::same(4), Stroke::new(1.0, accent_color), egui::StrokeKind::Inside);
+            }
+            painter.text(
+                rect.left_center() + egui::vec2(10.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                format!("{}   {}", icon, label),
+                egui::FontId::proportional(13.0),
+                text_color,
+            );
+
+            if response.clicked() {
                 settings.settings_tab = *tab;
             }
         }
     });
 }
 
-// ── General tab ─────────────────────────────────────────────────────────────
+// ── Tab content ─────────────────────────────────────────────────────────────
 
-fn render_general_tab(
+fn render_project_tab(
     ui: &mut egui::Ui,
-    settings: &mut EditorSettings,
     project_config: &mut Option<renzora::core::ProjectConfig>,
     scene_files: &[String],
+    theme: &Theme,
+) {
+    let Some(config) = project_config else {
+        render_placeholder_tab(ui, theme, "Project", "No project is currently loaded.");
+        return;
+    };
+
+    render_category(ui, FOLDER_OPEN, "Project", CategoryStyle::interface(), "settings_project", true, theme, |ui| {
+        settings_row(ui, 0, "Name", theme, |ui| {
+            ui.add(egui::TextEdit::singleline(&mut config.name).desired_width(200.0))
+        });
+
+        settings_row(ui, 1, "Boot Scene", theme, |ui| {
+            egui::ComboBox::from_id_salt("boot_scene_selector")
+                .selected_text(&config.main_scene)
+                .width(240.0)
+                .show_ui(ui, |ui| {
+                    for scene in scene_files {
+                        ui.selectable_value(&mut config.main_scene, scene.clone(), scene);
+                    }
+                })
+        });
+    });
+
+    render_category(ui, DESKTOP, "Window", CategoryStyle::interface(), "settings_window", true, theme, |ui| {
+        settings_row(ui, 0, "Width", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut config.window.width)
+                .range(320..=7680)
+                .speed(1))
+        });
+        settings_row(ui, 1, "Height", theme, |ui| {
+            ui.add(egui::DragValue::new(&mut config.window.height)
+                .range(240..=4320)
+                .speed(1))
+        });
+        settings_row(ui, 2, "Resizable", theme, |ui| {
+            ui.checkbox(&mut config.window.resizable, "")
+        });
+        settings_row(ui, 3, "Fullscreen", theme, |ui| {
+            ui.checkbox(&mut config.window.fullscreen, "")
+        });
+    });
+}
+
+fn render_interface_tab(
+    ui: &mut egui::Ui,
+    settings: &mut EditorSettings,
     custom_fonts: &CustomFonts,
     theme: &Theme,
 ) {
-    // Project Section
-    if let Some(config) = project_config {
-        render_category(ui, FOLDER_OPEN, "Project", CategoryStyle::interface(), "settings_project", true, theme, |ui| {
-            settings_row(ui, 0, "Name", theme, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut config.name).desired_width(150.0))
-            });
-
-            settings_row(ui, 1, "Boot Scene", theme, |ui| {
-                egui::ComboBox::from_id_salt("boot_scene_selector")
-                    .selected_text(&config.main_scene)
-                    .width(200.0)
-                    .show_ui(ui, |ui| {
-                        for scene in scene_files {
-                            ui.selectable_value(&mut config.main_scene, scene.clone(), scene);
-                        }
-                    })
-            });
-
-            settings_row(ui, 2, "Window Width", theme, |ui| {
-                ui.add(egui::DragValue::new(&mut config.window.width)
-                    .range(320..=7680)
-                    .speed(1))
-            });
-
-            settings_row(ui, 3, "Window Height", theme, |ui| {
-                ui.add(egui::DragValue::new(&mut config.window.height)
-                    .range(240..=4320)
-                    .speed(1))
-            });
-
-            settings_row(ui, 4, "Resizable", theme, |ui| {
-                ui.checkbox(&mut config.window.resizable, "")
-            });
-
-            settings_row(ui, 5, "Fullscreen", theme, |ui| {
-                ui.checkbox(&mut config.window.fullscreen, "")
-            });
-        });
-    }
-
-    // Interface / Font Section
-    render_category(ui, TEXT_AA, "Interface", CategoryStyle::interface(), "settings_interface", true, theme, |ui| {
+    render_category(ui, TEXT_AA, "Fonts", CategoryStyle::interface(), "settings_interface", true, theme, |ui| {
         settings_row(ui, 0, "UI Font", theme, |ui| {
             egui::ComboBox::from_id_salt("ui_font_selector")
                 .selected_text(settings.ui_font.label())
@@ -547,15 +666,17 @@ fn render_general_tab(
                 .suffix(" px"))
         });
     });
+}
 
-    // Developer Section
+fn render_editor_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
     render_category(ui, WRENCH, "Developer", CategoryStyle::developer(), "settings_developer", true, theme, |ui| {
         settings_row(ui, 0, "Dev Mode", theme, |ui| {
             ui.checkbox(&mut settings.dev_mode, "Enable plugin tools")
         });
     });
+}
 
-    // Scripting Section
+fn render_scripting_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
     render_category(ui, CODE, "Scripting", CategoryStyle::scripting(), "settings_scripting", true, theme, |ui| {
         settings_row(ui, 0, "Hot Reload", theme, |ui| {
             ui.checkbox(&mut settings.script_rerun_on_ready_on_reload, "Re-run on_ready on hot reload")
@@ -567,9 +688,10 @@ fn render_general_tab(
             ui.checkbox(&mut settings.hide_cursor_in_play_mode, "Hide and lock cursor in play mode")
         });
     });
+}
 
-    // Assets Section
-    render_category(ui, FOLDER_OPEN, "Assets", CategoryStyle::interface(), "settings_assets", true, theme, |ui| {
+fn render_assets_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {
+    render_category(ui, FOLDER_OPEN, "Import", CategoryStyle::interface(), "settings_assets", true, theme, |ui| {
         settings_row(ui, 0, "Drop Import", theme, |ui| {
             ui.checkbox(&mut settings.auto_import_on_drop, "Auto-import on drop (skip import overlay)")
         });
@@ -752,9 +874,9 @@ fn render_keybinding_row(
     let warning_color = theme.semantic.warning.to_color32();
 
     let bg_color = if row_index % 2 == 0 {
-        theme.panels.inspector_row_even.to_color32()
+        theme.panels.inspector_row_even.to_color32().gamma_multiply(0.8)
     } else {
-        theme.panels.inspector_row_odd.to_color32()
+        theme.panels.inspector_row_odd.to_color32().gamma_multiply(0.8)
     };
 
     egui::Frame::new()
@@ -762,9 +884,8 @@ fn render_keybinding_row(
         .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.add_sized(
-                    [LABEL_WIDTH + 20.0, 18.0],
-                    egui::Label::new(RichText::new(action.display_name()).size(12.0)).truncate(),
+                ui.add(
+                    egui::Label::new(RichText::new(action.display_name()).size(12.0)).wrap_mode(egui::TextWrapMode::Extend),
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -808,9 +929,9 @@ fn render_plugin_keybinding_row(
     let warning_color = theme.semantic.warning.to_color32();
 
     let bg_color = if row_index % 2 == 0 {
-        theme.panels.inspector_row_even.to_color32()
+        theme.panels.inspector_row_even.to_color32().gamma_multiply(0.8)
     } else {
-        theme.panels.inspector_row_odd.to_color32()
+        theme.panels.inspector_row_odd.to_color32().gamma_multiply(0.8)
     };
 
     egui::Frame::new()
@@ -818,9 +939,8 @@ fn render_plugin_keybinding_row(
         .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.add_sized(
-                    [LABEL_WIDTH + 20.0, 18.0],
-                    egui::Label::new(RichText::new(entry.display_name).size(12.0)).truncate(),
+                ui.add(
+                    egui::Label::new(RichText::new(entry.display_name).size(12.0)).wrap_mode(egui::TextWrapMode::Extend),
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1048,7 +1168,7 @@ fn render_theme_color_section(
     row_odd: Color32,
     colors: &mut [(&str, &mut renzora_theme::ThemeColor)],
 ) {
-    render_category(ui, icon, label, style, id_source, false, theme, |ui| {
+    render_category(ui, icon, label, style, id_source, true, theme, |ui| {
         for (i, (name, color)) in colors.iter_mut().enumerate() {
             theme_color_row_mut(ui, i, name, *color, row_even, row_odd);
         }
@@ -1112,47 +1232,205 @@ fn render_input_tab(
     let text_primary = theme.text.primary.to_color32();
     let accent_color = theme.semantic.accent.to_color32();
 
+    // Info section (at top)
+    render_category(ui, INFO, "About Input Actions", CategoryStyle::interface(), "settings_input_info", true, theme, |ui| {
+        let muted = theme.text.muted.to_color32();
+        ui.label(RichText::new(
+            "Input actions map logical names (e.g. \"Jump\", \"Move\") to keys, mouse buttons, \
+             or gamepad inputs. Scripts query these names instead of raw keys so bindings stay \
+             remappable without code changes."
+        ).size(11.5).color(muted));
+        ui.add_space(4.0);
+        ui.label(RichText::new(
+            "Button — pressed/released state. Axis2D — two-axis value (e.g. movement stick)."
+        ).size(11.5).color(muted));
+        ui.add_space(4.0);
+        ui.label(RichText::new(
+            "Select an action below to edit its bindings."
+        ).size(11.5).color(muted));
+    });
+
+    // Add Action category
+    render_category(ui, LIST_PLUS, "Add Action", CategoryStyle::interface(), "settings_input_add_action", true, theme, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.add(egui::TextEdit::singleline(&mut ui_state.new_action_name)
+                .desired_width(180.0)
+                .hint_text("Action name..."));
+
+            if ui.button(RichText::new("Button").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
+                let name = std::mem::take(&mut ui_state.new_action_name);
+                input_map.add(InputAction::button(name, vec![]));
+            }
+            if ui.button(RichText::new("Axis2D").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
+                let name = std::mem::take(&mut ui_state.new_action_name);
+                input_map.add(InputAction::axis_2d(name, vec![], 0.15));
+            }
+        });
+    });
+
+    // Actions list — each row expands inline when selected.
     render_category(ui, GAME_CONTROLLER, "Input Actions", CategoryStyle::interface(), "settings_input_actions", true, theme, |ui| {
-        // Action list
         let mut remove_idx: Option<usize> = None;
-        for (i, action) in input_map.actions.iter().enumerate() {
+        let action_count = input_map.actions.len();
+        for i in 0..action_count {
             let is_selected = ui_state.selected == Some(i);
-            let bg = if is_selected {
+            let (kind_label, kind_is_axis) = {
+                let action = &input_map.actions[i];
+                let label = match action.kind {
+                    ActionKind::Button => "Button",
+                    ActionKind::Axis1D => "Axis1D",
+                    ActionKind::Axis2D => "Axis2D",
+                };
+                (label, action.kind != ActionKind::Button)
+            };
+            let action_name = input_map.actions[i].name.clone();
+
+            let row_bg = if is_selected {
                 theme.panels.tab_active.to_color32()
             } else if i % 2 == 0 {
-                theme.panels.inspector_row_even.to_color32()
+                theme.panels.inspector_row_even.to_color32().gamma_multiply(0.8)
             } else {
-                theme.panels.inspector_row_odd.to_color32()
-            };
-            let kind_label = match action.kind {
-                ActionKind::Button => "Button",
-                ActionKind::Axis1D => "Axis1D",
-                ActionKind::Axis2D => "Axis2D",
+                theme.panels.inspector_row_odd.to_color32().gamma_multiply(0.8)
             };
 
-            egui::Frame::new()
-                .fill(bg)
-                .inner_margin(egui::Margin::symmetric(6, 3))
+            // Clickable action row — full-row hit area.
+            let row_resp = egui::Frame::new()
+                .fill(row_bg)
+                .inner_margin(egui::Margin::symmetric(10, 8))
                 .show(ui, |ui| {
-                    ui.set_min_width(ui.available_width() - 12.0);
+                    ui.set_min_width(ui.available_width() - 20.0);
                     ui.horizontal(|ui| {
-                        let label_text = format!("{}  ({})", action.name, kind_label);
-                        let resp = ui.selectable_label(is_selected,
-                            RichText::new(&label_text).size(12.0));
-                        if resp.clicked() {
-                            ui_state.selected = if is_selected { None } else { Some(i) };
-                            ui_state.listening = false;
-                        }
+                        let caret = if is_selected { CARET_DOWN } else { CARET_RIGHT };
+                        ui.label(RichText::new(caret).size(11.0).color(theme.text.muted.to_color32()));
+                        ui.label(RichText::new(&action_name).size(13.0).color(text_primary).strong());
+                        ui.label(RichText::new(kind_label).size(11.0).color(theme.text.muted.to_color32()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button(RichText::new("\u{2715}").size(11.0).color(theme.semantic.error.to_color32())).clicked() {
+                            if ui.add(egui::Button::new(RichText::new(TRASH).size(14.0).color(theme.semantic.error.to_color32()))
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(Stroke::NONE))
+                                .on_hover_text("Delete action")
+                                .clicked()
+                            {
                                 remove_idx = Some(i);
                             }
                         });
                     });
-                });
+                }).response;
+
+            let row_click = ui.interact(row_resp.rect, ui.id().with(("action_row", i)), egui::Sense::click());
+            if row_click.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if row_click.clicked() {
+                ui_state.selected = if is_selected { None } else { Some(i) };
+                ui_state.listening = false;
+            }
+
+            // Inline details panel when expanded.
+            if is_selected {
+                egui::Frame::new()
+                    .fill(theme.surfaces.extreme.to_color32())
+                    .inner_margin(egui::Margin { left: 24, right: 12, top: 8, bottom: 10 })
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        let action = &mut input_map.actions[i];
+
+                        if kind_is_axis {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Dead Zone").size(11.5).color(theme.text.muted.to_color32()));
+                                ui.add(egui::Slider::new(&mut action.dead_zone, 0.0..=0.5).step_by(0.01));
+                            });
+                        }
+
+                        let mut remove_binding: Option<usize> = None;
+                        if action.bindings.is_empty() {
+                            ui.label(RichText::new("No bindings yet.").size(11.5).italics().color(theme.text.muted.to_color32()));
+                        } else {
+                            for (bi, binding) in action.bindings.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("\u{2022}").size(11.0).color(theme.text.muted.to_color32()));
+                                    ui.label(RichText::new(format_binding(binding)).size(12.0).color(text_primary));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(egui::Button::new(RichText::new(TRASH).size(12.0).color(theme.semantic.error.to_color32()))
+                                            .fill(Color32::TRANSPARENT)
+                                            .stroke(Stroke::NONE))
+                                            .clicked()
+                                        {
+                                            remove_binding = Some(bi);
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                        if let Some(bi) = remove_binding {
+                            action.bindings.remove(bi);
+                        }
+
+                        ui.add_space(2.0);
+
+                        if ui_state.listening {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Press any key, mouse button, or gamepad button...")
+                                    .size(11.5).color(accent_color).italics());
+                                if ui.small_button("Cancel").clicked() {
+                                    ui_state.listening = false;
+                                }
+                            });
+
+                            let captured = ui.input(|input| {
+                                for event in &input.events {
+                                    match event {
+                                        egui::Event::Key { key, pressed: true, .. } => {
+                                            if let Some(key_str) = egui_key_to_key_string(*key) {
+                                                return Some(InputBinding::Key(key_str));
+                                            }
+                                        }
+                                        egui::Event::PointerButton { button, pressed: true, .. } => {
+                                            let mb_str = match button {
+                                                egui::PointerButton::Primary => "Left",
+                                                egui::PointerButton::Secondary => "Right",
+                                                egui::PointerButton::Middle => "Middle",
+                                                _ => "Left",
+                                            };
+                                            return Some(InputBinding::MouseButton(mb_str.into()));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                None
+                            });
+
+                            let final_binding = captured.or_else(|| ui_state.captured_gamepad.take());
+                            if let Some(binding) = final_binding {
+                                action.bindings.push(binding);
+                                ui_state.listening = false;
+                            }
+                        } else {
+                            ui.horizontal(|ui| {
+                                if ui.button(RichText::new(format!("{} Add Binding", PLUS)).size(11.0)).clicked() {
+                                    ui_state.listening = true;
+                                }
+                                if action.kind == ActionKind::Axis2D {
+                                    if ui.button(RichText::new("WASD").size(11.0)).clicked() {
+                                        action.bindings.push(InputBinding::Composite2D {
+                                            up: "KeyW".into(), down: "KeyS".into(),
+                                            left: "KeyA".into(), right: "KeyD".into(),
+                                        });
+                                    }
+                                    if ui.button(RichText::new("Arrows").size(11.0)).clicked() {
+                                        action.bindings.push(InputBinding::Composite2D {
+                                            up: "ArrowUp".into(), down: "ArrowDown".into(),
+                                            left: "ArrowLeft".into(), right: "ArrowRight".into(),
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    });
+            }
         }
 
-        // Remove action if requested
         if let Some(idx) = remove_idx {
             input_map.actions.remove(idx);
             if ui_state.selected == Some(idx) {
@@ -1163,143 +1441,12 @@ fn render_input_tab(
                 }
             }
         }
-
-        ui.add_space(4.0);
-
-        // Add action row
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut ui_state.new_action_name)
-                .desired_width(120.0)
-                .hint_text("Action name..."));
-
-            if ui.button(RichText::new("+ Button").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
-                let name = std::mem::take(&mut ui_state.new_action_name);
-                input_map.add(InputAction::button(name, vec![]));
-            }
-            if ui.button(RichText::new("+ Axis2D").size(11.0)).clicked() && !ui_state.new_action_name.is_empty() {
-                let name = std::mem::take(&mut ui_state.new_action_name);
-                input_map.add(InputAction::axis_2d(name, vec![], 0.15));
-            }
-        });
     });
 
-    // Selected action detail
-    if let Some(sel) = ui_state.selected {
-        if sel < input_map.actions.len() {
-            ui.add_space(4.0);
-            render_category(ui, KEYBOARD, "Bindings", CategoryStyle::shortcuts(), "settings_input_bindings", true, theme, |ui| {
-                let action = &mut input_map.actions[sel];
-
-                // Dead zone (for axis types)
-                if action.kind != ActionKind::Button {
-                    settings_row(ui, 0, "Dead Zone", theme, |ui| {
-                        ui.add(egui::Slider::new(&mut action.dead_zone, 0.0..=0.5).step_by(0.01))
-                    });
-                    ui.add_space(4.0);
-                }
-
-                // Existing bindings
-                let mut remove_binding: Option<usize> = None;
-                for (bi, binding) in action.bindings.iter().enumerate() {
-                    let bg = if bi % 2 == 0 {
-                        theme.panels.inspector_row_even.to_color32()
-                    } else {
-                        theme.panels.inspector_row_odd.to_color32()
-                    };
-
-                    egui::Frame::new()
-                        .fill(bg)
-                        .inner_margin(egui::Margin::symmetric(6, 3))
-                        .show(ui, |ui| {
-                            ui.set_min_width(ui.available_width() - 12.0);
-                            ui.horizontal(|ui| {
-                                let label = format_binding(binding);
-                                ui.label(RichText::new(label).size(12.0).color(text_primary));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.small_button(RichText::new("\u{2715}").size(11.0).color(theme.semantic.error.to_color32())).clicked() {
-                                        remove_binding = Some(bi);
-                                    }
-                                });
-                            });
-                        });
-                }
-
-                if let Some(bi) = remove_binding {
-                    action.bindings.remove(bi);
-                }
-
-                ui.add_space(4.0);
-
-                // Add binding
-                if ui_state.listening {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Press any key, mouse button, or gamepad button...")
-                            .size(12.0).color(accent_color).italics());
-                        if ui.small_button("Cancel").clicked() {
-                            ui_state.listening = false;
-                        }
-                    });
-
-                    // Capture key press
-                    let captured = ui.input(|i| {
-                        for event in &i.events {
-                            match event {
-                                egui::Event::Key { key, pressed: true, .. } => {
-                                    if let Some(key_str) = egui_key_to_key_string(*key) {
-                                        return Some(InputBinding::Key(key_str));
-                                    }
-                                }
-                                egui::Event::PointerButton { button, pressed: true, .. } => {
-                                    let mb_str = match button {
-                                        egui::PointerButton::Primary => "Left",
-                                        egui::PointerButton::Secondary => "Right",
-                                        egui::PointerButton::Middle => "Middle",
-                                        _ => "Left",
-                                    };
-                                    return Some(InputBinding::MouseButton(mb_str.into()));
-                                }
-                                _ => {}
-                            }
-                        }
-                        None
-                    });
-
-                    // Merge keyboard/mouse capture (from egui) with gamepad capture (from Bevy)
-                    let final_binding = captured.or_else(|| ui_state.captured_gamepad.take());
-
-                    if let Some(binding) = final_binding {
-                        let action = &mut input_map.actions[sel];
-                        action.bindings.push(binding);
-                        ui_state.listening = false;
-                    }
-                } else {
-                    ui.horizontal(|ui| {
-                        if ui.button(RichText::new("+ Add Binding").size(11.0)).clicked() {
-                            ui_state.listening = true;
-                        }
-                        if action.kind == ActionKind::Axis2D {
-                            if ui.button(RichText::new("+ Add WASD").size(11.0)).clicked() {
-                                action.bindings.push(InputBinding::Composite2D {
-                                    up: "KeyW".into(),
-                                    down: "KeyS".into(),
-                                    left: "KeyA".into(),
-                                    right: "KeyD".into(),
-                                });
-                            }
-                            if ui.button(RichText::new("+ Add Arrows").size(11.0)).clicked() {
-                                action.bindings.push(InputBinding::Composite2D {
-                                    up: "ArrowUp".into(),
-                                    down: "ArrowDown".into(),
-                                    left: "ArrowLeft".into(),
-                                    right: "ArrowRight".into(),
-                                });
-                            }
-                        }
-                    });
-                }
-            });
-        }
-    }
+    // The `text_primary` / `accent_color` locals above are used inside the
+    // expanded-row closure; suppress the unused warning when no row is open.
+    let _ = text_primary;
+    let _ = accent_color;
 }
 
 fn format_binding(binding: &renzora_input::InputBinding) -> String {

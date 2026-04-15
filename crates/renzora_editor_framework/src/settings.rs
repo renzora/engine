@@ -4,11 +4,15 @@ use bevy::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsTab {
     #[default]
-    General,
+    Project,
+    Interface,
+    Editor,
     Viewport,
+    Scripting,
+    Assets,
+    Input,
     Shortcuts,
     Theme,
-    Input,
     Plugins,
 }
 
