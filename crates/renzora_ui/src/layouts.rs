@@ -312,36 +312,33 @@ fn layout_shaders() -> DockTree {
 }
 
 /// Physics: Hierarchy | Viewport+all physics tabs | Inspector+Shapes
-/// UI: Hierarchy+WidgetLibrary | Canvas+Console | UiInspector+Assets
+/// UI: Hierarchy | Assets | WidgetLibrary (left)  |  UI Canvas (center)  |  UiInspector+Inspector (right)
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
-        // Left: hierarchy on top, widget palette below
+        // Left: hierarchy on top, assets in the middle, widget palette at the bottom.
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("widget_library"),
-            0.6,
+            DockTree::vertical(
+                DockTree::leaf("assets"),
+                DockTree::leaf("widget_library"),
+                0.5,
+            ),
+            0.4,
         ),
         DockTree::horizontal(
-            // Center: UI canvas on top, assets+console below
-            DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec!["ui_canvas".into(), "viewport".into()],
-                    active_tab: 0,
-                },
-                DockTree::Leaf {
-                    tabs: vec!["assets".into(), "console".into()],
-                    active_tab: 0,
-                },
-                0.75,
-            ),
-            // Right: UI inspector + scene inspector
+            // Center: UI canvas fills the full column.
+            DockTree::Leaf {
+                tabs: vec!["ui_canvas".into(), "viewport".into()],
+                active_tab: 0,
+            },
+            // Right: UI inspector + scene inspector (narrower column).
             DockTree::Leaf {
                 tabs: vec!["ui_inspector".into(), "inspector".into()],
                 active_tab: 0,
             },
-            0.75,
+            0.82,
         ),
-        0.15,
+        0.16,
     )
 }
 

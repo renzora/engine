@@ -86,16 +86,21 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
     // tool, so they don't get hidden by the mode-specific drawers below.
     let actions_w = render_left_actions(ui, world, cmds, theme, inner, hovered);
 
+    // Right-aligned render-flag toggles (Textures/Wireframe/Lighting/Shadows).
+    // Also fixed; they sit on the far right and stay put across mode changes.
+    let toggles_w = render_right_toggles(ui, settings, cmds, theme, inner, hovered);
+
     // Render once per frame at a centered rect of the last measured width.
     // Two-pass rendering was doubling popups (sizing pass still spawned Areas).
     let width_id = ui.id().with("viewport_header_width");
     let cached_w: f32 = ui.memory(|m| m.data.get_temp(width_id)).unwrap_or(600.0);
     // Shrink the available-for-centering width so the centered strip never
-    // overlaps the left action buttons.
+    // overlaps the left actions or the right toggles.
     let centering_min_x = inner.min.x + actions_w + 8.0;
-    let available_for_center = (inner.max.x - centering_min_x).max(0.0);
+    let centering_max_x = inner.max.x - toggles_w - 8.0;
+    let available_for_center = (centering_max_x - centering_min_x).max(0.0);
     let content_w = cached_w.min(available_for_center);
-    let centering_center_x = (centering_min_x + inner.max.x) / 2.0;
+    let centering_center_x = (centering_min_x + centering_max_x) / 2.0;
     let content_x = centering_center_x - content_w / 2.0;
     let centered_rect = Rect::from_min_size(
         egui::Pos2::new(content_x, inner.min.y),
@@ -162,14 +167,8 @@ fn render_strip_contents(
         return;
     }
 
-    // ── Render flag toggles (textures/wireframe/lighting/shadows) ─────────────
-    let t = &settings.render_toggles;
-    toggle_btn(ui, IMAGE,   t.textures,  "Textures",  active, inactive, hovered, cmds, |s| &mut s.render_toggles.textures);
-    toggle_btn(ui, POLYGON, t.wireframe, "Wireframe", active, inactive, hovered, cmds, |s| &mut s.render_toggles.wireframe);
-    toggle_btn(ui, SUN,     t.lighting,  "Lighting",  active, inactive, hovered, cmds, |s| &mut s.render_toggles.lighting);
-    toggle_btn(ui, CLOUD,   t.shadows,   "Shadows",   active, inactive, hovered, cmds, |s| &mut s.render_toggles.shadows);
-
-    separator(ui);
+    // Note: render-flag toggles (Textures/Wireframe/Lighting/Shadows) have
+    // moved to the right-aligned strip in `render_right_toggles`.
 
     // ── Overlay toggles (grid, axis gizmo) ────────────────────────────────────
     toggle_btn(ui, GRID_FOUR, settings.show_grid, "Grid", active, inactive, hovered, cmds, |s| &mut s.show_grid);
@@ -472,6 +471,72 @@ fn render_left_actions(
     }
 
     (x - inner.min.x).max(0.0)
+}
+
+/// Right-aligned render-flag toggle strip. Styled like the left actions: no
+/// background fill by default, `hovered_bg` on hover. Toggled state is shown
+/// by tinting the icon with the theme accent instead of painting a bg rect.
+/// Returns the total width consumed so the centered strip can make room.
+fn render_right_toggles(
+    ui: &mut egui::Ui,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    theme: &renzora_theme::Theme,
+    inner: Rect,
+    hovered_bg: Color32,
+) -> f32 {
+    let t = &settings.render_toggles;
+    // Per-toggle "on" color so each flag has a recognizable identity.
+    const TEXTURES_ON:  Color32 = Color32::from_rgb(120, 200, 255); // cyan
+    const WIREFRAME_ON: Color32 = Color32::from_rgb(130, 220, 140); // green
+    const LIGHTING_ON:  Color32 = Color32::from_rgb(245, 205,  90); // yellow
+    const SHADOWS_ON:   Color32 = Color32::from_rgb(180, 150, 230); // purple
+
+    let entries: &[(&str, bool, &str, fn(&mut ViewportSettings) -> &mut bool, &str, Color32)] = &[
+        (IMAGE,   t.textures,  "Textures",  |s| &mut s.render_toggles.textures,  "vp_hdr_tog_tex",    TEXTURES_ON),
+        (POLYGON, t.wireframe, "Wireframe", |s| &mut s.render_toggles.wireframe, "vp_hdr_tog_wire",   WIREFRAME_ON),
+        (SUN,     t.lighting,  "Lighting",  |s| &mut s.render_toggles.lighting,  "vp_hdr_tog_light",  LIGHTING_ON),
+        (CLOUD,   t.shadows,   "Shadows",   |s| &mut s.render_toggles.shadows,   "vp_hdr_tog_shadow", SHADOWS_ON),
+    ];
+
+    let btn_size = Vec2::new(26.0, BTN_H);
+    let gap = 2.0;
+    let total_w = entries.len() as f32 * btn_size.x + (entries.len() as f32 - 1.0).max(0.0) * gap;
+
+    let icon_muted = theme.text.secondary.to_color32();
+    let y = inner.min.y;
+    let mut x = inner.max.x - total_w;
+
+    for (icon, is_on, tip, field, id_salt, on_color) in entries {
+        let rect = Rect::from_min_size(Pos2::new(x, y), btn_size);
+        let resp = ui.interact(rect, ui.id().with(*id_salt), Sense::click());
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_bg);
+        }
+        let glyph_color = if *is_on { *on_color } else { icon_muted };
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(14.0),
+            glyph_color,
+        );
+        let tip_full = format!("{}: {}", tip, if *is_on { "ON" } else { "OFF" });
+        resp.clone().on_hover_text(tip_full);
+        if resp.clicked() {
+            let field = *field;
+            cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    let v = field(&mut s);
+                    *v = !*v;
+                }
+            });
+        }
+        x += btn_size.x + gap;
+    }
+
+    total_w
 }
 
 fn toggle_btn(
