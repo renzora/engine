@@ -61,7 +61,19 @@ pub fn update_action_state(
                         InputBinding::Key(key_str) => {
                             if let Some(key) = InputBinding::resolve_key(key_str) {
                                 if keyboard.pressed(key) {
-                                    value = 1.0;
+                                    value = value.max(1.0);
+                                }
+                            }
+                        }
+                        InputBinding::GamepadButton(btn_str) => {
+                            // Gamepad buttons (incl. RightTrigger2 / LeftTrigger2
+                            // when the pad exposes triggers as digital) contribute
+                            // a full 1.0 to the axis when pressed.
+                            if let Some(gp) = gamepad {
+                                if let Some(btn) = InputBinding::resolve_gamepad_button(btn_str) {
+                                    if gp.pressed(btn) {
+                                        value = value.max(1.0);
+                                    }
                                 }
                             }
                         }

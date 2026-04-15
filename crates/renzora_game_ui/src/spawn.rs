@@ -104,7 +104,8 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
     };
 
     // Mark as themed + parent to canvas
-    world.entity_mut(entity).insert(UiThemed).set_parent_in_place(canvas_entity);
+    world.entity_mut(entity).insert(UiThemed);
+    world.entity_mut(canvas_entity).add_child(entity);
 
     #[cfg(feature = "editor")]
     if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {

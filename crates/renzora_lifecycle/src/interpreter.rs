@@ -26,6 +26,10 @@ struct EvalContext<'a> {
     net_player_count: i32,
     /// Wait timers to start (node_id, seconds).
     new_waits: Vec<(NodeId, f32)>,
+    /// Current scene-load progress (0..1) snapshot, injected by `run_lifecycle`.
+    scene_progress: f32,
+    /// Mutable handle to the cross-system global store.
+    globals: &'a mut renzora_globals::GlobalStore,
 }
 
 impl<'a> EvalContext<'a> {
@@ -85,6 +89,11 @@ impl<'a> EvalContext<'a> {
                     .get(&name)
                     .cloned()
                     .unwrap_or(PinValue::None)
+            }
+            "lifecycle/get_load_progress" => PinValue::Float(self.scene_progress),
+            "lifecycle/global_get" => {
+                let key = self.resolve_input(node_id, "key").as_string();
+                self.globals.get(&key).cloned().unwrap_or(PinValue::None)
             }
             "lifecycle/on_scene_loaded" => match pin_name {
                 "scene" => PinValue::String(
@@ -451,6 +460,58 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "success");
                 }
             }
+            "lifecycle/show_loader" => {
+                self.actions.push(ScriptAction {
+                    name: "loader_show".into(),
+                    entity: Entity::PLACEHOLDER,
+                    target_entity: None,
+                    args: HashMap::new(),
+                });
+                self.follow_exec(node_id, "success");
+            }
+            "lifecycle/hide_loader" => {
+                self.actions.push(ScriptAction {
+                    name: "loader_hide".into(),
+                    entity: Entity::PLACEHOLDER,
+                    target_entity: None,
+                    args: HashMap::new(),
+                });
+                self.follow_exec(node_id, "success");
+            }
+            "lifecycle/set_loader_progress" => {
+                let progress = self.resolve_input(node_id, "progress").as_float();
+                self.actions.push(ScriptAction {
+                    name: "loader_set_progress".into(),
+                    entity: Entity::PLACEHOLDER,
+                    target_entity: None,
+                    args: HashMap::from([
+                        ("progress".into(), ScriptActionValue::Float(progress)),
+                    ]),
+                });
+                self.follow_exec(node_id, "success");
+            }
+            "lifecycle/set_loader_message" => {
+                let message = self.resolve_input(node_id, "message").as_string();
+                self.actions.push(ScriptAction {
+                    name: "loader_set_message".into(),
+                    entity: Entity::PLACEHOLDER,
+                    target_entity: None,
+                    args: HashMap::from([
+                        ("message".into(), ScriptActionValue::String(message)),
+                    ]),
+                });
+                self.follow_exec(node_id, "success");
+            }
+            "lifecycle/global_set" => {
+                let key = self.resolve_input(node_id, "key").as_string();
+                let value = self.resolve_input(node_id, "value");
+                if key.is_empty() {
+                    log::warn!("[lifecycle] global_set: empty key");
+                } else {
+                    self.globals.set(key, value);
+                }
+                self.follow_exec(node_id, "success");
+            }
 
             // ── Debug (from shared) ─────────────────────────────────
             "debug/log" => {
@@ -539,6 +600,15 @@ pub fn run_lifecycle(world: &mut World) {
 
     let scene_just_loaded = runtime.scene_just_loaded.take();
 
+    let scene_progress = world
+        .get_resource::<renzora_engine::scene_io::SceneLoadState>()
+        .map(|s| s.progress)
+        .unwrap_or(0.0);
+
+    let mut globals = world
+        .remove_resource::<renzora_globals::GlobalStore>()
+        .unwrap_or_default();
+
     let (actions, new_waits) = {
         let mut ctx = EvalContext {
             cache: HashMap::new(),
@@ -551,6 +621,8 @@ pub fn run_lifecycle(world: &mut World) {
             net_is_connected,
             net_player_count,
             new_waits: Vec::new(),
+            scene_progress,
+            globals: &mut globals,
         };
 
         // Resume continuations from completed waits.
@@ -636,6 +708,7 @@ pub fn run_lifecycle(world: &mut World) {
     }
 
     world.insert_resource(runtime);
+    world.insert_resource(globals);
 }
 
 /// Detects when a scene finishes loading and sets `scene_just_loaded`.

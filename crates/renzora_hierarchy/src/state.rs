@@ -71,29 +71,26 @@ pub struct EntityNode {
 /// Build the entity tree from the world.
 pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     // Resolve hierarchy filter — map component type names to ComponentIds.
-    let filter_component_ids: Vec<bevy::ecs::component::ComponentId> = world
-        .get_resource::<HierarchyFilter>()
-        .and_then(|f| match f {
-            HierarchyFilter::All => None,
-            HierarchyFilter::OnlyWithComponents(names) => {
-                let registry = world.get_resource::<AppTypeRegistry>()?;
-                let registry = registry.read();
-                Some(
-                    names
-                        .iter()
-                        .filter_map(|name| {
-                            // Match by short_path OR by ident (last segment of type path)
-                            let reg = registry.iter().find(|r| {
-                                let table = r.type_info().type_path_table();
-                                table.short_path() == *name || table.ident().map_or(false, |i| i == *name)
-                            })?;
-                            world.components().get_id(reg.type_id())
-                        })
-                        .collect(),
-                )
-            }
-        })
-        .unwrap_or_default();
+    let resolve_ids = |names: &Vec<&'static str>| -> Vec<bevy::ecs::component::ComponentId> {
+        let Some(registry) = world.get_resource::<AppTypeRegistry>() else { return Vec::new(); };
+        let registry = registry.read();
+        names
+            .iter()
+            .filter_map(|name| {
+                let reg = registry.iter().find(|r| {
+                    let table = r.type_info().type_path_table();
+                    table.short_path() == *name || table.ident().map_or(false, |i| i == *name)
+                })?;
+                world.components().get_id(reg.type_id())
+            })
+            .collect()
+    };
+    let (include_ids, exclude_ids): (Vec<_>, Vec<_>) = match world.get_resource::<HierarchyFilter>() {
+        Some(HierarchyFilter::OnlyWithComponents(names)) => (resolve_ids(names), Vec::new()),
+        Some(HierarchyFilter::ExcludeDescendantsOf(names)) => (Vec::new(), resolve_ids(names)),
+        _ => (Vec::new(), Vec::new()),
+    };
+    let filter_component_ids = include_ids;
 
     let mut entries: Vec<(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool, bool)> = Vec::new();
     let mut named_entities: HashSet<Entity> = HashSet::new();
@@ -122,6 +119,24 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                     }
                 }
                 if !found {
+                    continue;
+                }
+            }
+            if !exclude_ids.is_empty() {
+                let mut excluded = false;
+                let mut check = entity;
+                loop {
+                    let er = world.entity(check);
+                    if exclude_ids.iter().any(|id| er.contains_id(*id)) {
+                        excluded = true;
+                        break;
+                    }
+                    match world.get::<ChildOf>(check) {
+                        Some(c) => check = c.parent(),
+                        None => break,
+                    }
+                }
+                if excluded {
                     continue;
                 }
             }

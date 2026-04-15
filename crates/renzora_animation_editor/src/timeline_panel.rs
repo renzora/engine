@@ -21,10 +21,8 @@ const COLOR_ROTATION: egui::Color32 = egui::Color32::from_rgb(120, 200, 120); //
 const COLOR_SCALE: egui::Color32 = egui::Color32::from_rgb(200, 120, 120); // red
 const COLOR_PLAYHEAD: egui::Color32 = egui::Color32::from_rgb(255, 80, 80); // red playhead
 
-const TRACK_HEIGHT: f32 = 22.0;
 const HEADER_WIDTH: f32 = 180.0;
 const RULER_HEIGHT: f32 = 24.0;
-const KEYFRAME_SIZE: f32 = 6.0;
 
 pub struct TimelinePanel {
     bridge: Arc<Mutex<Vec<AnimEditorAction>>>,
@@ -86,21 +84,21 @@ impl EditorPanel for TimelinePanel {
 
         let editor_state = world.get_resource::<AnimationEditorState>();
         let (scrub_time, is_previewing, preview_speed, preview_looping, selected_entity,
-             selected_clip, timeline_zoom, timeline_scroll, snap_enabled) =
+             selected_clip, timeline_zoom, timeline_scroll, snap_enabled, track_height) =
             if let Some(s) = editor_state {
                 (s.scrub_time, s.is_previewing, s.preview_speed, s.preview_looping,
                  s.selected_entity, s.selected_clip.clone(), s.timeline_zoom,
-                 s.timeline_scroll, s.snap_enabled)
+                 s.timeline_scroll, s.snap_enabled, s.track_height)
             } else {
-                (0.0, false, 1.0, true, None, None, 100.0, 0.0, true)
+                (0.0, false, 1.0, true, None, None, 100.0, 0.0, true, 22.0)
             };
 
         // ── Toolbar ──
         self.render_toolbar(
             ui, text_color, muted_color, accent_color, border_color,
             is_previewing, preview_speed, preview_looping, scrub_time,
-            snap_enabled, timeline_zoom, selected_entity, selected_clip.as_deref(),
-            world,
+            snap_enabled, timeline_zoom, track_height, selected_entity,
+            selected_clip.as_deref(), world,
         );
 
         ui.add_space(1.0);
@@ -124,6 +122,20 @@ impl EditorPanel for TimelinePanel {
         // Load the selected clip's .anim data from disk
         let clip_data = self.load_clip_data(selected_clip.as_deref(), &animator, world);
         let clip_duration = clip_data.as_ref().map(|c| c.duration).unwrap_or(2.0);
+
+        // ── Range overview bar (DAW-style mini-map) ──
+        self.render_range_overview(
+            ui,
+            border_color,
+            surface_color,
+            accent_color,
+            muted_color,
+            clip_duration,
+            timeline_zoom,
+            timeline_scroll,
+            scrub_time,
+            clip_data.as_ref(),
+        );
 
         // ── Timeline area (header + ruler + tracks) ──
         let available = ui.available_size();
@@ -177,7 +189,7 @@ impl EditorPanel for TimelinePanel {
                                     .inner_margin(egui::Margin::symmetric(6, 2))
                                     .show(ui, |ui| {
                                         ui.set_width(HEADER_WIDTH - 14.0);
-                                        ui.set_height(TRACK_HEIGHT - 4.0);
+                                        ui.set_height((track_height - 4.0).max(10.0));
                                         ui.horizontal_centered(|ui| {
                                             ui.label(egui::RichText::new(egui_phosphor::regular::BONE)
                                                 .size(10.0).color(muted_color));
@@ -252,7 +264,7 @@ impl EditorPanel for TimelinePanel {
                                 let row_bg = if i % 2 == 0 { row_even } else { row_odd };
 
                                 let (track_rect, track_response) = ui.allocate_exact_size(
-                                    egui::vec2(timeline_width, TRACK_HEIGHT),
+                                    egui::vec2(timeline_width, track_height),
                                     egui::Sense::click_and_drag(),
                                 );
 
@@ -311,18 +323,43 @@ impl EditorPanel for TimelinePanel {
                     ));
                 }
 
-                // Scroll with mouse wheel
-                let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
-                if scroll_delta.x.abs() > 0.1 || scroll_delta.y.abs() > 0.1 {
-                    // Ctrl+scroll = zoom, regular scroll = pan
+                // Scroll with mouse wheel — only when the pointer is actually
+                // over the timeline area. Reading `smooth_scroll_delta`
+                // unconditionally consumed scroll events from anywhere in the
+                // app, and let vertical scroll momentum leak horizontally into
+                // the timeline pan.
+                let pointer_in_timeline = ui
+                    .ctx()
+                    .pointer_hover_pos()
+                    .map(|p| ui.max_rect().contains(p))
+                    .unwrap_or(false);
+                if pointer_in_timeline {
+                    let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
                     let modifiers = ui.input(|i| i.modifiers);
                     if modifiers.ctrl || modifiers.command {
-                        let new_zoom = (timeline_zoom + scroll_delta.y * 0.5).clamp(20.0, 500.0);
-                        self.push_action(AnimEditorAction::SetTimelineZoom(new_zoom));
+                        // Ctrl+wheel = zoom.
+                        if scroll_delta.y.abs() > 0.1 {
+                            let new_zoom =
+                                (timeline_zoom + scroll_delta.y * 0.5).clamp(20.0, 2000.0);
+                            self.push_action(AnimEditorAction::SetTimelineZoom(new_zoom));
+                        }
                     } else {
-                        let scroll_amount = -scroll_delta.y / timeline_zoom;
-                        let new_scroll = (timeline_scroll + scroll_amount).max(0.0);
-                        self.push_action(AnimEditorAction::SetTimelineScroll(new_scroll));
+                        // Only horizontal deltas pan. Shift+wheel converts a
+                        // vertical wheel into horizontal pan. A plain vertical
+                        // wheel is reserved for the ScrollArea beneath and
+                        // MUST NOT leak into the timeline scroll.
+                        let effective_dx = if scroll_delta.x.abs() > 0.1 {
+                            scroll_delta.x
+                        } else if modifiers.shift && scroll_delta.y.abs() > 0.1 {
+                            scroll_delta.y
+                        } else {
+                            0.0
+                        };
+                        if effective_dx.abs() > 0.1 {
+                            let scroll_amount = -effective_dx / timeline_zoom;
+                            let new_scroll = (timeline_scroll + scroll_amount).max(0.0);
+                            self.push_action(AnimEditorAction::SetTimelineScroll(new_scroll));
+                        }
                     }
                 }
             });
@@ -364,10 +401,12 @@ impl TimelinePanel {
         scrub_time: f32,
         snap_enabled: bool,
         timeline_zoom: f32,
+        track_height: f32,
         selected_entity: Option<Entity>,
         selected_clip: Option<&str>,
         world: &World,
     ) {
+        let _ = timeline_zoom; // kept for future use
         egui::Frame::new()
             .stroke(egui::Stroke::new(0.5, border_color))
             .inner_margin(egui::Margin::symmetric(6, 3))
@@ -478,14 +517,58 @@ impl TimelinePanel {
 
                     // ── Speed selector ──
                     ui.label(egui::RichText::new("Speed").size(10.0).color(muted_color));
-                    for &speed in &[0.25f32, 0.5, 1.0, 2.0] {
+                    // Preset buttons — now real framed buttons so they feel clickable.
+                    for &speed in &[0.25f32, 0.5, 1.0, 2.0, 4.0] {
                         let label = format!("{:.2}x", speed);
-                        let color = if (preview_speed - speed).abs() < 0.01 { accent_color } else { muted_color };
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(&label).size(10.0).color(color)
-                        ).frame(false)).clicked() {
+                        let is_active = (preview_speed - speed).abs() < 0.01;
+                        let color = if is_active { accent_color } else { text_color };
+                        let mut btn = egui::Button::new(
+                            egui::RichText::new(&label).size(10.0).color(color),
+                        )
+                        .min_size(egui::vec2(34.0, 18.0));
+                        if is_active {
+                            btn = btn.fill(egui::Color32::from_rgba_unmultiplied(
+                                accent_color.r(),
+                                accent_color.g(),
+                                accent_color.b(),
+                                40,
+                            ));
+                        }
+                        if ui.add(btn).clicked() {
                             self.push_action(AnimEditorAction::SetPreviewSpeed(speed));
                         }
+                    }
+                    // Manual speed entry.
+                    let mut custom = preview_speed;
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut custom)
+                                .speed(0.05)
+                                .range(0.05..=10.0)
+                                .suffix("x")
+                                .fixed_decimals(2),
+                        )
+                        .changed()
+                    {
+                        self.push_action(AnimEditorAction::SetPreviewSpeed(custom));
+                    }
+
+                    ui.separator();
+
+                    // ── Row-height slider ──
+                    ui.label(egui::RichText::new("Row").size(10.0).color(muted_color));
+                    let mut h = track_height;
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut h)
+                                .speed(0.5)
+                                .range(14.0..=96.0)
+                                .fixed_decimals(0)
+                                .suffix("px"),
+                        )
+                        .changed()
+                    {
+                        self.push_action(AnimEditorAction::SetTrackHeight(h));
                     }
 
                     ui.separator();
@@ -619,6 +702,191 @@ impl TimelinePanel {
         }
     }
 
+    /// Render a compact "mini-map" above the timeline: shows the full clip
+    /// duration with a draggable window representing the visible range. Drag
+    /// the middle to pan; drag either end handle to zoom; double-click to fit.
+    #[allow(clippy::too_many_arguments)]
+    fn render_range_overview(
+        &self,
+        ui: &mut egui::Ui,
+        border_color: egui::Color32,
+        surface_color: egui::Color32,
+        accent_color: egui::Color32,
+        muted_color: egui::Color32,
+        clip_duration: f32,
+        timeline_zoom: f32,
+        timeline_scroll: f32,
+        scrub_time: f32,
+        clip_data: Option<&AnimClip>,
+    ) {
+        const OVERVIEW_HEIGHT: f32 = 26.0;
+        const HANDLE_WIDTH: f32 = 10.0;
+        // Inset from the side of the panel so the end-handles don't collide
+        // with the dockable panel's own resize gutter.
+        const SIDE_INSET: f32 = 12.0;
+
+        if clip_duration <= 0.0 {
+            return;
+        }
+
+        let avail = ui.available_width();
+        let (rect, _bg_response) = ui.allocate_exact_size(
+            egui::vec2(avail, OVERVIEW_HEIGHT),
+            egui::Sense::hover(),
+        );
+
+        let painter = ui.painter_at(rect);
+
+        // Background
+        painter.rect_filled(rect, 3.0, surface_color);
+        painter.rect_stroke(rect, 3.0, egui::Stroke::new(0.5, border_color), egui::StrokeKind::Inside);
+
+        // Inner rect used for time → pixel math (insets keep handles clear of
+        // the panel's edge resize gutter).
+        let inner = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + SIDE_INSET, rect.top() + 3.0),
+            egui::pos2(rect.right() - SIDE_INSET, rect.bottom() - 3.0),
+        );
+        let pps_overview = (inner.width() / clip_duration).max(0.001);
+
+        // Faint keyframe ticks across the full clip.
+        if let Some(clip) = clip_data {
+            let tick_color = egui::Color32::from_rgba_unmultiplied(
+                muted_color.r(), muted_color.g(), muted_color.b(), 80,
+            );
+            for track in &clip.tracks {
+                for (t, _) in &track.translations {
+                    let x = inner.left() + *t * pps_overview;
+                    painter.line_segment(
+                        [egui::pos2(x, inner.top() + 2.0), egui::pos2(x, inner.bottom() - 2.0)],
+                        egui::Stroke::new(0.5, tick_color),
+                    );
+                }
+            }
+        }
+
+        // Visible window in pixel coords.
+        let visible_start_s = timeline_scroll.max(0.0);
+        let visible_duration_s = if timeline_zoom > 0.0 {
+            (inner.width() / timeline_zoom).min(clip_duration)
+        } else {
+            clip_duration
+        };
+        let visible_end_s = (visible_start_s + visible_duration_s).min(clip_duration);
+        let win_left = inner.left() + visible_start_s * pps_overview;
+        let win_right = inner.left() + visible_end_s * pps_overview;
+        let window_rect = egui::Rect::from_min_max(
+            egui::pos2(win_left, inner.top()),
+            egui::pos2(win_right, inner.bottom()),
+        );
+
+        // Playhead line (behind the window).
+        let ph_x = inner.left() + scrub_time.clamp(0.0, clip_duration) * pps_overview;
+        painter.line_segment(
+            [egui::pos2(ph_x, rect.top() + 2.0), egui::pos2(ph_x, rect.bottom() - 2.0)],
+            egui::Stroke::new(1.0, COLOR_PLAYHEAD),
+        );
+
+        // Window body.
+        let fill = egui::Color32::from_rgba_unmultiplied(
+            accent_color.r(), accent_color.g(), accent_color.b(), 48,
+        );
+        painter.rect_filled(window_rect, 2.0, fill);
+        painter.rect_stroke(
+            window_rect,
+            2.0,
+            egui::Stroke::new(1.0, accent_color),
+            egui::StrokeKind::Inside,
+        );
+
+        // Three separate interactable rects: left handle, right handle, center.
+        let left_handle = egui::Rect::from_min_max(
+            egui::pos2(window_rect.left() - HANDLE_WIDTH * 0.5, window_rect.top()),
+            egui::pos2(window_rect.left() + HANDLE_WIDTH * 0.5, window_rect.bottom()),
+        );
+        let right_handle = egui::Rect::from_min_max(
+            egui::pos2(window_rect.right() - HANDLE_WIDTH * 0.5, window_rect.top()),
+            egui::pos2(window_rect.right() + HANDLE_WIDTH * 0.5, window_rect.bottom()),
+        );
+        let center_rect = egui::Rect::from_min_max(
+            egui::pos2(left_handle.right(), window_rect.top()),
+            egui::pos2(right_handle.left(), window_rect.bottom()),
+        );
+
+        // Paint handle bars.
+        painter.rect_filled(left_handle, 2.0, accent_color);
+        painter.rect_filled(right_handle, 2.0, accent_color);
+        // Inner grip dots on handles for visual affordance.
+        for handle in [left_handle, right_handle] {
+            let cx = handle.center().x;
+            let cy = handle.center().y;
+            for dy in [-4.0, 0.0, 4.0] {
+                painter.circle_filled(egui::pos2(cx, cy + dy), 1.0, egui::Color32::WHITE);
+            }
+        }
+
+        // Left handle
+        let left_id = ui.id().with("overview_left_handle");
+        let left_resp = ui.interact(left_handle, left_id, egui::Sense::drag());
+        if left_resp.hovered() || left_resp.dragged() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
+        }
+        if left_resp.dragged() {
+            let ds = left_resp.drag_delta().x / pps_overview;
+            let new_start = (visible_start_s + ds).clamp(0.0, visible_end_s - 0.05);
+            let new_duration = (visible_end_s - new_start).max(0.05);
+            let new_zoom = (inner.width() / new_duration).clamp(20.0, 2000.0);
+            self.push_action(AnimEditorAction::SetTimelineScroll(new_start));
+            self.push_action(AnimEditorAction::SetTimelineZoom(new_zoom));
+        }
+
+        // Right handle
+        let right_id = ui.id().with("overview_right_handle");
+        let right_resp = ui.interact(right_handle, right_id, egui::Sense::drag());
+        if right_resp.hovered() || right_resp.dragged() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
+        }
+        if right_resp.dragged() {
+            let ds = right_resp.drag_delta().x / pps_overview;
+            let new_end = (visible_end_s + ds).clamp(visible_start_s + 0.05, clip_duration);
+            let new_duration = (new_end - visible_start_s).max(0.05);
+            let new_zoom = (inner.width() / new_duration).clamp(20.0, 2000.0);
+            self.push_action(AnimEditorAction::SetTimelineZoom(new_zoom));
+        }
+
+        // Center (pan)
+        let center_id = ui.id().with("overview_window_center");
+        let center_resp = ui.interact(center_rect, center_id, egui::Sense::click_and_drag());
+        if center_resp.hovered() || center_resp.dragged() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Move);
+        }
+        if center_resp.dragged() {
+            let ds = center_resp.drag_delta().x / pps_overview;
+            let new_start = (visible_start_s + ds)
+                .clamp(0.0, (clip_duration - visible_duration_s).max(0.0));
+            self.push_action(AnimEditorAction::SetTimelineScroll(new_start));
+        }
+
+        // Click outside the window → jump scrub to that time.
+        let outside_id = ui.id().with("overview_outside_click");
+        let outside_resp = ui.interact(rect, outside_id, egui::Sense::click());
+        if outside_resp.clicked() {
+            if let Some(pos) = outside_resp.interact_pointer_pos() {
+                if !window_rect.contains(pos) {
+                    let time = ((pos.x - inner.left()) / pps_overview).clamp(0.0, clip_duration);
+                    self.push_action(AnimEditorAction::SetScrubTime(time));
+                }
+            }
+        }
+        if outside_resp.double_clicked() {
+            let fit_zoom = (inner.width() / clip_duration).clamp(20.0, 2000.0);
+            self.push_action(AnimEditorAction::SetTimelineZoom(fit_zoom));
+            self.push_action(AnimEditorAction::SetTimelineScroll(0.0));
+        }
+
+        ui.add_space(2.0);
+    }
+
     /// Paint keyframe diamonds on a track row.
     fn paint_keyframes(
         &self,
@@ -630,24 +898,24 @@ impl TimelinePanel {
         scroll: f32,
     ) {
         let cy = rect.center().y;
+        // Scale keyframes + vertical spacing with the row height so a bigger
+        // track height actually gives bigger, more readable markers.
+        let kf_size = (rect.height() * 0.38).clamp(4.0, 18.0);
+        let row_offset = (rect.height() * 0.26).min(14.0);
 
-        // Draw translation keyframes
         for &(time, _) in &track.translations {
-            self.paint_diamond(painter, rect, time, cy - 4.0, zoom, scroll, COLOR_TRANSLATION);
+            self.paint_diamond(painter, rect, time, cy - row_offset, zoom, scroll, kf_size, COLOR_TRANSLATION);
         }
-
-        // Draw rotation keyframes
         for &(time, _) in &track.rotations {
-            self.paint_diamond(painter, rect, time, cy, zoom, scroll, COLOR_ROTATION);
+            self.paint_diamond(painter, rect, time, cy, zoom, scroll, kf_size, COLOR_ROTATION);
         }
-
-        // Draw scale keyframes
         for &(time, _) in &track.scales {
-            self.paint_diamond(painter, rect, time, cy + 4.0, zoom, scroll, COLOR_SCALE);
+            self.paint_diamond(painter, rect, time, cy + row_offset, zoom, scroll, kf_size, COLOR_SCALE);
         }
     }
 
     /// Paint a single keyframe diamond.
+    #[allow(clippy::too_many_arguments)]
     fn paint_diamond(
         &self,
         painter: &egui::Painter,
@@ -656,20 +924,21 @@ impl TimelinePanel {
         cy: f32,
         zoom: f32,
         scroll: f32,
+        size: f32,
         color: egui::Color32,
     ) {
         let x = clip_rect.left() + (time - scroll) * zoom;
-        if x < clip_rect.left() - KEYFRAME_SIZE || x > clip_rect.right() + KEYFRAME_SIZE {
+        if x < clip_rect.left() - size || x > clip_rect.right() + size {
             return;
         }
 
-        let half = KEYFRAME_SIZE * 0.5;
+        let half = size * 0.5;
         painter.add(egui::Shape::convex_polygon(
             vec![
-                egui::pos2(x, cy - half),        // top
-                egui::pos2(x + half, cy),         // right
-                egui::pos2(x, cy + half),         // bottom
-                egui::pos2(x - half, cy),         // left
+                egui::pos2(x, cy - half),
+                egui::pos2(x + half, cy),
+                egui::pos2(x, cy + half),
+                egui::pos2(x - half, cy),
             ],
             color,
             egui::Stroke::new(0.5, egui::Color32::from_white_alpha(60)),

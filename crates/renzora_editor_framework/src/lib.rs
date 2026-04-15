@@ -144,6 +144,8 @@ pub enum HierarchyFilter {
     /// Show only entities that have at least one of the listed component type names.
     /// Component names are matched via Bevy's `AppTypeRegistry`.
     OnlyWithComponents(Vec<&'static str>),
+    /// Hide entities that (or whose ancestors) have any of the listed component type names.
+    ExcludeDescendantsOf(Vec<&'static str>),
 }
 
 pub use spawn_registry::{ComponentIconEntry, ComponentIconRegistry, EntityPreset, SpawnRegistry};
@@ -1170,7 +1172,7 @@ fn switch_layout(world: &mut World, index: usize) {
 }
 
 /// Switch to a layout by name.
-fn switch_layout_by_name(world: &mut World, name: &str) {
+pub fn switch_layout_by_name(world: &mut World, name: &str) {
     let index = world
         .get_resource::<LayoutManager>()
         .and_then(|lm| lm.layouts.iter().position(|l| l.name == name));

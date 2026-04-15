@@ -5,6 +5,8 @@
 //! - `timeline` — transport bar, time ruler, scrubber, track lanes, keyframe editing
 
 mod animation_panel;
+mod params_panel;
+mod state_machine_panel;
 mod timeline_panel;
 mod preview;
 pub mod studio_preview;
@@ -42,6 +44,8 @@ pub struct AnimationEditorState {
     pub clip_duration: Option<f32>,
     /// Track which clip was last auto-fitted to avoid re-fitting on every frame.
     pub auto_fit_clip: Option<String>,
+    /// Height (pixels) of each keyframe track row. User-resizable.
+    pub track_height: f32,
 }
 
 impl Default for AnimationEditorState {
@@ -59,6 +63,7 @@ impl Default for AnimationEditorState {
             snap_interval: 1.0 / 30.0,
             clip_duration: None,
             auto_fit_clip: None,
+            track_height: 22.0,
         }
     }
 }
@@ -82,6 +87,7 @@ enum AnimEditorAction {
     SetTimelineZoom(f32),
     SetTimelineScroll(f32),
     SetSnapEnabled(bool),
+    SetTrackHeight(f32),
     AutoFitDone(String),
     SetParam { name: String, value: f32 },
     SetBoolParam { name: String, value: bool },
@@ -134,6 +140,9 @@ fn sync_anim_editor_bridge(
             }
             AnimEditorAction::SetSnapEnabled(enabled) => {
                 editor_state.snap_enabled = enabled;
+            }
+            AnimEditorAction::SetTrackHeight(h) => {
+                editor_state.track_height = h.clamp(14.0, 96.0);
             }
             AnimEditorAction::AutoFitDone(clip_name) => {
                 editor_state.auto_fit_clip = Some(clip_name);
@@ -216,15 +225,24 @@ fn cache_clip_duration(
 fn sync_selection(
     selection: Res<renzora_editor_framework::EditorSelection>,
     mut editor_state: ResMut<AnimationEditorState>,
+    animators: Query<&renzora_animation::AnimatorComponent>,
 ) {
     let selected = selection.get();
     if editor_state.selected_entity != selected {
         editor_state.selected_entity = selected;
-        // Reset clip selection when entity changes
-        editor_state.selected_clip = None;
         editor_state.scrub_time = 0.0;
         editor_state.is_previewing = false;
         editor_state.clip_duration = None;
+        // Auto-select the animator's default clip (or first clip) when
+        // the selected entity has an AnimatorComponent, so the timeline
+        // doesn't reset to "Select clip…" on every selection change.
+        editor_state.selected_clip = selected
+            .and_then(|e| animators.get(e).ok())
+            .and_then(|a| {
+                a.default_clip
+                    .clone()
+                    .or_else(|| a.clips.first().map(|c| c.name.clone()))
+            });
     }
 }
 
@@ -274,7 +292,9 @@ impl Plugin for AnimationEditorPlugin {
         );
 
         app.register_panel(animation_panel::AnimationPanel::new(arc.clone()));
-        app.register_panel(timeline_panel::TimelinePanel::new(arc));
+        app.register_panel(timeline_panel::TimelinePanel::new(arc.clone()));
+        app.register_panel(params_panel::AnimatorParamsPanel::new(arc));
+        app.register_panel(state_machine_panel::StateMachinePanel::new());
         app.register_panel(studio_preview_panel::StudioPreviewPanel);
     }
 }

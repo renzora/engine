@@ -130,6 +130,8 @@ pub struct EditorSettings {
     pub hide_cursor_in_play_mode: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
+    /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
+    pub ui_preview_by_default: bool,
     /// Whether the settings overlay is open
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
@@ -150,6 +152,7 @@ impl Default for EditorSettings {
             scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
             auto_import_on_drop: true,
+            ui_preview_by_default: true,
             show_settings: false,
             plugins_dir: "plugins".to_string(),
         }

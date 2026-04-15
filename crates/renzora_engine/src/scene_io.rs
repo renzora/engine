@@ -12,6 +12,43 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 // ============================================================================
+// Scene load state + events
+// ============================================================================
+
+/// Coarse phase of the most recent scene load.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SceneLoadPhase {
+    #[default]
+    Idle,
+    Loading,
+    Ready,
+    Failed,
+}
+
+/// Tracks the state of scene loading so UI can reflect progress.
+///
+/// `progress` is 0..1. Scene loading is currently synchronous, so the value
+/// jumps from 0 → 1 in a single frame; a future async split can make this a
+/// true progress readout without changing this resource's shape.
+#[derive(Resource, Default)]
+pub struct SceneLoadState {
+    pub phase: SceneLoadPhase,
+    pub current_path: Option<String>,
+    pub progress: f32,
+}
+
+#[derive(Event, Clone, Debug)]
+pub struct SceneLoaded {
+    pub path: String,
+}
+
+#[derive(Event, Clone, Debug)]
+pub struct SceneLoadFailed {
+    pub path: String,
+    pub error: String,
+}
+
+// ============================================================================
 // Save
 // ============================================================================
 
@@ -88,6 +125,14 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
+        // Animation runtime state — ephemeral, must rebuild on load.
+        .deny_component::<bevy::animation::AnimationPlayer>()
+        .deny_component::<bevy::animation::transition::AnimationTransitions>()
+        // `AnimatedBy` stores an Entity reference that doesn't remap across
+        // scene loads — must be reconstructed by the animator rehydration.
+        .deny_component::<bevy::animation::AnimatedBy>()
+        // AnimatorReadState is a runtime mirror — rebuilt each frame.
+        .deny_component::<renzora_animation::AnimatorReadState>()
         // Networking: Lightyear internals should not persist to scene files.
         // Networked/NetworkOwner/NetworkId are runtime-only markers.
         .deny_component::<renzora_network::Networked>()
@@ -207,6 +252,14 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
+        // Animation runtime state — ephemeral, must rebuild on load.
+        .deny_component::<bevy::animation::AnimationPlayer>()
+        .deny_component::<bevy::animation::transition::AnimationTransitions>()
+        // `AnimatedBy` stores an Entity reference that doesn't remap across
+        // scene loads — must be reconstructed by the animator rehydration.
+        .deny_component::<bevy::animation::AnimatedBy>()
+        // AnimatorReadState is a runtime mirror — rebuilt each frame.
+        .deny_component::<renzora_animation::AnimatorReadState>()
         .deny_component::<renzora_network::Networked>()
         .deny_component::<renzora_network::NetworkOwner>()
         .deny_component::<renzora_network::NetworkId>()
@@ -331,6 +384,13 @@ pub fn save_current_scene(world: &mut World) {
 pub fn load_scene(world: &mut World, path: &Path) {
     console_info("Scene", format!("=== Loading scene from {} ===", path.display()));
 
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+        state.phase = SceneLoadPhase::Loading;
+        state.current_path = Some(path_str.clone());
+        state.progress = 0.0;
+    }
+
     // Try reading from Vfs (rpak archive) first.
     let content = if let Some(vfs) = world.get_resource::<crate::Vfs>() {
         // Normalize to forward-slash archive-relative path, stripping leading "./" or ".\"
@@ -373,6 +433,11 @@ pub fn load_scene(world: &mut World, path: &Path) {
     if trimmed.is_empty() || trimmed == "(entities: {}, resources: {})" {
         console_info("Scene", format!("Scene is empty: {}", path.display()));
         info!("Scene is empty: {}", path.display());
+        if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+            state.phase = SceneLoadPhase::Ready;
+            state.progress = 1.0;
+        }
+        world.trigger(SceneLoaded { path: path_str.clone() });
         return;
     }
 
@@ -450,10 +515,22 @@ pub fn load_scene(world: &mut World, path: &Path) {
             }
 
             console_success("Scene", format!("=== Scene load complete: {} ===", path.display()));
+
+            if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+                state.phase = SceneLoadPhase::Ready;
+                state.progress = 1.0;
+            }
+            world.trigger(SceneLoaded { path: path_str.clone() });
         }
         Err(e) => {
             console_error("Scene", format!("Failed to write scene to world {}: {}", path.display(), e));
             error!("Failed to write scene to world {}: {}", path.display(), e);
+
+            if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+                state.phase = SceneLoadPhase::Failed;
+            }
+            let err_str = e.to_string();
+            world.trigger(SceneLoadFailed { path: path_str.clone(), error: err_str });
         }
     }
 }

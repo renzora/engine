@@ -1118,6 +1118,43 @@ pub static SET_VELOCITY: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_PHYSICS,
 };
 
+pub static KINEMATIC_SLIDE: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "physics/kinematic_slide",
+    display_name: "Kinematic Slide",
+    category: CAT_PHYSICS,
+    description: "Move a kinematic body by a delta with collide-and-slide",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("delta", "Delta", PinType::Vec3)
+            .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static IS_GROUNDED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "physics/is_grounded",
+    display_name: "Is Grounded",
+    category: CAT_PHYSICS,
+    description: "True if the entity is currently on the ground",
+    pins: || vec![
+        PinTemplate::output("grounded", "Grounded", PinType::Bool),
+    ],
+    color: CLR_PHYSICS,
+};
+
+pub static GET_VELOCITY: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "physics/get_velocity",
+    display_name: "Get Velocity",
+    category: CAT_PHYSICS,
+    description: "Current linear velocity of the entity",
+    pins: || vec![
+        PinTemplate::output("velocity", "Velocity", PinType::Vec3),
+        PinTemplate::output("speed", "Speed", PinType::Float),
+    ],
+    color: CLR_PHYSICS,
+};
+
 pub static RAYCAST: BlueprintNodeDef = BlueprintNodeDef {
     node_type: "physics/raycast",
     display_name: "Raycast",
@@ -1136,73 +1173,6 @@ pub static RAYCAST: BlueprintNodeDef = BlueprintNodeDef {
         PinTemplate::output("normal", "Hit Normal", PinType::Vec3),
         PinTemplate::output("entity", "Hit Entity", PinType::Entity),
         PinTemplate::output("distance", "Distance", PinType::Float),
-    ],
-    color: CLR_PHYSICS,
-};
-
-// =============================================================================
-// CHARACTER CONTROLLER NODES
-// =============================================================================
-
-pub static CHARACTER_MOVE: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "character/move",
-    display_name: "Character Move",
-    category: CAT_PHYSICS,
-    description: "Set character movement direction (XZ plane)",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::input("direction", "Direction", PinType::Vec2)
-            .with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::exec_out("then", ""),
-    ],
-    color: CLR_PHYSICS,
-};
-
-pub static CHARACTER_JUMP: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "character/jump",
-    display_name: "Character Jump",
-    category: CAT_PHYSICS,
-    description: "Make the character jump",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::exec_out("then", ""),
-    ],
-    color: CLR_PHYSICS,
-};
-
-pub static CHARACTER_SPRINT: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "character/sprint",
-    display_name: "Character Sprint",
-    category: CAT_PHYSICS,
-    description: "Set character sprint state",
-    pins: || vec![
-        PinTemplate::exec_in("exec", ""),
-        PinTemplate::input("sprinting", "Sprinting", PinType::Bool)
-            .with_default(PinValue::Bool(true)),
-        PinTemplate::exec_out("then", ""),
-    ],
-    color: CLR_PHYSICS,
-};
-
-pub static CHARACTER_IS_GROUNDED: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "character/is_grounded",
-    display_name: "Is Grounded",
-    category: CAT_PHYSICS,
-    description: "Check if the character is on the ground",
-    pins: || vec![
-        PinTemplate::output("grounded", "Grounded", PinType::Bool),
-    ],
-    color: CLR_PHYSICS,
-};
-
-pub static CHARACTER_GET_VELOCITY: BlueprintNodeDef = BlueprintNodeDef {
-    node_type: "character/get_velocity",
-    display_name: "Get Velocity",
-    category: CAT_PHYSICS,
-    description: "Get the character controller's current velocity",
-    pins: || vec![
-        PinTemplate::output("velocity", "Velocity", PinType::Vec3),
-        PinTemplate::output("speed", "Speed", PinType::Float),
     ],
     color: CLR_PHYSICS,
 };
@@ -1734,6 +1704,42 @@ pub static GET_ANIMATION_TIME: BlueprintNodeDef = BlueprintNodeDef {
     color: CLR_ANIMATION,
 };
 
+pub static GET_ANIMATION_LENGTH: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/get_length",
+    display_name: "Get Animation Length",
+    category: CAT_ANIMATION,
+    description: "Duration (seconds) of a named clip, 0 if not loaded",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String),
+        PinTemplate::output("length", "Length", PinType::Float),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static GET_ANIM_PARAM: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/get_param",
+    display_name: "Get Anim Param",
+    category: CAT_ANIMATION,
+    description: "Read a float parameter from the animation state machine",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String),
+        PinTemplate::output("value", "Value", PinType::Float),
+    ],
+    color: CLR_ANIMATION,
+};
+
+pub static GET_ANIM_BOOL: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "animation/get_bool",
+    display_name: "Get Anim Bool",
+    category: CAT_ANIMATION,
+    description: "Read a bool parameter from the animation state machine",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String),
+        PinTemplate::output("value", "Value", PinType::Bool),
+    ],
+    color: CLR_ANIMATION,
+};
+
 pub static IS_ANIMATION_PLAYING: BlueprintNodeDef = BlueprintNodeDef {
     node_type: "animation/is_playing",
     display_name: "Is Animation Playing",
@@ -1884,7 +1890,7 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &GET_COMPONENT, &SET_COMPONENT,
     // Physics
     &APPLY_FORCE, &APPLY_IMPULSE, &SET_VELOCITY, &RAYCAST,
-    &CHARACTER_MOVE, &CHARACTER_JUMP, &CHARACTER_SPRINT, &CHARACTER_IS_GROUNDED, &CHARACTER_GET_VELOCITY,
+    &KINEMATIC_SLIDE, &IS_GROUNDED, &GET_VELOCITY,
     // Audio
     &PLAY_SOUND, &PLAY_MUSIC, &STOP_MUSIC,
     // UI
@@ -1908,6 +1914,7 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &SET_ANIMATION_SPEED, &CROSSFADE_ANIMATION, &SET_ANIM_PARAM,
     &SET_ANIM_BOOL_PARAM, &TRIGGER_ANIM, &SET_LAYER_WEIGHT,
     &GET_ANIMATION_TIME, &IS_ANIMATION_PLAYING, &ON_ANIMATION_FINISHED,
+    &GET_ANIMATION_LENGTH, &GET_ANIM_PARAM, &GET_ANIM_BOOL,
     &TWEEN_POSITION,
     // Network
     &NET_IS_SERVER, &NET_IS_CONNECTED, &NET_SEND_MESSAGE, &NET_ON_MESSAGE, &NET_SPAWN,

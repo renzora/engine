@@ -558,6 +558,7 @@ pub fn grid_ui_interactive(
         let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
         drag_payload = Some(AssetDragPayload {
             path: entry.path.clone(),
+            paths: state.drag_moving.clone(),
             name: entry.name.clone(),
             icon: icon.to_string(),
             color,

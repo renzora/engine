@@ -1,9 +1,9 @@
 pub mod data;
 pub mod properties;
 pub mod backend;
-pub mod character_controller;
-pub mod character_controller_systems;
 pub mod auto_fit;
+pub mod read_state;
+pub mod script_extension;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
 /// the transform gizmo is hidden and (later) collider resize/move handles take over.
@@ -34,7 +34,7 @@ pub mod inspector;
 
 pub use data::*;
 pub use properties::*;
-pub use character_controller::*;
+pub use read_state::PhysicsReadState;
 
 use bevy::prelude::*;
 use renzora::PlayModeState;
@@ -95,8 +95,7 @@ impl Plugin for PhysicsPlugin {
             .register_type::<PhysicsBodyType>()
             .register_type::<CollisionShapeData>()
             .register_type::<CollisionShapeType>()
-            .register_type::<CharacterControllerData>()
-            .register_type::<CharacterControllerInput>();
+            .register_type::<PhysicsReadState>();
 
         #[cfg(feature = "avian")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
@@ -110,36 +109,6 @@ impl Plugin for PhysicsPlugin {
             auto_fit::auto_fit_collision_shapes,
         ).chain());
 
-        // Character controller systems — only active during play mode.
-        app.add_systems(PreUpdate, (
-            character_controller_systems::clear_character_input,
-            character_controller_systems::auto_input_from_actions,
-        )
-            .chain()
-            .run_if(not_editing));
-        app.add_systems(Update,
-            character_controller_systems::auto_init_character_controller,
-        );
-        app.add_systems(Update,
-            character_controller_systems::process_character_commands
-                .run_if(not_editing),
-        );
-
-        #[cfg(feature = "avian")]
-        {
-            app.add_systems(
-                Update,
-                (
-                    backend::avian_character::character_ground_check,
-                    backend::avian_character::character_movement,
-                    backend::avian_character::character_apply_velocity,
-                )
-                    .chain()
-                    .after(character_controller_systems::process_character_commands)
-                    .run_if(not_editing),
-            );
-        }
-
         // Listen for editor pause/unpause events (decoupled from renzora_editor_framework)
         app.add_observer(on_pause_physics)
            .add_observer(on_unpause_physics);
@@ -147,8 +116,33 @@ impl Plugin for PhysicsPlugin {
         #[cfg(feature = "avian")]
         app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
 
-        // Listen for script actions (apply_force, apply_impulse, set_velocity)
+        app.init_resource::<PendingKinematicSlides>();
+        #[cfg(feature = "avian")]
+        {
+            app.init_resource::<ResolvedSlides>();
+            app.add_systems(
+                Update,
+                (compute_kinematic_slides, apply_kinematic_slides)
+                    .chain()
+                    .run_if(not_editing),
+            );
+        }
+
+        // Listen for script actions (apply_force, apply_impulse, set_velocity, kinematic_slide)
         app.add_observer(handle_physics_script_actions);
+
+        // Per-entity read-state mirror + script extension.
+        app.add_systems(Update, read_state::auto_init_physics_read_state);
+        #[cfg(feature = "avian")]
+        app.add_systems(Update, read_state::update_physics_read_state);
+
+        // Register Lua/Rhai functions owned by the physics crate.
+        {
+            let mut extensions = app
+                .world_mut()
+                .get_resource_or_insert_with(renzora_scripting::extension::ScriptExtensions::default);
+            extensions.register(script_extension::PhysicsScriptExtension);
+        }
 
         #[cfg(feature = "editor")]
         {
@@ -156,6 +150,77 @@ impl Plugin for PhysicsPlugin {
             app.init_resource::<ColliderStampQueue>();
             app.add_systems(Update, drain_collider_stamp_queue);
             inspector::register_physics_inspectors(app);
+        }
+    }
+}
+
+/// One pending kinematic slide request.
+#[derive(Clone, Copy, Debug)]
+pub struct PendingSlide {
+    pub entity: Entity,
+    pub delta: Vec3,
+    pub max_slope: f32,
+}
+
+/// Queue of slide requests produced by the `kinematic_slide` script action
+/// and drained each frame by `drain_kinematic_slides`.
+#[derive(Resource, Default)]
+pub struct PendingKinematicSlides(pub Vec<PendingSlide>);
+
+/// System: applies pending kinematic slides with full collision response.
+/// Computed slide result waiting to be applied to `Position` + `Transform`.
+/// Produced by `compute_kinematic_slides` and drained by `apply_kinematic_slides`
+/// — split into two systems so the SpatialQuery reads don't conflict with the
+/// `&mut Position` writes.
+#[cfg(feature = "avian")]
+#[derive(Resource, Default)]
+struct ResolvedSlides(Vec<(Entity, Vec3, bool, Vec3)>);
+
+#[cfg(feature = "avian")]
+fn compute_kinematic_slides(
+    mut queue: ResMut<PendingKinematicSlides>,
+    mut resolved: ResMut<ResolvedSlides>,
+    spatial_query: avian3d::prelude::SpatialQuery,
+    q: Query<(&Transform, &avian3d::prelude::Collider)>,
+) {
+    if queue.0.is_empty() {
+        return;
+    }
+    for slide in std::mem::take(&mut queue.0) {
+        let Ok((transform, collider)) = q.get(slide.entity) else {
+            continue;
+        };
+        let filter = avian3d::prelude::SpatialQueryFilter::from_excluded_entities([slide.entity]);
+        let result = backend::avian_character::shape_cast_slide(
+            &spatial_query,
+            collider,
+            transform.translation,
+            transform.rotation,
+            slide.delta,
+            slide.max_slope,
+            &filter,
+        );
+        let new_pos = transform.translation + result.actual_delta;
+        resolved.0.push((slide.entity, new_pos, result.grounded, result.ground_normal));
+    }
+}
+
+#[cfg(feature = "avian")]
+fn apply_kinematic_slides(
+    mut resolved: ResMut<ResolvedSlides>,
+    mut q: Query<(&mut Transform, Option<&mut PhysicsReadState>)>,
+) {
+    if resolved.0.is_empty() {
+        return;
+    }
+    for (entity, new_pos, grounded, normal) in std::mem::take(&mut resolved.0) {
+        let Ok((mut transform, read_state)) = q.get_mut(entity) else {
+            continue;
+        };
+        transform.translation = new_pos;
+        if let Some(mut rs) = read_state {
+            rs.grounded = grounded;
+            rs.ground_normal = normal;
         }
     }
 }
@@ -168,13 +233,44 @@ fn clear_avian_forces(mut commands: Commands, query: Query<Entity, With<avian3d:
     }
 }
 
-/// Observer: handle physics commands (apply_force, apply_impulse, set_velocity) from scripts.
+/// Observer: handle physics commands (apply_force, apply_impulse, set_velocity,
+/// kinematic_slide) from scripts and blueprints.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,
     mut commands: Commands,
+    mut pending_slides: Option<ResMut<PendingKinematicSlides>>,
 ) {
     let action = trigger.event();
     let name = action.name.as_str();
+
+    // Kinematic slide goes into a pending queue drained by a system with
+    // SpatialQuery access — it can't run inside an observer.
+    if name == "kinematic_slide" {
+        use renzora::ScriptActionValue;
+        let get = |k: &str| -> f32 {
+            match action.args.get(k) {
+                Some(ScriptActionValue::Float(v)) => *v,
+                Some(ScriptActionValue::Int(v)) => *v as f32,
+                _ => 0.0,
+            }
+        };
+        let dx = get("x");
+        let dy = get("y");
+        let dz = get("z");
+        let max_slope = match action.args.get("max_slope") {
+            Some(ScriptActionValue::Float(v)) => *v,
+            _ => 55.0,
+        };
+        if let Some(ref mut queue) = pending_slides {
+            queue.0.push(PendingSlide {
+                entity: action.entity,
+                delta: Vec3::new(dx, dy, dz),
+                max_slope,
+            });
+        }
+        return;
+    }
+
     if !matches!(name, "apply_force" | "apply_impulse" | "set_velocity") {
         return;
     }

@@ -20,6 +20,8 @@ impl Plugin for LifecyclePlugin {
         app.init_resource::<LifecycleGraph>();
         app.init_resource::<LifecycleRuntimeState>();
 
+        app.add_plugins(renzora_globals::GlobalsPlugin);
+
         app.add_systems(Startup, load_lifecycle_graph);
         app.add_systems(
             Update,

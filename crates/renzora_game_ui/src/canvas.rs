@@ -38,6 +38,16 @@ pub struct UiCanvasPreview {
     pub previewing: Option<Entity>,
 }
 
+/// Whether the game viewport preview is shown behind the UI canvas. Set by
+/// the toolbar toggle and reset from `EditorSettings::ui_preview_by_default`
+/// whenever the UI workspace is entered.
+#[derive(Resource)]
+pub struct UiCanvasPreviewEnabled(pub bool);
+
+impl Default for UiCanvasPreviewEnabled {
+    fn default() -> Self { Self(true) }
+}
+
 use renzora::UiCanvasPreviewCamera;
 
 /// Sets up the canvas preview render target. Called once from GameUiPlugin build.
@@ -444,8 +454,6 @@ struct CanvasState {
     grid_size: f32,
     /// Show grid lines on canvas.
     show_grid: bool,
-    /// Show the game camera render behind the canvas.
-    show_preview: bool,
     /// Clipboard for copy/paste (widget type + offset from first widget).
     clipboard: Vec<ClipboardEntry>,
 }
@@ -514,7 +522,6 @@ impl CanvasState {
             snap_enabled: true,
             grid_size: 10.0,
             show_grid: true,
-            show_preview: false,
             clipboard: Vec::new(),
         }
     }
@@ -810,7 +817,8 @@ impl EditorPanel for UiCanvasPanel {
                 }
 
                 // Preview toggle (show viewport render behind canvas)
-                let preview_color = if state.show_preview { accent } else { text_muted };
+                let preview_on = world.get_resource::<UiCanvasPreviewEnabled>().map_or(true, |r| r.0);
+                let preview_color = if preview_on { accent } else { text_muted };
                 if ui
                     .add(egui::Button::new(
                         egui::RichText::new(regular::MONITOR).size(14.0).color(preview_color),
@@ -818,7 +826,11 @@ impl EditorPanel for UiCanvasPanel {
                     .on_hover_text("Toggle game viewport preview")
                     .clicked()
                 {
-                    state.show_preview = !state.show_preview;
+                    commands.push(move |world: &mut World| {
+                        if let Some(mut r) = world.get_resource_mut::<UiCanvasPreviewEnabled>() {
+                            r.0 = !r.0;
+                        }
+                    });
                 }
 
                 // Selection count
@@ -1123,7 +1135,7 @@ impl EditorPanel for UiCanvasPanel {
         painter.rect_filled(canvas_rect, 0.0, Color32::from_rgb(20, 20, 24));
 
         // ── Camera preview (game render behind the canvas) ─────────────
-        if state.show_preview {
+        if world.get_resource::<UiCanvasPreviewEnabled>().map_or(true, |r| r.0) {
             // Activate the preview camera
             if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
                 if preview.previewing.is_some() {

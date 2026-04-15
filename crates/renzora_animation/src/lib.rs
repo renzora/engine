@@ -20,6 +20,8 @@ pub mod graph_builder;
 pub mod inspector;
 pub mod layers;
 pub mod loader;
+pub mod read_state;
+pub mod script_extension;
 pub mod sm_loader;
 pub mod state_machine;
 pub mod systems;
@@ -28,6 +30,7 @@ pub mod tween;
 pub use blend_tree::BlendTree;
 pub use clip::{AnimClip, BoneTrack};
 pub use component::{AnimClipSlot, AnimatorComponent, AnimatorState};
+pub use read_state::AnimatorReadState;
 pub use layers::{AnimationLayer, LayerBlendMode};
 pub use loader::AnimClipLoader;
 pub use state_machine::{AnimCondition, AnimParams, AnimState, AnimTransition, AnimationStateMachine, StateMotion};
@@ -44,6 +47,7 @@ impl Plugin for AnimationPlugin {
 
         app.register_type::<AnimatorComponent>()
             .register_type::<AnimClipSlot>()
+            .register_type::<AnimatorReadState>()
             .register_type::<AnimParams>()
             .register_type::<AnimationLayer>()
             .register_type::<LayerBlendMode>()
@@ -62,6 +66,14 @@ impl Plugin for AnimationPlugin {
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);
 
+        // Register Lua/Rhai functions owned by the animation crate.
+        {
+            let mut extensions = app
+                .world_mut()
+                .get_resource_or_insert_with(renzora_scripting::extension::ScriptExtensions::default);
+            extensions.register(script_extension::AnimationScriptExtension);
+        }
+
         app.add_systems(
                 Update,
                 (
@@ -77,6 +89,15 @@ impl Plugin for AnimationPlugin {
                 )
                     .chain(),
             );
+
+        app.add_systems(
+            Update,
+            (
+                read_state::auto_init_animator_read_state,
+                read_state::update_animator_read_state,
+            )
+                .chain(),
+        );
 
         app.add_observer(apply_asset_path_changes_to_animators);
     }

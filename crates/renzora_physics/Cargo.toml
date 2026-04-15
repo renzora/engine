@@ -4,15 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["avian"]
+default = ["avian", "lua"]
 avian = ["dep:avian3d"]
 rapier = ["dep:bevy_rapier3d"]
+lua = ["renzora_scripting/lua", "dep:mlua"]
 editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
 
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
 renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
 bevy_egui = { version = "0.39", optional = true }
@@ -23,6 +25,10 @@ version = "0.6.1"
 optional = true
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
+
+# Lua types referenced in the PhysicsScriptExtension trait impl.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }
 
 # bevy_rapier3d not yet released for Bevy 0.18
 [dependencies.bevy_rapier3d]

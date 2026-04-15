@@ -19,6 +19,14 @@ pub struct AnimClipSlot {
     pub looping: bool,
     /// Default playback speed.
     pub speed: f32,
+    /// Override crossfade time when transitioning INTO this clip.
+    /// `None` → fall back to [`AnimatorComponent::blend_duration`].
+    #[serde(default)]
+    pub blend_in: Option<f32>,
+    /// Override crossfade time when transitioning OUT of this clip.
+    /// `None` → fall back to [`AnimatorComponent::blend_duration`].
+    #[serde(default)]
+    pub blend_out: Option<f32>,
 }
 
 impl AnimClipSlot {
@@ -28,6 +36,8 @@ impl AnimClipSlot {
             path: path.into(),
             looping: true,
             speed: 1.0,
+            blend_in: None,
+            blend_out: None,
         }
     }
 }

@@ -13,6 +13,7 @@
 //! - Play-mode visibility sync, debug tree logging
 
 pub mod components;
+pub mod loader;
 pub mod script_extension;
 pub mod shapes;
 pub mod spawn;
@@ -116,6 +117,9 @@ impl Plugin for GameUiPlugin {
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
 
+        // ── Persistent loader layer ────────────────────────────────────
+        app.add_plugins(loader::LoaderPlugin);
+
         // ── Canvas scaler ───────────────────────────────────────────────
         app.add_systems(Update, (update_ui_scale, rehydrate_ui_images, sync_ui_zindex));
 
@@ -168,6 +172,8 @@ impl Plugin for GameUiPlugin {
             info!("[editor] GameUiPlugin (editor panels)");
 
             app.register_panel(palette::WidgetPalettePanel::default());
+            app.init_resource::<canvas::UiCanvasPreviewEnabled>();
+            app.init_resource::<UiWorkspaceActive>();
             app.register_panel(canvas::UiCanvasPanel::default());
             app.register_panel(inspector::UiInspectorPanel::default());
 
@@ -204,6 +210,8 @@ impl Plugin for GameUiPlugin {
                 )
                     .chain(),
             );
+            app.add_systems(Update, auto_switch_to_ui_layout_on_selection);
+            app.add_systems(Update, reset_ui_preview_on_layout_enter);
         }
 
         #[cfg(not(feature = "editor"))]
@@ -355,14 +363,60 @@ fn sync_hierarchy_filter_for_ui_workspace(
     layout_mgr: Res<renzora_editor_framework::LayoutManager>,
     mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
 ) {
-    let is_ui = layout_mgr.active_name() == "UI";
-    let desired = if is_ui {
-        renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas", "Camera3d"])
-    } else {
-        renzora_editor_framework::HierarchyFilter::All
-    };
+    let desired = renzora_editor_framework::HierarchyFilter::All;
+    let _ = layout_mgr;
     if *filter != desired {
         *filter = desired;
+    }
+}
+
+/// Tracks whether the UI workspace was active last frame, so we can detect
+/// transitions into it and reset the preview toggle from settings.
+#[cfg(feature = "editor")]
+#[derive(Resource, Default)]
+struct UiWorkspaceActive(bool);
+
+#[cfg(feature = "editor")]
+fn reset_ui_preview_on_layout_enter(
+    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
+    mut last: ResMut<UiWorkspaceActive>,
+    mut preview: ResMut<canvas::UiCanvasPreviewEnabled>,
+) {
+    let is_ui = layout_mgr.active_name() == "UI";
+    if is_ui && !last.0 {
+        let default_on = settings.map_or(true, |s| s.ui_preview_by_default);
+        preview.0 = default_on;
+    }
+    last.0 = is_ui;
+}
+
+/// When a UI entity (UiCanvas or a descendant of one) becomes selected in the
+/// Scene workspace, auto-switch to the UI workspace so the user can edit it.
+#[cfg(feature = "editor")]
+fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
+    let active = world.resource::<renzora_editor_framework::LayoutManager>().active_name().to_string();
+    if active == "Hub" {
+        return;
+    }
+    let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() else {
+        return;
+    };
+    let Some(entity) = sel.get() else { return };
+    let mut check = entity;
+    let is_ui = loop {
+        if world.get::<UiCanvas>(check).is_some() || world.get::<UiWidget>(check).is_some() {
+            break true;
+        }
+        match world.get::<ChildOf>(check) {
+            Some(c) => check = c.parent(),
+            None => break false,
+        }
+    };
+    match (is_ui, active.as_str()) {
+        (true, "UI") | (false, "Scene") => {}
+        (true, _) => renzora_editor_framework::switch_layout_by_name(world, "UI"),
+        (false, _) => renzora_editor_framework::switch_layout_by_name(world, "Scene"),
     }
 }
 

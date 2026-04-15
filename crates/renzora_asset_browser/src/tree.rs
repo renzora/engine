@@ -379,6 +379,7 @@ fn render_folder_children(
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
             state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
                 path: folder.clone(),
+                paths: state.drag_moving.clone(),
                 name: name.clone(),
                 icon: icon.to_string(),
                 color,
@@ -478,6 +479,7 @@ fn render_folder_files(
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
             state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
                 path: file.clone(),
+                paths: state.drag_moving.clone(),
                 name: name.clone(),
                 icon: icon.to_string(),
                 color,

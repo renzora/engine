@@ -171,15 +171,23 @@ fn layout_scripting() -> DockTree {
     )
 }
 
-/// Animation: Hierarchy | StudioPreview | Properties | Timeline
+/// Animation: Hierarchy | (StudioPreview + StateMachine) | (Properties + Params) | Timeline
 fn layout_animation() -> DockTree {
     DockTree::vertical(
         DockTree::horizontal(
             DockTree::leaf("hierarchy"),
             DockTree::horizontal(
-                DockTree::leaf("studio_preview"),
-                DockTree::leaf("animation"),
-                0.78,
+                DockTree::vertical(
+                    DockTree::leaf("studio_preview"),
+                    DockTree::leaf("animator_state_machine"),
+                    0.55,
+                ),
+                DockTree::vertical(
+                    DockTree::leaf("animation"),
+                    DockTree::leaf("animator_params"),
+                    0.55,
+                ),
+                0.72,
             ),
             0.15,
         ),

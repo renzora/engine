@@ -13,7 +13,7 @@ pub mod scene_io;
 pub mod vfs;
 
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
-pub use renzora::{CurrentProject, MeshInstanceData, PendingSceneLoad, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora::{CurrentProject, MeshInstanceData, PendingSceneLoad, Persistent, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_engine::audio types
@@ -123,7 +123,8 @@ impl Plugin for RuntimePlugin {
         // always resolves from the correct project directory.
         app.add_systems(Update, sync_project_asset_path);
 
-        app.init_resource::<ViewportRenderTarget>();
+        app.init_resource::<ViewportRenderTarget>()
+            .init_resource::<scene_io::SceneLoadState>();
         {
             use bevy::prelude::*;
             use procedural_meshes as pm;
@@ -286,6 +287,7 @@ fn process_pending_scene_loads(world: &mut World) {
             With<Name>,
             Without<EditorCamera>,
             Without<HideInHierarchy>,
+            Without<Persistent>,
         )>();
         for entity in query.iter(world) {
             to_despawn.push(entity);

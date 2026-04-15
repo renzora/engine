@@ -399,7 +399,13 @@ fn load_scene_on_enter(world: &mut World) {
         }
     }
 
-    scene_io::load_current_scene(world);
+    // Editor always loads the scene for editing, regardless of whether a
+    // lifecycle graph exists — the `LifecycleHandlesBoot` gate on
+    // `load_current_scene` is meant for the exported runtime only.
+    if let Some(project) = world.get_resource::<CurrentProject>() {
+        let path = project.main_scene_path();
+        scene_io::load_scene(world, &path);
+    }
     extract_orbit_from_scene_camera(world);
 
     // Update first tab to reflect the loaded scene

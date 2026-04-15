@@ -339,9 +339,15 @@ pub fn run_scripts(world: &mut World) {
             // Execute script
             let engine = world.resource::<ScriptEngine>();
             if !entry.runtime_state.initialized {
-                if entry.variables.iter_all().next().is_none() {
-                    let props = engine.get_script_props(&script_path);
-                    for prop in &props {
+                // Merge any props defined in the script into the variable set.
+                // Existing values (from the scene or user edits in the inspector)
+                // are preserved; only missing props get their defaults. Without
+                // this, adding a new `props()` field after a scene save would
+                // leave it undefined on load — nil/zero in the script would
+                // then break whatever logic relies on it.
+                let props = engine.get_script_props(&script_path);
+                for prop in &props {
+                    if entry.variables.get(&prop.name).is_none() {
                         entry.variables.set(prop.name.clone(), prop.default_value.clone());
                     }
                 }

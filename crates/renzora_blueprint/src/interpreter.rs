@@ -362,29 +362,23 @@ impl<'a> EvalContext<'a> {
                 }
             }
 
-            // ── Character Controller reads (via reflection) ─────────
-            "character/is_grounded" => {
-                let grounded = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "CharacterControllerState", "is_grounded"
+            // ── Physics reads (from PhysicsReadState) ────────────────
+            "physics/is_grounded" => {
+                let g = renzora::reflection::get_reflected_field(
+                    self.world, self.entity, "PhysicsReadState", "grounded"
                 ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
                 .unwrap_or(false);
-                PinValue::Bool(grounded)
+                PinValue::Bool(g)
             }
-            "character/get_velocity" => {
+            "physics/get_velocity" => {
+                let read = |field: &str| -> f32 {
+                    renzora::reflection::get_reflected_field(self.world, self.entity, "PhysicsReadState", field)
+                        .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                        .unwrap_or(0.0)
+                };
                 match pin_name {
-                    "velocity" => {
-                        let vx = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vy = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vz = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        PinValue::Vec3([vx, vy, vz])
-                    }
-                    "speed" => {
-                        let vx = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.x").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vy = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.y").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let vz = renzora::reflection::get_reflected_field(self.world, self.entity, "CharacterControllerState", "velocity.z").and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None }).unwrap_or(0.0);
-                        let v = Vec3::new(vx, vy, vz);
-                        PinValue::Float(Vec3::new(v.x, 0.0, v.z).length())
-                    }
+                    "velocity" => PinValue::Vec3([read("velocity.x"), read("velocity.y"), read("velocity.z")]),
+                    "speed" => PinValue::Float(read("speed")),
                     _ => PinValue::None,
                 }
             }
@@ -414,6 +408,42 @@ impl<'a> EvalContext<'a> {
                 "playing" => PinValue::Bool(false),
                 _ => PinValue::None,
             },
+            "animation/get_length" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let v = renzora::reflection::get_reflected_field(
+                    self.world,
+                    self.entity,
+                    "AnimatorReadState",
+                    &format!("clip_lengths.{}", name),
+                )
+                .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                .unwrap_or(0.0);
+                PinValue::Float(v)
+            }
+            "animation/get_param" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let v = renzora::reflection::get_reflected_field(
+                    self.world,
+                    self.entity,
+                    "AnimatorReadState",
+                    &format!("params.{}", name),
+                )
+                .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                .unwrap_or(0.0);
+                PinValue::Float(v)
+            }
+            "animation/get_bool" => {
+                let name = self.resolve_input(node_id, "name").as_string();
+                let v = renzora::reflection::get_reflected_field(
+                    self.world,
+                    self.entity,
+                    "AnimatorReadState",
+                    &format!("bool_params.{}", name),
+                )
+                .and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .unwrap_or(false);
+                PinValue::Bool(v)
+            }
 
             // ── Component reflection read ─────────────────────────────
             "component/get_field" => {
@@ -800,22 +830,13 @@ impl<'a> EvalContext<'a> {
                 self.push_action_vec3("set_velocity", &[], &[("x", [v[0], v[1], v[2]])]);
                 self.follow_exec(node_id, "then");
             }
+            "physics/kinematic_slide" => {
+                let d = self.resolve_input(node_id, "delta").as_vec3();
+                self.push_action_vec3("kinematic_slide", &[], &[("x", [d[0], d[1], d[2]])]);
+                self.follow_exec(node_id, "then");
+            }
 
             // ── Character Controller ─────────────────────────────────
-            "character/move" => {
-                let dir = self.resolve_input(node_id, "direction").as_vec2();
-                self.character_commands.push(CharacterCommand::Move(Vec2::new(dir[0], dir[1])));
-                self.follow_exec(node_id, "then");
-            }
-            "character/jump" => {
-                self.character_commands.push(CharacterCommand::Jump);
-                self.follow_exec(node_id, "then");
-            }
-            "character/sprint" => {
-                let sprinting = self.resolve_input(node_id, "sprinting").as_bool();
-                self.character_commands.push(CharacterCommand::Sprint(sprinting));
-                self.follow_exec(node_id, "then");
-            }
 
             // ── Audio ────────────────────────────────────────────────
             "audio/play_sound" => {

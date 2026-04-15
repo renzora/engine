@@ -215,7 +215,9 @@ fn animator_custom_ui(
 
     ui.add_space(4.0);
 
-    // Drop zone for adding new .anim files
+    // Drop zone for adding new .anim files — fixed height so it doesn't
+    // stretch to fill the inspector.
+    const DROP_ZONE_HEIGHT: f32 = 32.0;
     let drop_frame = egui::Frame::new()
         .fill(surface_color)
         .stroke(egui::Stroke::new(1.0, muted_color))
@@ -224,7 +226,9 @@ fn animator_custom_ui(
 
     let drop_response = drop_frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.centered_and_justified(|ui| {
+        ui.set_min_height(DROP_ZONE_HEIGHT);
+        ui.set_max_height(DROP_ZONE_HEIGHT);
+        ui.horizontal_centered(|ui| {
             ui.label(
                 egui::RichText::new(format!(
                     "{} Drop .anim files here",
@@ -236,33 +240,55 @@ fn animator_custom_ui(
         });
     }).response;
 
-    // Handle drag-drop from asset browser
+    // Handle drag-drop from asset browser (supports multi-select).
     if let Some(payload) = world.get_resource::<renzora_ui::asset_drag::AssetDragPayload>() {
         if payload.is_detached
-            && payload.matches_extensions(&["anim"])
             && drop_response.hovered()
             && !ui.ctx().input(|i| i.pointer.any_down())
         {
-            let path = payload.path.clone();
-            let name = payload.name.clone();
-            // Strip .anim extension from the display name
-            let clip_name = name.strip_suffix(".anim").unwrap_or(&name).to_string();
+            // Collect all .anim paths from the drag (multi-select aware).
+            let dragged: Vec<std::path::PathBuf> = payload
+                .paths
+                .iter()
+                .cloned()
+                .filter(|p| {
+                    p.extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| e.eq_ignore_ascii_case("anim"))
+                        .unwrap_or(false)
+                })
+                .collect();
 
-            if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
-                let asset_path = project.make_asset_relative(&path);
-                cmds.push(move |world: &mut World| {
-                    if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {
-                        // Don't add duplicates
-                        if !a.clips.iter().any(|c| c.path == asset_path) {
-                            a.clips.push(crate::AnimClipSlot {
-                                name: clip_name,
-                                path: asset_path,
-                                looping: true,
-                                speed: 1.0,
-                            });
+            if !dragged.is_empty() {
+                if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+                    let project = project.clone();
+                    cmds.push(move |world: &mut World| {
+                        if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {
+                            for path in &dragged {
+                                let asset_path = project.make_asset_relative(path);
+                                if a.clips.iter().any(|c| c.path == asset_path) {
+                                    continue;
+                                }
+                                let name = path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("clip");
+                                let clip_name = name
+                                    .strip_suffix(".anim")
+                                    .unwrap_or(name)
+                                    .to_string();
+                                a.clips.push(crate::AnimClipSlot {
+                                    name: clip_name,
+                                    path: asset_path,
+                                    looping: true,
+                                    speed: 1.0,
+                                    blend_in: None,
+                                    blend_out: None,
+                                });
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
     }

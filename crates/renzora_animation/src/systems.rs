@@ -391,8 +391,21 @@ pub fn process_animation_commands(
                     continue;
                 };
 
-                let blend =
-                    Duration::from_secs_f32(animator.blend_duration.max(0.0));
+                // Per-clip blend: prefer target.blend_in, else source.blend_out,
+                // else the animator's global blend_duration.
+                let target_blend_in = animator
+                    .get_slot(&name)
+                    .and_then(|s| s.blend_in);
+                let source_blend_out = state
+                    .current_clip
+                    .as_ref()
+                    .and_then(|n| animator.get_slot(n))
+                    .and_then(|s| s.blend_out);
+                let blend_secs = target_blend_in
+                    .or(source_blend_out)
+                    .unwrap_or(animator.blend_duration)
+                    .max(0.0);
+                let blend = Duration::from_secs_f32(blend_secs);
                 let playing = transitions.play(&mut player, node_idx, blend);
                 if looping {
                     playing.repeat();

@@ -674,6 +674,11 @@ fn render_editor_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &T
             ui.checkbox(&mut settings.dev_mode, "Enable plugin tools")
         });
     });
+    render_category(ui, DESKTOP, "UI Workspace", CategoryStyle::interface(), "settings_ui_workspace", true, theme, |ui| {
+        settings_row(ui, 0, "Preview", theme, |ui| {
+            ui.checkbox(&mut settings.ui_preview_by_default, "Show game viewport behind canvas by default")
+        });
+    });
 }
 
 fn render_scripting_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {

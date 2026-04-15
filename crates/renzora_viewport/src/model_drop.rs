@@ -286,6 +286,8 @@ fn discover_animation_clips(
             path: anim_asset_path,
             looping: true,
             speed: 1.0,
+            blend_in: None,
+            blend_out: None,
         });
     }
 

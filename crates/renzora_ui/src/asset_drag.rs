@@ -11,8 +11,11 @@ use renzora_theme::Theme;
 /// removed on drop or cancel.
 #[derive(Resource, Clone, Debug)]
 pub struct AssetDragPayload {
-    /// Full path to the asset being dragged.
+    /// Full path to the asset being dragged (primary, for ghost + hover checks).
     pub path: PathBuf,
+    /// All paths in a multi-select drag (includes `path` as the first entry).
+    /// When the drag is a single item this is `vec![path.clone()]`.
+    pub paths: Vec<PathBuf>,
     /// Display name (filename).
     pub name: String,
     /// Phosphor icon string for this file type.

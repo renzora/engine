@@ -217,6 +217,11 @@ pub struct EditorCamera;
 #[derive(Component)]
 pub struct HideInHierarchy;
 
+/// Marker component — entity persists across scene loads (e.g. loader UI root).
+/// `process_pending_scene_loads` and similar despawn-the-world logic must skip these.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct Persistent;
+
 /// Marker component — entity is locked from editing in the hierarchy.
 #[derive(Component)]
 pub struct EditorLocked;
