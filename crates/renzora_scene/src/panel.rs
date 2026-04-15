@@ -56,7 +56,16 @@ impl EditorPanel for ScenesPanel {
         };
 
         let scenes_dir = project.resolve_path("scenes");
-        let current_scene_abs = if project.config.main_scene.is_empty() {
+        // Highlight the scene the active document tab points at, not the
+        // project's boot scene — those can differ.
+        let current_scene_abs = world
+            .get_resource::<renzora_ui::DocumentTabState>()
+            .and_then(|tabs| {
+                tabs.tabs
+                    .get(tabs.active_tab)
+                    .and_then(|t| t.scene_path.as_ref().map(|p| project.resolve_path(p)))
+            });
+        let boot_scene_abs = if project.config.main_scene.is_empty() {
             None
         } else {
             Some(project.resolve_path(&project.config.main_scene))
@@ -134,6 +143,10 @@ impl EditorPanel for ScenesPanel {
                     .as_ref()
                     .map(|c| paths_equal(c, &path))
                     .unwrap_or(false);
+                let is_boot = boot_scene_abs
+                    .as_ref()
+                    .map(|c| paths_equal(c, &path))
+                    .unwrap_or(false);
                 let name = path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -162,6 +175,10 @@ impl EditorPanel for ScenesPanel {
                         theme.surfaces.faint.to_color32()
                     };
                     ui.painter().rect_filled(rect, 4.0, bg);
+
+                    if response.hovered() && !is_renaming {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
 
                     // Icon
                     ui.painter().text(
@@ -229,6 +246,16 @@ impl EditorPanel for ScenesPanel {
                             if is_current { text_primary } else { text_primary },
                         );
 
+                        if is_boot {
+                            ui.painter().text(
+                                egui::pos2(rect.max.x - 10.0, rect.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                regular::STAR,
+                                egui::FontId::proportional(12.0),
+                                accent,
+                            );
+                        }
+
                         // Double-click opens scene
                         if response.double_clicked() && !is_current {
                             let target = path.clone();
@@ -256,6 +283,30 @@ impl EditorPanel for ScenesPanel {
                                     open_scene(world, &target);
                                 });
                                 ui.close();
+                            }
+                            if !is_boot {
+                                if ui
+                                    .button(format!("{} Set as Boot Scene", regular::STAR))
+                                    .clicked()
+                                {
+                                    let target = path.clone();
+                                    commands.push(move |world: &mut World| {
+                                        if let Some(mut project) =
+                                            world.get_resource_mut::<CurrentProject>()
+                                        {
+                                            if let Some(rel) = project.make_relative(&target) {
+                                                project.config.main_scene = rel;
+                                                if let Err(e) = project.save_config() {
+                                                    renzora::core::console_log::console_error(
+                                                        "Scene",
+                                                        format!("Failed to save project config: {e}"),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    });
+                                    ui.close();
+                                }
                             }
                             if ui
                                 .button(format!("{} Delete", regular::TRASH))
@@ -341,13 +392,8 @@ fn open_scene(world: &mut World, path: &std::path::Path) {
     scene_io::load_scene(world, path);
     crate::extract_orbit_from_scene_camera(world);
 
-    // Update project config + document tab.
-    if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
-        if let Some(rel) = project.make_relative(path) {
-            project.config.main_scene = rel.clone();
-            let _ = project.save_config();
-        }
-    }
+    // Update the active document tab — not the project's boot scene, which
+    // stays pinned to whatever the user configured in project settings.
     let relative = world
         .get_resource::<CurrentProject>()
         .and_then(|p| p.make_relative(path));
