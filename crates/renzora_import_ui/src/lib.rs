@@ -5,7 +5,7 @@
 //! assets directory.
 
 #[cfg(not(target_arch = "wasm32"))]
-mod overlay;
+pub(crate) mod overlay;
 
 use bevy::prelude::*;
 
@@ -52,16 +52,23 @@ fn import_overlay_system(world: &mut World) {
     cached.0.apply(world);
     world.insert_resource(cached);
 
-    // Check for ImportRequested marker from the asset browser
-    if world
-        .remove_resource::<renzora::core::ImportRequested>()
-        .is_some()
-    {
-        world.resource_mut::<overlay::ImportOverlayState>().visible = true;
+    let auto_import = world
+        .get_resource::<renzora_editor_framework::EditorSettings>()
+        .map(|s| s.auto_import_on_drop)
+        .unwrap_or(true);
 
-        // Pick up suggested target directory
-        if let Some(target) = world.remove_resource::<renzora::core::ImportTargetDir>() {
-            world.resource_mut::<overlay::ImportOverlayState>().target_directory = target.0;
+    // Check for ImportRequested marker from the asset browser
+    let import_requested = world
+        .remove_resource::<renzora::core::ImportRequested>()
+        .is_some();
+    let requested_target = world.remove_resource::<renzora::core::ImportTargetDir>();
+
+    if import_requested {
+        if let Some(ref target) = requested_target {
+            world.resource_mut::<overlay::ImportOverlayState>().target_directory = target.0.clone();
+        }
+        if !auto_import {
+            world.resource_mut::<overlay::ImportOverlayState>().visible = true;
         }
     }
 
@@ -77,9 +84,6 @@ fn import_overlay_system(world: &mut World) {
 
         if !dropped.is_empty() {
             let mut state = world.resource_mut::<overlay::ImportOverlayState>();
-            if !state.visible {
-                state.visible = true;
-            }
             let was_empty = state.pending_files.is_empty();
             for path in &dropped {
                 if !state.pending_files.contains(path) {
@@ -92,48 +96,37 @@ fn import_overlay_system(world: &mut World) {
                     state.settings.scale = scale;
                 }
             }
+            if !auto_import {
+                state.visible = true;
+            }
         }
     }
 
-    // Draw hover hint when dragging 3D files over the editor
-    {
-        let has_3d_hover = ctx.input(|i| {
-            i.raw
-                .hovered_files
-                .iter()
-                .any(|f| {
-                    f.path
-                        .as_ref()
-                        .map(|p| renzora_import::formats::is_supported(p))
-                        .unwrap_or(false)
-                })
-        });
+    // Auto-import path: kick off the worker silently when files are pending
+    // and the user has opted into auto-import. The overlay stays hidden.
+    if auto_import {
+        overlay::poll_import_task(world);
 
-        if has_3d_hover && !world.resource::<overlay::ImportOverlayState>().visible {
-            let screen = ctx.input(|i| i.viewport_rect());
-            let painter = ctx.layer_painter(bevy_egui::egui::LayerId::new(
-                bevy_egui::egui::Order::Foreground,
-                bevy_egui::egui::Id::new("import_drop_hint"),
-            ));
-            painter.rect_filled(
-                screen,
-                0.0,
-                bevy_egui::egui::Color32::from_rgba_premultiplied(30, 80, 200, 40),
-            );
-            painter.rect_stroke(
-                screen.shrink(4.0),
-                8.0,
-                bevy_egui::egui::Stroke::new(2.0, bevy_egui::egui::Color32::from_rgb(80, 140, 255)),
-                bevy_egui::egui::StrokeKind::Outside,
-            );
-            painter.text(
-                screen.center(),
-                bevy_egui::egui::Align2::CENTER_CENTER,
-                "Drop 3D model to import",
-                bevy_egui::egui::FontId::proportional(20.0),
-                bevy_egui::egui::Color32::from_rgb(180, 210, 255),
-            );
+        let should_start = {
+            let state = world.resource::<overlay::ImportOverlayState>();
+            !state.pending_files.is_empty() && state.active_task.is_none()
+        };
+        if should_start {
+            overlay::run_import(world);
         }
+
+        // Reset idle terminal state so the next drop starts fresh.
+        let done = matches!(
+            world.resource::<overlay::ImportOverlayState>().progress,
+            overlay::ImportProgress::Done(_) | overlay::ImportProgress::Error(_)
+        );
+        if done {
+            let mut state = world.resource_mut::<overlay::ImportOverlayState>();
+            state.pending_files.clear();
+            state.progress = overlay::ImportProgress::Idle;
+            state.log_entries.clear();
+        }
+        return;
     }
 
     let show = world.resource::<overlay::ImportOverlayState>().visible;

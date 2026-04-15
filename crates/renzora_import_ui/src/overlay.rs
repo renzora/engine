@@ -49,7 +49,7 @@ enum ImportMsg {
 }
 
 /// Handle for a running background import.
-struct ImportTask {
+pub(crate) struct ImportTask {
     rx: Mutex<mpsc::Receiver<ImportMsg>>,
 }
 
@@ -64,7 +64,7 @@ pub struct ImportOverlayState {
     /// Per-file import results shown in the output log.
     pub log_entries: Vec<ImportLogEntry>,
     /// Background import task (if running).
-    active_task: Option<ImportTask>,
+    pub(crate) active_task: Option<ImportTask>,
 }
 
 impl Default for ImportOverlayState {
@@ -82,7 +82,7 @@ impl Default for ImportOverlayState {
 }
 
 /// Drain progress messages from the background thread into overlay state.
-fn poll_import_task(world: &mut World) {
+pub(crate) fn poll_import_task(world: &mut World) {
     let has_task = world
         .resource::<ImportOverlayState>()
         .active_task
@@ -728,7 +728,7 @@ fn close_overlay(world: &mut World) {
     state.active_task = None;
 }
 
-fn run_import(world: &mut World) {
+pub(crate) fn run_import(world: &mut World) {
     let project = world.resource::<CurrentProject>().clone();
     let state = world.resource::<ImportOverlayState>();
     let files = state.pending_files.clone();
@@ -761,6 +761,23 @@ fn run_import(world: &mut World) {
     std::thread::spawn(move || {
         import_worker(tx, project, files, settings, target_dir);
     });
+}
+
+/// Pick a model-folder name under `dest` that doesn't already exist.
+/// Returns (`name`, `dest/name`). If `base` is taken, tries `base1`, `base2`, …
+fn unique_model_dir(dest: &std::path::Path, base: &str) -> (String, PathBuf) {
+    let candidate = dest.join(base);
+    if !candidate.exists() {
+        return (base.to_string(), candidate);
+    }
+    for i in 1..u32::MAX {
+        let name = format!("{}{}", base, i);
+        let path = dest.join(&name);
+        if !path.exists() {
+            return (name, path);
+        }
+    }
+    (base.to_string(), dest.join(base))
 }
 
 /// Background import worker — runs on a separate thread.
@@ -834,11 +851,12 @@ fn import_worker(
                 // --- Phase: writing ---
                 // Each imported model gets its own folder so all derived
                 // assets (animations, textures, materials) live together.
-                let stem = source_path
+                let base_stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
-                let model_dir = dest.join(stem);
+                let (stem_owned, model_dir) = unique_model_dir(&dest, base_stem);
+                let stem: &str = &stem_owned;
                 if let Err(e) = std::fs::create_dir_all(&model_dir) {
                     let msg = format!("failed to create model folder: {}", e);
                     errors.push(format!("{}: {}", file_name, msg));
@@ -987,11 +1005,12 @@ fn import_worker(
                     .unwrap_or("")
                     .to_lowercase();
 
-                let stem = source_path
+                let base_stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
-                let fallback_model_dir = dest.join(stem);
+                let (stem_owned, fallback_model_dir) = unique_model_dir(&dest, base_stem);
+                let stem: &str = &stem_owned;
                 let anim_dir = fallback_model_dir.join("animations");
 
                 let anim_fallback_result: Option<Result<_, String>> =

@@ -567,6 +567,13 @@ fn render_general_tab(
             ui.checkbox(&mut settings.hide_cursor_in_play_mode, "Hide and lock cursor in play mode")
         });
     });
+
+    // Assets Section
+    render_category(ui, FOLDER_OPEN, "Assets", CategoryStyle::interface(), "settings_assets", true, theme, |ui| {
+        settings_row(ui, 0, "Drop Import", theme, |ui| {
+            ui.checkbox(&mut settings.auto_import_on_drop, "Auto-import on drop (skip import overlay)")
+        });
+    });
 }
 
 // ── Viewport tab ────────────────────────────────────────────────────────────

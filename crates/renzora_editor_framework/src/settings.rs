@@ -124,6 +124,8 @@ pub struct EditorSettings {
     pub scripts_use_game_camera: bool,
     /// Hide and lock the cursor when entering play mode
     pub hide_cursor_in_play_mode: bool,
+    /// Auto-import dropped assets with default settings instead of showing the import overlay
+    pub auto_import_on_drop: bool,
     /// Whether the settings overlay is open
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
@@ -143,6 +145,7 @@ impl Default for EditorSettings {
             script_rerun_on_ready_on_reload: true,
             scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
+            auto_import_on_drop: true,
             show_settings: false,
             plugins_dir: "plugins".to_string(),
         }

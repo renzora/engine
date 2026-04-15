@@ -14,6 +14,7 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_import = { path = "../renzora_import" }
 renzora_material = { path = "../renzora_material" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
