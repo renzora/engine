@@ -317,7 +317,7 @@ fn layout_ui() -> DockTree {
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
             DockTree::leaf("widget_library"),
-            0.5,
+            0.6,
         ),
         DockTree::horizontal(
             // Center: UI canvas on top, assets+console below

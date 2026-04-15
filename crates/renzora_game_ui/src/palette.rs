@@ -66,7 +66,6 @@ pub fn draw_widget_drag_ghost(
 #[derive(Default)]
 struct PaletteState {
     search: String,
-    active_category: Option<usize>,
 }
 
 /// Widget library panel — shows available widget types as a responsive tile grid.
@@ -154,7 +153,7 @@ impl EditorPanel for WidgetPalettePanel {
     }
 
     fn title(&self) -> &str {
-        "Widgets"
+        "UI Widgets"
     }
 
     fn icon(&self) -> Option<&str> {
@@ -230,34 +229,11 @@ impl EditorPanel for WidgetPalettePanel {
 
         ui.add_space(spacing);
 
-        // Category filter tabs
-        ui.horizontal(|ui| {
-            ui.add_space(panel_padding);
-            ui.spacing_mut().item_spacing.x = 2.0;
-
-            if ui
-                .selectable_label(state.active_category.is_none(), "All")
-                .clicked()
-            {
-                state.active_category = None;
-            }
-            for (i, &(name, _icon, _types)) in CATEGORIES.iter().enumerate() {
-                let selected = state.active_category == Some(i);
-                if ui.selectable_label(selected, name).clicked() {
-                    state.active_category = Some(i);
-                }
-            }
-        });
-
-        ui.add_space(spacing);
-
         // Filter widgets
         let search_lower = state.search.to_lowercase();
         let widgets: Vec<&UiWidgetType> = CATEGORIES
             .iter()
-            .enumerate()
-            .filter(|(i, _)| state.active_category.is_none() || state.active_category == Some(*i))
-            .flat_map(|(_, &(_name, _icon, types))| types.iter())
+            .flat_map(|&(_name, _icon, types)| types.iter())
             .filter(|wt| {
                 search_lower.is_empty() || wt.label().to_lowercase().contains(&search_lower)
             })
@@ -280,13 +256,79 @@ impl EditorPanel for WidgetPalettePanel {
             let available_width = ui.available_width() - panel_padding * 2.0;
             let min_tile = 56.0;
             let max_tile = 80.0;
+            let use_list = available_width < min_tile * 2.0 + spacing;
+
+            ui.add_space(2.0);
+
+            if use_list {
+                let row_height = 26.0;
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for wtype in &widgets {
+                        ui.horizontal(|ui| {
+                            ui.add_space(panel_padding);
+                            let (rect, response) = ui.allocate_exact_size(
+                                Vec2::new(available_width, row_height),
+                                egui::Sense::click_and_drag(),
+                            );
+                            let hovered = response.hovered();
+                            let bg = if hovered {
+                                theme.widgets.hovered_bg.to_color32()
+                            } else {
+                                theme.surfaces.faint.to_color32()
+                            };
+                            ui.painter().rect_filled(rect, 4.0, bg);
+                            if hovered {
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 10.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                wtype.icon(),
+                                egui::FontId::proportional(14.0),
+                                if hovered { accent } else { text_primary },
+                            );
+                            ui.painter().text(
+                                egui::pos2(rect.min.x + 30.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                wtype.label(),
+                                egui::FontId::proportional(11.0),
+                                text_primary,
+                            );
+                            response
+                                .clone()
+                                .on_hover_text(format!("Drag onto canvas or click to add a {} widget", wtype.label()));
+                            if response.drag_started() {
+                                if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                                    let wt = (*wtype).clone();
+                                    commands.push(move |world: &mut World| {
+                                        world.insert_resource(WidgetDragPayload {
+                                            widget_type: wt,
+                                            origin: pos,
+                                            is_detached: false,
+                                        });
+                                    });
+                                }
+                            }
+                            if response.clicked() {
+                                let wt = (*wtype).clone();
+                                commands.push(move |world: &mut World| {
+                                    crate::spawn::spawn_widget(world, &wt, None);
+                                });
+                            }
+                        });
+                    }
+                });
+                ui.add_space(panel_padding);
+                return;
+            }
+
             let cols =
                 ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
             let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
                 .clamp(min_tile, max_tile);
             let label_height = 16.0;
 
-            ui.add_space(2.0);
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = spacing;
 

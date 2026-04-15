@@ -973,7 +973,14 @@ pub fn editor_ui_system(world: &mut World) {
 
     // K) Handle title bar actions
     match title_action {
-        TitleBarAction::SwitchLayout(i) => switch_layout(world, i),
+        TitleBarAction::SwitchLayout(i) => {
+            // Clear selection first so auto-switch-on-selection systems don't
+            // immediately override the user's manual layout choice.
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.set(None);
+            }
+            switch_layout(world, i);
+        }
         TitleBarAction::NewProject => handle_new_project(world),
         TitleBarAction::OpenProject => handle_open_project(world),
         TitleBarAction::NewScene => {
