@@ -37,7 +37,6 @@ members = [
     "crates/renzora_script_variables",
     "crates/renzora_blueprint_editor",
     "crates/renzora_network_editor",
-    "crates/renzora_lifecycle_editor",
     "crates/renzora_daw",
     "crates/renzora_level_presets",
     "crates/renzora_shader_editor",

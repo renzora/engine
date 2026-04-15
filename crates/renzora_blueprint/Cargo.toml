@@ -7,4 +7,5 @@ edition = "2021"
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
+renzora_globals = { path = "../renzora_globals" }
 log = "0.4"

@@ -13,7 +13,6 @@ pub use renzora_scripting;
 pub use renzora_blueprint;
 pub use renzora_input;
 pub use renzora_physics;
-pub use renzora_lifecycle;
 pub use renzora_terrain;
 pub use renzora_lighting;
 pub use renzora_water;

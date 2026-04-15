@@ -32,7 +32,6 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
             WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
             WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
-            WorkspaceLayout { name: "Lifecycle".into(), tree: layout_lifecycle() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
         ];
 
@@ -369,37 +368,6 @@ fn layout_audio() -> DockTree {
             0.6,
         ),
         0.6,
-    )
-}
-
-/// Lifecycle: Hierarchy+NetworkEntities | LifecycleGraph+Monitor+Console | Properties+Settings
-fn layout_lifecycle() -> DockTree {
-    DockTree::horizontal(
-        // Left: hierarchy + network entities
-        DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("network_entities"),
-            0.5,
-        ),
-        DockTree::horizontal(
-            // Center: lifecycle graph on top, monitor + console below
-            DockTree::vertical(
-                DockTree::leaf("lifecycle_graph"),
-                DockTree::Leaf {
-                    tabs: vec!["lifecycle_monitor".into(), "console".into()],
-                    active_tab: 0,
-                },
-                0.7,
-            ),
-            // Right: node properties + lifecycle settings
-            DockTree::vertical(
-                DockTree::leaf("lifecycle_properties"),
-                DockTree::leaf("lifecycle_settings"),
-                0.5,
-            ),
-            0.75,
-        ),
-        0.18,
     )
 }
 

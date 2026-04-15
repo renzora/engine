@@ -646,7 +646,7 @@ pub struct PlayModeCamera;
 pub struct UiCanvasPreviewCamera;
 
 /// Lightweight network status bridge — updated by the network crate,
-/// read by lifecycle and other crates that need connection info without
+/// read by blueprint and other crates that need connection info without
 /// depending on renzora_network.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct NetworkBridge {
@@ -657,12 +657,6 @@ pub struct NetworkBridge {
     /// Number of connected clients (server only).
     pub player_count: i32,
 }
-
-/// Marker resource: inserted by LifecyclePlugin when the lifecycle graph
-/// has an `on_game_start` node. The runtime skips `load_current_scene`
-/// when this is present (the lifecycle handles it instead).
-#[derive(Resource)]
-pub struct LifecycleHandlesBoot;
 
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
@@ -916,13 +910,13 @@ impl ScriptInput {
 }
 
 // ============================================================================
-// Graph types (shared between blueprint, lifecycle, and editor crates)
+// Graph types (shared between blueprint and editor crates)
 // ============================================================================
 
 /// Node identifier in a visual scripting graph.
 pub type NodeId = u64;
 
-/// Pin data types for blueprint/lifecycle nodes.
+/// Pin data types for blueprint nodes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Reflect)]
 pub enum PinType {
     /// Execution flow (white wires) — controls order of operations.
@@ -1126,7 +1120,7 @@ impl PinTemplate {
     }
 }
 
-/// Static definition of a blueprint/lifecycle node type.
+/// Static definition of a blueprint node type.
 pub struct BlueprintNodeDef {
     pub node_type: &'static str,
     pub display_name: &'static str,

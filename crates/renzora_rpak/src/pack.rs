@@ -203,7 +203,7 @@ where
     };
 
     // Always include project config files
-    for name in &["project.toml", "project.ron", "lifecycle.json"] {
+    for name in &["project.toml", "project.ron"] {
         let path = project_dir.join(name);
         if path.is_file() {
             if visited.insert(name.to_string()) {
@@ -266,7 +266,7 @@ pub const SERVER_EXTENSIONS: &[&str] = &[
     "rhai",       // scripts
     "blueprint",  // visual scripting
     "toml",       // project config
-    "json",       // data files, lifecycle graphs
+    "json",       // data files
 ];
 
 // ============================================================================
@@ -387,7 +387,6 @@ const SERVER_KEEP_PREFIXES: &[&str] = &[
     "renzora_blueprint::",
     "renzora_terrain::",
     "renzora_network::",
-    "renzora_lifecycle::",
     "renzora_engine::",
 ];
 

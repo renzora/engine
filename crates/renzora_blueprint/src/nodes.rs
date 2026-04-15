@@ -22,6 +22,7 @@ pub const CAT_DEBUG: &str = "Debug";
 pub const CAT_VARIABLE: &str = "Variable";
 pub const CAT_RENDERING: &str = "Rendering";
 pub const CAT_ANIMATION: &str = "Animation";
+pub const CAT_LIFECYCLE: &str = "Lifecycle";
 
 // ── Color constants for categories ──────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const CLR_DEBUG: [u8; 3] = [180, 180, 80];
 const CLR_VARIABLE: [u8; 3] = [60, 180, 120];
 const CLR_RENDERING: [u8; 3] = [200, 150, 120];
 const CLR_ANIMATION: [u8; 3] = [80, 200, 180];
+const CLR_LIFECYCLE: [u8; 3] = [90, 180, 100];
 
 // =============================================================================
 // EVENT NODES — entry points, no exec input
@@ -1860,6 +1862,51 @@ pub static NET_SPAWN: BlueprintNodeDef = BlueprintNodeDef {
 };
 
 // =============================================================================
+// LIFECYCLE NODES
+// =============================================================================
+
+pub static ON_SCENE_LOADED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "lifecycle/on_scene_loaded",
+    display_name: "On Scene Loaded",
+    category: CAT_LIFECYCLE,
+    description: "Fires when a scene finishes loading. Output \"scene\" is the loaded scene path.",
+    pins: || vec![
+        PinTemplate::exec_out("exec", ""),
+        PinTemplate::output("scene", "Scene", PinType::String),
+    ],
+    color: CLR_LIFECYCLE,
+};
+
+pub static GLOBAL_GET: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "lifecycle/global_get",
+    display_name: "Global Get",
+    category: CAT_LIFECYCLE,
+    description: "Read a value from the cross-system global store.",
+    pins: || vec![
+        PinTemplate::input("key", "Key", PinType::String)
+            .with_default(PinValue::String(String::new())),
+        PinTemplate::output("value", "Value", PinType::String),
+    ],
+    color: CLR_LIFECYCLE,
+};
+
+pub static GLOBAL_SET: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "lifecycle/global_set",
+    display_name: "Global Set",
+    category: CAT_LIFECYCLE,
+    description: "Write a value to the cross-system global store.",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("key", "Key", PinType::String)
+            .with_default(PinValue::String(String::new())),
+        PinTemplate::input("value", "Value", PinType::String)
+            .with_default(PinValue::String(String::new())),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_LIFECYCLE,
+};
+
+// =============================================================================
 // REGISTRY
 // =============================================================================
 
@@ -1918,6 +1965,8 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &TWEEN_POSITION,
     // Network
     &NET_IS_SERVER, &NET_IS_CONNECTED, &NET_SEND_MESSAGE, &NET_ON_MESSAGE, &NET_SPAWN,
+    // Lifecycle
+    &ON_SCENE_LOADED, &GLOBAL_GET, &GLOBAL_SET,
 ];
 
 /// Get all unique categories in display order.
@@ -1926,7 +1975,7 @@ pub fn categories() -> Vec<&'static str> {
         CAT_EVENT, CAT_FLOW, CAT_MATH, CAT_STRING, CAT_CONVERT,
         CAT_TRANSFORM, CAT_INPUT,
         CAT_ENTITY, CAT_COMPONENT, CAT_PHYSICS, CAT_AUDIO, CAT_UI,
-        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_NETWORK, CAT_DEBUG,
+        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_NETWORK, CAT_LIFECYCLE, CAT_DEBUG,
     ]
 }
 

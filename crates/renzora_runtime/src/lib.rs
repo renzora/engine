@@ -12,7 +12,6 @@ pub use renzora_scripting;
 pub use renzora_blueprint;
 pub use renzora_input;
 pub use renzora_physics;
-pub use renzora_lifecycle;
 pub use renzora_terrain;
 pub use renzora_lighting;
 pub use renzora_water;
@@ -114,7 +113,7 @@ pub fn add_engine_plugins(app: &mut App) {
     app.add_plugins(renzora_blueprint::BlueprintPlugin);
     app.add_plugins(renzora_input::InputPlugin);
     app.add_plugins(renzora_physics::PhysicsPlugin);
-    app.add_plugins(renzora_lifecycle::LifecyclePlugin);
+    app.add_plugins(renzora_globals::GlobalsPlugin);
     app.add_plugins(renzora_terrain::TerrainPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_water::WaterPlugin);

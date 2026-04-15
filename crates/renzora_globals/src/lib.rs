@@ -1,6 +1,6 @@
 //! Cross-system keyed value store.
 //!
-//! `GlobalStore` is a `Resource` that any subsystem (lifecycle, blueprint, script) can
+//! `GlobalStore` is a `Resource` that any subsystem (blueprint, script) can
 //! read and write. A `GlobalChanged` event fires once per frame for every key that was
 //! mutated since the last drain.
 

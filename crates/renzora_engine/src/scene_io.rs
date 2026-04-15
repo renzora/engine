@@ -536,14 +536,7 @@ pub fn load_scene(world: &mut World, path: &Path) {
 }
 
 /// Load the current project's main scene.
-///
-/// Skipped when [`LifecycleHandlesBoot`](renzora::LifecycleHandlesBoot) is present,
-/// because the lifecycle graph's `On Game Start` node controls the boot scene.
 pub fn load_current_scene(world: &mut World) {
-    if world.get_resource::<renzora::LifecycleHandlesBoot>().is_some() {
-        info!("load_current_scene: skipped (lifecycle handles boot)");
-        return;
-    }
     let Some(project) = world.get_resource::<CurrentProject>() else {
         warn!("load_current_scene: no CurrentProject resource");
         return;

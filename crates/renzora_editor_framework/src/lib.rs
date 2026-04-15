@@ -279,9 +279,30 @@ impl Plugin for RenzoraEditorPlugin {
         // Restore the user's saved workspace (all layouts + active index)
         // if one exists, otherwise use the factory defaults. The active
         // layout's tree seeds `DockingState`.
+        //
+        // Reconcile against the current factory defaults: drop any saved
+        // layouts whose names no longer exist (e.g. removed workspaces like
+        // the old "Lifecycle" one), and append any new defaults that weren't
+        // in the save file. Preserves user customisations on surviving names.
         let saved_manager = renzora_ui::load_saved_workspace();
         let (initial_manager, initial_docking) = match saved_manager {
-            Some(manager) => {
+            Some(mut manager) => {
+                let defaults = LayoutManager::default();
+                let default_names: std::collections::HashSet<&str> =
+                    defaults.layouts.iter().map(|l| l.name.as_str()).collect();
+                let previous_active_name = manager
+                    .layouts
+                    .get(manager.active_index)
+                    .map(|l| l.name.clone());
+                manager.layouts.retain(|l| default_names.contains(l.name.as_str()));
+                for def in &defaults.layouts {
+                    if !manager.layouts.iter().any(|l| l.name == def.name) {
+                        manager.layouts.push(def.clone());
+                    }
+                }
+                manager.active_index = previous_active_name
+                    .and_then(|name| manager.layouts.iter().position(|l| l.name == name))
+                    .unwrap_or(0);
                 let tree = manager
                     .layouts
                     .get(manager.active_index)

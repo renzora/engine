@@ -1,7 +1,7 @@
 //! Client-side networking helpers.
 //!
-//! Connection is driven dynamically by `PendingNetworkConnect` (from lifecycle
-//! graph or scripts). The Lightyear `ClientPlugins` infrastructure is added
+//! Connection is driven dynamically by `PendingNetworkConnect` (from
+//! blueprints or scripts). The Lightyear `ClientPlugins` infrastructure is added
 //! by `NetworkPlugin` so it's always available.
 
 use bevy::prelude::*;

@@ -34,6 +34,13 @@ fn resolve_entity_by_name(world: &World, name: &str) -> Option<Entity> {
     None
 }
 
+/// Tracks the previous frame's `PendingSceneLoad` list so blueprints can
+/// detect the frame a scene finishes loading.
+#[derive(Resource, Default)]
+pub struct BlueprintSceneLoadTracker {
+    last_pending: Vec<String>,
+}
+
 /// Per-entity runtime state for flow control nodes (DoOnce, FlipFlop, Gate, Delay).
 #[derive(Component, Default)]
 pub struct BlueprintRuntimeState {
@@ -86,6 +93,8 @@ struct EvalContext<'a> {
     net_is_server: bool,
     /// Network state: is this instance connected?
     net_is_connected: bool,
+    /// Name of a scene that just finished loading this frame, if any.
+    scene_just_loaded: Option<String>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -148,6 +157,20 @@ impl<'a> EvalContext<'a> {
                 "elapsed" => PinValue::Float(self.elapsed as f32),
                 _ => PinValue::None,
             },
+            "lifecycle/on_scene_loaded" => {
+                if pin_name == "scene" {
+                    PinValue::String(self.scene_just_loaded.clone().unwrap_or_default())
+                } else {
+                    PinValue::None
+                }
+            }
+            "lifecycle/global_get" => {
+                let key = self.resolve_input(node_id, "key").as_string();
+                self.world
+                    .get_resource::<renzora_globals::GlobalStore>()
+                    .and_then(|s| s.get(&key).cloned())
+                    .unwrap_or(PinValue::None)
+            }
 
             // ── Math ─────────────────────────────────────────────────
             "math/add" => {
@@ -1074,6 +1097,14 @@ impl<'a> EvalContext<'a> {
                 self.follow_exec(node_id, "then");
             }
 
+            // ── Lifecycle ────────────────────────────────────────────
+            "lifecycle/global_set" => {
+                let key = self.resolve_input(node_id, "key").as_string();
+                let value = self.resolve_input(node_id, "value").as_string();
+                self.push_action("global_set", [("key", key), ("value", value)]);
+                self.follow_exec(node_id, "then");
+            }
+
             // ── Timer ────────────────────────────────────────────────
             "flow/start_timer" => {
                 let name = self.resolve_input(node_id, "name").as_string();
@@ -1166,6 +1197,22 @@ pub fn run_blueprints(world: &mut World) {
     let input = world.resource::<ScriptInput>().clone();
     let action_state = world.resource::<ActionState>().clone();
 
+    // Detect scene-load completion (diffs PendingSceneLoad frame to frame).
+    let pending_now = world
+        .get_resource::<renzora::PendingSceneLoad>()
+        .map(|p| p.requests.clone())
+        .unwrap_or_default();
+    let scene_just_loaded = {
+        let mut tracker = world.resource_mut::<BlueprintSceneLoadTracker>();
+        let loaded = if !tracker.last_pending.is_empty() && pending_now.is_empty() {
+            tracker.last_pending.last().cloned()
+        } else {
+            None
+        };
+        tracker.last_pending = pending_now;
+        loaded
+    };
+
     // Collect entities with blueprints.
     struct BpEntity {
         entity: Entity,
@@ -1229,6 +1276,7 @@ pub fn run_blueprints(world: &mut World) {
                 entity_name: bpe.entity_name.clone(),
                 net_is_server,
                 net_is_connected,
+                scene_just_loaded: scene_just_loaded.clone(),
             };
 
             for (node_id, node_type) in &event_nodes {
@@ -1244,6 +1292,15 @@ pub fn run_blueprints(world: &mut World) {
                     "animation/on_finished" => {
                         if let Some(ref clip_name) = anim_finished_clip {
                             ctx.cache.insert((*node_id, "name".to_string()), PinValue::String(clip_name.clone()));
+                            ctx.follow_exec(*node_id, "exec");
+                        }
+                    }
+                    "lifecycle/on_scene_loaded" => {
+                        if let Some(ref scene) = scene_just_loaded {
+                            ctx.cache.insert(
+                                (*node_id, "scene".to_string()),
+                                PinValue::String(scene.clone()),
+                            );
                             ctx.follow_exec(*node_id, "exec");
                         }
                     }
@@ -1275,8 +1332,34 @@ pub fn run_blueprints(world: &mut World) {
             }
         }
 
-        // Trigger ScriptAction events.
+        // Apply global_set actions directly to the GlobalStore; trigger the rest as events.
+        let mut remaining = Vec::with_capacity(actions.len());
         for action in actions {
+            if action.name == "global_set" {
+                let key = match action.args.get("key") {
+                    Some(ScriptActionValue::String(s)) => s.clone(),
+                    _ => continue,
+                };
+                let value = action
+                    .args
+                    .get("value")
+                    .cloned()
+                    .map(|v| match v {
+                        ScriptActionValue::String(s) => PinValue::String(s),
+                        ScriptActionValue::Bool(b) => PinValue::Bool(b),
+                        ScriptActionValue::Int(i) => PinValue::Float(i as f32),
+                        ScriptActionValue::Float(f) => PinValue::Float(f),
+                        ScriptActionValue::Vec3(v) => PinValue::Vec3(v),
+                    })
+                    .unwrap_or(PinValue::None);
+                if let Some(mut store) = world.get_resource_mut::<renzora_globals::GlobalStore>() {
+                    store.set(key, value);
+                }
+            } else {
+                remaining.push(action);
+            }
+        }
+        for action in remaining {
             world.trigger(action);
         }
 

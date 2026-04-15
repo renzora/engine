@@ -17,6 +17,7 @@ impl Plugin for BlueprintPlugin {
         app.init_resource::<renzora::TransformWriteQueue>()
             .init_resource::<renzora::CharacterCommandQueue>()
             .init_resource::<renzora::ScriptInput>()
+            .init_resource::<interpreter::BlueprintSceneLoadTracker>()
             .register_type::<BlueprintGraph>()
             .register_type::<BlueprintNode>()
             .register_type::<BlueprintConnection>()
