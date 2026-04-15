@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora::core::CurrentProject;
+use renzora_camera::OrbitCameraState;
 use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_engine::scene_io;
 use renzora_theme::ThemeManager;
@@ -389,6 +390,13 @@ fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
 
 fn open_scene(world: &mut World, path: &std::path::Path) {
     crate::despawn_scene_entities(world);
+    // Reset the editor camera to defaults before loading so that scenes
+    // without a persisted `OrbitCameraState` don't inherit the previous
+    // scene's camera position. `extract_orbit_from_scene_camera` below
+    // overrides this if the loaded scene provides one.
+    if let Some(mut orbit) = world.get_resource_mut::<OrbitCameraState>() {
+        *orbit = OrbitCameraState::default();
+    }
     scene_io::load_scene(world, path);
     crate::extract_orbit_from_scene_camera(world);
 

@@ -81,12 +81,22 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
         egui::Pos2::new(header_rect.max.x - 8.0, header_rect.max.y - bottom_pad),
     );
 
+    // Left-aligned action strip (Undo/Redo/Save/Play/Scripts). These stay
+    // visible and in a fixed location regardless of viewport mode or active
+    // tool, so they don't get hidden by the mode-specific drawers below.
+    let actions_w = render_left_actions(ui, world, cmds, theme, inner, hovered);
+
     // Render once per frame at a centered rect of the last measured width.
     // Two-pass rendering was doubling popups (sizing pass still spawned Areas).
     let width_id = ui.id().with("viewport_header_width");
     let cached_w: f32 = ui.memory(|m| m.data.get_temp(width_id)).unwrap_or(600.0);
-    let content_w = cached_w.min(inner.width());
-    let content_x = inner.center().x - content_w / 2.0;
+    // Shrink the available-for-centering width so the centered strip never
+    // overlaps the left action buttons.
+    let centering_min_x = inner.min.x + actions_w + 8.0;
+    let available_for_center = (inner.max.x - centering_min_x).max(0.0);
+    let content_w = cached_w.min(available_for_center);
+    let centering_center_x = (centering_min_x + inner.max.x) / 2.0;
+    let content_x = centering_center_x - content_w / 2.0;
     let centered_rect = Rect::from_min_size(
         egui::Pos2::new(content_x, inner.min.y),
         Vec2::new(content_w, inner.height()),
@@ -315,6 +325,153 @@ fn separator(ui: &mut egui::Ui) {
         egui::Stroke::new(1.0, Color32::from_gray(60)),
     );
     ui.add_space(3.0);
+}
+
+/// Paint the left-aligned "session actions" strip (Undo / Redo / Save / Play /
+/// Scripts). Returns the width consumed so the centered strip can make room.
+fn render_left_actions(
+    ui: &mut egui::Ui,
+    world: &World,
+    cmds: &EditorCommands,
+    theme: &renzora_theme::Theme,
+    inner: Rect,
+    hovered_bg: Color32,
+) -> f32 {
+    use renzora::core::{PlayModeState, SaveSceneRequested, SceneCamera};
+
+    let btn_size = Vec2::new(26.0, BTN_H);
+    let gap_small = 2.0;
+    let gap_group = 8.0;
+
+    let can_undo_redo = world
+        .get_resource::<renzora_undo::UndoStacks>()
+        .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
+        .unwrap_or((false, false));
+    let (can_undo, can_redo) = can_undo_redo;
+
+    let can_save = world
+        .get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|tabs| tabs.tabs.get(tabs.active_tab).map(|t| t.is_modified))
+        .unwrap_or(false);
+
+    let has_scene_camera = {
+        let mut found = false;
+        for archetype in world.archetypes().iter() {
+            for ae in archetype.entities() {
+                if world.get::<SceneCamera>(ae.id()).is_some() { found = true; break; }
+            }
+            if found { break; }
+        }
+        found
+    };
+
+    let play_mode = world.get_resource::<PlayModeState>();
+    let is_playing = play_mode.map(|p| p.is_in_play_mode()).unwrap_or(false);
+    let is_scripts = play_mode.map(|p| p.is_scripts_only()).unwrap_or(false);
+    let is_editing = play_mode.map(|p| p.is_editing()).unwrap_or(true);
+    let play_color = theme.semantic.success.to_color32();
+    let scripts_color = theme.semantic.accent.to_color32();
+    let stop_color = theme.semantic.error.to_color32();
+
+    let muted = theme.text.muted.to_color32();
+    let primary = theme.text.primary.to_color32();
+
+    let mut x = inner.min.x;
+    let y = inner.min.y;
+
+    let action_btn = |ui: &mut egui::Ui, x: &mut f32, icon: &str, enabled: bool,
+                      color: Color32, tooltip: &str, id_salt: &str|
+                      -> egui::Response {
+        let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);
+        let sense = if enabled { Sense::click() } else { Sense::hover() };
+        let resp = ui.interact(rect, ui.id().with(id_salt), sense);
+        if enabled && resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_bg);
+        }
+        let glyph_color = if enabled { color } else { muted };
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(14.0),
+            glyph_color,
+        );
+        resp.clone().on_hover_text(tooltip);
+        *x += btn_size.x + gap_small;
+        resp
+    };
+
+    // Undo
+    let r = action_btn(ui, &mut x, ARROW_U_UP_LEFT, can_undo, primary, "Undo (Ctrl+Z)", "vp_hdr_undo");
+    if can_undo && r.clicked() {
+        cmds.push(|w: &mut World| renzora_undo::undo_once(w));
+    }
+    // Redo
+    let r = action_btn(ui, &mut x, ARROW_U_UP_RIGHT, can_redo, primary, "Redo (Ctrl+Y)", "vp_hdr_redo");
+    if can_redo && r.clicked() {
+        cmds.push(|w: &mut World| renzora_undo::redo_once(w));
+    }
+
+    x += gap_group - gap_small;
+
+    // Save
+    let save_tip = if can_save { "Save Scene (Ctrl+S)" } else { "No unsaved changes" };
+    let r = action_btn(ui, &mut x, FLOPPY_DISK, can_save, primary, save_tip, "vp_hdr_save");
+    if can_save && r.clicked() {
+        cmds.push(|w: &mut World| { w.insert_resource(SaveSceneRequested); });
+    }
+
+    x += gap_group - gap_small;
+
+    // Play (or Stop when in full play mode)
+    let play_clickable = is_playing || (is_editing && has_scene_camera);
+    let (play_icon, play_icon_color, play_tip) = if is_playing {
+        (STOP, stop_color, "Stop")
+    } else if !has_scene_camera {
+        (PLAY, muted, "Scene has no camera — add one to play")
+    } else {
+        (PLAY, play_color, "Play (F5)")
+    };
+    let r = action_btn(ui, &mut x, play_icon, play_clickable, play_icon_color, play_tip, "vp_hdr_play");
+    if play_clickable && r.clicked() {
+        cmds.push(|w: &mut World| {
+            if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
+                if pm.is_in_play_mode() {
+                    pm.request_stop = true;
+                } else if pm.is_scripts_only() {
+                    pm.request_stop = true;
+                    pm.request_play = true;
+                } else if pm.is_editing() {
+                    pm.request_play = true;
+                }
+            }
+        });
+    }
+
+    // Scripts (or Stop when running scripts-only)
+    let scripts_clickable = is_scripts || is_editing;
+    let (scr_icon, scr_color, scr_tip) = if is_scripts {
+        (STOP, scripts_color, "Stop Scripts")
+    } else if is_playing {
+        (CODE, muted, "Stop play mode first")
+    } else {
+        (CODE, scripts_color, "Run Scripts (Shift+F5)")
+    };
+    let r = action_btn(ui, &mut x, scr_icon, scripts_clickable && !is_playing, scr_color, scr_tip, "vp_hdr_scripts");
+    if scripts_clickable && !is_playing && r.clicked() {
+        cmds.push(|w: &mut World| {
+            if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
+                if pm.is_scripts_only() {
+                    pm.request_stop = true;
+                } else if pm.is_editing() {
+                    pm.request_scripts_only = true;
+                }
+            }
+        });
+    }
+
+    (x - inner.min.x).max(0.0)
 }
 
 fn toggle_btn(

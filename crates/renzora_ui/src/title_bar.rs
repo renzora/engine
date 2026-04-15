@@ -78,6 +78,34 @@ pub fn render_title_bar(
             egui::MenuBar::new().ui(ui, |ui| {
                 // --- Left: menus ---
                 ui.add_space(4.0);
+
+                // Match menu buttons' idle/hover/active look to the layout tabs
+                // (transparent idle, brightened bg on hover/open, rounded corners).
+                let window_bg_top = theme.surfaces.window.to_color32();
+                {
+                    let v = ui.visuals_mut();
+                    let idle = Color32::TRANSPARENT;
+                    let hover = brighten(window_bg_top, 10);
+                    let open = brighten(window_bg_top, 18);
+                    v.widgets.inactive.weak_bg_fill = idle;
+                    v.widgets.inactive.bg_fill = idle;
+                    v.widgets.hovered.weak_bg_fill = hover;
+                    v.widgets.hovered.bg_fill = hover;
+                    v.widgets.active.weak_bg_fill = open;
+                    v.widgets.active.bg_fill = open;
+                    v.widgets.open.weak_bg_fill = open;
+                    v.widgets.open.bg_fill = open;
+                    let r = egui::CornerRadius::same(TAB_CORNER_RADIUS as u8);
+                    v.widgets.inactive.corner_radius = r;
+                    v.widgets.hovered.corner_radius = r;
+                    v.widgets.active.corner_radius = r;
+                    v.widgets.open.corner_radius = r;
+                    v.widgets.inactive.fg_stroke.color = theme.text.muted.to_color32();
+                    v.widgets.hovered.fg_stroke.color = theme.text.secondary.to_color32();
+                    v.widgets.active.fg_stroke.color = Color32::WHITE;
+                    v.widgets.open.fg_stroke.color = Color32::WHITE;
+                }
+
                 ui.menu_button("File", |ui| {
                     if ui.button("New Project").clicked() {
                         action = TitleBarAction::NewProject;
@@ -255,10 +283,12 @@ pub fn render_title_bar(
                 let sign_in_width = 80.0;
                 let right_margin = 8.0;
                 let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
+                // Play & Scripts entry points live in the viewport. Only pause+stop
+                // show here, and only while a play mode is active.
                 let play_controls_width = if in_any_play {
                     btn_size * 2.0 + 4.0 // pause + stop
                 } else {
-                    btn_size * 2.0 + 4.0 // play + scripts
+                    0.0
                 };
                 let remaining = ui.available_width() - play_controls_width - 8.0 - sign_in_width - 8.0 - gear_size - right_margin;
                 if remaining > 0.0 {
@@ -323,60 +353,6 @@ pub fn render_title_bar(
                     }
                     if stop_resp.clicked() {
                         action = TitleBarAction::Stop;
-                    }
-                    ui.add_space(btn_size);
-                } else {
-                    // Play button
-                    let play_rect = Rect::from_min_size(
-                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
-                        Vec2::splat(btn_size),
-                    );
-                    let play_id = ui.id().with("play_btn");
-                    let play_resp = ui.interact(play_rect, play_id, Sense::click());
-                    let play_color = if play_resp.hovered() {
-                        Color32::from_rgb(100, 255, 100)
-                    } else {
-                        theme.text.muted.to_color32()
-                    };
-                    ui.painter().text(
-                        play_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        egui_phosphor::regular::PLAY,
-                        egui::FontId::proportional(14.0),
-                        play_color,
-                    );
-                    if play_resp.hovered() {
-                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                    }
-                    if play_resp.clicked() {
-                        action = TitleBarAction::Play;
-                    }
-                    ui.add_space(btn_size + 4.0);
-
-                    // Scripts button (run scripts in editor)
-                    let scripts_rect = Rect::from_min_size(
-                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
-                        Vec2::splat(btn_size),
-                    );
-                    let scripts_id = ui.id().with("scripts_btn");
-                    let scripts_resp = ui.interact(scripts_rect, scripts_id, Sense::click());
-                    let scripts_color = if scripts_resp.hovered() {
-                        Color32::from_rgb(100, 180, 255)
-                    } else {
-                        theme.text.muted.to_color32()
-                    };
-                    ui.painter().text(
-                        scripts_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        egui_phosphor::regular::CODE,
-                        egui::FontId::proportional(14.0),
-                        scripts_color,
-                    );
-                    if scripts_resp.hovered() {
-                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                    }
-                    if scripts_resp.clicked() {
-                        action = TitleBarAction::ScriptsOnly;
                     }
                     ui.add_space(btn_size);
                 }

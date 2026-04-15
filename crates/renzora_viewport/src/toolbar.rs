@@ -53,27 +53,22 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
         })
         .unwrap_or_default();
 
-    // Undo/Redo always shown when Transform section is visible.
-    let has_undo_redo = !transform_tools.is_empty();
-
     let section_height = |count: usize| -> f32 {
         if count == 0 { return 0.0; }
         row_step * count as f32 - BTN_GAP
     };
 
     let transform_h = section_height(transform_tools.len());
-    let undo_redo_h = if has_undo_redo { section_height(2) } else { 0.0 };
     let terrain_h = section_height(terrain_tools.len());
     let custom_h: f32 = custom_sections.iter().map(|(_, t)| section_height(t.len())).sum();
     let section_count = (transform_h > 0.0) as usize
-        + (undo_redo_h > 0.0) as usize
         + (terrain_h > 0.0) as usize
         + custom_sections.len();
     let divider_count = section_count.saturating_sub(1);
     let dividers_h = (divider_count as f32) * (DIVIDER_GAP * 2.0 + 1.0);
 
     let has_tools = section_count > 0;
-    let panel_h = PADDING * 2.0 + transform_h + undo_redo_h + terrain_h + custom_h + dividers_h;
+    let panel_h = PADDING * 2.0 + transform_h + terrain_h + custom_h + dividers_h;
 
     let panel_rect = Rect::from_min_size(panel_pos, Vec2::new(panel_w, panel_h));
 
@@ -112,31 +107,6 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
                     );
                 }
 
-                // Undo / Redo
-                if has_undo_redo {
-                    if !first_section {
-                        draw_divider(ui, &mut y, panel_pos.x, panel_w, border_color);
-                    }
-                    first_section = false;
-                    let (can_undo, can_redo) = world.get_resource::<renzora_undo::UndoStacks>()
-                        .map(|s| (s.can_undo(&s.active), s.can_redo(&s.active)))
-                        .unwrap_or((false, false));
-                    let undo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
-                    let r = undo_redo_button(ui, undo_rect, ARROW_U_UP_LEFT, can_undo, inactive_color, hovered_color);
-                    if can_undo && r.clicked() {
-                        cmds.push(|w: &mut World| renzora_undo::undo_once(w));
-                    }
-                    r.on_hover_text("Undo (Ctrl+Z)");
-                    y += row_step;
-                    let redo_rect = Rect::from_min_size(Pos2::new(col0_x, y), BTN_SIZE);
-                    let r = undo_redo_button(ui, redo_rect, ARROW_U_UP_RIGHT, can_redo, inactive_color, hovered_color);
-                    if can_redo && r.clicked() {
-                        cmds.push(|w: &mut World| renzora_undo::redo_once(w));
-                    }
-                    r.on_hover_text("Redo (Ctrl+Y)");
-                    y += row_step;
-                }
-
                 // Terrain section
                 if !terrain_tools.is_empty() {
                     if !first_section {
@@ -165,86 +135,9 @@ pub fn render_tool_overlay(ctx: &egui::Context, world: &World, content_rect: Rec
             });
     }
 
-    // Play button — top-left in edit mode (tools are in the header), bottom-center in play.
-    let play_panel_w = BTN_SIZE.x + PADDING * 2.0;
-    let play_panel_h = BTN_SIZE.y + PADDING * 2.0;
-    let play_panel_pos = if hide_tools {
-        Pos2::new(
-            content_rect.center().x - play_panel_w / 2.0,
-            content_rect.max.y - play_panel_h - MARGIN,
-        )
-    } else if has_tools {
-        Pos2::new(panel_pos.x, panel_pos.y + panel_h + 4.0)
-    } else {
-        Pos2::new(panel_pos.x, panel_pos.y)
-    };
-    let play_panel_rect = Rect::from_min_size(play_panel_pos, Vec2::new(play_panel_w, play_panel_h));
-
-    let is_in_play_mode = play_mode.map(|p| p.is_in_play_mode()).unwrap_or(false);
-    let is_scripts_only = play_mode.map(|p| p.is_scripts_only()).unwrap_or(false);
-    let play_color = theme.semantic.success.to_color32();
-    let scripts_color = theme.semantic.accent.to_color32();
-    let stop_color = theme.semantic.error.to_color32();
-
-    egui::Area::new(egui::Id::new("viewport_play_overlay"))
-        .fixed_pos(play_panel_pos)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            ui.set_clip_rect(play_panel_rect);
-
-            ui.painter().rect_filled(play_panel_rect, CornerRadius::same(5), panel_bg);
-            ui.painter().rect_stroke(play_panel_rect, CornerRadius::same(5), Stroke::new(1.0, border_color), egui::StrokeKind::Outside);
-
-            let x_pos = play_panel_pos.x + PADDING;
-            let y_pos = play_panel_pos.y + PADDING;
-            let play_button_id = ui.make_persistent_id("viewport_play_dropdown");
-            let play_btn_rect = Rect::from_min_size(Pos2::new(x_pos, y_pos), BTN_SIZE);
-            let play_resp = ui.interact(play_btn_rect, play_button_id.with("btn"), Sense::click());
-            if play_resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
-
-            let (btn_icon, btn_bg) = if is_in_play_mode {
-                (STOP, stop_color)
-            } else if is_scripts_only {
-                (STOP, scripts_color)
-            } else if play_resp.hovered() {
-                (PLAY, hovered_color)
-            } else {
-                (PLAY, inactive_color)
-            };
-
-            ui.painter().rect_filled(play_btn_rect, CornerRadius::same(3), btn_bg);
-            let icon_color = if !is_in_play_mode && !is_scripts_only { play_color } else { Color32::WHITE };
-            ui.painter().text(play_btn_rect.center(), egui::Align2::CENTER_CENTER, btn_icon, FontId::proportional(14.0), icon_color);
-
-            if play_resp.clicked() {
-                if is_in_play_mode || is_scripts_only {
-                    cmds.push(|w: &mut World| {
-                        if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() { pm.request_stop = true; }
-                    });
-                } else {
-                    #[allow(deprecated)]
-                    ui.memory_mut(|mem| mem.toggle_popup(play_button_id));
-                }
-            }
-
-            #[allow(deprecated)]
-            egui::popup_below_widget(ui, play_button_id, &play_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-                ui.set_min_width(160.0);
-                ui.style_mut().spacing.item_spacing.y = 2.0;
-                if viewport_play_menu_item(ui, PLAY, "Play", "F5", play_color) {
-                    cmds.push(|w: &mut World| {
-                        if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() { if pm.is_editing() { pm.request_play = true; } }
-                    });
-                    ui.close();
-                }
-                if viewport_play_menu_item(ui, CODE, "Run Scripts", "Shift+F5", scripts_color) {
-                    cmds.push(|w: &mut World| {
-                        if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() { if pm.is_editing() { pm.request_scripts_only = true; } }
-                    });
-                    ui.close();
-                }
-            });
-        });
+    // Save/Play/Scripts now live in the viewport header bar at the top
+    // (see header.rs::render_left_actions). This overlay is
+    // tool-selection only.
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,40 +178,6 @@ fn render_tool_section(
         r.on_hover_text(entry.tooltip);
         *y += row_step;
     }
-}
-
-/// A toolbar button for undo/redo — enabled state accepts clicks; disabled
-/// state renders dimmed and only shows a tooltip.
-fn undo_redo_button(
-    ui: &mut egui::Ui,
-    rect: Rect,
-    icon: &str,
-    enabled: bool,
-    _inactive_color: Color32,
-    hovered_color: Color32,
-) -> egui::Response {
-    if !enabled {
-        let resp = ui.allocate_rect(rect, Sense::hover());
-        if ui.is_rect_visible(rect) {
-            ui.painter().text(
-                rect.center(), egui::Align2::CENTER_CENTER, icon,
-                FontId::proportional(16.0), Color32::from_white_alpha(40),
-            );
-        }
-        return resp;
-    }
-    let resp = ui.allocate_rect(rect, Sense::click());
-    if resp.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
-    if ui.is_rect_visible(rect) {
-        if resp.hovered() {
-            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_color);
-        }
-        ui.painter().text(
-            rect.center(), egui::Align2::CENTER_CENTER, icon,
-            FontId::proportional(16.0), Color32::WHITE,
-        );
-    }
-    resp
 }
 
 fn viewport_tool_button(
@@ -449,13 +308,3 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
         });
 }
 
-fn viewport_play_menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32) -> bool {
-    let resp = ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(icon).size(14.0).color(icon_color));
-        ui.label(egui::RichText::new(label).size(12.0));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(shortcut).size(10.0).color(Color32::from_gray(100)));
-        });
-    });
-    resp.response.interact(Sense::click()).clicked()
-}
