@@ -6,7 +6,7 @@
 - ✅ Add copy/paste entities to clipboard — [`7f0ccec`](https://github.com/renzora/engine/commit/7f0ccec)
 - ✅ Deep-clone all components on duplicate — [`7f0ccec`](https://github.com/renzora/engine/commit/7f0ccec)
 - ✅ Add right-click "Add Component" directly from hierarchy — [`6610d1a`](https://github.com/renzora/engine/commit/6610d1a)
-- Add batch rename for multiple entities
+- ✅ Add batch rename for multiple entities — [`0d3c705`](https://github.com/renzora/engine/commit/0d3c705)
 - Add marquee drag selection in hierarchy
 - Add favorites/starred entities
 
@@ -25,7 +25,7 @@
 ## Inspector — Views & Filtering
 - Add lock inspector to entity (stop following selection)
 - Add multi-entity comparison view
-- ✅ Add component search/filter — [3a3e9d2](https://github.com/renzora/engine/commit/3a3e9d2)
+- ✅ Add component search/filter — [`3a3e9d2`](https://github.com/renzora/engine/commit/3a3e9d2)
 - Add component presets/templates
 
 ## Asset Browser — Organization
