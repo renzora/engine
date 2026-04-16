@@ -3,4 +3,5 @@
 pub struct InspectorState {
     pub show_add_overlay: bool,
     pub add_search: String,
+    pub component_filter: String,
 }

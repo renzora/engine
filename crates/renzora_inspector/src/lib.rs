@@ -117,6 +117,36 @@ impl EditorPanel for InspectorPanel {
             }
         }
 
+        // Component search/filter bar
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            let has_filter = !state.component_filter.is_empty();
+            let clear_width = if has_filter { 20.0 } else { 0.0 };
+            let search_width = ui.available_width() - clear_width - 12.0;
+            ui.add(
+                egui::TextEdit::singleline(&mut state.component_filter)
+                    .desired_width(search_width)
+                    .hint_text(format!("{} Filter components...", regular::MAGNIFYING_GLASS)),
+            );
+            if has_filter
+                && ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(regular::X)
+                                .size(11.0)
+                                .color(theme.text.muted.to_color32()),
+                        )
+                        .frame(false),
+                    )
+                    .clicked()
+            {
+                state.component_filter.clear();
+            }
+        });
+
+        let filter = state.component_filter.to_lowercase();
+
         // Render each component section
         egui::ScrollArea::vertical()
             .id_salt("inspector_scroll")
@@ -127,6 +157,12 @@ impl EditorPanel for InspectorPanel {
 
                 for entry in registry.iter() {
                     if !(entry.has_fn)(world, entity) {
+                        continue;
+                    }
+                    if !filter.is_empty()
+                        && !entry.display_name.to_lowercase().contains(&filter)
+                        && !entry.category.to_lowercase().contains(&filter)
+                    {
                         continue;
                     }
                     any_shown = true;
