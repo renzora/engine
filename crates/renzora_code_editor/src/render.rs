@@ -9,8 +9,11 @@ use renzora_theme::Theme;
 use std::path::PathBuf;
 
 use crate::actions::{
-    byte_to_char, byte_to_line, char_to_byte, find_matching_bracket, line_to_byte,
-    toggle_line_comment,
+    byte_to_char, byte_to_line, char_to_byte, delete_lines, duplicate_lines,
+    find_all_occurrences, find_matching_bracket, indent_selection,
+    leading_whitespace_of_line, line_byte_range, line_to_byte, move_lines_down,
+    move_lines_up, select_next_occurrence, smart_home_target, toggle_line_comment,
+    word_range_at_byte, TAB_SIZE,
 };
 use crate::autocomplete::{self, ApiSymbol};
 use crate::highlight::{highlight, Language, TokenStyle};
@@ -166,6 +169,17 @@ pub fn render_code_editor_content(
         }
     });
 
+    // --- VSCode-style editing shortcuts (only when the editor has focus) ---
+    let editor_focused = ui.ctx().memory(|m| m.has_focus(editor_id));
+    let shortcut = if editor_focused && !state.autocomplete_open {
+        pick_editor_shortcut(ui)
+    } else {
+        None
+    };
+    if let Some(sc) = shortcut {
+        apply_editor_shortcut(state, active_idx, ui.ctx(), editor_id, sc);
+    }
+
     // --- Scroll area with gutter + TextEdit ---
     let scroll_id = Id::new(("code_editor_panel_scroll", active_idx));
     let scroll_output = egui::ScrollArea::vertical()
@@ -231,6 +245,42 @@ pub fn render_code_editor_content(
                     if let Some((a, b)) = find_matching_bracket(&file.content, byte_idx) {
                         paint_bracket_highlight(ui, &file.content, editor_rect, row_height, font_size, a, theme);
                         paint_bracket_highlight(ui, &file.content, editor_rect, row_height, font_size, b, theme);
+                    }
+                }
+
+                // Occurrence highlight --------------------------------------
+                if let Some(cidx) = cur_char_idx {
+                    let byte = char_to_byte(&file.content, cidx);
+                    if let Some((ws, we)) = word_range_at_byte(&file.content, byte) {
+                        let word = &file.content[ws..we];
+                        if word.len() >= 2 {
+                            let matches = find_all_occurrences(&file.content, word);
+                            if matches.len() > 1 {
+                                for (mstart, mend) in matches {
+                                    if mstart == ws {
+                                        continue;
+                                    }
+                                    paint_range_overlay(
+                                        ui,
+                                        &file.content,
+                                        editor_rect,
+                                        row_height,
+                                        font_size,
+                                        mstart,
+                                        mend,
+                                        theme,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Inline error squiggle -------------------------------------
+                if let Some(err) = file.error.as_ref() {
+                    if let Some(line_1) = err.line {
+                        let line = line_1.saturating_sub(1);
+                        paint_error_squiggle(ui, editor_rect, row_height, line);
                     }
                 }
 
@@ -993,6 +1043,56 @@ fn paint_gutter(
     }
 }
 
+fn paint_range_overlay(
+    ui: &egui::Ui,
+    content: &str,
+    editor_rect: Rect,
+    row_height: f32,
+    font_size: f32,
+    byte_start: usize,
+    byte_end: usize,
+    theme: &Theme,
+) {
+    let line = byte_to_line(content, byte_start);
+    let (ls, _) = line_byte_range(content, line);
+    let col_bytes = byte_start.saturating_sub(ls);
+    let col_chars = content[ls..ls + col_bytes].chars().count();
+    let width_chars = content[byte_start..byte_end.min(content.len())].chars().count();
+
+    let advance = font_size * 0.6;
+    let x = editor_rect.min.x + col_chars as f32 * advance;
+    let y = editor_rect.min.y + line as f32 * row_height;
+    let r = Rect::from_min_size(
+        Pos2::new(x, y),
+        Vec2::new(width_chars as f32 * advance, row_height),
+    );
+
+    let border = theme.widgets.border.to_color32();
+    ui.painter()
+        .rect_stroke(r, 2.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+}
+
+fn paint_error_squiggle(ui: &egui::Ui, editor_rect: Rect, row_height: f32, line: usize) {
+    let y_top = editor_rect.min.y + line as f32 * row_height;
+    let y = y_top + row_height - 2.0;
+    let x_start = editor_rect.min.x + 2.0;
+    let x_end = editor_rect.max.x - 2.0;
+    let amp = 1.6;
+    let wavelength = 4.0;
+    let color = Color32::from_rgb(220, 80, 80);
+    let stroke = Stroke::new(1.0, color);
+    let mut x = x_start;
+    while x < x_end {
+        let next = (x + wavelength).min(x_end);
+        let mid = x + wavelength * 0.5;
+        ui.painter()
+            .line_segment([Pos2::new(x, y), Pos2::new(mid, y + amp)], stroke);
+        ui.painter()
+            .line_segment([Pos2::new(mid, y + amp), Pos2::new(next, y)], stroke);
+        x = next;
+    }
+}
+
 fn paint_bracket_highlight(
     ui: &egui::Ui,
     content: &str,
@@ -1019,6 +1119,184 @@ fn paint_bracket_highlight(
         Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40);
     ui.painter().rect_filled(r, 2.0, fill);
     ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+}
+
+// -------------------------------------------------------------------------
+// Editor shortcuts (VSCode-style editing)
+// -------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+enum EditorShortcut {
+    Tab,
+    ShiftTab,
+    Enter,
+    Home,
+    DuplicateLine,
+    DeleteLine,
+    MoveLineUp,
+    MoveLineDown,
+    SelectNextOccurrence,
+}
+
+fn pick_editor_shortcut(ui: &mut egui::Ui) -> Option<EditorShortcut> {
+    let mut out = None;
+    ui.input_mut(|i| {
+        let ctrl_shift = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..Default::default()
+        };
+        // Checked in priority order — more specific modifier combinations first.
+        if i.consume_key(ctrl_shift, Key::D) {
+            out = Some(EditorShortcut::DuplicateLine);
+            return;
+        }
+        if i.consume_key(ctrl_shift, Key::K) {
+            out = Some(EditorShortcut::DeleteLine);
+            return;
+        }
+        if i.consume_key(Modifiers::ALT, Key::ArrowUp) {
+            out = Some(EditorShortcut::MoveLineUp);
+            return;
+        }
+        if i.consume_key(Modifiers::ALT, Key::ArrowDown) {
+            out = Some(EditorShortcut::MoveLineDown);
+            return;
+        }
+        if i.consume_key(Modifiers::CTRL, Key::D) {
+            out = Some(EditorShortcut::SelectNextOccurrence);
+            return;
+        }
+        if i.consume_key(Modifiers::SHIFT, Key::Tab) {
+            out = Some(EditorShortcut::ShiftTab);
+            return;
+        }
+        if i.consume_key(Modifiers::NONE, Key::Tab) {
+            out = Some(EditorShortcut::Tab);
+            return;
+        }
+        if i.consume_key(Modifiers::NONE, Key::Enter) {
+            out = Some(EditorShortcut::Enter);
+            return;
+        }
+        if i.consume_key(Modifiers::NONE, Key::Home) {
+            out = Some(EditorShortcut::Home);
+            return;
+        }
+    });
+    out
+}
+
+fn apply_editor_shortcut(
+    state: &mut CodeEditorState,
+    active_idx: usize,
+    ctx: &egui::Context,
+    editor_id: Id,
+    sc: EditorShortcut,
+) {
+    // Read selection from stored state — in char coordinates.
+    let (sel_a_char, sel_b_char) = egui::TextEdit::load_state(ctx, editor_id)
+        .and_then(|s| s.cursor.char_range())
+        .map(|r| (r.primary.index, r.secondary.index))
+        .unwrap_or((0, 0));
+
+    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+
+    // Translate to bytes.
+    let sel_a = char_to_byte(&file.content, sel_a_char);
+    let sel_b = char_to_byte(&file.content, sel_b_char);
+    let (lo, hi) = if sel_a <= sel_b { (sel_a, sel_b) } else { (sel_b, sel_a) };
+    let has_selection = lo != hi;
+
+    let mut new_selection_bytes: Option<(usize, usize)> = None;
+    let mut mutated = false;
+
+    match sc {
+        EditorShortcut::Tab => {
+            if has_selection {
+                new_selection_bytes = Some(indent_selection(&mut file.content, sel_a, sel_b, false));
+                mutated = true;
+            } else {
+                // Insert 4 spaces at cursor
+                let indent = " ".repeat(TAB_SIZE);
+                file.content.insert_str(sel_a.min(file.content.len()), &indent);
+                let new = sel_a + TAB_SIZE;
+                new_selection_bytes = Some((new, new));
+                mutated = true;
+            }
+        }
+        EditorShortcut::ShiftTab => {
+            // Always dedent by line, whether or not there's a selection.
+            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            new_selection_bytes = Some(indent_selection(&mut file.content, a, b, true));
+            mutated = true;
+        }
+        EditorShortcut::Enter => {
+            // Auto-indent: newline + leading whitespace of the current line.
+            let indent = leading_whitespace_of_line(&file.content, sel_a);
+            let insertion = format!("\n{}", indent);
+            let clamped_lo = lo.min(file.content.len());
+            let clamped_hi = hi.min(file.content.len());
+            file.content.replace_range(clamped_lo..clamped_hi, &insertion);
+            let new = clamped_lo + insertion.len();
+            new_selection_bytes = Some((new, new));
+            mutated = true;
+        }
+        EditorShortcut::Home => {
+            // Move cursor (no selection) to smart home target. If Shift is held
+            // we'd want to extend selection, but egui's consume_key already
+            // stripped the modifier — for now just move without selecting.
+            let target = smart_home_target(&file.content, sel_a);
+            new_selection_bytes = Some((target, target));
+            // No content change.
+        }
+        EditorShortcut::DuplicateLine => {
+            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            new_selection_bytes = Some(duplicate_lines(&mut file.content, a, b));
+            mutated = true;
+        }
+        EditorShortcut::DeleteLine => {
+            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let new_cursor = delete_lines(&mut file.content, a, b);
+            new_selection_bytes = Some((new_cursor, new_cursor));
+            mutated = true;
+        }
+        EditorShortcut::MoveLineUp => {
+            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            if let Some(new) = move_lines_up(&mut file.content, a, b) {
+                new_selection_bytes = Some(new);
+                mutated = true;
+            }
+        }
+        EditorShortcut::MoveLineDown => {
+            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            if let Some(new) = move_lines_down(&mut file.content, a, b) {
+                new_selection_bytes = Some(new);
+                mutated = true;
+            }
+        }
+        EditorShortcut::SelectNextOccurrence => {
+            if let Some((a, b)) = select_next_occurrence(&file.content, sel_a, sel_b, false) {
+                new_selection_bytes = Some((a, b));
+            }
+        }
+    }
+
+    if mutated {
+        file.is_modified = true;
+    }
+
+    if let Some((na, nb)) = new_selection_bytes {
+        let a_char = byte_to_char(&file.content, na);
+        let b_char = byte_to_char(&file.content, nb);
+        if let Some(mut s) = egui::TextEdit::load_state(ctx, editor_id) {
+            s.cursor.set_char_range(Some(CCursorRange::two(
+                CCursor::new(a_char),
+                CCursor::new(b_char),
+            )));
+            s.store(ctx, editor_id);
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
