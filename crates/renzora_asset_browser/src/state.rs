@@ -139,6 +139,14 @@ pub struct AssetBrowserState {
     /// Pinned/starred folders that appear at the top of the tree.
     pub favorites: Vec<PathBuf>,
 
+    // === Recent files ===
+    /// Recently opened files, most recent first.
+    pub recent_files: Vec<PathBuf>,
+    /// Set by tree UI when a recent file is double-clicked.
+    pub double_clicked_recent: Option<PathBuf>,
+    /// Whether the recent files section is expanded in the tree.
+    pub recent_expanded: bool,
+
     // === Sort ===
     /// Current sort mode for the file grid/list.
     pub sort_mode: SortMode,
@@ -185,6 +193,9 @@ impl Default for AssetBrowserState {
             move_drop_target: None,
             pending_move: None,
             favorites: Vec::new(),
+            recent_files: Vec::new(),
+            double_clicked_recent: None,
+            recent_expanded: false,
             sort_mode: SortMode::default(),
             sort_direction: SortDirection::default(),
         }
@@ -381,6 +392,41 @@ impl AssetBrowserState {
         let fav_path = root.join(".editor").join("favorites");
         let Ok(content) = std::fs::read_to_string(&fav_path) else { return };
         self.favorites = content.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| root.join(l.trim()))
+            .filter(|p| p.exists())
+            .collect();
+    }
+
+    /// Track a file as recently opened. Moves it to the front if already present.
+    pub fn track_recent(&mut self, path: &std::path::Path) {
+        self.recent_files.retain(|p| p != path);
+        self.recent_files.insert(0, path.to_path_buf());
+        const MAX_RECENT: usize = 20;
+        self.recent_files.truncate(MAX_RECENT);
+        self.save_recent();
+    }
+
+    pub fn remove_from_recent(&mut self, path: &std::path::Path) {
+        self.recent_files.retain(|p| p != path);
+        self.save_recent();
+    }
+
+    fn save_recent(&self) {
+        let Some(ref root) = self.project_root else { return };
+        let editor_dir = root.join(".editor");
+        let _ = std::fs::create_dir_all(&editor_dir);
+        let content: String = self.recent_files.iter().filter_map(|p| {
+            p.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/"))
+        }).collect::<Vec<_>>().join("\n");
+        let _ = std::fs::write(editor_dir.join("recent"), content);
+    }
+
+    pub fn load_recent(&mut self) {
+        let Some(ref root) = self.project_root else { return };
+        let recent_path = root.join(".editor").join("recent");
+        let Ok(content) = std::fs::read_to_string(&recent_path) else { return };
+        self.recent_files = content.lines()
             .filter(|l| !l.trim().is_empty())
             .map(|l| root.join(l.trim()))
             .filter(|p| p.exists())

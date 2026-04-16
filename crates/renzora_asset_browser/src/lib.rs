@@ -65,6 +65,7 @@ impl EditorPanel for AssetBrowserPanel {
                 state.project_root = Some(project.path.clone());
                 state.current_folder = Some(project.path.clone());
                 state.load_favorites();
+                state.load_recent();
             }
         }
 
@@ -571,6 +572,9 @@ impl EditorPanel for AssetBrowserPanel {
         // in the same frame, since tree-only mode is the only context where
         // the tree is the sole source of drags.
         if let Some(payload) = tree_drag_payload.or(grid_result.drag_payload) {
+            if !payload.path.is_dir() {
+                state.track_recent(payload.path.as_path());
+            }
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     world.insert_resource(payload);
@@ -597,8 +601,27 @@ impl EditorPanel for AssetBrowserPanel {
             }
         }
 
+        // Double-click on a recent file in the tree
+        if let Some(path) = state.double_clicked_recent.take() {
+            state.track_recent(&path);
+            let is_editable = path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| matches!(e.to_lowercase().as_str(),
+                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
+                ))
+                .unwrap_or(false);
+            if is_editable {
+                if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                    cmds.push(move |world: &mut bevy::prelude::World| {
+                        world.insert_resource(renzora::core::OpenCodeEditorFile { path });
+                    });
+                }
+            }
+        }
+
         // Double-click on a file opens it in the code editor
         if let Some(path) = grid_result.double_clicked_file {
+            state.track_recent(&path);
             let is_editable = path.extension()
                 .and_then(|e| e.to_str())
                 .map(|e| matches!(e.to_lowercase().as_str(),

@@ -98,6 +98,7 @@ pub fn tree_ui(
 
                 // Render each favorite (only if there are any)
                 let favorites_snapshot: Vec<std::path::PathBuf> = state.favorites.clone();
+                let mut fav_to_remove: Option<PathBuf> = None;
                 for fav_path in &favorites_snapshot {
                     let fav_name = fav_path
                         .file_name()
@@ -113,7 +114,7 @@ pub fn tree_ui(
 
                     let (rect, response) = ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), ROW_HEIGHT),
-                        Sense::click(),
+                        Sense::click_and_drag(),
                     );
 
                     if response.hovered() {
@@ -153,10 +154,219 @@ pub fn tree_ui(
                     if response.clicked() {
                         state.current_folder = Some(fav_path.clone());
                     }
+
+                    // Right-click context menu
+                    let fav_path_clone = fav_path.clone();
+                    response.context_menu(|ui| {
+                        if ui.button(format!("{} Remove from Favorites", regular::STAR)).clicked() {
+                            fav_to_remove = Some(fav_path_clone.clone());
+                            ui.close();
+                        }
+                    });
+
+                    // Drag from favorites
+                    if response.drag_started() {
+                        state.drag_moving = vec![fav_path.clone()];
+                        let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+                        state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+                            path: fav_path.clone(),
+                            paths: vec![fav_path.clone()],
+                            name: fav_name.clone(),
+                            icon: FOLDER.to_string(),
+                            color: fav_icon_color,
+                            origin,
+                            is_detached: false,
+                            drag_count: 1,
+                        });
+                    }
+                }
+
+                if let Some(path) = fav_to_remove {
+                    state.toggle_favorite(&path);
                 }
 
                 // Separator after favorites (only if there are items)
                 if !favorites_snapshot.is_empty() {
+                    ui.add_space(2.0);
+                    let sep_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
+                    ui.painter().hline(
+                        (sep_rect.min.x + 6.0)..=(sep_rect.max.x - 6.0),
+                        sep_rect.center().y,
+                        egui::Stroke::new(1.0, theme.widgets.border.to_color32()),
+                    );
+                    ui.add_space(2.0);
+                }
+            }
+
+            // Recent files section (collapsible)
+            {
+                let recent_count = state.recent_files.len();
+                if recent_count > 0 {
+                    let text_muted = theme.text.muted.to_color32();
+                    let text_secondary = theme.text.secondary.to_color32();
+                    let selection_bg = theme.semantic.selection.to_color32();
+                    let item_hover = theme.panels.item_hover.to_color32();
+
+                    // Collapsible header with caret + badge
+                    let (header_rect, header_resp) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), 18.0),
+                        Sense::click(),
+                    );
+                    if header_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+
+                    let caret = if state.recent_expanded { CARET_DOWN } else { CARET_RIGHT };
+                    ui.painter().text(
+                        Pos2::new(header_rect.min.x + 4.0, header_rect.center().y),
+                        Align2::LEFT_CENTER,
+                        caret,
+                        FontId::proportional(9.0),
+                        text_muted,
+                    );
+                    ui.painter().text(
+                        Pos2::new(header_rect.min.x + 16.0, header_rect.center().y),
+                        Align2::LEFT_CENTER,
+                        "Recent",
+                        FontId::proportional(10.0),
+                        text_muted,
+                    );
+
+                    // Badge with count
+                    let badge_text = format!("{}", recent_count);
+                    let badge_font = FontId::proportional(9.0);
+                    let badge_galley = ui.painter().layout_no_wrap(badge_text.clone(), badge_font.clone(), text_muted);
+                    let badge_w = badge_galley.size().x + 8.0;
+                    let badge_h = 14.0;
+                    let badge_rect = egui::Rect::from_center_size(
+                        Pos2::new(header_rect.min.x + 52.0 + badge_w * 0.5, header_rect.center().y),
+                        Vec2::new(badge_w, badge_h),
+                    );
+                    ui.painter().rect_filled(badge_rect, 3.0, theme.widgets.border.to_color32());
+                    ui.painter().text(
+                        badge_rect.center(),
+                        Align2::CENTER_CENTER,
+                        badge_text,
+                        badge_font,
+                        text_secondary,
+                    );
+
+                    if header_resp.clicked() {
+                        state.recent_expanded = !state.recent_expanded;
+                    }
+
+                    // Items (only when expanded)
+                    if state.recent_expanded {
+                        let recent_snapshot: Vec<PathBuf> = state.recent_files.clone();
+                        let mut to_remove: Option<PathBuf> = None;
+
+                        for recent_path in &recent_snapshot {
+                            let name = recent_path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("???")
+                                .to_string();
+
+                            let is_selected = state.selected_assets.contains(recent_path);
+                            let (icon, icon_color) = file_icon(recent_path);
+
+                            let (rect, response) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), ROW_HEIGHT),
+                                Sense::click_and_drag(),
+                            );
+
+                            let hovered = response.hovered();
+                            if hovered {
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+
+                            if is_selected {
+                                ui.painter().rect_filled(rect, 2.0, selection_bg);
+                            } else if hovered {
+                                ui.painter().rect_filled(rect, 2.0, item_hover);
+                            }
+
+                            // File icon
+                            ui.painter().text(
+                                Pos2::new(rect.min.x + 14.0, rect.center().y),
+                                Align2::LEFT_CENTER,
+                                icon,
+                                FontId::proportional(12.0),
+                                icon_color,
+                            );
+
+                            // Delete button (right side, only on hover)
+                            let delete_w = 16.0;
+                            let has_delete = hovered;
+                            let text_right = if has_delete { rect.max.x - delete_w - 4.0 } else { rect.max.x - 4.0 };
+
+                            if has_delete {
+                                let del_rect = egui::Rect::from_min_size(
+                                    Pos2::new(rect.max.x - delete_w - 2.0, rect.min.y),
+                                    Vec2::new(delete_w, rect.height()),
+                                );
+                                let del_resp = ui.allocate_rect(del_rect, Sense::click());
+                                ui.painter().text(
+                                    del_rect.center(),
+                                    Align2::CENTER_CENTER,
+                                    regular::X,
+                                    FontId::proportional(9.0),
+                                    if del_resp.hovered() { text_secondary } else { text_muted },
+                                );
+                                if del_resp.clicked() {
+                                    to_remove = Some(recent_path.clone());
+                                }
+                            }
+
+                            // File name
+                            let text_x = rect.min.x + 30.0;
+                            let max_w = (text_right - text_x).max(0.0);
+                            let text_y = rect.center().y - 11.0 * 0.5;
+                            paint_truncated_text(ui.painter(), Pos2::new(text_x, text_y), &name, FontId::proportional(11.0), text_secondary, max_w);
+
+                            // Hover tooltip with folder path
+                            let response = if let Some(parent) = recent_path.parent() {
+                                if let Some(ref root) = state.project_root {
+                                    if let Ok(rel) = parent.strip_prefix(root) {
+                                        response.on_hover_text(rel.to_string_lossy().to_string())
+                                    } else { response }
+                                } else { response }
+                            } else { response };
+
+                            if response.clicked() {
+                                if let Some(parent) = recent_path.parent() {
+                                    state.current_folder = Some(parent.to_path_buf());
+                                }
+                                state.selected_assets.clear();
+                                state.selected_assets.insert(recent_path.clone());
+                                state.selected_path = Some(recent_path.clone());
+                            }
+                            if response.double_clicked() {
+                                state.double_clicked_recent = Some(recent_path.clone());
+                            }
+
+                            // Drag to viewport
+                            if response.drag_started() {
+                                state.drag_moving = vec![recent_path.clone()];
+                                let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
+                                state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+                                    path: recent_path.clone(),
+                                    paths: vec![recent_path.clone()],
+                                    name: name.clone(),
+                                    icon: icon.to_string(),
+                                    color: icon_color,
+                                    origin,
+                                    is_detached: false,
+                                    drag_count: 1,
+                                });
+                            }
+                        }
+
+                        if let Some(path) = to_remove {
+                            state.remove_from_recent(&path);
+                        }
+                    }
+
                     ui.add_space(2.0);
                     let sep_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
                     ui.painter().hline(
