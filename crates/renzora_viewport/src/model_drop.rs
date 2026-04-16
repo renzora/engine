@@ -37,6 +37,12 @@ pub struct NeedsGroundAlignment {
     pub target_y: f32,
 }
 
+/// Marker: animation discovery has been attempted for this entity (hit or
+/// miss). Prevents `auto_discover_animations` from re-scanning the
+/// filesystem on every frame for models that have no `.anim` files.
+#[derive(Component)]
+pub struct AnimationDiscoveryDone;
+
 /// Called from the viewport panel's `ui()` method (read-only `&World`).
 ///
 /// Detects when a model asset is being dragged over the viewport and, on release,
@@ -361,7 +367,7 @@ pub fn auto_discover_animations(
     mut commands: Commands,
     query: Query<
         (Entity, &MeshInstanceData),
-        (Without<AnimatorComponent>, Without<renzora_animation::AnimatorState>),
+        (Without<AnimatorComponent>, Without<renzora_animation::AnimatorState>, Without<AnimationDiscoveryDone>),
     >,
     project: Option<Res<CurrentProject>>,
 ) {
@@ -369,6 +375,7 @@ pub fn auto_discover_animations(
 
     for (entity, mesh_data) in query.iter() {
         let Some(ref model_path) = mesh_data.model_path else {
+            commands.entity(entity).insert(AnimationDiscoveryDone);
             continue;
         };
 
@@ -380,5 +387,6 @@ pub fn auto_discover_animations(
                 clip_count, model_path
             );
         }
+        commands.entity(entity).insert(AnimationDiscoveryDone);
     }
 }
