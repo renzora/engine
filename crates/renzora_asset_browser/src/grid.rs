@@ -50,6 +50,7 @@ pub(crate) fn collect_entries(state: &AssetBrowserState) -> Option<Vec<GridEntry
         Ok(iter) => iter
             .filter_map(|e| e.ok())
             .filter(|e| !is_hidden(&e.path()))
+            .filter(|e| state.passes_filter(&e.path()))
             .map(|e| {
                 let is_dir = e.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
                 let name = e.file_name().to_string_lossy().to_string();

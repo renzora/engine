@@ -152,6 +152,13 @@ impl HierarchyExpandRequests {
 
 pub use renzora::EntityTag;
 
+/// Optional extension filter for the asset browser. When set, only files with
+/// these extensions (and folders) appear in the grid/list/tree. Mirrors the
+/// `HierarchyFilter` pattern: other crates set this when their workspace
+/// becomes active and unset it on leave.
+#[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
+pub struct AssetBrowserExtensionFilter(pub Option<Vec<String>>);
+
 /// Filter mode for the hierarchy panel. Other panels can set this to restrict
 /// which entities are shown (e.g. UI workspace only shows cameras + canvases).
 #[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
@@ -367,6 +374,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
+            .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
             .init_resource::<renzora_ui::Toasts>()
             .add_systems(PostStartup, camera::spawn_ui_camera)

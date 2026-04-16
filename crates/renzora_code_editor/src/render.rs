@@ -3,7 +3,8 @@ use bevy_egui::egui::{
     Key, Modifiers, Pos2, Rect, RichText, Sense, Stroke, Vec2,
 };
 use egui_phosphor::regular::{
-    ARROW_RIGHT, CODE, FILE_PLUS, FLOPPY_DISK, LIST_NUMBERS, MAGNIFYING_GLASS, WARNING, X,
+    ARROW_RIGHT, CODE, FILE_PLUS, FLOPPY_DISK, LIST_NUMBERS, MAGNIFYING_GLASS,
+    PARAGRAPH, SQUARES_FOUR, WARNING, X,
 };
 use renzora_theme::Theme;
 use std::path::PathBuf;
@@ -112,7 +113,9 @@ pub fn render_code_editor_content(
     }
 
     let row_height = ui.fonts_mut(|f| f.row_height(&FontId::monospace(font_size)));
-    let available_height = (available_rect.height() - error_panel_height).max(row_height);
+    let status_bar_height = 22.0;
+    let available_height = (available_rect.height() - error_panel_height - status_bar_height)
+        .max(row_height);
 
     let editor_id = Id::new(("code_editor_textedit", active_idx));
 
@@ -180,13 +183,35 @@ pub fn render_code_editor_content(
         apply_editor_shortcut(state, active_idx, ui.ctx(), editor_id, sc);
     }
 
+    // --- Split editor area into [scroll area | optional minimap] ---
+    let minimap_width = if state.show_minimap { 120.0 } else { 0.0 };
+    let editor_area = Rect::from_min_size(
+        available_rect.min,
+        Vec2::new(available_rect.width(), available_height),
+    );
+    let scroll_area_rect = Rect::from_min_max(
+        editor_area.min,
+        Pos2::new(editor_area.max.x - minimap_width, editor_area.max.y),
+    );
+    let minimap_rect = Rect::from_min_max(
+        Pos2::new(editor_area.max.x - minimap_width, editor_area.min.y),
+        editor_area.max,
+    );
+
+    // Scope scroll area to its sub-rect so the minimap has room on the right.
+    let mut scroll_ui = ui.new_child(egui::UiBuilder::new().max_rect(scroll_area_rect));
+
     // --- Scroll area with gutter + TextEdit ---
     let scroll_id = Id::new(("code_editor_panel_scroll", active_idx));
-    let scroll_output = egui::ScrollArea::vertical()
+    let pending_scroll = state.pending_scroll_offset.take();
+    let mut scroll_builder = egui::ScrollArea::vertical()
         .id_salt(scroll_id)
         .max_height(available_height)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
+        .auto_shrink([false, false]);
+    if let Some(y) = pending_scroll {
+        scroll_builder = scroll_builder.vertical_scroll_offset(y);
+    }
+    let scroll_output = scroll_builder.show(&mut scroll_ui, |ui| {
             let line_count = state.open_files[active_idx]
                 .content
                 .lines()
@@ -208,6 +233,9 @@ pub fn render_code_editor_content(
                 // Reserve gutter space — painted after TextEdit.
                 ui.add_space(gw);
 
+                // Capture scalar flags before the mut-borrow of open_files so
+                // we can read them while `file` is live.
+                let show_whitespace = state.show_whitespace;
                 let file = &mut state.open_files[active_idx];
                 let avail = ui.available_width().max(100.0);
 
@@ -284,6 +312,18 @@ pub fn render_code_editor_content(
                     }
                 }
 
+                // Whitespace overlay ---------------------------------------
+                if show_whitespace {
+                    paint_whitespace_overlay(
+                        ui,
+                        &file.content,
+                        editor_rect,
+                        row_height,
+                        font_size,
+                        theme,
+                    );
+                }
+
                 // Scroll to cursor only when the cursor actually moved ------
                 let mut should_scroll = false;
                 if let Some(cidx) = cur_char_idx {
@@ -317,7 +357,28 @@ pub fn render_code_editor_content(
     file_content_line_count = line_count_v;
     text_start_x = text_start_x_v;
     should_scroll_to_cursor = should_scroll_v;
-    let _ = (file_content_line_count, should_scroll_to_cursor, text_start_x);
+    let _ = (should_scroll_to_cursor, text_start_x);
+
+    // --- Minimap (right sidebar, independent of scroll area) ---
+    if state.show_minimap && minimap_width > 0.0 {
+        let scroll_y = scroll_output.state.offset.y;
+        let first_visible = (scroll_y / row_height).floor() as usize;
+        let visible_lines = (minimap_rect.height() / row_height).ceil() as usize;
+        let last_visible = (first_visible + visible_lines).min(file_content_line_count);
+        let clicked_line = render_minimap(
+            ui,
+            minimap_rect,
+            &state.open_files[active_idx].content,
+            file_content_line_count,
+            first_visible,
+            last_visible,
+            theme,
+        );
+        if let Some(line) = clicked_line {
+            state.pending_scroll_offset = Some(line as f32 * row_height);
+            ui.ctx().request_repaint();
+        }
+    }
 
     // --- Handle key-triggered actions after TextEdit ---
 
@@ -412,7 +473,38 @@ pub fn render_code_editor_content(
 
     // Error panel -----------------------------------------------------------
     if has_error {
-        render_error_panel(ui, state, active_idx, available_rect, error_panel_height, secondary, error_color);
+        let error_rect = Rect::from_min_max(
+            Pos2::new(
+                available_rect.min.x,
+                available_rect.max.y - error_panel_height - status_bar_height,
+            ),
+            Pos2::new(available_rect.max.x, available_rect.max.y - status_bar_height),
+        );
+        render_error_panel(ui, state, active_idx, error_rect, secondary, error_color);
+    }
+
+    // Status bar -----------------------------------------------------------
+    let status_rect = Rect::from_min_max(
+        Pos2::new(available_rect.min.x, available_rect.max.y - status_bar_height),
+        available_rect.max,
+    );
+    render_status_bar(
+        ui,
+        state,
+        active_idx,
+        cursor_char_idx_after,
+        lang,
+        status_rect,
+        theme,
+    );
+
+    // Close-confirm modal -------------------------------------------------
+    if let Some(idx) = state.close_confirm_tab {
+        if idx >= state.open_files.len() {
+            state.close_confirm_tab = None;
+        } else {
+            render_close_confirm(ui, state, idx, theme);
+        }
     }
 
     let _ = surface_panel;
@@ -470,7 +562,17 @@ fn render_tab_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme)
             state.active_tab = Some(idx);
         }
         if let Some(idx) = close_tab {
-            state.close_tab(idx);
+            // Modified tabs go through the save/discard confirmation modal.
+            let modified = state
+                .open_files
+                .get(idx)
+                .map(|f| f.is_modified)
+                .unwrap_or(false);
+            if modified {
+                state.close_confirm_tab = Some(idx);
+            } else {
+                state.close_tab(idx);
+            }
         }
     });
 }
@@ -502,6 +604,16 @@ fn render_toolbar(
                 }
                 if save_btn.clicked() {
                     state.save_active();
+                }
+
+                let save_all_btn = ui
+                    .button(RichText::new(format!("{} All", FLOPPY_DISK)).size(12.0))
+                    .on_hover_text("Save every modified tab");
+                if save_all_btn.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                }
+                if save_all_btn.clicked() {
+                    state.save_all();
                 }
 
                 if let Some(dir) = scripts_dir.clone() {
@@ -537,6 +649,26 @@ fn render_toolbar(
                     state.goto_line_open = !state.goto_line_open;
                     state.goto_line_focus_requested = state.goto_line_open;
                     state.goto_line_buffer.clear();
+                }
+
+                let ws_btn = ui
+                    .selectable_label(
+                        state.show_whitespace,
+                        RichText::new(PARAGRAPH).size(12.0),
+                    )
+                    .on_hover_text("Show whitespace");
+                if ws_btn.clicked() {
+                    state.show_whitespace = !state.show_whitespace;
+                }
+
+                let mm_btn = ui
+                    .selectable_label(
+                        state.show_minimap,
+                        RichText::new(SQUARES_FOUR).size(12.0),
+                    )
+                    .on_hover_text("Toggle minimap");
+                if mm_btn.clicked() {
+                    state.show_minimap = !state.show_minimap;
                 }
 
                 ui.separator();
@@ -1043,6 +1175,152 @@ fn paint_gutter(
     }
 }
 
+/// Draw the whole file as a scaled-down strip in `rect`, plus a viewport
+/// indicator and click-to-scroll. Returns the clicked line (0-based) if any.
+fn render_minimap(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    content: &str,
+    line_count: usize,
+    first_visible: usize,
+    last_visible: usize,
+    theme: &Theme,
+) -> Option<usize> {
+    let bg = theme.surfaces.faint.to_color32();
+    let fg = theme.text.muted.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+    let border = theme.widgets.border.to_color32();
+
+    ui.painter().rect_filled(rect, 0.0, bg);
+    ui.painter().line_segment(
+        [rect.min, Pos2::new(rect.min.x, rect.max.y)],
+        Stroke::new(1.0, border),
+    );
+
+    if line_count == 0 {
+        return None;
+    }
+
+    // Fit all lines into rect.height(). Minimum 1.5px per line so lines of
+    // visible size remain legible on large files.
+    let mini_row = (rect.height() / line_count.max(1) as f32).clamp(1.0, 3.0);
+    let mini_padding_x = 6.0;
+    let mini_advance = 1.2; // px per char in the minimap
+    let max_cols = ((rect.width() - mini_padding_x * 2.0) / mini_advance) as usize;
+
+    // Paint each line's non-whitespace run as a flat strip.
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed_start = line
+            .bytes()
+            .take_while(|b| *b == b' ' || *b == b'\t')
+            .count();
+        let visual_start = trimmed_start.min(line.len());
+        let content_len = line[visual_start..].chars().count().min(max_cols);
+        if content_len == 0 {
+            continue;
+        }
+        let x0 = rect.min.x + mini_padding_x + trimmed_start as f32 * mini_advance;
+        let y = rect.min.y + line_idx as f32 * mini_row;
+        let strip_width = (content_len as f32 * mini_advance).min(rect.width() - mini_padding_x);
+        let strip = Rect::from_min_size(Pos2::new(x0, y), Vec2::new(strip_width, mini_row));
+        ui.painter().rect_filled(strip, 0.0, fg.linear_multiply(0.45));
+    }
+
+    // Viewport indicator: translucent band over the visible line range.
+    if last_visible > first_visible {
+        let vp_top = rect.min.y + first_visible as f32 * mini_row;
+        let vp_bot = rect.min.y + last_visible as f32 * mini_row;
+        let vp_rect = Rect::from_min_max(
+            Pos2::new(rect.min.x, vp_top),
+            Pos2::new(rect.max.x, vp_bot.min(rect.max.y)),
+        );
+        let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 30);
+        ui.painter().rect_filled(vp_rect, 0.0, fill);
+        ui.painter().rect_stroke(
+            vp_rect,
+            0.0,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 120)),
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    // Click + drag to scroll.
+    let resp = ui.allocate_rect(rect, Sense::click_and_drag());
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if (resp.clicked() || resp.dragged()) && mini_row > 0.0 {
+        let pos = resp
+            .interact_pointer_pos()
+            .or_else(|| ui.ctx().pointer_latest_pos())?;
+        let y_in = (pos.y - rect.min.y).max(0.0);
+        let line = (y_in / mini_row) as usize;
+        // Centre the viewport on the clicked line.
+        let visible_lines = last_visible.saturating_sub(first_visible).max(1);
+        let target = line.saturating_sub(visible_lines / 2);
+        return Some(target.min(line_count.saturating_sub(1)));
+    }
+
+    None
+}
+
+/// Overlay dots for spaces and arrows for tabs across the visible content.
+fn paint_whitespace_overlay(
+    ui: &egui::Ui,
+    content: &str,
+    editor_rect: Rect,
+    row_height: f32,
+    font_size: f32,
+    theme: &Theme,
+) {
+    let muted = theme.text.muted.to_color32();
+    let color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 140);
+    let font = FontId::new(font_size * 0.9, FontFamily::Monospace);
+    let advance = font_size * 0.6;
+
+    // Only paint lines that are within the clip rect; everything outside will
+    // be culled anyway, but skipping avoids tons of painter calls on big files.
+    let clip = ui.clip_rect();
+    let first_line =
+        (((clip.min.y - editor_rect.min.y) / row_height).floor().max(0.0)) as usize;
+    let last_line =
+        (((clip.max.y - editor_rect.min.y) / row_height).ceil().max(0.0)) as usize;
+
+    for (line_idx, line) in content.lines().enumerate() {
+        if line_idx < first_line {
+            continue;
+        }
+        if line_idx > last_line {
+            break;
+        }
+        let y = editor_rect.min.y + line_idx as f32 * row_height + row_height * 0.5;
+        for (col, ch) in line.chars().enumerate() {
+            let x = editor_rect.min.x + col as f32 * advance + advance * 0.5;
+            match ch {
+                ' ' => {
+                    ui.painter().text(
+                        Pos2::new(x, y),
+                        Align2::CENTER_CENTER,
+                        "·",
+                        font.clone(),
+                        color,
+                    );
+                }
+                '\t' => {
+                    ui.painter().text(
+                        Pos2::new(x, y),
+                        Align2::CENTER_CENTER,
+                        "→",
+                        font.clone(),
+                        color,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 fn paint_range_overlay(
     ui: &egui::Ui,
     content: &str,
@@ -1307,18 +1585,12 @@ fn render_error_panel(
     ui: &mut egui::Ui,
     state: &CodeEditorState,
     active_idx: usize,
-    available_rect: Rect,
-    error_panel_height: f32,
+    error_rect: Rect,
     secondary: Color32,
     error_color: Color32,
 ) {
     let Some(file) = state.open_files.get(active_idx) else { return };
     let Some(error) = file.error.as_ref() else { return };
-
-    let error_rect = Rect::from_min_max(
-        Pos2::new(available_rect.min.x, available_rect.max.y - error_panel_height),
-        available_rect.max,
-    );
 
     ui.painter()
         .rect_filled(error_rect, 0.0, Color32::from_rgb(60, 30, 30));
@@ -1351,7 +1623,7 @@ fn render_error_panel(
         error_color,
     );
 
-    let panel_width = available_rect.width();
+    let panel_width = error_rect.width();
     let max_chars = ((panel_width - 50.0) / 7.0) as usize;
     let msg = if error.message.len() > max_chars {
         format!("{}...", &error.message[..max_chars.saturating_sub(3)])
@@ -1365,4 +1637,159 @@ fn render_error_panel(
         FontId::new(12.0, FontFamily::Monospace),
         secondary,
     );
+}
+
+// -------------------------------------------------------------------------
+// Status bar
+// -------------------------------------------------------------------------
+
+fn render_status_bar(
+    ui: &egui::Ui,
+    state: &CodeEditorState,
+    active_idx: usize,
+    cursor_char: Option<usize>,
+    lang: Language,
+    rect: Rect,
+    theme: &Theme,
+) {
+    let bg = theme.surfaces.faint.to_color32();
+    let muted = theme.text.muted.to_color32();
+    let accent = theme.semantic.accent.to_color32();
+    let modified_color = Color32::from_rgb(220, 180, 80);
+
+    ui.painter().rect_filled(rect, 0.0, bg);
+    ui.painter().line_segment(
+        [rect.min, Pos2::new(rect.max.x, rect.min.y)],
+        Stroke::new(1.0, theme.widgets.border.to_color32()),
+    );
+
+    let Some(file) = state.open_files.get(active_idx) else { return };
+
+    let font = FontId::proportional(11.0);
+    let center_y = rect.center().y;
+
+    // Left: file path + modified dot
+    let mut left_x = rect.min.x + 8.0;
+    if file.is_modified {
+        ui.painter().text(
+            Pos2::new(left_x, center_y),
+            Align2::LEFT_CENTER,
+            "●",
+            font.clone(),
+            modified_color,
+        );
+        left_x += 12.0;
+    }
+    let path_str = file.path.display().to_string();
+    ui.painter().text(
+        Pos2::new(left_x, center_y),
+        Align2::LEFT_CENTER,
+        &path_str,
+        font.clone(),
+        muted,
+    );
+
+    // Right: line/col then language
+    let mut right_x = rect.max.x - 8.0;
+
+    let lang_label = match lang {
+        Language::Lua => "Lua",
+        Language::Rhai => "Rhai",
+        Language::Rust => "Rust",
+        Language::Wgsl => "WGSL",
+        Language::Python => "Python",
+        Language::Shell => "Shell",
+        Language::Sql => "SQL",
+        Language::Json => "JSON",
+        Language::Toml => "TOML",
+        Language::PlainText => "Text",
+    };
+    ui.painter().text(
+        Pos2::new(right_x, center_y),
+        Align2::RIGHT_CENTER,
+        lang_label,
+        font.clone(),
+        accent,
+    );
+    right_x -= 8.0 + lang_label.len() as f32 * 7.0;
+
+    if let Some(cidx) = cursor_char {
+        let byte_idx = char_to_byte(&file.content, cidx);
+        let line = byte_to_line(&file.content, byte_idx);
+        let line_start = line_to_byte(&file.content, line);
+        let col = file.content[line_start..byte_idx].chars().count();
+        let pos_text = format!("Ln {}, Col {}", line + 1, col + 1);
+        ui.painter().text(
+            Pos2::new(right_x, center_y),
+            Align2::RIGHT_CENTER,
+            &pos_text,
+            font.clone(),
+            muted,
+        );
+    }
+}
+
+// -------------------------------------------------------------------------
+// Close-confirm modal
+// -------------------------------------------------------------------------
+
+fn render_close_confirm(
+    ui: &mut egui::Ui,
+    state: &mut CodeEditorState,
+    idx: usize,
+    _theme: &Theme,
+) {
+    let name = state
+        .open_files
+        .get(idx)
+        .map(|f| f.name.clone())
+        .unwrap_or_default();
+
+    let mut open = true;
+    let mut action: Option<CloseConfirmAction> = None;
+
+    egui::Window::new("Save changes?")
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open)
+        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ui.ctx(), |ui| {
+            ui.label(format!("\"{}\" has unsaved changes.", name));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    action = Some(CloseConfirmAction::Save);
+                }
+                if ui.button("Discard").clicked() {
+                    action = Some(CloseConfirmAction::Discard);
+                }
+                if ui.button("Cancel").clicked() {
+                    action = Some(CloseConfirmAction::Cancel);
+                }
+            });
+        });
+
+    if !open {
+        action = Some(CloseConfirmAction::Cancel);
+    }
+
+    if let Some(a) = action {
+        match a {
+            CloseConfirmAction::Save => {
+                state.save_file(idx);
+                state.close_tab(idx);
+            }
+            CloseConfirmAction::Discard => {
+                state.close_tab(idx);
+            }
+            CloseConfirmAction::Cancel => {}
+        }
+        state.close_confirm_tab = None;
+    }
+}
+
+enum CloseConfirmAction {
+    Save,
+    Discard,
+    Cancel,
 }

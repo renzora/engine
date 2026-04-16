@@ -59,6 +59,17 @@ pub struct CodeEditorState {
     pub autocomplete_anchor: Option<bevy_egui::egui::Pos2>,
     /// Set by a popup row click; consumed the same frame to insert + close.
     pub autocomplete_click_commit: bool,
+
+    // Visual toggles
+    pub show_minimap: bool,
+    pub show_whitespace: bool,
+
+    /// Consumed on the next frame to jump the scroll area to this y offset.
+    pub pending_scroll_offset: Option<f32>,
+
+    /// Index of a tab the user clicked X on while it had unsaved changes.
+    /// Drives the save-or-discard confirmation modal.
+    pub close_confirm_tab: Option<usize>,
 }
 
 impl Default for CodeEditorState {
@@ -82,6 +93,10 @@ impl Default for CodeEditorState {
             autocomplete_selected: 0,
             autocomplete_anchor: None,
             autocomplete_click_commit: false,
+            show_minimap: true,
+            show_whitespace: false,
+            pending_scroll_offset: None,
+            close_confirm_tab: None,
         }
     }
 }
@@ -172,11 +187,16 @@ impl CodeEditorState {
             }
         }
 
-        // Read from disk
+        // Read from disk. Missing files are common (script_path on an entity
+        // can outlive the file), so log a warning instead of erroring out.
         let content = match std::fs::read_to_string(&path) {
             Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::warn!("Script file not found: {}", path.display());
+                return;
+            }
             Err(e) => {
-                log::error!("Failed to read file: {}", e);
+                log::error!("Failed to read {}: {}", path.display(), e);
                 return;
             }
         };
@@ -261,14 +281,40 @@ end
 
     /// Save the active file to disk.
     pub fn save_active(&mut self) {
-        let Some(idx) = self.active_tab else { return };
+        if let Some(idx) = self.active_tab {
+            self.save_file(idx);
+        }
+    }
+
+    /// Save the file at `idx` to disk.
+    pub fn save_file(&mut self, idx: usize) {
         let Some(file) = self.open_files.get_mut(idx) else { return };
         match std::fs::write(&file.path, &file.content) {
             Ok(_) => {
                 file.is_modified = false;
                 log::info!("Saved: {}", file.path.display());
             }
-            Err(e) => log::error!("Failed to save: {}", e),
+            Err(e) => log::error!("Failed to save {}: {}", file.path.display(), e),
+        }
+    }
+
+    /// Save every modified open file to disk.
+    pub fn save_all(&mut self) {
+        let mut saved = 0usize;
+        for file in self.open_files.iter_mut() {
+            if !file.is_modified {
+                continue;
+            }
+            match std::fs::write(&file.path, &file.content) {
+                Ok(_) => {
+                    file.is_modified = false;
+                    saved += 1;
+                }
+                Err(e) => log::error!("Failed to save {}: {}", file.path.display(), e),
+            }
+        }
+        if saved > 0 {
+            log::info!("Saved {} modified file(s)", saved);
         }
     }
 }

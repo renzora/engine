@@ -393,11 +393,14 @@ fn reset_ui_preview_on_layout_enter(
 }
 
 /// When a UI entity (UiCanvas or a descendant of one) becomes selected in the
-/// Scene workspace, auto-switch to the UI workspace so the user can edit it.
+/// Scene workspace, auto-switch to the UI workspace so the user can edit it
+/// (and vice versa). Only fires while one of those two layouts is already
+/// active — Scripting/Animation/Materials/etc. were chosen deliberately and
+/// must not be hijacked by selection changes.
 #[cfg(feature = "editor")]
 fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
     let active = world.resource::<renzora_editor_framework::LayoutManager>().active_name().to_string();
-    if active == "Hub" {
+    if active != "Scene" && active != "UI" {
         return;
     }
     let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() else {

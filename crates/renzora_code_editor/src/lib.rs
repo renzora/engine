@@ -1,7 +1,10 @@
 pub mod actions;
 pub mod autocomplete;
 pub mod highlight;
+pub mod outline;
+pub mod problems;
 pub mod render;
+pub mod scripts_on_entity;
 pub mod state;
 
 pub use state::*;
@@ -167,10 +170,16 @@ fn sync_selection_scripts(
 
     for entry in &sc.scripts {
         if let Some(ref rel_path) = entry.script_path {
-            let full_path = project.path.join(rel_path);
-            if full_path.exists() {
+            // Project-relative path; same convention as
+            // ScriptEngine::resolve_path.
+            let resolved = if rel_path.is_absolute() {
+                rel_path.clone()
+            } else {
+                project.path.join(rel_path)
+            };
+            if resolved.exists() {
                 // open_file is idempotent — if already open it just switches tab
-                state.open_file(full_path);
+                state.open_file(resolved);
             }
         }
     }
@@ -199,10 +208,14 @@ impl Plugin for CodeEditorPlugin {
                 sync_code_editor_bridge,
                 sync_selection_scripts,
                 consume_open_code_editor_file,
+                sync_asset_filter_for_scripting,
             ).run_if(in_state(SplashState::Editor)),
         );
 
         app.register_panel(CodeEditorPanel::new(arc));
+        app.register_panel(outline::OutlinePanel);
+        app.register_panel(problems::ProblemsPanel);
+        app.register_panel(scripts_on_entity::ScriptsOnEntityPanel);
     }
 }
 
@@ -215,6 +228,29 @@ fn consume_open_code_editor_file(
     let Some(req) = request else { return };
     state.open_file(req.path.clone());
     commands.remove_resource::<renzora::core::OpenCodeEditorFile>();
+}
+
+/// While the Scripting workspace is active, restrict the asset browser to text
+/// formats (scripts, shaders, configs). Reset when leaving so other workspaces
+/// see the full asset list again.
+fn sync_asset_filter_for_scripting(
+    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
+    mut filter: ResMut<renzora_editor_framework::AssetBrowserExtensionFilter>,
+) {
+    let is_scripting = layout_mgr.active_name() == "Scripting";
+    let desired: Option<Vec<String>> = if is_scripting {
+        Some(
+            ["lua", "rhai", "wgsl", "glsl", "json", "ron", "toml", "txt", "md"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    } else {
+        None
+    };
+    if filter.0 != desired {
+        filter.0 = desired;
+    }
 }
 
 renzora::add!(CodeEditorPlugin, Editor);

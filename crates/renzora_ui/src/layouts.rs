@@ -147,29 +147,39 @@ fn layout_blueprints() -> DockTree {
 
 /// Scripting: Hierarchy+Assets | CodeEditor+Console | Inspector+ScriptVariables
 fn layout_scripting() -> DockTree {
+    // Left column: Hierarchy / (Scripts+Outline tabbed) / Assets   (~13%)
+    // Center column: Code editor over (Console+Problems tabbed)    (~62%)
+    // Right column: Viewport over Script Variables                 (~25%)
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("assets"),
-            0.6,
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec!["scripts_on_entity".into(), "outline".into()],
+                    active_tab: 0,
+                },
+                DockTree::leaf("assets"),
+                0.4,
+            ),
+            0.4,
         ),
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf("code_editor"),
-                DockTree::leaf("console"),
+                DockTree::Leaf {
+                    tabs: vec!["console".into(), "problems".into()],
+                    active_tab: 0,
+                },
                 0.7,
             ),
             DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "history".into()],
-                    active_tab: 0,
-                },
+                DockTree::leaf("viewport"),
                 DockTree::leaf("script_variables"),
-                0.5,
+                0.6,
             ),
-            0.78,
+            0.71,
         ),
-        0.18,
+        0.13,
     )
 }
 

@@ -623,6 +623,7 @@ fn render_folder_files(
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
             .filter(|e| !is_hidden(&e.path()))
+            .filter(|e| state.passes_filter(&e.path()))
             .map(|e| e.path())
             .collect(),
         Err(_) => return,

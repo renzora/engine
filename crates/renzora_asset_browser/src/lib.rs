@@ -69,6 +69,14 @@ impl EditorPanel for AssetBrowserPanel {
             }
         }
 
+        // Sync extension allow-list from the global filter resource each frame.
+        let filter_now = world
+            .get_resource::<renzora_editor_framework::AssetBrowserExtensionFilter>()
+            .and_then(|r| r.0.clone());
+        if state.extension_filter != filter_now {
+            state.extension_filter = filter_now;
+        }
+
         // Initialize current folder on first render
         if state.current_folder.is_none() {
             let root = state.root();

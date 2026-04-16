@@ -160,6 +160,11 @@ pub struct AssetBrowserState {
     pub sort_mode: SortMode,
     /// Current sort direction.
     pub sort_direction: SortDirection,
+
+    /// When set, files outside this allow-list are hidden in grid/list/tree
+    /// (folders always remain visible). Synced each frame from the
+    /// `AssetBrowserExtensionFilter` resource.
+    pub extension_filter: Option<Vec<String>>,
 }
 
 impl Default for AssetBrowserState {
@@ -211,11 +216,29 @@ impl Default for AssetBrowserState {
             recent_expanded: false,
             sort_mode: SortMode::default(),
             sort_direction: SortDirection::default(),
+            extension_filter: None,
         }
     }
 }
 
 impl AssetBrowserState {
+    /// Whether `path` survives the active extension filter. Folders always
+    /// pass; files only pass if their lower-cased extension is in the list.
+    pub fn passes_filter(&self, path: &Path) -> bool {
+        let Some(allow) = self.extension_filter.as_ref() else {
+            return true;
+        };
+        if path.is_dir() {
+            return true;
+        }
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+        allow.iter().any(|a| a.eq_ignore_ascii_case(&ext))
+    }
+
     /// Duplicate all selected files/folders. For a single file, enters rename mode on the copy.
     pub fn duplicate_selected(&mut self) {
         let selected: Vec<PathBuf> = self.selected_assets.iter().cloned().collect();
