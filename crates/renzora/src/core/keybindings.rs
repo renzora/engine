@@ -105,6 +105,14 @@ pub enum EditorAction {
     CodeDeleteLine,
     CodeMoveLineUp,
     CodeMoveLineDown,
+    CodeGoToDefinition,
+    CodeFormat,
+    CodeShowDiff,
+    CodeToggleFold,
+    CodeAddCursorAbove,
+    CodeAddCursorBelow,
+    CodeClearExtraCursors,
+    CodeSplitRight,
 }
 
 impl EditorAction {
@@ -183,6 +191,14 @@ impl EditorAction {
             EditorAction::CodeDeleteLine => "Delete Line",
             EditorAction::CodeMoveLineUp => "Move Line Up",
             EditorAction::CodeMoveLineDown => "Move Line Down",
+            EditorAction::CodeGoToDefinition => "Go to Definition",
+            EditorAction::CodeFormat => "Format Document",
+            EditorAction::CodeShowDiff => "Show Diff vs Saved",
+            EditorAction::CodeToggleFold => "Toggle Fold",
+            EditorAction::CodeAddCursorAbove => "Add Cursor Above",
+            EditorAction::CodeAddCursorBelow => "Add Cursor Below",
+            EditorAction::CodeClearExtraCursors => "Clear Extra Cursors",
+            EditorAction::CodeSplitRight => "Split Editor Right",
         }
     }
 
@@ -258,7 +274,15 @@ impl EditorAction {
             | EditorAction::CodeDuplicateLine
             | EditorAction::CodeDeleteLine
             | EditorAction::CodeMoveLineUp
-            | EditorAction::CodeMoveLineDown => "Code Editor",
+            | EditorAction::CodeMoveLineDown
+            | EditorAction::CodeGoToDefinition
+            | EditorAction::CodeFormat
+            | EditorAction::CodeShowDiff
+            | EditorAction::CodeToggleFold
+            | EditorAction::CodeAddCursorAbove
+            | EditorAction::CodeAddCursorBelow
+            | EditorAction::CodeClearExtraCursors
+            | EditorAction::CodeSplitRight => "Code Editor",
         }
     }
 
@@ -338,6 +362,14 @@ impl EditorAction {
             EditorAction::CodeDeleteLine,
             EditorAction::CodeMoveLineUp,
             EditorAction::CodeMoveLineDown,
+            EditorAction::CodeGoToDefinition,
+            EditorAction::CodeFormat,
+            EditorAction::CodeShowDiff,
+            EditorAction::CodeToggleFold,
+            EditorAction::CodeAddCursorAbove,
+            EditorAction::CodeAddCursorBelow,
+            EditorAction::CodeClearExtraCursors,
+            EditorAction::CodeSplitRight,
         ]
     }
 }
@@ -515,6 +547,14 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::CodeDeleteLine, KeyBinding::new(KeyCode::KeyK).ctrl().shift());
         bindings.insert(EditorAction::CodeMoveLineUp, KeyBinding::new(KeyCode::ArrowUp).alt());
         bindings.insert(EditorAction::CodeMoveLineDown, KeyBinding::new(KeyCode::ArrowDown).alt());
+        bindings.insert(EditorAction::CodeGoToDefinition, KeyBinding::new(KeyCode::F12));
+        bindings.insert(EditorAction::CodeFormat, KeyBinding::new(KeyCode::KeyF).ctrl().shift());
+        bindings.insert(EditorAction::CodeShowDiff, KeyBinding::new(KeyCode::KeyD).ctrl().alt());
+        bindings.insert(EditorAction::CodeToggleFold, KeyBinding::new(KeyCode::BracketLeft).ctrl().shift());
+        bindings.insert(EditorAction::CodeAddCursorAbove, KeyBinding::new(KeyCode::ArrowUp).ctrl().alt());
+        bindings.insert(EditorAction::CodeAddCursorBelow, KeyBinding::new(KeyCode::ArrowDown).ctrl().alt());
+        bindings.insert(EditorAction::CodeClearExtraCursors, KeyBinding::new(KeyCode::Escape).shift());
+        bindings.insert(EditorAction::CodeSplitRight, KeyBinding::new(KeyCode::Backslash).ctrl());
 
         Self {
             bindings,

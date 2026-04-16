@@ -1,10 +1,13 @@
 pub mod actions;
 pub mod autocomplete;
+pub mod diff;
+pub mod format;
 pub mod highlight;
 pub mod outline;
 pub mod problems;
 pub mod render;
 pub mod scripts_on_entity;
+pub mod snippets;
 pub mod state;
 
 pub use state::*;
@@ -19,7 +22,7 @@ use renzora_editor_framework::{AppEditorExt, AssetDragPayload, EditorCommands, E
 use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 
-use crate::render::render_code_editor_content;
+use crate::render::render_code_editor_panel;
 
 // ---------------------------------------------------------------------------
 // Bridge
@@ -87,6 +90,7 @@ impl EditorPanel for CodeEditorPanel {
                     settings.code_trim_trailing_whitespace_on_save;
                 local.show_minimap = settings.code_show_minimap;
                 local.show_whitespace = settings.code_show_whitespace;
+                local.mono_font = settings.mono_font.clone();
             }
         }
 
@@ -107,7 +111,7 @@ impl EditorPanel for CodeEditorPanel {
 
         // Render
         if let Ok(mut local) = self.local.write() {
-            render_code_editor_content(ui, &mut local, &theme, scripts_dir, shortcuts);
+            render_code_editor_panel(ui, &mut local, &theme, scripts_dir, shortcuts);
         }
 
         // Accept script file drops
@@ -256,6 +260,9 @@ fn sync_code_editor_prefs_to_settings(
     {
         settings.code_trim_trailing_whitespace_on_save =
             editor_state.trim_trailing_whitespace_on_save;
+    }
+    if settings.mono_font != editor_state.mono_font {
+        settings.mono_font = editor_state.mono_font.clone();
     }
 }
 

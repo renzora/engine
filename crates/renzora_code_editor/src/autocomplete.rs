@@ -6,6 +6,7 @@
 //! yet.
 
 use crate::highlight::Language;
+use crate::snippets::{matching_snippets, Snippet};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ApiSymbol {
@@ -167,5 +168,55 @@ pub fn matching_symbols(lang: Language, prefix: &str) -> Vec<&'static ApiSymbol>
     // Best matches first: exact prefix over contains (already starts_with), alpha within.
     out.sort_by(|a, b| a.name.cmp(b.name));
     out.truncate(50);
+    out
+}
+
+/// A single line in the autocomplete popup. Snippets show before API symbols
+/// so users see them when typing common prefixes like `fn` / `if`.
+#[derive(Clone, Copy)]
+pub enum CompletionItem {
+    Symbol(&'static ApiSymbol),
+    Snippet(&'static Snippet),
+}
+
+impl CompletionItem {
+    pub fn label(&self) -> &'static str {
+        match self {
+            CompletionItem::Symbol(s) => s.name,
+            CompletionItem::Snippet(s) => s.prefix,
+        }
+    }
+
+    pub fn category(&self) -> &'static str {
+        match self {
+            CompletionItem::Symbol(s) => s.category,
+            CompletionItem::Snippet(_) => "snippet",
+        }
+    }
+
+    pub fn detail(&self) -> &'static str {
+        match self {
+            CompletionItem::Symbol(s) => s.signature,
+            CompletionItem::Snippet(s) => s.label,
+        }
+    }
+
+    pub fn doc(&self) -> &'static str {
+        match self {
+            CompletionItem::Symbol(s) => s.doc,
+            CompletionItem::Snippet(_) => "code snippet",
+        }
+    }
+}
+
+/// Combined completion list — snippets first, then API symbols.
+pub fn matching_completions(lang: Language, prefix: &str) -> Vec<CompletionItem> {
+    let mut out = Vec::new();
+    for snip in matching_snippets(lang, prefix) {
+        out.push(CompletionItem::Snippet(snip));
+    }
+    for sym in matching_symbols(lang, prefix) {
+        out.push(CompletionItem::Symbol(sym));
+    }
     out
 }

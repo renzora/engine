@@ -2,6 +2,8 @@
 //! and the VSCode-style editing commands (duplicate line, move line,
 //! indent/dedent selection, etc.).
 
+use std::collections::HashSet;
+
 use crate::highlight::Language;
 
 /// Number of spaces used for an indent unit.
@@ -530,6 +532,144 @@ pub fn find_matching_bracket(content: &str, byte_idx: usize) -> Option<(usize, u
         }
     }
     None
+}
+
+/// 0-based line numbers that can be folded. A line is foldable if its block —
+/// either delimited by braces (C-style languages) or by indent (Python/Lua) —
+/// extends to at least one further line.
+pub fn compute_foldable_lines(content: &str, lang: Language) -> HashSet<usize> {
+    let mut out = HashSet::new();
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() < 2 {
+        return out;
+    }
+    let use_brace = matches!(
+        lang,
+        Language::Rust | Language::Rhai | Language::Wgsl | Language::Json
+    );
+    if use_brace {
+        // Any line ending with `{` (after stripping trailing whitespace and
+        // line comments) starts a block.
+        for (i, line) in lines.iter().enumerate() {
+            let no_comment = strip_trailing_comment(line, lang);
+            let trimmed = no_comment.trim_end();
+            if trimmed.ends_with('{') || trimmed.ends_with('[') {
+                if i + 1 < lines.len() {
+                    out.insert(i);
+                }
+            }
+        }
+        return out;
+    }
+    // Indent-based: a line is foldable if any subsequent line is indented
+    // strictly deeper before the indent returns to the same-or-lower level.
+    let indent_widths: Vec<usize> = lines.iter().map(|l| indent_width(l)).collect();
+    for i in 0..lines.len() - 1 {
+        if lines[i].trim().is_empty() {
+            continue;
+        }
+        let my_indent = indent_widths[i];
+        for j in (i + 1)..lines.len() {
+            if lines[j].trim().is_empty() {
+                continue;
+            }
+            if indent_widths[j] > my_indent {
+                out.insert(i);
+                break;
+            } else {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Last line included in a fold that starts at `start_line`. The fold ends
+/// either at the matching close brace (brace languages) or when the indent
+/// returns to start's indent (indent languages).
+pub fn fold_end_line(content: &str, start_line: usize, lang: Language) -> usize {
+    let lines: Vec<&str> = content.lines().collect();
+    if start_line >= lines.len() {
+        return start_line;
+    }
+    let use_brace = matches!(
+        lang,
+        Language::Rust | Language::Rhai | Language::Wgsl | Language::Json
+    );
+    if use_brace {
+        // Walk byte-by-byte across the joined content tracking brace depth.
+        let bytes = content.as_bytes();
+        let line_start = line_to_byte(content, start_line);
+        let (_, line_end) = line_byte_range(content, start_line);
+        // Find the `{` (or `[`) on this line we're folding from.
+        let mut open_b = b'{';
+        let mut close_b = b'}';
+        let mut start_byte = None;
+        for i in line_start..line_end {
+            if bytes[i] == b'{' {
+                open_b = b'{';
+                close_b = b'}';
+                start_byte = Some(i);
+            }
+            if bytes[i] == b'[' && start_byte.is_none() {
+                open_b = b'[';
+                close_b = b']';
+                start_byte = Some(i);
+            }
+        }
+        let Some(sb) = start_byte else { return start_line };
+        let mut depth: i32 = 0;
+        let mut i = sb;
+        while i < bytes.len() {
+            if bytes[i] == open_b {
+                depth += 1;
+            } else if bytes[i] == close_b {
+                depth -= 1;
+                if depth == 0 {
+                    return byte_to_line(content, i);
+                }
+            }
+            i += 1;
+        }
+        lines.len() - 1
+    } else {
+        let my_indent = indent_width(lines[start_line]);
+        let mut last = start_line;
+        for j in (start_line + 1)..lines.len() {
+            if lines[j].trim().is_empty() {
+                last = j;
+                continue;
+            }
+            if indent_width(lines[j]) > my_indent {
+                last = j;
+            } else {
+                break;
+            }
+        }
+        last
+    }
+}
+
+fn indent_width(line: &str) -> usize {
+    let mut w = 0;
+    for ch in line.chars() {
+        match ch {
+            ' ' => w += 1,
+            '\t' => w += TAB_SIZE,
+            _ => break,
+        }
+    }
+    w
+}
+
+fn strip_trailing_comment(line: &str, lang: Language) -> &str {
+    let Some(prefix) = lang.line_comment() else { return line };
+    if let Some(idx) = line.find(prefix) {
+        // Naive: don't strip inside a string. Acceptable for fold detection.
+        &line[..idx]
+    } else {
+        line
+    }
 }
 
 fn scan_bracket(bytes: &[u8], start: usize, open: u8, close: u8, forward: bool) -> Option<usize> {
