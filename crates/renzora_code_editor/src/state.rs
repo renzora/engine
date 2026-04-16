@@ -9,6 +9,10 @@ pub struct OpenFile {
     pub is_modified: bool,
     pub error: Option<ScriptError>,
     pub last_checked_content: String,
+    /// Previous cursor byte-index. Used so auto-scroll only fires when the
+    /// cursor actually moved, instead of every frame the editor has focus
+    /// (which was fighting the user's manual scroll).
+    pub last_cursor_index: Option<usize>,
 }
 
 /// A script compilation error.
@@ -35,6 +39,26 @@ pub struct CodeEditorState {
     pub replace_text: String,
     pub find_case_sensitive: bool,
     pub find_focus_requested: bool,
+
+    // Go-to-line dialog
+    pub goto_line_open: bool,
+    pub goto_line_buffer: String,
+    pub goto_line_focus_requested: bool,
+    /// 1-based line number to scroll to on the next frame.
+    pub pending_goto_line: Option<usize>,
+
+    // Autocomplete popup
+    pub autocomplete_open: bool,
+    /// The word prefix being completed (scanned back from the cursor).
+    pub autocomplete_filter: String,
+    /// Byte offset where the prefix starts in the file's content.
+    pub autocomplete_prefix_start: usize,
+    /// Highlighted row in the popup.
+    pub autocomplete_selected: usize,
+    /// Anchor position (bottom-left of the screen-space popup).
+    pub autocomplete_anchor: Option<bevy_egui::egui::Pos2>,
+    /// Set by a popup row click; consumed the same frame to insert + close.
+    pub autocomplete_click_commit: bool,
 }
 
 impl Default for CodeEditorState {
@@ -48,6 +72,16 @@ impl Default for CodeEditorState {
             replace_text: String::new(),
             find_case_sensitive: false,
             find_focus_requested: false,
+            goto_line_open: false,
+            goto_line_buffer: String::new(),
+            goto_line_focus_requested: false,
+            pending_goto_line: None,
+            autocomplete_open: false,
+            autocomplete_filter: String::new(),
+            autocomplete_prefix_start: 0,
+            autocomplete_selected: 0,
+            autocomplete_anchor: None,
+            autocomplete_click_commit: false,
         }
     }
 }
@@ -161,6 +195,7 @@ impl CodeEditorState {
             is_modified: false,
             error: None,
             last_checked_content: content_clone,
+            last_cursor_index: None,
         });
         self.active_tab = Some(self.open_files.len() - 1);
     }

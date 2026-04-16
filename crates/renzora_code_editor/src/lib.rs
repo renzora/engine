@@ -1,3 +1,6 @@
+pub mod actions;
+pub mod autocomplete;
+pub mod highlight;
 pub mod render;
 pub mod state;
 
@@ -119,16 +122,7 @@ impl EditorPanel for CodeEditorPanel {
         // Push back
         if let Ok(mut pending) = self.bridge.lock() {
             if let Ok(local) = self.local.read() {
-                *pending = Some(CodeEditorState {
-                    open_files: local.open_files.clone(),
-                    active_tab: local.active_tab,
-                    font_size: local.font_size,
-                    find_open: local.find_open,
-                    find_text: local.find_text.clone(),
-                    replace_text: local.replace_text.clone(),
-                    find_case_sensitive: local.find_case_sensitive,
-                    find_focus_requested: local.find_focus_requested,
-                });
+                *pending = Some(local.clone());
             }
         }
     }

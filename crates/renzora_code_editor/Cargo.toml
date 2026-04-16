@@ -13,6 +13,5 @@ bevy_egui = { workspace = true }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-egui_code_editor = "=0.2.21"
 log = "0.4"
 renzora_scripting = { path = "../renzora_scripting" }
