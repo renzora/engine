@@ -70,6 +70,11 @@ pub struct CodeEditorState {
     /// Index of a tab the user clicked X on while it had unsaved changes.
     /// Drives the save-or-discard confirmation modal.
     pub close_confirm_tab: Option<usize>,
+
+    /// Strip trailing spaces/tabs from each line on save.
+    pub trim_trailing_whitespace_on_save: bool,
+    /// Type `(` `[` `{` `"` `'` to insert the closing pair too.
+    pub auto_close_pairs: bool,
 }
 
 impl Default for CodeEditorState {
@@ -97,6 +102,8 @@ impl Default for CodeEditorState {
             show_whitespace: false,
             pending_scroll_offset: None,
             close_confirm_tab: None,
+            trim_trailing_whitespace_on_save: true,
+            auto_close_pairs: true,
         }
     }
 }
@@ -138,6 +145,26 @@ impl CodeEditorState {
         }
         count
     }
+}
+
+/// Strip trailing spaces / tabs from each line. Preserves the original
+/// trailing-newline state.
+fn trim_trailing_whitespace(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut current = String::new();
+    for ch in content.chars() {
+        if ch == '\n' {
+            out.push_str(current.trim_end_matches(|c: char| c == ' ' || c == '\t'));
+            out.push('\n');
+            current.clear();
+        } else {
+            current.push(ch);
+        }
+    }
+    if !current.is_empty() {
+        out.push_str(current.trim_end_matches(|c: char| c == ' ' || c == '\t'));
+    }
+    out
 }
 
 fn replace_all_case_insensitive(haystack: &str, needle: &str, replacement: &str) -> (String, usize) {
@@ -288,7 +315,14 @@ end
 
     /// Save the file at `idx` to disk.
     pub fn save_file(&mut self, idx: usize) {
+        let trim = self.trim_trailing_whitespace_on_save;
         let Some(file) = self.open_files.get_mut(idx) else { return };
+        if trim {
+            let cleaned = trim_trailing_whitespace(&file.content);
+            if cleaned != file.content {
+                file.content = cleaned;
+            }
+        }
         match std::fs::write(&file.path, &file.content) {
             Ok(_) => {
                 file.is_modified = false;
@@ -296,6 +330,57 @@ end
             }
             Err(e) => log::error!("Failed to save {}: {}", file.path.display(), e),
         }
+    }
+
+    /// Close every tab except `keep_idx`. Modified tabs are preserved so
+    /// changes don't disappear silently.
+    pub fn close_others(&mut self, keep_idx: usize) {
+        let mut new_files = Vec::new();
+        let mut new_active = None;
+        for (i, f) in std::mem::take(&mut self.open_files).into_iter().enumerate() {
+            if i == keep_idx || f.is_modified {
+                if i == keep_idx {
+                    new_active = Some(new_files.len());
+                }
+                new_files.push(f);
+            }
+        }
+        self.open_files = new_files;
+        self.active_tab = if self.open_files.is_empty() {
+            None
+        } else {
+            new_active.or(Some(0))
+        };
+    }
+
+    /// Close every tab. Modified tabs are preserved.
+    pub fn close_all(&mut self) {
+        let new_files: Vec<OpenFile> = std::mem::take(&mut self.open_files)
+            .into_iter()
+            .filter(|f| f.is_modified)
+            .collect();
+        self.active_tab = if new_files.is_empty() { None } else { Some(0) };
+        self.open_files = new_files;
+    }
+
+    /// Cycle to the next tab.
+    pub fn next_tab(&mut self) {
+        if self.open_files.is_empty() {
+            return;
+        }
+        let n = self.open_files.len();
+        let cur = self.active_tab.unwrap_or(0);
+        self.active_tab = Some((cur + 1) % n);
+    }
+
+    /// Cycle to the previous tab.
+    pub fn prev_tab(&mut self) {
+        if self.open_files.is_empty() {
+            return;
+        }
+        let n = self.open_files.len();
+        let cur = self.active_tab.unwrap_or(0);
+        self.active_tab = Some((cur + n - 1) % n);
     }
 
     /// Save every modified open file to disk.

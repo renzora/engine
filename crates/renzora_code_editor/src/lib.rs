@@ -79,6 +79,21 @@ impl EditorPanel for CodeEditorPanel {
             }
         }
 
+        // Sync user preferences (EditorSettings → CodeEditorState).
+        if let Some(settings) = world.get_resource::<renzora_editor_framework::EditorSettings>() {
+            if let Ok(mut local) = self.local.write() {
+                local.auto_close_pairs = settings.code_auto_close_pairs;
+                local.trim_trailing_whitespace_on_save =
+                    settings.code_trim_trailing_whitespace_on_save;
+                local.show_minimap = settings.code_show_minimap;
+                local.show_whitespace = settings.code_show_whitespace;
+            }
+        }
+
+        // Snapshot which keybindings fired this frame, consuming the egui
+        // events so TextEdit doesn't also see them.
+        let shortcuts = render::EditorShortcuts::collect(ui, world);
+
         let theme = if let Some(tm) = world.get_resource::<ThemeManager>() {
             tm.active_theme.clone()
         } else {
@@ -92,7 +107,7 @@ impl EditorPanel for CodeEditorPanel {
 
         // Render
         if let Ok(mut local) = self.local.write() {
-            render_code_editor_content(ui, &mut local, &theme, scripts_dir);
+            render_code_editor_content(ui, &mut local, &theme, scripts_dir, shortcuts);
         }
 
         // Accept script file drops
@@ -209,6 +224,7 @@ impl Plugin for CodeEditorPlugin {
                 sync_selection_scripts,
                 consume_open_code_editor_file,
                 sync_asset_filter_for_scripting,
+                sync_code_editor_prefs_to_settings,
             ).run_if(in_state(SplashState::Editor)),
         );
 
@@ -216,6 +232,30 @@ impl Plugin for CodeEditorPlugin {
         app.register_panel(outline::OutlinePanel);
         app.register_panel(problems::ProblemsPanel);
         app.register_panel(scripts_on_entity::ScriptsOnEntityPanel);
+    }
+}
+
+/// Push the editor's view-preferences back into `EditorSettings` so the
+/// settings overlay reflects toolbar toggles (and the values persist when
+/// it's eventually serialised).
+fn sync_code_editor_prefs_to_settings(
+    editor_state: Res<CodeEditorState>,
+    mut settings: ResMut<renzora_editor_framework::EditorSettings>,
+) {
+    if settings.code_show_minimap != editor_state.show_minimap {
+        settings.code_show_minimap = editor_state.show_minimap;
+    }
+    if settings.code_show_whitespace != editor_state.show_whitespace {
+        settings.code_show_whitespace = editor_state.show_whitespace;
+    }
+    if settings.code_auto_close_pairs != editor_state.auto_close_pairs {
+        settings.code_auto_close_pairs = editor_state.auto_close_pairs;
+    }
+    if settings.code_trim_trailing_whitespace_on_save
+        != editor_state.trim_trailing_whitespace_on_save
+    {
+        settings.code_trim_trailing_whitespace_on_save =
+            editor_state.trim_trailing_whitespace_on_save;
     }
 }
 

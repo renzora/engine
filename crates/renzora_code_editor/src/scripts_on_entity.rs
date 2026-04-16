@@ -233,7 +233,23 @@ impl EditorPanel for ScriptsOnEntityPanel {
                                 script_id.clone()
                             }
                         });
-                    let label_color = if enabled { primary } else { muted };
+
+                    // Resolve to check existence — same convention as the
+                    // runtime: relative paths are project-root joined.
+                    let exists = match (script_path.as_ref(), project_path.as_ref()) {
+                        (Some(p), _) if p.is_absolute() => p.exists(),
+                        (Some(p), Some(root)) => root.join(p).exists(),
+                        // No script_path → built-in script_id; treat as present.
+                        _ => true,
+                    };
+
+                    let label_color = if !exists {
+                        theme.semantic.error.to_color32()
+                    } else if enabled {
+                        primary
+                    } else {
+                        muted
+                    };
                     ui.painter().text(
                         egui::Pos2::new(rect.min.x + 12.0, rect.center().y),
                         egui::Align2::LEFT_CENTER,
@@ -241,6 +257,26 @@ impl EditorPanel for ScriptsOnEntityPanel {
                         FontId::proportional(11.5),
                         label_color,
                     );
+
+                    if !exists {
+                        // Strikethrough + "missing" badge after the name.
+                        let label_w = display.len() as f32 * 6.5;
+                        let line_y = rect.center().y;
+                        ui.painter().line_segment(
+                            [
+                                egui::Pos2::new(rect.min.x + 12.0, line_y),
+                                egui::Pos2::new(rect.min.x + 12.0 + label_w, line_y),
+                            ],
+                            Stroke::new(1.0, theme.semantic.error.to_color32()),
+                        );
+                        ui.painter().text(
+                            egui::Pos2::new(rect.min.x + 18.0 + label_w, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            "missing",
+                            FontId::proportional(9.5),
+                            theme.semantic.error.to_color32(),
+                        );
+                    }
 
                     // Toggle button (rightmost - 30)
                     let toggle_rect = egui::Rect::from_min_size(

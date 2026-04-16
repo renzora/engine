@@ -348,6 +348,51 @@ pub fn select_next_occurrence(
 }
 
 
+/// Toggle a `/* */` block comment around the selection. If the selection is
+/// already wrapped in `/* */` (ignoring leading/trailing whitespace), unwrap
+/// it. Otherwise wrap. Returns the new selection range, or `None` if the
+/// language has no block-comment syntax.
+pub fn toggle_block_comment(
+    content: &mut String,
+    sel_start_byte: usize,
+    sel_end_byte: usize,
+    lang: Language,
+) -> Option<(usize, usize)> {
+    let (open, close) = lang.block_comment()?;
+    let (a, b) = if sel_start_byte <= sel_end_byte {
+        (sel_start_byte, sel_end_byte)
+    } else {
+        (sel_end_byte, sel_start_byte)
+    };
+
+    // Empty selection → fall back to wrapping the cursor itself with /* */
+    // and put the cursor between them.
+    if a == b {
+        let stamp = format!("{}  {}", open, close);
+        content.insert_str(a, &stamp);
+        let inside = a + open.len() + 1; // between "/* " and " */"
+        return Some((inside, inside));
+    }
+
+    let chunk = content[a..b].to_string();
+    let trimmed = chunk.trim();
+
+    if trimmed.starts_with(open) && trimmed.ends_with(close) {
+        // Already wrapped — strip.
+        let inner_start = chunk.find(open)? + open.len();
+        let inner_end = chunk.rfind(close)?;
+        let inner = chunk[inner_start..inner_end].to_string();
+        let new_inner = inner.trim().to_string();
+        content.replace_range(a..b, &new_inner);
+        Some((a, a + new_inner.len()))
+    } else {
+        // Wrap.
+        let wrapped = format!("{} {} {}", open, chunk, close);
+        content.replace_range(a..b, &wrapped);
+        Some((a, a + wrapped.len()))
+    }
+}
+
 /// Toggle a line comment across the lines touched by `[sel_start_byte, sel_end_byte]`.
 ///
 /// If every non-blank line in the range is already commented, all of them are

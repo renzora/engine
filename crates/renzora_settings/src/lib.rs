@@ -693,6 +693,30 @@ fn render_scripting_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme:
             ui.checkbox(&mut settings.hide_cursor_in_play_mode, "Hide and lock cursor in play mode")
         });
     });
+
+    render_category(ui, CODE, "Code Editor", CategoryStyle::scripting(), "settings_code_editor", true, theme, |ui| {
+        settings_row(ui, 0, "Auto-close pairs", theme, |ui| {
+            ui.checkbox(
+                &mut settings.code_auto_close_pairs,
+                "Insert matching ) ] } \" ' when typing the opener",
+            )
+        });
+        settings_row(ui, 1, "Trim on save", theme, |ui| {
+            ui.checkbox(
+                &mut settings.code_trim_trailing_whitespace_on_save,
+                "Strip trailing whitespace from each line on save",
+            )
+        });
+        settings_row(ui, 2, "Minimap", theme, |ui| {
+            ui.checkbox(&mut settings.code_show_minimap, "Show minimap sidebar")
+        });
+        settings_row(ui, 3, "Whitespace markers", theme, |ui| {
+            ui.checkbox(
+                &mut settings.code_show_whitespace,
+                "Show · for spaces and → for tabs",
+            )
+        });
+    });
 }
 
 fn render_assets_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &Theme) {

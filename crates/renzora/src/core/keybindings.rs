@@ -87,6 +87,24 @@ pub enum EditorAction {
     ToggleEdgeSnap,
     ToggleScaleBottom,
     TogglePivotLock,
+
+    // Code editor
+    CodeSaveFile,
+    CodeSaveAll,
+    CodeCloseTab,
+    CodeNextTab,
+    CodePrevTab,
+    CodeFind,
+    CodeReplace,
+    CodeGotoLine,
+    CodeToggleLineComment,
+    CodeToggleBlockComment,
+    CodeTriggerAutocomplete,
+    CodeSelectNextMatch,
+    CodeDuplicateLine,
+    CodeDeleteLine,
+    CodeMoveLineUp,
+    CodeMoveLineDown,
 }
 
 impl EditorAction {
@@ -149,6 +167,22 @@ impl EditorAction {
             EditorAction::ToggleEdgeSnap => "Toggle Edge Snap",
             EditorAction::ToggleScaleBottom => "Toggle Scale From Bottom",
             EditorAction::TogglePivotLock => "Toggle Pivot Lock",
+            EditorAction::CodeSaveFile => "Save File",
+            EditorAction::CodeSaveAll => "Save All Files",
+            EditorAction::CodeCloseTab => "Close Tab",
+            EditorAction::CodeNextTab => "Next Tab",
+            EditorAction::CodePrevTab => "Previous Tab",
+            EditorAction::CodeFind => "Find",
+            EditorAction::CodeReplace => "Replace",
+            EditorAction::CodeGotoLine => "Go to Line",
+            EditorAction::CodeToggleLineComment => "Toggle Line Comment",
+            EditorAction::CodeToggleBlockComment => "Toggle Block Comment",
+            EditorAction::CodeTriggerAutocomplete => "Autocomplete",
+            EditorAction::CodeSelectNextMatch => "Select Next Occurrence",
+            EditorAction::CodeDuplicateLine => "Duplicate Line",
+            EditorAction::CodeDeleteLine => "Delete Line",
+            EditorAction::CodeMoveLineUp => "Move Line Up",
+            EditorAction::CodeMoveLineDown => "Move Line Down",
         }
     }
 
@@ -208,6 +242,23 @@ impl EditorAction {
             | EditorAction::ToggleScaleBottom => "View",
 
             EditorAction::PlayStop | EditorAction::PlayScriptsOnly => "Play",
+
+            EditorAction::CodeSaveFile
+            | EditorAction::CodeSaveAll
+            | EditorAction::CodeCloseTab
+            | EditorAction::CodeNextTab
+            | EditorAction::CodePrevTab
+            | EditorAction::CodeFind
+            | EditorAction::CodeReplace
+            | EditorAction::CodeGotoLine
+            | EditorAction::CodeToggleLineComment
+            | EditorAction::CodeToggleBlockComment
+            | EditorAction::CodeTriggerAutocomplete
+            | EditorAction::CodeSelectNextMatch
+            | EditorAction::CodeDuplicateLine
+            | EditorAction::CodeDeleteLine
+            | EditorAction::CodeMoveLineUp
+            | EditorAction::CodeMoveLineDown => "Code Editor",
         }
     }
 
@@ -271,6 +322,22 @@ impl EditorAction {
             EditorAction::ToggleEdgeSnap,
             EditorAction::ToggleScaleBottom,
             EditorAction::TogglePivotLock,
+            EditorAction::CodeSaveFile,
+            EditorAction::CodeSaveAll,
+            EditorAction::CodeCloseTab,
+            EditorAction::CodeNextTab,
+            EditorAction::CodePrevTab,
+            EditorAction::CodeFind,
+            EditorAction::CodeReplace,
+            EditorAction::CodeGotoLine,
+            EditorAction::CodeToggleLineComment,
+            EditorAction::CodeToggleBlockComment,
+            EditorAction::CodeTriggerAutocomplete,
+            EditorAction::CodeSelectNextMatch,
+            EditorAction::CodeDuplicateLine,
+            EditorAction::CodeDeleteLine,
+            EditorAction::CodeMoveLineUp,
+            EditorAction::CodeMoveLineDown,
         ]
     }
 }
@@ -430,6 +497,24 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::ToggleEdgeSnap, KeyBinding::new(KeyCode::KeyT).shift());
         bindings.insert(EditorAction::ToggleScaleBottom, KeyBinding::new(KeyCode::KeyT).alt());
         bindings.insert(EditorAction::TogglePivotLock, KeyBinding::new(KeyCode::KeyL));
+
+        // Code editor defaults
+        bindings.insert(EditorAction::CodeSaveFile, KeyBinding::new(KeyCode::KeyS).ctrl());
+        bindings.insert(EditorAction::CodeSaveAll, KeyBinding::new(KeyCode::KeyS).ctrl().shift());
+        bindings.insert(EditorAction::CodeCloseTab, KeyBinding::new(KeyCode::KeyW).ctrl());
+        bindings.insert(EditorAction::CodeNextTab, KeyBinding::new(KeyCode::Tab).ctrl());
+        bindings.insert(EditorAction::CodePrevTab, KeyBinding::new(KeyCode::Tab).ctrl().shift());
+        bindings.insert(EditorAction::CodeFind, KeyBinding::new(KeyCode::KeyF).ctrl());
+        bindings.insert(EditorAction::CodeReplace, KeyBinding::new(KeyCode::KeyH).ctrl());
+        bindings.insert(EditorAction::CodeGotoLine, KeyBinding::new(KeyCode::KeyG).ctrl());
+        bindings.insert(EditorAction::CodeToggleLineComment, KeyBinding::new(KeyCode::Slash).ctrl());
+        bindings.insert(EditorAction::CodeToggleBlockComment, KeyBinding::new(KeyCode::Slash).ctrl().shift());
+        bindings.insert(EditorAction::CodeTriggerAutocomplete, KeyBinding::new(KeyCode::Space).ctrl());
+        bindings.insert(EditorAction::CodeSelectNextMatch, KeyBinding::new(KeyCode::KeyD).ctrl());
+        bindings.insert(EditorAction::CodeDuplicateLine, KeyBinding::new(KeyCode::KeyD).ctrl().shift());
+        bindings.insert(EditorAction::CodeDeleteLine, KeyBinding::new(KeyCode::KeyK).ctrl().shift());
+        bindings.insert(EditorAction::CodeMoveLineUp, KeyBinding::new(KeyCode::ArrowUp).alt());
+        bindings.insert(EditorAction::CodeMoveLineDown, KeyBinding::new(KeyCode::ArrowDown).alt());
 
         Self {
             bindings,

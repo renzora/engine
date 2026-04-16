@@ -54,6 +54,15 @@ impl Language {
     fn has_c_block_comment(self) -> bool {
         matches!(self, Language::Rhai | Language::Rust | Language::Wgsl)
     }
+
+    /// Block-comment delimiters for languages that support them. Used by the
+    /// Ctrl+Shift+/ wrap action.
+    pub fn block_comment(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Language::Rhai | Language::Rust | Language::Wgsl => Some(("/*", "*/")),
+            _ => None,
+        }
+    }
 }
 
 pub struct TokenStyle {

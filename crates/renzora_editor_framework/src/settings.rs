@@ -136,6 +136,16 @@ pub struct EditorSettings {
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
     pub plugins_dir: String,
+
+    // ── Code editor preferences ──
+    /// Type `(` `[` `{` `"` `'` to insert the closing pair too.
+    pub code_auto_close_pairs: bool,
+    /// Strip trailing spaces/tabs from each line on save.
+    pub code_trim_trailing_whitespace_on_save: bool,
+    /// Show the minimap sidebar in the code editor.
+    pub code_show_minimap: bool,
+    /// Show whitespace markers in the code editor.
+    pub code_show_whitespace: bool,
 }
 
 impl Default for EditorSettings {
@@ -155,6 +165,10 @@ impl Default for EditorSettings {
             ui_preview_by_default: true,
             show_settings: false,
             plugins_dir: "plugins".to_string(),
+            code_auto_close_pairs: true,
+            code_trim_trailing_whitespace_on_save: true,
+            code_show_minimap: true,
+            code_show_whitespace: false,
         }
     }
 }

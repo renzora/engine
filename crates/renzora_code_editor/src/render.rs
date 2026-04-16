@@ -1,7 +1,9 @@
+use bevy::prelude::*;
 use bevy_egui::egui::{
     self, text::CCursor, text::CCursorRange, Align2, Color32, CursorIcon, FontFamily, FontId, Id,
     Key, Modifiers, Pos2, Rect, RichText, Sense, Stroke, Vec2,
 };
+use renzora::core::keybindings::{EditorAction, KeyBindings};
 use egui_phosphor::regular::{
     ARROW_RIGHT, CODE, FILE_PLUS, FLOPPY_DISK, LIST_NUMBERS, MAGNIFYING_GLASS,
     PARAGRAPH, SQUARES_FOUR, WARNING, X,
@@ -13,8 +15,8 @@ use crate::actions::{
     byte_to_char, byte_to_line, char_to_byte, delete_lines, duplicate_lines,
     find_all_occurrences, find_matching_bracket, indent_selection,
     leading_whitespace_of_line, line_byte_range, line_to_byte, move_lines_down,
-    move_lines_up, select_next_occurrence, smart_home_target, toggle_line_comment,
-    word_range_at_byte, TAB_SIZE,
+    move_lines_up, select_next_occurrence, smart_home_target, toggle_block_comment,
+    toggle_line_comment, word_range_at_byte, TAB_SIZE,
 };
 use crate::autocomplete::{self, ApiSymbol};
 use crate::highlight::{highlight, Language, TokenStyle};
@@ -27,11 +29,110 @@ fn gutter_width(line_count: usize, font_size: f32) -> f32 {
     (digits * font_size * 0.62) + 20.0
 }
 
+/// Snapshot of which user-bound code-editor shortcuts fired this frame. The
+/// individual `consume_key` calls happen up-front in `collect()` so egui's
+/// `TextEdit` doesn't also see the same events.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct EditorShortcuts {
+    pub save: bool,
+    pub save_all: bool,
+    pub close_tab: bool,
+    pub next_tab: bool,
+    pub prev_tab: bool,
+    pub find: bool,
+    pub replace: bool,
+    pub goto_line: bool,
+    pub line_comment: bool,
+    pub block_comment: bool,
+    pub autocomplete: bool,
+    pub select_next_match: bool,
+    pub duplicate_line: bool,
+    pub delete_line: bool,
+    pub move_line_up: bool,
+    pub move_line_down: bool,
+}
+
+impl EditorShortcuts {
+    /// Read the current user keybindings and consume any matching events.
+    pub fn collect(ui: &mut egui::Ui, world: &World) -> Self {
+        let mut out = Self::default();
+        let Some(kb) = world.get_resource::<KeyBindings>() else {
+            return out;
+        };
+        let mut take = |action: EditorAction| -> bool {
+            let Some(binding) = kb.bindings.get(&action) else { return false };
+            let Some(key) = keycode_to_egui_key(binding.key) else { return false };
+            let modifiers = Modifiers {
+                ctrl: binding.ctrl,
+                shift: binding.shift,
+                alt: binding.alt,
+                ..Default::default()
+            };
+            ui.input_mut(|i| i.consume_key(modifiers, key))
+        };
+        // Order matters when two bindings differ only by modifier (e.g.
+        // Ctrl+Shift+Tab vs Ctrl+Tab) — check the more-modified variant first
+        // so it wins.
+        out.save_all = take(EditorAction::CodeSaveAll);
+        out.save = take(EditorAction::CodeSaveFile);
+        out.close_tab = take(EditorAction::CodeCloseTab);
+        out.prev_tab = take(EditorAction::CodePrevTab);
+        out.next_tab = take(EditorAction::CodeNextTab);
+        out.find = take(EditorAction::CodeFind);
+        out.replace = take(EditorAction::CodeReplace);
+        out.goto_line = take(EditorAction::CodeGotoLine);
+        out.block_comment = take(EditorAction::CodeToggleBlockComment);
+        out.line_comment = take(EditorAction::CodeToggleLineComment);
+        out.autocomplete = take(EditorAction::CodeTriggerAutocomplete);
+        out.duplicate_line = take(EditorAction::CodeDuplicateLine);
+        out.select_next_match = take(EditorAction::CodeSelectNextMatch);
+        out.delete_line = take(EditorAction::CodeDeleteLine);
+        out.move_line_up = take(EditorAction::CodeMoveLineUp);
+        out.move_line_down = take(EditorAction::CodeMoveLineDown);
+        out
+    }
+}
+
+/// Map a Bevy `KeyCode` to an egui `Key` so user-configured bindings can drive
+/// `egui::InputState::consume_key`.
+fn keycode_to_egui_key(kc: bevy::input::keyboard::KeyCode) -> Option<Key> {
+    use bevy::input::keyboard::KeyCode as KC;
+    use Key as K;
+    Some(match kc {
+        KC::KeyA => K::A,  KC::KeyB => K::B,  KC::KeyC => K::C,  KC::KeyD => K::D,
+        KC::KeyE => K::E,  KC::KeyF => K::F,  KC::KeyG => K::G,  KC::KeyH => K::H,
+        KC::KeyI => K::I,  KC::KeyJ => K::J,  KC::KeyK => K::K,  KC::KeyL => K::L,
+        KC::KeyM => K::M,  KC::KeyN => K::N,  KC::KeyO => K::O,  KC::KeyP => K::P,
+        KC::KeyQ => K::Q,  KC::KeyR => K::R,  KC::KeyS => K::S,  KC::KeyT => K::T,
+        KC::KeyU => K::U,  KC::KeyV => K::V,  KC::KeyW => K::W,  KC::KeyX => K::X,
+        KC::KeyY => K::Y,  KC::KeyZ => K::Z,
+        KC::Digit0 => K::Num0, KC::Digit1 => K::Num1, KC::Digit2 => K::Num2,
+        KC::Digit3 => K::Num3, KC::Digit4 => K::Num4, KC::Digit5 => K::Num5,
+        KC::Digit6 => K::Num6, KC::Digit7 => K::Num7, KC::Digit8 => K::Num8,
+        KC::Digit9 => K::Num9,
+        KC::Slash => K::Slash, KC::Comma => K::Comma, KC::Period => K::Period,
+        KC::Semicolon => K::Semicolon, KC::Quote => K::Quote, KC::Backslash => K::Backslash,
+        KC::BracketLeft => K::OpenBracket, KC::BracketRight => K::CloseBracket,
+        KC::Equal => K::Equals, KC::Minus => K::Minus, KC::Backquote => K::Backtick,
+        KC::Space => K::Space, KC::Tab => K::Tab, KC::Enter => K::Enter,
+        KC::Escape => K::Escape, KC::Backspace => K::Backspace, KC::Delete => K::Delete,
+        KC::Home => K::Home, KC::End => K::End, KC::PageUp => K::PageUp, KC::PageDown => K::PageDown,
+        KC::Insert => K::Insert,
+        KC::ArrowUp => K::ArrowUp, KC::ArrowDown => K::ArrowDown,
+        KC::ArrowLeft => K::ArrowLeft, KC::ArrowRight => K::ArrowRight,
+        KC::F1 => K::F1, KC::F2 => K::F2, KC::F3 => K::F3, KC::F4 => K::F4,
+        KC::F5 => K::F5, KC::F6 => K::F6, KC::F7 => K::F7, KC::F8 => K::F8,
+        KC::F9 => K::F9, KC::F10 => K::F10, KC::F11 => K::F11, KC::F12 => K::F12,
+        _ => return None,
+    })
+}
+
 pub fn render_code_editor_content(
     ui: &mut egui::Ui,
     state: &mut CodeEditorState,
     theme: &Theme,
     scripts_dir: Option<PathBuf>,
+    shortcuts: EditorShortcuts,
 ) {
     let muted = theme.text.muted.to_color32();
     let disabled = theme.text.disabled.to_color32();
@@ -85,7 +186,7 @@ pub fn render_code_editor_content(
 
     // Toolbar + shortcut handling -------------------------------------------
     render_toolbar(ui, state, theme, &scripts_dir, active_idx);
-    handle_global_shortcuts(ui, state, lang, active_idx);
+    handle_global_shortcuts(ui, state, lang, active_idx, shortcuts);
 
     // Find + goto bars ------------------------------------------------------
     if state.find_open {
@@ -130,8 +231,9 @@ pub fn render_code_editor_content(
 
     // Pending autocomplete trigger (filled inside scroll area).
     let mut trigger_autocomplete = false;
-    // Pending comment toggle key (processed after TextEdit to know cursor).
+    // Pending comment toggle keys (processed after TextEdit to know cursor).
     let mut comment_key_pressed = false;
+    let mut block_comment_key_pressed = false;
 
     // --- Pre-TextEdit keyboard handling: consume keys while popup is open ---
     let autocomplete_is_open = state.autocomplete_open;
@@ -161,26 +263,94 @@ pub fn render_code_editor_content(
         }
     });
 
-    // --- Ctrl+Space (open autocomplete) ---
-    ui.input_mut(|i| {
-        if i.consume_key(Modifiers::CTRL, Key::Space) {
-            trigger_autocomplete = true;
-        }
-        // Ctrl+/ — comment toggle (key is `/`, sometimes `Slash`)
-        if i.consume_key(Modifiers::CTRL, Key::Slash) {
-            comment_key_pressed = true;
-        }
-    });
+    // Keybinding-driven shortcuts (already consumed in EditorShortcuts::collect).
+    if shortcuts.autocomplete {
+        trigger_autocomplete = true;
+    }
+    if shortcuts.line_comment {
+        comment_key_pressed = true;
+    }
+    if shortcuts.block_comment {
+        block_comment_key_pressed = true;
+    }
 
-    // --- VSCode-style editing shortcuts (only when the editor has focus) ---
+    // --- Editor focus + Tab/Enter/Home (kept hardcoded — these conflict with
+    // text input, so they need to consume the egui event rather than route
+    // through the keybinding system). ---
     let editor_focused = ui.ctx().memory(|m| m.has_focus(editor_id));
-    let shortcut = if editor_focused && !state.autocomplete_open {
+    let mut text_shortcut = if editor_focused && !state.autocomplete_open {
         pick_editor_shortcut(ui)
     } else {
         None
     };
-    if let Some(sc) = shortcut {
+    // User-configurable shortcuts (consumed via EditorShortcuts::collect).
+    if shortcuts.duplicate_line {
+        text_shortcut = Some(EditorShortcut::DuplicateLine);
+    }
+    if shortcuts.delete_line {
+        text_shortcut = Some(EditorShortcut::DeleteLine);
+    }
+    if shortcuts.move_line_up {
+        text_shortcut = Some(EditorShortcut::MoveLineUp);
+    }
+    if shortcuts.move_line_down {
+        text_shortcut = Some(EditorShortcut::MoveLineDown);
+    }
+    if shortcuts.select_next_match {
+        text_shortcut = Some(EditorShortcut::SelectNextOccurrence);
+    }
+    if let Some(sc) = text_shortcut {
         apply_editor_shortcut(state, active_idx, ui.ctx(), editor_id, sc);
+    }
+
+    // --- Auto-close brackets / quotes (intercept the typed character) ---
+    if state.auto_close_pairs && editor_focused {
+        let cursor_char = egui::TextEdit::load_state(ui.ctx(), editor_id)
+            .and_then(|s| s.cursor.char_range())
+            .map(|r| r.primary.index);
+
+        if let Some(cursor_char_v) = cursor_char {
+            // Snapshot what's at the cursor before mutating anything.
+            let (cursor_byte, next_ch) = {
+                let content = &state.open_files[active_idx].content;
+                let cb = char_to_byte(content, cursor_char_v);
+                let nc = content[cb..].chars().next();
+                (cb, nc)
+            };
+
+            let mut action: Option<AutocloseAction> = None;
+            ui.input_mut(|i| {
+                let mut hit = None;
+                for (idx, event) in i.events.iter().enumerate() {
+                    if let egui::Event::Text(s) = event {
+                        if s.chars().count() != 1 {
+                            continue;
+                        }
+                        let ch = s.chars().next().unwrap();
+                        if let Some(a) = decide_autoclose(ch, next_ch) {
+                            hit = Some((idx, a));
+                            break;
+                        }
+                    }
+                }
+                if let Some((idx, a)) = hit {
+                    i.events.remove(idx);
+                    action = Some(a);
+                }
+            });
+
+            if let Some(a) = action {
+                apply_autoclose(
+                    state,
+                    active_idx,
+                    cursor_char_v,
+                    cursor_byte,
+                    a,
+                    ui.ctx(),
+                    editor_id,
+                );
+            }
+        }
     }
 
     // --- Split editor area into [scroll area | optional minimap] ---
@@ -324,6 +494,16 @@ pub fn render_code_editor_content(
                     );
                 }
 
+                // Indent guides --------------------------------------------
+                paint_indent_guides(
+                    ui,
+                    &file.content,
+                    editor_rect,
+                    row_height,
+                    font_size,
+                    theme,
+                );
+
                 // Scroll to cursor only when the cursor actually moved ------
                 let mut should_scroll = false;
                 if let Some(cidx) = cur_char_idx {
@@ -421,6 +601,9 @@ pub fn render_code_editor_content(
     if comment_key_pressed {
         apply_comment_toggle(state, active_idx, lang, ui.ctx());
     }
+    if block_comment_key_pressed {
+        apply_block_comment_toggle(state, active_idx, lang, ui.ctx());
+    }
 
     // Autocomplete popup (filtered list) ------------------------------------
     if state.autocomplete_open {
@@ -514,13 +697,24 @@ pub fn render_code_editor_content(
 // Tab bar
 // -------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
+enum TabAction {
+    Switch(usize),
+    Close(usize),
+    CloseOthers(usize),
+    CloseAll,
+    Save(usize),
+    CopyPath(usize),
+    RevealInExplorer(usize),
+}
+
 fn render_tab_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme) {
     let muted = theme.text.muted.to_color32();
     let surface_panel = theme.surfaces.panel.to_color32();
 
+    let mut action: Option<TabAction> = None;
+
     ui.horizontal(|ui| {
-        let mut switch_to = None;
-        let mut close_tab = None;
         for (idx, file) in state.open_files.iter().enumerate() {
             let is_active = state.active_tab == Some(idx);
             let tab_bg = if is_active {
@@ -543,14 +737,49 @@ fn render_tab_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme)
                                 .sense(Sense::click()),
                         );
                         if tab_resp.clicked() {
-                            switch_to = Some(idx);
+                            action = Some(TabAction::Switch(idx));
                         }
+                        // Middle-click closes too (VSCode habit).
+                        if tab_resp.middle_clicked() {
+                            action = Some(TabAction::Close(idx));
+                        }
+                        // Right-click context menu.
+                        tab_resp.context_menu(|ui| {
+                            ui.set_min_width(180.0);
+                            if ui.button("Save").clicked() {
+                                action = Some(TabAction::Save(idx));
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button("Close").clicked() {
+                                action = Some(TabAction::Close(idx));
+                                ui.close();
+                            }
+                            if ui.button("Close Others").clicked() {
+                                action = Some(TabAction::CloseOthers(idx));
+                                ui.close();
+                            }
+                            if ui.button("Close All").clicked() {
+                                action = Some(TabAction::CloseAll);
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button("Copy Path").clicked() {
+                                action = Some(TabAction::CopyPath(idx));
+                                ui.close();
+                            }
+                            if ui.button("Reveal in File Explorer").clicked() {
+                                action = Some(TabAction::RevealInExplorer(idx));
+                                ui.close();
+                            }
+                        });
+
                         let close_resp = ui.add(
                             egui::Button::new(RichText::new(X).size(10.0).color(muted))
                                 .frame(false),
                         );
                         if close_resp.clicked() {
-                            close_tab = Some(idx);
+                            action = Some(TabAction::Close(idx));
                         }
                         if close_resp.hovered() {
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -558,11 +787,19 @@ fn render_tab_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme)
                     });
                 });
         }
-        if let Some(idx) = switch_to {
+    });
+
+    if let Some(a) = action {
+        apply_tab_action(state, ui.ctx(), a);
+    }
+}
+
+fn apply_tab_action(state: &mut CodeEditorState, ctx: &egui::Context, action: TabAction) {
+    match action {
+        TabAction::Switch(idx) => {
             state.active_tab = Some(idx);
         }
-        if let Some(idx) = close_tab {
-            // Modified tabs go through the save/discard confirmation modal.
+        TabAction::Close(idx) => {
             let modified = state
                 .open_files
                 .get(idx)
@@ -574,7 +811,52 @@ fn render_tab_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme)
                 state.close_tab(idx);
             }
         }
-    });
+        TabAction::CloseOthers(idx) => {
+            state.close_others(idx);
+        }
+        TabAction::CloseAll => {
+            state.close_all();
+        }
+        TabAction::Save(idx) => {
+            state.save_file(idx);
+        }
+        TabAction::CopyPath(idx) => {
+            if let Some(file) = state.open_files.get(idx) {
+                let path_str = file.path.display().to_string();
+                ctx.copy_text(path_str);
+            }
+        }
+        TabAction::RevealInExplorer(idx) => {
+            if let Some(file) = state.open_files.get(idx) {
+                reveal_in_file_explorer(&file.path);
+            }
+        }
+    }
+}
+
+fn reveal_in_file_explorer(path: &std::path::Path) {
+    #[cfg(target_os = "windows")]
+    {
+        // /select, highlights the file in Explorer.
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", path.display()))
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .args(["-R", &path.display().to_string()])
+            .spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // No standard "reveal and select" on Linux — open the parent folder.
+        if let Some(parent) = path.parent() {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn();
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -709,20 +991,45 @@ fn handle_global_shortcuts(
     state: &mut CodeEditorState,
     _lang: Language,
     _active_idx: usize,
+    shortcuts: EditorShortcuts,
 ) {
+    if shortcuts.save {
+        state.save_active();
+    }
+    if shortcuts.save_all {
+        state.save_all();
+    }
+    if shortcuts.find || shortcuts.replace {
+        state.find_open = true;
+        state.find_focus_requested = true;
+    }
+    if shortcuts.goto_line {
+        state.goto_line_open = true;
+        state.goto_line_focus_requested = true;
+        state.goto_line_buffer.clear();
+    }
+    if shortcuts.close_tab {
+        if let Some(idx) = state.active_tab {
+            let modified = state
+                .open_files
+                .get(idx)
+                .map(|f| f.is_modified)
+                .unwrap_or(false);
+            if modified {
+                state.close_confirm_tab = Some(idx);
+            } else {
+                state.close_tab(idx);
+            }
+        }
+    }
+    if shortcuts.prev_tab {
+        state.prev_tab();
+    } else if shortcuts.next_tab {
+        state.next_tab();
+    }
+    // Esc still goes through the raw input — it isn't a configurable binding
+    // because it's a universal "dismiss overlay" key.
     ui.input_mut(|i| {
-        if i.consume_key(Modifiers::CTRL, Key::S) {
-            state.save_active();
-        }
-        if i.consume_key(Modifiers::CTRL, Key::F) || i.consume_key(Modifiers::CTRL, Key::H) {
-            state.find_open = true;
-            state.find_focus_requested = true;
-        }
-        if i.consume_key(Modifiers::CTRL, Key::G) {
-            state.goto_line_open = true;
-            state.goto_line_focus_requested = true;
-            state.goto_line_buffer.clear();
-        }
         if !state.autocomplete_open && i.consume_key(Modifiers::NONE, Key::Escape) {
             state.find_open = false;
             state.goto_line_open = false;
@@ -983,6 +1290,47 @@ fn apply_comment_toggle(
     }
 }
 
+fn apply_block_comment_toggle(
+    state: &mut CodeEditorState,
+    active_idx: usize,
+    lang: Language,
+    ctx: &egui::Context,
+) {
+    // Languages without /* */ fall back to line comments — nicer than a
+    // silent no-op when the user presses Ctrl+Shift+/ in Lua/Python.
+    if lang.block_comment().is_none() {
+        apply_comment_toggle(state, active_idx, lang, ctx);
+        return;
+    }
+
+    let editor_id = Id::new(("code_editor_textedit", active_idx));
+    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+
+    let (sel_start_byte, sel_end_byte) = egui::TextEdit::load_state(ctx, editor_id)
+        .and_then(|s| s.cursor.char_range())
+        .map(|r| {
+            let a = char_to_byte(&file.content, r.primary.index);
+            let b = char_to_byte(&file.content, r.secondary.index);
+            (a.min(b), a.max(b))
+        })
+        .unwrap_or((0, 0));
+
+    if let Some((na, nb)) =
+        toggle_block_comment(&mut file.content, sel_start_byte, sel_end_byte, lang)
+    {
+        file.is_modified = true;
+        let a_char = byte_to_char(&file.content, na);
+        let b_char = byte_to_char(&file.content, nb);
+        if let Some(mut s) = egui::TextEdit::load_state(ctx, editor_id) {
+            s.cursor.set_char_range(Some(CCursorRange::two(
+                CCursor::new(a_char),
+                CCursor::new(b_char),
+            )));
+            s.store(ctx, editor_id);
+        }
+    }
+}
+
 // -------------------------------------------------------------------------
 // Autocomplete popup
 // -------------------------------------------------------------------------
@@ -1177,6 +1525,10 @@ fn paint_gutter(
 
 /// Draw the whole file as a scaled-down strip in `rect`, plus a viewport
 /// indicator and click-to-scroll. Returns the clicked line (0-based) if any.
+///
+/// The minimap content stops at the last line of the file rather than
+/// stretching to fill the reserved sidebar — short scripts no longer leave
+/// a long empty grey strip below.
 fn render_minimap(
     ui: &mut egui::Ui,
     rect: Rect,
@@ -1186,30 +1538,40 @@ fn render_minimap(
     last_visible: usize,
     theme: &Theme,
 ) -> Option<usize> {
+    if line_count == 0 {
+        return None;
+    }
+
     let bg = theme.surfaces.faint.to_color32();
     let fg = theme.text.muted.to_color32();
     let accent = theme.semantic.accent.to_color32();
     let border = theme.widgets.border.to_color32();
 
-    ui.painter().rect_filled(rect, 0.0, bg);
+    let mini_row = (rect.height() / line_count.max(1) as f32).clamp(1.0, 3.0);
+
+    // Content height = exactly what the file occupies, capped at the rect.
+    let content_height = (line_count as f32 * mini_row).min(rect.height());
+    let content_rect = Rect::from_min_max(
+        rect.min,
+        Pos2::new(rect.max.x, rect.min.y + content_height),
+    );
+
+    ui.painter().rect_filled(content_rect, 0.0, bg);
     ui.painter().line_segment(
-        [rect.min, Pos2::new(rect.min.x, rect.max.y)],
+        [content_rect.min, Pos2::new(content_rect.min.x, content_rect.max.y)],
         Stroke::new(1.0, border),
     );
 
-    if line_count == 0 {
-        return None;
-    }
-
-    // Fit all lines into rect.height(). Minimum 1.5px per line so lines of
-    // visible size remain legible on large files.
-    let mini_row = (rect.height() / line_count.max(1) as f32).clamp(1.0, 3.0);
     let mini_padding_x = 6.0;
     let mini_advance = 1.2; // px per char in the minimap
     let max_cols = ((rect.width() - mini_padding_x * 2.0) / mini_advance) as usize;
 
     // Paint each line's non-whitespace run as a flat strip.
     for (line_idx, line) in content.lines().enumerate() {
+        let y = rect.min.y + line_idx as f32 * mini_row;
+        if y >= content_rect.max.y {
+            break;
+        }
         let trimmed_start = line
             .bytes()
             .take_while(|b| *b == b' ' || *b == b'\t')
@@ -1220,7 +1582,6 @@ fn render_minimap(
             continue;
         }
         let x0 = rect.min.x + mini_padding_x + trimmed_start as f32 * mini_advance;
-        let y = rect.min.y + line_idx as f32 * mini_row;
         let strip_width = (content_len as f32 * mini_advance).min(rect.width() - mini_padding_x);
         let strip = Rect::from_min_size(Pos2::new(x0, y), Vec2::new(strip_width, mini_row));
         ui.painter().rect_filled(strip, 0.0, fg.linear_multiply(0.45));
@@ -1231,8 +1592,8 @@ fn render_minimap(
         let vp_top = rect.min.y + first_visible as f32 * mini_row;
         let vp_bot = rect.min.y + last_visible as f32 * mini_row;
         let vp_rect = Rect::from_min_max(
-            Pos2::new(rect.min.x, vp_top),
-            Pos2::new(rect.max.x, vp_bot.min(rect.max.y)),
+            Pos2::new(rect.min.x, vp_top.min(content_rect.max.y)),
+            Pos2::new(rect.max.x, vp_bot.min(content_rect.max.y)),
         );
         let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 30);
         ui.painter().rect_filled(vp_rect, 0.0, fill);
@@ -1244,8 +1605,9 @@ fn render_minimap(
         );
     }
 
-    // Click + drag to scroll.
-    let resp = ui.allocate_rect(rect, Sense::click_and_drag());
+    // Only the content strip is interactive; clicking below an end-of-file
+    // line does nothing.
+    let resp = ui.allocate_rect(content_rect, Sense::click_and_drag());
     if resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
@@ -1255,13 +1617,67 @@ fn render_minimap(
             .or_else(|| ui.ctx().pointer_latest_pos())?;
         let y_in = (pos.y - rect.min.y).max(0.0);
         let line = (y_in / mini_row) as usize;
-        // Centre the viewport on the clicked line.
         let visible_lines = last_visible.saturating_sub(first_visible).max(1);
         let target = line.saturating_sub(visible_lines / 2);
         return Some(target.min(line_count.saturating_sub(1)));
     }
 
     None
+}
+
+/// Paint thin vertical guides at each indent level so block structure is
+/// readable at a glance — same idea as VSCode/Sublime indent guides.
+fn paint_indent_guides(
+    ui: &egui::Ui,
+    content: &str,
+    editor_rect: Rect,
+    row_height: f32,
+    font_size: f32,
+    theme: &Theme,
+) {
+    let advance = font_size * 0.6;
+    let muted = theme.text.muted.to_color32();
+    let color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 50);
+    let stroke = Stroke::new(1.0, color);
+
+    // Skip lines outside the visible clip rect — minor optimisation that
+    // matters on large files.
+    let clip = ui.clip_rect();
+    let first_line =
+        (((clip.min.y - editor_rect.min.y) / row_height).floor().max(0.0)) as usize;
+    let last_line =
+        (((clip.max.y - editor_rect.min.y) / row_height).ceil().max(0.0)) as usize;
+
+    for (line_idx, line) in content.lines().enumerate() {
+        if line_idx < first_line {
+            continue;
+        }
+        if line_idx > last_line {
+            break;
+        }
+
+        // Indent in spaces (tab counts as TAB_SIZE).
+        let mut col = 0usize;
+        for ch in line.chars() {
+            match ch {
+                ' ' => col += 1,
+                '\t' => col += TAB_SIZE,
+                _ => break,
+            }
+        }
+        let level_count = col / TAB_SIZE;
+        if level_count == 0 {
+            continue;
+        }
+
+        let y_top = editor_rect.min.y + line_idx as f32 * row_height;
+        let y_bot = y_top + row_height;
+        for level in 1..=level_count {
+            let x = editor_rect.min.x + (level * TAB_SIZE) as f32 * advance;
+            ui.painter()
+                .line_segment([Pos2::new(x, y_top), Pos2::new(x, y_bot)], stroke);
+        }
+    }
 }
 
 /// Overlay dots for spaces and arrows for tabs across the visible content.
@@ -1416,35 +1832,14 @@ enum EditorShortcut {
     SelectNextOccurrence,
 }
 
+/// Picks Tab / Shift+Tab / Enter / Home — the four shortcuts that conflict
+/// with text input and therefore have to consume egui events directly rather
+/// than going through the keybinding system. The other VSCode-style shortcuts
+/// (DuplicateLine, DeleteLine, MoveLineUp/Down, SelectNextOccurrence) are now
+/// driven by `EditorShortcuts` via the central keybindings.
 fn pick_editor_shortcut(ui: &mut egui::Ui) -> Option<EditorShortcut> {
     let mut out = None;
     ui.input_mut(|i| {
-        let ctrl_shift = Modifiers {
-            ctrl: true,
-            shift: true,
-            ..Default::default()
-        };
-        // Checked in priority order — more specific modifier combinations first.
-        if i.consume_key(ctrl_shift, Key::D) {
-            out = Some(EditorShortcut::DuplicateLine);
-            return;
-        }
-        if i.consume_key(ctrl_shift, Key::K) {
-            out = Some(EditorShortcut::DeleteLine);
-            return;
-        }
-        if i.consume_key(Modifiers::ALT, Key::ArrowUp) {
-            out = Some(EditorShortcut::MoveLineUp);
-            return;
-        }
-        if i.consume_key(Modifiers::ALT, Key::ArrowDown) {
-            out = Some(EditorShortcut::MoveLineDown);
-            return;
-        }
-        if i.consume_key(Modifiers::CTRL, Key::D) {
-            out = Some(EditorShortcut::SelectNextOccurrence);
-            return;
-        }
         if i.consume_key(Modifiers::SHIFT, Key::Tab) {
             out = Some(EditorShortcut::ShiftTab);
             return;
@@ -1459,7 +1854,6 @@ fn pick_editor_shortcut(ui: &mut egui::Ui) -> Option<EditorShortcut> {
         }
         if i.consume_key(Modifiers::NONE, Key::Home) {
             out = Some(EditorShortcut::Home);
-            return;
         }
     });
     out
@@ -1637,6 +2031,80 @@ fn render_error_panel(
         FontId::new(12.0, FontFamily::Monospace),
         secondary,
     );
+}
+
+// -------------------------------------------------------------------------
+// Auto-close brackets / quotes
+// -------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+enum AutocloseAction {
+    /// Insert (open, close) at the cursor; cursor lands between them.
+    InsertPair(char, char),
+    /// Cursor sits next to a closing char that the user just typed; skip
+    /// over the existing one instead of doubling it.
+    Skip,
+}
+
+fn decide_autoclose(typed: char, next_ch: Option<char>) -> Option<AutocloseAction> {
+    match typed {
+        '(' => Some(AutocloseAction::InsertPair('(', ')')),
+        '[' => Some(AutocloseAction::InsertPair('[', ']')),
+        '{' => Some(AutocloseAction::InsertPair('{', '}')),
+        '"' => {
+            if next_ch == Some('"') {
+                Some(AutocloseAction::Skip)
+            } else {
+                Some(AutocloseAction::InsertPair('"', '"'))
+            }
+        }
+        '\'' => {
+            if next_ch == Some('\'') {
+                Some(AutocloseAction::Skip)
+            } else {
+                Some(AutocloseAction::InsertPair('\'', '\''))
+            }
+        }
+        ')' | ']' | '}' if next_ch == Some(typed) => Some(AutocloseAction::Skip),
+        _ => None,
+    }
+}
+
+fn apply_autoclose(
+    state: &mut CodeEditorState,
+    active_idx: usize,
+    cursor_char: usize,
+    cursor_byte: usize,
+    action: AutocloseAction,
+    ctx: &egui::Context,
+    editor_id: Id,
+) {
+    match action {
+        AutocloseAction::InsertPair(open, close) => {
+            let Some(file) = state.open_files.get_mut(active_idx) else { return };
+            let mut buf = String::with_capacity(2);
+            buf.push(open);
+            buf.push(close);
+            let insert_at = cursor_byte.min(file.content.len());
+            file.content.insert_str(insert_at, &buf);
+            file.is_modified = true;
+            // Cursor goes between open and close.
+            let new_char = cursor_char + 1;
+            if let Some(mut s) = egui::TextEdit::load_state(ctx, editor_id) {
+                s.cursor
+                    .set_char_range(Some(CCursorRange::one(CCursor::new(new_char))));
+                s.store(ctx, editor_id);
+            }
+        }
+        AutocloseAction::Skip => {
+            let new_char = cursor_char + 1;
+            if let Some(mut s) = egui::TextEdit::load_state(ctx, editor_id) {
+                s.cursor
+                    .set_char_range(Some(CCursorRange::one(CCursor::new(new_char))));
+                s.store(ctx, editor_id);
+            }
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
