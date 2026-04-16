@@ -353,15 +353,19 @@ fn sync_ui_zindex(
 
 // ── Editor-only systems ─────────────────────────────────────────────────────
 
-/// When the UI workspace is active, filter the hierarchy to only show cameras
-/// and UI canvas entities. Reset to show all when switching away.
+/// Filter the hierarchy by active workspace: UI layout shows only `UiCanvas`
+/// subtrees, Scene layout hides them. Other layouts are left alone so their
+/// own sync systems (e.g. materials → `Mesh3d`) still apply.
 #[cfg(feature = "editor")]
 fn sync_hierarchy_filter_for_ui_workspace(
     layout_mgr: Res<renzora_editor_framework::LayoutManager>,
     mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
 ) {
-    let desired = renzora_editor_framework::HierarchyFilter::All;
-    let _ = layout_mgr;
+    let desired = match layout_mgr.active_name() {
+        "UI" => renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"]),
+        "Scene" => renzora_editor_framework::HierarchyFilter::ExcludeDescendantsOf(vec!["UiCanvas"]),
+        _ => return,
+    };
     if *filter != desired {
         *filter = desired;
     }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use bevy_egui::egui::Color32;
+use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
 use renzora_editor_framework::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
@@ -38,6 +38,10 @@ pub struct HierarchyState {
     pub batch_rename_base: String,
     pub batch_rename_start: u32,
     pub batch_rename_entities: Vec<Entity>,
+
+    // Marquee drag selection
+    pub marquee_origin: Option<egui::Pos2>,
+    pub row_rects: Vec<(Entity, egui::Rect)>,
 }
 
 impl Default for HierarchyState {
@@ -59,6 +63,8 @@ impl Default for HierarchyState {
             batch_rename_base: String::new(),
             batch_rename_start: 1,
             batch_rename_entities: Vec::new(),
+            marquee_origin: None,
+            row_rects: Vec::new(),
         }
     }
 }

@@ -26,6 +26,7 @@ pub fn render_tree(
     let count = nodes.len();
 
     state.building_entity_order.clear();
+    state.row_rects.clear();
 
     for (i, node) in nodes.iter().enumerate() {
         let is_last = i == count - 1;
@@ -63,7 +64,7 @@ fn render_node(
     let is_dragged = state.drag_entities.contains(&node.entity);
     let is_renaming = state.renaming_entity == Some(node.entity);
 
-    // Track entity order for range selection
+    // Track entity order for range selection and marquee row rects
     state.building_entity_order.push(node.entity);
 
     let result = renzora_editor_framework::tree_row(
@@ -86,6 +87,7 @@ fn render_node(
         },
     );
     *row_index += 1;
+    state.row_rects.push((node.entity, result.rect));
 
     let painter = ui.painter();
 
@@ -277,8 +279,8 @@ fn render_node(
         }
     }
 
-    // === Drag start (unless locked) ===
-    if result.response.drag_started() && !node.is_locked {
+    // === Drag start (unless locked or marquee active) ===
+    if result.response.drag_started() && !node.is_locked && state.marquee_origin.is_none() {
         if is_selected && selection.has_multi_selection() {
             state.drag_entities = selection.get_all();
         } else {

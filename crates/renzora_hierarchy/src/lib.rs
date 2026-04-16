@@ -199,39 +199,65 @@ impl EditorPanel for HierarchyPanel {
 
         // Add Entity overlay
         if state.show_add_overlay {
+            // Gate entries by active workspace: Scene hides "ui" presets,
+            // UI hides everything except "ui" presets. Other layouts show all.
+            let active_layout = world
+                .get_resource::<renzora_editor_framework::LayoutManager>()
+                .map(|lm| lm.active_name().to_string())
+                .unwrap_or_default();
+            let is_ui_layout = active_layout == "UI";
+            let is_scene_layout = active_layout == "Scene";
+
             let mut entries: Vec<OverlayEntry> = Vec::new();
 
-            // Add SpawnRegistry presets (lights, cameras, etc.)
+            // Add SpawnRegistry presets (lights, cameras, ui widgets, etc.)
             if let Some(registry) = world.get_resource::<SpawnRegistry>() {
-                entries.extend(registry.iter().map(|p| OverlayEntry {
-                    id: p.id,
-                    label: p.display_name,
-                    icon: p.icon,
-                    category: p.category,
-                }));
-            }
-
-            // Add ShapeRegistry shapes (meshes)
-            if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
-                entries.extend(shape_reg.iter().map(|s| OverlayEntry {
-                    id: s.id,
-                    label: s.name,
-                    icon: s.icon,
-                    category: s.category,
-                }));
-            }
-
-            // Add components from InspectorRegistry (post-processing, rendering, effects, audio)
-            if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
-                let component_categories = &["rendering", "post_process", "effects", "Audio"];
-                for entry in inspector_reg.iter() {
-                    if entry.add_fn.is_some() && component_categories.contains(&entry.category) {
+                for p in registry.iter() {
+                    let is_ui_preset = p.category == "ui";
+                    let include = if is_ui_layout {
+                        is_ui_preset
+                    } else if is_scene_layout {
+                        !is_ui_preset
+                    } else {
+                        true
+                    };
+                    if include {
                         entries.push(OverlayEntry {
-                            id: entry.type_id,
-                            label: entry.display_name,
-                            icon: entry.icon,
-                            category: entry.category,
+                            id: p.id,
+                            label: p.display_name,
+                            icon: p.icon,
+                            category: p.category,
                         });
+                    }
+                }
+            }
+
+            // Add ShapeRegistry shapes (meshes) — not relevant in UI layout.
+            if !is_ui_layout {
+                if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
+                    entries.extend(shape_reg.iter().map(|s| OverlayEntry {
+                        id: s.id,
+                        label: s.name,
+                        icon: s.icon,
+                        category: s.category,
+                    }));
+                }
+            }
+
+            // Add components from InspectorRegistry (post-processing, rendering,
+            // effects, audio) — not relevant in UI layout.
+            if !is_ui_layout {
+                if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
+                    let component_categories = &["rendering", "post_process", "effects", "Audio"];
+                    for entry in inspector_reg.iter() {
+                        if entry.add_fn.is_some() && component_categories.contains(&entry.category) {
+                            entries.push(OverlayEntry {
+                                id: entry.type_id,
+                                label: entry.display_name,
+                                icon: entry.icon,
+                                category: entry.category,
+                            });
+                        }
                     }
                 }
             }
@@ -404,6 +430,75 @@ impl EditorPanel for HierarchyPanel {
                     commands,
                     &theme,
                 );
+
+                // Marquee drag selection — fill remaining visible space below
+                // the tree rows so the user can click/drag from the empty area.
+                let content_bottom = ui.cursor().top();
+                let visible_bottom = ui.clip_rect().max.y;
+                let remaining = (visible_bottom - content_bottom).max(40.0);
+                let (_, empty_resp) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), remaining),
+                    egui::Sense::click_and_drag(),
+                );
+
+                if empty_resp.clicked() && state.marquee_origin.is_none() {
+                    selection.clear();
+                }
+
+                if empty_resp.drag_started() {
+                    if let Some(pos) = ui.ctx().pointer_interact_pos() {
+                        state.marquee_origin = Some(pos);
+                    }
+                }
+
+                if let Some(origin) = state.marquee_origin {
+                    if ui.ctx().input(|i| i.pointer.any_down()) {
+                        if let Some(current) = ui.ctx().pointer_latest_pos() {
+                            let marquee_rect = egui::Rect::from_two_pos(origin, current);
+
+                            let mut selected: Vec<Entity> = Vec::new();
+                            for &(entity, row_rect) in &state.row_rects {
+                                if marquee_rect.intersects(row_rect) {
+                                    selected.push(entity);
+                                }
+                            }
+
+                            if ui.ctx().input(|i| i.modifiers.ctrl || i.modifiers.command) {
+                                let mut existing = selection.get_all();
+                                for e in &selected {
+                                    if !existing.contains(e) {
+                                        existing.push(*e);
+                                    }
+                                }
+                                if existing != selection.get_all() {
+                                    selection.set_multiple(existing);
+                                }
+                            } else if selected != selection.get_all() {
+                                selection.set_multiple(selected);
+                            }
+
+                            let accent = theme.semantic.accent.to_color32();
+                            let fill = egui::Color32::from_rgba_unmultiplied(
+                                accent.r(), accent.g(), accent.b(), 30,
+                            );
+                            let fg = ui.ctx().layer_painter(egui::LayerId::new(
+                                egui::Order::Foreground,
+                                egui::Id::new("hierarchy_marquee"),
+                            ));
+                            fg.rect_filled(marquee_rect, 2.0, fill);
+                            fg.rect_stroke(
+                                marquee_rect,
+                                2.0,
+                                egui::Stroke::new(1.0, accent),
+                                egui::StrokeKind::Inside,
+                            );
+
+                            ui.ctx().request_repaint();
+                        }
+                    } else {
+                        state.marquee_origin = None;
+                    }
+                }
             });
 
         // Swap visible entity order for next frame's range selection

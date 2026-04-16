@@ -315,30 +315,23 @@ fn layout_shaders() -> DockTree {
 /// UI: Hierarchy | Assets | WidgetLibrary (left)  |  UI Canvas (center)  |  UiInspector+Inspector (right)
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
-        // Left: hierarchy on top, assets in the middle, widget palette at the bottom.
+        // Left: hierarchy on top, assets below. Width matches Scene layout.
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::vertical(
-                DockTree::leaf("assets"),
-                DockTree::leaf("widget_library"),
-                0.5,
-            ),
-            0.4,
+            DockTree::leaf("assets"),
+            0.6,
         ),
         DockTree::horizontal(
             // Center: UI canvas fills the full column.
+            DockTree::leaf("ui_canvas"),
+            // Right: UI inspector + widget palette tabbed together.
             DockTree::Leaf {
-                tabs: vec!["ui_canvas".into(), "viewport".into()],
-                active_tab: 0,
-            },
-            // Right: UI inspector + scene inspector (narrower column).
-            DockTree::Leaf {
-                tabs: vec!["ui_inspector".into(), "inspector".into()],
+                tabs: vec!["ui_inspector".into(), "widget_library".into()],
                 active_tab: 0,
             },
             0.82,
         ),
-        0.16,
+        0.15,
     )
 }
 
