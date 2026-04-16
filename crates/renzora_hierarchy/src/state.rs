@@ -53,7 +53,11 @@ impl Default for HierarchyState {
     }
 }
 
-/// A node in the entity tree, built each frame from ECS data.
+/// A node in the entity tree, built from ECS data. Cached in
+/// [`HierarchyTreeCache`] and only rebuilt when the tree actually changes
+/// (names, hierarchy, visibility, etc.) — see
+/// [`crate::cache::mark_hierarchy_dirty`] / [`crate::cache::update_hierarchy_cache`].
+#[derive(Clone)]
 pub struct EntityNode {
     pub entity: Entity,
     pub name: String,

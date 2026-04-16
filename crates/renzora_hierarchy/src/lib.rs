@@ -1,5 +1,6 @@
 //! Hierarchy panel — shows the scene entity tree.
 
+mod cache;
 mod state;
 mod tree;
 
@@ -16,7 +17,8 @@ use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
 use renzora_undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 
-use state::{build_entity_tree, filter_tree, HierarchyState};
+use cache::{HierarchyDirty, HierarchyTreeCache};
+use state::{filter_tree, HierarchyState};
 
 /// Label color presets: ([r, g, b], name).
 pub const LABEL_COLORS: &[([u8; 3], &str)] = &[
@@ -291,12 +293,19 @@ impl EditorPanel for HierarchyPanel {
             }
         }
 
-        // Build entity tree from ECS
-        let nodes = build_entity_tree(world);
-        let nodes = if state.search.trim().is_empty() {
-            nodes
+        // Read the cached entity tree. Rebuilt by `update_hierarchy_cache`
+        // (Update schedule) only when the tree actually changed. When no
+        // search is active we read directly from the cache (no clone);
+        // search creates a filtered owned copy.
+        let cache_ref = world.get_resource::<HierarchyTreeCache>();
+        let filtered_nodes: Option<Vec<state::EntityNode>> = if state.search.trim().is_empty() {
+            None
         } else {
-            filter_tree(nodes, state.search.trim())
+            cache_ref.map(|c| filter_tree(c.nodes.clone(), state.search.trim()))
+        };
+        let nodes: &[state::EntityNode] = match filtered_nodes.as_ref() {
+            Some(v) => v.as_slice(),
+            None => cache_ref.map_or(&[][..], |c| c.nodes.as_slice()),
         };
 
         if nodes.is_empty() {
@@ -324,7 +333,7 @@ impl EditorPanel for HierarchyPanel {
                 ui.style_mut().spacing.item_spacing.y = 0.0;
                 tree::render_tree(
                     ui,
-                    &nodes,
+                    nodes,
                     state,
                     selection,
                     commands,
@@ -489,7 +498,7 @@ impl EditorPanel for HierarchyPanel {
             if let Some(pos) = ui.ctx().pointer_latest_pos() {
                 let label = if let Some((target_entity, ref zone)) = state.drop_target {
                     // Find target name from the tree
-                    let target_name = find_node_name(&nodes, target_entity)
+                    let target_name = find_node_name(nodes, target_entity)
                         .unwrap_or_else(|| format!("{:?}", target_entity));
                     match zone {
                         renzora_editor_framework::TreeDropZone::Before => format!("Move above {}", target_name),
@@ -600,7 +609,13 @@ impl Plugin for HierarchyPanelPlugin {
         info!("[editor] HierarchyPanelPlugin");
         app.register_panel(HierarchyPanel::default());
         app.init_resource::<RenameRequest>();
-        app.add_systems(bevy::prelude::Update, detect_selection_keybindings);
+        app.init_resource::<HierarchyTreeCache>();
+        app.init_resource::<HierarchyDirty>();
+        app.add_systems(bevy::prelude::Update, (
+            detect_selection_keybindings,
+            cache::mark_hierarchy_dirty,
+            cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
+        ));
 
         // Spawn presets are now self-registered by their owning crates:
         // - Bevy types (Empty, lights, camera): renzora_editor_framework::bevy_inspectors
