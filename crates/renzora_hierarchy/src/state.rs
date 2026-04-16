@@ -32,6 +32,12 @@ pub struct HierarchyState {
     /// (otherwise clicking a mesh in the viewport selects a parent that's
     /// collapsed in the tree, and the user sees nothing).
     pub last_selection: Vec<Entity>,
+
+    // Batch rename
+    pub batch_rename_active: bool,
+    pub batch_rename_base: String,
+    pub batch_rename_start: u32,
+    pub batch_rename_entities: Vec<Entity>,
 }
 
 impl Default for HierarchyState {
@@ -49,6 +55,10 @@ impl Default for HierarchyState {
             visible_entity_order: Vec::new(),
             building_entity_order: Vec::new(),
             last_selection: Vec::new(),
+            batch_rename_active: false,
+            batch_rename_base: String::new(),
+            batch_rename_start: 1,
+            batch_rename_entities: Vec::new(),
         }
     }
 }

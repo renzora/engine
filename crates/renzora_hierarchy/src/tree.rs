@@ -511,7 +511,7 @@ fn context_menu(
         ui.close();
     }
 
-    // Group as Children (multi-selection)
+    // Multi-selection actions
     if selection.has_multi_selection() {
         if ui.button(format!("{} Group as Children", regular::FOLDER_SIMPLE)).clicked() {
             let selected = selection.get_all();
@@ -525,6 +525,14 @@ fn context_menu(
                     members,
                 }));
             });
+            ui.close();
+        }
+
+        if ui.button(format!("{} Batch Rename…", regular::TEXT_AA)).clicked() {
+            state.batch_rename_active = true;
+            state.batch_rename_base = node.name.clone();
+            state.batch_rename_start = 1;
+            state.batch_rename_entities = selection.get_all();
             ui.close();
         }
     }

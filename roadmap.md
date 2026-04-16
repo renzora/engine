@@ -25,7 +25,7 @@
 ## Inspector — Views & Filtering
 - Add lock inspector to entity (stop following selection)
 - Add multi-entity comparison view
-- Add component search/filter
+- ✅ Add component search/filter — [3a3e9d2](https://github.com/renzora/engine/commit/3a3e9d2)
 - Add component presets/templates
 
 ## Asset Browser — Organization

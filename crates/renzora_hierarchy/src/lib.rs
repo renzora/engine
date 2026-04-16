@@ -15,7 +15,7 @@ use renzora_editor_framework::{
 };
 use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
-use renzora_undo::{self, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
+use renzora_undo::{self, CompoundCmd, RenameCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 
 use cache::{HierarchyDirty, HierarchyTreeCache};
 use state::{filter_tree, HierarchyState};
@@ -290,6 +290,71 @@ impl EditorPanel for HierarchyPanel {
                     state.show_add_overlay = false;
                 }
                 OverlayAction::None => {}
+            }
+        }
+
+        // Batch Rename dialog
+        if state.batch_rename_active {
+            let count = state.batch_rename_entities.len();
+            let mut open = true;
+            egui::Window::new("Batch Rename")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ui.ctx(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Base name:");
+                        ui.text_edit_singleline(&mut state.batch_rename_base);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Start at:");
+                        ui.add(egui::DragValue::new(&mut state.batch_rename_start).range(0..=9999));
+                    });
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Preview: {}_{:02}, {}_{:02}, … ({} entities)",
+                            state.batch_rename_base,
+                            state.batch_rename_start,
+                            state.batch_rename_base,
+                            state.batch_rename_start + 1,
+                            count,
+                        ))
+                        .size(11.0)
+                        .color(theme.text.muted.to_color32()),
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Rename").clicked() && !state.batch_rename_base.is_empty() {
+                            let entities = state.batch_rename_entities.clone();
+                            let base = state.batch_rename_base.clone();
+                            let start = state.batch_rename_start;
+                            commands.push(move |world: &mut World| {
+                                let mut cmds: Vec<Box<dyn UndoCommand>> = Vec::new();
+                                for (i, entity) in entities.iter().enumerate() {
+                                    let old = world
+                                        .get::<Name>(*entity)
+                                        .map(|n| n.as_str().to_string())
+                                        .unwrap_or_default();
+                                    let new = format!("{}_{:02}", base, start as usize + i);
+                                    cmds.push(Box::new(RenameCmd { entity: *entity, old, new }));
+                                }
+                                renzora_undo::execute(
+                                    world,
+                                    UndoContext::Scene,
+                                    Box::new(CompoundCmd { label: "Batch Rename".to_string(), cmds }),
+                                );
+                            });
+                            state.batch_rename_active = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            state.batch_rename_active = false;
+                        }
+                    });
+                });
+            if !open {
+                state.batch_rename_active = false;
             }
         }
 
