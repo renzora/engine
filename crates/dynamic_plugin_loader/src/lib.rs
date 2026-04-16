@@ -64,6 +64,16 @@ mod platform {
     }
 
     pub fn load_plugins(app: &mut App, plugin_dir: &Path, is_editor: bool) {
+        load_plugins_impl(app, plugin_dir, is_editor, false);
+    }
+
+    /// Load plugins while recursively walking `plugin_dir`. Use for game
+    /// projects where dylibs may live alongside assets anywhere in the tree.
+    pub fn load_plugins_recursive(app: &mut App, plugin_dir: &Path, is_editor: bool) {
+        load_plugins_impl(app, plugin_dir, is_editor, true);
+    }
+
+    fn load_plugins_impl(app: &mut App, plugin_dir: &Path, is_editor: bool, recursive: bool) {
         if !plugin_dir.exists() {
             return;
         }
@@ -78,7 +88,11 @@ mod platform {
             app.init_resource::<DynamicPluginRegistry>();
         }
 
-        let dll_paths = discover_dlls(plugin_dir);
+        let dll_paths = if recursive {
+            discover_dlls_recursive(plugin_dir)
+        } else {
+            discover_dlls(plugin_dir)
+        };
 
         for path in dll_paths {
             let stem = path.file_stem()
@@ -228,11 +242,40 @@ mod platform {
         result
     }
 
+    /// Collect dylibs directly inside `dir` (non-recursive). Used for the
+    /// engine's own `plugins/` folder next to the executable.
     fn discover_dlls(dir: &Path) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = Vec::new();
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
+                if path.extension().and_then(OsStr::to_str) != Some(DLL_EXT) {
+                    continue;
+                }
+                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                if stem.starts_with("bevy_dylib") || stem.starts_with("std-") {
+                    continue;
+                }
+                paths.push(path);
+            }
+        }
+        paths.sort();
+        paths
+    }
+
+    /// Recursively walk `dir` for dylibs. Used for game projects where plugins
+    /// may live alongside prefabs/assets anywhere in the tree.
+    fn discover_dlls_recursive(dir: &Path) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = Vec::new();
+        let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+        while let Some(current) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&current) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
                 if path.extension().and_then(OsStr::to_str) != Some(DLL_EXT) {
                     continue;
                 }
@@ -277,6 +320,7 @@ mod platform {
     }
 
     pub fn load_plugins(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
+    pub fn load_plugins_recursive(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
     pub fn scan_plugins(_plugin_dir: &Path) -> Vec<DynamicPluginInfo> { Vec::new() }
 }
 

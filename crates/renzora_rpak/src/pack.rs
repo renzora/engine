@@ -202,12 +202,20 @@ where
         }
     };
 
-    // Always include project config files
+    // Always include project config files.
+    // For project.toml, strip the editor-only `[editor]` section before
+    // packing so exported builds don't carry editor preferences.
     for name in &["project.toml", "project.ron"] {
         let path = project_dir.join(name);
         if path.is_file() {
             if visited.insert(name.to_string()) {
-                packer.add_from_disk(project_dir, &path)?;
+                if *name == "project.toml" {
+                    let text = std::fs::read_to_string(&path)?;
+                    let stripped = strip_editor_section(&text);
+                    packer.add_file(name, stripped.into_bytes());
+                } else {
+                    packer.add_from_disk(project_dir, &path)?;
+                }
                 on_packed(name);
                 queue.push_back(name.to_string());
             }
@@ -751,4 +759,16 @@ fn looks_like_asset_path(s: &str) -> bool {
     }
     let lower = s.to_ascii_lowercase();
     ASSET_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+}
+
+/// Strip the editor-only `[editor]` section (and any `[editor.*]` subtables)
+/// from a project.toml string. Returns the original text on parse failure.
+fn strip_editor_section(text: &str) -> String {
+    let Ok(mut value) = text.parse::<toml::Value>() else {
+        return text.to_string();
+    };
+    if let Some(table) = value.as_table_mut() {
+        table.remove("editor");
+    }
+    toml::to_string_pretty(&value).unwrap_or_else(|_| text.to_string())
 }

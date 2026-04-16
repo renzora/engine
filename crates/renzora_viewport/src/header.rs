@@ -171,26 +171,26 @@ fn render_strip_contents(
     // moved to the right-aligned strip in `render_right_toggles`.
 
     // ── Overlay toggles (grid, axis gizmo) ────────────────────────────────────
+    let snap = settings.snap;
     toggle_btn(ui, GRID_FOUR, settings.show_grid, "Grid", active, inactive, hovered, cmds, |s| &mut s.show_grid);
     toggle_btn(ui, ARROWS_OUT_CARDINAL, settings.show_axis_gizmo, "Axis Gizmo", active, inactive, hovered, cmds, |s| &mut s.show_axis_gizmo);
+    toggle_btn(ui, CORNERS_IN, snap.translate_edge_snap, "Edge Snap (align AABB min to grid)",
+        active, inactive, hovered, cmds, |s| &mut s.snap.translate_edge_snap);
+    toggle_btn(ui, ALIGN_BOTTOM, snap.scale_bottom_anchor, "Scale from Bottom (keep AABB floor fixed on Y scale)",
+        active, inactive, hovered, cmds, |s| &mut s.snap.scale_bottom_anchor);
 
     separator(ui);
 
     // ── Inline snapping: T / R / S toggles with inline value editors ─────────
-    let snap = settings.snap;
     snap_pair(ui, ARROWS_OUT_CARDINAL, "Translate", snap.translate_enabled, snap.translate_snap, 0.01..=100.0, 0.02, 2, active, inactive, hovered, cmds,
         |s, on| s.snap.translate_enabled = on,
         |s, v| s.snap.translate_snap = v);
-    toggle_btn(ui, CORNERS_IN, snap.translate_edge_snap, "Edge Snap (align AABB min to grid)",
-        active, inactive, hovered, cmds, |s| &mut s.snap.translate_edge_snap);
     snap_pair(ui, ARROW_CLOCKWISE, "Rotate", snap.rotate_enabled, snap.rotate_snap, 1.0..=90.0, 0.2, 0, active, inactive, hovered, cmds,
         |s, on| s.snap.rotate_enabled = on,
         |s, v| s.snap.rotate_snap = v);
     snap_pair(ui, ARROWS_OUT, "Scale", snap.scale_enabled, snap.scale_snap, 0.01..=10.0, 0.01, 2, active, inactive, hovered, cmds,
         |s, on| s.snap.scale_enabled = on,
         |s, v| s.snap.scale_snap = v);
-    toggle_btn(ui, ALIGN_BOTTOM, snap.scale_bottom_anchor, "Scale from Bottom (keep AABB floor fixed on Y scale)",
-        active, inactive, hovered, cmds, |s| &mut s.snap.scale_bottom_anchor);
 
     separator(ui);
 
@@ -223,8 +223,7 @@ fn render_strip_contents(
                     egui::DragValue::new(&mut cam_speed)
                         .range(0.1..=100.0)
                         .speed(0.5)
-                        .max_decimals(1)
-                        .suffix(" u/s"),
+                        .max_decimals(1),
                 )
             }).inner;
             if resp.changed() {

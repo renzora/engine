@@ -10,9 +10,11 @@ pub mod header;
 pub mod model_drop;
 pub mod model_flatten;
 pub mod play_mode;
+pub mod scene_drop;
 pub mod shape_drop;
 pub mod render_systems;
 pub mod settings;
+pub mod persistence;
 pub mod toolbar;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -105,6 +107,11 @@ impl Plugin for ViewportPlugin {
                 handle_view_shortcuts,
                 handle_play_shortcuts,
                 hide_cursor_for_brushes,
+                (
+                    persistence::apply_prefs_on_project_load,
+                    persistence::save_on_change
+                        .after(persistence::apply_prefs_on_project_load),
+                ),
             ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
 
 // Register the crosshair overlay so the cursor goes to Crosshair
@@ -360,6 +367,9 @@ impl EditorPanel for ViewportPanel {
 
         // Check for model asset drops on the viewport
         model_drop::check_viewport_model_drop(ui, world, rect);
+
+        // Check for .ron scene drops (spawns a SceneInstance)
+        scene_drop::check_viewport_scene_drop(ui, world, rect);
 
         // Check for shape library drops on the viewport
         shape_drop::check_viewport_shape_drop(ui, world, rect);
@@ -656,6 +666,27 @@ fn handle_view_shortcuts(
     }
     if keybindings.just_pressed(EditorAction::ToggleGrid, &keyboard) {
         settings.show_grid = !settings.show_grid;
+    }
+    if keybindings.just_pressed(EditorAction::CameraSpeedUp, &keyboard) {
+        settings.camera.move_speed = (settings.camera.move_speed * 1.25).min(500.0);
+    }
+    if keybindings.just_pressed(EditorAction::CameraSpeedDown, &keyboard) {
+        settings.camera.move_speed = (settings.camera.move_speed / 1.25).max(0.1);
+    }
+    if keybindings.just_pressed(EditorAction::ToggleSnap, &keyboard) {
+        let any_on = settings.snap.translate_enabled
+            || settings.snap.rotate_enabled
+            || settings.snap.scale_enabled;
+        let new_state = !any_on;
+        settings.snap.translate_enabled = new_state;
+        settings.snap.rotate_enabled = new_state;
+        settings.snap.scale_enabled = new_state;
+    }
+    if keybindings.just_pressed(EditorAction::ToggleEdgeSnap, &keyboard) {
+        settings.snap.translate_edge_snap = !settings.snap.translate_edge_snap;
+    }
+    if keybindings.just_pressed(EditorAction::ToggleScaleBottom, &keyboard) {
+        settings.snap.scale_bottom_anchor = !settings.snap.scale_bottom_anchor;
     }
 }
 

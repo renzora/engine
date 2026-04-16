@@ -17,3 +17,4 @@ renzora_ui = { path = "../renzora_ui" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_animation = { path = "../renzora_animation" }
 renzora_terrain = { path = "../renzora_terrain" }
+renzora_engine = { path = "../renzora_engine" }

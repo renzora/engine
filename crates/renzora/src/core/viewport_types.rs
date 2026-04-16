@@ -6,6 +6,7 @@
 use std::sync::atomic::{AtomicBool, AtomicI32};
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 720;
@@ -300,4 +301,145 @@ impl Default for ViewportSettings {
             pending_view_angle: None,
         }
     }
+}
+
+// ── Persisted editor preferences (stored in project.toml) ──────────────────
+//
+// Editor-only fields. Stripped from exported builds (the runtime ignores the
+// `[editor]` section of project.toml). Uses `#[serde(default)]` on every
+// field so missing entries fall back to sensible defaults.
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct PersistedViewportSettings {
+    pub textures: bool,
+    pub wireframe: bool,
+    pub lighting: bool,
+    pub shadows: bool,
+    pub visualization_mode: String,
+    pub show_grid: bool,
+    pub show_subgrid: bool,
+    pub show_axis_gizmo: bool,
+    pub collision_always: bool,
+    pub orthographic: bool,
+    pub move_speed: f32,
+    pub look_sensitivity: f32,
+    pub orbit_sensitivity: f32,
+    pub pan_sensitivity: f32,
+    pub zoom_sensitivity: f32,
+    pub invert_y: bool,
+    pub distance_relative_speed: bool,
+    pub translate_enabled: bool,
+    pub translate_snap: f32,
+    pub translate_edge_snap: bool,
+    pub rotate_enabled: bool,
+    pub rotate_snap: f32,
+    pub scale_enabled: bool,
+    pub scale_snap: f32,
+    pub scale_bottom_anchor: bool,
+    pub object_snap_enabled: bool,
+    pub object_snap_distance: f32,
+    pub floor_snap_enabled: bool,
+    pub floor_y: f32,
+}
+
+impl PersistedViewportSettings {
+    pub fn from_settings(s: &ViewportSettings) -> Self {
+        let rt = s.render_toggles;
+        let c = s.camera;
+        let sn = s.snap;
+        Self {
+            textures: rt.textures,
+            wireframe: rt.wireframe,
+            lighting: rt.lighting,
+            shadows: rt.shadows,
+            visualization_mode: format!("{:?}", s.visualization_mode),
+            show_grid: s.show_grid,
+            show_subgrid: s.show_subgrid,
+            show_axis_gizmo: s.show_axis_gizmo,
+            collision_always: matches!(s.collision_gizmo_visibility, CollisionGizmoVisibility::Always),
+            orthographic: matches!(s.projection_mode, ProjectionMode::Orthographic),
+            move_speed: c.move_speed,
+            look_sensitivity: c.look_sensitivity,
+            orbit_sensitivity: c.orbit_sensitivity,
+            pan_sensitivity: c.pan_sensitivity,
+            zoom_sensitivity: c.zoom_sensitivity,
+            invert_y: c.invert_y,
+            distance_relative_speed: c.distance_relative_speed,
+            translate_enabled: sn.translate_enabled,
+            translate_snap: sn.translate_snap,
+            translate_edge_snap: sn.translate_edge_snap,
+            rotate_enabled: sn.rotate_enabled,
+            rotate_snap: sn.rotate_snap,
+            scale_enabled: sn.scale_enabled,
+            scale_snap: sn.scale_snap,
+            scale_bottom_anchor: sn.scale_bottom_anchor,
+            object_snap_enabled: sn.object_snap_enabled,
+            object_snap_distance: sn.object_snap_distance,
+            floor_snap_enabled: sn.floor_snap_enabled,
+            floor_y: sn.floor_y,
+        }
+    }
+
+    pub fn apply(&self, s: &mut ViewportSettings) {
+        s.render_toggles = RenderToggles {
+            textures: self.textures,
+            wireframe: self.wireframe,
+            lighting: self.lighting,
+            shadows: self.shadows,
+        };
+        s.visualization_mode = match self.visualization_mode.as_str() {
+            "Normals" => VisualizationMode::Normals,
+            "Roughness" => VisualizationMode::Roughness,
+            "Metallic" => VisualizationMode::Metallic,
+            "Depth" => VisualizationMode::Depth,
+            "UvChecker" => VisualizationMode::UvChecker,
+            _ => VisualizationMode::None,
+        };
+        s.show_grid = self.show_grid;
+        s.show_subgrid = self.show_subgrid;
+        s.show_axis_gizmo = self.show_axis_gizmo;
+        s.collision_gizmo_visibility = if self.collision_always {
+            CollisionGizmoVisibility::Always
+        } else {
+            CollisionGizmoVisibility::SelectedOnly
+        };
+        s.projection_mode = if self.orthographic {
+            ProjectionMode::Orthographic
+        } else {
+            ProjectionMode::Perspective
+        };
+        s.camera = CameraSettingsState {
+            move_speed: self.move_speed,
+            look_sensitivity: self.look_sensitivity,
+            orbit_sensitivity: self.orbit_sensitivity,
+            pan_sensitivity: self.pan_sensitivity,
+            zoom_sensitivity: self.zoom_sensitivity,
+            invert_y: self.invert_y,
+            distance_relative_speed: self.distance_relative_speed,
+        };
+        s.snap = SnapSettings {
+            translate_enabled: self.translate_enabled,
+            translate_snap: self.translate_snap,
+            translate_edge_snap: self.translate_edge_snap,
+            rotate_enabled: self.rotate_enabled,
+            rotate_snap: self.rotate_snap,
+            scale_enabled: self.scale_enabled,
+            scale_snap: self.scale_snap,
+            scale_bottom_anchor: self.scale_bottom_anchor,
+            object_snap_enabled: self.object_snap_enabled,
+            object_snap_distance: self.object_snap_distance,
+            floor_snap_enabled: self.floor_snap_enabled,
+            floor_y: self.floor_y,
+        };
+    }
+}
+
+/// Editor-only preferences persisted in `project.toml` under `[editor]`.
+/// The runtime ignores this section, and `renzora_export` strips it from
+/// shipped builds.
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct EditorPrefs {
+    pub viewport: PersistedViewportSettings,
 }

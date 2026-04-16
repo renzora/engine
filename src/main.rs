@@ -45,7 +45,10 @@ fn main() {
             return;
         }
 
-        let plugins_dir = project_path.as_ref().map(|p| p.join("plugins"));
+        // Project-wide plugin scan: any dylib anywhere in the project is picked
+        // up. Users can place a plugin alongside its assets (marketplace bundle
+        // pattern) or in a dedicated plugins/ folder — both work.
+        let plugins_dir = project_path.as_ref().cloned();
 
         let mut app = init_app();
         add_default_rendering(&mut app);
@@ -91,9 +94,10 @@ fn main() {
             }
         }
 
-        // Load project plugins
+        // Load project plugins (recursive — dylibs can live anywhere in the
+        // game project, alongside their prefabs/assets).
         if let Some(ref dir) = plugins_dir {
-            dynamic_plugin_loader::load_plugins(&mut app, dir, true);
+            dynamic_plugin_loader::load_plugins_recursive(&mut app, dir, true);
         }
 
         app.run();

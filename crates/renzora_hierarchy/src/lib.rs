@@ -98,6 +98,26 @@ impl EditorPanel for HierarchyPanel {
             }
         }
 
+        // Consume any keyboard-triggered rename request.
+        if let Some(req) = world
+            .get_resource::<RenameRequest>()
+            .and_then(|r| r.0)
+        {
+            // The name buffer seed is filled in by the panel when rename
+            // actually begins — just set the target entity here.
+            state.renaming_entity = Some(req);
+            state.rename_buffer = world
+                .get::<Name>(req)
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_default();
+            state.rename_focus_set = false;
+            commands.push(|w: &mut World| {
+                if let Some(mut r) = w.get_resource_mut::<RenameRequest>() {
+                    r.0 = None;
+                }
+            });
+        }
+
         let current: Vec<Entity> = selection.get_all();
         if current != state.last_selection {
             for &entity in &current {
@@ -497,6 +517,69 @@ impl EditorPanel for HierarchyPanel {
                     });
             }
         }
+
+        // ── Scene-instance drop: drag a `.ron` from the asset panel onto
+        //    the hierarchy to spawn a SceneInstance at the scene root.
+        let panel_rect = ui.max_rect();
+        if let Some(payload) = world.get_resource::<renzora_ui::asset_drag::AssetDragPayload>() {
+            if payload.is_detached && payload.matches_extensions(&["ron"]) {
+                let pointer = ui.ctx().pointer_latest_pos();
+                let pointer_in_panel = pointer.map_or(false, |p| panel_rect.contains(p));
+                if pointer_in_panel {
+                    // Highlight the panel edge to show it's a valid drop target.
+                    ui.painter().rect_stroke(
+                        panel_rect,
+                        4.0,
+                        egui::Stroke::new(2.0, theme.semantic.accent.to_color32()),
+                        egui::StrokeKind::Inside,
+                    );
+                    // On release, spawn the instance.
+                    if !ui.ctx().input(|i| i.pointer.any_down()) {
+                        let path = payload.path.clone();
+                        commands.push(move |world: &mut World| {
+                            let host_abs = world
+                                .get_resource::<renzora::core::CurrentProject>()
+                                .and_then(|p| {
+                                    world.get_resource::<renzora_ui::DocumentTabState>()
+                                        .and_then(|t| t.tabs.get(t.active_tab)
+                                            .and_then(|tab| tab.scene_path.clone()))
+                                        .map(|rel| p.resolve_path(&rel))
+                                });
+                            if let (Some(host_abs), Some(project_root)) = (
+                                host_abs,
+                                world.get_resource::<renzora::core::CurrentProject>()
+                                    .map(|p| p.path.clone()),
+                            ) {
+                                let mut cache = world
+                                    .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
+                                    .unwrap_or_default();
+                                let cycle = renzora_engine::scene_io::would_create_reference_cycle(
+                                    &mut cache, &project_root, &host_abs, &path,
+                                );
+                                world.insert_resource(cache);
+                                if cycle {
+                                    if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
+                                        toasts.warning("You cannot add a scene to itself");
+                                    }
+                                    return;
+                                }
+                            }
+                            let entity = renzora_engine::scene_io::spawn_scene_instance(
+                                world,
+                                &path,
+                                None,
+                                Transform::default(),
+                            );
+                            if let Some(entity) = entity {
+                                if let Some(sel) = world.get_resource::<EditorSelection>() {
+                                    sel.set(Some(entity));
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
     }
 
     fn closable(&self) -> bool {
@@ -516,6 +599,8 @@ impl Plugin for HierarchyPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] HierarchyPanelPlugin");
         app.register_panel(HierarchyPanel::default());
+        app.init_resource::<RenameRequest>();
+        app.add_systems(bevy::prelude::Update, detect_selection_keybindings);
 
         // Spawn presets are now self-registered by their owning crates:
         // - Bevy types (Empty, lights, camera): renzora_editor_framework::bevy_inspectors
@@ -523,6 +608,80 @@ impl Plugin for HierarchyPanelPlugin {
         // - Terrain: renzora_terrain (editor feature)
         // - World Environment/Sun: renzora_level_presets
         app.init_resource::<SpawnRegistry>();
+    }
+}
+
+/// A request from the keybinding system to start renaming an entity in the
+/// hierarchy panel. Consumed by the panel UI next frame.
+#[derive(Resource, Default)]
+pub struct RenameRequest(pub Option<Entity>);
+
+/// Watches the new editor keybindings (SelectAll / Rename / Hide / Isolate)
+/// and applies their effects.
+fn detect_selection_keybindings(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<renzora::core::keybindings::KeyBindings>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    selection: Res<EditorSelection>,
+    entities_q: Query<(Entity, Option<&bevy::prelude::Name>, Option<&renzora::core::HideInHierarchy>)>,
+    mut vis_q: Query<&mut bevy::prelude::Visibility>,
+    mut rename_req: ResMut<RenameRequest>,
+) {
+    use renzora::core::keybindings::EditorAction;
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+
+    // SelectAll: pick every named, non-hidden-in-hierarchy entity.
+    if keybindings.just_pressed(EditorAction::SelectAll, &keyboard) {
+        let mut all = Vec::new();
+        for (e, name, hide) in entities_q.iter() {
+            if name.is_some() && hide.is_none() {
+                all.push(e);
+            }
+        }
+        selection.set_multiple(all);
+    }
+
+    // Rename: start rename on the current primary selection.
+    if keybindings.just_pressed(EditorAction::Rename, &keyboard) {
+        if let Some(e) = selection.get() {
+            rename_req.0 = Some(e);
+        }
+    }
+
+    // HideSelected: toggle Visibility::Hidden on every selected entity.
+    if keybindings.just_pressed(EditorAction::HideSelected, &keyboard) {
+        for e in selection.get_all() {
+            if let Ok(mut v) = vis_q.get_mut(e) {
+                *v = match *v {
+                    Visibility::Hidden => Visibility::Visible,
+                    _ => Visibility::Hidden,
+                };
+            }
+        }
+    }
+
+    // IsolateSelected: hide everything except the current selection (and its
+    // ancestors, so the tree stays navigable).
+    if keybindings.just_pressed(EditorAction::IsolateSelected, &keyboard) {
+        let sel: std::collections::HashSet<Entity> =
+            selection.get_all().into_iter().collect();
+        if !sel.is_empty() {
+            for (e, name, hide) in entities_q.iter() {
+                if name.is_none() || hide.is_some() {
+                    continue;
+                }
+                if let Ok(mut v) = vis_q.get_mut(e) {
+                    *v = if sel.contains(&e) {
+                        Visibility::Visible
+                    } else {
+                        Visibility::Hidden
+                    };
+                }
+            }
+        }
     }
 }
 

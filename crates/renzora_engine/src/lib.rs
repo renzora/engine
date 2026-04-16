@@ -35,6 +35,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<MeshColor>()
             .register_type::<MeshInstanceData>()
             .register_type::<SceneCamera>()
+            .register_type::<renzora::SceneInstance>()
             .register_type::<renzora::DefaultCamera>()
             .register_type::<renzora::EntityTag>()
             .register_type::<Sun>();
@@ -124,7 +125,8 @@ impl Plugin for RuntimePlugin {
         app.add_systems(Update, sync_project_asset_path);
 
         app.init_resource::<ViewportRenderTarget>()
-            .init_resource::<scene_io::SceneLoadState>();
+            .init_resource::<scene_io::SceneLoadState>()
+            .init_resource::<scene_io::SceneReferenceCache>();
         {
             use bevy::prelude::*;
             use procedural_meshes as pm;

@@ -402,9 +402,20 @@ fn open_scene(world: &mut World, path: &std::path::Path) {
 
     // Update the active document tab — not the project's boot scene, which
     // stays pinned to whatever the user configured in project settings.
+    // Also remember this scene as `editor_last_scene` so the editor reopens
+    // it next launch.
     let relative = world
         .get_resource::<CurrentProject>()
         .and_then(|p| p.make_relative(path));
+    if let (Some(ref rel), Some(mut project)) = (
+        relative.clone(),
+        world.get_resource_mut::<CurrentProject>(),
+    ) {
+        if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
+            project.config.editor_last_scene = Some(rel.clone());
+            let _ = project.save_config();
+        }
+    }
     if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
         let active = tabs.active_tab;
         if let Some(tab) = tabs.tabs.get_mut(active) {

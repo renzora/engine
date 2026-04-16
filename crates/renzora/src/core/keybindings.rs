@@ -72,6 +72,21 @@ pub enum EditorAction {
     ViewTop,
     ViewBottom,
     ToggleProjection,
+
+    // New camera/editing helpers
+    ResetCamera,
+    FrameAll,
+    CameraToCursor,
+    CameraSpeedUp,
+    CameraSpeedDown,
+    SelectAll,
+    Rename,
+    HideSelected,
+    IsolateSelected,
+    ToggleSnap,
+    ToggleEdgeSnap,
+    ToggleScaleBottom,
+    TogglePivotLock,
 }
 
 impl EditorAction {
@@ -121,6 +136,19 @@ impl EditorAction {
             EditorAction::ViewTop => "View Top",
             EditorAction::ViewBottom => "View Bottom",
             EditorAction::ToggleProjection => "Toggle Ortho/Persp",
+            EditorAction::ResetCamera => "Reset Camera",
+            EditorAction::FrameAll => "Frame All",
+            EditorAction::CameraToCursor => "Camera to Cursor",
+            EditorAction::CameraSpeedUp => "Camera Speed +",
+            EditorAction::CameraSpeedDown => "Camera Speed -",
+            EditorAction::SelectAll => "Select All",
+            EditorAction::Rename => "Rename",
+            EditorAction::HideSelected => "Hide Selected",
+            EditorAction::IsolateSelected => "Isolate Selected",
+            EditorAction::ToggleSnap => "Toggle Snap",
+            EditorAction::ToggleEdgeSnap => "Toggle Edge Snap",
+            EditorAction::ToggleScaleBottom => "Toggle Scale From Bottom",
+            EditorAction::TogglePivotLock => "Toggle Pivot Lock",
         }
     }
 
@@ -133,7 +161,13 @@ impl EditorAction {
             | EditorAction::CameraMoveUp
             | EditorAction::CameraMoveDown
             | EditorAction::CameraMoveFaster
-            | EditorAction::FocusSelected => "Camera",
+            | EditorAction::FocusSelected
+            | EditorAction::ResetCamera
+            | EditorAction::FrameAll
+            | EditorAction::CameraToCursor
+            | EditorAction::CameraSpeedUp
+            | EditorAction::CameraSpeedDown
+            | EditorAction::TogglePivotLock => "Camera",
 
             EditorAction::ToolSelect
             | EditorAction::GizmoTranslate
@@ -144,7 +178,7 @@ impl EditorAction {
             | EditorAction::ModalRotate
             | EditorAction::ModalScale => "Transform",
 
-            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect | EditorAction::MoveSelectionToCursor => "Selection",
+            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect | EditorAction::MoveSelectionToCursor | EditorAction::SelectAll | EditorAction::Rename | EditorAction::HideSelected | EditorAction::IsolateSelected => "Selection",
 
             EditorAction::Undo
             | EditorAction::Redo
@@ -168,7 +202,10 @@ impl EditorAction {
             | EditorAction::ViewRight
             | EditorAction::ViewTop
             | EditorAction::ViewBottom
-            | EditorAction::ToggleProjection => "View",
+            | EditorAction::ToggleProjection
+            | EditorAction::ToggleSnap
+            | EditorAction::ToggleEdgeSnap
+            | EditorAction::ToggleScaleBottom => "View",
 
             EditorAction::PlayStop | EditorAction::PlayScriptsOnly => "Play",
         }
@@ -221,6 +258,19 @@ impl EditorAction {
             EditorAction::ToggleProjection,
             EditorAction::PlayStop,
             EditorAction::PlayScriptsOnly,
+            EditorAction::ResetCamera,
+            EditorAction::FrameAll,
+            EditorAction::CameraToCursor,
+            EditorAction::CameraSpeedUp,
+            EditorAction::CameraSpeedDown,
+            EditorAction::SelectAll,
+            EditorAction::Rename,
+            EditorAction::HideSelected,
+            EditorAction::IsolateSelected,
+            EditorAction::ToggleSnap,
+            EditorAction::ToggleEdgeSnap,
+            EditorAction::ToggleScaleBottom,
+            EditorAction::TogglePivotLock,
         ]
     }
 }
@@ -352,7 +402,7 @@ impl Default for KeyBindings {
         // near Ctrl+Z (undo) and the gizmo tools. Use Alt-modified forms.
         bindings.insert(EditorAction::ToggleWireframe, KeyBinding::new(KeyCode::KeyZ).alt());
         bindings.insert(EditorAction::ToggleLighting, KeyBinding::new(KeyCode::KeyZ).alt().shift());
-        bindings.insert(EditorAction::ToggleGrid, KeyBinding::new(KeyCode::KeyH));
+        bindings.insert(EditorAction::ToggleGrid, KeyBinding::new(KeyCode::KeyG).ctrl());
 
         // Play mode
         bindings.insert(EditorAction::PlayStop, KeyBinding::new(KeyCode::F5));
@@ -367,6 +417,19 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::ViewBottom, KeyBinding::new(KeyCode::Numpad7).ctrl());
         bindings.insert(EditorAction::ToggleProjection, KeyBinding::new(KeyCode::Numpad5));
         bindings.insert(EditorAction::MoveSelectionToCursor, KeyBinding::new(KeyCode::KeyV));
+        bindings.insert(EditorAction::ResetCamera, KeyBinding::new(KeyCode::Home));
+        bindings.insert(EditorAction::FrameAll, KeyBinding::new(KeyCode::KeyA));
+        bindings.insert(EditorAction::CameraToCursor, KeyBinding::new(KeyCode::End));
+        bindings.insert(EditorAction::SelectAll, KeyBinding::new(KeyCode::KeyA).ctrl());
+        bindings.insert(EditorAction::Rename, KeyBinding::new(KeyCode::F2));
+        bindings.insert(EditorAction::HideSelected, KeyBinding::new(KeyCode::KeyH));
+        bindings.insert(EditorAction::IsolateSelected, KeyBinding::new(KeyCode::KeyH).shift());
+        bindings.insert(EditorAction::CameraSpeedUp, KeyBinding::new(KeyCode::BracketRight));
+        bindings.insert(EditorAction::CameraSpeedDown, KeyBinding::new(KeyCode::BracketLeft));
+        bindings.insert(EditorAction::ToggleSnap, KeyBinding::new(KeyCode::KeyT));
+        bindings.insert(EditorAction::ToggleEdgeSnap, KeyBinding::new(KeyCode::KeyT).shift());
+        bindings.insert(EditorAction::ToggleScaleBottom, KeyBinding::new(KeyCode::KeyT).alt());
+        bindings.insert(EditorAction::TogglePivotLock, KeyBinding::new(KeyCode::KeyL));
 
         Self {
             bindings,

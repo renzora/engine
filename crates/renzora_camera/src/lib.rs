@@ -135,6 +135,13 @@ struct CameraDragState {
     dragging: bool,
 }
 
+/// When `true`, zoom and pan preserve `orbit.focus` (the pivot) so orbit
+/// rotations stay centered on whatever was focused. Zoom becomes a dolly
+/// (changes `distance`), pan is suppressed. Engaged automatically by Focus
+/// Selected (F), Frame All (A), and Camera to Cursor (End); toggle with L.
+#[derive(Resource, Default)]
+pub struct PivotLock(pub bool);
+
 #[derive(Default)]
 pub struct CameraPlugin;
 
@@ -145,11 +152,15 @@ impl Plugin for CameraPlugin {
             .init_resource::<OrbitCameraState>()
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
+            .init_resource::<PivotLock>()
+            .add_systems(Update, toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)))
             .add_systems(PostStartup, apply_initial_orbit)
             .add_systems(Update, (
                 sync_viewport_settings,
                 handle_view_angle_keys,
                 focus_selected,
+                frame_all,
+                camera_to_cursor,
                 camera_controller,
                 apply_nav_overlay,
                 update_camera_projection,
@@ -197,10 +208,15 @@ fn sync_viewport_settings(
     settings.invert_y = c.invert_y;
     settings.distance_relative_speed = c.distance_relative_speed;
 
-    // Apply pending view angle
-    if let Some(cmd) = vp.pending_view_angle.take() {
-        orbit.yaw = cmd.yaw;
-        orbit.pitch = cmd.pitch;
+    // Apply pending view angle — guard so DerefMut only fires when we
+    // actually have a command to consume. Otherwise the blind `.take()`
+    // marks ViewportSettings as changed every frame, which cascades into
+    // spurious saves and resource-change log spam elsewhere.
+    if vp.pending_view_angle.is_some() {
+        if let Some(cmd) = vp.pending_view_angle.take() {
+            orbit.yaw = cmd.yaw;
+            orbit.pitch = cmd.pitch;
+        }
     }
 }
 
@@ -253,6 +269,13 @@ fn handle_view_angle_keys(
             ProjectionMode::Orthographic => VpProjectionMode::Orthographic,
         };
     }
+    if keybindings.just_pressed(EditorAction::ResetCamera, &keyboard) {
+        let def = OrbitCameraState::default();
+        orbit.focus = def.focus;
+        orbit.distance = def.distance;
+        orbit.yaw = def.yaw;
+        orbit.pitch = def.pitch;
+    }
 }
 
 /// Focus the camera on the currently selected entity (F key).
@@ -263,6 +286,7 @@ fn focus_selected(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     selection: Res<EditorSelection>,
     mut orbit: ResMut<OrbitCameraState>,
+    mut pivot_lock: ResMut<PivotLock>,
     transforms: Query<&Transform, Without<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
@@ -275,14 +299,127 @@ fn focus_selected(
         if let Some(entity) = selection.get() {
             if let Ok(transform) = transforms.get(entity) {
                 orbit.focus_on(transform.translation);
+                pivot_lock.0 = true;
             }
         }
     }
 }
 
+/// Toggle pivot lock on/off (keybinding L).
+fn toggle_pivot_lock(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut pivot_lock: ResMut<PivotLock>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+    if keybindings.just_pressed(EditorAction::TogglePivotLock, &keyboard) {
+        pivot_lock.0 = !pivot_lock.0;
+        info!("[camera] pivot lock {}", if pivot_lock.0 { "ON" } else { "OFF" });
+    }
+}
+
+/// Frame all scene entities — compute a bounding sphere over mesh entity
+/// positions and set the orbit focus + distance to fit them all in view.
+fn frame_all(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut pivot_lock: ResMut<PivotLock>,
+    meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+    if !keybindings.just_pressed(EditorAction::FrameAll, &keyboard) { return; }
+
+    let mut count = 0u32;
+    let mut centroid = Vec3::ZERO;
+    for gt in &meshes {
+        centroid += gt.translation();
+        count += 1;
+    }
+    if count == 0 { return; }
+    centroid /= count as f32;
+
+    let mut max_dist = 1.0f32;
+    for gt in &meshes {
+        let d = gt.translation().distance(centroid);
+        if d > max_dist { max_dist = d; }
+    }
+
+    orbit.focus = centroid;
+    orbit.distance = (max_dist * 2.5).max(3.0);
+    pivot_lock.0 = true;
+}
+
+/// Move the camera's orbit pivot to the point under the mouse cursor (ground
+/// plane intersection). Keeps the camera's world position unchanged — only
+/// the pivot/distance/yaw/pitch are recomputed.
+fn camera_to_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<KeyBindings>,
+    input_focus: Res<InputFocusState>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    viewport: Option<Res<ViewportState>>,
+    window_q: Query<&Window, With<PrimaryWindow>>,
+    camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut pivot_lock: ResMut<PivotLock>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+) {
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
+    if keybindings.rebinding.is_some() { return; }
+    if input_focus.egui_wants_keyboard { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
+    if !keybindings.just_pressed(EditorAction::CameraToCursor, &keyboard) { return; }
+
+    let Some(viewport) = viewport else { return };
+    let Ok(window) = window_q.single() else { return };
+    let Some(cursor) = window.cursor_position() else { return };
+    let vp_min = viewport.screen_position;
+    let vp_max = vp_min + viewport.screen_size;
+    if cursor.x < vp_min.x || cursor.y < vp_min.y || cursor.x > vp_max.x || cursor.y > vp_max.y {
+        return;
+    }
+    let Some((camera, cam_xform)) = camera_q.iter().next() else { return };
+    let viewport_pos = Vec2::new(
+        (cursor.x - vp_min.x) / viewport.screen_size.x * viewport.current_size.x as f32,
+        (cursor.y - vp_min.y) / viewport.screen_size.y * viewport.current_size.y as f32,
+    );
+    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else { return };
+    let dir = ray.direction.as_vec3();
+    if dir.y.abs() <= 1e-6 { return; }
+    let t = -ray.origin.y / dir.y;
+    if t <= 0.0 || t > 10_000.0 { return; }
+    let target = ray.origin + dir * t;
+
+    let current_cam_pos = orbit.calculate_position();
+    let delta = current_cam_pos - target;
+    let distance = delta.length().max(0.1);
+    let yaw = delta.x.atan2(delta.z);
+    let pitch = (delta.y / distance).asin().clamp(-1.5, 1.5);
+    orbit.focus = target;
+    orbit.distance = distance;
+    orbit.yaw = yaw;
+    orbit.pitch = pitch;
+    pivot_lock.0 = true;
+}
+
+
 fn camera_controller(
     mut orbit: ResMut<OrbitCameraState>,
     settings: Res<CameraSettings>,
+    mut pivot_lock: ResMut<PivotLock>,
     mut drag: ResMut<CameraDragState>,
     viewport: Option<Res<ViewportState>>,
     active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
@@ -368,12 +505,18 @@ fn camera_controller(
     let mut scroll_changed = false;
     if !tool_active {
         for ev in scroll_events.read() {
-            let forward = Vec3::new(
-                orbit.pitch.cos() * orbit.yaw.sin(),
-                orbit.pitch.sin(),
-                orbit.pitch.cos() * orbit.yaw.cos(),
-            );
-            orbit.focus -= forward * ev.y * zoom_speed;
+            if pivot_lock.0 {
+                // Dolly: move the camera along the view ray by changing
+                // distance, leaving `focus` anchored.
+                orbit.distance = (orbit.distance - ev.y * zoom_speed).max(0.1);
+            } else {
+                let forward = Vec3::new(
+                    orbit.pitch.cos() * orbit.yaw.sin(),
+                    orbit.pitch.sin(),
+                    orbit.pitch.cos() * orbit.yaw.cos(),
+                );
+                orbit.focus -= forward * ev.y * zoom_speed;
+            }
             scroll_changed = true;
         }
     } else {
@@ -392,9 +535,9 @@ fn camera_controller(
         return;
     }
 
-    // === Right-click: look around + WASD fly ===
+    // === Right-click: look around + WASD fly (or Shift+Right to pan) ===
     if right_pressed {
-        // WASD movement
+        // WASD movement works in both modes.
         let forward = Vec3::new(
             orbit.pitch.cos() * orbit.yaw.sin(),
             orbit.pitch.sin(),
@@ -425,24 +568,45 @@ fn camera_controller(
         }
 
         if move_delta.length_squared() > 0.0 {
-            let speed_mult = if shift_held { 2.0 } else { 1.0 };
-            orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
+            orbit.focus += move_delta.normalize() * move_speed * delta;
+            // WASD fly breaks pivot lock — you're flying, not orbiting.
+            if pivot_lock.0 { pivot_lock.0 = false; }
         }
 
-        // Mouse look
-        let cam_pos = orbit.calculate_position();
-        for ev in mouse_motion.read() {
-            orbit.yaw -= ev.delta.x * look_speed;
-            orbit.pitch += ev.delta.y * look_speed * invert_y;
-            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+        if shift_held {
+            // Shift+Right drag = pan the camera (slide focus in view plane).
+            // Suppressed when pivot is locked so orbit stays centered.
+            if pivot_lock.0 {
+                mouse_motion.clear();
+            } else {
+                let pan_speed = 0.003 * orbit.distance.max(0.5);
+                let view_dir = Vec3::new(
+                    orbit.pitch.cos() * orbit.yaw.sin(),
+                    orbit.pitch.sin(),
+                    orbit.pitch.cos() * orbit.yaw.cos(),
+                );
+                let up_dir = right_dir.cross(view_dir).normalize();
+                for ev in mouse_motion.read() {
+                    orbit.focus -= right_dir * ev.delta.x * pan_speed;
+                    orbit.focus += up_dir * ev.delta.y * pan_speed;
+                }
+            }
+        } else {
+            // Mouse look (pivot-preserved).
+            let cam_pos = orbit.calculate_position();
+            for ev in mouse_motion.read() {
+                orbit.yaw -= ev.delta.x * look_speed;
+                orbit.pitch += ev.delta.y * look_speed * invert_y;
+                orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+            }
+            // Keep camera in same position, recalculate focus.
+            let new_dir = Vec3::new(
+                orbit.pitch.cos() * orbit.yaw.sin(),
+                orbit.pitch.sin(),
+                orbit.pitch.cos() * orbit.yaw.cos(),
+            );
+            orbit.focus = cam_pos - new_dir * orbit.distance;
         }
-        // Keep camera in same position, recalculate focus
-        let new_dir = Vec3::new(
-            orbit.pitch.cos() * orbit.yaw.sin(),
-            orbit.pitch.sin(),
-            orbit.pitch.cos() * orbit.yaw.cos(),
-        );
-        orbit.focus = cam_pos - new_dir * orbit.distance;
     }
     // === Middle-click or Alt+Left: orbit ===
     else if middle_pressed || (left_pressed && alt_held) {
@@ -463,6 +627,7 @@ fn camera_controller(
 /// Apply pan/zoom from the viewport nav overlay buttons.
 fn apply_nav_overlay(
     nav: Option<Res<NavOverlayState>>,
+    pivot_lock: Res<PivotLock>,
     mut orbit: ResMut<OrbitCameraState>,
     mut camera_query: Query<&mut Transform, With<EditorCamera>>,
 ) {
@@ -479,7 +644,7 @@ fn apply_nav_overlay(
         return;
     }
 
-    if has_pan {
+    if has_pan && !pivot_lock.0 {
         let pan_speed = 0.003 * orbit.distance.max(0.5);
         let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
         let up_dir = Vec3::new(

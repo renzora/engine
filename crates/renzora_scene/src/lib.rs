@@ -200,6 +200,12 @@ fn save_scene_system(world: &mut World) {
     info!("Save: active tab scene_path={:?}, resolved={}", tab_scene_path, save_path.display());
 
     stamp_orbit_on_scene_camera(world);
+
+    // Propagate interior edits of nested scene instances back to their
+    // source .ron files. Only descendants are written — the instance
+    // root's own Transform stays in the host and never leaks into source.
+    scene_io::save_all_scene_instances(world, &save_path);
+
     if let Err(e) = scene_io::save_scene(world, &save_path) {
         error!("Failed to save scene: {}", e);
         return;
@@ -210,6 +216,14 @@ fn save_scene_system(world: &mut World) {
         let active = tabs.active_tab;
         if let Some(tab) = tabs.tabs.get_mut(active) {
             tab.is_modified = false;
+        }
+    }
+
+    // Remember this scene as the last-open so the editor reopens it next launch.
+    if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
+        if project.config.editor_last_scene.as_deref() != Some(tab_scene_path.as_str()) {
+            project.config.editor_last_scene = Some(tab_scene_path.clone());
+            let _ = project.save_config();
         }
     }
 
@@ -402,20 +416,37 @@ fn load_scene_on_enter(world: &mut World) {
         }
     }
 
+    // Editor: prefer the last scene the user had open; fall back to the
+    // project's boot scene if there's no saved last scene. Runtime builds
+    // use `main_scene` via `scene_io::load_current_scene` — this branch is
+    // editor-only.
     if let Some(project) = world.get_resource::<CurrentProject>() {
-        let path = project.main_scene_path();
+        let relative = project
+            .config
+            .editor_last_scene
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .unwrap_or_else(|| project.config.main_scene.clone());
+        let path = project.resolve_path(&relative);
         scene_io::load_scene(world, &path);
     }
     extract_orbit_from_scene_camera(world);
 
     // Update first tab to reflect the loaded scene
     let scene_info = world.get_resource::<CurrentProject>().map(|p| {
-        let main = p.config.main_scene.clone();
-        let name = std::path::Path::new(&main)
+        let rel = p
+            .config
+            .editor_last_scene
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .unwrap_or_else(|| p.config.main_scene.clone());
+        let name = std::path::Path::new(&rel)
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Untitled Scene".to_string());
-        (main, name)
+        (rel, name)
     });
 
     if let Some((scene_path, scene_name)) = scene_info {
@@ -438,8 +469,18 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScenePlugin");
-        use renzora_editor_framework::AppEditorExt;
+        use renzora_editor_framework::{AppEditorExt, ComponentIconEntry};
         app.register_panel(panel::ScenesPanel::default());
+
+        // Hierarchy icon for nested-scene instance roots (distinguishes them
+        // from plain folder-like grouping entities).
+        app.register_component_icon(ComponentIconEntry {
+            type_id: std::any::TypeId::of::<renzora::SceneInstance>(),
+            icon: egui_phosphor::regular::FILM_STRIP,
+            color: [170, 200, 255],
+            priority: 75,
+            dynamic_icon_fn: None,
+        });
         app.init_resource::<SceneTabBuffers>()
             .add_systems(OnEnter(SplashState::Editor), load_scene_on_enter)
             .add_systems(

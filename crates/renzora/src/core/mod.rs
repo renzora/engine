@@ -103,12 +103,22 @@ pub struct ProjectConfig {
     pub name: String,
     pub version: String,
     pub main_scene: String,
+    /// The scene the editor had open when the project was last closed. Editor
+    /// reopens this on project load, falling back to `main_scene` if absent.
+    /// Runtime / exported builds always use `main_scene` (this field is
+    /// editor-only and ignored by the runtime).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor_last_scene: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default)]
     pub window: WindowConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
+    /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
+    /// The runtime ignores this section; export strips it from shipped builds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor: Option<crate::core::viewport_types::EditorPrefs>,
 }
 
 impl Default for ProjectConfig {
@@ -117,9 +127,11 @@ impl Default for ProjectConfig {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
             main_scene: "scenes/main.ron".to_string(),
+            editor_last_scene: None,
             icon: None,
             window: WindowConfig::default(),
             network: None,
+            editor: None,
         }
     }
 }
@@ -229,6 +241,24 @@ pub struct EditorLocked;
 /// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
 #[derive(Component)]
 pub struct IsolatedCamera;
+
+/// Marks an entity as the root of a nested-scene instance.
+///
+/// The `source` field is an asset-relative path to the `.ron` scene file that
+/// provides the instance's contents. In the host scene file, only this root
+/// entity (with its transform + any host-level overrides) is serialized; the
+/// instance's child entity tree lives in the referenced source file and is
+/// expanded on load.
+///
+/// Edits to entities *inside* an instance tree autosave back to the source
+/// file. Edits to the instance root's transform persist in the host scene as
+/// per-instance placement overrides.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SceneInstance {
+    /// Asset-relative path to the source `.ron` scene file.
+    pub source: String,
+}
 
 /// Serializable marker for a scene camera entity.
 ///

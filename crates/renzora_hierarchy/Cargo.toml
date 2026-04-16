@@ -17,3 +17,8 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_blueprint = { path = "../renzora_blueprint" }
 renzora_physics = { path = "../renzora_physics" }
+renzora_engine = { path = "../renzora_engine" }
+renzora_ui = { path = "../renzora_ui" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

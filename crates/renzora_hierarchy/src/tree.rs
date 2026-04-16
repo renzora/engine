@@ -629,6 +629,91 @@ fn context_menu(
 
     ui.separator();
 
+    // Instance Scene… — pick a .ron scene file and spawn it as a nested
+    // scene instance under this entity.
+    if ui.button(format!("{} Instance Scene…", regular::FILM_STRIP)).clicked() {
+        let parent_entity = node.entity;
+        commands.push(move |world: &mut World| {
+            let scenes_dir = world
+                .get_resource::<renzora::core::CurrentProject>()
+                .map(|p| p.resolve_path("scenes"));
+
+            #[cfg(not(target_arch = "wasm32"))]
+            let file = {
+                let mut dlg = rfd::FileDialog::new()
+                    .set_title("Instance Scene")
+                    .add_filter("Scene File", &["ron"]);
+                if let Some(ref dir) = scenes_dir {
+                    dlg = dlg.set_directory(dir);
+                }
+                dlg.pick_file()
+            };
+            #[cfg(target_arch = "wasm32")]
+            let file: Option<std::path::PathBuf> = None;
+
+            let Some(path) = file else { return };
+            let host_abs = world
+                .get_resource::<renzora::core::CurrentProject>()
+                .and_then(|p| {
+                    world.get_resource::<renzora_ui::DocumentTabState>()
+                        .and_then(|t| t.tabs.get(t.active_tab)
+                            .and_then(|tab| tab.scene_path.clone()))
+                        .map(|rel| p.resolve_path(&rel))
+                });
+            if let (Some(host_abs), Some(project_root)) = (
+                host_abs,
+                world.get_resource::<renzora::core::CurrentProject>()
+                    .map(|p| p.path.clone()),
+            ) {
+                let mut cache = world
+                    .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
+                    .unwrap_or_default();
+                let cycle = renzora_engine::scene_io::would_create_reference_cycle(
+                    &mut cache, &project_root, &host_abs, &path,
+                );
+                world.insert_resource(cache);
+                if cycle {
+                    if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
+                        toasts.warning("You cannot add a scene to itself");
+                    }
+                    return;
+                }
+            }
+            let transform = Transform::default();
+            if let Some(entity) = renzora_engine::scene_io::spawn_scene_instance(
+                world,
+                &path,
+                Some(parent_entity),
+                transform,
+            ) {
+                if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+                    sel.set(Some(entity));
+                }
+            }
+        });
+        ui.close();
+    }
+
+    // Unpack Scene Instance — only shown when this entity IS an instance root.
+    // Removes the `SceneInstance` marker; its descendants stay in the world
+    // and become scene-owned entities (saved directly in the host scene from
+    // then on, no longer pulled from the source file).
+    if node.is_scene_instance {
+        if ui.button(format!("{} Unpack Scene Instance", regular::LINK_BREAK)).clicked() {
+            let entity = node.entity;
+            commands.push(move |world: &mut World| {
+                world.entity_mut(entity).remove::<renzora::SceneInstance>();
+                renzora::core::console_log::console_info(
+                    "Scene",
+                    format!("Unpacked scene instance {:?}", entity),
+                );
+            });
+            ui.close();
+        }
+    }
+
+    ui.separator();
+
     // Delete
     if ui.button(egui::RichText::new(format!("{} Delete", regular::TRASH)).color(
         theme.semantic.error.to_color32(),
