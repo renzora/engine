@@ -116,12 +116,20 @@ pub struct AssetBrowserState {
     // === Pending operations ===
     /// Pending rename operation (old_path, new_name).
     pub pending_rename: Option<(PathBuf, String)>,
+    /// Pending batch rename operation (base, start_index, paths).
+    pub pending_batch_rename: Option<(String, u32, Vec<PathBuf>)>,
     /// Pending delete operation.
     pub pending_delete: Vec<PathBuf>,
     /// Last error message.
     pub last_error: Option<String>,
     /// Error auto-clear timer.
     pub error_timeout: f32,
+
+    // === Batch rename dialog ===
+    pub batch_rename_active: bool,
+    pub batch_rename_base: String,
+    pub batch_rename_start: u32,
+    pub batch_rename_assets: Vec<PathBuf>,
 
     // === Inline create (file created immediately, then enters rename mode) ===
     /// When set, a new asset was just created and should enter rename mode.
@@ -185,9 +193,14 @@ impl Default for AssetBrowserState {
             drop_target_folder: None,
             tree_folder_rects: Vec::new(),
             pending_rename: None,
+            pending_batch_rename: None,
             pending_delete: Vec::new(),
             last_error: None,
             error_timeout: 0.0,
+            batch_rename_active: false,
+            batch_rename_base: String::new(),
+            batch_rename_start: 1,
+            batch_rename_assets: Vec::new(),
             pending_inline_create: None,
             drag_moving: Vec::new(),
             move_drop_target: None,

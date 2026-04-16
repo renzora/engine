@@ -481,6 +481,120 @@ impl EditorPanel for AssetBrowserPanel {
             }
         }
 
+        // --- Batch rename dialog ---
+        if state.batch_rename_active {
+            let count = state.batch_rename_assets.len();
+            let preview_ext = state
+                .batch_rename_assets
+                .first()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .map(|s| s.to_string());
+            let mut open = true;
+            egui::Window::new("Batch Rename")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ui.ctx(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Base name:");
+                        ui.text_edit_singleline(&mut state.batch_rename_base);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Start at:");
+                        ui.add(
+                            egui::DragValue::new(&mut state.batch_rename_start).range(0..=9999),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    let preview_text = match &preview_ext {
+                        Some(ext) => format!(
+                            "Preview: {}_{:02}.{}, {}_{:02}.{}, … ({} files)",
+                            state.batch_rename_base, state.batch_rename_start, ext,
+                            state.batch_rename_base, state.batch_rename_start + 1, ext,
+                            count,
+                        ),
+                        None => format!(
+                            "Preview: {}_{:02}, {}_{:02}, … ({} items)",
+                            state.batch_rename_base,
+                            state.batch_rename_start,
+                            state.batch_rename_base,
+                            state.batch_rename_start + 1,
+                            count,
+                        ),
+                    };
+                    ui.label(
+                        egui::RichText::new(preview_text)
+                            .size(11.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        let base_ok = !state.batch_rename_base.trim().is_empty();
+                        let rename_btn = egui::Button::new("Rename");
+                        if ui.add_enabled(base_ok, rename_btn).clicked() {
+                            state.pending_batch_rename = Some((
+                                state.batch_rename_base.clone(),
+                                state.batch_rename_start,
+                                state.batch_rename_assets.clone(),
+                            ));
+                            state.batch_rename_active = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            state.batch_rename_active = false;
+                        }
+                    });
+                });
+            if !open {
+                state.batch_rename_active = false;
+            }
+        }
+
+        // --- Process pending batch rename ---
+        if let Some((base, start, assets)) = state.pending_batch_rename.take() {
+            let mut new_selection: std::collections::HashSet<std::path::PathBuf> =
+                std::collections::HashSet::new();
+            for (i, old_path) in assets.iter().enumerate() {
+                let Some(parent) = old_path.parent() else {
+                    new_selection.insert(old_path.clone());
+                    continue;
+                };
+                let ext = old_path.extension().and_then(|e| e.to_str());
+                let new_name = match ext {
+                    Some(e) => format!("{}_{:02}.{}", base, start as usize + i, e),
+                    None => format!("{}_{:02}", base, start as usize + i),
+                };
+                let new_path = parent.join(&new_name);
+                if new_path == *old_path {
+                    new_selection.insert(old_path.clone());
+                    continue;
+                }
+                if new_path.exists() {
+                    state.last_error = Some(format!("Skipped: {} already exists", new_name));
+                    state.error_timeout = 3.0;
+                    new_selection.insert(old_path.clone());
+                    continue;
+                }
+                let is_dir = old_path.is_dir();
+                match std::fs::rename(old_path, &new_path) {
+                    Ok(_) => {
+                        new_selection.insert(new_path.clone());
+                        if state.selected_path.as_ref() == Some(old_path) {
+                            state.selected_path = Some(new_path.clone());
+                        }
+                        emit_asset_path_change(world, old_path, &new_path, is_dir);
+                    }
+                    Err(e) => {
+                        state.last_error = Some(format!("Rename failed: {}", e));
+                        state.error_timeout = 3.0;
+                        new_selection.insert(old_path.clone());
+                    }
+                }
+            }
+            state.selected_assets = new_selection;
+        }
+
         // --- Process pending move (drag-to-folder) ---
         if let Some((sources, target)) = state.pending_move.take() {
             let mut moved = 0usize;
@@ -835,6 +949,22 @@ fn render_context_menu(
                                     }
                                     state.rename_focus_set = false;
                                 }
+                                state.context_menu_pos = None;
+                            }
+                        } else if state.selected_assets.len() > 1 {
+                            if menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary) {
+                                let mut assets: Vec<std::path::PathBuf> =
+                                    state.selected_assets.iter().cloned().collect();
+                                assets.sort();
+                                state.batch_rename_base = assets
+                                    .first()
+                                    .and_then(|p| p.file_stem())
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("file")
+                                    .to_string();
+                                state.batch_rename_start = 1;
+                                state.batch_rename_assets = assets;
+                                state.batch_rename_active = true;
                                 state.context_menu_pos = None;
                             }
                         }
