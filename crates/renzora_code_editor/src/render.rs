@@ -214,6 +214,7 @@ pub fn render_code_editor_content(
     }
 
     let row_height = ui.fonts_mut(|f| f.row_height(&FontId::monospace(font_size)));
+    let mono_advance = ui.fonts_mut(|f| f.glyph_width(&FontId::monospace(font_size), 'M'));
     let status_bar_height = 22.0;
     let available_height = (available_rect.height() - error_panel_height - status_bar_height)
         .max(row_height);
@@ -437,12 +438,25 @@ pub fn render_code_editor_content(
                 );
                 paint_gutter(ui, gutter_rect, font_size, row_height, line_count, cur_char_idx, &file.content, theme);
 
+                // Current line highlight (subtle accent tint) ---------------
+                if let Some(cidx) = cur_char_idx {
+                    let byte_idx = char_to_byte(&file.content, cidx);
+                    paint_current_line_highlight(
+                        ui,
+                        &file.content,
+                        editor_rect,
+                        row_height,
+                        byte_idx,
+                        theme,
+                    );
+                }
+
                 // Bracket match highlight -----------------------------------
                 if let Some(cidx) = cur_char_idx {
                     let byte_idx = char_to_byte(&file.content, cidx);
                     if let Some((a, b)) = find_matching_bracket(&file.content, byte_idx) {
-                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, font_size, a, theme);
-                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, font_size, b, theme);
+                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, mono_advance, a, theme);
+                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, mono_advance, b, theme);
                     }
                 }
 
@@ -463,7 +477,7 @@ pub fn render_code_editor_content(
                                         &file.content,
                                         editor_rect,
                                         row_height,
-                                        font_size,
+                                        mono_advance,
                                         mstart,
                                         mend,
                                         theme,
@@ -490,6 +504,7 @@ pub fn render_code_editor_content(
                         editor_rect,
                         row_height,
                         font_size,
+                        mono_advance,
                         theme,
                     );
                 }
@@ -500,7 +515,7 @@ pub fn render_code_editor_content(
                     &file.content,
                     editor_rect,
                     row_height,
-                    font_size,
+                    mono_advance,
                     theme,
                 );
 
@@ -1632,10 +1647,9 @@ fn paint_indent_guides(
     content: &str,
     editor_rect: Rect,
     row_height: f32,
-    font_size: f32,
+    advance: f32,
     theme: &Theme,
 ) {
-    let advance = font_size * 0.6;
     let muted = theme.text.muted.to_color32();
     let color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 50);
     let stroke = Stroke::new(1.0, color);
@@ -1687,12 +1701,12 @@ fn paint_whitespace_overlay(
     editor_rect: Rect,
     row_height: f32,
     font_size: f32,
+    advance: f32,
     theme: &Theme,
 ) {
     let muted = theme.text.muted.to_color32();
     let color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 140);
     let font = FontId::new(font_size * 0.9, FontFamily::Monospace);
-    let advance = font_size * 0.6;
 
     // Only paint lines that are within the clip rect; everything outside will
     // be culled anyway, but skipping avoids tons of painter calls on big files.
@@ -1742,7 +1756,7 @@ fn paint_range_overlay(
     content: &str,
     editor_rect: Rect,
     row_height: f32,
-    font_size: f32,
+    advance: f32,
     byte_start: usize,
     byte_end: usize,
     theme: &Theme,
@@ -1753,7 +1767,6 @@ fn paint_range_overlay(
     let col_chars = content[ls..ls + col_bytes].chars().count();
     let width_chars = content[byte_start..byte_end.min(content.len())].chars().count();
 
-    let advance = font_size * 0.6;
     let x = editor_rect.min.x + col_chars as f32 * advance;
     let y = editor_rect.min.y + line as f32 * row_height;
     let r = Rect::from_min_size(
@@ -1792,7 +1805,7 @@ fn paint_bracket_highlight(
     content: &str,
     editor_rect: Rect,
     row_height: f32,
-    font_size: f32,
+    advance: f32,
     byte_idx: usize,
     theme: &Theme,
 ) {
@@ -1801,18 +1814,34 @@ fn paint_bracket_highlight(
     let col_bytes = byte_idx.saturating_sub(line_start);
     let col_chars = content[line_start..line_start + col_bytes].chars().count();
 
-    // Approximate monospace advance: row_height usually ≈ 1.3 * font_size.
-    // Advance per char is roughly font_size * 0.6 for monospace.
-    let advance = font_size * 0.6;
     let x = editor_rect.min.x + col_chars as f32 * advance;
     let y = editor_rect.min.y + line as f32 * row_height;
     let r = Rect::from_min_size(Pos2::new(x, y), Vec2::new(advance, row_height));
 
     let accent = theme.semantic.accent.to_color32();
     let fill =
-        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40);
+        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 70);
     ui.painter().rect_filled(r, 2.0, fill);
-    ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+}
+
+/// Subtle background tint on the line containing the cursor.
+fn paint_current_line_highlight(
+    ui: &egui::Ui,
+    content: &str,
+    editor_rect: Rect,
+    row_height: f32,
+    cursor_byte: usize,
+    theme: &Theme,
+) {
+    let line = byte_to_line(content, cursor_byte);
+    let y = editor_rect.min.y + line as f32 * row_height;
+    let rect = Rect::from_min_size(
+        Pos2::new(editor_rect.min.x, y),
+        Vec2::new(editor_rect.width(), row_height),
+    );
+    let accent = theme.semantic.accent.to_color32();
+    let bg = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 12);
+    ui.painter().rect_filled(rect, 0.0, bg);
 }
 
 // -------------------------------------------------------------------------
