@@ -1,11 +1,12 @@
 [package]
 name = "renzora_splash"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
 bevy_egui = "0.39"
+egui-phosphor = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -14,6 +15,7 @@ toml = "0.8"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
 dirs = "6"
+ureq = "3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage", "console"] }

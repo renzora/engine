@@ -1,23 +1,42 @@
+pub mod auth;
 pub mod config;
+pub mod github;
 pub mod project;
 mod ui;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
 
+pub use auth::SplashAuth;
 pub use config::{AppConfig, UpdateConfig};
+pub use github::GithubStats;
 pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;
 
 use bevy::prelude::*;
+use bevy::app::AppExit;
 use bevy::ecs::system::SystemState;
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy::window::{PrimaryWindow, Window};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
-/// Cached SystemStates for the splash exclusive system (avoids per-frame allocation).
+pub use ui::WindowAction;
+
 #[derive(Resource)]
 struct SplashSystemStates {
     egui: SystemState<EguiContexts<'static, 'static>>,
     commands: SystemState<(Commands<'static, 'static>, ResMut<'static, NextState<SplashState>>)>,
+}
+
+/// Flag so we only register the phosphor font once.
+#[derive(Resource, Default)]
+struct PhosphorFontInstalled(bool);
+
+/// Tracks whether the borderless splash window is currently maximized.
+/// Bevy's Window component only exposes `set_maximized`, so we mirror state
+/// locally to toggle correctly.
+#[derive(Resource, Default)]
+pub struct SplashWindowState {
+    pub maximized: bool,
 }
 
 /// Controls whether the splash screen or the editor is shown.
@@ -41,6 +60,10 @@ impl Plugin for SplashPlugin {
 
         app.init_state::<SplashState>()
             .insert_resource(app_config)
+            .insert_resource(SplashAuth::new())
+            .insert_resource(GithubStats::new())
+            .init_resource::<PhosphorFontInstalled>()
+            .init_resource::<SplashWindowState>()
             .add_systems(
                 EguiPrimaryContextPass,
                 splash_ui_system.run_if(in_state(SplashState::Splash)),
@@ -53,8 +76,24 @@ impl Plugin for SplashPlugin {
 #[derive(Resource)]
 pub struct PendingProjectReopen;
 
+/// Install the phosphor icon font into egui so icon characters render.
+/// Called once on the first splash frame.
+fn install_phosphor_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "phosphor".into(),
+        egui::FontData::from_static(egui_phosphor::Variant::Regular.font_bytes()).into(),
+    );
+    if let Some(fam) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        fam.push("phosphor".into());
+    }
+    if let Some(fam) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+        fam.push("phosphor".into());
+    }
+    ctx.set_fonts(fonts);
+}
+
 fn splash_ui_system(world: &mut World) {
-    // If a project was opened from the editor File menu, skip splash and go straight back
     if world.remove_resource::<PendingProjectReopen>().is_some() {
         world
             .resource_mut::<NextState<SplashState>>()
@@ -62,7 +101,6 @@ fn splash_ui_system(world: &mut World) {
         return;
     }
 
-    // Initialise cached system states on first run
     if !world.contains_resource::<SplashSystemStates>() {
         let states = SplashSystemStates {
             egui: SystemState::new(world),
@@ -71,7 +109,6 @@ fn splash_ui_system(world: &mut World) {
         world.insert_resource(states);
     }
 
-    // Get egui context
     let mut states = world.remove_resource::<SplashSystemStates>().unwrap();
     let mut contexts = states.egui.get_mut(world);
     let ctx = match contexts.ctx_mut() {
@@ -84,14 +121,74 @@ fn splash_ui_system(world: &mut World) {
     };
     states.egui.apply(world);
 
-    // Extract mutable resources
+    if let Some(mut flag) = world.get_resource_mut::<PhosphorFontInstalled>() {
+        if !flag.0 {
+            install_phosphor_font(&ctx);
+            flag.0 = true;
+        }
+    }
+
     let mut app_config = world.remove_resource::<AppConfig>().unwrap_or_default();
+    let mut splash_auth = world.remove_resource::<SplashAuth>().unwrap_or_default();
+    let mut github_stats = world.remove_resource::<GithubStats>().unwrap_or_default();
+    let mut win_state = world.remove_resource::<SplashWindowState>().unwrap_or_default();
 
     let (mut commands, mut next_state) = states.commands.get_mut(world);
 
-    ui::render_splash(&ctx, &mut app_config, &mut commands, &mut next_state);
+    let action = ui::render_splash(
+        &ctx,
+        &mut app_config,
+        &mut splash_auth,
+        &mut github_stats,
+        &win_state,
+        &mut commands,
+        &mut next_state,
+    );
 
     states.commands.apply(world);
     world.insert_resource(app_config);
+    world.insert_resource(splash_auth);
+    world.insert_resource(github_stats);
     world.insert_resource(states);
+
+    // Apply the window action the UI requested.
+    match action {
+        WindowAction::None => {}
+        WindowAction::Close => {
+            world.write_message(AppExit::Success);
+        }
+        WindowAction::Minimize => {
+            with_primary_window(world, |w| w.set_minimized(true));
+        }
+        WindowAction::ToggleMaximize => {
+            win_state.maximized = !win_state.maximized;
+            let max = win_state.maximized;
+            with_primary_window(world, |w| w.set_maximized(max));
+        }
+        WindowAction::StartDrag => {
+            // Standard OS behaviour: dragging the title of a maximized window
+            // restores it first so the drag actually moves the window.
+            let was_maximized = win_state.maximized;
+            if was_maximized {
+                win_state.maximized = false;
+            }
+            with_primary_window(world, move |w| {
+                if was_maximized {
+                    w.set_maximized(false);
+                }
+                w.start_drag_move();
+            });
+        }
+        WindowAction::StartResize(dir) => {
+            with_primary_window(world, move |w| w.start_drag_resize(dir));
+        }
+    }
+    world.insert_resource(win_state);
+}
+
+fn with_primary_window(world: &mut World, f: impl FnOnce(&mut Window)) {
+    let mut q = world.query_filtered::<&mut Window, With<PrimaryWindow>>();
+    if let Ok(mut w) = q.single_mut(world) {
+        f(&mut *w);
+    }
 }

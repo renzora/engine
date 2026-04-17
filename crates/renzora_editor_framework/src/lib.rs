@@ -120,7 +120,7 @@ pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
-pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera};
+pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera, SelectionStop};
 pub use renzora_splash::SplashState;
 
 /// Optional label color for an entity row in the hierarchy.
@@ -377,6 +377,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
             .init_resource::<renzora_ui::Toasts>()
+            .add_plugins(renzora_ui::window_chrome::WindowChromePlugin)
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
@@ -786,7 +787,19 @@ pub fn editor_ui_system(world: &mut World) {
         .unwrap_or_default();
     let sign_in_open = auth_bridge.window_open;
     let signed_in_username = auth_bridge.signed_in_username;
-    let title_action = renzora_ui::title_bar::render_title_bar(&ctx, &theme, &registry, &layout_manager, &play_info, sign_in_open, signed_in_username.as_deref());
+    let mut window_queue = world
+        .remove_resource::<renzora_ui::window_chrome::WindowActionQueue>()
+        .unwrap_or_default();
+    let title_action = renzora_ui::title_bar::render_title_bar(
+        &ctx,
+        &theme,
+        &registry,
+        &layout_manager,
+        &play_info,
+        sign_in_open,
+        signed_in_username.as_deref(),
+        &mut window_queue,
+    );
 
     // 6. Document tabs (below title bar)
     let doc_tab_state = world
@@ -1205,6 +1218,31 @@ pub fn editor_ui_system(world: &mut World) {
 
     // L2) Process play mode state transitions
     process_play_mode_requests(world);
+
+    // L3) Render borderless-window chrome overlay (resize zones + 1px border).
+    // Painted into a top-level Area so hit-testing wins over anything below.
+    {
+        let screen_rect = ctx.screen_rect();
+        let is_maximized = window_queue.maximized;
+        egui::Area::new(egui::Id::new("renzora_window_chrome_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .show(&ctx, |ui| {
+                ui.set_clip_rect(screen_rect);
+                renzora_ui::window_chrome::render_resize_zones(
+                    ui,
+                    screen_rect,
+                    is_maximized,
+                    &mut window_queue,
+                );
+                renzora_ui::window_chrome::render_border(
+                    ui,
+                    screen_rect,
+                    theme.widgets.border.to_color32(),
+                );
+            });
+    }
+    world.insert_resource(window_queue);
 }
 
 /// Switch to a layout by index.

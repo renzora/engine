@@ -17,6 +17,7 @@ pub mod theme;
 pub mod title_bar;
 pub mod toast;
 pub mod widgets;
+pub mod window_chrome;
 
 // Re-export key types at crate root
 pub use dock_tree::{

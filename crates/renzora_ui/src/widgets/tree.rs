@@ -41,7 +41,7 @@ use renzora_theme::Theme;
 pub const INDENT_SIZE: f32 = 18.0;
 
 /// Height of a single tree row.
-pub const ROW_HEIGHT: f32 = 20.0;
+pub const ROW_HEIGHT: f32 = 24.0;
 
 /// How many extra pixels the vertical lines extend beyond the row to connect seamlessly.
 const LINE_OVERLAP: f32 = 3.0;
@@ -231,7 +231,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
             caret_rect.center(),
             egui::Align2::CENTER_CENTER,
             icon,
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(12.0),
             color,
         );
 
@@ -260,10 +260,10 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
             Pos2::new(text_x + 6.0, center_y),
             egui::Align2::LEFT_CENTER,
             icon_str,
-            egui::FontId::proportional(12.0),
+            egui::FontId::proportional(14.0),
             ic,
         );
-        text_x += 20.0;
+        text_x += 22.0;
     }
 
     // --- Label ---
@@ -276,7 +276,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
         Pos2::new(text_x + 4.0, center_y),
         egui::Align2::LEFT_CENTER,
         cfg.label,
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(13.0),
         label_color,
     );
 

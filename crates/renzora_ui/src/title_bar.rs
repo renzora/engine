@@ -7,6 +7,7 @@ use renzora_theme::Theme;
 
 use crate::layouts::LayoutManager;
 use crate::panel::PanelRegistry;
+use crate::window_chrome::{self, WindowActionQueue};
 
 /// Actions returned from the title bar that the caller should handle.
 pub enum TitleBarAction {
@@ -34,7 +35,8 @@ pub enum TitleBarAction {
     ResetLayout,
 }
 
-const TITLE_BAR_HEIGHT: f32 = 28.0;
+const TITLE_BAR_HEIGHT: f32 = 32.0;
+const WINDOW_CTRL_WIDTH: f32 = 120.0; // 3 buttons × 40px
 const TAB_PADDING: f32 = 16.0;
 const TAB_FONT_SIZE: f32 = 11.5;
 const TAB_CORNER_RADIUS: f32 = 3.0;
@@ -63,6 +65,7 @@ pub fn render_title_bar(
     play_mode: &PlayModeInfo,
     sign_in_open: bool,
     signed_in_username: Option<&str>,
+    window_queue: &mut WindowActionQueue,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
 
@@ -70,6 +73,15 @@ pub fn render_title_bar(
         .exact_height(TITLE_BAR_HEIGHT)
         .show(ctx, |ui| {
             let panel_rect = ui.available_rect_before_wrap();
+
+            // Render the three OS-style window buttons right-aligned; this
+            // also reserves the rightmost strip so other widgets don't overlap.
+            window_chrome::render_window_controls(
+                ui,
+                panel_rect,
+                window_queue.maximized,
+                window_queue,
+            );
 
             // Reduce vertical padding so menu items center in the 28px bar
             ui.style_mut().spacing.button_padding = Vec2::new(6.0, 2.0);
@@ -281,7 +293,8 @@ pub fn render_title_bar(
                 let btn_size = 20.0;
                 let gear_size = 20.0;
                 let sign_in_width = 80.0;
-                let right_margin = 8.0;
+                // Reserve room on the right for the window min/max/close buttons.
+                let right_margin = WINDOW_CTRL_WIDTH + 8.0;
                 let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
                 // Play & Scripts entry points live in the viewport. Only pause+stop
                 // show here, and only while a play mode is active.
@@ -490,6 +503,14 @@ pub fn render_title_bar(
                     ui.add_space(sign_in_width);
                 }
             });
+
+            // Drag-handle check runs LAST so all interactive widgets have
+            // already registered — avoids competing with menu-button hover.
+            let drag_rect = Rect::from_min_size(
+                panel_rect.min,
+                Vec2::new(panel_rect.width() - WINDOW_CTRL_WIDTH, panel_rect.height()),
+            );
+            window_chrome::render_drag_handle(ui, drag_rect, window_queue);
         });
 
     action

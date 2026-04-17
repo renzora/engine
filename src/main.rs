@@ -154,6 +154,8 @@ fn run_splash() {
             primary_window: Some(bevy::window::Window {
                 title: "Renzora".into(),
                 resolution: bevy::window::WindowResolution::new(1280, 720),
+                decorations: false,
+                resizable: true,
                 ..default()
             }),
             ..default()
