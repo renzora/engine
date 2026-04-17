@@ -29,6 +29,10 @@ pub fn spawn_editor_camera(
             order: -1,
             ..default()
         },
+        Projection::Perspective(PerspectiveProjection {
+            far: 100_000.0,
+            ..default()
+        }),
         Transform::from_xyz(5.0, 4.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         EditorCamera,
         HideInHierarchy,

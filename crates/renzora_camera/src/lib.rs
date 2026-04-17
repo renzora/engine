@@ -694,10 +694,12 @@ fn update_camera_projection(
                 *projection = Projection::Perspective(PerspectiveProjection {
                     fov: std::f32::consts::FRAC_PI_4,
                     aspect_ratio: aspect,
+                    far: 100_000.0,
                     ..default()
                 });
             } else if let Projection::Perspective(ref mut persp) = *projection {
                 persp.aspect_ratio = aspect;
+                persp.far = 100_000.0;
             }
         }
         ProjectionMode::Orthographic => {
