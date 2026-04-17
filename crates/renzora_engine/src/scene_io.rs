@@ -325,6 +325,13 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
                 if type_name.starts_with("bevy_mod_outline::") {
                     return false;
                 }
+                // Avian runtime components (e.g. ColliderMarker) are
+                // regenerated on load from PhysicsBodyData + CollisionShapeData.
+                // Persisting them causes duplicate-reflect-type errors on
+                // deserialize — same filter as `save_scene`.
+                if type_name.starts_with("avian3d::") {
+                    return false;
+                }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
                     component.as_partial_reflect(),
                     &registry,
