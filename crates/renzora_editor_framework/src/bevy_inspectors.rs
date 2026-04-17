@@ -106,12 +106,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
             for _ in q.iter(world) {
                 count += 1;
             }
-            let name = if count == 0 {
+            let is_first = count == 0;
+            let name = if is_first {
                 "Camera 3D".to_string()
             } else {
                 format!("Camera 3D ({})", count + 1)
             };
-            world
+            let entity = world
                 .spawn((
                     Name::new(name),
                     Transform::default(),
@@ -122,7 +123,11 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     },
                     renzora::SceneCamera,
                 ))
-                .id()
+                .id();
+            if is_first {
+                world.entity_mut(entity).insert(renzora::core::DefaultCamera);
+            }
+            entity
         },
     });
 }
