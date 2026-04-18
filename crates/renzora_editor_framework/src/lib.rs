@@ -120,7 +120,7 @@ pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
 pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
-pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera, SelectionStop};
+pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera};
 pub use renzora_splash::SplashState;
 
 /// Optional label color for an entity row in the hierarchy.
@@ -1222,7 +1222,7 @@ pub fn editor_ui_system(world: &mut World) {
     // L3) Render borderless-window chrome overlay (resize zones + 1px border).
     // Painted into a top-level Area so hit-testing wins over anything below.
     {
-        let screen_rect = ctx.screen_rect();
+        let screen_rect = ctx.content_rect();
         let is_maximized = window_queue.maximized;
         egui::Area::new(egui::Id::new("renzora_window_chrome_overlay"))
             .order(egui::Order::Foreground)
