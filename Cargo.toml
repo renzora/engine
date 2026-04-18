@@ -45,7 +45,6 @@ members = [
     "crates/renzora_auth",
     "crates/renzora_shape_library",
     "crates/renzora_system_monitor",
-    "crates/renzora_docker_builder",
     "crates/renzora_reactive",
 ]
 # Note: crates/renzora_editor produces the editor SDK
