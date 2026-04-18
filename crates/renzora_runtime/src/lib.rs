@@ -115,7 +115,6 @@ pub fn add_engine_plugins(app: &mut App) {
     app.add_plugins(renzora_blueprint::BlueprintPlugin);
     app.add_plugins(renzora_input::InputPlugin);
     app.add_plugins(renzora_physics::PhysicsPlugin);
-    app.add_plugins(renzora_navmesh::NavMeshPlugin);
     app.add_plugins(renzora_globals::GlobalsPlugin);
     app.add_plugins(renzora_terrain::TerrainPlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
