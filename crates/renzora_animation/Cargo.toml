@@ -1,0 +1,24 @@
+[package]
+name = "renzora_animation"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["lua"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme", "dep:renzora_ui"]
+lua = ["renzora_scripting/lua", "dep:mlua"]
+
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+renzora = { path = "../renzora", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+bevy_egui = { version = "0.39", optional = true }
+renzora_theme = { path = "../renzora_theme", optional = true }
+renzora_ui = { path = "../renzora_ui", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }

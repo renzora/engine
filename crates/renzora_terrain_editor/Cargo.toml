@@ -1,0 +1,20 @@
+[package]
+name = "renzora_terrain_editor"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_terrain = { path = "../renzora_terrain" }
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

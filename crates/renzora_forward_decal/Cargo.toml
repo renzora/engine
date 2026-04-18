@@ -1,0 +1,20 @@
+[package]
+name = "renzora_forward_decal"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[features]
+default = ["editor"]
+editor = ["renzora/editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
+
+[dependencies]
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+bevy_egui = { version = "0.39", optional = true }
+renzora_theme = { path = "../renzora_theme", optional = true }
+renzora = { path = "../renzora", default-features = false }

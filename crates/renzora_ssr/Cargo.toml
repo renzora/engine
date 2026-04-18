@@ -1,0 +1,15 @@
+[package]
+name = "renzora_ssr"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+editor = ["dep:renzora_editor_framework"]
+
+[dependencies]
+egui-phosphor = { workspace = true }
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora = { path = "../renzora", default-features = false }

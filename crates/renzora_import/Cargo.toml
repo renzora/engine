@@ -1,0 +1,46 @@
+[package]
+name = "renzora_import"
+version = "0.1.0"
+edition = "2021"
+description = "3D model import and GLB conversion for Renzora"
+
+[dependencies]
+# GLB output
+gltf-json = "1.4"
+gltf = "1.4"
+
+# Format parsers (pure Rust)
+tobj = "4"
+stl_io = "0.10"
+ply-rs = "0.1"
+
+# FBX — ufbx handles FBX 3.0 through 7.7, binary and ASCII, with Maya/3ds Max/
+# Blender/Mixamo quirks normalized. Vendored C source compiled via cc-rs.
+ufbx = "0.10"
+
+# Core types (AnimClip, BoneTrack, write_anim_file)
+renzora = { path = "../renzora", default-features = false }
+
+# USDZ archive extraction
+zip = "2"
+
+# LZ4 decompression (USDC token tables, compressed arrays)
+lz4_flex = "0.11"
+
+# Float16 support (half-precision vertex data)
+half = "2"
+
+# Mesh optimization
+meshopt = "0.3"
+
+# Compression (legacy FBX binary arrays)
+flate2 = "1"
+
+
+# Collada XML parsing
+quick-xml = "0.37"
+
+# Utility
+thiserror = "2"
+log = "0.4"
+serde_json = "1"

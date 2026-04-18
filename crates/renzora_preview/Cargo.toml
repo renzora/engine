@@ -1,0 +1,65 @@
+[package]
+name = "renzora_preview"
+version = "0.1.0"
+edition = "2021"
+description = "Marketplace asset preview harness — compiles to WASM for live browser previews"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+
+[dependencies]
+renzora_macros = { path = "../renzora_macros" }
+bevy = { version = "0.18", default-features = false, features = [
+    "webgpu",
+    "bevy_asset",
+    "bevy_window",
+    "bevy_winit",
+    "bevy_state",
+    "bevy_log",
+    "bevy_input_focus",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_gltf",
+    "bevy_scene",
+    "bevy_picking",
+    "bevy_animation",
+    "tonemapping_luts",
+    "zstd_rust",
+    "jpeg",
+    "hdr",
+    "multi_threaded",
+    "async_executor",
+] }
+
+# Engine crates
+renzora_shader = { path = "../renzora_shader" }
+renzora_lighting = { path = "../renzora_lighting" }
+renzora_hanabi = { path = "../renzora_hanabi" }
+renzora_animation = { path = "../renzora_animation" }
+renzora = { path = "../renzora", default-features = false }
+
+# WASM bridge
+wasm-bindgen = "0.2.108"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "HtmlCanvasElement",
+    "console",
+] }
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+
+# WASM support: getrandom needs JS backend on wasm32 targets
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
+

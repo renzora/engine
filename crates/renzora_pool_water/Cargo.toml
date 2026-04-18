@@ -1,0 +1,18 @@
+[package]
+name = "renzora_pool_water"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[features]
+default = ["editor"]
+editor = ["renzora/editor"]
+
+[dependencies]
+egui-phosphor = { workspace = true }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora = { path = "../renzora", default-features = false }

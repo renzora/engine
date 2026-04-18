@@ -1,0 +1,17 @@
+[package]
+name = "renzora_terrain"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+editor = ["dep:renzora_editor_framework"]
+
+[dependencies]
+egui-phosphor = { workspace = true }
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+renzora = { path = "../renzora", default-features = false }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_physics = { path = "../renzora_physics" }

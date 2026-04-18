@@ -1,106 +1,524 @@
 [config]
 default_to_workspace = false
 
-# --- Dev ---
+# =============================================================================
+# Core commands — what devs use daily
+# =============================================================================
 
-[tasks.editor]
-description = "Run the editor"
-command = "cargo"
-args = ["run", "--bin", "renzora"]
+# Clean stale build outputs (keeps deps/build/incremental cache)
+[tasks.clean-outputs-editor]
+description = "Clean editor build outputs"
+env = { CLEAN_TARGET = "editor" }
+run_task = "clean-outputs"
 
-[tasks.runtime]
-description = "Run the runtime (no editor)"
-command = "cargo"
-args = ["run", "--bin", "renzora-runtime", "--no-default-features"]
+[tasks.clean-outputs-runtime]
+description = "Clean runtime build outputs"
+env = { CLEAN_TARGET = "runtime" }
+run_task = "clean-outputs"
 
-[tasks.server]
-description = "Run the dedicated server"
-command = "cargo"
-args = ["run", "--bin", "renzora-server", "--no-default-features", "--features", "server"]
+[tasks.clean-outputs-server]
+description = "Clean server build outputs"
+env = { CLEAN_TARGET = "server" }
+run_task = "clean-outputs"
 
-# --- Dist builds ---
-
-[tasks.dist-runtime-build]
-description = "Build runtime with max optimization"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora-runtime", "--no-default-features", "--target-dir", "target"]
-
-[tasks.dist-runtime-copy]
-description = "Copy runtime template to target/templates"
-dependencies = ["dist-runtime-build"]
-[tasks.dist-runtime-copy.windows]
-script_runner = "@shell"
+[tasks.clean-outputs]
+description = "Remove final artifacts from target/{target}/dist/ (keeps dep cache)"
+private = true
+[tasks.clean-outputs.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
 script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime.exe target/templates/renzora-runtime-windows-x64.exe
-echo "Template: target/templates/renzora-runtime-windows-x64.exe"
+$target = $env:CLEAN_TARGET
+Get-ChildItem "target/$target/dist" -File -ErrorAction SilentlyContinue | Remove-Item -Force
 '''
-[tasks.dist-runtime-copy.linux]
-script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime target/templates/renzora-runtime-linux-x64
-echo "Template: target/templates/renzora-runtime-linux-x64"
-'''
-[tasks.dist-runtime-copy.mac]
-script = '''
-mkdir -p target/templates
-cp target/dist/renzora-runtime target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
-echo "Template: target/templates/renzora-runtime-macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')"
-'''
+[tasks.clean-outputs.linux]
+script = 'find target/${CLEAN_TARGET}/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
+[tasks.clean-outputs.mac]
+script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
 
-[tasks.dist-runtime]
-description = "Build runtime template"
-dependencies = ["dist-runtime-copy"]
+# makers build-editor — compile editor + plugins
+[tasks.build-editor]
+description = "Build editor and sync to dist/"
+dependencies = ["clean-outputs-editor", "build-editor-cargo", "sync-dist-editor"]
 
-[tasks.dist-server]
-description = "Build server with max optimization"
+[tasks.build-editor-cargo]
+description = "Compile workspace (editor)"
 command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora-server", "--no-default-features", "--features", "server", "--target-dir", "target"]
+args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor", "--target-dir", "target/editor"]
 
-[tasks.dist-editor]
-description = "Build editor with max optimization"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora", "--target-dir", "target"]
+# makers build-runtime — compile runtime + plugins (export template)
+[tasks.build-runtime]
+description = "Build runtime and sync to dist/"
+dependencies = ["clean-outputs-runtime", "build-runtime-cargo", "sync-dist-runtime"]
 
-[tasks.dist-build]
-description = "Build all three binaries (editor, runtime, server)"
-command = "cargo"
-args = ["build", "--profile", "dist", "--no-default-features", "--bin", "renzora", "--bin", "renzora-runtime", "--bin", "renzora-server", "--features", "editor,server", "--target-dir", "target"]
-
-# --- UPX compression ---
-
-[tasks.upx-compress]
-description = "Compress dist binaries with UPX"
-dependencies = ["dist-build"]
-
-[tasks.upx-compress.windows]
+[tasks.build-runtime-cargo]
+description = "Compile workspace (runtime, excluding editor plugins)"
+[tasks.build-runtime-cargo.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
 script = '''
-echo Compressing binaries with UPX...
-upx --best target/dist/renzora.exe target/dist/renzora-runtime.exe target/dist/renzora-server.exe
-echo Done.
+$ErrorActionPreference = "Stop"
+$names = Get-ChildItem crates\*\Cargo.toml | Where-Object {
+    Select-String -Path $_.FullName -Pattern 'features = \[("[^"]*", *)*"editor"' -Quiet
+} | ForEach-Object {
+    $content = Get-Content $_.FullName
+    foreach ($line in $content) {
+        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
+    }
+}
+$args = @()
+foreach ($n in $names) { $args += "--exclude"; $args += $n }
+& cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime @args
 '''
-
-[tasks.upx-compress.linux]
+[tasks.build-runtime-cargo.linux]
 script = '''
-echo "Compressing binaries with UPX..."
-upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
-echo "Done."
+EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
+'''
+[tasks.build-runtime-cargo.mac]
+script = '''
+EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
 '''
 
-[tasks.upx-compress.mac]
+# makers build-server — compile server + plugins
+[tasks.build-server]
+description = "Build server and sync to dist/"
+dependencies = ["clean-outputs-server", "build-server-cargo", "sync-dist-server"]
+
+[tasks.build-server-cargo]
+description = "Compile workspace (server, excluding editor plugins)"
+[tasks.build-server-cargo.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
 script = '''
-echo "Compressing binaries with UPX..."
-upx --best target/dist/renzora target/dist/renzora-runtime target/dist/renzora-server
-echo "Done."
+$ErrorActionPreference = "Stop"
+$names = Get-ChildItem crates\*\Cargo.toml | Where-Object {
+    Select-String -Path $_.FullName -Pattern 'features = \[("[^"]*", *)*"editor"' -Quiet
+} | ForEach-Object {
+    $content = Get-Content $_.FullName
+    foreach ($line in $content) {
+        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
+    }
+}
+$args = @()
+foreach ($n in $names) { $args += "--exclude"; $args += $n }
+& cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server @args
+'''
+[tasks.build-server-cargo.linux]
+script = '''
+EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
+'''
+[tasks.build-server-cargo.mac]
+script = '''
+EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
+cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
 '''
 
-# --- WASM ---
+# makers run — build + run the editor from dist/
+[tasks.run]
+description = "Build and run the editor"
+dependencies = ["build-editor"]
+[tasks.run.windows]
+command = "dist\\windows-x64\\editor\\renzora.exe"
+[tasks.run.linux]
+script = '''
+APPIMAGE=$(ls dist/linux-x64/editor/*.AppImage 2>/dev/null | head -1)
+if [ -n "$APPIMAGE" ]; then
+    "$APPIMAGE"
+elif [ -x "dist/linux-x64/editor/Renzora Engine.AppDir/AppRun" ]; then
+    "dist/linux-x64/editor/Renzora Engine.AppDir/AppRun"
+else
+    ./dist/linux-x64/editor/renzora
+fi
+'''
+[tasks.run.mac]
+script = '''
+ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
+"./dist/macos-$ARCH/editor/Renzora Engine.app/Contents/MacOS/renzora"
+'''
+
+# =============================================================================
+# Docker — cross-platform release builds
+# =============================================================================
+
+[tasks.docker-build]
+description = "Build the Docker image"
+command = "docker"
+args = ["build", "-f", "docker/engine-builder/Dockerfile", "-t", "renzora/engine", "."]
+
+[tasks.docker-create]
+description = "Create a persistent build container (first time only)"
+[tasks.docker-create.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+$name = "renzora-$hash"
+docker create --name $name -v "${PWD}:/app/src" -w /app/src renzora/engine sleep infinity
+Write-Output "Created container: $name"
+'''
+[tasks.docker-create.linux]
+script = '''
+NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
+docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
+echo "Created container: $NAME"
+'''
+[tasks.docker-create.mac]
+script = '''
+NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
+docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
+echo "Created container: $NAME"
+'''
+
+[tasks.docker-start]
+description = "Start the build container"
+[tasks.docker-start.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker start "renzora-$hash"
+'''
+[tasks.docker-start.linux]
+script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+[tasks.docker-start.mac]
+script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+
+[tasks.docker-run]
+description = "Build all platforms via persistent container"
+dependencies = ["docker-start"]
+[tasks.docker-run.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker exec "renzora-$hash" /app/src/scripts/build-all.sh dist
+'''
+[tasks.docker-run.linux]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
+[tasks.docker-run.mac]
+script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
+
+[tasks.docker-clean]
+description = "Clean the container's build cache"
+[tasks.docker-clean.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+Write-Output "Cleaning build cache..."
+docker exec "renzora-$hash" bash -c "du -sh target 2>/dev/null; rm -rf target && echo 'Done.'"
+'''
+[tasks.docker-clean.linux]
+script = 'echo "Cleaning build cache..." && docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "du -sh target 2>/dev/null; rm -rf target && echo Done."'
+[tasks.docker-clean.mac]
+script = 'echo "Cleaning build cache..." && docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "du -sh target 2>/dev/null; rm -rf target && echo Done."'
+
+[tasks.docker-destroy]
+description = "Remove the persistent build container"
+[tasks.docker-destroy.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
+docker rm -f "renzora-$hash"
+'''
+[tasks.docker-destroy.linux]
+script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+[tasks.docker-destroy.mac]
+script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+
+# =============================================================================
+# Sync dist/ — copy build outputs to a clean distributable folder
+# Each target (editor/runtime/server) gets its own subfolder per platform
+# =============================================================================
+
+[tasks.sync-dist-editor]
+description = "Sync editor build to dist/"
+env = { SYNC_TARGET = "editor" }
+run_task = "sync-dist"
+
+[tasks.sync-dist-runtime]
+description = "Sync runtime build to dist/"
+env = { SYNC_TARGET = "runtime" }
+run_task = "sync-dist"
+
+[tasks.sync-dist-server]
+description = "Sync server build to dist/"
+env = { SYNC_TARGET = "server" }
+run_task = "sync-dist"
+
+[tasks.sync-dist]
+description = "Copy build output from target/dist/ to dist/{platform}/{target}"
+private = true
+
+[tasks.sync-dist.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$ErrorActionPreference = "Stop"
+$target = $env:SYNC_TARGET
+$platform = "windows-x64"
+$src = "target/$target/dist"
+$dir = "dist/$platform/$target"
+
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+New-Item -ItemType Directory -Force -Path $dir/plugins | Out-Null
+
+# Clean
+Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue | Remove-Item -Force
+
+# Binary (rename based on target)
+$srcBin = "$src/renzora.exe"
+switch ($target) {
+    "editor"  { $destBin = "renzora.exe" }
+    "runtime" { $destBin = "renzora-runtime.exe" }
+    "server"  { $destBin = "renzora-server.exe" }
+}
+if (Test-Path $srcBin) { Copy-Item $srcBin "$dir/$destBin" -Force }
+
+# bevy_dylib (newest only)
+Get-ChildItem $src/deps/bevy_dylib-*.dll -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName $dir/ -Force }
+
+# Rust std
+$sysroot = (rustc --print sysroot)
+Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
+
+# SDK DLL
+if (Test-Path "$src/renzora.dll") { Copy-Item "$src/renzora.dll" "$dir/renzora.dll" -Force }
+
+# Plugins — everything else
+$skip = @("renzora.dll", "bevy_dylib.dll", "renzora_macros.dll")
+Get-ChildItem $src/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
+}
+
+$root = (Get-ChildItem $dir/*.exe, $dir/*.dll -ErrorAction SilentlyContinue).Count
+$plugins = (Get-ChildItem $dir/plugins/*.dll -ErrorAction SilentlyContinue).Count
+Write-Output "Synced to dist/$platform/$target - $root root files, $plugins plugins"
+'''
+
+[tasks.sync-dist.linux]
+script = '''
+TARGET="${SYNC_TARGET}"
+PLATFORM="linux-x64"
+SRC="target/$TARGET/dist"
+BASE="dist/$PLATFORM/$TARGET"
+
+# For editor, layout is an AppDir wrapped into AppImage; for runtime/server, loose dir.
+if [ "$TARGET" = "editor" ]; then
+    APPDIR="$BASE/Renzora Engine.AppDir"
+    rm -rf "$APPDIR" "$BASE"/*.AppImage
+    mkdir -p "$APPDIR/plugins"
+    ROOT="$APPDIR"
+    BIN_NAME="renzora"
+else
+    rm -f "$BASE"/*.so "$BASE"/renzora "$BASE"/renzora-runtime "$BASE"/renzora-server
+    rm -f "$BASE"/plugins/*.so
+    mkdir -p "$BASE/plugins"
+    ROOT="$BASE"
+    case "$TARGET" in
+        runtime) BIN_NAME="renzora-runtime" ;;
+        server)  BIN_NAME="renzora-server" ;;
+    esac
+fi
+
+# Binary
+[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$ROOT/$BIN_NAME"
+chmod +x "$ROOT/$BIN_NAME" 2>/dev/null || true
+
+# SDK
+[ -f "$SRC/librenzora.so" ] && cp "$SRC/librenzora.so" "$ROOT/"
+
+# bevy_dylib (newest only)
+ls -t $SRC/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$ROOT/"
+
+# Rust std
+SYSROOT=$(rustc --print sysroot)
+for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
+    [ -f "$f" ] && cp "$f" "$ROOT/"
+done
+
+# Plugins
+for f in $SRC/*.so; do
+    name=$(basename "$f")
+    [ "$name" = "librenzora.so" ] && continue
+    cp "$f" "$ROOT/plugins/"
+done
+
+if [ "$TARGET" = "editor" ]; then
+    # AppRun
+    cat > "$APPDIR/AppRun" << 'APPRUN'
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+exec "$HERE/renzora" "$@"
+APPRUN
+    chmod +x "$APPDIR/AppRun"
+
+    # Desktop entry
+    cat > "$APPDIR/renzora-engine.desktop" << 'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Renzora Engine
+Exec=renzora
+Icon=renzora-engine
+Categories=Development;Graphics;
+Terminal=false
+DESKTOP
+
+    # Icon
+    if [ -f "icon.png" ]; then
+        cp "icon.png" "$APPDIR/renzora-engine.png"
+        cp "icon.png" "$APPDIR/.DirIcon"
+    fi
+
+    # Build AppImage if tool available
+    if command -v appimagetool >/dev/null 2>&1; then
+        ARCH=x86_64 appimagetool "$APPDIR" "$BASE/Renzora Engine-x86_64.AppImage" >/dev/null 2>&1 \
+            && echo "Built $BASE/Renzora Engine-x86_64.AppImage" \
+            || echo "appimagetool failed; AppDir left at $APPDIR"
+    else
+        echo "appimagetool not found; AppDir left at $APPDIR (install appimagetool or build via Docker)"
+    fi
+else
+    echo "Synced to $BASE"
+fi
+'''
+
+[tasks.sync-dist.mac]
+script = '''
+TARGET="${SYNC_TARGET}"
+ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
+PLATFORM="macos-$ARCH"
+BASE="dist/$PLATFORM/$TARGET"
+
+# App name and binary name per target
+case "$TARGET" in
+    editor)  APP_NAME="Renzora Engine.app";   BIN_NAME="renzora";         DISPLAY_NAME="Renzora Engine" ;;
+    runtime) APP_NAME="Renzora Runtime.app";  BIN_NAME="renzora-runtime"; DISPLAY_NAME="Renzora Runtime" ;;
+    server)  APP_NAME="Renzora Server.app";   BIN_NAME="renzora-server";  DISPLAY_NAME="Renzora Server" ;;
+esac
+
+APP="$BASE/$APP_NAME"
+MACOS="$APP/Contents/MacOS"
+RES="$APP/Contents/Resources"
+
+# Clean and create .app structure
+rm -rf "$APP"
+mkdir -p "$MACOS" "$MACOS/plugins" "$RES"
+
+# Info.plist
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+cat > "$APP/Contents/Info.plist" << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>$DISPLAY_NAME</string>
+    <key>CFBundleDisplayName</key>
+    <string>$DISPLAY_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.renzora.$TARGET</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>CFBundleExecutable</key>
+    <string>$BIN_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+# Binary
+SRC="target/$TARGET/dist"
+[ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$MACOS/$BIN_NAME"
+chmod +x "$MACOS/$BIN_NAME"
+
+# SDK
+[ -f "$SRC/librenzora.dylib" ] && cp "$SRC/librenzora.dylib" "$MACOS/"
+
+# bevy_dylib (newest only)
+ls -t $SRC/deps/libbevy_dylib-*.dylib 2>/dev/null | head -1 | xargs -I{} cp {} "$MACOS/"
+
+# Rust std
+SYSROOT=$(rustc --print sysroot)
+RUST_ARCH=$(uname -m | sed 's/arm64/aarch64/;s/x86_64/x86_64/')
+for f in "$SYSROOT"/lib/rustlib/${RUST_ARCH}-apple-darwin/lib/libstd-*.dylib; do
+    [ -f "$f" ] && cp "$f" "$MACOS/"
+done
+
+# Plugins
+for f in $SRC/*.dylib; do
+    name=$(basename "$f")
+    [ "$name" = "librenzora.dylib" ] && continue
+    cp "$f" "$MACOS/plugins/"
+done
+
+# Icon: prefer prebuilt .icns, else generate from icon.png
+if [ -f "assets/icon.icns" ]; then
+    cp "assets/icon.icns" "$RES/icon.icns"
+elif [ -f "icon.png" ] && command -v iconutil >/dev/null 2>&1; then
+    ICONSET=$(mktemp -d)/icon.iconset
+    mkdir -p "$ICONSET"
+    for sz in 16 32 64 128 256 512; do
+        sips -z $sz $sz "icon.png" --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null 2>&1
+        dbl=$((sz * 2))
+        sips -z $dbl $dbl "icon.png" --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
+    done
+    iconutil -c icns "$ICONSET" -o "$RES/icon.icns" 2>/dev/null || cp "icon.png" "$RES/icon.png"
+fi
+
+# Fix dylib rpaths to look in the same directory
+install_name_tool -add_rpath @executable_path "$MACOS/$BIN_NAME" 2>/dev/null || true
+
+# Refresh Launch Services so Finder/Dock pick up the icon immediately
+touch "$APP"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
+
+echo "Synced to $APP"
+'''
+
+# =============================================================================
+# WASM
+# =============================================================================
 
 [tasks.ensure-wasm-tools]
-description = "Install wasm-bindgen, wasm-opt, and brotli if missing"
+description = "Install wasm-bindgen and wasm-opt if missing"
 script_runner = "@shell"
 script = '''
-command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --version 0.2.108
+command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --version 0.2.108 --locked
 command -v wasm-opt >/dev/null 2>&1 || cargo install wasm-opt
 '''
 
@@ -112,28 +530,28 @@ dependencies = ["ensure-wasm-tools"]
 script_runner = "@shell"
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo Output: web/
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo Output: templates/web/
 '''
 
 [tasks.dist-web.linux]
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo "Output: web/"
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo "Output: templates/web/"
 '''
 
 [tasks.dist-web.mac]
 script = '''
 cargo dist-web-editor
-wasm-bindgen --out-dir web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
-wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o web/renzora_bg.wasm web/renzora_bg.wasm
-brotli -k -q 11 -f web/renzora_bg.wasm
-echo "Output: web/"
+wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
+brotli -k -q 11 -f templates/web/renzora_bg.wasm
+echo "Output: templates/web/"
 '''
 
 [tasks.dist-web-runtime]
@@ -164,103 +582,40 @@ cd target/dist/web && zip ../renzora-runtime-web-wasm32.zip renzora-runtime.js r
 echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
 '''
 
-# --- Android ---
+# =============================================================================
+# Mobile / TV templates
+# =============================================================================
 
 [tasks.dist-android-arm64]
 description = "Build Android ARM64 template APK"
 [tasks.dist-android-arm64.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-arm64"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-arm64"]
 [tasks.dist-android-arm64.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--arm64"]
 [tasks.dist-android-arm64.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--arm64"]
-
-[tasks.dist-android-x86]
-description = "Build Android x86_64 template APK (emulators)"
-[tasks.dist-android-x86.windows]
-command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-x86"]
-[tasks.dist-android-x86.linux]
-command = "./android/build-template.sh"
-args = ["--x86_64"]
-[tasks.dist-android-x86.mac]
-command = "./android/build-template.sh"
-args = ["--x86_64"]
-
-[tasks.dist-android-firetv]
-description = "Build Fire TV ARM64 template APK"
-[tasks.dist-android-firetv.windows]
-command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-firetv"]
-[tasks.dist-android-firetv.linux]
-command = "./android/build-template.sh"
-args = ["--firetv"]
-[tasks.dist-android-firetv.mac]
-command = "./android/build-template.sh"
-args = ["--firetv"]
 
 [tasks.dist-android-all]
 description = "Build all Android template APKs"
 [tasks.dist-android-all.windows]
 command = "powershell"
-args = ["-ExecutionPolicy", "Bypass", "-File", "android\\build-template.ps1", "-all"]
+args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-all"]
 [tasks.dist-android-all.linux]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--all"]
 [tasks.dist-android-all.mac]
-command = "./android/build-template.sh"
+command = "./templates/android/build-template.sh"
 args = ["--all"]
-
-# --- iOS ---
 
 [tasks.dist-ios]
 description = "Build iOS ARM64 template (requires macOS + Xcode)"
 [tasks.dist-ios.mac]
-command = "./ios/build-template.sh"
+command = "./templates/ios/build-template.sh"
 [tasks.dist-ios.windows]
 script_runner = "@shell"
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
 [tasks.dist-ios.linux]
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-ios-sim]
-description = "Build iOS Simulator ARM64 template (requires macOS + Xcode)"
-[tasks.dist-ios-sim.mac]
-command = "./ios/build-template.sh"
-args = ["--simulator"]
-[tasks.dist-ios-sim.windows]
-script_runner = "@shell"
-script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-ios-sim.linux]
-script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-tvos]
-description = "Build Apple TV ARM64 template (requires macOS + Xcode)"
-[tasks.dist-tvos.mac]
-command = "./ios/build-template.sh"
-args = ["--tvos"]
-[tasks.dist-tvos.windows]
-script_runner = "@shell"
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-tvos.linux]
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-
-[tasks.dist-tvos-sim]
-description = "Build Apple TV Simulator ARM64 template (requires macOS + Xcode)"
-[tasks.dist-tvos-sim.mac]
-command = "./ios/build-template.sh"
-args = ["--tvos-simulator"]
-[tasks.dist-tvos-sim.windows]
-script_runner = "@shell"
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-tvos-sim.linux]
-script = 'echo "Error: tvOS builds require macOS with Xcode." && exit 1'
-
-# --- Main dist task ---
-
-[tasks.dist]
-description = "Build all binaries + compress with UPX"
-dependencies = ["upx-compress"]

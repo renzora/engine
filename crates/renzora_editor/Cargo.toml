@@ -1,0 +1,97 @@
+[package]
+name = "renzora_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Shared editor library for the Renzora engine (superset of renzora_runtime)"
+
+# No longer a dylib — renzora.dll is the only SDK dylib.
+# This crate is statically linked into the editor binary.
+
+[features]
+default = []
+lua = []
+editor = [
+    "renzora_engine/editor",
+    "renzora_physics/editor",
+    "renzora_scripting/editor",
+    "renzora_lighting/editor",
+    "renzora_hanabi/editor",
+    "renzora_tonemapping/editor",
+    "renzora_bloom_effect/editor",
+    "renzora_dof/editor",
+    "renzora_motion_blur/editor",
+    "renzora_antialiasing/editor",
+    "renzora_distance_fog/editor",
+    "renzora_atmosphere/editor",
+    "renzora_ssao/editor",
+    "renzora_ssr/editor",
+    "renzora_auto_exposure/editor",
+    "renzora_oit/editor",
+    "renzora_skybox/editor",
+    "renzora_night_stars/editor",
+    "renzora_clouds/editor",
+    "renzora_network/editor",
+    "renzora_animation/editor",
+    "renzora_water/editor",
+    "renzora_game_ui/editor",
+    "renzora_gauges/editor",
+]
+
+[dependencies]
+bevy = { workspace = true }
+
+# Runtime (re-exported so editor builds can use build_runtime_app etc.)
+renzora_runtime = { path = "../renzora_runtime" }
+
+# Core (same as renzora_runtime)
+renzora_engine = { path = "../renzora_engine" }
+renzora = { path = "../renzora", default-features = false }
+renzora_scripting = { path = "../renzora_scripting" }
+renzora_blueprint = { path = "../renzora_blueprint" }
+renzora_input = { path = "../renzora_input" }
+renzora_physics = { path = "../renzora_physics" }
+renzora_terrain = { path = "../renzora_terrain" }
+renzora_lighting = { path = "../renzora_lighting" }
+renzora_water = { path = "../renzora_water" }
+renzora_animation = { path = "../renzora_animation" }
+renzora_game_ui = { path = "../renzora_game_ui" }
+renzora_gauges = { path = "../renzora_gauges" }
+renzora_hanabi = { path = "../renzora_hanabi" }
+renzora_network = { path = "../renzora_network" }
+renzora_audio = { path = "../renzora_audio" }
+renzora_shader = { path = "../renzora_shader" }
+renzora_undo = { path = "../renzora_undo" }
+
+# Postprocess framework + vital effects (same as renzora_runtime)
+renzora_postprocess = { path = "../renzora_postprocess" }
+renzora_tonemapping = { path = "../renzora_tonemapping" }
+renzora_bloom_effect = { path = "../renzora_bloom_effect" }
+renzora_antialiasing = { path = "../renzora_antialiasing" }
+renzora_ssao = { path = "../renzora_ssao" }
+renzora_ssr = { path = "../renzora_ssr" }
+renzora_auto_exposure = { path = "../renzora_auto_exposure" }
+renzora_oit = { path = "../renzora_oit" }
+renzora_dof = { path = "../renzora_dof" }
+renzora_motion_blur = { path = "../renzora_motion_blur" }
+renzora_distance_fog = { path = "../renzora_distance_fog" }
+
+# Environment (same as renzora_runtime)
+renzora_atmosphere = { path = "../renzora_atmosphere" }
+renzora_skybox = { path = "../renzora_skybox" }
+renzora_clouds = { path = "../renzora_clouds" }
+renzora_night_stars = { path = "../renzora_night_stars" }
+
+# Editor framework
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_splash = { path = "../renzora_splash" }
+
+# Critical editor infrastructure (must load before dynamic plugins)
+renzora_viewport = { path = "../renzora_viewport" }
+renzora_camera = { path = "../renzora_camera" }
+renzora_gizmo = { path = "../renzora_gizmo" }
+renzora_grid = { path = "../renzora_grid" }
+renzora_scene = { path = "../renzora_scene" }
+renzora_keybindings = { path = "../renzora_keybindings" }
+renzora_console = { path = "../renzora_console" }
+
+# All other editor panels are standalone plugin DLLs loaded from plugins/

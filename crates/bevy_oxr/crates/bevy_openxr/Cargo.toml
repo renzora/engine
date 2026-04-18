@@ -1,0 +1,60 @@
+[package]
+name = "bevy_mod_openxr"
+description = "Community crate for OpenXR in Bevy"
+version = "0.5.0"
+edition = "2024"
+repository = "https://github.com/awtterpip/bevy_oxr"
+license = "MIT/Apache-2.0"
+keywords = ["gamedev", "bevy", "Xr", "Vr", "OpenXR"]
+
+[features]
+default = ["vulkan"]
+vulkan = ["dep:ash", "dep:android_system_properties"]
+d3d12 = ["wgpu/dx12", "wgpu-hal/dx12", "dep:winapi"]
+fb_passthrough = []
+reflect = ["dep:bevy_reflect"]
+window_support = ["dep:bevy_winit", "dep:bevy_window"]
+raw_vulkan_init = []
+
+[dev-dependencies]
+bevy = "0.18"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+jni = "0.20"
+android_system_properties = { version = "0.1.5", optional = true }
+
+# bevy can't be placed behind target or proc macros won't work properly
+[dependencies]
+bevy_ecs = { version = "0.18", default-features = false }
+bevy_math = { version = "0.18", default-features = false }
+bevy_render = { version = "0.18", default-features = false }
+bevy_app = { version = "0.18", default-features = false }
+bevy_reflect = { version = "0.18", default-features = false, optional = true }
+bevy_log = { version = "0.18", default-features = false }
+bevy_transform = { version = "0.18", default-features = false }
+bevy_camera = { version = "0.18", default-features = false }
+bevy_derive = { version = "0.18", default-features = false }
+bevy_platform = { version = "0.18", default-features = false }
+bevy_winit = { version = "0.18", default-features = false, optional = true }
+bevy_window = { version = "0.18", default-features = false, optional = true }
+
+# all other dependencies are placed under this since on wasm, this crate is completely empty
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+bevy_mod_xr = { path = "../bevy_xr", version = "0.5.0" }
+openxr = "0.21.1"
+thiserror = "2.0.3"
+wgpu = "27"
+wgpu-hal = "27"
+ash = { version = "0.38", optional = true }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+wgpu = { version = "27", features = ["vulkan-portability"] }
+
+[target.'cfg(target_family = "windows")'.dependencies]
+openxr = { version = "0.21.1", features = ["mint", "loaded"] }
+winapi = { version = "0.3.9", optional = true }
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

@@ -1,0 +1,20 @@
+[package]
+name = "renzora_shape_library"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[features]
+default = ["editor"]
+editor = []
+
+[dependencies]
+renzora_undo = { path = "../renzora_undo" }
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }

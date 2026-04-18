@@ -1,0 +1,25 @@
+[package]
+name = "renzora_export"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+renzora_theme = { path = "../renzora_theme" }
+egui-phosphor = { workspace = true }
+bevy_egui = { workspace = true }
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_rpak = { path = "../renzora_rpak" }
+renzora_import = { path = "../renzora_import" }
+dynamic_plugin_loader = { path = "../dynamic_plugin_loader" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"
+zip = "2"
+rcgen = "0.13"
+ring = "0.17"

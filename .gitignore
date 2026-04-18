@@ -22,11 +22,21 @@ Thumbs.db
 .claude/
 
 # WASM build output
-web/*.wasm
-web/*.wasm.br
-web/*.d.ts
-web/renzora.js
-web/node_modules/
+templates/web/*.wasm
+templates/web/*.wasm.br
+templates/web/*.d.ts
+templates/web/renzora.js
+templates/web/node_modules/
+
+# Build output
+/dist/
+
+# SDKs (large binaries, not committed)
+docker/sdk/
+sdk/
+
+# Docker test files
+Dockerfile.test
 
 # Exported builds
 /export/

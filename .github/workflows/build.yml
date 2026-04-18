@@ -1,4 +1,4 @@
-name: Build Editor
+name: Build
 
 on:
   workflow_dispatch:
@@ -7,7 +7,11 @@ on:
       - "v*"
 
 jobs:
-  desktop:
+  # ===========================================================================
+  # Editor
+  # ===========================================================================
+
+  editor-desktop:
     strategy:
       fail-fast: false
       matrix:
@@ -15,7 +19,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: renzora.exe
-            artifact: renzora-editor-windows-x64
+            artifact: renzora-editor-windows-x64.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: renzora
@@ -52,18 +56,40 @@ jobs:
             libudev-dev \
             libwayland-dev \
             libxkbcommon-dev \
-            libvulkan-dev
+            libvulkan-dev \
+            mold
 
       - name: Build editor
-        run: cargo build --profile dist --features editor --target ${{ matrix.target }}
+        run: cargo build --profile dist --no-default-features --features editor,native --bin renzora --target ${{ matrix.target }}
+
+      - name: Install UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install upx -y
+          else
+            sudo apt-get install -y upx-ucl
+          fi
+
+      - name: Compress with UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: upx --brute "target/${{ matrix.target }}/dist/${{ matrix.binary }}" || true
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          src="target/${{ matrix.target }}/dist/${{ matrix.binary }}"
+          cp "$src" "${{ matrix.artifact }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/dist/${{ matrix.binary }}
+          path: ${{ matrix.artifact }}
 
-  web:
+  editor-web:
     runs-on: ubuntu-latest
 
     steps:
@@ -79,7 +105,7 @@ jobs:
         run: cargo install wasm-bindgen-cli
 
       - name: Build editor for WASM
-        run: cargo build --profile dist --features editor --target wasm32-unknown-unknown
+        run: cargo build --profile dist --no-default-features --features editor,wasm --bin renzora --target wasm32-unknown-unknown
 
       - name: Run wasm-bindgen
         run: |
@@ -88,10 +114,233 @@ jobs:
             --out-name renzora \
             --target web \
             target/wasm32-unknown-unknown/dist/renzora.wasm
-          cp web/index.html web-dist/
+          cp templates/web/index.html web-dist/ || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: renzora-editor-web
           path: web-dist/
+
+  # ===========================================================================
+  # Export Templates (Runtime)
+  # ===========================================================================
+
+  template-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            template: renzora-runtime-windows-x64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            template: renzora-runtime-linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            template: renzora-runtime-macos-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            template: renzora-runtime-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Vulkan SDK
+        if: runner.os != 'macOS'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: latest
+          cache: true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libvulkan-dev \
+            mold
+
+      - name: Build runtime
+        run: cargo build --profile dist --no-default-features --bin renzora-runtime --target ${{ matrix.target }}
+
+      - name: Install UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install upx -y
+          else
+            sudo apt-get install -y upx-ucl
+          fi
+
+      - name: Compress with UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          src="target/${{ matrix.target }}/dist/renzora-runtime"
+          if [ -f "${src}.exe" ]; then src="${src}.exe"; fi
+          upx --brute "$src" || true
+
+      - name: Rename template
+        shell: bash
+        run: |
+          src="target/${{ matrix.target }}/dist/renzora-runtime"
+          if [ -f "${src}.exe" ]; then src="${src}.exe"; fi
+          cp "$src" "${{ matrix.template }}"
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.template }}
+          path: ${{ matrix.template }}
+
+  template-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build runtime for WASM
+        run: cargo build --profile dist --no-default-features --features wasm --bin renzora-runtime --target wasm32-unknown-unknown
+
+      - name: Run wasm-bindgen
+        run: |
+          wasm-bindgen \
+            --out-dir wasm-out \
+            --out-name renzora-runtime \
+            --target web \
+            target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-runtime-web-wasm32
+          path: wasm-out/
+
+  template-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust_target: aarch64-linux-android
+            abi: arm64-v8a
+            flavor: standard
+            template: renzora-runtime-android-arm64.apk
+          - rust_target: x86_64-linux-android
+            abi: x86_64
+            flavor: standard
+            template: renzora-runtime-android-x86_64.apk
+          - rust_target: aarch64-linux-android
+            abi: arm64-v8a
+            flavor: firetv
+            template: renzora-runtime-firetv-arm64.apk
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Build native library
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_BUILD_JOBS: "2"
+        working-directory: crates/platform/renzora_android
+        run: cargo ndk --target ${{ matrix.rust_target }} --platform 30 build --release
+
+      - name: Copy native libs to Gradle project
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p templates/android/app/src/main/jniLibs/${{ matrix.abi }}
+          cp crates/platform/renzora_android/target/${{ matrix.rust_target }}/release/libmain.so \
+            templates/android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so
+
+          HOST_DIR=$(ls "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" | head -1)
+          NDK_TARGET=${{ matrix.rust_target }}
+          if [ "$NDK_TARGET" = "armv7-linux-androideabi" ]; then NDK_TARGET="arm-linux-androideabi"; fi
+          cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_DIR/sysroot/usr/lib/$NDK_TARGET/libc++_shared.so" \
+            templates/android/app/src/main/jniLibs/${{ matrix.abi }}/
+
+      - name: Compress with UPX
+        run: |
+          sudo apt-get install -y upx-ucl
+          upx --brute templates/android/app/src/main/jniLibs/${{ matrix.abi }}/libmain.so || true
+
+      - name: Build APK
+        working-directory: templates/android
+        run: |
+          FLAVOR_CAP="$(echo '${{ matrix.flavor }}' | sed 's/./\U&/')"
+          chmod +x gradlew
+          ./gradlew ":app:assemble${FLAVOR_CAP}Release"
+
+      - name: Upload template
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.template }}
+          path: templates/android/app/build/outputs/apk/${{ matrix.flavor }}/release/app-${{ matrix.flavor }}-release-unsigned.apk
+
+  # ===========================================================================
+  # Release — attach all artifacts to the GitHub release
+  # ===========================================================================
+
+  release:
+    needs: [editor-desktop, editor-web, template-desktop, template-web, template-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

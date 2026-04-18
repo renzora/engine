@@ -1,0 +1,30 @@
+[package]
+name = "bevy_mod_outline"
+version = "0.10.3"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A mesh outlining plugin for Bevy."
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+    "std",
+    "async_executor",
+    "bevy_log",
+    "bevy_color",
+    "bevy_image",
+    "bevy_pbr",
+] }
+bitfield = "0.15"
+thiserror = "2.0"
+nonmax = "0.5"
+wgpu-types = "27"
+
+[features]
+default = ["reflect"]
+reflect = []
+
+# Two features the upstream source references but never declares — adding
+# them here silences `unexpected_cfgs` warnings without changing behavior
+# (we don't enable them, the gated branches stay inactive).
+interpolation = []
+flood = []

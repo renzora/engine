@@ -1,0 +1,15 @@
+[package]
+name = "renzora_theme"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+renzora_macros = { path = "../renzora_macros" }
+egui-phosphor = { workspace = true }
+bevy = { workspace = true }
+bevy_egui = "0.39"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+serde_json = "1.0"
