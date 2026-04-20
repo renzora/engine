@@ -300,7 +300,7 @@ pub fn terrain_data_changed_system(
         let existing: Vec<(Entity, u32, u32, Vec<f32>)> = chunk_query
             .iter()
             .filter(|(_, of, _)| of.0 == terrain_entity)
-            .map(|(e, _, data)| (e, data.chunk_x, data.chunk_z, data.heights.clone()))
+            .map(|(e, _, data)| (e, data.chunk_x, data.chunk_z, data.base_heights.clone()))
             .collect();
 
         if existing.is_empty() {
@@ -331,7 +331,7 @@ pub fn terrain_data_changed_system(
         // Spawn new chunks with resampled or fresh heights
         for cz in 0..terrain_data.chunks_z {
             for cx in 0..terrain_data.chunks_x {
-                let heights = if let Some(old_h) = old_map.get(&(cx, cz)) {
+                let base_heights = if let Some(old_h) = old_map.get(&(cx, cz)) {
                     if old_res != new_res {
                         resample_heights(old_h, old_res, new_res)
                     } else {
@@ -344,7 +344,8 @@ pub fn terrain_data_changed_system(
                 let chunk_data = TerrainChunkData {
                     chunk_x: cx,
                     chunk_z: cz,
-                    heights,
+                    heights: base_heights.clone(),
+                    base_heights,
                     dirty: false,
                 };
 

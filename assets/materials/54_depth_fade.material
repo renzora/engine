@@ -1,0 +1,28 @@
+{
+  "name": "Scene Depth Fade (shoreline/intersection effect — place near an opaque mesh)",
+  "domain": "Unlit",
+  "_comment": "Apply to a translucent/Unlit plane that intersects an opaque mesh. Where they're close, the plane brightens (scene depth ~= pixel depth → fade ≈ 0). Use distance=0.5 for tight foam edges; 2.0 for soft atmospheric fog transitions.",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit",        "position": [500.0, 0.0], "input_values": {
+        "alpha": { "Float": 1.0 }
+    } },
+    { "id": 2, "node_type": "scene/depth_fade",    "position": [-400.0, 0.0], "input_values": {
+        "distance": { "Float": 1.2 }
+    } },
+    { "id": 3, "node_type": "math/one_minus",      "position": [-150.0, 0.0], "input_values": {} },
+    { "id": 4, "node_type": "math/power",          "position": [50.0, 0.0], "input_values": {
+        "exp": { "Float": 3.0 }
+    }},
+    { "id": 5, "node_type": "color/lerp",          "position": [250.0, 0.0], "input_values": {
+        "a": { "Color": [0.05, 0.15, 0.35, 1.0] },
+        "b": { "Color": [0.95, 1.0, 1.0, 1.0] }
+    }}
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "fade",   "to_node": 3, "to_pin": "value" },
+    { "from_node": 3, "from_pin": "result", "to_node": 4, "to_pin": "base"  },
+    { "from_node": 4, "from_pin": "result", "to_node": 5, "to_pin": "t"     },
+    { "from_node": 5, "from_pin": "color",  "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}

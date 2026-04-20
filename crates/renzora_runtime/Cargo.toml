@@ -21,6 +21,7 @@ renzora_input = { path = "../renzora_input" }
 renzora_physics = { path = "../renzora_physics" }
 renzora_globals = { path = "../renzora_globals" }
 renzora_terrain = { path = "../renzora_terrain" }
+renzora_spline = { path = "../renzora_spline" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water" }
 renzora_animation = { path = "../renzora_animation" }

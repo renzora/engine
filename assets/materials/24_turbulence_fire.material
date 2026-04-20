@@ -1,0 +1,30 @@
+{
+  "name": "Turbulence Fire (turbulence noise + warm palette + time scroll)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit",                "position": [700.0, 0.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/noise_triplanar_turbulence", "position": [-250.0, 0.0], "input_values": {
+        "scale":       { "Float": 1.5 },
+        "octaves":     { "Float": 5.0 },
+        "lacunarity":  { "Float": 2.2 },
+        "persistence": { "Float": 0.6 },
+        "sharpness":   { "Float": 4.0 }
+    }},
+    { "id": 4, "node_type": "color/cosine_palette",        "position": [50.0, 0.0], "input_values": {
+        "a": { "Vec3": [0.5, 0.3, 0.1] },
+        "b": { "Vec3": [0.5, 0.4, 0.2] },
+        "c": { "Vec3": [1.0, 0.8, 0.4] },
+        "d": { "Vec3": [0.0, 0.15, 0.3] }
+    }},
+    { "id": 5, "node_type": "color/brightness_contrast",   "position": [350.0, 0.0], "input_values": {
+        "brightness": { "Float": 0.1 },
+        "contrast":   { "Float": 1.5 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 3, "from_pin": "value",  "to_node": 4, "to_pin": "t"     },
+    { "from_node": 4, "from_pin": "color",  "to_node": 5, "to_pin": "color" },
+    { "from_node": 5, "from_pin": "result", "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}

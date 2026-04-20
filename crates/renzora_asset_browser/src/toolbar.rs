@@ -19,6 +19,45 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
         ui.spacing_mut().item_spacing.x = 2.0;
         ui.add_space(8.0);
 
+        // New Folder + Add (asset creation) buttons
+        let new_folder_label = RichText::new(format!("{} New Folder", regular::FOLDER_PLUS))
+            .size(11.0)
+            .color(text_muted);
+        let new_folder_resp = ui
+            .add(egui::Button::new(new_folder_label).frame(false))
+            .on_hover_text("Create a new folder");
+        if new_folder_resp.clicked() {
+            state.create_inline("New Folder", "");
+        }
+
+        let add_label = RichText::new(format!("{} Add", regular::PLUS))
+            .size(11.0)
+            .color(text_muted);
+        ui.menu_button(add_label, |ui| {
+            if ui.button(format!("{} Material", regular::PALETTE)).clicked() {
+                state.create_inline("NewMaterial.material", "{}");
+                ui.close();
+            }
+            if ui.button(format!("{} Blueprint", regular::BLUEPRINT)).clicked() {
+                state.create_inline("NewBlueprint.blueprint", "{}");
+                ui.close();
+            }
+            if ui.button(format!("{} Lua Script", regular::CODE)).clicked() {
+                state.create_inline("new_script.lua", "-- New Lua script\n");
+                ui.close();
+            }
+            if ui.button(format!("{} Rhai Script", regular::CODE)).clicked() {
+                state.create_inline("new_script.rhai", "// New Rhai script\n");
+                ui.close();
+            }
+            if ui.button(format!("{} Particle", regular::SPARKLE)).clicked() {
+                state.create_inline("NewParticle.particle", "(name: \"New Particle\")");
+                ui.close();
+            }
+        });
+
+        ui.add_space(6.0);
+
         // Breadcrumb navigation
         let root = state.root();
         let root_name = root

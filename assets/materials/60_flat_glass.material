@@ -1,0 +1,17 @@
+{
+  "name": "Flat Glass (diagnostic — transmission with no normal perturbation)",
+  "domain": "Surface",
+  "_comment": "A pure flat glass with no waves. If refraction shows (scene behind is warped by IOR=1.5 bending), the transmission pipeline works and the issue with demo 59 is normal-space. If this ALSO shows no refraction, it's a pipeline/setup issue.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [0.0, 0.0], "input_values": {
+        "base_color":            { "Color":  [1.0, 1.0, 1.0, 1.0] },
+        "metallic":              { "Float":  0.0 },
+        "roughness":             { "Float":  0.02 },
+        "specular_transmission": { "Float":  1.0 },
+        "thickness":             { "Float":  1.0 },
+        "ior":                   { "Float":  1.5 }
+    }}
+  ],
+  "connections": [],
+  "next_id": 2
+}

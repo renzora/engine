@@ -1,0 +1,26 @@
+{
+  "name": "3D Texture Volume Lookup (world position → volumetric color)",
+  "domain": "Surface",
+  "_comment": "Samples a 3D texture using the fragment's world position (scaled into [0..1]^3 by a Vec3 multiply) as UVW. Use to drape precomputed volumetric data — lighting LUTs, scattering tables, baked volume fog — over world geometry. When no volume asset is bound the material samples Bevy's 3D fallback (white), producing a flat ambient color.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1000.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "roughness": { "Float": 0.6 }
+    }},
+
+    { "id": 10, "node_type": "input/world_position", "position": [-800.0, 100.0], "input_values": {} },
+    { "id": 11, "node_type": "math/multiply", "position": [-500.0, 100.0], "input_values": {
+        "b": { "Vec3": [0.1, 0.1, 0.1] }
+    }},
+    { "id": 12, "node_type": "math/fract", "position": [-250.0, 100.0], "input_values": {} },
+
+    { "id": 20, "node_type": "texture/sample_3d", "position": [100.0, 0.0], "input_values": {} }
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "position", "to_node": 11, "to_pin": "a" },
+    { "from_node": 11, "from_pin": "result",   "to_node": 12, "to_pin": "value" },
+    { "from_node": 12, "from_pin": "result",   "to_node": 20, "to_pin": "uvw" },
+    { "from_node": 20, "from_pin": "color",    "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

@@ -211,7 +211,7 @@ impl Default for SurfaceColors {
             popup: ThemeColor::new(28, 28, 35),
             overlay: ThemeColor::with_alpha(0, 0, 0, 180),
             faint: ThemeColor::new(20, 20, 24),
-            extreme: ThemeColor::new(15, 15, 18),
+            extreme: ThemeColor::new(33, 33, 39),
         }
     }
 }

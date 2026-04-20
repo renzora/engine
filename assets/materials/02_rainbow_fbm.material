@@ -1,0 +1,46 @@
+{
+  "name": "Rainbow FBM",
+  "domain": "Unlit",
+  "nodes": [
+    {
+      "id": 1,
+      "node_type": "output/unlit",
+      "position": [500.0, 0.0],
+      "input_values": {}
+    },
+    {
+      "id": 2,
+      "node_type": "input/uv",
+      "position": [-400.0, 0.0],
+      "input_values": {}
+    },
+    {
+      "id": 3,
+      "node_type": "procedural/noise_fbm",
+      "position": [-150.0, 0.0],
+      "input_values": {
+        "scale":       { "Float": 3.0 },
+        "octaves":     { "Float": 5.0 },
+        "lacunarity":  { "Float": 2.0 },
+        "persistence": { "Float": 0.55 }
+      }
+    },
+    {
+      "id": 4,
+      "node_type": "color/cosine_palette",
+      "position": [200.0, 0.0],
+      "input_values": {
+        "a": { "Vec3": [0.5, 0.5, 0.5] },
+        "b": { "Vec3": [0.5, 0.5, 0.5] },
+        "c": { "Vec3": [1.0, 1.0, 1.0] },
+        "d": { "Vec3": [0.0, 0.333, 0.667] }
+      }
+    }
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "uv",    "to_node": 3, "to_pin": "uv"    },
+    { "from_node": 3, "from_pin": "value", "to_node": 4, "to_pin": "t"     },
+    { "from_node": 4, "from_pin": "color", "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 5
+}

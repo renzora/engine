@@ -1,13 +1,17 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
+mod brush_layer_paint;
 mod panel;
+mod spline_gizmos;
 mod systems;
+mod terrain_layers_ui;
 mod tool_options;
 mod tool_panel;
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor_framework::{ActiveTool, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, ToolOptionsRegistry};
+use renzora_editor_framework::{ActiveTool, AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry, ToolOptionsRegistry};
+use renzora_spline::SplinePath;
 use renzora_terrain::data::TerrainData;
 
 #[derive(Default)]
@@ -18,7 +22,9 @@ impl Plugin for TerrainEditorPlugin {
         info!("[editor] TerrainEditorPlugin");
         app.register_panel(tool_panel::ToolSettingsPanel::new())
             .register_inspector(terrain_data_entry())
-            .init_resource::<ToolOptionsRegistry>();
+            .register_inspector(terrain_layers_ui::terrain_layers_entry())
+            .init_resource::<ToolOptionsRegistry>()
+            .init_resource::<terrain_layers_ui::ActiveBrushLayer>();
 
         // Register context-sensitive viewport-header options for brush tools.
         {
@@ -39,15 +45,17 @@ impl Plugin for TerrainEditorPlugin {
                     .run_if(active_tool_is(ActiveTool::TerrainSculpt))
                     .run_if(renzora::core::not_in_play_mode),
             )
-            // Paint systems — active when ActiveTool is TerrainPaint
+            // Paint mode: hover raycast + brush-layer paint write. Old
+            // splatmap paint systems (terrain_paint_system, _activate,
+            // _command) are no longer registered — the new `Painter`
+            // component is the single source of truth. Their source is
+            // still present and will get cleaned up in Phase C.
             .add_systems(
                 Update,
                 (
-                    systems::terrain_paint_activate_system,
                     systems::terrain_paint_hover_system,
-                    systems::terrain_paint_system,
-                    systems::terrain_paint_scroll_system,
-                    systems::terrain_paint_command_system,
+                    brush_layer_paint::brush_layer_paint_system,
+                    brush_layer_paint::brush_layer_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainPaint))
                     .run_if(renzora::core::not_in_play_mode),
@@ -64,7 +72,42 @@ impl Plugin for TerrainEditorPlugin {
                         tool.map_or(false, |t| t.is_terrain())
                     })
                     .run_if(renzora::core::not_in_play_mode),
+            )
+            // Keep the layer preview cache in sync so the terrain inspector
+            // always shows current layer state.
+            .add_systems(
+                Update,
+                systems::sync_layer_preview_system
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            // Spline gizmos — always drawn in the editor (not in play mode).
+            .add_systems(
+                Update,
+                spline_gizmos::draw_spline_gizmos_system
+                    .run_if(renzora::core::not_in_play_mode),
             );
+
+        app.register_entity_preset(EntityPreset {
+            id: "spline",
+            display_name: "Spline",
+            icon: regular::PATH,
+            category: "general",
+            spawn_fn: |world| {
+                world
+                    .spawn((
+                        Name::new("Spline"),
+                        Transform::default(),
+                        Visibility::default(),
+                        SplinePath::with_points([
+                            Vec3::new(-4.0, 0.0, 0.0),
+                            Vec3::new(-1.5, 0.0, 1.5),
+                            Vec3::new(1.5, 0.0, -1.5),
+                            Vec3::new(4.0, 0.0, 0.0),
+                        ]),
+                    ))
+                    .id()
+            },
+        });
     }
 }
 
@@ -73,6 +116,7 @@ fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -
         tool.map_or(false, |t| *t == expected)
     }
 }
+
 
 fn terrain_data_entry() -> InspectorEntry {
     InspectorEntry {

@@ -1,0 +1,25 @@
+{
+  "name": "Scene Normal (world-space normal from the normal prepass)",
+  "domain": "Surface",
+  "_comment": "Reads the world-space normal from Bevy's normal prepass and visualizes it directly as base color (remapped from [-1..1] → [0..1]). Requires NormalPrepass on the camera. On a flat surface with +Y normal the result is cyan-ish (0.5, 1.0, 0.5). Use as a template for wetness masks, edge-detection passes, or surface-angle-driven blends that rely on the opaque scene's geometry rather than this material's own normal.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [900.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "roughness": { "Float": 0.95 }
+    }},
+
+    { "id": 10, "node_type": "scene/scene_normal", "position": [-400.0, 0.0], "input_values": {} },
+    { "id": 11, "node_type": "math/multiply", "position": [-150.0, 0.0], "input_values": {
+        "b": { "Vec3": [0.5, 0.5, 0.5] }
+    }},
+    { "id": 12, "node_type": "math/add", "position": [100.0, 0.0], "input_values": {
+        "b": { "Vec3": [0.5, 0.5, 0.5] }
+    }}
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "normal", "to_node": 11, "to_pin": "a" },
+    { "from_node": 11, "from_pin": "result", "to_node": 12, "to_pin": "a" },
+    { "from_node": 12, "from_pin": "result", "to_node": 1, "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

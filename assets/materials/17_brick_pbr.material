@@ -1,0 +1,45 @@
+{
+  "name": "Brick PBR (Surface domain — brick pattern with FBM colour variation)",
+  "domain": "Surface",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface",              "position": [800.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "emissive":  { "Vec3": [0.0, 0.0, 0.0] },
+        "ao":        { "Float": 1.0 },
+        "alpha":     { "Float": 1.0 }
+    } },
+    { "id": 2, "node_type": "input/uv",                    "position": [-500.0, -100.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/brick",            "position": [-250.0, -150.0], "input_values": {
+        "scale": { "Vec2": [5.0, 10.0] }, "mortar": { "Float": 0.06 }
+    }},
+    { "id": 4, "node_type": "procedural/noise_fbm",        "position": [-250.0, 100.0], "input_values": {
+        "scale": { "Float": 6.0 }, "octaves": { "Float": 4.0 },
+        "lacunarity": { "Float": 2.0 }, "persistence": { "Float": 0.55 }
+    }},
+    { "id": 5, "node_type": "color/lerp",                  "position": [150.0, -100.0], "input_values": {
+        "a": { "Color": [0.12, 0.10, 0.09, 1.0] },
+        "b": { "Color": [0.62, 0.28, 0.22, 1.0] }
+    }},
+    { "id": 6, "node_type": "math/multiply",               "position": [150.0, 120.0], "input_values": {} },
+    { "id": 7, "node_type": "procedural/normal_from_height","position": [400.0, 220.0], "input_values": {
+        "strength": { "Float": 3.0 }
+    }},
+    { "id": 8, "node_type": "math/remap",                  "position": [450.0, -180.0], "input_values": {
+        "in_min":  { "Float": 0.0 }, "in_max":  { "Float": 1.0 },
+        "out_min": { "Float": 0.45 }, "out_max": { "Float": 0.85 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "uv",    "to_node": 3, "to_pin": "uv"         },
+    { "from_node": 2, "from_pin": "uv",    "to_node": 4, "to_pin": "uv"         },
+    { "from_node": 3, "from_pin": "value", "to_node": 5, "to_pin": "t"          },
+    { "from_node": 3, "from_pin": "value", "to_node": 6, "to_pin": "a"          },
+    { "from_node": 4, "from_pin": "value", "to_node": 6, "to_pin": "b"          },
+    { "from_node": 6, "from_pin": "result","to_node": 7, "to_pin": "height"     },
+    { "from_node": 4, "from_pin": "value", "to_node": 8, "to_pin": "value"      },
+    { "from_node": 5, "from_pin": "color", "to_node": 1, "to_pin": "base_color" },
+    { "from_node": 8, "from_pin": "result","to_node": 1, "to_pin": "roughness"  },
+    { "from_node": 7, "from_pin": "normal","to_node": 1, "to_pin": "normal"     }
+  ],
+  "next_id": 9
+}

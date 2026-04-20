@@ -1119,11 +1119,31 @@ pub fn editor_ui_system(world: &mut World) {
     // L) Handle document tab actions
     match doc_tab_action {
         DocTabAction::Activate(idx) => {
+            let target_kind = world
+                .get_resource::<DocumentTabState>()
+                .and_then(|ts| ts.tabs.get(idx).map(|t| t.kind));
+            let target_path = world
+                .get_resource::<DocumentTabState>()
+                .and_then(|ts| ts.tabs.get(idx).and_then(|t| t.scene_path.clone()));
             let ids = world
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.activate_tab(idx));
             if let Some((old_id, new_id)) = ids {
                 world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+            }
+            if let Some(kind) = target_kind {
+                if let Some(layout) = kind.layout_name() {
+                    switch_layout_by_name(world, layout);
+                }
+                if matches!(kind, renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader) {
+                    if let Some(rel) = target_path {
+                        let abs = world
+                            .get_resource::<renzora::core::CurrentProject>()
+                            .map(|p| p.resolve_path(&rel))
+                            .unwrap_or_else(|| std::path::PathBuf::from(&rel));
+                        world.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
+                    }
+                }
             }
         }
         DocTabAction::Close(idx) => {
@@ -1271,6 +1291,64 @@ pub fn switch_layout_by_name(world: &mut World, name: &str) {
         .and_then(|lm| lm.layouts.iter().position(|l| l.name == name));
     if let Some(i) = index {
         switch_layout(world, i);
+    }
+}
+
+/// Open (or focus an existing) document tab for the given asset path, then
+/// switch to the layout appropriate for its kind. Called by the asset browser
+/// when the user double-clicks a file.
+pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_ui::DocTabKind) {
+    use renzora_ui::{DocTabKind, DocumentTabState};
+
+    let rel = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .and_then(|p| p.make_relative(path))
+        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
+
+    let name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Untitled".to_string());
+
+    let existing = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.find_by_path(&rel, kind));
+
+    let switch_ids: Option<(u64, u64)> = if let Some(idx) = existing {
+        world
+            .get_resource_mut::<DocumentTabState>()
+            .and_then(|mut ts| ts.activate_tab(idx))
+    } else {
+        let old_id = world
+            .get_resource::<DocumentTabState>()
+            .and_then(|ts| ts.active_tab_id());
+        let new_id = world.get_resource_mut::<DocumentTabState>().map(|mut ts| {
+            let idx = ts.add_tab_of_kind(name, Some(rel), kind);
+            ts.active_tab = idx;
+            ts.tabs[idx].id
+        });
+        match (old_id, new_id) {
+            (Some(o), Some(n)) if o != n => Some((o, n)),
+            _ => None,
+        }
+    };
+
+    if let Some((old_id, new_id)) = switch_ids {
+        world.insert_resource(renzora::TabSwitchRequest {
+            old_tab_id: old_id,
+            new_tab_id: new_id,
+        });
+    }
+
+    if let Some(layout) = kind.layout_name() {
+        switch_layout_by_name(world, layout);
+    }
+
+    if matches!(kind, DocTabKind::Script | DocTabKind::Shader) {
+        world.insert_resource(renzora::core::OpenCodeEditorFile {
+            path: path.to_path_buf(),
+        });
     }
 }
 

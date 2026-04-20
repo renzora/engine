@@ -1,0 +1,24 @@
+{
+  "name": "White Noise Grain (film-grain overlay on base color)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit",             "position": [600.0, 0.0], "input_values": {} },
+    { "id": 2, "node_type": "input/uv",                 "position": [-500.0, 0.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/noise_white",   "position": [-250.0, 0.0], "input_values": {
+        "scale": { "Float": 200.0 }
+    }},
+    { "id": 4, "node_type": "math/multiply",            "position": [0.0, 0.0], "input_values": {
+        "b": { "Float": 0.12 }
+    }},
+    { "id": 5, "node_type": "math/add",                 "position": [250.0, 0.0], "input_values": {
+        "a": { "Float": 0.35 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "uv",     "to_node": 3, "to_pin": "uv"    },
+    { "from_node": 3, "from_pin": "value",  "to_node": 4, "to_pin": "a"     },
+    { "from_node": 4, "from_pin": "result", "to_node": 5, "to_pin": "b"     },
+    { "from_node": 5, "from_pin": "result", "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}

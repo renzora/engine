@@ -9,7 +9,7 @@ use renzora_theme::Theme;
 use crate::state::{file_icon, folder_icon_color, is_hidden, AssetBrowserState};
 
 /// Row height for tree entries.
-const ROW_HEIGHT: f32 = 20.0;
+const ROW_HEIGHT: f32 = 24.0;
 /// Indentation per depth level.
 const INDENT: f32 = 14.0;
 
@@ -92,7 +92,7 @@ pub fn tree_ui(
                     } else {
                         "Favorites".to_string()
                     },
-                    FontId::proportional(10.0),
+                    FontId::proportional(12.0),
                     if pointer_over_header { star_color } else { text_muted },
                 );
 
@@ -132,7 +132,7 @@ pub fn tree_ui(
                         Pos2::new(rect.min.x + 12.0, rect.center().y),
                         Align2::CENTER_CENTER,
                         regular::STAR,
-                        FontId::proportional(10.0),
+                        FontId::proportional(12.0),
                         star_color,
                     );
 
@@ -141,15 +141,15 @@ pub fn tree_ui(
                         Pos2::new(rect.min.x + 26.0, rect.center().y),
                         Align2::LEFT_CENTER,
                         FOLDER,
-                        FontId::proportional(12.0),
+                        FontId::proportional(14.0),
                         fav_icon_color,
                     );
 
                     // Folder name (truncated with ellipsis)
                     let fav_text_x = rect.min.x + 42.0;
                     let fav_max_w = (rect.max.x - fav_text_x - 4.0).max(0.0);
-                    let fav_text_y = rect.center().y - 11.0 * 0.5;
-                    paint_truncated_text(ui.painter(), Pos2::new(fav_text_x, fav_text_y), &fav_name, FontId::proportional(11.0), text_secondary, fav_max_w);
+                    let fav_text_y = rect.center().y - 13.0 * 0.5;
+                    paint_truncated_text(ui.painter(), Pos2::new(fav_text_x, fav_text_y), &fav_name, FontId::proportional(13.0), text_secondary, fav_max_w);
 
                     if response.clicked() {
                         state.current_folder = Some(fav_path.clone());
@@ -221,20 +221,20 @@ pub fn tree_ui(
                         Pos2::new(header_rect.min.x + 4.0, header_rect.center().y),
                         Align2::LEFT_CENTER,
                         caret,
-                        FontId::proportional(9.0),
+                        FontId::proportional(11.0),
                         text_muted,
                     );
                     ui.painter().text(
                         Pos2::new(header_rect.min.x + 16.0, header_rect.center().y),
                         Align2::LEFT_CENTER,
                         "Recent",
-                        FontId::proportional(10.0),
+                        FontId::proportional(12.0),
                         text_muted,
                     );
 
                     // Badge with count
                     let badge_text = format!("{}", recent_count);
-                    let badge_font = FontId::proportional(9.0);
+                    let badge_font = FontId::proportional(11.0);
                     let badge_galley = ui.painter().layout_no_wrap(badge_text.clone(), badge_font.clone(), text_muted);
                     let badge_w = badge_galley.size().x + 8.0;
                     let badge_h = 14.0;
@@ -291,7 +291,7 @@ pub fn tree_ui(
                                 Pos2::new(rect.min.x + 14.0, rect.center().y),
                                 Align2::LEFT_CENTER,
                                 icon,
-                                FontId::proportional(12.0),
+                                FontId::proportional(14.0),
                                 icon_color,
                             );
 
@@ -310,7 +310,7 @@ pub fn tree_ui(
                                     del_rect.center(),
                                     Align2::CENTER_CENTER,
                                     regular::X,
-                                    FontId::proportional(9.0),
+                                    FontId::proportional(11.0),
                                     if del_resp.hovered() { text_secondary } else { text_muted },
                                 );
                                 if del_resp.clicked() {
@@ -321,8 +321,8 @@ pub fn tree_ui(
                             // File name
                             let text_x = rect.min.x + 30.0;
                             let max_w = (text_right - text_x).max(0.0);
-                            let text_y = rect.center().y - 11.0 * 0.5;
-                            paint_truncated_text(ui.painter(), Pos2::new(text_x, text_y), &name, FontId::proportional(11.0), text_secondary, max_w);
+                            let text_y = rect.center().y - 13.0 * 0.5;
+                            paint_truncated_text(ui.painter(), Pos2::new(text_x, text_y), &name, FontId::proportional(13.0), text_secondary, max_w);
 
                             // Hover tooltip with folder path
                             let response = if let Some(parent) = recent_path.parent() {
@@ -754,18 +754,18 @@ fn render_file_row(
         Pos2::new(icon_x, rect.center().y),
         Align2::LEFT_CENTER,
         file_glyph,
-        FontId::proportional(12.0),
+        FontId::proportional(14.0),
         file_color,
     );
 
     let text_x = icon_x + 16.0;
     let max_text_width = (rect.max.x - text_x - 4.0).max(0.0);
-    let text_y = rect.center().y - 11.0 * 0.5;
+    let text_y = rect.center().y - 13.0 * 0.5;
     paint_truncated_text(
         painter,
         Pos2::new(text_x, text_y),
         name,
-        FontId::proportional(11.0),
+        FontId::proportional(13.0),
         text_secondary,
         max_text_width,
     );
@@ -842,7 +842,7 @@ fn render_folder_row(
         Pos2::new(arrow_x, rect.center().y),
         Align2::CENTER_CENTER,
         arrow_icon,
-        FontId::proportional(9.0),
+        FontId::proportional(11.0),
         if arrow_resp.hovered() { text_secondary } else { text_muted },
     );
 
@@ -852,15 +852,15 @@ fn render_folder_row(
         Pos2::new(icon_x, rect.center().y),
         Align2::LEFT_CENTER,
         icon,
-        FontId::proportional(12.0),
+        FontId::proportional(14.0),
         icon_color,
     );
 
     // Folder name (truncated with ellipsis if too long)
     let text_x = icon_x + 16.0;
     let max_text_width = (rect.max.x - text_x - 4.0).max(0.0);
-    let text_y = rect.center().y - 11.0 * 0.5; // vertically center for proportional 11
-    paint_truncated_text(painter, Pos2::new(text_x, text_y), name, FontId::proportional(11.0), text_secondary, max_text_width);
+    let text_y = rect.center().y - 13.0 * 0.5; // vertically center for proportional 13
+    paint_truncated_text(painter, Pos2::new(text_x, text_y), name, FontId::proportional(13.0), text_secondary, max_text_width);
 
     (
         arrow_resp.clicked() || response.clicked(),

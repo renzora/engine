@@ -77,28 +77,12 @@ impl Plugin for MaterialEditorPlugin {
         app.register_type::<Mesh3d>();
         app.add_plugins(preview::MaterialPreviewPlugin);
         app.add_plugins(thumbnails::NodeThumbnailPlugin);
-        app.add_systems(Update, sync_hierarchy_filter_for_materials);
         app.register_panel(graph_panel::MaterialGraphPanel);
         app.register_panel(inspector::MaterialInspectorPanel);
         app.register_panel(preview::MaterialPreviewPanel);
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());
-    }
-}
-
-/// When the Materials layout is active, only show mesh entities in the hierarchy.
-fn sync_hierarchy_filter_for_materials(
-    layout_mgr: Res<renzora_ui::layouts::LayoutManager>,
-    mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
-) {
-    let is_materials = layout_mgr.active_name() == "Materials";
-    if is_materials {
-        // Use the full reflect short_path — Bevy registers Mesh3d under "bevy_mesh" crate
-        let desired = renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["Mesh3d"]);
-        if *filter != desired {
-            *filter = desired;
-        }
     }
 }
 

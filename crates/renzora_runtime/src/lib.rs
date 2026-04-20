@@ -117,6 +117,7 @@ pub fn add_engine_plugins(app: &mut App) {
     app.add_plugins(renzora_physics::PhysicsPlugin);
     app.add_plugins(renzora_globals::GlobalsPlugin);
     app.add_plugins(renzora_terrain::TerrainPlugin);
+    app.add_plugins(renzora_spline::SplinePlugin);
     app.add_plugins(renzora_lighting::LightingPlugin);
     app.add_plugins(renzora_water::WaterPlugin);
     app.add_plugins(renzora_terrain::foliage::FoliagePlugin);

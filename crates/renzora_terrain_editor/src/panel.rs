@@ -244,7 +244,7 @@ fn render_sculpt_tab(
                                         let mut chunk_query = world.query::<&mut renzora_terrain::data::TerrainChunkData>();
                                         for mut chunk in chunk_query.iter_mut(world) {
                                             if let Some((_, _, heights)) = imported.iter().find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z) {
-                                                chunk.heights = heights.clone();
+                                                chunk.base_heights = heights.clone();
                                                 chunk.dirty = true;
                                             }
                                         }

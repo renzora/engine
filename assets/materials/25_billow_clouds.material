@@ -1,0 +1,28 @@
+{
+  "name": "Billow Clouds (triplanar — no sphere seams)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit", "position": [700.0, 0.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/noise_triplanar_billow", "position": [-250.0, 0.0], "input_values": {
+        "scale":       { "Float": 1.5 },
+        "octaves":     { "Float": 5.0 },
+        "lacunarity":  { "Float": 2.0 },
+        "persistence": { "Float": 0.55 },
+        "sharpness":   { "Float": 4.0 }
+    }},
+    { "id": 4, "node_type": "math/smoothstep", "position": [0.0, 0.0], "input_values": {
+        "edge0": { "Float": 0.45 },
+        "edge1": { "Float": 0.75 }
+    }},
+    { "id": 5, "node_type": "color/lerp", "position": [250.0, 0.0], "input_values": {
+        "a": { "Color": [0.55, 0.68, 0.85, 1.0] },
+        "b": { "Color": [1.0, 1.0, 1.0, 1.0] }
+    }}
+  ],
+  "connections": [
+    { "from_node": 3, "from_pin": "value",  "to_node": 4, "to_pin": "value" },
+    { "from_node": 4, "from_pin": "result", "to_node": 5, "to_pin": "t"     },
+    { "from_node": 5, "from_pin": "color",  "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}
