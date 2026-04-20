@@ -128,10 +128,14 @@ impl LuaBackend {
                 if let Ok(ref default_val) = default_val {
                     if let Some(sv) = lua_to_script_value(default_val) {
                         let hint: Option<String> = prop_table.get("hint").ok();
+                        let tab: Option<String> = prop_table.get("tab").ok();
                         let mut def = ScriptVariableDefinition::new(name, sv)
                             .with_display_name(display_name);
                         if let Some(h) = hint {
                             def = def.with_hint(h);
+                        }
+                        if let Some(t) = tab {
+                            def = def.with_tab(t);
                         }
                         props.push(def);
                         continue;

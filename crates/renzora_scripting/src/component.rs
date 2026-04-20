@@ -187,6 +187,9 @@ pub struct ScriptVariableDefinition {
     pub display_name: String,
     pub default_value: ScriptValue,
     pub hint: Option<String>,
+    /// Optional inspector group. Props with the same tab render under one
+    /// collapsible header; `None` falls into the default "General" group.
+    pub tab: Option<String>,
 }
 
 impl ScriptVariableDefinition {
@@ -197,6 +200,7 @@ impl ScriptVariableDefinition {
             name,
             default_value: default,
             hint: None,
+            tab: None,
         }
     }
 
@@ -207,6 +211,11 @@ impl ScriptVariableDefinition {
 
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());
+        self
+    }
+
+    pub fn with_tab(mut self, tab: impl Into<String>) -> Self {
+        self.tab = Some(tab.into());
         self
     }
 }

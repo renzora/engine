@@ -43,18 +43,11 @@ impl PinType {
         if from == to {
             return true;
         }
-        // Implicit conversions
-        matches!(
-            (from, to),
-            // Float widens to anything
-            (PinType::Float, PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color)
-            // Vec3 <-> Color (rgb)
-            | (PinType::Vec3, PinType::Color)
-            | (PinType::Color, PinType::Vec3)
-            // Vec4 <-> Color
-            | (PinType::Vec4, PinType::Color)
-            | (PinType::Color, PinType::Vec4)
-        )
+        let numeric = |t: PinType| matches!(
+            t,
+            PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color
+        );
+        numeric(from) && numeric(to)
     }
 
     /// WGSL expression to cast `expr` from `from` type to `to` type.
@@ -62,15 +55,28 @@ impl PinType {
         if from == to {
             return expr.to_string();
         }
-        match (from, to) {
-            (PinType::Float, PinType::Vec2) => format!("vec2<f32>({e}, {e})", e = expr),
-            (PinType::Float, PinType::Vec3) => format!("vec3<f32>({e}, {e}, {e})", e = expr),
-            (PinType::Float, PinType::Vec4 | PinType::Color) => {
-                format!("vec4<f32>({e}, {e}, {e}, 1.0)", e = expr)
-            }
-            (PinType::Vec3, PinType::Color) => format!("vec4<f32>({e}, 1.0)", e = expr),
-            (PinType::Vec4, PinType::Color) | (PinType::Color, PinType::Vec4) => expr.to_string(),
-            (PinType::Color, PinType::Vec3) => format!("{e}.rgb", e = expr),
+        let eff = |t: PinType| match t {
+            PinType::Color => PinType::Vec4,
+            other => other,
+        };
+        let e = expr;
+        match (eff(from), eff(to)) {
+            (PinType::Float, PinType::Vec2) => format!("vec2<f32>({e})"),
+            (PinType::Float, PinType::Vec3) => format!("vec3<f32>({e})"),
+            (PinType::Float, PinType::Vec4) => format!("vec4<f32>({e}, {e}, {e}, 1.0)"),
+
+            (PinType::Vec2, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec2, PinType::Vec3) => format!("vec3<f32>({e}, 0.0)"),
+            (PinType::Vec2, PinType::Vec4) => format!("vec4<f32>({e}, 0.0, 1.0)"),
+
+            (PinType::Vec3, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec3, PinType::Vec2) => format!("({e}).xy"),
+            (PinType::Vec3, PinType::Vec4) => format!("vec4<f32>({e}, 1.0)"),
+
+            (PinType::Vec4, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec4, PinType::Vec2) => format!("({e}).xy"),
+            (PinType::Vec4, PinType::Vec3) => format!("({e}).xyz"),
+
             _ => expr.to_string(),
         }
     }
@@ -95,6 +101,9 @@ pub enum PinValue {
     Int(i32),
     /// Texture asset path.
     TexturePath(String),
+    /// Arbitrary string (used by Custom Code node for its WGSL snippet,
+    /// by subgraph-call nodes for the function asset path, etc).
+    String(String),
     None,
 }
 
@@ -117,6 +126,7 @@ impl PinValue {
             Self::Bool(b) => if *b { "true" } else { "false" }.to_string(),
             Self::Int(i) => format!("{}", i),
             Self::TexturePath(_) => "vec4<f32>(1.0, 0.0, 1.0, 1.0)".to_string(), // magenta fallback
+            Self::String(_) => "0.0".to_string(), // strings don't codegen inline
             Self::None => "0.0".to_string(),
         }
     }
@@ -131,6 +141,7 @@ impl PinValue {
             Self::Bool(_) => PinType::Bool,
             Self::Int(_) => PinType::Float,
             Self::TexturePath(_) => PinType::Texture2D,
+            Self::String(_) => PinType::Float, // no dedicated type; stored out-of-band
             Self::None => PinType::Float,
         }
     }
