@@ -52,6 +52,12 @@ pub struct NavOverlayState {
     pub pan_delta_y: AtomicI32,
     /// Zoom drag delta Y (scaled by 1000 to preserve fractional part).
     pub zoom_delta_y: AtomicI32,
+    /// Whether the axis gizmo is currently being dragged (orbits).
+    pub orbit_dragging: AtomicBool,
+    /// Orbit drag delta X (scaled by 1000).
+    pub orbit_delta_x: AtomicI32,
+    /// Orbit drag delta Y (scaled by 1000).
+    pub orbit_delta_y: AtomicI32,
 }
 
 impl Default for NavOverlayState {
@@ -62,6 +68,9 @@ impl Default for NavOverlayState {
             pan_delta_x: AtomicI32::new(0),
             pan_delta_y: AtomicI32::new(0),
             zoom_delta_y: AtomicI32::new(0),
+            orbit_dragging: AtomicBool::new(false),
+            orbit_delta_x: AtomicI32::new(0),
+            orbit_delta_y: AtomicI32::new(0),
         }
     }
 }

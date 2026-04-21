@@ -627,6 +627,7 @@ fn camera_controller(
 /// Apply pan/zoom from the viewport nav overlay buttons.
 fn apply_nav_overlay(
     nav: Option<Res<NavOverlayState>>,
+    settings: Res<CameraSettings>,
     pivot_lock: Res<PivotLock>,
     mut orbit: ResMut<OrbitCameraState>,
     mut camera_query: Query<&mut Transform, With<EditorCamera>>,
@@ -637,10 +638,14 @@ fn apply_nav_overlay(
     let pan_dy = nav.pan_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
     let zoom_dy = nav.zoom_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
 
+    let orbit_dx = nav.orbit_delta_x.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let orbit_dy = nav.orbit_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+
     let has_pan = pan_dx != 0.0 || pan_dy != 0.0;
     let has_zoom = zoom_dy != 0.0;
+    let has_orbit = orbit_dx != 0.0 || orbit_dy != 0.0;
 
-    if !has_pan && !has_zoom {
+    if !has_pan && !has_zoom && !has_orbit {
         return;
     }
 
@@ -661,6 +666,14 @@ fn apply_nav_overlay(
         let zoom_speed = 0.02 * orbit.distance.max(0.5);
         orbit.distance -= zoom_dy * zoom_speed;
         orbit.distance = orbit.distance.clamp(0.5, 100.0);
+    }
+
+    if has_orbit {
+        let orbit_speed = settings.orbit_sensitivity * 0.01;
+        let invert_y = if settings.invert_y { -1.0 } else { 1.0 };
+        orbit.yaw -= orbit_dx * orbit_speed;
+        orbit.pitch += orbit_dy * orbit_speed * invert_y;
+        orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
     }
 
     if let Ok(mut transform) = camera_query.single_mut() {

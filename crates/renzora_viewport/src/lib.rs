@@ -408,9 +408,7 @@ impl EditorPanel for ViewportPanel {
         let play_mode = world.get_resource::<renzora::core::PlayModeState>();
         let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
         if show_axis && !in_play {
-            if let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() {
-                render_axis_gizmo(ui, orbit, rect);
-            }
+            render_axis_gizmo(ui.ctx(), world, rect);
         }
 
         // Overlay: nav pan/zoom buttons (right side, below axis gizmo)
@@ -807,10 +805,13 @@ pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
 pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
 
 fn render_axis_gizmo(
-    ui: &mut egui::Ui,
-    orbit: &CameraOrbitSnapshot,
+    ctx: &egui::Context,
+    world: &World,
     viewport_rect: egui::Rect,
 ) {
+    let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() else { return };
+    let Some(nav) = world.get_resource::<NavOverlayState>() else { return };
+    let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() else { return };
     let center = egui::Pos2::new(
         viewport_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
         viewport_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,
@@ -857,41 +858,118 @@ fn render_axis_gizmo(
     // Sort back-to-front
     projected.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    let painter = ui.painter();
+    let gizmo_rect = egui::Rect::from_center_size(center, egui::vec2(AXIS_GIZMO_SIZE, AXIS_GIZMO_SIZE));
 
-    for &(depth, offset, color, label, _yaw, _pitch, is_positive) in &projected {
-        let end = egui::Pos2::new(center.x + offset.x, center.y + offset.y);
-
-        // Fade axes pointing away
-        let alpha = if depth < -0.1 { 100 } else { 255 };
-        let c = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
-
-        let line_width = if is_positive {
-            if depth < -0.1 { 2.0 } else { 3.0 }
-        } else {
-            if depth < -0.1 { 1.0 } else { 1.5 }
-        };
-
-        if is_positive {
-            painter.line_segment([center, end], egui::Stroke::new(line_width, c));
-        }
-
-        let cap_size = if is_positive { 9.0 } else { 6.0 };
-
-        if is_positive {
-            painter.circle_filled(end, cap_size, c);
-            painter.text(
-                end,
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::proportional(11.0),
-                egui::Color32::WHITE,
+    egui::Area::new(egui::Id::new("viewport_axis_gizmo"))
+        .fixed_pos(gizmo_rect.min)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            let resp = ui.interact(
+                gizmo_rect,
+                egui::Id::new("axis_gizmo_interact"),
+                egui::Sense::click_and_drag(),
             );
-        } else {
-            painter.circle_stroke(end, cap_size, egui::Stroke::new(2.0, c));
-        }
-    }
 
-    // Center dot
-    painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
+            if resp.drag_started() {
+                nav.orbit_dragging.store(true, Ordering::Relaxed);
+            }
+            if resp.drag_stopped() {
+                nav.orbit_dragging.store(false, Ordering::Relaxed);
+            }
+
+            if resp.dragged() {
+                let d = resp.drag_delta();
+                nav.orbit_delta_x.fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
+                nav.orbit_delta_y.fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
+            }
+
+            if resp.clicked() {
+                if let Some(pos) = resp.interact_pointer_pos() {
+                    let local_pos = pos - center;
+                    
+                    // Find closest axis endpoint
+                    let mut closest_axis = None;
+                    let mut min_dist = 15.0; // Click radius
+
+                    for &(_depth, offset, _color, _label, yaw, pitch, _is_positive) in &projected {
+                        let dist = (local_pos - offset).length();
+                        if dist < min_dist {
+                            min_dist = dist;
+                            closest_axis = Some((yaw, pitch));
+                        }
+                    }
+
+                    if let Some((yaw, pitch)) = closest_axis {
+                        cmds.push(move |w: &mut World| {
+                            if let Some(mut settings) = w.get_resource_mut::<ViewportSettings>() {
+                                settings.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
+                            }
+                        });
+                    }
+                }
+            }
+
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+
+            let painter = ui.painter();
+
+            // Draw background sphere highlight
+            let is_active = nav.orbit_dragging.load(Ordering::Relaxed);
+            if resp.hovered() || is_active {
+                let theme_mgr = world.get_resource::<renzora_theme::ThemeManager>();
+                let theme = theme_mgr.map(|tm| &tm.active_theme);
+                
+                let bg_color = if is_active {
+                    theme.map(|t| t.semantic.accent.to_color32().gamma_multiply(0.2))
+                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 40))
+                } else {
+                    theme.map(|t| t.widgets.hovered_bg.to_color32().gamma_multiply(0.3))
+                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20))
+                };
+                painter.circle_filled(center, AXIS_GIZMO_SIZE / 2.0, bg_color);
+
+                if is_active {
+                    let stroke_color = theme.map(|t| t.semantic.accent.to_color32())
+                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 180));
+                    painter.circle_stroke(center, AXIS_GIZMO_SIZE / 2.0, egui::Stroke::new(1.0, stroke_color));
+                }
+            }
+
+            for &(_depth, offset, color, label, _yaw, _pitch, is_positive) in &projected {
+                let end = center + offset;
+
+                // Fade axes pointing away
+                let alpha = if _depth < -0.1 { 100 } else { 255 };
+                let c = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+
+                let line_width = if is_positive {
+                    if _depth < -0.1 { 2.0 } else { 3.0 }
+                } else {
+                    if _depth < -0.1 { 1.0 } else { 1.5 }
+                };
+
+                if is_positive {
+                    painter.line_segment([center, end], egui::Stroke::new(line_width, c));
+                }
+
+                let cap_size = if is_positive { 9.0 } else { 6.0 };
+                if is_positive {
+                    painter.circle_filled(end, cap_size, c);
+                    painter.text(
+                        end,
+                        egui::Align2::CENTER_CENTER,
+                        label,
+                        egui::FontId::proportional(10.0),
+                        egui::Color32::WHITE,
+                    );
+                } else {
+                    painter.circle_stroke(end, cap_size, egui::Stroke::new(line_width, c));
+                }
+            }
+            
+            // Center dot
+            painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
+        });
 }

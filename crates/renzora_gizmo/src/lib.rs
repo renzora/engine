@@ -1668,10 +1668,11 @@ fn entity_pick_system(
     let _ = handle_state;
     // GizmoMode::None means a plugin tool is driving — skip picking.
     if *mode == GizmoMode::None { return; }
-    // Don't pick while nav overlay pan/zoom buttons are being dragged
+    // Don't pick while nav overlay buttons (pan/zoom/orbit) are being dragged
     if let Some(ref nav) = nav_overlay {
         if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
             || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav.orbit_dragging.load(std::sync::atomic::Ordering::Relaxed)
         {
             return;
         }
@@ -1748,6 +1749,7 @@ fn box_selection_system(
     if let Some(ref nav) = nav_overlay {
         if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
             || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav.orbit_dragging.load(std::sync::atomic::Ordering::Relaxed)
         {
             box_sel.active = false;
             return;
