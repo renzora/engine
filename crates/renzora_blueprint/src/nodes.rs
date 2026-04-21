@@ -23,6 +23,7 @@ pub const CAT_VARIABLE: &str = "Variable";
 pub const CAT_RENDERING: &str = "Rendering";
 pub const CAT_ANIMATION: &str = "Animation";
 pub const CAT_LIFECYCLE: &str = "Lifecycle";
+pub const CAT_NAVIGATION: &str = "Navigation";
 
 // ── Color constants for categories ──────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const CLR_VARIABLE: [u8; 3] = [60, 180, 120];
 const CLR_RENDERING: [u8; 3] = [200, 150, 120];
 const CLR_ANIMATION: [u8; 3] = [80, 200, 180];
 const CLR_LIFECYCLE: [u8; 3] = [90, 180, 100];
+const CLR_NAVIGATION: [u8; 3] = [90, 170, 220];
 
 // =============================================================================
 // EVENT NODES — entry points, no exec input
@@ -1907,6 +1909,81 @@ pub static GLOBAL_SET: BlueprintNodeDef = BlueprintNodeDef {
 };
 
 // =============================================================================
+// =============================================================================
+// NAVIGATION NODES
+// =============================================================================
+
+pub static NAV_SET_DESTINATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/set_destination",
+    display_name: "Set Destination",
+    category: CAT_NAVIGATION,
+    description: "Command this entity's NavAgent to path to a world position",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::input("target", "Target", PinType::Vec3)
+            .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+pub static NAV_CLEAR_DESTINATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/clear_destination",
+    display_name: "Clear Destination",
+    category: CAT_NAVIGATION,
+    description: "Stop this entity's NavAgent",
+    pins: || vec![
+        PinTemplate::exec_in("exec", ""),
+        PinTemplate::exec_out("then", ""),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+pub static NAV_HAS_PATH: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/has_path",
+    display_name: "Has Path",
+    category: CAT_NAVIGATION,
+    description: "True if the NavAgent is currently following a path",
+    pins: || vec![
+        PinTemplate::output("has_path", "Has Path", PinType::Bool),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+pub static NAV_HAS_TARGET: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/has_target",
+    display_name: "Has Target",
+    category: CAT_NAVIGATION,
+    description: "True if the NavAgent has a destination set",
+    pins: || vec![
+        PinTemplate::output("has_target", "Has Target", PinType::Bool),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+pub static NAV_IS_AT_DESTINATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/is_at_destination",
+    display_name: "Is At Destination",
+    category: CAT_NAVIGATION,
+    description: "True when the agent has arrived (or has no destination)",
+    pins: || vec![
+        PinTemplate::output("arrived", "Arrived", PinType::Bool),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+pub static NAV_DISTANCE_TO_DESTINATION: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "navigation/distance_to_destination",
+    display_name: "Distance To Destination",
+    category: CAT_NAVIGATION,
+    description: "Planar XZ distance from the agent to its current destination",
+    pins: || vec![
+        PinTemplate::output("distance", "Distance", PinType::Float),
+    ],
+    color: CLR_NAVIGATION,
+};
+
+// =============================================================================
 // REGISTRY
 // =============================================================================
 
@@ -1967,6 +2044,9 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &NET_IS_SERVER, &NET_IS_CONNECTED, &NET_SEND_MESSAGE, &NET_ON_MESSAGE, &NET_SPAWN,
     // Lifecycle
     &ON_SCENE_LOADED, &GLOBAL_GET, &GLOBAL_SET,
+    // Navigation
+    &NAV_SET_DESTINATION, &NAV_CLEAR_DESTINATION,
+    &NAV_HAS_PATH, &NAV_HAS_TARGET, &NAV_IS_AT_DESTINATION, &NAV_DISTANCE_TO_DESTINATION,
 ];
 
 /// Get all unique categories in display order.
@@ -1975,7 +2055,7 @@ pub fn categories() -> Vec<&'static str> {
         CAT_EVENT, CAT_FLOW, CAT_MATH, CAT_STRING, CAT_CONVERT,
         CAT_TRANSFORM, CAT_INPUT,
         CAT_ENTITY, CAT_COMPONENT, CAT_PHYSICS, CAT_AUDIO, CAT_UI,
-        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_NETWORK, CAT_LIFECYCLE, CAT_DEBUG,
+        CAT_SCENE, CAT_VARIABLE, CAT_RENDERING, CAT_ANIMATION, CAT_NETWORK, CAT_LIFECYCLE, CAT_NAVIGATION, CAT_DEBUG,
     ]
 }
 

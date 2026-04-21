@@ -31,6 +31,7 @@ renzora_hanabi = { path = "../renzora_hanabi" }
 renzora_network = { path = "../renzora_network" }
 renzora_audio = { path = "../renzora_audio" }
 renzora_shader = { path = "../renzora_shader" }
+renzora_navmesh = { path = "../renzora_navmesh" }
 
 # Postprocess framework + vital effects
 renzora_postprocess = { path = "../renzora_postprocess" }

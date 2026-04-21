@@ -101,7 +101,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     let viewport_settings = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
 
     // Project config snapshot + available scene files
-    let (project_config, scene_files) = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+    let (project_config, scene_files, project_path) = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
         let scenes_dir = project.resolve_path("scenes");
         let files: Vec<String> = std::fs::read_dir(&scenes_dir)
             .into_iter()
@@ -116,11 +116,12 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                 }
             })
             .collect();
-        (Some(project.config.clone()), files)
+        (Some(project.config.clone()), files, Some(project.path.clone()))
     } else {
-        (None, Vec::new())
+        (None, Vec::new(), None)
     };
     let mut project_config_mut = project_config.clone();
+    let mut clear_thumbnail_cache = false;
 
     // Clone theme data for the theme tab
     let (theme_name, available_themes) = world
@@ -299,7 +300,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                             ui.set_width(ui.available_width());
 
                             match settings_mut.settings_tab {
-                                SettingsTab::Project => render_project_tab(ui, &mut project_config_mut, &scene_files, &theme),
+                                SettingsTab::Project => render_project_tab(ui, &mut project_config_mut, &scene_files, project_path.as_deref(), &mut clear_thumbnail_cache, &theme),
                                 SettingsTab::Interface => render_interface_tab(ui, &mut settings_mut, &custom_fonts, &theme),
                                 SettingsTab::Editor => render_editor_tab(ui, &mut settings_mut, &theme),
                                 SettingsTab::Viewport => render_viewport_tab(ui, &mut settings_mut, &mut viewport_mut, &theme),
@@ -388,6 +389,21 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     }
     world.insert_resource(input_ui_state);
 
+    if clear_thumbnail_cache {
+        if let Some(ref path) = project_path {
+            let thumbs_dir = path.join(".thumbs").join("materials");
+            match std::fs::remove_dir_all(&thumbs_dir) {
+                Ok(_) => info!("[settings] Cleared material thumbnail cache at {}", thumbs_dir.display()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    info!("[settings] Material thumbnail cache was already empty");
+                }
+                Err(e) => warn!("[settings] Failed to clear thumbnail cache: {}", e),
+            }
+        }
+        if let Some(mut registry) = world.get_resource_mut::<renzora_editor_framework::MaterialThumbnailRegistry>() {
+            *registry = renzora_editor_framework::MaterialThumbnailRegistry::default();
+        }
+    }
 }
 
 // ── Category + row helpers ──────────────────────────────────────────────────
@@ -570,10 +586,51 @@ fn render_tabs_vertical(ui: &mut egui::Ui, settings: &mut EditorSettings, theme:
 
 // ── Tab content ─────────────────────────────────────────────────────────────
 
+#[derive(Default)]
+struct CacheStats {
+    file_count: u64,
+    total_bytes: u64,
+}
+
+fn cache_stats(dir: &std::path::Path) -> CacheStats {
+    let mut stats = CacheStats::default();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                stack.push(entry.path());
+            } else if meta.is_file() {
+                stats.file_count += 1;
+                stats.total_bytes += meta.len();
+            }
+        }
+    }
+    stats
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
+    let mut value = bytes as f64;
+    let mut i = 0;
+    while value >= 1024.0 && i < UNITS.len() - 1 {
+        value /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{} {}", bytes, UNITS[i])
+    } else {
+        format!("{:.1} {}", value, UNITS[i])
+    }
+}
+
 fn render_project_tab(
     ui: &mut egui::Ui,
     project_config: &mut Option<renzora::core::ProjectConfig>,
     scene_files: &[String],
+    project_path: Option<&std::path::Path>,
+    clear_thumbnail_cache: &mut bool,
     theme: &Theme,
 ) {
     let Some(config) = project_config else {
@@ -595,6 +652,39 @@ fn render_project_tab(
                         ui.selectable_value(&mut config.main_scene, scene.clone(), scene);
                     }
                 })
+        });
+    });
+
+    render_category(ui, TRASH, "Cache", CategoryStyle::interface(), "settings_cache", true, theme, |ui| {
+        // Show the disk size so the user knows what they're clearing.
+        let thumbs_dir = project_path.map(|p| p.join(".thumbs").join("materials"));
+        let cache_info = thumbs_dir
+            .as_deref()
+            .map(cache_stats)
+            .unwrap_or_default();
+
+        settings_row(ui, 0, "Material Thumbnails", theme, |ui| {
+            let label = if cache_info.file_count > 0 {
+                format!("{} files · {}", cache_info.file_count, format_bytes(cache_info.total_bytes))
+            } else {
+                "Empty".to_string()
+            };
+            ui.label(
+                RichText::new(label)
+                    .size(11.5)
+                    .color(theme.text.muted.to_color32()),
+            );
+            let button = egui::Button::new(
+                RichText::new("Clear Cache").color(theme.text.primary.to_color32()),
+            )
+                .fill(theme.panels.item_bg.to_color32())
+                .stroke(Stroke::new(1.0, theme.widgets.border.to_color32()))
+                .corner_radius(CornerRadius::same(5))
+                .min_size(Vec2::new(110.0, 24.0));
+            if ui.add_enabled(cache_info.file_count > 0, button).clicked() {
+                *clear_thumbnail_cache = true;
+            }
+            ui.label(RichText::new("").size(1.0)) // keep settings_row's return type happy
         });
     });
 

@@ -3,6 +3,7 @@
 //! Selection-driven: selecting a mesh entity in the viewport loads its material
 //! into the graph editor. Edits auto-save to disk.
 
+pub mod file_thumbnails;
 mod graph_editor;
 mod graph_panel;
 mod inspector;
@@ -12,7 +13,7 @@ mod thumbnails;
 
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor_framework::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
@@ -77,6 +78,7 @@ impl Plugin for MaterialEditorPlugin {
         app.register_type::<Mesh3d>();
         app.add_plugins(preview::MaterialPreviewPlugin);
         app.add_plugins(thumbnails::NodeThumbnailPlugin);
+        app.add_plugins(file_thumbnails::MaterialFileThumbnailPlugin);
         app.register_panel(graph_panel::MaterialGraphPanel);
         app.register_panel(inspector::MaterialInspectorPanel);
         app.register_panel(preview::MaterialPreviewPanel);
@@ -126,6 +128,17 @@ pub fn apply_material(world: &mut World) {
 
     // Invalidate resolver cache so the mesh picks up the new material
     world.resource_mut::<MaterialCache>().invalidate(&path);
+
+    // Invalidate the cached PNG thumbnail + registry entry so the asset
+    // browser re-captures next time this material is visible.
+    let material_abs = std::path::PathBuf::from(&fs_path);
+    if let Some(project) = world.get_resource::<CurrentProject>().cloned() {
+        let thumb = material_thumb_path(&material_abs, &project);
+        let _ = std::fs::remove_file(&thumb);
+    }
+    if let Some(mut reg) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
+        reg.invalidate(&material_abs);
+    }
 
     // Remove MaterialResolved from entities using this path so resolver re-processes them
     let entities: Vec<Entity> = world

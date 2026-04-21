@@ -117,13 +117,22 @@ impl EditorPanel for InspectorPanel {
             }
         }
 
-        // Component search/filter bar
+        // Component search/filter bar with Add Component button
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(4.0);
+            if ui.add(
+                egui::Button::new(
+                    RichText::new(format!("{} Add", regular::PUZZLE_PIECE))
+                        .size(12.0),
+                ),
+            ).clicked() {
+                state.show_add_overlay = true;
+                state.add_search.clear();
+            }
             let has_filter = !state.component_filter.is_empty();
             let clear_width = if has_filter { 20.0 } else { 0.0 };
-            let search_width = ui.available_width() - clear_width - 12.0;
+            let search_width = ui.available_width() - clear_width - 8.0;
             ui.add(
                 egui::TextEdit::singleline(&mut state.component_filter)
                     .desired_width(search_width)
@@ -243,19 +252,6 @@ impl EditorPanel for InspectorPanel {
                     });
                 }
 
-                // Add Component button
-                ui.add_space(8.0);
-                ui.vertical_centered(|ui| {
-                    if ui.add(
-                        egui::Button::new(
-                            RichText::new(format!("{} Add Component", regular::PLUS))
-                                .size(12.0),
-                        ),
-                    ).clicked() {
-                        state.show_add_overlay = true;
-                        state.add_search.clear();
-                    }
-                });
                 ui.add_space(8.0);
             });
     }

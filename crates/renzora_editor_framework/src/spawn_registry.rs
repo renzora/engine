@@ -1,4 +1,8 @@
 //! Spawn registry — holds entity presets that can be spawned from the hierarchy overlay.
+//!
+//! Also owns the [`SceneStarterRegistry`] used by the hierarchy panel's
+//! empty-state picker (the "New Scene / New Environment / ..." cards shown
+//! when the scene contains zero entities).
 
 use bevy::prelude::*;
 
@@ -26,6 +30,46 @@ impl SpawnRegistry {
     /// Iterate over all registered presets.
     pub fn iter(&self) -> impl Iterator<Item = &EntityPreset> {
         self.presets.iter()
+    }
+}
+
+// ── Scene starters ──────────────────────────────────────────────────────────
+
+/// A one-click template that fills an empty scene with a useful starting
+/// arrangement (camera + sun for a blank workspace, environment + terrain for
+/// an outdoor level, a UI canvas for a menu scene, a physics arena, etc.).
+///
+/// `spawn_fn` gets a `&mut World` and may spawn any number of entities, insert
+/// resources, or trigger workspace switches. It's invoked from a deferred
+/// `EditorCommands` closure so the hierarchy panel's UI code can be
+/// `&World`-only.
+pub struct SceneStarter {
+    pub id: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+    pub icon: &'static str,
+    pub spawn_fn: fn(&mut World),
+}
+
+#[derive(Resource, Default)]
+pub struct SceneStarterRegistry {
+    starters: Vec<SceneStarter>,
+}
+
+impl SceneStarterRegistry {
+    pub fn register(&mut self, starter: SceneStarter) {
+        if self.starters.iter().any(|s| s.id == starter.id) {
+            return;
+        }
+        self.starters.push(starter);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &SceneStarter> {
+        self.starters.iter()
+    }
+
+    pub fn get(&self, id: &str) -> Option<&SceneStarter> {
+        self.starters.iter().find(|s| s.id == id)
     }
 }
 

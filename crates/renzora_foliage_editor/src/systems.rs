@@ -1,7 +1,7 @@
 //! Foliage painting systems — hover, brush, scroll, gizmo.
 
 use bevy::prelude::*;
-use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::window::{CursorOptions, PrimaryWindow};
 
 use renzora_terrain::data::{
@@ -61,7 +61,7 @@ pub fn foliage_paint_hover_system(
     let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else { return };
 
     // Find closest terrain chunk intersection
-    let hits = ray_cast.cast_ray(ray, &default());
+    let hits = ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
     let mut best: Option<(Entity, f32, Vec3)> = None;
     for (entity, hit) in hits.iter() {
         if chunk_query.contains(*entity) {

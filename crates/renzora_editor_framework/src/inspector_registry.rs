@@ -87,14 +87,26 @@ pub struct InspectorRegistry {
 impl InspectorRegistry {
     /// Register an inspector entry for a component.
     ///
-    /// The "name" component is always kept at the front; all others are appended.
+    /// Ordering: `name` is always first, `transform` second, `material_ref`
+    /// third; everything else is appended in registration order.
     pub fn register(&mut self, entry: InspectorEntry) {
         match entry.type_id {
             "name" => self.entries.insert(0, entry),
             "transform" => {
-                // Insert after "name" if present, otherwise at the front.
-                let pos = self.entries.iter()
+                // Insert after any existing "name" entry.
+                let pos = self
+                    .entries
+                    .iter()
                     .position(|e| e.type_id != "name")
+                    .unwrap_or(self.entries.len());
+                self.entries.insert(pos, entry);
+            }
+            "material_ref" => {
+                // Insert after name + transform, before everything else.
+                let pos = self
+                    .entries
+                    .iter()
+                    .position(|e| e.type_id != "name" && e.type_id != "transform")
                     .unwrap_or(self.entries.len());
                 self.entries.insert(pos, entry);
             }

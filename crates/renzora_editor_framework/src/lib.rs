@@ -9,6 +9,7 @@ pub mod commands;
 pub mod sdk;
 pub mod ext;
 pub mod inspector_registry;
+pub mod material_thumbnail_registry;
 pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
@@ -25,6 +26,7 @@ pub use commands::EditorCommands;
 pub use inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
+pub use material_thumbnail_registry::{material_thumb_path, MaterialThumbnailRegistry};
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
@@ -173,7 +175,10 @@ pub enum HierarchyFilter {
     ExcludeDescendantsOf(Vec<&'static str>),
 }
 
-pub use spawn_registry::{ComponentIconEntry, ComponentIconRegistry, EntityPreset, SpawnRegistry};
+pub use spawn_registry::{
+    ComponentIconEntry, ComponentIconRegistry, EntityPreset, SceneStarter, SceneStarterRegistry,
+    SpawnRegistry,
+};
 
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
 #[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -331,13 +336,15 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
+            .init_resource::<SceneStarterRegistry>()
             .init_resource::<ComponentIconRegistry>()
             .init_resource::<ViewportOverlayRegistry>()
             .init_resource::<ToolbarRegistry>()
             .init_resource::<ToolOptionsRegistry>()
             .init_resource::<ViewportModeOptionsRegistry>()
             .init_resource::<ShortcutRegistry>()
-            .init_resource::<EditorActionHooks>();
+            .init_resource::<EditorActionHooks>()
+            .init_resource::<MaterialThumbnailRegistry>();
 
         register_builtin_tools(
             &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
@@ -438,8 +445,8 @@ pub fn is_terrain_selected(world: &World) -> bool {
     false
 }
 
-/// Register the built-in Transform + Terrain/Foliage tools with the
-/// [`ToolbarRegistry`]. Called once at plugin build time.
+/// Register the built-in Transform tools with the [`ToolbarRegistry`].
+/// Called once at plugin build time.
 fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     use egui_phosphor::regular::*;
 
@@ -485,65 +492,9 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             .on_activate(|w| { w.insert_resource(ActiveTool::Scale); }),
     );
 
-    // Terrain section — visible only when a terrain is selected. Clicking the
-    // active button a second time deactivates (reverts to Select).
-    registry.register(
-        ToolEntry::new("builtin.terrain_sculpt", MOUNTAINS, "Sculpt Terrain", ToolSection::Terrain)
-            .order(0)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainSculpt)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::TerrainSculpt {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::TerrainSculpt
-                };
-                w.insert_resource(new);
-            }),
-    );
-    registry.register(
-        ToolEntry::new("builtin.terrain_paint", PAINT_BRUSH, "Paint Terrain Layers", ToolSection::Terrain)
-            .order(1)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainPaint)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::TerrainPaint {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::TerrainPaint
-                };
-                w.insert_resource(new);
-            }),
-    );
-    registry.register(
-        ToolEntry::new("builtin.foliage_paint", TREE, "Paint Foliage", ToolSection::Terrain)
-            .order(2)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::FoliagePaint)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::FoliagePaint {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::FoliagePaint
-                };
-                w.insert_resource(new);
-            }),
-    );
+    // Terrain tools (builtin.terrain_sculpt / terrain_paint / foliage_paint) are
+    // registered by `renzora_terrain_editor::TerrainEditorPlugin` so their
+    // activators can reach `TerrainData` and the inspector tab state directly.
 }
 
 /// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read

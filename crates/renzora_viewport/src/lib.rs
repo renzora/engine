@@ -7,6 +7,7 @@ pub mod camera_preview;
 pub mod debug_material;
 pub mod effect_routing;
 pub mod header;
+pub mod material_drop;
 pub mod model_drop;
 pub mod model_flatten;
 pub mod play_mode;
@@ -367,6 +368,9 @@ impl EditorPanel for ViewportPanel {
 
         // Check for model asset drops on the viewport
         model_drop::check_viewport_model_drop(ui, world, rect);
+
+        // Check for .material asset drops on the viewport
+        material_drop::check_viewport_material_drop(ui, world, rect);
 
         // Check for .ron scene drops (spawns a SceneInstance)
         scene_drop::check_viewport_scene_drop(ui, world, rect);

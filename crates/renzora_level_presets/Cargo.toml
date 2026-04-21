@@ -18,3 +18,4 @@ renzora_bloom_effect = { path = "../renzora_bloom_effect" }
 renzora_atmosphere = { path = "../renzora_atmosphere" }
 renzora_clouds = { path = "../renzora_clouds" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }
+renzora_terrain = { path = "../renzora_terrain" }

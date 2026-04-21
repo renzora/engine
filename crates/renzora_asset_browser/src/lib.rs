@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
-use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
@@ -179,9 +179,13 @@ impl EditorPanel for AssetBrowserPanel {
         } else {
             let thumb_lookup = {
                 let cache = world.get_resource::<thumbnails::ThumbnailCache>();
-                grid::ThumbnailLookup {
-                    ids: cache.map(|c| c.texture_id_map()).unwrap_or_default(),
+                let mut ids = cache.map(|c| c.texture_id_map()).unwrap_or_default();
+                if let Some(registry) = world.get_resource::<MaterialThumbnailRegistry>() {
+                    for (path, tid) in registry.entries() {
+                        ids.insert(path.clone(), *tid);
+                    }
                 }
+                grid::ThumbnailLookup { ids }
             };
 
             let mut grid_child =
@@ -686,6 +690,19 @@ impl EditorPanel for AssetBrowserPanel {
                     let mut cache = world.resource_mut::<thumbnails::ThumbnailCache>();
                     for path in requests {
                         cache.request(path, &asset_server, project.as_ref());
+                    }
+                });
+            }
+        }
+        // Submit .material thumbnail requests to the material renderer registry
+        if !grid_result.material_thumbnail_requests.is_empty() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                let requests = grid_result.material_thumbnail_requests;
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    if let Some(mut registry) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
+                        for path in requests {
+                            registry.request(path);
+                        }
                     }
                 });
             }

@@ -96,13 +96,20 @@ fn apply_window_actions(
 /// while one is open" behaviour. Instead we read pointer events directly and
 /// only act when **no** other egui widget wants the pointer at that position
 /// — meaning the cursor is genuinely over empty title-bar space.
-pub fn render_drag_handle(ui: &mut egui::Ui, rect: egui::Rect, queue: &mut WindowActionQueue) {
+pub fn render_drag_handle(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    queue: &mut WindowActionQueue,
+    other_widget_hovered: bool,
+) {
     let ctx = ui.ctx();
     let pointer_pos = ctx.pointer_latest_pos();
     let pointer_in_rect = pointer_pos.map(|p| rect.contains(p)).unwrap_or(false);
     // If any egui widget wants the pointer (menu button, tab, icon button),
     // we stay out of its way — clicks and hovers go to the widget.
-    let widget_wants = ctx.wants_pointer_input() || ctx.is_using_pointer();
+    // `wants_pointer_input` doesn't always catch menu-button hovers on the
+    // same frame, so callers can also pass an explicit flag.
+    let widget_wants = ctx.wants_pointer_input() || ctx.is_using_pointer() || other_widget_hovered;
 
     if pointer_in_rect && !widget_wants {
         ctx.set_cursor_icon(CursorIcon::Grab);

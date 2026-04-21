@@ -217,8 +217,36 @@ impl Default for NavMeshUpdateMode {
 #[derive(Component, Debug, Copy, Clone)]
 pub struct NavMeshUpdateModeBlocking;
 
+/// Wrapper around [`build_navmesh_inner`] that catches panics from the
+/// underlying CDT (`spade`) when obstacle geometry is degenerate —
+/// overlapping polygons, coincident vertices, obstacles on the outer edge,
+/// etc. On panic we log and return an empty layer so the editor/runtime
+/// keeps running; the user sees a blank navmesh instead of a crash.
 #[cfg_attr(feature = "tracing", instrument(skip_all))]
 fn build_navmesh<T: ObstacleSource>(
+    obstacles: Vec<(GlobalTransform, T)>,
+    cached_obstacles: Vec<(GlobalTransform, T)>,
+    settings: NavMeshSettings,
+    mesh_transform: Transform,
+) -> (Option<Triangulation>, Layer) {
+    use std::panic::AssertUnwindSafe;
+    let result = std::panic::catch_unwind(AssertUnwindSafe(move || {
+        build_navmesh_inner(obstacles, cached_obstacles, settings, mesh_transform)
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => {
+            log::warn!(
+                "NavMesh build panicked (likely degenerate obstacle geometry — \
+                 try separating overlapping obstacles, pulling them inside the \
+                 volume, or reducing agent_radius)"
+            );
+            (None, Layer::default())
+        }
+    }
+}
+
+fn build_navmesh_inner<T: ObstacleSource>(
     obstacles: Vec<(GlobalTransform, T)>,
     cached_obstacles: Vec<(GlobalTransform, T)>,
     settings: NavMeshSettings,

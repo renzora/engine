@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor_framework::{
-    asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry,
+    asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry, MaterialThumbnailRegistry,
 };
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_theme::Theme;
@@ -68,6 +68,55 @@ fn material_custom_ui(
         theme,
         payload,
     );
+
+    // Thumbnail preview — when the entity has a material, look it up in the
+    // shared thumbnail registry and render it as a small preview below the
+    // drop target. If the thumbnail isn't cached yet (e.g. material was just
+    // applied at runtime), queue a render request.
+    if !current_path.is_empty() {
+        let abs_path_opt = world
+            .get_resource::<renzora::core::CurrentProject>()
+            .map(|p| p.resolve_path(&current_path));
+        if let Some(abs_path) = abs_path_opt {
+            let registry = world.get_resource::<MaterialThumbnailRegistry>();
+            let tex_id = registry.and_then(|r| r.get(&abs_path));
+            let size = egui::vec2(96.0, 96.0);
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(6.0);
+                let (rect, _resp) = ui.allocate_exact_size(size, egui::Sense::hover());
+                ui.painter().rect_filled(
+                    rect,
+                    egui::CornerRadius::same(4),
+                    egui::Color32::from_rgb(14, 14, 18),
+                );
+                ui.painter().rect_stroke(
+                    rect,
+                    egui::CornerRadius::same(4),
+                    egui::Stroke::new(1.0, theme.widgets.border.to_color32()),
+                    egui::StrokeKind::Inside,
+                );
+                if let Some(tid) = tex_id {
+                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    ui.painter().image(tid, rect, uv, egui::Color32::WHITE);
+                } else {
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "…",
+                        egui::FontId::proportional(18.0),
+                        theme.text.muted.to_color32(),
+                    );
+                    // Request a render so subsequent frames have the thumbnail.
+                    cmds.push(move |world: &mut World| {
+                        if let Some(mut reg) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
+                            reg.request(abs_path);
+                        }
+                    });
+                }
+            });
+        }
+    }
 
     if let Some(ref dropped) = drop_result.dropped_path {
         let ext = dropped

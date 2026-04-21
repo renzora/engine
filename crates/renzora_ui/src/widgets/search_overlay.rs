@@ -80,7 +80,7 @@ pub fn search_overlay(
                 .inner_margin(Margin::same(12))
                 .stroke(Stroke::new(1.0, theme.widgets.border.to_color32()))
                 .show(ui, |ui| {
-                    ui.set_width(560.0);
+                    ui.set_width(680.0);
                     ui.set_max_height(620.0);
 
                     // Title bar
@@ -91,6 +91,29 @@ pub fn search_overlay(
                                 .strong()
                                 .color(theme.text.heading.to_color32()),
                         );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let (rect, resp) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), Sense::click());
+                            let icon_color = if resp.hovered() {
+                                theme.text.primary.to_color32()
+                            } else {
+                                theme.text.muted.to_color32()
+                            };
+                            if resp.hovered() {
+                                let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                                ui.painter().rect_filled(rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(r, g, b, 80));
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+                            ui.painter().text(
+                                rect.center(),
+                                Align2::CENTER_CENTER,
+                                egui_phosphor::regular::X,
+                                egui::FontId::proportional(14.0),
+                                icon_color,
+                            );
+                            if resp.clicked() {
+                                action = OverlayAction::Closed;
+                            }
+                        });
                     });
                     ui.add_space(6.0);
 
@@ -127,7 +150,54 @@ pub fn search_overlay(
                         });
                         ui.add_space(16.0);
                     } else {
-                        // Scrollable categorized tree list
+                        // Track which category to scroll to
+                        let mut scroll_target: Option<String> = None;
+
+                        ui.horizontal_top(|ui| {
+                        // Left: category sidebar
+                        ui.vertical(|ui| {
+                            ui.set_width(100.0);
+                            ui.set_max_height(520.0);
+                            ui.add_space(4.0);
+                            ui.label(RichText::new("Categories").size(12.0).color(theme.text.disabled.to_color32()));
+                            ui.add_space(2.0);
+                            for cat in &categories {
+                                let (accent, _) = category_colors(theme, cat);
+                                let w = ui.available_width();
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    Vec2::new(w, 24.0),
+                                    Sense::click(),
+                                );
+                                let is_active = scroll_target.as_deref() == Some(*cat);
+                                if resp.hovered() || is_active {
+                                    let bg = if is_active {
+                                        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 30)
+                                    } else {
+                                        let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                                        Color32::from_rgba_unmultiplied(r, g, b, 50)
+                                    };
+                                    ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+                                }
+                                if resp.hovered() {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
+                                ui.painter().text(
+                                    rect.left_center() + Vec2::new(6.0, 0.0),
+                                    Align2::LEFT_CENTER,
+                                    capitalize(cat),
+                                    egui::FontId::proportional(13.0),
+                                    accent,
+                                );
+                                if resp.clicked() {
+                                    scroll_target = Some(cat.to_string());
+                                }
+                            }
+                        });
+
+                        // Right: scrollable categorized tree list
+                        let right_width = ui.available_width();
+                        ui.vertical(|ui| {
+                            ui.set_width(right_width);
                         egui::ScrollArea::vertical()
                             .max_height(520.0)
                             .id_salt(egui::Id::new(id_salt).with("_scroll"))
@@ -201,6 +271,11 @@ pub fn search_overlay(
                                         egui::FontId::proportional(14.0),
                                         accent,
                                     );
+
+                                    // Scroll to this category if the sidebar requested it
+                                    if scroll_target.as_deref() == Some(*cat) {
+                                        cat_response.scroll_to_me(Some(egui::Align::TOP));
+                                    }
 
                                     // Toggle expand on click
                                     if cat_response.clicked() && !has_search {
@@ -304,6 +379,8 @@ pub fn search_overlay(
                                     }
                                 }
                             });
+                        }); // end vertical (right side)
+                        }); // end horizontal_top (sidebar + items)
                     }
                 });
         });

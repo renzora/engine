@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod config;
 pub mod github;
+pub mod launcher;
+pub mod loading;
 pub mod project;
 mod ui;
 #[cfg(target_arch = "wasm32")]
@@ -9,6 +11,7 @@ pub mod web_storage;
 pub use auth::SplashAuth;
 pub use config::{AppConfig, UpdateConfig};
 pub use github::GithubStats;
+pub use loading::{LoadingTask, LoadingTaskHandle, LoadingTasks};
 pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;
@@ -39,11 +42,17 @@ pub struct SplashWindowState {
     pub maximized: bool,
 }
 
-/// Controls whether the splash screen or the editor is shown.
+/// Controls whether the splash screen, loading overlay, or editor is shown.
+///
+/// After the user selects a project we first enter `Loading`, which renders a
+/// full-window overlay showing progress for tasks registered in
+/// [`LoadingTasks`] (material thumbnails, future plugin/scene load, etc.).
+/// Once every registered task reports complete, we transition to `Editor`.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SplashState {
     #[default]
     Splash,
+    Loading,
     Editor,
 }
 
@@ -64,12 +73,26 @@ impl Plugin for SplashPlugin {
             .insert_resource(GithubStats::new())
             .init_resource::<PhosphorFontInstalled>()
             .init_resource::<SplashWindowState>()
+            .init_resource::<LoadingTasks>()
             .add_systems(
                 EguiPrimaryContextPass,
                 splash_ui_system.run_if(in_state(SplashState::Splash)),
-            );
+            )
+            .add_systems(
+                EguiPrimaryContextPass,
+                loading::loading_ui_system.run_if(in_state(SplashState::Loading)),
+            )
+            .add_systems(
+                Update,
+                loading::auto_advance_to_editor.run_if(in_state(SplashState::Loading)),
+            )
+            .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
     }
 }
+
+/// Compact size used by the splash launcher overlay. Shared constant so the
+/// splash and editor paths agree on loader dimensions.
+pub const LOADING_WINDOW_SIZE: (f32, f32) = (600.0, 180.0);
 
 /// Marker resource: splash should immediately transition back to editor
 /// (e.g. project opened via File menu).
@@ -97,7 +120,7 @@ fn splash_ui_system(world: &mut World) {
     if world.remove_resource::<PendingProjectReopen>().is_some() {
         world
             .resource_mut::<NextState<SplashState>>()
-            .set(SplashState::Editor);
+            .set(SplashState::Loading);
         return;
     }
 

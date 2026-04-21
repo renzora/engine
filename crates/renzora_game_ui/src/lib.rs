@@ -580,7 +580,22 @@ fn debug_ui_tree(
 /// which finds (or creates) a canvas and parents the new widget to it.
 #[cfg(feature = "editor")]
 fn register_ui_presets(app: &mut App) {
-    use renzora_editor_framework::{AppEditorExt, EntityPreset};
+    use renzora_editor_framework::{AppEditorExt, EntityPreset, SceneStarter};
+
+    fn spawn_ui_canvas(world: &mut World) -> Entity {
+        world
+            .spawn((
+                Name::new("UI Canvas"),
+                components::UiCanvas::default(),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    position_type: PositionType::Absolute,
+                    ..default()
+                },
+            ))
+            .id()
+    }
 
     // UI Canvas — always spawned at root.
     app.register_entity_preset(EntityPreset {
@@ -588,19 +603,21 @@ fn register_ui_presets(app: &mut App) {
         display_name: "UI Canvas",
         icon: egui_phosphor::regular::FRAME_CORNERS,
         category: "ui",
-        spawn_fn: |world| {
-            world
-                .spawn((
-                    Name::new("UI Canvas"),
-                    components::UiCanvas::default(),
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
-                ))
-                .id()
+        spawn_fn: spawn_ui_canvas,
+    });
+
+    // "New UI" scene starter — spawns a canvas and selects it so the next
+    // click already targets the right parent for new widgets.
+    app.register_scene_starter(SceneStarter {
+        id: "ui",
+        title: "New UI",
+        description: "An empty canvas, ready for widgets",
+        icon: egui_phosphor::regular::FRAME_CORNERS,
+        spawn_fn: |world: &mut World| {
+            let canvas = spawn_ui_canvas(world);
+            if let Some(selection) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+                selection.set(Some(canvas));
+            }
         },
     });
 

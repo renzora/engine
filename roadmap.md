@@ -7,7 +7,7 @@
 - ✅ Deep-clone all components on duplicate — [`7f0ccec`](https://github.com/renzora/engine/commit/7f0ccec)
 - ✅ Add right-click "Add Component" directly from hierarchy — [`6610d1a`](https://github.com/renzora/engine/commit/6610d1a)
 - ✅ Add batch rename for multiple entities — [`0d3c705`](https://github.com/renzora/engine/commit/0d3c705)
-- Add marquee drag selection in hierarchy
+- ✅ Add marquee drag selection in hierarchy — [`70c1b23`](https://github.com/renzora/engine/commit/70c1b23)
 - Add favorites/starred entities
 
 ## Hierarchy — Prefabs & Templates
@@ -31,14 +31,14 @@
 ## Asset Browser — Organization
 - ✅ Add favorites/starred folders — [`4d96c63`](https://github.com/renzora/engine/commit/4d96c63)
 - ✅ Add column sorting in list view — [`4d96c63`](https://github.com/renzora/engine/commit/4d96c63)
-- Add recent files panel
+- ✅ Add recent files panel — [`6af81f1`](https://github.com/renzora/engine/commit/6af81f1)
 - Add file tagging/categories
 - Add advanced search (regex, type filter, size filter)
 
 ## Asset Browser — File Operations
 - ✅ Add file move/cut/copy between folders — [`1cdac2a`](https://github.com/renzora/engine/commit/1cdac2a)
 - ✅ Add drag-drop between folders — [`1cdac2a`](https://github.com/renzora/engine/commit/1cdac2a)
-- Add batch rename files
+- ✅ Add batch rename files — [`d5cf079`](https://github.com/renzora/engine/commit/d5cf079)
 - Add folder duplication
 
 ## Asset Browser — Preview & Metadata
@@ -163,26 +163,26 @@
 
 ## Code Editor — Navigation
 - ✅ Add find/replace dialog — [`5d583a3`](https://github.com/renzora/engine/commit/5d583a3)
-- Add find all with match highlighting
-- Add go to line dialog
-- Add go to definition
-- Add minimap
+- ✅ Add find all with match highlighting — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add go to line dialog — [`9ee202e`](https://github.com/renzora/engine/commit/9ee202e)
+- ✅ Add go to definition — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add minimap — [`27c061d`](https://github.com/renzora/engine/commit/27c061d)
 
 ## Code Editor — Editing Features
-- Add multiple cursor support
-- Add column selection
-- Add code folding
-- Add code snippets
-- Add auto-format
-- Add comment/uncomment shortcut
-- Add bracket matching highlights
-- Add split editing (side by side)
-- Add file diff view
+- ✅ Add multiple cursor support — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add column selection — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add code folding — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add code snippets — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add auto-format — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add comment/uncomment shortcut — [`9ee202e`](https://github.com/renzora/engine/commit/9ee202e)
+- ✅ Add bracket matching highlights — [`9ee202e`](https://github.com/renzora/engine/commit/9ee202e)
+- ✅ Add split editing (side by side) — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
+- ✅ Add file diff view — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
 
 ## Code Editor — Diagnostics
-- Add inline error squiggles
-- Add autocomplete/intellisense
-- Add breakpoint markers in gutter
+- ✅ Add inline error squiggles — [`b27b3d1`](https://github.com/renzora/engine/commit/b27b3d1)
+- ✅ Add autocomplete/intellisense — [`9ee202e`](https://github.com/renzora/engine/commit/9ee202e)
+- ✅ Add breakpoint markers in gutter — [`874bd6c`](https://github.com/renzora/engine/commit/874bd6c)
 
 ## Blueprint Editor — Graph UX
 - Add comment boxes / annotation nodes

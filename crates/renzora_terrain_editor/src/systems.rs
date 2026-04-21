@@ -177,7 +177,7 @@ pub fn terrain_sculpt_hover_system(
     };
 
     // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
 
     // Find closest hit on a terrain chunk entity
     let mut closest_hit: Option<(Vec3, Entity, f32)> = None;
@@ -572,7 +572,7 @@ pub fn terrain_paint_hover_system(
     };
 
     // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
 
     let mut closest: Option<(Vec3, Entity, Entity, Vec2, f32)> = None;
 

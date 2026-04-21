@@ -238,6 +238,13 @@ pub struct Persistent;
 #[derive(Component)]
 pub struct EditorLocked;
 
+/// Marker component — viewport picking stops at this entity instead of walking
+/// past it to a higher-up named ancestor. Apply to compound entities (terrains,
+/// prefab roots, etc.) that own many named children but should be selectable
+/// as a unit.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct SelectionStop;
+
 /// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
 #[derive(Component)]
 pub struct IsolatedCamera;

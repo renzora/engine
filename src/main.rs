@@ -100,6 +100,21 @@ fn main() {
             dynamic_plugin_loader::load_plugins_recursive(&mut app, dir, true);
         }
 
+        // Keep the editor window hidden until our own Loading phase finishes
+        // — the parent splash process has its own loader overlay on top, and
+        // we don't want a half-initialized editor window peeking out behind
+        // it. When we reach Editor state we make the window visible and
+        // maximize it onto the primary monitor (fixes multi-monitor issues
+        // where a default-positioned window could span two screens).
+        app.add_systems(bevy::app::Startup, hide_editor_window_until_ready);
+        app.add_systems(
+            bevy::state::state::OnEnter(renzora_shared::renzora_splash::SplashState::Editor),
+            (
+                print_editor_ready_sentinel,
+                reveal_editor_window_maximized,
+            ),
+        );
+
         app.run();
     }
 
@@ -141,11 +156,53 @@ fn main() {
     }
 }
 
+// ── Editor-ready sentinel + window lifecycle ────────────────────────────
+
+/// Printed to stdout once the editor's own `SplashState::Loading` phase has
+/// completed and we've transitioned to `Editor`. The parent splash process
+/// reads this line from the subprocess stdout pipe and then exits.
+#[cfg(feature = "editor")]
+fn print_editor_ready_sentinel() {
+    use std::io::Write;
+    println!("{}", renzora_shared::renzora_splash::launcher::EDITOR_READY_SENTINEL);
+    let _ = std::io::stdout().flush();
+}
+
+/// Runs at `Startup` in the editor subprocess. The editor window was just
+/// created by `DefaultPlugins` and would otherwise appear behind the splash
+/// at full size — we hide it so the only thing on screen during the load is
+/// the compact splash loader overlay.
+#[cfg(feature = "editor")]
+fn hide_editor_window_until_ready(
+    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    for mut window in windows.iter_mut() {
+        window.visible = false;
+    }
+}
+
+/// Runs on `OnEnter(Editor)`. Shows the window, re-enables resizing, and
+/// centers+maximizes it on the primary monitor. `set_maximized` fixes the
+/// multi-monitor bug where a default-positioned window could span two
+/// monitors — maximizing forces the window to snap to a single monitor.
+#[cfg(feature = "editor")]
+fn reveal_editor_window_maximized(
+    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    use bevy::window::{MonitorSelection, WindowPosition};
+    for mut window in windows.iter_mut() {
+        window.position = WindowPosition::Centered(MonitorSelection::Primary);
+        window.resizable = true;
+        window.visible = true;
+        window.set_maximized(true);
+    }
+}
+
 // ── Splash screen ────────────────────────────────────────────────────────
 
 #[cfg(feature = "editor")]
 fn run_splash() {
-    use bevy::window::WindowPlugin;
+    use bevy::window::{MonitorSelection, WindowPlugin, WindowPosition};
 
     let mut app = App::new();
 
@@ -156,29 +213,23 @@ fn run_splash() {
                 resolution: bevy::window::WindowResolution::new(1280, 720),
                 decorations: false,
                 resizable: true,
+                // Pin the splash to the primary monitor so it starts centered
+                // there rather than wherever winit defaults (which on some
+                // multi-monitor setups can place it spanning two screens).
+                position: WindowPosition::Centered(MonitorSelection::Primary),
                 ..default()
             }),
             ..default()
         }),
     );
     app.add_plugins(renzora_shared::renzora_splash::SplashPlugin);
+    // Launches the editor subprocess when the user picks a project and streams
+    // its stdout/stderr into the splash overlay. Only registered in this
+    // outer splash binary — never in the editor subprocess itself.
+    app.add_plugins(renzora_shared::renzora_splash::launcher::SplashLauncherPlugin);
     app.add_systems(bevy::app::Startup, |mut commands: Commands| {
         commands.spawn(Camera2d);
     });
-
-    app.add_systems(
-        bevy::app::Update,
-        |project: Option<Res<renzora_shared::renzora::CurrentProject>>| {
-            if let Some(proj) = project {
-                let exe = std::env::current_exe().expect("Failed to get exe path");
-                let _ = std::process::Command::new(&exe)
-                    .arg("--project")
-                    .arg(&proj.path)
-                    .spawn();
-                std::process::exit(0);
-            }
-        },
-    );
 
     app.run();
 }

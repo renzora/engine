@@ -100,7 +100,14 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
 /// Returns the root terrain entity. Each chunk is spawned as a child with
 /// the checkerboard material and a trimesh collider.
 pub fn spawn_terrain(world: &mut World) -> Entity {
-    let terrain_data = TerrainData::default();
+    // Start with a single tile; users grow the terrain via the Size tab's
+    // Add Neighbor buttons (Unity-style). `TerrainData::default()` is kept at
+    // 4×4 so saved scenes load unchanged.
+    let terrain_data = TerrainData {
+        chunks_x: 1,
+        chunks_z: 1,
+        ..TerrainData::default()
+    };
 
     let material = {
         let mut mats = world.resource_mut::<Assets<TerrainCheckerboardMaterial>>();
@@ -129,6 +136,7 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             Transform::from_xyz(0.0, -2.0, 0.0),
             Visibility::default(),
             terrain_data,
+            renzora::SelectionStop,
         ))
         .id();
 

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use crate::inspector_registry::{InspectorEntry, InspectorRegistry};
-use crate::spawn_registry::{EntityPreset, SpawnRegistry};
+use crate::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
 use crate::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
 use crate::toolbar_registry::{ToolEntry, ToolbarRegistry};
 use renzora_ui::{PanelRegistry, StatusBarRegistry};
@@ -31,6 +31,11 @@ pub trait AppEditorExt {
 
     /// Register an `EntityPreset` with the `SpawnRegistry`.
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self;
+
+    /// Register a starter template shown on the hierarchy panel's empty-state
+    /// picker. Each starter spawns a small pre-built scene (environment, UI,
+    /// physics arena, etc.) with a single click.
+    fn register_scene_starter(&mut self, starter: SceneStarter) -> &mut Self;
 
     /// Register a component icon for the hierarchy tree.
     fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self;
@@ -90,6 +95,14 @@ impl AppEditorExt for App {
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self {
         self.init_resource::<SpawnRegistry>();
         self.world_mut().resource_mut::<SpawnRegistry>().register(preset);
+        self
+    }
+
+    fn register_scene_starter(&mut self, starter: SceneStarter) -> &mut Self {
+        self.init_resource::<SceneStarterRegistry>();
+        self.world_mut()
+            .resource_mut::<SceneStarterRegistry>()
+            .register(starter);
         self
     }
 
