@@ -39,7 +39,11 @@ if [ -d "target/${CLEAN_TARGET}/dist" ]; then
 fi
 '''
 [tasks.clean-outputs.mac]
-script = 'find target/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null; true'
+script = '''
+if [ -d "target/${CLEAN_TARGET}/dist" ]; then
+  find target/${CLEAN_TARGET}/dist -maxdepth 1 -type f ! -name ".cargo-lock" -delete 2>/dev/null || true
+fi
+'''
 
 # makers build-editor — compile editor + plugins
 [tasks.build-editor]
