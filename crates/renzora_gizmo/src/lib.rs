@@ -28,7 +28,8 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{NavOverlayState, SnapSettings, ViewportSettings, ViewportState};
-use renzora_editor_framework::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy, SelectionStop};
+use renzora::SelectionStop;
+use renzora_editor_framework::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 

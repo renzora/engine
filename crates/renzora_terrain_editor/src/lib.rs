@@ -28,7 +28,7 @@ pub struct TerrainEditorPlugin;
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
-        app.register_panel(tool_panel::ToolSettingsPanel::new())
+        app.register_panel(panel::TerrainToolsPanel::new())
             .register_inspector(terrain_data_entry())
             .register_inspector(terrain_layers_ui::terrain_layers_entry())
             .init_resource::<ToolOptionsRegistry>()
