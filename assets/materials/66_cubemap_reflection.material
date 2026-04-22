@@ -1,0 +1,28 @@
+{
+  "name": "User Cubemap Reflection (chrome ball with its own skybox)",
+  "domain": "Surface",
+  "_comment": "Computes the reflection direction from view × world_normal and samples a material-local cubemap slot. This is like a mirror/chrome sphere with its own independent sky — separate from Bevy's scene IBL env map (which is shared across the scene). Attach a cubemap at extension.cube_0 at runtime, or set a path string on the node in a real authoring flow.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1000.0, 0.0], "input_values": {
+        "metallic":  { "Float": 1.0 },
+        "roughness": { "Float": 0.1 }
+    }},
+
+    { "id": 10, "node_type": "input/view_direction", "position": [-700.0, 0.0], "input_values": {} },
+    { "id": 11, "node_type": "math/negate", "position": [-500.0, 0.0], "input_values": {} },
+    { "id": 12, "node_type": "input/world_normal", "position": [-700.0, 200.0], "input_values": {} },
+    { "id": 13, "node_type": "vector/reflect", "position": [-300.0, 100.0], "input_values": {} },
+
+    { "id": 20, "node_type": "texture/sample_cubemap", "position": [0.0, 100.0], "input_values": {
+        "lod": { "Float": 0.0 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "direction", "to_node": 11, "to_pin": "value" },
+    { "from_node": 11, "from_pin": "result",    "to_node": 13, "to_pin": "incident" },
+    { "from_node": 12, "from_pin": "normal",    "to_node": 13, "to_pin": "normal" },
+    { "from_node": 13, "from_pin": "result",    "to_node": 20, "to_pin": "direction" },
+    { "from_node": 20, "from_pin": "color",     "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

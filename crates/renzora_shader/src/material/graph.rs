@@ -39,38 +39,54 @@ impl PinType {
     }
 
     /// Can `from` connect to `to`?
+    /// All numeric/vector/color types are freely inter-convertible at the graph level;
+    /// `cast_expr` inserts the correct WGSL coercion so the compiled shader type-checks.
     pub fn compatible(from: PinType, to: PinType) -> bool {
         if from == to {
             return true;
         }
-        // Implicit conversions
-        matches!(
-            (from, to),
-            // Float widens to anything
-            (PinType::Float, PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color)
-            // Vec3 <-> Color (rgb)
-            | (PinType::Vec3, PinType::Color)
-            | (PinType::Color, PinType::Vec3)
-            // Vec4 <-> Color
-            | (PinType::Vec4, PinType::Color)
-            | (PinType::Color, PinType::Vec4)
-        )
+        let numeric = |t: PinType| matches!(
+            t,
+            PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color
+        );
+        numeric(from) && numeric(to)
     }
 
     /// WGSL expression to cast `expr` from `from` type to `to` type.
+    ///
+    /// Widening copies the scalar into every component; narrowing takes the first
+    /// components. Parentheses wrap `expr` so swizzles on composite expressions parse.
     pub fn cast_expr(from: PinType, to: PinType, expr: &str) -> String {
         if from == to {
             return expr.to_string();
         }
-        match (from, to) {
-            (PinType::Float, PinType::Vec2) => format!("vec2<f32>({e}, {e})", e = expr),
-            (PinType::Float, PinType::Vec3) => format!("vec3<f32>({e}, {e}, {e})", e = expr),
-            (PinType::Float, PinType::Vec4 | PinType::Color) => {
-                format!("vec4<f32>({e}, {e}, {e}, 1.0)", e = expr)
-            }
-            (PinType::Vec3, PinType::Color) => format!("vec4<f32>({e}, 1.0)", e = expr),
-            (PinType::Vec4, PinType::Color) | (PinType::Color, PinType::Vec4) => expr.to_string(),
-            (PinType::Color, PinType::Vec3) => format!("{e}.rgb", e = expr),
+        // Treat Color as Vec4 for cast purposes.
+        let eff = |t: PinType| match t {
+            PinType::Color => PinType::Vec4,
+            other => other,
+        };
+        let e = expr;
+        match (eff(from), eff(to)) {
+            // widening from scalar
+            (PinType::Float, PinType::Vec2) => format!("vec2<f32>({e})"),
+            (PinType::Float, PinType::Vec3) => format!("vec3<f32>({e})"),
+            (PinType::Float, PinType::Vec4) => format!("vec4<f32>({e}, {e}, {e}, 1.0)"),
+
+            // vec2 ↔ higher
+            (PinType::Vec2, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec2, PinType::Vec3) => format!("vec3<f32>({e}, 0.0)"),
+            (PinType::Vec2, PinType::Vec4) => format!("vec4<f32>({e}, 0.0, 1.0)"),
+
+            // vec3 ↔ others
+            (PinType::Vec3, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec3, PinType::Vec2) => format!("({e}).xy"),
+            (PinType::Vec3, PinType::Vec4) => format!("vec4<f32>({e}, 1.0)"),
+
+            // vec4 ↔ others
+            (PinType::Vec4, PinType::Float) => format!("({e}).x"),
+            (PinType::Vec4, PinType::Vec2) => format!("({e}).xy"),
+            (PinType::Vec4, PinType::Vec3) => format!("({e}).xyz"),
+
             _ => expr.to_string(),
         }
     }
@@ -95,6 +111,9 @@ pub enum PinValue {
     Int(i32),
     /// Texture asset path.
     TexturePath(String),
+    /// Arbitrary string (used by Custom Code node for its WGSL snippet,
+    /// by subgraph-call nodes for the function asset path, etc).
+    String(String),
     None,
 }
 
@@ -117,6 +136,7 @@ impl PinValue {
             Self::Bool(b) => if *b { "true" } else { "false" }.to_string(),
             Self::Int(i) => format!("{}", i),
             Self::TexturePath(_) => "vec4<f32>(1.0, 0.0, 1.0, 1.0)".to_string(), // magenta fallback
+            Self::String(_) => "0.0".to_string(), // strings don't codegen inline
             Self::None => "0.0".to_string(),
         }
     }
@@ -131,6 +151,7 @@ impl PinValue {
             Self::Bool(_) => PinType::Bool,
             Self::Int(_) => PinType::Float,
             Self::TexturePath(_) => PinType::Texture2D,
+            Self::String(_) => PinType::Float, // no dedicated type; stored out-of-band
             Self::None => PinType::Float,
         }
     }
@@ -397,4 +418,40 @@ pub struct LayerTextureSet {
     pub albedo: Option<String>,
     pub normal: Option<String>,
     pub arm: Option<String>,
+}
+
+// ── Material Function (subgraph) ────────────────────────────────────────────
+//
+// A named, reusable subgraph. The internal graph must contain one
+// `function/input_point` node (source of the function's 4 Vec4 inputs)
+// and one `function/output_point` node (sink of the function's 4 Vec4 outputs).
+// At compile time each function call inlines a WGSL helper at module scope
+// and invokes it at the call site, so functions compose like normal nodes
+// but stay visually encapsulated.
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MaterialFunction {
+    pub name: String,
+    pub graph: MaterialGraph,
+}
+
+impl MaterialFunction {
+    pub fn new(name: impl Into<String>) -> Self {
+        let name = name.into();
+        let mut graph = MaterialGraph::new(&name, MaterialDomain::Unlit);
+        // Remove the output-surface node the constructor added — functions
+        // use function/output_point as their sink instead.
+        graph.nodes.retain(|n| !n.node_type.starts_with("output/"));
+        // Seed with the required input/output bracket nodes.
+        graph.add_node("function/input_point", [-400.0, 0.0]);
+        graph.add_node("function/output_point", [400.0, 0.0]);
+        Self { name, graph }
+    }
+
+    pub fn output_point(&self) -> Option<&MaterialNode> {
+        self.graph
+            .nodes
+            .iter()
+            .find(|n| n.node_type == "function/output_point")
+    }
 }

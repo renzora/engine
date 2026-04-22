@@ -2737,10 +2737,104 @@ impl Plugin for PhysicsPanelPlugin {
         app.register_panel(PhysicsPlaygroundPanel::new(arc.clone()));
         app.register_panel(PhysicsPropertiesPanel);
         app.register_panel(PhysicsForcesPanel::new(arc.clone()));
+
+        register_physics_starter(app);
         app.register_panel(PhysicsMetricsPanel::new(arc.clone()));
         app.register_panel(PhysicsScenariosPanel::new(arc.clone()));
         app.register_panel(ArenaPresetsPanel::new(arc));
     }
+}
+
+fn register_physics_starter(app: &mut App) {
+    use renzora_editor_framework::SceneStarter;
+
+    app.register_scene_starter(SceneStarter {
+        id: "physics_arena",
+        title: "New Physics Arena",
+        description: "Ground plane, stacked blocks, sun + camera",
+        icon: egui_phosphor::regular::BOUNDING_BOX,
+        spawn_fn: |world: &mut World| {
+            use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
+
+            let mut mesh_handles = world.resource_mut::<Assets<Mesh>>();
+            let cube_mesh = mesh_handles.add(Cuboid::new(1.0, 1.0, 1.0));
+            let mut mat_handles = world.resource_mut::<Assets<StandardMaterial>>();
+            let ground_mat = mat_handles.add(StandardMaterial {
+                base_color: Color::srgb(0.38, 0.38, 0.42),
+                perceptual_roughness: 0.9,
+                ..default()
+            });
+            let block_mat = mat_handles.add(StandardMaterial {
+                base_color: Color::srgb(0.70, 0.45, 0.30),
+                perceptual_roughness: 0.8,
+                ..default()
+            });
+
+            // Static ground plane.
+            world.spawn((
+                Name::new("Ground"),
+                Mesh3d(cube_mesh.clone()),
+                MeshMaterial3d(ground_mat),
+                MeshPrimitive("cube".into()),
+                MeshColor(Color::srgb(0.38, 0.38, 0.42)),
+                Transform {
+                    translation: Vec3::new(0.0, -0.25, 0.0),
+                    scale: Vec3::new(30.0, 0.5, 30.0),
+                    ..default()
+                },
+                Visibility::default(),
+                PhysicsBodyData {
+                    body_type: PhysicsBodyType::StaticBody,
+                    ..default()
+                },
+                CollisionShapeData::cuboid(Vec3::new(15.0, 0.25, 15.0)),
+            ));
+
+            // Stack of dynamic boxes.
+            for row in 0..4 {
+                for col in 0..(4 - row) {
+                    let x = (col as f32 - (3 - row) as f32 * 0.5) * 1.1;
+                    let y = 0.5 + row as f32 * 1.05;
+                    world.spawn((
+                        Name::new(format!("Block {}x{}", row, col)),
+                        Mesh3d(cube_mesh.clone()),
+                        MeshMaterial3d(block_mat.clone()),
+                        MeshPrimitive("cube".into()),
+                        MeshColor(Color::srgb(0.70, 0.45, 0.30)),
+                        Transform::from_xyz(x, y, 0.0),
+                        Visibility::default(),
+                        PhysicsBodyData {
+                            body_type: PhysicsBodyType::RigidBody,
+                            mass: 1.0,
+                            ..default()
+                        },
+                        CollisionShapeData::cuboid(Vec3::splat(0.5)),
+                    ));
+                }
+            }
+
+            // Sun.
+            world.spawn((
+                Name::new("Sun"),
+                Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.7, 0.4, 0.0)),
+                DirectionalLight {
+                    color: Color::srgb(1.0, 0.98, 0.95),
+                    illuminance: 10000.0,
+                    shadows_enabled: true,
+                    ..default()
+                },
+            ));
+
+            // Camera.
+            world.spawn((
+                Name::new("Camera"),
+                SceneCamera,
+                Camera3d::default(),
+                Camera { is_active: false, ..default() },
+                Transform::from_xyz(8.0, 6.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            ));
+        },
+    });
 }
 
 renzora::add!(PhysicsPanelPlugin, Editor);

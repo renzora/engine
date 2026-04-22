@@ -1,0 +1,27 @@
+{
+  "name": "Blend Multiply (blend node mode=1)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit",     "position": [600.0, 0.0], "input_values": {} },
+    { "id": 2, "node_type": "input/uv",         "position": [-500.0, -100.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/checkerboard", "position": [-250.0, -100.0], "input_values": {
+        "scale": { "Float": 8.0 }
+    }},
+    { "id": 4, "node_type": "procedural/noise_fbm",    "position": [-250.0, 120.0], "input_values": {
+        "scale": { "Float": 3.0 }, "octaves": { "Float": 4.0 },
+        "lacunarity": { "Float": 2.0 }, "persistence": { "Float": 0.5 }
+    }},
+    { "id": 5, "node_type": "color/blend", "position": [200.0, 0.0], "input_values": {
+        "opacity": { "Float": 1.0 },
+        "mode":    { "Int": 1 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "uv",     "to_node": 3, "to_pin": "uv"    },
+    { "from_node": 2, "from_pin": "uv",     "to_node": 4, "to_pin": "uv"    },
+    { "from_node": 3, "from_pin": "value",  "to_node": 5, "to_pin": "base"  },
+    { "from_node": 4, "from_pin": "value",  "to_node": 5, "to_pin": "blend" },
+    { "from_node": 5, "from_pin": "result", "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}

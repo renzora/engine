@@ -970,7 +970,7 @@ fn render_recent_list(
         app_config.add_recent_project(project.path.clone());
         let _ = app_config.save();
         commands.insert_resource(project);
-        next_state.set(SplashState::Editor);
+        next_state.set(SplashState::Loading);
     }
     if let Some(idx) = path_to_remove {
         app_config.recent_projects.remove(idx);
@@ -995,7 +995,7 @@ fn open_existing_project(
                     app_config.add_recent_project(project.path.clone());
                     let _ = app_config.save();
                     commands.insert_resource(project);
-                    next_state.set(SplashState::Editor);
+                    next_state.set(SplashState::Loading);
                 }
                 Err(e) => eprintln!("Failed to open project: {e}"),
             }
@@ -1032,7 +1032,7 @@ fn create_new_project(
                     app_config.add_recent_project(project_path);
                     let _ = app_config.save();
                     commands.insert_resource(project);
-                    next_state.set(SplashState::Editor);
+                    next_state.set(SplashState::Loading);
                 }
                 Err(e) => eprintln!("Failed to create project: {e}"),
             }
@@ -1045,7 +1045,7 @@ fn create_new_project(
                 app_config.add_recent_project(project.path.clone());
                 let _ = app_config.save();
                 commands.insert_resource(project);
-                next_state.set(SplashState::Editor);
+                next_state.set(SplashState::Loading);
             }
             Err(e) => web_sys::console::log_1(&format!("Failed to create project: {e}").into()),
         }

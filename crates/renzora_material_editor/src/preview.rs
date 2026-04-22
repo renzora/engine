@@ -3,16 +3,19 @@
 //! Material preview panel — renders the compiled material on a preview sphere
 //! with orbit camera, displayed via render-to-texture in an egui panel.
 
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, RichText, TextureId};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use uuid::Uuid;
 
 use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
 use renzora_editor_framework::{EditorPanel, PanelLocation};
-use renzora_shader::material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, GRAPH_MATERIAL_FRAG_HANDLE, new_graph_material};
+use renzora_shader::material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
 use renzora_theme::ThemeManager;
 
 use crate::MaterialEditorState;
@@ -350,44 +353,52 @@ fn update_preview_material(
             continue;
         };
 
-        material.texture_0 = Some(fb.clone());
-        material.texture_1 = Some(fb.clone());
-        material.texture_2 = Some(fb.clone());
-        material.texture_3 = Some(fb.clone());
+        // Texture slots live on the extension half of ExtendedMaterial now.
+        material.extension.texture_0 = Some(fb.clone());
+        material.extension.texture_1 = Some(fb.clone());
+        material.extension.texture_2 = Some(fb.clone());
+        material.extension.texture_3 = Some(fb.clone());
+        // Cube / array / 3D slots: leave as whatever was last assigned (None
+        // until the user points at a real asset; Bevy's FallbackImage
+        // covers the layout).
+        material.extension.cube_0 = None;
+        material.extension.array_0 = None;
+        material.extension.volume_0 = None;
 
+        use renzora_shader::material::codegen::TextureKind;
         for tb in &result.texture_bindings {
             if tb.asset_path.is_empty() {
                 continue;
             }
             let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-            match tb.binding {
-                0 => material.texture_0 = Some(handle),
-                1 => material.texture_1 = Some(handle),
-                2 => material.texture_2 = Some(handle),
-                3 => material.texture_3 = Some(handle),
-                _ => warn!("[material_preview] Texture binding slot {} exceeds max 3!", tb.binding),
+            match (tb.kind, tb.binding) {
+                (TextureKind::D2, 0) => material.extension.texture_0 = Some(handle),
+                (TextureKind::D2, 1) => material.extension.texture_1 = Some(handle),
+                (TextureKind::D2, 2) => material.extension.texture_2 = Some(handle),
+                (TextureKind::D2, 3) => material.extension.texture_3 = Some(handle),
+                (TextureKind::Cube, 0) => material.extension.cube_0 = Some(handle),
+                (TextureKind::D2Array, 0) => material.extension.array_0 = Some(handle),
+                (TextureKind::D3, 0) => material.extension.volume_0 = Some(handle),
+                _ => warn!("[material_preview] Texture binding slot {:?}/{} not routed!", tb.kind, tb.binding),
             }
         }
     }
 
-    // Create a unique shader for the preview and assign it to the preview material
+    // Create a unique Uuid-addressed shader for the preview material. The
+    // preview material's `shader_uuid` points at it; `SurfaceGraphExt::specialize`
+    // reconstructs the `Handle::Uuid` and plugs it into the fragment stage.
+    let preview_uuid = Uuid::new_v4();
+    let preview_handle: Handle<Shader> = Handle::Uuid(preview_uuid, PhantomData);
     let shader = Shader::from_wgsl(
         result.fragment_shader.clone(),
         "graph_material://preview",
     );
-    let preview_shader_handle = shaders.add(shader);
+    let _ = shaders.insert(&preview_handle, shader);
 
-    // Also update the shared handle (used as fallback)
-    let shared = Shader::from_wgsl(
-        result.fragment_shader.clone(),
-        "graph_material://compiled",
-    );
-    let _ = shaders.insert(&GRAPH_MATERIAL_FRAG_HANDLE, shared);
-
-    // Set the per-material shader on the preview sphere
+    // Set the per-material shader uuid on the preview sphere
     for mat_handle in preview_mesh.iter() {
         if let Some(material) = materials.get_mut(&mat_handle.0) {
-            material.shader = Some(preview_shader_handle.clone());
+            material.extension.shader_uuid = Some(preview_uuid);
         }
     }
     shader_state.last_wgsl_hash = Some(hash);

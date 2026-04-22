@@ -406,6 +406,36 @@ impl<'a> EvalContext<'a> {
                 }
             }
 
+            // ── Navigation reads (from NavReadState) ─────────────────
+            "navigation/has_path" => {
+                let v = renzora::reflection::get_reflected_field(
+                    self.world, self.entity, "NavReadState", "has_path"
+                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .unwrap_or(false);
+                PinValue::Bool(v)
+            }
+            "navigation/has_target" => {
+                let v = renzora::reflection::get_reflected_field(
+                    self.world, self.entity, "NavReadState", "has_target"
+                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .unwrap_or(false);
+                PinValue::Bool(v)
+            }
+            "navigation/is_at_destination" => {
+                let v = renzora::reflection::get_reflected_field(
+                    self.world, self.entity, "NavReadState", "is_at_destination"
+                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .unwrap_or(false);
+                PinValue::Bool(v)
+            }
+            "navigation/distance_to_destination" => {
+                let v = renzora::reflection::get_reflected_field(
+                    self.world, self.entity, "NavReadState", "distance_to_destination"
+                ).and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                .unwrap_or(0.0);
+                PinValue::Float(v)
+            }
+
             // ── Entity reads ─────────────────────────────────────────
             "entity/get_self" => match pin_name {
                 "entity" => PinValue::Entity(self.entity_name.clone()),
@@ -856,6 +886,17 @@ impl<'a> EvalContext<'a> {
             "physics/kinematic_slide" => {
                 let d = self.resolve_input(node_id, "delta").as_vec3();
                 self.push_action_vec3("kinematic_slide", &[], &[("x", [d[0], d[1], d[2]])]);
+                self.follow_exec(node_id, "then");
+            }
+
+            // ── Navigation ───────────────────────────────────────────
+            "navigation/set_destination" => {
+                let t = self.resolve_input(node_id, "target").as_vec3();
+                self.push_action_vec3("nav_set_destination", &[], &[("target", t)]);
+                self.follow_exec(node_id, "then");
+            }
+            "navigation/clear_destination" => {
+                self.push_action("nav_clear_destination", []);
                 self.follow_exec(node_id, "then");
             }
 

@@ -23,11 +23,12 @@ use bevy::render::render_resource::{
 use bevy::shader::ShaderRef;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::window::PrimaryWindow;
-use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{NavOverlayState, SnapSettings, ViewportSettings, ViewportState};
+use renzora::SelectionStop;
 use renzora_editor_framework::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -759,11 +760,11 @@ fn handle_selection_shortcuts(
 ) {
     if keybindings.rebinding.is_some() { return; }
     if input_focus.egui_wants_keyboard { return; }
-    if input_focus.egui_has_pointer && !viewport_state.hovered { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
     if gizmo_state.active_axis.is_some() { return; }
     if modal.active { return; }
 
+    // Delete fires from any panel (e.g. selecting in the Hierarchy and
+    // pressing Delete without moving the cursor into the viewport).
     if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
         let entities = selection.get_all();
         if !entities.is_empty() {
@@ -795,6 +796,9 @@ fn handle_selection_shortcuts(
             });
         }
     }
+
+    if input_focus.egui_has_pointer && !viewport_state.hovered { return; }
+    if mouse_button.pressed(MouseButton::Right) { return; }
 
     if keybindings.just_pressed(EditorAction::Deselect, &keyboard) {
         selection.clear();
@@ -1592,16 +1596,8 @@ fn draw_filled_quad(
     axis_b: Vec3,
     half: f32,
     outline: Color,
-    fill: Color,
+    _fill: Color,
 ) {
-    const FILL_LINES: usize = 18;
-    // Fill: parallel lines along axis_a stepping across axis_b.
-    for i in 0..=FILL_LINES {
-        let t = (i as f32 / FILL_LINES as f32) * 2.0 - 1.0; // -1..1
-        let row = center + axis_b * (half * t);
-        gizmos.line(row - axis_a * half, row + axis_a * half, fill);
-    }
-    // Outline border.
     let c00 = center - axis_a * half - axis_b * half;
     let c10 = center + axis_a * half - axis_b * half;
     let c11 = center + axis_a * half + axis_b * half;
@@ -1650,7 +1646,7 @@ fn entity_pick_system(
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
-    named_entities: Query<Entity, With<Name>>,
+    named_entities: Query<(Entity, Has<SelectionStop>), With<Name>>,
     parent_query: Query<&ChildOf>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
     hidden_entities: Query<(), With<HideInHierarchy>>,
@@ -1697,7 +1693,7 @@ fn entity_pick_system(
     // Raycast and find the topmost selectable entity (if any). We do NOT
     // commit the selection yet — we arm `box_sel` with this entity as a
     // pending pick and wait for mouse-up to decide click vs drag.
-    let hits = mesh_ray_cast.cast_ray(ray, &default());
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
     let mut pending: Option<Entity> = None;
     for (entity, _hit) in hits.iter() {
         if gizmo_meshes.get(*entity).is_ok() { continue; }
@@ -1739,6 +1735,14 @@ fn box_selection_system(
     named_entities: Query<(Entity, &GlobalTransform), With<Name>>,
     hidden_entities: Query<(), With<HideInHierarchy>>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
+    box_select_excluded: Query<
+        (),
+        Or<(
+            With<renzora_terrain::data::TerrainData>,
+            With<renzora_terrain::data::TerrainChunkOf>,
+            With<renzora_lighting::Sun>,
+        )>,
+    >,
 ) {
     if collider_edit.map(|c| c.active).unwrap_or(false) {
         box_sel.active = false;
@@ -1806,6 +1810,7 @@ fn box_selection_system(
     for (entity, global_transform) in named_entities.iter() {
         if hidden_entities.get(entity).is_ok() { continue; }
         if gizmo_meshes.get(entity).is_ok() { continue; }
+        if box_select_excluded.get(entity).is_ok() { continue; }
 
         let world_pos = global_transform.translation();
         let Some(ndc) = camera.world_to_ndc(cam_gt, world_pos) else { continue; };
@@ -1853,19 +1858,27 @@ fn box_selection_system(
 
 fn find_named_ancestor(
     entity: Entity,
-    named: &Query<Entity, With<Name>>,
+    named: &Query<(Entity, Has<SelectionStop>), With<Name>>,
     parents: &Query<&ChildOf>,
 ) -> Option<Entity> {
-    // Walk the full chain to the root, remembering the topmost named entity
-    // we encountered. Clicking on a mesh nested inside a group should select
-    // the group, not the leaf mesh — otherwise selection disappears when the
-    // hierarchy node is collapsed.
-    let mut topmost = named.get(entity).ok();
+    // Walk toward the root remembering the topmost named entity. A
+    // `SelectionStop` on any ancestor halts the walk so the terrain root (or
+    // other compound entity) is selected instead of a containing scene group.
+    let (mut topmost, start_stop) = match named.get(entity) {
+        Ok((e, stop)) => (Some(e), stop),
+        Err(_) => (None, false),
+    };
+    if start_stop {
+        return topmost;
+    }
     let mut current = entity;
     while let Ok(child_of) = parents.get(current) {
         let parent = child_of.parent();
-        if named.get(parent).is_ok() {
-            topmost = Some(parent);
+        if let Ok((e, stop)) = named.get(parent) {
+            topmost = Some(e);
+            if stop {
+                return topmost;
+            }
         }
         current = parent;
     }

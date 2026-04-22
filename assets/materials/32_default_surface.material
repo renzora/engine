@@ -1,0 +1,17 @@
+{
+  "name": "Default Surface (all defaults — nothing connected)",
+  "_comment": "Minimal graph. Output node with no connections — should render the default pink-white PBR.",
+  "domain": "Surface",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [300.0, 0.0], "input_values": {
+        "base_color": { "Color": [0.9, 0.6, 0.8, 1.0] },
+        "metallic":   { "Float": 0.0 },
+        "roughness":  { "Float": 0.4 },
+        "emissive":   { "Vec3": [0.0, 0.0, 0.0] },
+        "ao":         { "Float": 1.0 },
+        "alpha":      { "Float": 1.0 }
+    }}
+  ],
+  "connections": [],
+  "next_id": 2
+}

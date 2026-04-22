@@ -1,0 +1,36 @@
+{
+  "name": "Motion Vector (screen-space velocity as emissive streaks)",
+  "domain": "Surface",
+  "_comment": "Read per-fragment motion vector from the motion-vector prepass; feed its magnitude into emissive for a 'glowing faster when moving' look. Requires MotionVectorPrepass on the camera (Bevy auto-enables this for TAA). When no prepass is active the output is zero (dark, no emission).",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [900.0, 0.0], "input_values": {
+        "base_color": { "Color": [0.05, 0.07, 0.1, 1.0] },
+        "metallic":   { "Float": 0.2 },
+        "roughness":  { "Float": 0.55 }
+    }},
+
+    { "id": 10, "node_type": "scene/motion_vector", "position": [-600.0, 200.0], "input_values": {} },
+    { "id": 11, "node_type": "math/multiply", "position": [-400.0, 200.0], "input_values": {
+        "b": { "Float": 200.0 }
+    }},
+    { "id": 12, "node_type": "math/saturate", "position": [-200.0, 200.0], "input_values": {} },
+
+    { "id": 20, "node_type": "color/constant", "position": [0.0, 200.0], "input_values": {
+        "color": { "Color": [1.6, 0.5, 0.1, 1.0] }
+    }},
+    { "id": 21, "node_type": "color/constant", "position": [0.0, 400.0], "input_values": {
+        "color": { "Color": [0.0, 0.0, 0.0, 1.0] }
+    }},
+    { "id": 22, "node_type": "color/lerp", "position": [300.0, 300.0], "input_values": {} },
+    { "id": 23, "node_type": "vector/split_vec2", "position": [-200.0, 400.0], "input_values": {} }
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "speed", "to_node": 11, "to_pin": "a" },
+    { "from_node": 11, "from_pin": "result", "to_node": 12, "to_pin": "value" },
+    { "from_node": 21, "from_pin": "color", "to_node": 22, "to_pin": "a" },
+    { "from_node": 20, "from_pin": "color", "to_node": 22, "to_pin": "b" },
+    { "from_node": 12, "from_pin": "result", "to_node": 22, "to_pin": "t" },
+    { "from_node": 22, "from_pin": "color", "to_node": 1,  "to_pin": "emissive" }
+  ],
+  "next_id": 100
+}

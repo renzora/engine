@@ -9,6 +9,7 @@ crate-type = ["dylib"]
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }
 bevy_egui = { workspace = true }
+egui-phosphor = { workspace = true }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }

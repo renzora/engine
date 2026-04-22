@@ -1,0 +1,26 @@
+{
+  "name": "2D Array (world-Y picks a layer — terrain-like stacked textures)",
+  "domain": "Surface",
+  "_comment": "Demonstrates array-indexed sampling: world Y position (clamped & scaled) drives which layer of a 2D texture array is sampled. Below 0 → layer 0, around Y=1 → layer 1, around Y=2 → layer 2, etc. The same UV is used for all layers. Useful for terrain layer stacks where height bands pick material types, or for character systems where an index-driven variant switches skins.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1000.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "roughness": { "Float": 0.7 }
+    }},
+
+    { "id": 10, "node_type": "input/world_position", "position": [-800.0, 200.0], "input_values": {} },
+    { "id": 11, "node_type": "math/saturate", "position": [-400.0, 200.0], "input_values": {} },
+    { "id": 12, "node_type": "math/multiply", "position": [-200.0, 200.0], "input_values": {
+        "b": { "Float": 3.0 }
+    }},
+
+    { "id": 20, "node_type": "texture/sample_2d_array", "position": [100.0, 0.0], "input_values": {} }
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "y",       "to_node": 11, "to_pin": "value" },
+    { "from_node": 11, "from_pin": "result",  "to_node": 12, "to_pin": "a" },
+    { "from_node": 12, "from_pin": "result",  "to_node": 20, "to_pin": "layer" },
+    { "from_node": 20, "from_pin": "color",   "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

@@ -21,6 +21,7 @@ renzora_input = { path = "../renzora_input" }
 renzora_physics = { path = "../renzora_physics" }
 renzora_globals = { path = "../renzora_globals" }
 renzora_terrain = { path = "../renzora_terrain" }
+renzora_spline = { path = "../renzora_spline" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water" }
 renzora_animation = { path = "../renzora_animation" }
@@ -30,6 +31,7 @@ renzora_hanabi = { path = "../renzora_hanabi" }
 renzora_network = { path = "../renzora_network" }
 renzora_audio = { path = "../renzora_audio" }
 renzora_shader = { path = "../renzora_shader" }
+renzora_navmesh = { path = "../renzora_navmesh" }
 
 # Postprocess framework + vital effects
 renzora_postprocess = { path = "../renzora_postprocess" }

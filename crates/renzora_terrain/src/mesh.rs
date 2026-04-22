@@ -100,7 +100,14 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
 /// Returns the root terrain entity. Each chunk is spawned as a child with
 /// the checkerboard material and a trimesh collider.
 pub fn spawn_terrain(world: &mut World) -> Entity {
-    let terrain_data = TerrainData::default();
+    // Start with a single tile; users grow the terrain via the Size tab's
+    // Add Neighbor buttons (Unity-style). `TerrainData::default()` is kept at
+    // 4×4 so saved scenes load unchanged.
+    let terrain_data = TerrainData {
+        chunks_x: 1,
+        chunks_z: 1,
+        ..TerrainData::default()
+    };
 
     let material = {
         let mut mats = world.resource_mut::<Assets<TerrainCheckerboardMaterial>>();
@@ -129,6 +136,7 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             Transform::from_xyz(0.0, -2.0, 0.0),
             Visibility::default(),
             terrain_data,
+            renzora::SelectionStop,
         ))
         .id();
 
@@ -300,7 +308,7 @@ pub fn terrain_data_changed_system(
         let existing: Vec<(Entity, u32, u32, Vec<f32>)> = chunk_query
             .iter()
             .filter(|(_, of, _)| of.0 == terrain_entity)
-            .map(|(e, _, data)| (e, data.chunk_x, data.chunk_z, data.heights.clone()))
+            .map(|(e, _, data)| (e, data.chunk_x, data.chunk_z, data.base_heights.clone()))
             .collect();
 
         if existing.is_empty() {
@@ -331,7 +339,7 @@ pub fn terrain_data_changed_system(
         // Spawn new chunks with resampled or fresh heights
         for cz in 0..terrain_data.chunks_z {
             for cx in 0..terrain_data.chunks_x {
-                let heights = if let Some(old_h) = old_map.get(&(cx, cz)) {
+                let base_heights = if let Some(old_h) = old_map.get(&(cx, cz)) {
                     if old_res != new_res {
                         resample_heights(old_h, old_res, new_res)
                     } else {
@@ -344,7 +352,8 @@ pub fn terrain_data_changed_system(
                 let chunk_data = TerrainChunkData {
                     chunk_x: cx,
                     chunk_z: cz,
-                    heights,
+                    heights: base_heights.clone(),
+                    base_heights,
                     dirty: false,
                 };
 

@@ -2,12 +2,9 @@
 
 #![allow(dead_code)] // WIP file — many helpers staged for future panel layouts.
 
-//! Unified Tool Settings panel — contextual content based on ActiveTool.
-//!
-//! Replaces the separate TerrainToolsPanel and FoliagePanel.
-//! Uses renzora_ui themed widgets (collapsible_section, inline_property, etc.).
-
-use std::sync::RwLock;
+//! Terrain inspector tab renderers — sculpt, paint, foliage panels embedded in the
+//! terrain component inspector. These were formerly a standalone Tool Settings panel;
+//! now each one renders as one tab inside the terrain inspector.
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding};
@@ -15,70 +12,17 @@ use egui_phosphor::regular::*;
 
 use renzora_terrain::data::*;
 use renzora_terrain::paint::*;
-use renzora_theme::{Theme, ThemeManager};
-use renzora_editor_framework::{ActiveTool, EditorCommands};
-use renzora_editor_framework::{EditorPanel, PanelLocation, collapsible_section, inline_property};
+use renzora_theme::Theme;
+use renzora_editor_framework::EditorCommands;
+use renzora_editor_framework::{collapsible_section, inline_property};
 use renzora_editor_framework::{asset_drop_target, AssetDragPayload};
 use renzora::core::CurrentProject;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType};
 
-pub struct ToolSettingsPanel {
-    _state: RwLock<()>,
-}
+// ── Sculpt tab ──────────────────────────────────────────────────────────────
 
-impl ToolSettingsPanel {
-    pub fn new() -> Self {
-        Self { _state: RwLock::new(()) }
-    }
-}
-
-impl EditorPanel for ToolSettingsPanel {
-    fn id(&self) -> &str { "tool_settings" }
-    fn title(&self) -> &str { "Tool Settings" }
-    fn icon(&self) -> Option<&str> { Some(WRENCH) }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Left }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = match world.get_resource::<ThemeManager>() {
-            Some(tm) => tm.active_theme.clone(),
-            None => return,
-        };
-        let theme = &theme;
-        let active_tool = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
-        let Some(cmds) = world.get_resource::<EditorCommands>() else { return };
-
-        match active_tool {
-            ActiveTool::TerrainSculpt => render_sculpt(ui, world, theme, cmds),
-            ActiveTool::TerrainPaint => render_paint(ui, world, theme, cmds),
-            ActiveTool::FoliagePaint => render_foliage(ui, world, theme, cmds),
-            _ => render_empty(ui, theme),
-        }
-    }
-}
-
-// ── Empty state ─────────────────────────────────────────────────────────────
-
-fn render_empty(ui: &mut egui::Ui, theme: &Theme) {
-    ui.add_space(16.0);
-    ui.vertical_centered(|ui| {
-        ui.label(
-            RichText::new(MOUNTAINS)
-                .size(32.0)
-                .color(theme.text.muted.to_color32()),
-        );
-        ui.add_space(8.0);
-        ui.label(
-            RichText::new("Select a terrain and choose\na tool from the viewport toolbar.")
-                .size(11.0)
-                .color(theme.text.secondary.to_color32()),
-        );
-    });
-}
-
-// ── Sculpt mode ─────────────────────────────────────────────────────────────
-
-fn render_sculpt(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
+pub fn render_sculpt(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
     let settings = match world.get_resource::<TerrainSettings>() {
         Some(s) => s,
         None => return,
@@ -382,9 +326,9 @@ fn render_sculpt(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorC
     });
 }
 
-// ── Paint mode ──────────────────────────────────────────────────────────────
+// ── Paint tab ───────────────────────────────────────────────────────────────
 
-fn render_paint(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
+pub fn render_paint(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
     let accent = theme.semantic.accent.to_color32();
     let text_primary = theme.text.primary.to_color32();
 
@@ -554,9 +498,9 @@ fn render_layer_list(
     }
 }
 
-// ── Foliage mode ────────────────────────────────────────────────────────────
+// ── Foliage tab ─────────────────────────────────────────────────────────────
 
-fn render_foliage(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
+pub fn render_foliage(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &EditorCommands) {
     let _accent = theme.semantic.accent.to_color32();
     let config = world.get_resource::<FoliageConfig>().cloned().unwrap_or_default();
     let settings = world.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default();

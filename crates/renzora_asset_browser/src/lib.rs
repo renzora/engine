@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
-use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
@@ -179,9 +179,13 @@ impl EditorPanel for AssetBrowserPanel {
         } else {
             let thumb_lookup = {
                 let cache = world.get_resource::<thumbnails::ThumbnailCache>();
-                grid::ThumbnailLookup {
-                    ids: cache.map(|c| c.texture_id_map()).unwrap_or_default(),
+                let mut ids = cache.map(|c| c.texture_id_map()).unwrap_or_default();
+                if let Some(registry) = world.get_resource::<MaterialThumbnailRegistry>() {
+                    for (path, tid) in registry.entries() {
+                        ids.insert(path.clone(), *tid);
+                    }
                 }
+                grid::ThumbnailLookup { ids }
             };
 
             let mut grid_child =
@@ -690,6 +694,19 @@ impl EditorPanel for AssetBrowserPanel {
                 });
             }
         }
+        // Submit .material thumbnail requests to the material renderer registry
+        if !grid_result.material_thumbnail_requests.is_empty() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                let requests = grid_result.material_thumbnail_requests;
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    if let Some(mut registry) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
+                        for path in requests {
+                            registry.request(path);
+                        }
+                    }
+                });
+            }
+        }
         // Either pane can produce a drag payload; the tree wins if both fire
         // in the same frame, since tree-only mode is the only context where
         // the tree is the sole source of drags.
@@ -726,39 +743,70 @@ impl EditorPanel for AssetBrowserPanel {
         // Double-click on a recent file in the tree
         if let Some(path) = state.double_clicked_recent.take() {
             state.track_recent(&path);
-            let is_editable = path.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| matches!(e.to_lowercase().as_str(),
-                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
-                ))
-                .unwrap_or(false);
-            if is_editable {
-                if let Some(cmds) = world.get_resource::<EditorCommands>() {
-                    cmds.push(move |world: &mut bevy::prelude::World| {
-                        world.insert_resource(renzora::core::OpenCodeEditorFile { path });
-                    });
-                }
-            }
+            open_double_clicked(world, path);
         }
 
-        // Double-click on a file opens it in the code editor
+        // Double-click on a file opens it in the matching editor + layout
         if let Some(path) = grid_result.double_clicked_file {
             state.track_recent(&path);
-            let is_editable = path.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| matches!(e.to_lowercase().as_str(),
-                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
-                ))
-                .unwrap_or(false);
-            if is_editable {
-                if let Some(cmds) = world.get_resource::<EditorCommands>() {
-                    cmds.push(move |world: &mut bevy::prelude::World| {
-                        world.insert_resource(renzora::core::OpenCodeEditorFile { path });
-                    });
-                }
-            }
+            open_double_clicked(world, path);
         }
     }
+}
+
+/// Route a double-clicked asset to the right editor: scripts/shaders go to
+/// the code editor, .material / .particle / .blueprint get their dedicated
+/// layout. All recognized kinds also spawn a document tab. Unknown file
+/// types fall through to the legacy code-editor "plain text" flow.
+fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
+    use renzora_editor_framework::DocTabKind;
+
+    if let Some(kind) = asset_doc_kind(&path) {
+        if let Some(cmds) = world.get_resource::<EditorCommands>() {
+            let p = path.clone();
+            cmds.push(move |world: &mut bevy::prelude::World| {
+                renzora_editor_framework::open_asset_tab(world, &p, kind);
+            });
+        }
+        return;
+    }
+
+    // Unrecognized kind — fall back to opening in code editor if it's a text-ish file.
+    let is_editable = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(),
+            "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md" | "ron"
+        ))
+        .unwrap_or(false);
+    if is_editable {
+        if let Some(cmds) = world.get_resource::<EditorCommands>() {
+            cmds.push(move |world: &mut bevy::prelude::World| {
+                renzora_editor_framework::open_asset_tab(world, &path, DocTabKind::Script);
+            });
+        }
+    }
+}
+
+/// Map a file path to the document tab kind it represents, or `None` if the
+/// file doesn't correspond to a known editor-opening asset type.
+fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::DocTabKind> {
+    use renzora_editor_framework::DocTabKind;
+    let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
+    if name.ends_with(".material_bp") || name.ends_with(".material") {
+        return Some(DocTabKind::Material);
+    }
+    if name.ends_with(".particle") {
+        return Some(DocTabKind::Particle);
+    }
+    if name.ends_with(".blueprint") || name.ends_with(".bp") {
+        return Some(DocTabKind::Blueprint);
+    }
+    let ext = name.rsplit('.').next().unwrap_or("");
+    Some(match ext {
+        "rhai" | "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
+        _ => return None,
+    })
 }
 
 // ── Context menu ────────────────────────────────────────────────────────────

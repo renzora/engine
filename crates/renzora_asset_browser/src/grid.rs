@@ -8,7 +8,7 @@ use renzora_editor_framework::{split_label_two_lines, AssetDragPayload, TileGrid
 use renzora_theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection, SortMode};
-use crate::thumbnails::supports_thumbnail;
+use crate::thumbnails::{supports_material_thumbnail, supports_thumbnail};
 
 /// Entry in the file grid (folder or file).
 pub(crate) struct GridEntry {
@@ -25,6 +25,8 @@ pub struct GridResult {
     pub double_clicked_file: Option<PathBuf>,
     /// Image files that need thumbnails loaded (collected during render).
     pub thumbnail_requests: Vec<PathBuf>,
+    /// `.material` files that need a sphere preview rendered.
+    pub material_thumbnail_requests: Vec<PathBuf>,
 }
 
 /// Lookup for available thumbnails, passed in from the panel.
@@ -140,6 +142,7 @@ pub fn grid_ui_interactive(
                 drag_payload: None,
                 double_clicked_file: None,
                 thumbnail_requests: Vec::new(),
+                material_thumbnail_requests: Vec::new(),
             };
         }
     };
@@ -155,6 +158,7 @@ pub fn grid_ui_interactive(
             drag_payload: None,
             double_clicked_file: None,
             thumbnail_requests: Vec::new(),
+            material_thumbnail_requests: Vec::new(),
         };
     }
 
@@ -212,6 +216,7 @@ pub fn grid_ui_interactive(
     let mut double_clicked_index: Option<usize> = None;
     let mut drag_started_index: Option<usize> = None;
     let mut thumbnail_requests: Vec<PathBuf> = Vec::new();
+    let mut material_thumbnail_requests: Vec<PathBuf> = Vec::new();
     let mut right_clicked = false;
     let mut pending_rename_rect: Option<egui::Rect> = None;
     let mut pending_rename_font: f32 = 11.0;
@@ -302,7 +307,7 @@ pub fn grid_ui_interactive(
 
                 // Try to render an image thumbnail for supported file types
                 let mut drew_thumbnail = false;
-                if !entry.is_dir && supports_thumbnail(&entry.name) {
+                if !entry.is_dir && (supports_thumbnail(&entry.name) || supports_material_thumbnail(&entry.name)) {
                     if let Some(tex_id) = thumbnails.get(&entry.path) {
                         let uv = egui::Rect::from_min_max(
                             egui::pos2(0.0, 0.0),
@@ -315,6 +320,8 @@ pub fn grid_ui_interactive(
                             egui::Color32::WHITE,
                         );
                         drew_thumbnail = true;
+                    } else if supports_material_thumbnail(&entry.name) {
+                        material_thumbnail_requests.push(entry.path.clone());
                     } else {
                         thumbnail_requests.push(entry.path.clone());
                     }
@@ -587,6 +594,7 @@ pub fn grid_ui_interactive(
         drag_payload,
         double_clicked_file,
         thumbnail_requests,
+        material_thumbnail_requests,
     }
 }
 

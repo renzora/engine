@@ -177,7 +177,7 @@ pub fn terrain_sculpt_hover_system(
     };
 
     // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
 
     // Find closest hit on a terrain chunk entity
     let mut closest_hit: Option<(Vec3, Entity, f32)> = None;
@@ -572,7 +572,7 @@ pub fn terrain_paint_hover_system(
     };
 
     // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
 
     let mut closest: Option<(Vec3, Entity, Entity, Vec2, f32)> = None;
 
@@ -840,8 +840,43 @@ pub fn terrain_paint_command_system(
             .map(|l| paint::LayerPreview {
                 name: l.name.clone(),
                 material_source: l.material_path.clone(),
+                carve_depth: l.carve_depth,
+                enabled: l.enabled,
             })
             .collect();
+        paint_state.layer_count = surface.layers.len();
+    }
+}
+
+/// Keep `SurfacePaintState.layers_preview` in sync with any chunk's
+/// `PaintableSurfaceData` every frame, so the inspector shows live values
+/// even when no paint commands have run this frame.
+pub fn sync_layer_preview_system(
+    mut paint_state: ResMut<paint::SurfacePaintState>,
+    surfaces: Query<&paint::PaintableSurfaceData>,
+) {
+    let Some(surface) = surfaces.iter().next() else {
+        return;
+    };
+    let new_preview: Vec<paint::LayerPreview> = surface
+        .layers
+        .iter()
+        .map(|l| paint::LayerPreview {
+            name: l.name.clone(),
+            material_source: l.material_path.clone(),
+            carve_depth: l.carve_depth,
+            enabled: l.enabled,
+        })
+        .collect();
+    if new_preview.len() != paint_state.layers_preview.len()
+        || new_preview.iter().zip(paint_state.layers_preview.iter()).any(|(a, b)| {
+            a.name != b.name
+                || a.material_source != b.material_source
+                || (a.carve_depth - b.carve_depth).abs() > 1e-5
+                || a.enabled != b.enabled
+        })
+    {
+        paint_state.layers_preview = new_preview;
         paint_state.layer_count = surface.layers.len();
     }
 }
@@ -874,13 +909,14 @@ pub fn terrain_stroke_begin_system(
         // Capture before-state
         snapshot.active = true;
         snapshot.chunk_snapshots.clear();
-        snapshot.splatmap_snapshots.clear();
+        snapshot.layer_mask_snapshots.clear();
 
         for (_, chunk) in chunk_query.iter() {
-            snapshot.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.heights.clone()));
+            snapshot.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
         }
         for (entity, surface) in surface_query.iter() {
-            snapshot.splatmap_snapshots.push((entity, surface.splatmap_weights.clone()));
+            let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
+            snapshot.layer_mask_snapshots.push((entity, masks));
         }
     }
 }
@@ -901,7 +937,7 @@ pub fn terrain_stroke_end_system(
         let mut changed = false;
         for (_, chunk) in chunk_query.iter().enumerate() {
             if let Some(snap) = snapshot.chunk_snapshots.iter().find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z) {
-                if snap.2 != chunk.heights {
+                if snap.2 != chunk.base_heights {
                     changed = true;
                     break;
                 }
@@ -915,14 +951,14 @@ pub fn terrain_stroke_end_system(
         if changed {
             let entry = TerrainUndoEntry {
                 chunk_snapshots: std::mem::take(&mut snapshot.chunk_snapshots),
-                splatmap_snapshots: std::mem::take(&mut snapshot.splatmap_snapshots),
+                layer_mask_snapshots: std::mem::take(&mut snapshot.layer_mask_snapshots),
             };
             undo_stack.push_undo(entry);
         }
 
         snapshot.active = false;
         snapshot.chunk_snapshots.clear();
-        snapshot.splatmap_snapshots.clear();
+        snapshot.layer_mask_snapshots.clear();
     }
 }
 
@@ -947,13 +983,14 @@ pub fn terrain_undo_redo_system(
             // Capture current state as redo entry
             let mut redo_entry = TerrainUndoEntry {
                 chunk_snapshots: Vec::new(),
-                splatmap_snapshots: Vec::new(),
+                layer_mask_snapshots: Vec::new(),
             };
             for chunk in chunk_query.iter_mut() {
-                redo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.heights.clone()));
+                redo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
             }
             for (entity, surface) in surface_query.iter() {
-                redo_entry.splatmap_snapshots.push((entity, surface.splatmap_weights.clone()));
+                let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
+                redo_entry.layer_mask_snapshots.push((entity, masks));
             }
             undo_stack.redo.push(redo_entry);
 
@@ -965,13 +1002,14 @@ pub fn terrain_undo_redo_system(
             // Capture current state as undo entry
             let mut undo_entry = TerrainUndoEntry {
                 chunk_snapshots: Vec::new(),
-                splatmap_snapshots: Vec::new(),
+                layer_mask_snapshots: Vec::new(),
             };
             for chunk in chunk_query.iter_mut() {
-                undo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.heights.clone()));
+                undo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
             }
             for (entity, surface) in surface_query.iter() {
-                undo_entry.splatmap_snapshots.push((entity, surface.splatmap_weights.clone()));
+                let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
+                undo_entry.layer_mask_snapshots.push((entity, masks));
             }
             undo_stack.undo.push(undo_entry);
 
@@ -989,14 +1027,18 @@ fn apply_undo_entry(
     for (cx, cz, heights) in &entry.chunk_snapshots {
         for mut chunk in chunk_query.iter_mut() {
             if chunk.chunk_x == *cx && chunk.chunk_z == *cz {
-                chunk.heights = heights.clone();
+                chunk.base_heights = heights.clone();
                 chunk.dirty = true;
             }
         }
     }
-    for (entity, weights) in &entry.splatmap_snapshots {
+    for (entity, masks) in &entry.layer_mask_snapshots {
         if let Ok((_, mut surface)) = surface_query.get_mut(*entity) {
-            surface.splatmap_weights = weights.clone();
+            for (i, mask) in masks.iter().enumerate() {
+                if let Some(layer) = surface.layers.get_mut(i) {
+                    layer.mask = mask.clone();
+                }
+            }
             surface.dirty = true;
         }
     }

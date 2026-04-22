@@ -1,0 +1,102 @@
+{
+  "name": "Metallic Gold (triplanar FBM — seamless on any mesh)",
+  "domain": "Surface",
+  "nodes": [
+    {
+      "id": 1,
+      "node_type": "output/surface",
+      "position": [
+        500.0,
+        0.0
+      ],
+      "input_values": {
+        "metallic": {
+          "Float": 1.0
+        },
+        "ao": {
+          "Float": 1.0
+        },
+        "alpha": {
+          "Float": 1.0
+        },
+        "base_color": {
+          "Color": [
+            1.0,
+            0.78,
+            0.34,
+            1.0
+          ]
+        },
+        "emissive": {
+          "Vec3": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "node_type": "procedural/noise_triplanar_fbm",
+      "position": [
+        -197.92456,
+        1.7012482
+      ],
+      "input_values": {
+        "persistence": {
+          "Float": 0.55
+        },
+        "scale": {
+          "Float": 4.0
+        },
+        "sharpness": {
+          "Float": 0.26
+        },
+        "octaves": {
+          "Float": 5.0
+        },
+        "lacunarity": {
+          "Float": 2.1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "node_type": "math/remap",
+      "position": [
+        109.73111,
+        -6.8050385
+      ],
+      "input_values": {
+        "out_min": {
+          "Float": 0.08
+        },
+        "out_max": {
+          "Float": 0.35
+        },
+        "in_min": {
+          "Float": 0.2
+        },
+        "in_max": {
+          "Float": 0.8
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from_node": 2,
+      "from_pin": "value",
+      "to_node": 3,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 3,
+      "from_pin": "result",
+      "to_node": 1,
+      "to_pin": "roughness"
+    }
+  ],
+  "next_id": 4
+}

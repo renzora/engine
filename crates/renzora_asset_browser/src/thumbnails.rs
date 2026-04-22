@@ -217,6 +217,13 @@ pub fn supports_thumbnail(filename: &str) -> bool {
     )
 }
 
+/// Returns `true` if the file has a rendered thumbnail available through the
+/// material thumbnail registry rather than the image thumbnail cache.
+pub fn supports_material_thumbnail(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    ext == "material"
+}
+
 /// Try to register the image with egui. If the format is incompatible, convert
 /// it to Rgba8UnormSrgb first. Returns the egui TextureId on success.
 fn register_thumbnail(

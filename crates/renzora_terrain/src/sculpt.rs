@@ -219,12 +219,12 @@ pub fn generate_noise_for_chunk(
             );
 
             let idx = (vz * resolution + vx) as usize;
-            if idx < chunk.heights.len() {
+            if idx < chunk.base_heights.len() {
                 if additive {
-                    let current = chunk.heights[idx];
-                    chunk.heights[idx] = (current + (n - 0.5) * strength).clamp(0.0, 1.0);
+                    let current = chunk.base_heights[idx];
+                    chunk.base_heights[idx] = (current + (n - 0.5) * strength).clamp(0.0, 1.0);
                 } else {
-                    chunk.heights[idx] = (n * strength).clamp(0.0, 1.0);
+                    chunk.base_heights[idx] = (n * strength).clamp(0.0, 1.0);
                 }
             }
         }

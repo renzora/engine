@@ -39,9 +39,16 @@ struct Ctx<'a> {
     texture_bindings: Vec<TextureBinding>,
     next_texture_binding: u32,
     lines: Vec<String>,
+    /// WGSL declarations emitted at module scope (structs, helper fns from
+    /// Custom Code nodes, color-space helpers).
+    module_prelude: Vec<String>,
     uses_noise: bool,
     uses_voronoi: bool,
     uses_fbm: bool,
+    uses_hash: bool,
+    uses_hsv: bool,
+    uses_srgb: bool,
+    uses_blend: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -54,9 +61,14 @@ impl<'a> Ctx<'a> {
             texture_bindings: Vec::new(),
             next_texture_binding: 0, // index into texture_0, texture_1, ...
             lines: Vec::new(),
+            module_prelude: Vec::new(),
             uses_noise: false,
             uses_voronoi: false,
             uses_fbm: false,
+            uses_hash: false,
+            uses_hsv: false,
+            uses_srgb: false,
+            uses_blend: false,
         }
     }
 
@@ -429,6 +441,92 @@ impl<'a> Ctx<'a> {
                 self.emit(format!("    let {v} = saturate({val});"));
                 self.set_out(id, "result", v);
             }
+            "math/modulo" => {
+                let a = self.input(node, "a");
+                let b = self.input(node, "b");
+                let v = self.next_var("mod");
+                self.emit(format!("    let {v} = {a} - {b} * floor({a} / max({b}, 0.000001));"));
+                self.set_out(id, "result", v);
+            }
+            "math/sign" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("sgn");
+                self.emit(format!("    let {v} = sign({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/atan2" => {
+                let y = self.input(node, "y");
+                let x = self.input(node, "x");
+                let v = self.next_var("atan2");
+                self.emit(format!("    let {v} = atan2({y}, {x});"));
+                self.set_out(id, "result", v);
+            }
+            "math/trunc" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("trn");
+                self.emit(format!("    let {v} = trunc({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/round" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("rnd");
+                self.emit(format!("    let {v} = round({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/exp" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("exp");
+                self.emit(format!("    let {v} = exp({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/log" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("log");
+                self.emit(format!("    let {v} = log(max({val}, 0.000001));"));
+                self.set_out(id, "result", v);
+            }
+            "math/sqrt" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("sqrt");
+                self.emit(format!("    let {v} = sqrt(max({val}, 0.0));"));
+                self.set_out(id, "result", v);
+            }
+            "math/reciprocal" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("rcp");
+                self.emit(format!("    let {v} = 1.0 / max({val}, 0.000001);"));
+                self.set_out(id, "result", v);
+            }
+            "math/tan" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("tan");
+                self.emit(format!("    let {v} = tan({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/asin" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("asin");
+                self.emit(format!("    let {v} = asin(clamp({val}, -1.0, 1.0));"));
+                self.set_out(id, "result", v);
+            }
+            "math/acos" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("acos");
+                self.emit(format!("    let {v} = acos(clamp({val}, -1.0, 1.0));"));
+                self.set_out(id, "result", v);
+            }
+            "math/radians" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("rad");
+                self.emit(format!("    let {v} = radians({val});"));
+                self.set_out(id, "result", v);
+            }
+            "math/degrees" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("deg");
+                self.emit(format!("    let {v} = degrees({val});"));
+                self.set_out(id, "result", v);
+            }
 
             // ── Vector ──────────────────────────────────────────────
             "vector/split_vec2" => {
@@ -506,6 +604,44 @@ impl<'a> Ctx<'a> {
                 self.emit(format!("    let {v} = reflect({inc}, {n});"));
                 self.set_out(id, "result", v);
             }
+            "vector/refract" => {
+                let inc = self.input(node, "incident");
+                let n = self.input(node, "normal");
+                let eta = self.input(node, "eta");
+                let v = self.next_var("refr");
+                self.emit(format!("    let {v} = refract({inc}, {n}, {eta});"));
+                self.set_out(id, "result", v);
+            }
+            "vector/swizzle" => {
+                let vec = self.input(node, "vector");
+                let choices = ["out_x", "out_y", "out_z", "out_w"];
+                let mut parts = Vec::with_capacity(4);
+                for pin in &choices {
+                    let sel = node.input_values.get(*pin)
+                        .and_then(|v| if let PinValue::Int(i) = v { Some(*i) } else { None })
+                        .unwrap_or(match *pin {
+                            "out_x" => 0,
+                            "out_y" => 1,
+                            "out_z" => 2,
+                            _ => 3,
+                        });
+                    parts.push(match sel {
+                        0 => format!("({vec}).x"),
+                        1 => format!("({vec}).y"),
+                        2 => format!("({vec}).z"),
+                        3 => format!("({vec}).w"),
+                        4 => "0.0".to_string(),
+                        5 => "1.0".to_string(),
+                        _ => format!("({vec}).x"),
+                    });
+                }
+                let v = self.next_var("swz");
+                self.emit(format!(
+                    "    let {v} = vec4<f32>({}, {}, {}, {});",
+                    parts[0], parts[1], parts[2], parts[3]
+                ));
+                self.set_out(id, "vector", v);
+            }
 
             // ── Color ───────────────────────────────────────────────
             "color/constant" => {
@@ -559,6 +695,96 @@ impl<'a> Ctx<'a> {
                 let power = self.input(node, "power");
                 let v = self.next_var("fres");
                 self.emit(format!("    let {v} = pow(1.0 - max(dot(normalize(view.world_position.xyz - in.world_position.xyz), in.world_normal), 0.0), {power});"));
+                self.set_out(id, "result", v);
+            }
+            "color/srgb_to_linear" => {
+                self.uses_srgb = true;
+                let c = self.input(node, "color");
+                let v = self.next_var("s2l");
+                self.emit(format!("    let {v} = vec4<f32>(mat_srgb_to_linear(({c}).rgb), ({c}).a);"));
+                self.set_out(id, "result", v);
+            }
+            "color/linear_to_srgb" => {
+                self.uses_srgb = true;
+                let c = self.input(node, "color");
+                let v = self.next_var("l2s");
+                self.emit(format!("    let {v} = vec4<f32>(mat_linear_to_srgb(({c}).rgb), ({c}).a);"));
+                self.set_out(id, "result", v);
+            }
+            "color/rgb_to_hsv" => {
+                self.uses_hsv = true;
+                let rgb = self.input(node, "rgb");
+                let v = self.next_var("hsv");
+                self.emit(format!("    let {v} = mat_rgb_to_hsv({rgb});"));
+                self.set_out(id, "hsv", v.clone());
+                self.set_out(id, "h", format!("{v}.x"));
+                self.set_out(id, "s", format!("{v}.y"));
+                self.set_out(id, "v", format!("{v}.z"));
+            }
+            "color/hsv_to_rgb" => {
+                self.uses_hsv = true;
+                let hsv = self.input(node, "hsv");
+                let v = self.next_var("rgb");
+                self.emit(format!("    let {v} = mat_hsv_to_rgb({hsv});"));
+                self.set_out(id, "rgb", v);
+            }
+            "color/hue_shift" => {
+                self.uses_hsv = true;
+                let rgb = self.input(node, "rgb");
+                let shift = self.input(node, "shift");
+                let v = self.next_var("hshift");
+                self.emit(format!("    var {v}_hsv = mat_rgb_to_hsv({rgb});"));
+                self.emit(format!("    {v}_hsv.x = fract({v}_hsv.x + {shift});"));
+                self.emit(format!("    let {v} = mat_hsv_to_rgb({v}_hsv);"));
+                self.set_out(id, "rgb", v);
+            }
+            "color/luminance" => {
+                let rgb = self.input(node, "rgb");
+                let v = self.next_var("lum");
+                self.emit(format!("    let {v} = dot({rgb}, vec3<f32>(0.2126, 0.7152, 0.0722));"));
+                self.set_out(id, "value", v);
+            }
+            "color/gamma" => {
+                let c = self.input(node, "color");
+                let g = self.input(node, "gamma");
+                let v = self.next_var("gam");
+                self.emit(format!("    let {v} = vec4<f32>(pow(max(({c}).rgb, vec3<f32>(0.0)), vec3<f32>({g})), ({c}).a);"));
+                self.set_out(id, "result", v);
+            }
+            "color/brightness_contrast" => {
+                let c = self.input(node, "color");
+                let b = self.input(node, "brightness");
+                let con = self.input(node, "contrast");
+                let v = self.next_var("bc");
+                self.emit(format!(
+                    "    let {v} = vec4<f32>((({c}).rgb - vec3<f32>(0.5)) * {con} + vec3<f32>(0.5 + {b}), ({c}).a);"
+                ));
+                self.set_out(id, "result", v);
+            }
+            "color/saturation" => {
+                let c = self.input(node, "color");
+                let s = self.input(node, "saturation");
+                let v = self.next_var("sat_c");
+                self.emit(format!(
+                    "    let {v}_l = dot(({c}).rgb, vec3<f32>(0.2126, 0.7152, 0.0722));"
+                ));
+                self.emit(format!(
+                    "    let {v} = vec4<f32>(mix(vec3<f32>({v}_l), ({c}).rgb, {s}), ({c}).a);"
+                ));
+                self.set_out(id, "result", v);
+            }
+            "color/blend" => {
+                self.uses_blend = true;
+                let base = self.input(node, "base");
+                let blnd = self.input(node, "blend");
+                let op = self.input(node, "opacity");
+                let mode = node.input_values.get("mode")
+                    .and_then(|v| if let PinValue::Int(i) = v { Some(*i) } else { None })
+                    .unwrap_or(0);
+                let v = self.next_var("blend");
+                self.emit(format!(
+                    "    let {v} = mat_blend({base}, {blnd}, {op}, {mode});"
+                ));
                 self.set_out(id, "result", v);
             }
 
@@ -696,7 +922,45 @@ impl<'a> Ctx<'a> {
                 self.emit(format!("    let {v} = saturate(in.world_position.y / max({dist}, 0.001));"));
                 self.set_out(id, "fade", v);
             }
-
+            "utility/dpdx" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("ddx");
+                self.emit(format!("    let {v} = dpdx({val});"));
+                self.set_out(id, "result", v);
+            }
+            "utility/dpdy" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("ddy");
+                self.emit(format!("    let {v} = dpdy({val});"));
+                self.set_out(id, "result", v);
+            }
+            "utility/fwidth" => {
+                let val = self.input(node, "value");
+                let v = self.next_var("fw");
+                self.emit(format!("    let {v} = fwidth({val});"));
+                self.set_out(id, "result", v);
+            }
+            "utility/dither" => {
+                // 4x4 Bayer dither based on fragment coord
+                let v = self.next_var("dith");
+                self.emit(format!(
+                    "    let {v}_xy = vec2<i32>(i32(in.position.x) & 3, i32(in.position.y) & 3);"
+                ));
+                self.emit(format!(
+                    "    let {v}_bayer = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);"
+                ));
+                self.emit(format!(
+                    "    let {v} = {v}_bayer[{v}_xy.y * 4 + {v}_xy.x] / 16.0;"
+                ));
+                self.set_out(id, "value", v);
+            }
+            "utility/hash" => {
+                self.uses_hash = true;
+                let val = self.input(node, "value");
+                let v = self.next_var("hash");
+                self.emit(format!("    let {v} = mat_hash({val});"));
+                self.set_out(id, "result", v);
+            }
             // Output nodes are handled in compile(), not here
             t if t.starts_with("output/") => {}
 
@@ -785,22 +1049,33 @@ pub fn compile(graph: &MaterialGraph) -> CompileResult {
 
 fn noise_helpers(ctx: &Ctx) -> String {
     let mut s = String::new();
-    if ctx.uses_noise {
+    if ctx.uses_noise || ctx.uses_hash {
         s.push_str(r#"
 fn mat_hash(p: vec2<f32>) -> f32 {
     let h = dot(p, vec2<f32>(127.1, 311.7));
     return fract(sin(h) * 43758.5453123);
 }
+"#);
+    }
+    if ctx.uses_noise {
+        s.push_str(r#"
+fn mat_hash_grad(p: vec2<f32>) -> vec2<f32> {
+    let k = vec2<f32>(
+        dot(p, vec2<f32>(127.1, 311.7)),
+        dot(p, vec2<f32>(269.5, 183.3)),
+    );
+    return fract(sin(k) * 43758.5453) * 2.0 - 1.0;
+}
 
 fn mat_noise(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(mat_hash(i + vec2<f32>(0.0, 0.0)), mat_hash(i + vec2<f32>(1.0, 0.0)), u.x),
-        mix(mat_hash(i + vec2<f32>(0.0, 1.0)), mat_hash(i + vec2<f32>(1.0, 1.0)), u.x),
-        u.y
-    );
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let g00 = dot(mat_hash_grad(i + vec2<f32>(0.0, 0.0)), f - vec2<f32>(0.0, 0.0));
+    let g10 = dot(mat_hash_grad(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
+    let g01 = dot(mat_hash_grad(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
+    let g11 = dot(mat_hash_grad(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
+    return mix(mix(g00, g10, u.x), mix(g01, g11, u.x), u.y) * 0.5 + 0.5;
 }
 "#);
     }
@@ -810,9 +1085,11 @@ fn mat_fbm(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f3
     var p = uv;
     var value = 0.0;
     var amplitude = 0.5;
+    let c = cos(0.77); let sn = sin(0.77);
+    let r = mat2x2<f32>(c, sn, -sn, c);
     for (var i = 0; i < octaves; i = i + 1) {
         value = value + mat_noise(p) * amplitude;
-        p = p * lacunarity;
+        p = r * p * lacunarity + vec2<f32>(37.1, 17.3);
         amplitude = amplitude * persistence;
     }
     return value;
@@ -841,7 +1118,84 @@ fn mat_voronoi(p: vec2<f32>) -> vec2<f32> {
 }
 "#);
     }
+    if ctx.uses_srgb {
+        s.push_str(r#"
+fn mat_srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let cutoff = vec3<f32>(0.04045);
+    let lo = c / 12.92;
+    let hi = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(hi, lo, c <= cutoff);
+}
+
+fn mat_linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let cutoff = vec3<f32>(0.0031308);
+    let lo = c * 12.92;
+    let hi = 1.055 * pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(hi, lo, c <= cutoff);
+}
+"#);
+    }
+    if ctx.uses_hsv {
+        s.push_str(r#"
+fn mat_rgb_to_hsv(c: vec3<f32>) -> vec3<f32> {
+    let K = vec4<f32>(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    let p = select(vec4<f32>(c.bg, K.wz), vec4<f32>(c.gb, K.xy), c.g >= c.b);
+    let q = select(vec4<f32>(p.xyw, c.r), vec4<f32>(c.r, p.yzx), c.r >= p.x);
+    let d = q.x - min(q.w, q.y);
+    let e = 1.0e-10;
+    return vec3<f32>(
+        abs(q.z + (q.w - q.y) / (6.0 * d + e)),
+        d / (q.x + e),
+        q.x
+    );
+}
+
+fn mat_hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
+    let K = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    let p = abs(fract(vec3<f32>(c.x) + K.xyz) * 6.0 - vec3<f32>(K.w));
+    return c.z * mix(vec3<f32>(K.x), clamp(p - vec3<f32>(K.x), vec3<f32>(0.0), vec3<f32>(1.0)), c.y);
+}
+"#);
+    }
+    if ctx.uses_blend {
+        s.push_str(r#"
+fn mat_blend(base: vec4<f32>, blnd: vec4<f32>, opacity: f32, mode: i32) -> vec4<f32> {
+    let b = base.rgb;
+    let t = blnd.rgb;
+    var r: vec3<f32>;
+    switch mode {
+        case 1: { r = b * t; }                                              // multiply
+        case 2: { r = vec3<f32>(1.0) - (vec3<f32>(1.0) - b) * (vec3<f32>(1.0) - t); } // screen
+        case 3: {                                                            // overlay
+            let lt = 2.0 * b * t;
+            let gt = vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - b) * (vec3<f32>(1.0) - t);
+            r = select(gt, lt, b < vec3<f32>(0.5));
+        }
+        case 4: { r = b + t; }                                              // add
+        case 5: { r = b - t; }                                              // subtract
+        case 6: {                                                            // soft-light
+            r = (vec3<f32>(1.0) - 2.0 * t) * b * b + 2.0 * t * b;
+        }
+        case 7: {                                                            // hard-light
+            let lt = 2.0 * b * t;
+            let gt = vec3<f32>(1.0) - 2.0 * (vec3<f32>(1.0) - b) * (vec3<f32>(1.0) - t);
+            r = select(gt, lt, t < vec3<f32>(0.5));
+        }
+        case 8: { r = abs(b - t); }                                         // difference
+        case 9: { r = b / max(t, vec3<f32>(0.000001)); }                    // divide
+        default: { r = t; }                                                 // normal
+    }
+    return vec4<f32>(mix(b, r, opacity), base.a);
+}
+"#);
+    }
     s
+}
+
+fn emit_module_prelude(ctx: &Ctx, s: &mut String) {
+    for chunk in &ctx.module_prelude {
+        s.push_str(chunk);
+    }
 }
 
 fn texture_bindings_wgsl(_ctx: &Ctx) -> String {
@@ -890,6 +1244,7 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
 
     // Helper functions
     shader.push_str(&noise_helpers(ctx));
+    emit_module_prelude(ctx, &mut shader);
 
     // Fragment entry point
     shader.push_str("\n@fragment\n");
@@ -943,6 +1298,7 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
     shader.push_str("}\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
+    emit_module_prelude(ctx, &mut shader);
 
     // layer_main: returns base color
     shader.push_str("\nfn layer_main(uv: vec2<f32>, world_pos: vec3<f32>, world_normal: vec3<f32>, time: f32) -> vec4<f32> {\n");
@@ -975,6 +1331,7 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     shader.push_str("}\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
+    emit_module_prelude(ctx, &mut shader);
 
     shader.push_str("\n@fragment\n");
     shader.push_str("fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n");

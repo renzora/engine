@@ -22,6 +22,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui::{self, Color32, Pos2, RichText};
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
+use egui_phosphor::regular;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
@@ -30,6 +31,8 @@ use renzora_editor_framework::{
     SpawnRegistry, SplashState,
 };
 use renzora_theme::ThemeManager;
+
+mod palette;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +59,8 @@ pub struct ContextMenuState {
     /// render's rect and constrains the next open to its height (visible
     /// as the Add menu being "stuck" at the smaller Entity menu height).
     pub open_counter: u64,
+    /// Category to scroll to in the item list (set by sidebar click).
+    pub scroll_to_category: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -86,15 +91,24 @@ impl Plugin for ContextMenuPlugin {
         info!("[editor] ContextMenuPlugin");
         app.init_resource::<RightClickTracker>()
             .init_resource::<ContextMenuState>()
+            .init_resource::<palette::PaletteActionQueue>()
             .add_systems(
                 Update,
                 (detect_right_click_tap, consume_add_component_request)
                     .run_if(in_state(SplashState::Editor)),
             )
             .add_systems(
+                Update,
+                palette::drain_palette_actions
+                    .run_if(in_state(SplashState::Editor)),
+            )
+            .add_systems(
                 EguiPrimaryContextPass,
                 render_context_menu.run_if(in_state(SplashState::Editor)),
             );
+
+        use renzora_editor_framework::AppEditorExt;
+        app.register_panel(palette::PalettePanel::new());
     }
 }
 
@@ -229,9 +243,9 @@ fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Vec3> {
 // ── Render ─────────────────────────────────────────────────────────────────
 
 fn render_context_menu(world: &mut World) {
-    let (open, screen_pos, kind, mut query, just_opened, open_counter) = {
+    let (open, screen_pos, kind, mut query, just_opened, open_counter, mut scroll_to_cat) = {
         let s = world.resource::<ContextMenuState>();
-        (s.open, s.screen_pos, s.kind, s.query.clone(), s.just_opened, s.open_counter)
+        (s.open, s.screen_pos, s.kind, s.query.clone(), s.just_opened, s.open_counter, s.scroll_to_category.clone())
     };
     if !open { return; }
 
@@ -301,6 +315,7 @@ fn render_context_menu(world: &mut World) {
                         render_add_menu(
                             ui, world, &query, enter_pressed,
                             text_primary, text_muted, hover,
+                            &mut scroll_to_cat,
                             |id| {
                                 pending_action = Some(PendingAction::Spawn { id, world_pos });
                             },
@@ -326,6 +341,7 @@ fn render_context_menu(world: &mut World) {
                         render_add_component_menu(
                             ui, world, &query, enter_pressed,
                             text_primary, text_muted, hover,
+                            &mut scroll_to_cat,
                             |type_id| {
                                 pending_action = Some(PendingAction::AddComponent { type_id });
                             },
@@ -356,6 +372,7 @@ fn render_context_menu(world: &mut World) {
     {
         let mut s = world.resource_mut::<ContextMenuState>();
         s.query = query;
+        s.scroll_to_category = scroll_to_cat;
         s.just_opened = false;
         if let Some(PendingAction::SwitchMenu(next)) = &pending_action {
             s.kind = *next;
@@ -403,6 +420,7 @@ fn render_add_menu(
     text_primary: Color32,
     text_muted: Color32,
     hover: Color32,
+    _scroll_to_cat: &mut Option<String>,
     mut on_pick: impl FnMut(&'static str),
 ) {
     let Some(registry) = world.get_resource::<SpawnRegistry>() else {
@@ -420,8 +438,6 @@ fn render_add_menu(
         return;
     }
 
-    // Flatten with category filtering — only render categories that still
-    // have visible rows after the query filter.
     let mut first_visible: Option<&'static str> = None;
     let mut any_visible = false;
 
@@ -506,17 +522,20 @@ fn render_entity_menu(
 
     let q = query.to_lowercase();
     let entries: &[(&str, &str, EntityAction)] = &[
-        ("\u{E02A}", "Focus (F)", EntityAction::Focus),
-        ("\u{E170}", "Duplicate (Ctrl+D)", EntityAction::Duplicate),
-        ("\u{E07A}", "Deselect (Esc)", EntityAction::Deselect),
-        ("\u{E1A0}", "Delete (Del)", EntityAction::Delete),
+        (regular::CROSSHAIR, "Focus (F)", EntityAction::Focus),
+        (regular::COPY, "Duplicate (Ctrl+D)", EntityAction::Duplicate),
+        (regular::X_CIRCLE, "Deselect (Esc)", EntityAction::Deselect),
+        (regular::TRASH, "Delete (Del)", EntityAction::Delete),
     ];
     let visible: Vec<&(&str, &str, EntityAction)> = entries
         .iter()
         .filter(|(_, label, _)| matches_query(label, &q))
         .collect();
 
-    if visible.is_empty() {
+    let add_component_label = "Add Component…";
+    let show_add_component = matches_query(add_component_label, &q);
+
+    if visible.is_empty() && !show_add_component {
         ui.label(RichText::new("No matches").color(text_muted).size(14.0));
         return;
     }
@@ -527,9 +546,20 @@ fn render_entity_menu(
         }
     }
 
+    if show_add_component {
+        if !visible.is_empty() {
+            ui.separator();
+        }
+        if menu_row(ui, regular::PLUS_CIRCLE, add_component_label, text_primary, hover) {
+            on_pick(EntityMenuResult::Switch(MenuKind::AddComponent));
+        }
+    }
+
     if enter_pressed {
         if let Some((_, _, action)) = visible.first() {
             on_pick(EntityMenuResult::Action(*action));
+        } else if show_add_component {
+            on_pick(EntityMenuResult::Switch(MenuKind::AddComponent));
         }
     }
 }
@@ -622,9 +652,19 @@ fn render_add_component_menu(
     text_primary: Color32,
     text_muted: Color32,
     hover: Color32,
+    _scroll_to_cat: &mut Option<String>,
     mut on_pick: impl FnMut(&'static str),
 ) {
-    ui.label(RichText::new("Add Component").color(text_muted).size(14.0).monospace());
+    let targets: Vec<Entity> = world
+        .get_resource::<EditorSelection>()
+        .map(|s| s.get_all())
+        .unwrap_or_default();
+    let title = if targets.len() > 1 {
+        format!("Add Component ({} entities)", targets.len())
+    } else {
+        "Add Component".to_string()
+    };
+    ui.label(RichText::new(title).color(text_muted).size(14.0).monospace());
     ui.separator();
 
     let Some(registry) = world.get_resource::<InspectorRegistry>() else {
@@ -632,18 +672,12 @@ fn render_add_component_menu(
         return;
     };
 
-    // Target entity = current primary selection. Skip components that are
-    // already on it, or that have no `add_fn`.
-    let target = world
-        .get_resource::<EditorSelection>()
-        .and_then(|s| s.get());
-
     let q = query.to_lowercase();
     let mut groups: Vec<(&'static str, Vec<&renzora_editor_framework::InspectorEntry>)> = Vec::new();
     for entry in registry.iter() {
         if entry.add_fn.is_none() { continue; }
-        if let Some(target) = target {
-            if (entry.has_fn)(world, target) { continue; }
+        if !targets.is_empty() && targets.iter().all(|e| (entry.has_fn)(world, *e)) {
+            continue;
         }
         let matches = matches_query(entry.display_name, &q) || matches_query(entry.category, &q);
         if !matches { continue; }

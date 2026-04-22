@@ -1,0 +1,33 @@
+[package]
+name = "renzora_navmesh"
+version = "0.1.0"
+edition = "2021"
+description = "Navigation mesh and pathfinding for the Renzora engine"
+
+[features]
+default = ["lua"]
+lua = ["renzora_scripting/lua", "dep:mlua"]
+editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui"]
+
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+renzora = { path = "../renzora", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+vleue_navigator = { path = "../vleue_navigator", features = ["avian3d", "debug-with-gizmos"] }
+polyanya = { version = "0.16", features = ["serde"] }
+renzora_terrain = { path = "../renzora_terrain" }
+renzora_ui = { path = "../renzora_ui" }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+egui-phosphor = { workspace = true, optional = true }
+bevy_egui = { workspace = true, optional = true }
+
+[dependencies.avian3d]
+version = "0.6.1"
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+# Lua types referenced by the NavScriptExtension impl.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }

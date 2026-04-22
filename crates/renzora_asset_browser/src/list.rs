@@ -34,7 +34,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                     theme,
                 );
             }
-            return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new() };
+            return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new(), material_thumbnail_requests: Vec::new() };
         }
     };
 
@@ -45,7 +45,7 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
             ("Empty folder", "This folder has no files or subfolders.")
         };
         renzora_editor_framework::empty_state(ui, regular::FOLDER_OPEN, msg, desc, theme);
-        return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new() };
+        return GridResult { drag_payload: None, double_clicked_file: None, thumbnail_requests: Vec::new(), material_thumbnail_requests: Vec::new() };
     }
 
     // Build visible_item_order for range selection
@@ -318,5 +318,5 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         state.move_drop_target = None;
     }
 
-    GridResult { drag_payload, double_clicked_file, thumbnail_requests: Vec::new() }
+    GridResult { drag_payload, double_clicked_file, thumbnail_requests: Vec::new(), material_thumbnail_requests: Vec::new() }
 }

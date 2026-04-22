@@ -220,11 +220,23 @@ impl TerrainData {
 }
 
 /// Per-chunk heightmap data. Heights are normalized [0, 1].
+///
+/// Layered model: `base_heights` is the user's authoritative sculpt; `heights`
+/// is the composed result (base + Σ enabled edit layers) and is what the mesh
+/// and GPU upload read. Sculpt brushes always read/write the base; the
+/// composition system recomputes `heights` when anything upstream changes.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
 pub struct TerrainChunkData {
     pub chunk_x: u32,
     pub chunk_z: u32,
+    /// User's manual sculpt layer. Sculpt brushes write here.
+    #[serde(default, alias = "heights")]
+    pub base_heights: Vec<f32>,
+    /// Composed buffer: base + all enabled height layer deltas. Read by mesh/GPU.
+    /// Rebuilt by the composition system whenever `dirty` is set.
+    #[serde(skip, default)]
+    #[reflect(ignore)]
     pub heights: Vec<f32>,
     #[serde(skip)]
     #[reflect(ignore)]
@@ -237,28 +249,47 @@ impl TerrainChunkData {
         Self {
             chunk_x,
             chunk_z,
+            base_heights: vec![initial_height; count],
             heights: vec![initial_height; count],
             dirty: true,
         }
     }
 
+    /// Read the composed height (final render value).
     pub fn get_height(&self, x: u32, z: u32, resolution: u32) -> f32 {
         let idx = (z * resolution + x) as usize;
         self.heights.get(idx).copied().unwrap_or(0.0)
     }
 
+    /// Read the base (pre-layer) sculpt height.
+    pub fn get_base_height(&self, x: u32, z: u32, resolution: u32) -> f32 {
+        let idx = (z * resolution + x) as usize;
+        self.base_heights.get(idx).copied().unwrap_or(0.0)
+    }
+
+    /// Set the base sculpt height. Marks chunk dirty so composition + mesh rebuild.
     pub fn set_height(&mut self, x: u32, z: u32, resolution: u32, height: f32) {
         let idx = (z * resolution + x) as usize;
-        if let Some(h) = self.heights.get_mut(idx) {
+        if let Some(h) = self.base_heights.get_mut(idx) {
             *h = height.clamp(0.0, 1.0);
             self.dirty = true;
         }
     }
 
+    /// Modify the base sculpt height by a delta. Marks chunk dirty.
     pub fn modify_height(&mut self, x: u32, z: u32, resolution: u32, delta: f32) {
         let idx = (z * resolution + x) as usize;
-        if let Some(h) = self.heights.get_mut(idx) {
+        if let Some(h) = self.base_heights.get_mut(idx) {
             *h = (*h + delta).clamp(0.0, 1.0);
+            self.dirty = true;
+        }
+    }
+
+    /// Ensure `heights` buffer matches base in length. Called on load / after
+    /// serde deserialization, which skips the composed buffer.
+    pub fn ensure_composed_buffer(&mut self) {
+        if self.heights.len() != self.base_heights.len() {
+            self.heights = self.base_heights.clone();
             self.dirty = true;
         }
     }

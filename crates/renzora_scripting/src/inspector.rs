@@ -11,7 +11,8 @@ use renzora_editor_framework::{
 };
 use renzora_theme::Theme;
 
-use crate::component::ScriptComponent;
+use crate::component::{ScriptComponent, ScriptVariableDefinition};
+use crate::engine::ScriptEngine;
 use crate::ScriptValue;
 
 /// Register the script inspector entry via `AppEditorExt`.
@@ -194,9 +195,52 @@ fn script_component_ui(
                 }
             });
 
-            if !entry.variables.iter_all().next().is_none() {
+            // Pull the script's declared prop list (if any) so we can:
+            //   - group the vars by `tab = "..."` declared in props()
+            //   - render them in a stable order instead of HashMap order
+            // `get_script_props` is cached by the backend, so calling this each
+            // frame is cheap.
+            let defs: Vec<ScriptVariableDefinition> = entry.script_path.as_ref()
+                .and_then(|p| world.get_resource::<ScriptEngine>().map(|e| e.get_script_props(p)))
+                .unwrap_or_default();
+
+            // Build (tab_name, Vec<(var_name, var_value)>) preserving the order
+            // in which tabs first appear in the def list.
+            let mut tab_groups: Vec<(String, Vec<(String, ScriptValue)>)> = Vec::new();
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for def in &defs {
+                let Some(val) = entry.variables.get(&def.name) else { continue };
+                let tab = def.tab.clone().unwrap_or_else(|| "General".to_string());
+                let pair = (def.name.clone(), val.clone());
+                match tab_groups.iter_mut().find(|(t, _)| *t == tab) {
+                    Some((_, vars)) => vars.push(pair),
+                    None => tab_groups.push((tab, vec![pair])),
+                }
+                seen.insert(def.name.clone());
+            }
+            // Any variables that the script no longer declares (renamed /
+            // removed in a rebuild) still deserve to be editable — drop them
+            // in an "Other" group so the user can clean them up.
+            let orphans: Vec<(String, ScriptValue)> = entry.variables.iter_all()
+                .filter(|(k, _)| !seen.contains(*k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if !orphans.is_empty() {
+                tab_groups.push(("Other".to_string(), orphans));
+            }
+
+            // If the script doesn't use tabs at all and there's nothing
+            // orphaned, skip the collapsible header — a single "General" row
+            // is just noise on simple scripts.
+            let show_headers = !(tab_groups.len() == 1 && tab_groups[0].0 == "General");
+
+            if !tab_groups.is_empty() {
                 ui.add_space(2.0);
-                for (var_name, var_value) in entry.variables.iter_all() {
+            }
+
+            for (tab_idx, (tab_name, vars)) in tab_groups.into_iter().enumerate() {
+                let render = |ui: &mut egui::Ui, vars: &[(String, ScriptValue)]| {
+                for (var_name, var_value) in vars.iter() {
                     let label = to_display_name(var_name);
                     let script_idx = i;
                     let vname = var_name.clone();
@@ -348,7 +392,17 @@ fn script_component_ui(
                         }
                     }
                 }
-                ui.add_space(2.0);
+                };
+
+                if show_headers {
+                    let header_id = ui.id().with(("script_tab", i, tab_name.as_str()));
+                    egui::CollapsingHeader::new(&tab_name)
+                        .id_salt(header_id)
+                        .default_open(tab_idx == 0)
+                        .show(ui, |ui| render(ui, &vars));
+                } else {
+                    render(ui, &vars);
+                }
             }
 
             inline_property(ui, row_idx + 2, "", theme, |ui| {

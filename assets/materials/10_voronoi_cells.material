@@ -1,0 +1,22 @@
+{
+  "name": "Voronoi Cells (triplanar — no sphere seams)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit", "position": [700.0, 0.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/noise_triplanar_voronoi", "position": [-250.0, 0.0], "input_values": {
+        "scale":     { "Float": 4.0 },
+        "sharpness": { "Float": 4.0 }
+    }},
+    { "id": 5, "node_type": "color/cosine_palette", "position": [0.0, 120.0], "input_values": {
+        "a": { "Vec3": [0.5, 0.5, 0.5] },
+        "b": { "Vec3": [0.5, 0.5, 0.5] },
+        "c": { "Vec3": [1.0, 1.0, 1.0] },
+        "d": { "Vec3": [0.3, 0.2, 0.2] }
+    }}
+  ],
+  "connections": [
+    { "from_node": 3, "from_pin": "cell_id", "to_node": 5, "to_pin": "t"     },
+    { "from_node": 5, "from_pin": "color",   "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}

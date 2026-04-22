@@ -2,14 +2,45 @@
 //! to the appropriate `GraphMaterial` or `CodeShaderMaterial`.
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::path::Path;
 
 use bevy::prelude::*;
+use uuid::Uuid;
 
-use super::codegen;
-use super::graph::MaterialGraph;
+use super::codegen::{self, FunctionRegistry};
+use super::graph::{MaterialDomain, MaterialFunction, MaterialGraph};
 use super::material_ref::MaterialRef;
 use super::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
 use crate::runtime::{CodeShaderMaterial, ShaderCache};
+
+/// Scan the directory containing a material file for sibling
+/// `*.material_function` files and build a local registry.
+fn load_sibling_functions(material_path: &str) -> FunctionRegistry {
+    let mut registry: FunctionRegistry = HashMap::new();
+    let Some(parent) = Path::new(material_path).parent() else {
+        return registry;
+    };
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return registry;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("material_function") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else { continue; };
+        match serde_json::from_str::<MaterialFunction>(&content) {
+            Ok(mat_fn) => {
+                registry.insert(mat_fn.name.clone(), mat_fn);
+            }
+            Err(e) => {
+                warn!("Failed to parse material function '{}': {}", path.display(), e);
+            }
+        }
+    }
+    registry
+}
 
 /// Cache of compiled materials to avoid redundant recompilation.
 #[derive(Resource, Default)]
@@ -295,8 +326,13 @@ fn resolve_graph_material(
         }
     };
 
+    // Load any sibling `.material_function` files in the same directory so the
+    // graph can reference them via function/call nodes.
+    let functions = load_sibling_functions(path);
+    let registry = if functions.is_empty() { None } else { Some(&functions) };
+
     // Compile graph → WGSL
-    let result = codegen::compile(&graph);
+    let result = codegen::compile_with_functions(&graph, registry);
     if !result.errors.is_empty() {
         for err in &result.errors {
             error!("Material compile error in '{}': {}", path, err);
@@ -304,31 +340,64 @@ fn resolve_graph_material(
         return None;
     }
 
-    // Each material gets its own shader handle — no more shared overwriting.
+    // Each material gets its own compiled shader, inserted at a unique
+    // `Handle::Uuid`. The UUID lives in the extension's pipeline key so
+    // `specialize()` can reconstruct the handle and swap it into the
+    // fragment stage. See `surface_ext.rs` for why we can't store the
+    // `Handle<Shader>` directly (packed-struct + non-Copy).
+    let shader_uuid = Uuid::new_v4();
+    let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
     let shader = Shader::from_wgsl(
         result.fragment_shader,
         format!("material://{}", path),
     );
-    let shader_handle = shaders.add(shader);
+    let _ = shaders.insert(&shader_handle, shader);
 
-    // Create material — start with fallback textures, then load actual ones
+    // Build the ExtendedMaterial<StandardMaterial, SurfaceGraphExt>. The base
+    // StandardMaterial supplies all the heavy PBR plumbing; our extension
+    // supplies the compiled per-material fragment shader and texture slots.
     let mut mat = if let Some(fb) = fallback_texture {
         new_graph_material(fb)
     } else {
         new_graph_material(&FallbackTexture(Handle::default()))
     };
-    mat.shader = Some(shader_handle);
+    mat.extension.shader_uuid = Some(shader_uuid);
+
+    // Domain → base StandardMaterial configuration. This is where the graph's
+    // compile-time domain choice translates into a Bevy-side feature flip
+    // (unlit bypasses lighting; AlphaMode controls queue placement).
+    match result.domain {
+        MaterialDomain::Unlit => {
+            mat.base.unlit = true;
+        }
+        MaterialDomain::Surface | MaterialDomain::Vegetation | MaterialDomain::TerrainLayer => {
+            mat.base.unlit = false;
+        }
+    }
+
+    // Transmission pins connected → must enable transmission on the CPU-side
+    // StandardMaterial so Bevy's `reads_view_transmission_texture()` returns
+    // true, which schedules the transmissive render pass that populates
+    // `view_transmission_texture`. The runtime-shader value (driven by the
+    // graph) overrides this default anyway; 0.5 is just enough to trigger
+    // the pipeline decision.
+    if result.requires_transmission {
+        mat.base.specular_transmission = 0.5;
+    }
 
     for tb in &result.texture_bindings {
         if tb.asset_path.is_empty() {
             continue;
         }
         let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-        match tb.binding {
-            0 => mat.texture_0 = Some(handle),
-            1 => mat.texture_1 = Some(handle),
-            2 => mat.texture_2 = Some(handle),
-            3 => mat.texture_3 = Some(handle),
+        match (tb.kind, tb.binding) {
+            (codegen::TextureKind::D2, 0) => mat.extension.texture_0 = Some(handle),
+            (codegen::TextureKind::D2, 1) => mat.extension.texture_1 = Some(handle),
+            (codegen::TextureKind::D2, 2) => mat.extension.texture_2 = Some(handle),
+            (codegen::TextureKind::D2, 3) => mat.extension.texture_3 = Some(handle),
+            (codegen::TextureKind::Cube, 0) => mat.extension.cube_0 = Some(handle),
+            (codegen::TextureKind::D2Array, 0) => mat.extension.array_0 = Some(handle),
+            (codegen::TextureKind::D3, 0) => mat.extension.volume_0 = Some(handle),
             _ => {}
         }
     }

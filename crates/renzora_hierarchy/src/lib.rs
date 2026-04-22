@@ -11,7 +11,8 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor_framework::{
     search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
-    HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation, SpawnRegistry,
+    HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
+    SceneStarter, SceneStarterRegistry, SpawnRegistry,
 };
 use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
@@ -400,15 +401,7 @@ impl EditorPanel for HierarchyPanel {
         };
 
         if nodes.is_empty() {
-            let text_muted = theme.text.muted.to_color32();
-            ui.add_space(8.0);
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    egui::RichText::new("No entities in scene.")
-                        .size(11.0)
-                        .color(text_muted),
-                );
-            });
+            render_scene_starter_picker(ui, world, &theme);
             return;
         }
 
@@ -783,6 +776,26 @@ impl Plugin for HierarchyPanelPlugin {
         // - Terrain: renzora_terrain (editor feature)
         // - World Environment/Sun: renzora_level_presets
         app.init_resource::<SpawnRegistry>();
+
+        // Scene starters shown on the empty-hierarchy picker. Feature-specific
+        // starters (Environment, UI Canvas, Physics Arena) are registered by
+        // their owning crates.
+        app.register_scene_starter(SceneStarter {
+            id: "empty_scene",
+            title: "Empty Scene",
+            description: "Start with just a camera",
+            icon: egui_phosphor::regular::CIRCLE_DASHED,
+            spawn_fn: |world: &mut World| {
+                use renzora::core::SceneCamera;
+                world.spawn((
+                    Name::new("Camera"),
+                    SceneCamera,
+                    Camera3d::default(),
+                    Camera { is_active: false, ..default() },
+                    Transform::from_xyz(5.0, 4.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+                ));
+            },
+        });
     }
 }
 
@@ -870,6 +883,142 @@ fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String>
         }
     }
     None
+}
+
+/// Empty-state UI for the hierarchy: a "New" picker with one clickable card
+/// per registered [`SceneStarter`]. Each card invokes that starter's
+/// `spawn_fn` via `EditorCommands`.
+fn render_scene_starter_picker(
+    ui: &mut egui::Ui,
+    world: &World,
+    theme: &renzora_theme::Theme,
+) {
+    let registry = match world.get_resource::<SceneStarterRegistry>() {
+        Some(r) => r,
+        None => return,
+    };
+    let starters: Vec<_> = registry.iter().collect();
+
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let border = theme.widgets.border.to_color32();
+    let row_bg = theme.panels.item_bg.to_color32();
+    // Simple hover: brighten item_bg slightly.
+    let row_hover = row_bg.gamma_multiply(1.4);
+
+    ui.add_space(16.0);
+    ui.vertical_centered(|ui| {
+        ui.label(
+            egui::RichText::new("This scene is empty")
+                .size(14.0)
+                .strong()
+                .color(text_primary),
+        );
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new("Pick a starter, or just add entities manually.")
+                .size(11.0)
+                .color(text_muted),
+        );
+    });
+    ui.add_space(14.0);
+
+    if starters.is_empty() {
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new("No starters registered.")
+                    .size(11.0)
+                    .color(text_muted),
+            );
+        });
+        return;
+    }
+
+    egui::ScrollArea::vertical()
+        .id_salt("scene_starter_picker")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.style_mut().spacing.item_spacing.y = 6.0;
+            for starter in &starters {
+                render_starter_card(ui, starter, row_bg, row_hover, border, text_primary, text_muted, world);
+            }
+        });
+}
+
+fn render_starter_card(
+    ui: &mut egui::Ui,
+    starter: &SceneStarter,
+    bg: egui::Color32,
+    bg_hover: egui::Color32,
+    border: egui::Color32,
+    text_primary: egui::Color32,
+    text_muted: egui::Color32,
+    world: &World,
+) {
+    let margin = 6.0;
+    let width = ui.available_width() - margin * 2.0;
+
+    ui.horizontal(|ui| {
+        ui.add_space(margin);
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(width, 52.0),
+            egui::Sense::click(),
+        );
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let fill = if resp.hovered() { bg_hover } else { bg };
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), fill);
+        ui.painter().rect_stroke(
+            rect,
+            egui::CornerRadius::same(6),
+            egui::Stroke::new(1.0, border),
+            egui::StrokeKind::Inside,
+        );
+
+        let icon_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 12.0, rect.top() + 10.0),
+            egui::vec2(32.0, 32.0),
+        );
+        ui.painter().text(
+            icon_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            starter.icon,
+            egui::FontId::proportional(22.0),
+            text_primary,
+        );
+
+        let text_x = icon_rect.right() + 10.0;
+        ui.painter().text(
+            egui::pos2(text_x, rect.top() + 10.0),
+            egui::Align2::LEFT_TOP,
+            starter.title,
+            egui::FontId::proportional(13.0),
+            text_primary,
+        );
+        ui.painter().text(
+            egui::pos2(text_x, rect.top() + 28.0),
+            egui::Align2::LEFT_TOP,
+            starter.description,
+            egui::FontId::proportional(10.5),
+            text_muted,
+        );
+
+        if resp.clicked() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                let id = starter.id;
+                cmds.push(move |world: &mut World| {
+                    let spawn = world
+                        .get_resource::<SceneStarterRegistry>()
+                        .and_then(|r| r.get(id))
+                        .map(|s| s.spawn_fn);
+                    if let Some(f) = spawn {
+                        f(world);
+                    }
+                });
+            }
+        }
+    });
 }
 
 renzora::add!(HierarchyPanelPlugin, Editor);

@@ -1,14 +1,15 @@
-//! Terrain undo/redo — snapshot-based heightmap and splatmap undo stack.
+//! Terrain undo/redo — snapshot-based heightmap and layer-mask undo stack.
 
 use bevy::prelude::*;
 
-/// A single undo entry capturing chunk heightmaps and splatmap weights before a stroke.
+/// A single undo entry capturing chunk heightmaps and paint-layer masks
+/// before a stroke.
 #[derive(Clone)]
 pub struct TerrainUndoEntry {
-    /// (chunk_x, chunk_z, heights) snapshots
+    /// (chunk_x, chunk_z, base_heights) snapshots
     pub chunk_snapshots: Vec<(u32, u32, Vec<f32>)>,
-    /// (entity, splatmap_weights) snapshots
-    pub splatmap_snapshots: Vec<(Entity, Vec<[f32; 8]>)>,
+    /// Per-entity snapshot of every layer's coverage mask.
+    pub layer_mask_snapshots: Vec<(Entity, Vec<Vec<f32>>)>,
 }
 
 /// Resource: terrain undo/redo stacks.
@@ -45,5 +46,5 @@ impl TerrainUndoStack {
 pub struct TerrainStrokeSnapshot {
     pub active: bool,
     pub chunk_snapshots: Vec<(u32, u32, Vec<f32>)>,
-    pub splatmap_snapshots: Vec<(Entity, Vec<[f32; 8]>)>,
+    pub layer_mask_snapshots: Vec<(Entity, Vec<Vec<f32>>)>,
 }

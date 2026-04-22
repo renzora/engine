@@ -3,11 +3,17 @@
 use bevy_egui::egui;
 use renzora_theme::Theme;
 
-/// Fixed width for property labels.
+/// Minimum width reserved for property labels. Labels shorter than this
+/// still render at this width so a column of short rows stays aligned.
 pub const LABEL_WIDTH: f32 = 80.0;
 
 /// Minimum content width before clipping.
 pub const MIN_PANEL_WIDTH: f32 = 220.0;
+
+/// Minimum space reserved for the editor widget on an inline property row.
+/// Labels are allowed to grow past `LABEL_WIDTH` up to the point where the
+/// widget would fall below this — then the label starts truncating instead.
+pub const MIN_WIDGET_WIDTH: f32 = 100.0;
 
 /// Render a full-width row with alternating themed background.
 ///
@@ -51,9 +57,26 @@ pub fn inline_property<R>(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
 
-                // Fixed-width label
+                // Grow the label to its natural text width and only fall back
+                // to truncation when doing so would push the editor widget
+                // below MIN_WIDGET_WIDTH. Floors at LABEL_WIDTH so rows with
+                // short labels still align with their neighbours.
+                let row_w = ui.available_width();
+                let max_label = (row_w - MIN_WIDGET_WIDTH - 2.0).max(LABEL_WIDTH);
+                let natural = ui
+                    .painter()
+                    .layout_no_wrap(
+                        label.to_string(),
+                        egui::FontId::proportional(11.0),
+                        egui::Color32::WHITE,
+                    )
+                    .size()
+                    .x;
+                // +6 of breathing room so the label never kisses the widget.
+                let label_w = (natural + 6.0).min(max_label).max(LABEL_WIDTH);
+
                 ui.add_sized(
-                    [LABEL_WIDTH, 16.0],
+                    [label_w, 16.0],
                     egui::Label::new(egui::RichText::new(label).size(11.0)).truncate(),
                 );
 

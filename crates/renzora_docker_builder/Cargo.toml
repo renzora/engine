@@ -1,0 +1,19 @@
+[package]
+name = "renzora_docker_builder"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+egui-phosphor = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_ui = { path = "../renzora_ui" }
+renzora_theme = { path = "../renzora_theme" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+md5 = "0.7"

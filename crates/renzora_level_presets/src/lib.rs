@@ -953,8 +953,30 @@ fn spawn_terrain(
 
 // ── Self-registered spawn presets ──────────────────────────────────────────
 
+fn spawn_world_environment(world: &mut World) -> Entity {
+    let sun = renzora_lighting::Sun::default();
+    let dir = sun.direction();
+    world
+        .spawn((
+            Name::new("World Environment"),
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+            DirectionalLight {
+                color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+                illuminance: sun.illuminance,
+                shadows_enabled: sun.shadows_enabled,
+                ..default()
+            },
+            sun,
+            renzora_bloom_effect::BloomSettings::default(),
+            renzora_atmosphere::AtmosphereComponentSettings::default(),
+            renzora_clouds::CloudsData::default(),
+            renzora_distance_fog::DistanceFogSettings::default(),
+        ))
+        .id()
+}
+
 fn register_lighting_presets(app: &mut App) {
-    use renzora_editor_framework::{AppEditorExt, EntityPreset};
+    use renzora_editor_framework::{AppEditorExt, EntityPreset, SceneStarter};
     use egui_phosphor::regular;
 
     app.register_entity_preset(EntityPreset {
@@ -962,26 +984,29 @@ fn register_lighting_presets(app: &mut App) {
         display_name: "World Environment",
         icon: regular::GLOBE,
         category: "general",
-        spawn_fn: |world| {
-            let sun = renzora_lighting::Sun::default();
-            let dir = sun.direction();
-            world
-                .spawn((
-                    Name::new("World Environment"),
-                    Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
-                    DirectionalLight {
-                        color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
-                        illuminance: sun.illuminance,
-                        shadows_enabled: sun.shadows_enabled,
-                        ..default()
-                    },
-                    sun,
-                    renzora_bloom_effect::BloomSettings::default(),
-                    renzora_atmosphere::AtmosphereComponentSettings::default(),
-                    renzora_clouds::CloudsData::default(),
-                    renzora_distance_fog::DistanceFogSettings::default(),
-                ))
-                .id()
+        spawn_fn: spawn_world_environment,
+    });
+
+    // "New Environment" scene starter — combines the environment entity
+    // (sun + atmosphere + clouds + fog) with a terrain so the user has an
+    // outdoor scene to immediately start sculpting.
+    app.register_scene_starter(SceneStarter {
+        id: "environment",
+        title: "New Environment",
+        description: "Sun, atmosphere, fog, and a fresh terrain",
+        icon: regular::TREE_EVERGREEN,
+        spawn_fn: |world: &mut World| {
+            spawn_world_environment(world);
+            renzora_terrain::mesh::spawn_terrain(world);
+            // Add a default camera so the new scene has a viewpoint.
+            world.spawn((
+                Name::new("Camera"),
+                renzora::core::SceneCamera,
+                Camera3d::default(),
+                Camera { is_active: false, ..default() },
+                Transform::from_xyz(20.0, 15.0, 20.0)
+                    .looking_at(Vec3::ZERO, Vec3::Y),
+            ));
         },
     });
 

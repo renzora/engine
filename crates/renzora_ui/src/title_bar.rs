@@ -68,6 +68,7 @@ pub fn render_title_bar(
     window_queue: &mut WindowActionQueue,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
+    let mut any_widget_hovered = false;
 
     egui::TopBottomPanel::top("renzora_title_bar")
         .exact_height(TITLE_BAR_HEIGHT)
@@ -118,7 +119,7 @@ pub fn render_title_bar(
                     v.widgets.open.fg_stroke.color = Color32::WHITE;
                 }
 
-                ui.menu_button("File", |ui| {
+                let file_menu = ui.menu_button("File", |ui| {
                     if ui.button("New Project").clicked() {
                         action = TitleBarAction::NewProject;
                         ui.close();
@@ -156,8 +157,13 @@ pub fn render_title_bar(
                         ui.close();
                     }
                 });
+                if file_menu.response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    any_widget_hovered = true;
+                }
+                switch_top_menu_on_hover(ui.ctx(), &file_menu.response);
 
-                ui.menu_button("Edit", |ui| {
+                let edit_menu = ui.menu_button("Edit", |ui| {
                     if ui.button("Undo").clicked() {
                         action = TitleBarAction::Undo;
                         ui.close();
@@ -172,8 +178,13 @@ pub fn render_title_bar(
                         ui.close();
                     }
                 });
+                if edit_menu.response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    any_widget_hovered = true;
+                }
+                switch_top_menu_on_hover(ui.ctx(), &edit_menu.response);
 
-                ui.menu_button("Help", |ui| {
+                let help_menu = ui.menu_button("Help", |ui| {
                     if ui.button("Getting Started Tutorial").clicked() {
                         action = TitleBarAction::StartTutorial;
                         ui.close();
@@ -183,6 +194,11 @@ pub fn render_title_bar(
                         ui.close();
                     }
                 });
+                if help_menu.response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    any_widget_hovered = true;
+                }
+                switch_top_menu_on_hover(ui.ctx(), &help_menu.response);
 
                 // --- Center: layout tabs ---
                 let font = egui::FontId::proportional(TAB_FONT_SIZE);
@@ -279,6 +295,7 @@ pub fn render_title_bar(
 
                     if response.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
                     }
 
                     if response.clicked() {
@@ -336,6 +353,7 @@ pub fn render_title_bar(
                     );
                     if pause_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
                     }
                     if pause_resp.clicked() {
                         action = TitleBarAction::Pause;
@@ -363,6 +381,7 @@ pub fn render_title_bar(
                     );
                     if stop_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
                     }
                     if stop_resp.clicked() {
                         action = TitleBarAction::Stop;
@@ -394,6 +413,7 @@ pub fn render_title_bar(
 
                 if gear_resp.hovered() {
                     ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    any_widget_hovered = true;
                 }
                 if gear_resp.clicked() {
                     action = TitleBarAction::ToggleSettings;
@@ -404,7 +424,7 @@ pub fn render_title_bar(
                 // User button — sign-in or dropdown menu when signed in
                 if let Some(username) = signed_in_username {
                     // Signed in — show username button with dropdown
-                    let _user_btn_resp = ui.menu_button(
+                    let user_menu = ui.menu_button(
                         egui::RichText::new(format!(
                             "{} {}",
                             egui_phosphor::regular::USER_CIRCLE,
@@ -446,6 +466,10 @@ pub fn render_title_bar(
                             }
                         },
                     );
+                    if user_menu.response.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
+                    }
                 } else {
                     // Not signed in — simple sign-in button
                     let sign_in_size = Vec2::new(sign_in_width, 20.0);
@@ -459,6 +483,7 @@ pub fn render_title_bar(
 
                     if sign_in_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
                     }
 
                     let bg = if sign_in_open {
@@ -510,10 +535,23 @@ pub fn render_title_bar(
                 panel_rect.min,
                 Vec2::new(panel_rect.width() - WINDOW_CTRL_WIDTH, panel_rect.height()),
             );
-            window_chrome::render_drag_handle(ui, drag_rect, window_queue);
+            window_chrome::render_drag_handle(ui, drag_rect, window_queue, any_widget_hovered);
         });
 
     action
+}
+
+/// If another top-level menu popup is already open and the user hovers this
+/// menu button, switch to this one. egui 0.33's `MenuButton` only auto-switches
+/// for submenus, not top-level bar menus, so we do it manually.
+fn switch_top_menu_on_hover(ctx: &egui::Context, response: &egui::Response) {
+    if !response.hovered() {
+        return;
+    }
+    let popup_id = egui::Popup::default_response_id(response);
+    if egui::Popup::is_any_open(ctx) && !egui::Popup::is_id_open(ctx, popup_id) {
+        egui::Popup::open_id(ctx, popup_id);
+    }
 }
 
 /// Add a fixed brightness delta to each RGB channel of a color.

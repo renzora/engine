@@ -9,6 +9,7 @@ pub mod commands;
 pub mod sdk;
 pub mod ext;
 pub mod inspector_registry;
+pub mod material_thumbnail_registry;
 pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
@@ -25,6 +26,7 @@ pub use commands::EditorCommands;
 pub use inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
+pub use material_thumbnail_registry::{material_thumb_path, MaterialThumbnailRegistry};
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
@@ -173,7 +175,10 @@ pub enum HierarchyFilter {
     ExcludeDescendantsOf(Vec<&'static str>),
 }
 
-pub use spawn_registry::{ComponentIconEntry, ComponentIconRegistry, EntityPreset, SpawnRegistry};
+pub use spawn_registry::{
+    ComponentIconEntry, ComponentIconRegistry, EntityPreset, SceneStarter, SceneStarterRegistry,
+    SpawnRegistry,
+};
 
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
 #[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -331,13 +336,15 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
             .init_resource::<SpawnRegistry>()
+            .init_resource::<SceneStarterRegistry>()
             .init_resource::<ComponentIconRegistry>()
             .init_resource::<ViewportOverlayRegistry>()
             .init_resource::<ToolbarRegistry>()
             .init_resource::<ToolOptionsRegistry>()
             .init_resource::<ViewportModeOptionsRegistry>()
             .init_resource::<ShortcutRegistry>()
-            .init_resource::<EditorActionHooks>();
+            .init_resource::<EditorActionHooks>()
+            .init_resource::<MaterialThumbnailRegistry>();
 
         register_builtin_tools(
             &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
@@ -438,8 +445,8 @@ pub fn is_terrain_selected(world: &World) -> bool {
     false
 }
 
-/// Register the built-in Transform + Terrain/Foliage tools with the
-/// [`ToolbarRegistry`]. Called once at plugin build time.
+/// Register the built-in Transform tools with the [`ToolbarRegistry`].
+/// Called once at plugin build time.
 fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     use egui_phosphor::regular::*;
 
@@ -485,65 +492,9 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             .on_activate(|w| { w.insert_resource(ActiveTool::Scale); }),
     );
 
-    // Terrain section — visible only when a terrain is selected. Clicking the
-    // active button a second time deactivates (reverts to Select).
-    registry.register(
-        ToolEntry::new("builtin.terrain_sculpt", MOUNTAINS, "Sculpt Terrain", ToolSection::Terrain)
-            .order(0)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainSculpt)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::TerrainSculpt {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::TerrainSculpt
-                };
-                w.insert_resource(new);
-            }),
-    );
-    registry.register(
-        ToolEntry::new("builtin.terrain_paint", PAINT_BRUSH, "Paint Terrain Layers", ToolSection::Terrain)
-            .order(1)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainPaint)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::TerrainPaint {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::TerrainPaint
-                };
-                w.insert_resource(new);
-            }),
-    );
-    registry.register(
-        ToolEntry::new("builtin.foliage_paint", TREE, "Paint Foliage", ToolSection::Terrain)
-            .order(2)
-            .visible_if(is_terrain_selected)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::FoliagePaint)
-            })
-            .on_activate(|w| {
-                let cur = w.get_resource::<ActiveTool>().copied().unwrap_or_default();
-                let new = if cur == ActiveTool::FoliagePaint {
-                    ActiveTool::Select
-                } else {
-                    ActiveTool::FoliagePaint
-                };
-                w.insert_resource(new);
-            }),
-    );
+    // Terrain tools (builtin.terrain_sculpt / terrain_paint / foliage_paint) are
+    // registered by `renzora_terrain_editor::TerrainEditorPlugin` so their
+    // activators can reach `TerrainData` and the inspector tab state directly.
 }
 
 /// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read
@@ -1119,11 +1070,31 @@ pub fn editor_ui_system(world: &mut World) {
     // L) Handle document tab actions
     match doc_tab_action {
         DocTabAction::Activate(idx) => {
+            let target_kind = world
+                .get_resource::<DocumentTabState>()
+                .and_then(|ts| ts.tabs.get(idx).map(|t| t.kind));
+            let target_path = world
+                .get_resource::<DocumentTabState>()
+                .and_then(|ts| ts.tabs.get(idx).and_then(|t| t.scene_path.clone()));
             let ids = world
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.activate_tab(idx));
             if let Some((old_id, new_id)) = ids {
                 world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+            }
+            if let Some(kind) = target_kind {
+                if let Some(layout) = kind.layout_name() {
+                    switch_layout_by_name(world, layout);
+                }
+                if matches!(kind, renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader) {
+                    if let Some(rel) = target_path {
+                        let abs = world
+                            .get_resource::<renzora::core::CurrentProject>()
+                            .map(|p| p.resolve_path(&rel))
+                            .unwrap_or_else(|| std::path::PathBuf::from(&rel));
+                        world.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
+                    }
+                }
             }
         }
         DocTabAction::Close(idx) => {
@@ -1271,6 +1242,64 @@ pub fn switch_layout_by_name(world: &mut World, name: &str) {
         .and_then(|lm| lm.layouts.iter().position(|l| l.name == name));
     if let Some(i) = index {
         switch_layout(world, i);
+    }
+}
+
+/// Open (or focus an existing) document tab for the given asset path, then
+/// switch to the layout appropriate for its kind. Called by the asset browser
+/// when the user double-clicks a file.
+pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_ui::DocTabKind) {
+    use renzora_ui::{DocTabKind, DocumentTabState};
+
+    let rel = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .and_then(|p| p.make_relative(path))
+        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
+
+    let name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Untitled".to_string());
+
+    let existing = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.find_by_path(&rel, kind));
+
+    let switch_ids: Option<(u64, u64)> = if let Some(idx) = existing {
+        world
+            .get_resource_mut::<DocumentTabState>()
+            .and_then(|mut ts| ts.activate_tab(idx))
+    } else {
+        let old_id = world
+            .get_resource::<DocumentTabState>()
+            .and_then(|ts| ts.active_tab_id());
+        let new_id = world.get_resource_mut::<DocumentTabState>().map(|mut ts| {
+            let idx = ts.add_tab_of_kind(name, Some(rel), kind);
+            ts.active_tab = idx;
+            ts.tabs[idx].id
+        });
+        match (old_id, new_id) {
+            (Some(o), Some(n)) if o != n => Some((o, n)),
+            _ => None,
+        }
+    };
+
+    if let Some((old_id, new_id)) = switch_ids {
+        world.insert_resource(renzora::TabSwitchRequest {
+            old_tab_id: old_id,
+            new_tab_id: new_id,
+        });
+    }
+
+    if let Some(layout) = kind.layout_name() {
+        switch_layout_by_name(world, layout);
+    }
+
+    if matches!(kind, DocTabKind::Script | DocTabKind::Shader) {
+        world.insert_resource(renzora::core::OpenCodeEditorFile {
+            path: path.to_path_buf(),
+        });
     }
 }
 

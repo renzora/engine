@@ -97,7 +97,7 @@ pub fn apply_imported_heights(
 ) {
     for (cx, cz, heights) in imported {
         if let Some(chunk) = chunks.iter_mut().find(|c| c.chunk_x == *cx && c.chunk_z == *cz) {
-            chunk.heights = heights.clone();
+            chunk.base_heights = heights.clone();
             chunk.dirty = true;
         }
     }

@@ -1,0 +1,45 @@
+{
+  "name": "Flipbook UV (animated sub-rect sampling on a sprite-sheet grid)",
+  "domain": "Surface",
+  "_comment": "Flipbook UV picks a frame from a 4x4 grid and outputs the sub-rect UV. We feed that into a Checkerboard (whose coarse pattern reveals per-cell layout) and blend between two colors via Color Lerp. Animate `frame` by floor(time*4) to step ~4 frames/sec. In real use you'd connect to Sample Texture pointing at a sprite-sheet.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1100.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "roughness": { "Float": 0.8 }
+    }},
+
+    { "id": 10, "node_type": "input/time", "position": [-800.0, 200.0], "input_values": {} },
+    { "id": 11, "node_type": "math/multiply", "position": [-600.0, 200.0], "input_values": {
+        "b": { "Float": 4.0 }
+    }},
+    { "id": 12, "node_type": "math/floor", "position": [-400.0, 200.0], "input_values": {} },
+
+    { "id": 20, "node_type": "animation/flipbook_uv", "position": [-150.0, 0.0], "input_values": {
+        "cols": { "Float": 4.0 },
+        "rows": { "Float": 4.0 }
+    }},
+
+    { "id": 30, "node_type": "procedural/checkerboard", "position": [150.0, 0.0], "input_values": {
+        "scale": { "Float": 6.0 }
+    }},
+
+    { "id": 40, "node_type": "color/constant", "position": [400.0, -120.0], "input_values": {
+        "color": { "Color": [0.05, 0.1, 0.15, 1.0] }
+    }},
+    { "id": 41, "node_type": "color/constant", "position": [400.0, 120.0], "input_values": {
+        "color": { "Color": [0.95, 0.9, 0.3, 1.0] }
+    }},
+    { "id": 42, "node_type": "color/lerp", "position": [700.0, 0.0], "input_values": {} }
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "time",   "to_node": 11, "to_pin": "a" },
+    { "from_node": 11, "from_pin": "result", "to_node": 12, "to_pin": "value" },
+    { "from_node": 12, "from_pin": "result", "to_node": 20, "to_pin": "frame" },
+    { "from_node": 20, "from_pin": "uv",     "to_node": 30, "to_pin": "uv" },
+    { "from_node": 40, "from_pin": "color",  "to_node": 42, "to_pin": "a" },
+    { "from_node": 41, "from_pin": "color",  "to_node": 42, "to_pin": "b" },
+    { "from_node": 30, "from_pin": "value",  "to_node": 42, "to_pin": "t" },
+    { "from_node": 42, "from_pin": "color",  "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

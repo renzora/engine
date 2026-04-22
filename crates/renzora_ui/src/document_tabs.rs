@@ -24,15 +24,65 @@ pub const DOC_TAB_BAR_HEIGHT: f32 = TAB_HEIGHT + TOP_MARGIN;
 
 // ── Document tab ─────────────────────────────────────────────────────────────
 
-/// A single open scene tab.
+/// What type of asset a document tab represents. The layout that should be
+/// active when the tab is focused, and the icon used in its tab header, both
+/// follow from this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocTabKind {
+    #[default]
+    Scene,
+    Material,
+    Particle,
+    Blueprint,
+    Script,
+    Shader,
+    Other,
+}
+
+impl DocTabKind {
+    /// Named workspace layout that should activate when this tab is focused.
+    /// `None` means keep whatever layout is currently active.
+    pub fn layout_name(self) -> Option<&'static str> {
+        match self {
+            DocTabKind::Scene => Some("Scene"),
+            DocTabKind::Material => Some("Materials"),
+            DocTabKind::Particle => Some("Particles"),
+            DocTabKind::Blueprint => Some("Blueprints"),
+            DocTabKind::Script => Some("Scripting"),
+            DocTabKind::Shader => Some("Shaders"),
+            DocTabKind::Other => None,
+        }
+    }
+
+    /// Phosphor icon glyph for this tab kind.
+    pub fn icon(self) -> &'static str {
+        match self {
+            DocTabKind::Scene => regular::FILM_SCRIPT,
+            DocTabKind::Material => regular::PALETTE,
+            DocTabKind::Particle => regular::SPARKLE,
+            DocTabKind::Blueprint => regular::BLUEPRINT,
+            DocTabKind::Script => regular::CODE,
+            DocTabKind::Shader => regular::GRAPHICS_CARD,
+            DocTabKind::Other => regular::FILE,
+        }
+    }
+}
+
+/// A single open document tab. Historically these were always scenes; they
+/// now also cover other asset types (materials, particles, blueprints,
+/// scripts, shaders) opened via double-click in the asset browser. The
+/// `scene_path` field stores the file path regardless of kind — kept under
+/// the legacy name so existing scene-tab call sites continue to compile.
 #[derive(Debug, Clone)]
 pub struct DocumentTab {
     /// Unique id for this tab instance.
     pub id: u64,
     /// Display name.
     pub name: String,
-    /// Path to the scene file on disk (None for unsaved scenes).
+    /// Path to the file on disk, project-relative (None for unsaved tabs).
     pub scene_path: Option<String>,
+    /// What kind of asset this tab represents.
+    pub kind: DocTabKind,
     /// Whether the document has unsaved changes.
     pub is_modified: bool,
 }
@@ -64,17 +114,30 @@ impl Default for DocumentTabState {
 }
 
 impl DocumentTabState {
-    /// Add a new tab and return its index.
+    /// Add a new scene tab and return its index.
     pub fn add_tab(&mut self, name: String, scene_path: Option<String>) -> usize {
+        self.add_tab_of_kind(name, scene_path, DocTabKind::Scene)
+    }
+
+    /// Add a tab of the given kind and return its index.
+    pub fn add_tab_of_kind(&mut self, name: String, path: Option<String>, kind: DocTabKind) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         self.tabs.push(DocumentTab {
             id,
             name,
-            scene_path,
+            scene_path: path,
+            kind,
             is_modified: false,
         });
         self.tabs.len() - 1
+    }
+
+    /// Find an existing tab for the given project-relative path and kind.
+    pub fn find_by_path(&self, path: &str, kind: DocTabKind) -> Option<usize> {
+        self.tabs.iter().position(|t| {
+            t.kind == kind && t.scene_path.as_deref() == Some(path)
+        })
     }
 
     /// Close a tab by index. Returns the closed tab's id for buffer cleanup, or None if close was denied.
@@ -171,7 +234,11 @@ pub fn render_document_tabs(
             let top_y = panel_rect.min.y;
 
             let tab_bg = theme.widgets.inactive_bg.to_color32();
-            let tab_active_bg = theme.widgets.active_bg.to_color32();
+            let tab_active_bg = Color32::from_rgb(
+                (tab_bg.r() as f32 * 0.7) as u8,
+                (tab_bg.g() as f32 * 0.7) as u8,
+                (tab_bg.b() as f32 * 0.7) as u8,
+            );
             let tab_hover_bg = theme.widgets.hovered_bg.to_color32();
             let text_color = theme.text.secondary.to_color32();
             let text_active_color = theme.text.primary.to_color32();
@@ -307,11 +374,11 @@ pub fn render_document_tabs(
                     );
                 }
 
-                // Tab icon — all tabs use scene icon
+                // Tab icon — based on asset kind
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 8.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    regular::FILM_SCRIPT,
+                    tab.kind.icon(),
                     egui::FontId::proportional(12.0),
                     if is_active { accent } else { icon_inactive },
                 );

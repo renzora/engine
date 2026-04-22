@@ -57,21 +57,21 @@ impl Default for CloudsData {
     fn default() -> Self {
         Self {
             enabled: true,
-            coverage: 0.35,
-            density: 0.6,
-            scale: 6.0,
-            speed: 0.01,
+            coverage: 0.55,
+            density: 0.95,
+            scale: 2.2,
+            speed: 0.005,
             wind_direction: 220.0,
-            altitude: 0.25,
+            altitude: 0.05,
             color: (1.0, 1.0, 1.0),
-            shadow_color: (0.55, 0.58, 0.65),
-            absorption: 1.2,
-            silver_intensity: 0.5,
+            shadow_color: (0.45, 0.52, 0.62),
+            absorption: 1.6,
+            silver_intensity: 0.9,
             silver_spread: 0.12,
-            powder_strength: 0.6,
-            ambient_brightness: 0.35,
-            horizon_color: (0.75, 0.82, 0.92),
-            atmosphere_strength: 0.65,
+            powder_strength: 0.5,
+            ambient_brightness: 0.32,
+            horizon_color: (0.80, 0.87, 0.94),
+            atmosphere_strength: 0.80,
         }
     }
 }

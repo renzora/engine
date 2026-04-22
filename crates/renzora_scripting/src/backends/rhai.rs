@@ -602,8 +602,12 @@ fn parse_script_props(engine: &Engine, ast: &AST) -> Vec<ScriptVariableDefinitio
                     let hint = prop_map.get("hint")
                         .and_then(|v| v.clone().try_cast::<ImmutableString>())
                         .map(|s| s.to_string());
+                    let tab = prop_map.get("tab")
+                        .and_then(|v| v.clone().try_cast::<ImmutableString>())
+                        .map(|s| s.to_string());
                     let mut def = ScriptVariableDefinition::new(name.clone(), sv).with_display_name(display_name.clone());
                     if let Some(h) = hint { def = def.with_hint(h); }
+                    if let Some(t) = tab { def = def.with_tab(t); }
                     props.push(def);
                     continue;
                 }

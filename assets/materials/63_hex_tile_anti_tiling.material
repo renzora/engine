@@ -1,0 +1,64 @@
+{
+  "name": "Hex Tile Anti-Tiling (blended per-cell rotated Perlin)",
+  "domain": "Surface",
+  "_comment": "Classic anti-tiling pattern: hex-decompose UV space, rotate each cell by a hashed angle, sample a procedural pattern at the three overlapping hex UVs, blend by barycentric weights. Compared to a plain tiled Perlin the repetition is eliminated without introducing obvious seams. Swap the Perlin nodes for Sample Texture to do the same with a painted tileable bitmap.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1100.0, 0.0], "input_values": {
+        "metallic":  { "Float": 0.0 },
+        "roughness": { "Float": 0.75 }
+    }},
+
+    { "id": 10, "node_type": "procedural/hex_tile", "position": [-600.0, 0.0], "input_values": {
+        "scale":     { "Float": 6.0 },
+        "variation": { "Float": 1.0 }
+    }},
+
+    { "id": 20, "node_type": "procedural/noise_perlin", "position": [-300.0, -240.0], "input_values": {
+        "scale": { "Float": 4.0 }
+    }},
+    { "id": 21, "node_type": "procedural/noise_perlin", "position": [-300.0,    0.0], "input_values": {
+        "scale": { "Float": 4.0 }
+    }},
+    { "id": 22, "node_type": "procedural/noise_perlin", "position": [-300.0,  240.0], "input_values": {
+        "scale": { "Float": 4.0 }
+    }},
+
+    { "id": 30, "node_type": "math/multiply", "position": [0.0, -240.0], "input_values": {} },
+    { "id": 31, "node_type": "math/multiply", "position": [0.0,    0.0], "input_values": {} },
+    { "id": 32, "node_type": "math/multiply", "position": [0.0,  240.0], "input_values": {} },
+
+    { "id": 40, "node_type": "math/add", "position": [260.0, -120.0], "input_values": {} },
+    { "id": 41, "node_type": "math/add", "position": [520.0,    0.0], "input_values": {} },
+
+    { "id": 50, "node_type": "color/constant", "position": [520.0, -260.0], "input_values": {
+        "color": { "Color": [0.25, 0.18, 0.12, 1.0] }
+    }},
+    { "id": 51, "node_type": "color/constant", "position": [520.0,  260.0], "input_values": {
+        "color": { "Color": [0.9, 0.8, 0.55, 1.0] }
+    }},
+    { "id": 52, "node_type": "color/lerp", "position": [800.0, 0.0], "input_values": {} }
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "uv1", "to_node": 20, "to_pin": "uv" },
+    { "from_node": 10, "from_pin": "uv2", "to_node": 21, "to_pin": "uv" },
+    { "from_node": 10, "from_pin": "uv3", "to_node": 22, "to_pin": "uv" },
+
+    { "from_node": 20, "from_pin": "value", "to_node": 30, "to_pin": "a" },
+    { "from_node": 10, "from_pin": "w1",    "to_node": 30, "to_pin": "b" },
+    { "from_node": 21, "from_pin": "value", "to_node": 31, "to_pin": "a" },
+    { "from_node": 10, "from_pin": "w2",    "to_node": 31, "to_pin": "b" },
+    { "from_node": 22, "from_pin": "value", "to_node": 32, "to_pin": "a" },
+    { "from_node": 10, "from_pin": "w3",    "to_node": 32, "to_pin": "b" },
+
+    { "from_node": 30, "from_pin": "result", "to_node": 40, "to_pin": "a" },
+    { "from_node": 31, "from_pin": "result", "to_node": 40, "to_pin": "b" },
+    { "from_node": 40, "from_pin": "result", "to_node": 41, "to_pin": "a" },
+    { "from_node": 32, "from_pin": "result", "to_node": 41, "to_pin": "b" },
+
+    { "from_node": 50, "from_pin": "color", "to_node": 52, "to_pin": "a" },
+    { "from_node": 51, "from_pin": "color", "to_node": 52, "to_pin": "b" },
+    { "from_node": 41, "from_pin": "result", "to_node": 52, "to_pin": "t" },
+    { "from_node": 52, "from_pin": "color", "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

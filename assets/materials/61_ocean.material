@@ -1,0 +1,112 @@
+{
+  "name": "Ocean (multi-scale waves + crossing directions + foam + slope roughness)",
+  "domain": "Surface",
+  "_comment": "Two FBM layers panning in different directions combine for non-uniform wave interference. World-space normal reconstruction. Depth-fade drives foam at object intersections (requires DepthPrepass on camera). Slope steepness modulates roughness so wave crests are slightly matte while troughs stay mirror-sharp.",
+  "nodes": [
+    { "id": 1, "node_type": "output/surface", "position": [1400.0, 0.0], "input_values": {
+        "metallic":              { "Float":  0.0 },
+        "ao":                    { "Float":  1.0 },
+        "alpha":                 { "Float":  1.0 },
+        "specular_transmission": { "Float":  0.95 },
+        "diffuse_transmission":  { "Float":  0.0 },
+        "thickness":             { "Float":  0.5 },
+        "ior":                   { "Float":  1.33 },
+        "attenuation_distance":  { "Float":  3.5 },
+        "reflectance":           { "Vec3":  [0.5, 0.55, 0.6] }
+    }},
+
+    { "id": 10, "node_type": "input/uv_panner",             "position": [-1200.0, 200.0], "input_values": {
+        "speed": { "Vec2": [0.03, 0.018] }
+    }},
+    { "id": 11, "node_type": "procedural/noise_fbm",        "position": [-950.0, 200.0], "input_values": {
+        "scale":       { "Float": 3.5 },
+        "octaves":     { "Float": 4.0 },
+        "lacunarity":  { "Float": 2.1 },
+        "persistence": { "Float": 0.55 }
+    }},
+    { "id": 12, "node_type": "math/multiply",               "position": [-700.0, 200.0], "input_values": {
+        "b": { "Float": 0.7 }
+    }},
+
+    { "id": 20, "node_type": "input/uv_panner",             "position": [-1200.0, 480.0], "input_values": {
+        "speed": { "Vec2": [-0.05, 0.04] }
+    }},
+    { "id": 21, "node_type": "procedural/noise_fbm",        "position": [-950.0, 480.0], "input_values": {
+        "scale":       { "Float": 9.0 },
+        "octaves":     { "Float": 3.0 },
+        "lacunarity":  { "Float": 2.3 },
+        "persistence": { "Float": 0.5 }
+    }},
+    { "id": 22, "node_type": "math/multiply",               "position": [-700.0, 480.0], "input_values": {
+        "b": { "Float": 0.3 }
+    }},
+
+    { "id": 30, "node_type": "math/add",                    "position": [-500.0, 340.0], "input_values": {} },
+    { "id": 31, "node_type": "procedural/world_normal_from_height", "position": [-250.0, 340.0], "input_values": {
+        "strength": { "Float": 0.4 }
+    }},
+
+    { "id": 40, "node_type": "math/remap",                  "position": [-250.0, 0.0], "input_values": {
+        "in_min":  { "Float": 0.25 },
+        "in_max":  { "Float": 0.75 },
+        "out_min": { "Float": 0.015 },
+        "out_max": { "Float": 0.09 }
+    }},
+
+    { "id": 50, "node_type": "scene/depth_fade",            "position": [-600.0, -220.0], "input_values": {
+        "distance": { "Float": 0.6 }
+    }},
+    { "id": 51, "node_type": "math/one_minus",              "position": [-350.0, -220.0], "input_values": {} },
+    { "id": 52, "node_type": "math/power",                  "position": [-150.0, -220.0], "input_values": {
+        "exp": { "Float": 2.5 }
+    }},
+
+    { "id": 60, "node_type": "color/constant",              "position": [100.0, -350.0], "input_values": {
+        "color": { "Color": [0.12, 0.26, 0.38, 1.0] }
+    }},
+    { "id": 61, "node_type": "color/constant",              "position": [100.0, -200.0], "input_values": {
+        "color": { "Color": [0.95, 0.98, 1.0, 1.0] }
+    }},
+    { "id": 62, "node_type": "color/lerp",                  "position": [350.0, -220.0], "input_values": {} },
+
+    { "id": 70, "node_type": "math/smoothstep",             "position": [-250.0, 620.0], "input_values": {
+        "edge0": { "Float": 0.72 },
+        "edge1": { "Float": 0.88 }
+    }},
+    { "id": 71, "node_type": "math/multiply",               "position": [0.0, 620.0], "input_values": {
+        "b": { "Float": 0.25 }
+    }},
+    { "id": 72, "node_type": "color/lerp",                  "position": [700.0, -100.0], "input_values": {
+        "b": { "Color": [1.0, 1.0, 1.0, 1.0] }
+    }}
+  ],
+  "connections": [
+    { "from_node": 10, "from_pin": "uv",     "to_node": 11, "to_pin": "uv"     },
+    { "from_node": 11, "from_pin": "value",  "to_node": 12, "to_pin": "a"      },
+
+    { "from_node": 20, "from_pin": "uv",     "to_node": 21, "to_pin": "uv"     },
+    { "from_node": 21, "from_pin": "value",  "to_node": 22, "to_pin": "a"      },
+
+    { "from_node": 12, "from_pin": "result", "to_node": 30, "to_pin": "a"      },
+    { "from_node": 22, "from_pin": "result", "to_node": 30, "to_pin": "b"      },
+
+    { "from_node": 30, "from_pin": "result", "to_node": 31, "to_pin": "height" },
+    { "from_node": 31, "from_pin": "normal", "to_node": 1,  "to_pin": "normal" },
+
+    { "from_node": 30, "from_pin": "result", "to_node": 40, "to_pin": "value"  },
+    { "from_node": 40, "from_pin": "result", "to_node": 1,  "to_pin": "roughness" },
+
+    { "from_node": 50, "from_pin": "fade",   "to_node": 51, "to_pin": "value"  },
+    { "from_node": 51, "from_pin": "result", "to_node": 52, "to_pin": "base"   },
+    { "from_node": 60, "from_pin": "color",  "to_node": 62, "to_pin": "a"      },
+    { "from_node": 61, "from_pin": "color",  "to_node": 62, "to_pin": "b"      },
+    { "from_node": 52, "from_pin": "result", "to_node": 62, "to_pin": "t"      },
+
+    { "from_node": 21, "from_pin": "value",  "to_node": 70, "to_pin": "value"  },
+    { "from_node": 70, "from_pin": "result", "to_node": 71, "to_pin": "a"      },
+    { "from_node": 62, "from_pin": "color",  "to_node": 72, "to_pin": "a"      },
+    { "from_node": 71, "from_pin": "result", "to_node": 72, "to_pin": "t"      },
+    { "from_node": 72, "from_pin": "color",  "to_node": 1,  "to_pin": "base_color" }
+  ],
+  "next_id": 100
+}

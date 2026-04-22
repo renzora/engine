@@ -1,0 +1,24 @@
+{
+  "name": "Voronoi F2-F1 Edges (cracked ice effect)",
+  "domain": "Unlit",
+  "nodes": [
+    { "id": 1, "node_type": "output/unlit",            "position": [700.0, 0.0], "input_values": {} },
+    { "id": 2, "node_type": "input/uv",                "position": [-500.0, 0.0], "input_values": {} },
+    { "id": 3, "node_type": "procedural/noise_voronoi","position": [-250.0, 0.0], "input_values": {
+        "scale": { "Float": 7.0 }
+    }},
+    { "id": 4, "node_type": "math/subtract",           "position": [50.0, 0.0], "input_values": {} },
+    { "id": 5, "node_type": "math/smoothstep",         "position": [300.0, 0.0], "input_values": {
+        "edge0": { "Float": 0.0 },
+        "edge1": { "Float": 0.08 }
+    }}
+  ],
+  "connections": [
+    { "from_node": 2, "from_pin": "uv",       "to_node": 3, "to_pin": "uv"    },
+    { "from_node": 3, "from_pin": "f2",       "to_node": 4, "to_pin": "a"     },
+    { "from_node": 3, "from_pin": "distance", "to_node": 4, "to_pin": "b"     },
+    { "from_node": 4, "from_pin": "result",   "to_node": 5, "to_pin": "value" },
+    { "from_node": 5, "from_pin": "result",   "to_node": 1, "to_pin": "color" }
+  ],
+  "next_id": 6
+}
