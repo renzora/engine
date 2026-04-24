@@ -184,7 +184,7 @@ impl Default for SemanticColors {
             warning: ThemeColor::new(242, 166, 64),
             error: ThemeColor::new(230, 89, 89),
             selection: ThemeColor::new(69, 101, 151),
-            selection_stroke: ThemeColor::new(100, 180, 255),
+            selection_stroke: ThemeColor::new(43, 109, 163),
         }
     }
 }

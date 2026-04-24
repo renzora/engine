@@ -71,6 +71,20 @@ impl UndoStacks {
     pub fn can_redo(&self, context: &UndoContext) -> bool {
         self.stacks.get(context).map_or(false, |s| !s.redo.is_empty())
     }
+    /// Returns `(undo_labels, redo_labels)` for the given context.
+    /// `undo` is ordered front=oldest → back=most recent;
+    /// `redo` is ordered front=oldest-undone → back=next-to-redo.
+    pub fn labels(&self, context: &UndoContext) -> (Vec<String>, Vec<String>) {
+        self.stacks
+            .get(context)
+            .map(|s| {
+                (
+                    s.undo.iter().map(|c| c.label().to_string()).collect(),
+                    s.redo.iter().map(|c| c.label().to_string()).collect(),
+                )
+            })
+            .unwrap_or_default()
+    }
 }
 
 /// Execute `cmd` and push it onto the active (or supplied) stack.
