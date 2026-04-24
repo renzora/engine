@@ -93,6 +93,103 @@ pub fn collapsible_section(
     state.store(ui.ctx());
 }
 
+/// Render a collapsible category section with custom right-aligned header actions.
+///
+/// Identical to [`collapsible_section`] but reserves space on the right side of the
+/// header bar for caller-supplied widgets (e.g. a lock toggle). The `header_actions`
+/// closure is rendered inside a right-to-left layout, so the first widget you add
+/// sits at the far right.
+pub fn collapsible_section_with_actions(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    category: &str,
+    theme: &Theme,
+    id_source: &str,
+    default_open: bool,
+    header_actions: impl FnOnce(&mut egui::Ui),
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    let id = ui.make_persistent_id(id_source);
+    let mut state =
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+
+    let (accent_color, header_bg) = category_colors(theme, category);
+    let frame_bg = theme.panels.category_frame_bg.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_primary = theme.text.primary.to_color32();
+
+    egui::Frame::new()
+        .fill(frame_bg)
+        .corner_radius(CornerRadius::ZERO)
+        .outer_margin(egui::Margin::ZERO)
+        .inner_margin(egui::Margin::ZERO)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+
+            // Header bar
+            let header_inner = egui::Frame::new()
+                .fill(header_bg)
+                .corner_radius(CornerRadius::ZERO)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let left_response = ui.scope(|ui| {
+                            ui.set_max_width(
+                                (ui.available_width() - 32.0).max(20.0),
+                            );
+
+                            let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                            ui.label(RichText::new(caret).size(12.0).color(text_muted));
+                            ui.label(RichText::new(icon).size(15.0).color(accent_color));
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(label)
+                                        .size(13.0)
+                                        .strong()
+                                        .color(text_primary),
+                                )
+                                .truncate(),
+                            );
+                        }).response;
+
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                header_actions(ui);
+                            },
+                        );
+
+                        left_response.rect
+                    }).inner
+                }).inner;
+
+            let click = ui.interact(header_inner, id.with("header_click"), Sense::click());
+            if click.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            if click.clicked() {
+                state.toggle(ui);
+            }
+
+            if state.is_open() {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 4,
+                        right: 4,
+                        top: 4,
+                        bottom: 4,
+                    })
+                    .show(ui, |ui| {
+                        add_contents(ui);
+                    });
+            }
+        });
+
+    state.store(ui.ctx());
+}
+
 /// Render a collapsible category with toggle switch, remove button, and drag handle.
 ///
 /// Returns a [`CategoryHeaderAction`] indicating which buttons were clicked.

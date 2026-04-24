@@ -57,7 +57,8 @@ pub mod tree;
 
 pub use buttons::icon_button;
 pub use category::{
-    category_colors, collapsible_section, collapsible_section_removable, CategoryHeaderAction,
+    category_colors, collapsible_section, collapsible_section_removable,
+    collapsible_section_with_actions, CategoryHeaderAction,
 };
 pub use colors::{checkerboard, dim_color, get_theme_colors, set_theme_colors, ThemeColors};
 pub use drop_zone::{file_drop_zone, FileDropResult};

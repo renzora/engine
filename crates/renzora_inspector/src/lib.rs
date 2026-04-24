@@ -6,12 +6,12 @@ mod state;
 use std::sync::RwLock;
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, RichText};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
 use egui_phosphor::regular;
 use renzora_editor_framework::{
-    collapsible_section, collapsible_section_removable, empty_state, search_overlay,
-    AppEditorExt, EditorCommands, EditorPanel, EditorSelection, InspectorRegistry,
-    OverlayAction, OverlayEntry, PanelLocation,
+    collapsible_section, collapsible_section_removable, collapsible_section_with_actions,
+    empty_state, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
+    InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
 };
 use renzora_theme::ThemeManager;
 
@@ -49,8 +49,19 @@ impl EditorPanel for InspectorPanel {
             None => return,
         };
 
+        let mut state = self._state.write().unwrap();
+
+        // If a locked entity was despawned, drop the lock so we resume following selection.
+        if let Some(locked) = state.locked_entity {
+            if world.get_entity(locked).is_err() {
+                state.locked_entity = None;
+            }
+        }
+
         let selection = world.get_resource::<EditorSelection>();
-        let entity = selection.and_then(|s| s.get());
+        let entity = state
+            .locked_entity
+            .or_else(|| selection.and_then(|s| s.get()));
 
         let Some(entity) = entity else {
             empty_state(
@@ -82,8 +93,6 @@ impl EditorPanel for InspectorPanel {
         let (Some(registry), Some(cmds)) = (registry, cmds) else {
             return;
         };
-
-        let mut state = self._state.write().unwrap();
 
         // Add Component overlay
         if state.show_add_overlay {
@@ -216,6 +225,56 @@ impl EditorPanel for InspectorPanel {
                                     set_enabled_fn(world, entity, new_enabled);
                                 });
                             }
+                        }
+                    } else if entry.type_id == "name" {
+                        let is_locked = state.locked_entity == Some(entity);
+                        let mut lock_clicked = false;
+                        let accent = theme.semantic.accent.to_color32();
+                        let muted = theme.text.muted.to_color32();
+                        collapsible_section_with_actions(
+                            ui,
+                            entry.icon,
+                            entry.display_name,
+                            entry.category,
+                            &theme,
+                            &format!("inspector_{}", entry.type_id),
+                            true,
+                            |ui| {
+                                let (icon, color, tooltip) = if is_locked {
+                                    (regular::LOCK_SIMPLE, accent, "Unlock — resume following selection")
+                                } else {
+                                    (regular::LOCK_SIMPLE_OPEN, muted, "Lock inspector to this entity")
+                                };
+                                let btn = ui
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new(icon).size(14.0).color(color),
+                                        )
+                                        .fill(Color32::TRANSPARENT)
+                                        .frame(false),
+                                    )
+                                    .on_hover_text(tooltip);
+                                if btn.hovered() {
+                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                }
+                                if btn.clicked() {
+                                    lock_clicked = true;
+                                }
+                            },
+                            |ui| {
+                                if let Some(custom_fn) = entry.custom_ui_fn {
+                                    custom_fn(ui, world, entity, cmds, &theme);
+                                } else {
+                                    for (i, field) in entry.fields.iter().enumerate() {
+                                        field_widget::render_field(
+                                            ui, field, world, entity, cmds, &theme, i,
+                                        );
+                                    }
+                                }
+                            },
+                        );
+                        if lock_clicked {
+                            state.locked_entity = if is_locked { None } else { Some(entity) };
                         }
                     } else {
                         collapsible_section(
