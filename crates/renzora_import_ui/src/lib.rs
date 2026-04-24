@@ -64,12 +64,13 @@ fn import_overlay_system(world: &mut World) {
     let requested_target = world.remove_resource::<renzora::core::ImportTargetDir>();
 
     if import_requested {
+        let mut state = world.resource_mut::<overlay::ImportOverlayState>();
         if let Some(ref target) = requested_target {
-            world.resource_mut::<overlay::ImportOverlayState>().target_directory = target.0.clone();
+            state.target_directory = target.0.clone();
         }
-        if !auto_import {
-            world.resource_mut::<overlay::ImportOverlayState>().visible = true;
-        }
+        // An explicit Import click always opens the overlay (the user needs
+        // the file picker). `auto_import` only governs drag-and-drop.
+        state.visible = true;
     }
 
     // Check for global file drops (3D model files)
@@ -103,8 +104,10 @@ fn import_overlay_system(world: &mut World) {
     }
 
     // Auto-import path: kick off the worker silently when files are pending
-    // and the user has opted into auto-import. The overlay stays hidden.
-    if auto_import {
+    // and the user has opted into auto-import. Skipped when the overlay is
+    // explicitly visible (the user clicked Import and wants to pick files).
+    let overlay_visible = world.resource::<overlay::ImportOverlayState>().visible;
+    if auto_import && !overlay_visible {
         overlay::poll_import_task(world);
 
         let should_start = {
@@ -129,8 +132,7 @@ fn import_overlay_system(world: &mut World) {
         return;
     }
 
-    let show = world.resource::<overlay::ImportOverlayState>().visible;
-    if !show {
+    if !overlay_visible {
         return;
     }
 
