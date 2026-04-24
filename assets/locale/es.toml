@@ -1182,8 +1182,6 @@ version = "1.0"
 "layout.sandbox" = "Sandbox"
 "layout.terrain" = "Terreno"
 "layout.particles" = "Partículas"
-"layout.shaders" = "Shaders"
-"layout.physics" = "Física"
 "layout.audio" = "Audio"
 "layout.lifecycle" = "Ciclo de vida"
 

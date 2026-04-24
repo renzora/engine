@@ -114,27 +114,7 @@ fn script_component_ui(
     let scripts = sc.scripts.clone();
     let payload = world.get_resource::<AssetDragPayload>();
 
-    if scripts.is_empty() {
-        ui.add_space(4.0);
-        let drop = asset_drop_target(
-            ui,
-            ui.id().with("script_drop_empty"),
-            None,
-            &["lua", "rhai"],
-            "Drop a script file here",
-            theme,
-            payload,
-        );
-        if let Some(path) = drop.dropped_path {
-            let rel = make_relative(path, world);
-            cmds.push(move |w: &mut World| {
-                if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                    sc.add_file_script(rel);
-                }
-            });
-        }
-        ui.add_space(4.0);
-    } else {
+    if !scripts.is_empty() {
         let mut remove_index: Option<usize> = None;
         let mut toggle_index: Option<usize> = None;
 

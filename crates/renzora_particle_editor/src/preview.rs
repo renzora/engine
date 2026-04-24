@@ -10,6 +10,7 @@ use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
 use renzora::core::{IsolatedCamera, EditorLocked, HideInHierarchy};
+use renzora_editor_framework::DockingState;
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;
@@ -345,14 +346,35 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
     hasher.finish()
 }
 
+/// Run condition: `true` when the Particle Preview panel is in the active
+/// dock tree. Heavy per-frame work (effect spawn/update) is gated on this.
+pub fn particle_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
+    docking.map_or(false, |d| d.tree.contains_panel("particle_preview"))
+}
+
 fn sync_preview_camera_active(
     editor_state: Res<ParticleEditorState>,
+    docking: Option<Res<DockingState>>,
     mut camera: Query<&mut Camera, With<ParticlePreviewCamera>>,
+    preview_effects: Query<Entity, With<ParticlePreviewEffect>>,
+    mut tracker: ResMut<ParticlePreviewTracker>,
+    mut commands: Commands,
 ) {
-    let should_be_active = editor_state.current_effect.is_some();
+    let panel_mounted = docking.map_or(false, |d| d.tree.contains_panel("particle_preview"));
+    let should_be_active = panel_mounted && editor_state.current_effect.is_some();
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;
+        }
+    }
+    if !panel_mounted {
+        for entity in preview_effects.iter() {
+            commands.entity(entity).despawn();
+        }
+        // Reset tracker so the next remount rebuilds the effect cleanly.
+        if tracker.last_effect_hash.is_some() || tracker.last_file_path.is_some() {
+            tracker.last_effect_hash = None;
+            tracker.last_file_path = None;
         }
     }
 }
@@ -386,11 +408,19 @@ impl Plugin for ParticlePreviewPlugin {
         app.init_resource::<ParticlePreviewTracker>();
 
         app.add_systems(PostStartup, setup_particle_preview);
-        app.add_systems(Update, (
-            sync_preview_camera_active,
-            update_particle_preview_camera,
-            spawn_preview_effect.before(update_preview_effect),
-            update_preview_effect,
-        ));
+        // sync_preview_camera_active runs every frame so close transitions are
+        // always caught (mirrors the Studio Preview / Camera Preview pattern).
+        app.add_systems(Update, sync_preview_camera_active);
+        // Heavy work — compiling the effect graph and respawning the preview
+        // entity — only when the Particle Preview panel is actually mounted.
+        app.add_systems(
+            Update,
+            (
+                update_particle_preview_camera,
+                spawn_preview_effect.before(update_preview_effect),
+                update_preview_effect,
+            )
+                .run_if(particle_preview_panel_mounted),
+        );
     }
 }

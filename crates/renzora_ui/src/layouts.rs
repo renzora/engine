@@ -28,9 +28,7 @@ impl Default for LayoutManager {
             WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
             WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
             WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
-            WorkspaceLayout { name: "Shaders".into(), tree: layout_shaders() },
             WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
-            WorkspaceLayout { name: "Physics".into(), tree: layout_physics() },
             WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
             WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
         ];
@@ -291,25 +289,7 @@ pub fn layout_particles_advanced() -> DockTree {
     )
 }
 
-/// Shaders: ShaderEditor+CompilerLog | Preview+Properties
-fn layout_shaders() -> DockTree {
-    DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("shader_editor"),
-            DockTree::leaf("shader_compiler_log"),
-            0.5,
-        ),
-        DockTree::vertical(
-            DockTree::leaf("shader_preview"),
-            DockTree::leaf("shader_properties"),
-            0.5,
-        ),
-        0.55,
-    )
-}
-
-/// Physics: Hierarchy | Viewport+all physics tabs | Inspector+Shapes
-/// UI: Hierarchy | Assets | WidgetLibrary (left)  |  UI Canvas (center)  |  UiInspector+Inspector (right)
+/// UI: Hierarchy | Assets (left)  |  UI Canvas (center)  |  UiInspector+WidgetLibrary (right)
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
         // Left: hierarchy on top, assets below. Width matches Scene layout.
@@ -355,38 +335,6 @@ fn layout_audio() -> DockTree {
             0.6,
         ),
         0.6,
-    )
-}
-
-fn layout_physics() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("viewport"),
-                DockTree::Leaf {
-                    tabs: vec![
-                        "physics_playground".into(),
-                        "physics_scenarios".into(),
-                        "arena_presets".into(),
-                        "physics_forces".into(),
-                        "physics_properties".into(),
-                        "physics_debug".into(),
-                        "physics_metrics".into(),
-                        "console".into(),
-                    ],
-                    active_tab: 0,
-                },
-                0.72,
-            ),
-            DockTree::vertical(
-                DockTree::leaf("inspector"),
-                DockTree::leaf("shape_library"),
-                0.5,
-            ),
-            0.75,
-        ),
-        0.15,
     )
 }
 

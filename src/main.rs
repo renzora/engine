@@ -114,6 +114,7 @@ fn main() {
                 reveal_editor_window_maximized,
             ),
         );
+        app.add_systems(bevy::app::Update, tick_editor_focus_fix);
 
         app.run();
     }
@@ -160,7 +161,8 @@ fn main() {
 
 /// Printed to stdout once the editor's own `SplashState::Loading` phase has
 /// completed and we've transitioned to `Editor`. The parent splash process
-/// reads this line from the subprocess stdout pipe and then exits.
+/// reads this line from the subprocess stdout pipe and hands its Child
+/// handle to a waiter thread (see `launcher::watch_for_ready`).
 #[cfg(feature = "editor")]
 fn print_editor_ready_sentinel() {
     use std::io::Write;
@@ -188,13 +190,58 @@ fn hide_editor_window_until_ready(
 #[cfg(feature = "editor")]
 fn reveal_editor_window_maximized(
     mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
+    mut commands: Commands,
 ) {
     use bevy::window::{MonitorSelection, WindowPosition};
     for mut window in windows.iter_mut() {
         window.position = WindowPosition::Centered(MonitorSelection::Primary);
         window.resizable = true;
         window.visible = true;
+        window.focused = true;
         window.set_maximized(true);
+    }
+    // If the splash lost focus during loading (user clicked elsewhere
+    // while waiting), Windows hands this subprocess's new window a
+    // half-activated state on splash close — input events chime until
+    // something cleanly reactivates it. `focused = true` above can be
+    // blocked by Windows' foreground-lock; a minimize→restore cycle is
+    // always accepted as a real activation, so schedule that for a few
+    // frames out.
+    commands.insert_resource(EditorFocusFix { frames: 0 });
+}
+
+#[cfg(feature = "editor")]
+#[derive(bevy::prelude::Resource)]
+struct EditorFocusFix {
+    frames: u8,
+}
+
+/// Staggered minimize→restore on frames 5 and 10 after reveal. Doing both
+/// in the same frame tends to coalesce in winit on Windows.
+#[cfg(feature = "editor")]
+fn tick_editor_focus_fix(
+    fix: Option<bevy::prelude::ResMut<EditorFocusFix>>,
+    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
+    mut commands: Commands,
+) {
+    let Some(mut fix) = fix else { return };
+    fix.frames = fix.frames.saturating_add(1);
+
+    match fix.frames {
+        5 => {
+            for mut window in windows.iter_mut() {
+                window.set_minimized(true);
+            }
+        }
+        10 => {
+            for mut window in windows.iter_mut() {
+                window.set_minimized(false);
+                window.set_maximized(true);
+                window.focused = true;
+            }
+            commands.remove_resource::<EditorFocusFix>();
+        }
+        _ => {}
     }
 }
 
@@ -226,12 +273,31 @@ fn run_splash() {
     // Launches the editor subprocess when the user picks a project and streams
     // its stdout/stderr into the splash overlay. Only registered in this
     // outer splash binary — never in the editor subprocess itself.
-    app.add_plugins(renzora_shared::renzora_splash::launcher::SplashLauncherPlugin);
+    let (launcher, pending_child) =
+        renzora_shared::renzora_splash::launcher::SplashLauncherPlugin::new();
+    app.add_plugins(launcher);
     app.add_systems(bevy::app::Startup, |mut commands: Commands| {
         commands.spawn(Camera2d);
     });
 
     app.run();
+
+    // Two ways we get here:
+    //  - Sentinel path: the waiter thread took the Child, slot is empty.
+    //    Park main so the process stays up; the waiter will exit it when
+    //    the editor dies.
+    //  - User force-closed the splash before sentinel: Child is still in
+    //    the slot. Kill the orphan and return normally.
+    let orphan = pending_child.0.lock().ok().and_then(|mut g| g.take());
+    if let Some(mut child) = orphan {
+        let _ = child.kill();
+        let _ = child.wait();
+        return;
+    }
+
+    loop {
+        std::thread::park();
+    }
 }
 
 // ── Server config ────────────────────────────────────────────────────────

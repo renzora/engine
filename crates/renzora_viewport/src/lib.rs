@@ -994,15 +994,18 @@ fn render_axis_gizmo(
         });
 }
 
-/// Toggles the Editor Camera's `is_active` based on whether the Viewport panel
-/// is currently mounted in the dock tree. Closing the Viewport panel means its
-/// offscreen render target isn't displayed anywhere, so there's no point
+/// Toggles the Editor Camera's `is_active` based on whether any panel that
+/// displays its output is currently mounted in the dock tree. Today that's
+/// the Viewport panel and the UI Canvas panel (the canvas draws game UI on
+/// top of the editor scene render). If neither is mounted there's no point
 /// running the editor scene render pass.
 fn sync_viewport_camera_activation(
     docking: Option<Res<DockingState>>,
     mut cameras: Query<&mut Camera, With<EditorCamera>>,
 ) {
-    let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
+    let mounted = docking.map_or(true, |d| {
+        d.tree.contains_panel("viewport") || d.tree.contains_panel("ui_canvas")
+    });
     for mut camera in cameras.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;

@@ -13,15 +13,22 @@
 //!    - `[progress] thumbnails N/M <name>` → thumbnails phase
 //! 4. Re-emits every line on the splash's own stdout/stderr so the terminal
 //!    still sees the full log.
-//! 5. Watches for [`EDITOR_READY_SENTINEL`] — when seen, the splash exits.
+//! 5. Watches for [`EDITOR_READY_SENTINEL`] — when seen, hands the `Child`
+//!    to a background waiter thread and fires `AppExit`. The splash window
+//!    is closed but the process stays alive (main thread parks in
+//!    `run_splash`); the waiter `std::process::exit`s with the editor's
+//!    status code when it eventually dies. This keeps the reader threads
+//!    forwarding editor output to the terminal for the editor's full
+//!    lifetime.
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use bevy::app::AppExit;
 use bevy::prelude::*;
-use bevy::window::{MonitorSelection, PrimaryWindow, WindowPosition};
+use bevy::window::{MonitorSelection, PrimaryWindow, Window, WindowPosition};
 
 use crate::project::CurrentProject;
 use crate::{LoadingTaskHandle, LoadingTasks, SplashState, LOADING_WINDOW_SIZE};
@@ -127,6 +134,14 @@ impl LoadProgress {
     }
 }
 
+/// Shared handoff for the editor subprocess `Child`. `run_splash` keeps a
+/// clone so that if Bevy shuts down *before* the editor signals ready (e.g.
+/// user force-closed the splash mid-load), it can reap the orphan child.
+/// On the normal sentinel path the waiter thread takes the child out first,
+/// leaving this slot empty.
+#[derive(Resource)]
+pub struct PendingEditorChild(pub Arc<Mutex<Option<Child>>>);
+
 #[derive(Resource)]
 struct SubprocessState {
     child: Arc<Mutex<Option<Child>>>,
@@ -134,12 +149,30 @@ struct SubprocessState {
     task_handle: LoadingTaskHandle,
 }
 
-pub struct SplashLauncherPlugin;
+pub struct SplashLauncherPlugin {
+    child_slot: Arc<Mutex<Option<Child>>>,
+}
+
+impl SplashLauncherPlugin {
+    /// Build a launcher plus a handle to the child slot. `run_splash` holds
+    /// on to the slot so it can reap an orphan child if Bevy exits before
+    /// the editor signals ready.
+    pub fn new() -> (Self, PendingEditorChild) {
+        let slot = Arc::new(Mutex::new(None));
+        (
+            Self {
+                child_slot: slot.clone(),
+            },
+            PendingEditorChild(slot),
+        )
+    }
+}
 
 impl Plugin for SplashLauncherPlugin {
     fn build(&self, app: &mut App) {
         info!("[splash] SplashLauncherPlugin");
         app.init_resource::<LoadProgress>()
+            .insert_resource(PendingEditorChild(self.child_slot.clone()))
             .add_systems(
                 OnEnter(SplashState::Loading),
                 (shrink_splash_window, spawn_editor_subprocess).chain(),
@@ -166,6 +199,7 @@ fn shrink_splash_window(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
 fn spawn_editor_subprocess(
     project: Option<Res<CurrentProject>>,
     progress: Res<LoadProgress>,
+    pending: Res<PendingEditorChild>,
     mut tasks: ResMut<LoadingTasks>,
     mut commands: Commands,
 ) {
@@ -218,8 +252,13 @@ fn spawn_editor_subprocess(
 
     let task_handle = tasks.register("Editor startup", 1);
 
+    // Park the Child in the shared slot (visible to watch_for_ready via
+    // SubprocessState and to run_splash via PendingEditorChild — same Arc).
+    let shared_child = pending.0.clone();
+    *shared_child.lock().unwrap() = Some(child);
+
     commands.insert_resource(SubprocessState {
-        child: Arc::new(Mutex::new(Some(child))),
+        child: shared_child,
         sentinel_seen,
         task_handle,
     });
@@ -318,13 +357,55 @@ fn parse_progress_line(line: &str, progress: &LoadProgress) {
 fn watch_for_ready(
     state: Option<Res<SubprocessState>>,
     mut tasks: ResMut<LoadingTasks>,
+    mut app_exit: MessageWriter<AppExit>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let Some(state) = state else { return };
 
     if *state.sentinel_seen.lock().unwrap() {
         tasks.complete(state.task_handle);
-        info!("[launcher] editor subprocess signaled ready — exiting splash");
-        std::process::exit(0);
+
+        // Hide the splash window on this same frame. AppExit (below) takes
+        // several frames on Windows+winit to actually destroy the window,
+        // during which the loader overlay would still be drawn over the
+        // newly-revealed editor.
+        for mut window in windows.iter_mut() {
+            if window.visible {
+                window.visible = false;
+            }
+        }
+
+        // Hand the Child to a waiter thread. It owns the Child, blocks on
+        // wait(), and std::process::exit's with the editor's code when it
+        // dies — that's what keeps the splash process alive (and reader
+        // threads forwarding) for the editor's full lifetime.
+        let mut guard = match state.child.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("[launcher] Subprocess mutex poisoned: {}", e);
+                return;
+            }
+        };
+        if let Some(child) = guard.take() {
+            info!("[launcher] editor subprocess signaled ready — handing off to waiter thread");
+            std::thread::spawn(move || {
+                let mut child = child;
+                let code = child
+                    .wait()
+                    .ok()
+                    .and_then(|s| s.code())
+                    .unwrap_or(0);
+                std::process::exit(code);
+            });
+        }
+
+        // Fire AppExit so Bevy tears down cleanly and the window handle is
+        // actually destroyed — a hidden-but-alive winit window on Windows
+        // will steal focus/keystrokes from the editor (system chime). The
+        // main thread parks after app.run() returns; the waiter thread
+        // eventually exits the process.
+        app_exit.write(AppExit::Success);
+        return;
     }
 
     let child_arc = state.child.clone();
@@ -342,6 +423,7 @@ fn watch_for_ready(
                     "[launcher] Editor subprocess exited before ready: {}",
                     status
                 );
+                let _ = guard.take();
                 std::process::exit(status.code().unwrap_or(1));
             }
             Ok(None) => {}
