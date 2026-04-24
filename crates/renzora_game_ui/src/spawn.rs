@@ -100,6 +100,7 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
         UiWidgetType::Line => spawn_line(world, &r),
         UiWidgetType::Triangle => spawn_triangle(world, &r),
         UiWidgetType::Polygon => spawn_polygon(world, &r),
+        UiWidgetType::Rectangle => spawn_rectangle(world, &r),
         UiWidgetType::Wedge => spawn_wedge(world, &r),
     };
 
@@ -1509,6 +1510,34 @@ fn spawn_polygon(world: &mut World, r: &Ref) -> Entity {
             UiShapeWidget,
             Node {
                 width: pct_w(64.0, r),
+                height: pct_h(64.0, r),
+                ..default()
+            },
+            MaterialNode(handle),
+            shape,
+        ))
+        .id()
+}
+
+fn spawn_rectangle(world: &mut World, r: &Ref) -> Entity {
+    let shape = shapes::RectangleShape {
+        color: Color::srgba(0.35, 0.55, 0.9, 1.0),
+        corner_radius: [8.0; 4],
+        ..default()
+    };
+    let handle = world
+        .resource_mut::<Assets<shapes::RectangleMaterial>>()
+        .add(shapes::RectangleMaterial::from_shape(&shape));
+    world
+        .spawn((
+            Name::new("Rectangle"),
+            UiWidget {
+                widget_type: UiWidgetType::Rectangle,
+                locked: false,
+            },
+            UiShapeWidget,
+            Node {
+                width: pct_w(96.0, r),
                 height: pct_h(64.0, r),
                 ..default()
             },

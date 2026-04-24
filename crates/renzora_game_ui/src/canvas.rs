@@ -196,6 +196,11 @@ struct WidgetSnapshot {
     y: f32,
     width: f32,
     height: f32,
+    /// Clockwise rotation in radians (from `UiTransform`).
+    rotation: f32,
+    /// Scale (from `UiTransform`) — negative values = flip on that axis.
+    scale_x: f32,
+    scale_y: f32,
     parent: Option<Entity>,
     has_bg: bool,
     bg_color: [f32; 4],
@@ -346,6 +351,12 @@ enum WidgetDataSnapshot {
         stroke_color: [f32; 4],
         sides: u32,
     },
+    ShapeRectangle {
+        color: [f32; 4],
+        stroke_color: [f32; 4],
+        stroke_width: f32,
+        corner_radius: [f32; 4],
+    },
     ShapeWedge {
         color: [f32; 4],
         start_angle: f32,
@@ -441,6 +452,13 @@ struct CanvasState {
     dragging: Option<DragState>,
     /// Drag state for resizing.
     resizing: Option<ResizeState>,
+    /// Drag state for rotating the primary selection.
+    rotating: Option<RotateState>,
+    /// When Some, the next pointer-drag on the canvas creates a widget of
+    /// this type (sized to the drag rect). Cleared on Escape or after draw.
+    draw_mode: Option<UiWidgetType>,
+    /// Active draw drag (start + current pointer position).
+    draw_state: Option<DrawState>,
     /// Box-select state.
     box_select: Option<BoxSelectState>,
     /// Canvas background resolution (logical game window size).
@@ -482,13 +500,39 @@ struct DragState {
 
 #[derive(Clone)]
 struct ResizeState {
-    entity: Entity,
+    /// One or more entities. For multi-select we resize all relative to their
+    /// combined bounding box.
+    entities: Vec<Entity>,
     start_pos: Pos2,
-    original_w: f32,
-    original_h: f32,
-    original_x: f32,
-    original_y: f32,
+    /// For multi-select: original bounding box of the selection.
+    bbox_x: f32,
+    bbox_y: f32,
+    bbox_w: f32,
+    bbox_h: f32,
+    /// Per-entity originals (same order as `entities`): (x, y, w, h).
+    originals: Vec<(f32, f32, f32, f32)>,
     handle: ResizeHandle,
+    /// When true, drag scales via `UiTransform.scale` instead of changing
+    /// the `Node` size. Captured at drag-start from the Ctrl modifier; single
+    /// selection only.
+    is_scale: bool,
+    /// Screen-space pivot for scale mode (widget center at drag-start).
+    scale_pivot: Pos2,
+    /// Distance from pivot to pointer at drag-start (used as ratio denominator).
+    scale_origin_dist: f32,
+    /// Original `UiTransform.scale` values for scale-mode drags.
+    orig_scale_x: f32,
+    orig_scale_y: f32,
+}
+
+#[derive(Clone)]
+struct RotateState {
+    entity: Entity,
+    /// Center of the widget in screen-space at drag start (pivot).
+    pivot: Pos2,
+    /// Angle (radians) between pivot and initial pointer, minus original rotation.
+    start_angle_offset: f32,
+    original_rotation: f32,
 }
 
 #[derive(Clone)]
@@ -497,12 +541,98 @@ struct BoxSelectState {
     current: Pos2,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+/// Drag-to-draw state while `draw_mode` is active.
+#[derive(Clone)]
+struct DrawState {
+    /// Widget type being drawn.
+    widget_type: UiWidgetType,
+    /// Pointer position at drag-start (screen space).
+    start: Pos2,
+    /// Current pointer position (screen space).
+    current: Pos2,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum ResizeHandle {
     TopLeft,
+    Top,
     TopRight,
-    BottomLeft,
+    Right,
     BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+impl ResizeHandle {
+    /// Offset from bounding box min to this handle, as fractions of (w, h).
+    /// (0,0) = top-left, (1,1) = bottom-right, (0.5, 0) = top edge mid, etc.
+    fn fractions(self) -> (f32, f32) {
+        match self {
+            Self::TopLeft => (0.0, 0.0),
+            Self::Top => (0.5, 0.0),
+            Self::TopRight => (1.0, 0.0),
+            Self::Right => (1.0, 0.5),
+            Self::BottomRight => (1.0, 1.0),
+            Self::Bottom => (0.5, 1.0),
+            Self::BottomLeft => (0.0, 1.0),
+            Self::Left => (0.0, 0.5),
+        }
+    }
+
+    /// Which sides this handle moves when dragged.
+    /// Returns (left_moves, top_moves, right_moves, bottom_moves).
+    fn sides(self) -> (bool, bool, bool, bool) {
+        match self {
+            Self::TopLeft => (true, true, false, false),
+            Self::Top => (false, true, false, false),
+            Self::TopRight => (false, true, true, false),
+            Self::Right => (false, false, true, false),
+            Self::BottomRight => (false, false, true, true),
+            Self::Bottom => (false, false, false, true),
+            Self::BottomLeft => (true, false, false, true),
+            Self::Left => (true, false, false, false),
+        }
+    }
+
+    fn is_corner(self) -> bool {
+        matches!(self, Self::TopLeft | Self::TopRight | Self::BottomRight | Self::BottomLeft)
+    }
+
+    /// The egui cursor icon to display for this handle, accounting for rotation.
+    /// Rotation is in radians; handles rotate with their widget so the cursor
+    /// picks from NW/N/NE/E/SE/S/SW/W around the compass.
+    fn cursor(self, rotation: f32) -> egui::CursorIcon {
+        // Base angle for each handle (0 = east, CCW positive... but egui cursors
+        // correspond to compass directions where N is up). Use "direction from
+        // center" to pick the cursor.
+        let base_deg = match self {
+            Self::Right => 0.0,
+            Self::TopRight => 45.0,
+            Self::Top => 90.0,
+            Self::TopLeft => 135.0,
+            Self::Left => 180.0,
+            Self::BottomLeft => 225.0,
+            Self::Bottom => 270.0,
+            Self::BottomRight => 315.0,
+        };
+        // UiTransform rotates clockwise; subtract so the cursor rotates the same
+        // direction as the visual handle.
+        let mut deg = base_deg - rotation.to_degrees();
+        deg = ((deg % 360.0) + 360.0) % 360.0;
+        // Snap to nearest of 8 compass points.
+        let bucket = (((deg + 22.5) / 45.0) as i32) % 8;
+        match bucket {
+            0 => egui::CursorIcon::ResizeEast,
+            1 => egui::CursorIcon::ResizeNorthEast,
+            2 => egui::CursorIcon::ResizeNorth,
+            3 => egui::CursorIcon::ResizeNorthWest,
+            4 => egui::CursorIcon::ResizeWest,
+            5 => egui::CursorIcon::ResizeSouthWest,
+            6 => egui::CursorIcon::ResizeSouth,
+            _ => egui::CursorIcon::ResizeSouthEast,
+        }
+    }
 }
 
 impl CanvasState {
@@ -517,6 +647,9 @@ impl CanvasState {
             active_canvas: None,
             dragging: None,
             resizing: None,
+            rotating: None,
+            draw_mode: None,
+            draw_state: None,
             box_select: None,
             multi_selection: Vec::new(),
             snap_enabled: true,
@@ -583,6 +716,95 @@ fn ws_screen_rect(ws: &WidgetSnapshot, canvas_rect: Rect, z: f32) -> Rect {
     let y = canvas_rect.min.y + ws.y * z;
     Rect::from_min_size(Pos2::new(x, y), Vec2::new(ws.width * z, ws.height * z))
 }
+
+/// Compute the bounding box (in design-space px) of a list of widgets.
+/// Ignores rotation — uses axis-aligned rects. Returns (x, y, w, h).
+fn selection_bbox(snapshots: &[WidgetSnapshot], entities: &[Entity]) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    let mut found = false;
+    for ws in snapshots {
+        if entities.contains(&ws.entity) {
+            min_x = min_x.min(ws.x);
+            min_y = min_y.min(ws.y);
+            max_x = max_x.max(ws.x + ws.width);
+            max_y = max_y.max(ws.y + ws.height);
+            found = true;
+        }
+    }
+    if found {
+        Some((min_x, min_y, max_x - min_x, max_y - min_y))
+    } else {
+        None
+    }
+}
+
+/// Rotate a screen point around a pivot by `angle` radians (clockwise to match UiTransform).
+fn rotate_around(point: Pos2, pivot: Pos2, angle: f32) -> Pos2 {
+    let (sin, cos) = (angle.sin(), angle.cos());
+    let dx = point.x - pivot.x;
+    let dy = point.y - pivot.y;
+    Pos2::new(pivot.x + dx * cos - dy * sin, pivot.y + dx * sin + dy * cos)
+}
+
+/// Compute the 4 rotated corners of a widget for drawing/hit-testing.
+/// Order: TL, TR, BR, BL.
+fn rotated_corners(rect: Rect, rotation: f32) -> [Pos2; 4] {
+    let center = rect.center();
+    let tl = Pos2::new(rect.min.x, rect.min.y);
+    let tr = Pos2::new(rect.max.x, rect.min.y);
+    let br = Pos2::new(rect.max.x, rect.max.y);
+    let bl = Pos2::new(rect.min.x, rect.max.y);
+    [
+        rotate_around(tl, center, rotation),
+        rotate_around(tr, center, rotation),
+        rotate_around(br, center, rotation),
+        rotate_around(bl, center, rotation),
+    ]
+}
+
+/// All 8 resize handle positions (corners + edges) in screen space, rotated
+/// around the rect center. Order matches `ResizeHandle` variants.
+fn handle_positions(rect: Rect, rotation: f32) -> [(ResizeHandle, Pos2); 8] {
+    let center = rect.center();
+    let (w, h) = (rect.width(), rect.height());
+    let raw = [
+        (ResizeHandle::TopLeft, Pos2::new(rect.min.x, rect.min.y)),
+        (ResizeHandle::Top, Pos2::new(center.x, rect.min.y)),
+        (ResizeHandle::TopRight, Pos2::new(rect.max.x, rect.min.y)),
+        (ResizeHandle::Right, Pos2::new(rect.max.x, center.y)),
+        (ResizeHandle::BottomRight, Pos2::new(rect.max.x, rect.max.y)),
+        (ResizeHandle::Bottom, Pos2::new(center.x, rect.max.y)),
+        (ResizeHandle::BottomLeft, Pos2::new(rect.min.x, rect.max.y)),
+        (ResizeHandle::Left, Pos2::new(rect.min.x, center.y)),
+    ];
+    let _ = (w, h); // reserved
+    let mut out: [(ResizeHandle, Pos2); 8] = raw;
+    for (_, p) in out.iter_mut() {
+        *p = rotate_around(*p, center, rotation);
+    }
+    out
+}
+
+/// Point-in-rotated-rect hit test. `rect` is axis-aligned and we rotate the
+/// pointer into the rect's local frame (inverse rotation).
+fn rotated_rect_contains(rect: Rect, rotation: f32, point: Pos2) -> bool {
+    let center = rect.center();
+    let local = rotate_around(point, center, -rotation);
+    rect.contains(local)
+}
+
+/// Visual handle radius (screen px). Stays constant regardless of zoom.
+const HANDLE_RADIUS: f32 = 6.5;
+/// Hit region radius (screen px) — intentionally much larger than the visible
+/// circle so grabs near the edge still register. Roughly 3× the visible area.
+const HANDLE_HIT_RADIUS: f32 = 16.0;
+/// Distance above top edge for the rotation knob (screen px).
+const ROTATE_HANDLE_OFFSET: f32 = 28.0;
+/// Rotation knob visual radius.
+const ROTATE_HANDLE_RADIUS: f32 = 6.5;
 
 impl EditorPanel for UiCanvasPanel {
     fn id(&self) -> &str {
@@ -914,6 +1136,14 @@ impl EditorPanel for UiCanvasPanel {
                     // Read per-widget-type data
                     let widget_data = snapshot_widget_data(world, entity, &widget.widget_type);
 
+                    let ui_transform = world.get::<bevy::ui::UiTransform>(entity);
+                    let rotation = ui_transform
+                        .map(|t| t.rotation.as_radians())
+                        .unwrap_or(0.0);
+                    let (scale_x, scale_y) = ui_transform
+                        .map(|t| (t.scale.x, t.scale.y))
+                        .unwrap_or((1.0, 1.0));
+
                     state.widgets.push(WidgetSnapshot {
                         entity,
                         name,
@@ -923,6 +1153,9 @@ impl EditorPanel for UiCanvasPanel {
                         y: val_to_design_px(node.top, ref_h),
                         width: val_to_design_px(node.width, ref_w),
                         height: val_to_design_px(node.height, ref_h),
+                        rotation,
+                        scale_x,
+                        scale_y,
                         parent,
                         has_bg: bg.is_some(),
                         bg_color: bg
@@ -968,7 +1201,7 @@ impl EditorPanel for UiCanvasPanel {
 
         // ── Vertical toolbar + Canvas area ──────────────────────────────
         let full_available = ui.available_rect_before_wrap();
-        let toolbar_width = 40.0;
+        let toolbar_width = 72.0;
         let surface = theme.surfaces.panel.to_color32();
         let text_primary = theme.text.primary.to_color32();
 
@@ -1010,13 +1243,41 @@ impl EditorPanel for UiCanvasPanel {
                 &[UiWidgetType::ProgressBar, UiWidgetType::HealthBar],
                 // Overlay
                 &[UiWidgetType::Modal, UiWidgetType::DraggableWindow],
+                // Shapes — these enter draw mode (click the button, then drag on the canvas to place)
+                &[
+                    UiWidgetType::Rectangle,
+                    UiWidgetType::Circle,
+                    UiWidgetType::Triangle,
+                    UiWidgetType::Polygon,
+                    UiWidgetType::Arc,
+                    UiWidgetType::Wedge,
+                    UiWidgetType::Line,
+                    UiWidgetType::RadialProgress,
+                ],
             ];
 
+            let shape_types: &[UiWidgetType] = &[
+                UiWidgetType::Rectangle, UiWidgetType::Circle, UiWidgetType::Triangle,
+                UiWidgetType::Polygon, UiWidgetType::Arc, UiWidgetType::Wedge,
+                UiWidgetType::Line, UiWidgetType::RadialProgress,
+            ];
+
+            const COL_GAP: f32 = 4.0;
+            const ROW_GAP: f32 = 2.0;
+            // Center a 2-column grid within the toolbar: [pad][btn][gap][btn][pad]
+            let grid_w = BTN_SIZE * 2.0 + COL_GAP;
+            let col_x0 = toolbar_rect.min.x + (toolbar_width - grid_w) / 2.0;
+            let col_x1 = col_x0 + BTN_SIZE + COL_GAP;
+
             let mut y_offset = toolbar_rect.min.y + BTN_PAD;
-            let btn_x = toolbar_rect.min.x + (toolbar_width - BTN_SIZE) / 2.0;
 
             for (gi, group) in tool_groups.iter().enumerate() {
-                for wtype in *group {
+                for (idx, wtype) in group.iter().enumerate() {
+                    let is_shape = shape_types.contains(wtype);
+                    let is_active_draw = state.draw_mode.as_ref() == Some(wtype);
+
+                    let col = idx % 2;
+                    let btn_x = if col == 0 { col_x0 } else { col_x1 };
                     let btn_rect = Rect::from_min_size(
                         Pos2::new(btn_x, y_offset),
                         Vec2::new(BTN_SIZE, BTN_SIZE),
@@ -1025,11 +1286,23 @@ impl EditorPanel for UiCanvasPanel {
                     // Hover detection
                     let hovered = tb_response.hovered()
                         && ui.ctx().pointer_latest_pos().map_or(false, |p| btn_rect.contains(p));
-                    let bg = if hovered { surface } else { Color32::TRANSPARENT };
+                    let bg = if is_active_draw {
+                        accent
+                    } else if hovered {
+                        surface
+                    } else {
+                        Color32::TRANSPARENT
+                    };
                     tb_painter.rect_filled(btn_rect, 3.0, bg);
 
                     // Icon
-                    let icon_color = if hovered { text_primary } else { text_muted };
+                    let icon_color = if is_active_draw {
+                        Color32::WHITE
+                    } else if hovered {
+                        text_primary
+                    } else {
+                        text_muted
+                    };
                     tb_painter.text(
                         btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -1041,9 +1314,13 @@ impl EditorPanel for UiCanvasPanel {
                     // Tooltip (painted to the right of the button)
                     if hovered {
                         let tip_pos = Pos2::new(toolbar_rect.max.x + 6.0, btn_rect.center().y);
-                        let tip_text = wtype.label();
+                        let tip_text = if is_shape {
+                            format!("Draw {}", wtype.label())
+                        } else {
+                            wtype.label().to_string()
+                        };
                         let tip_galley = tb_painter.layout_no_wrap(
-                            tip_text.to_string(),
+                            tip_text.clone(),
                             egui::FontId::proportional(11.0),
                             text_primary,
                         );
@@ -1051,7 +1328,6 @@ impl EditorPanel for UiCanvasPanel {
                             Pos2::new(tip_pos.x - 4.0, tip_pos.y - tip_galley.size().y / 2.0 - 3.0),
                             Vec2::new(tip_galley.size().x + 8.0, tip_galley.size().y + 6.0),
                         );
-                        // Use a foreground painter so it draws on top of everything
                         let fg = ui.ctx().layer_painter(egui::LayerId::new(
                             egui::Order::Tooltip,
                             ui.id().with("vtoolbar_tip"),
@@ -1066,15 +1342,28 @@ impl EditorPanel for UiCanvasPanel {
                         );
                     }
 
-                    // Click to add widget
+                    // Click: shapes toggle draw-mode; other widgets spawn immediately.
                     if hovered && ui.ctx().input(|i| i.pointer.any_click()) {
-                        let wt = wtype.clone();
-                        commands.push(move |world: &mut World| {
-                            crate::spawn::spawn_widget(world, &wt, active_canvas);
-                        });
+                        if is_shape {
+                            if is_active_draw {
+                                state.draw_mode = None;
+                            } else {
+                                state.draw_mode = Some(wtype.clone());
+                            }
+                        } else {
+                            let wt = wtype.clone();
+                            commands.push(move |world: &mut World| {
+                                crate::spawn::spawn_widget(world, &wt, active_canvas);
+                            });
+                        }
                     }
 
-                    y_offset += BTN_SIZE + 2.0;
+                    // Advance the row only after the right-column button (col 1)
+                    // OR when this is the last item of the group and it's on col 0.
+                    let is_last_in_group = idx == group.len() - 1;
+                    if col == 1 || is_last_in_group {
+                        y_offset += BTN_SIZE + ROW_GAP;
+                    }
                 }
 
                 // Separator between groups (except after the last)
@@ -1111,11 +1400,29 @@ impl EditorPanel for UiCanvasPanel {
             state.pan += response.drag_delta();
         }
 
-        // Handle zoom (scroll)
+        // Handle zoom (scroll). Zooms toward the cursor position: the point
+        // under the pointer stays fixed while everything else scales around it.
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0 && response.hovered() {
             let factor = if scroll > 0.0 { 1.1 } else { 1.0 / 1.1 };
-            state.zoom = (state.zoom * factor).clamp(0.1, 5.0);
+            let old_z = state.zoom;
+            let new_z = (old_z * factor).clamp(0.1, 5.0);
+            if (new_z - old_z).abs() > f32::EPSILON {
+                if let Some(cursor) = ui.ctx().pointer_latest_pos() {
+                    // Current canvas origin (panel center + pan)
+                    let origin = Pos2::new(
+                        available.center().x + state.pan.x,
+                        available.center().y + state.pan.y,
+                    );
+                    // Pan correction so the world point under the cursor is preserved.
+                    let ratio = new_z / old_z;
+                    let new_origin_x = cursor.x - (cursor.x - origin.x) * ratio;
+                    let new_origin_y = cursor.y - (cursor.y - origin.y) * ratio;
+                    state.pan.x = new_origin_x - available.center().x;
+                    state.pan.y = new_origin_y - available.center().y;
+                }
+                state.zoom = new_z;
+            }
         }
 
         // Canvas origin: center of the panel, offset by pan
@@ -1225,28 +1532,63 @@ impl EditorPanel for UiCanvasPanel {
         let all_sel = state.all_selected(selected_entity);
 
         // ── Draw widgets ─────────────────────────────────────────────────
+        // Preview rect reflects visual size (layout rect scaled by UiTransform.scale,
+        // around the widget center) so users see the effect of scaling live.
         let widget_snapshots = state.widgets.clone();
         for ws in &widget_snapshots {
-            let rect = ws_screen_rect(ws, canvas_rect, z);
+            let layout_rect = ws_screen_rect(ws, canvas_rect, z);
+            let visual_w = layout_rect.width() * ws.scale_x.abs();
+            let visual_h = layout_rect.height() * ws.scale_y.abs();
+            let rect = Rect::from_center_size(layout_rect.center(), Vec2::new(visual_w, visual_h));
             let is_sel = all_sel.contains(&ws.entity);
 
             paint_widget_preview(&painter, &ws, rect, z, is_sel, accent, text_muted);
+        }
 
-            // Resize handles for selected widget (single selection only)
-            if is_sel && all_sel.len() == 1 && !ws.locked {
-                let hs = 6.0;
-                for (hx, hy) in [
-                    (rect.min.x, rect.min.y),
-                    (rect.max.x, rect.min.y),
-                    (rect.min.x, rect.max.y),
-                    (rect.max.x, rect.max.y),
-                ] {
-                    painter.rect_filled(
-                        Rect::from_center_size(Pos2::new(hx, hy), Vec2::splat(hs)),
-                        1.0,
-                        accent,
-                    );
-                }
+        // ── Selection gizmo (drawn on top of all widgets) ────────────────
+        // Gizmo sits on the visual rect so the handles line up with what the user sees.
+        let gizmo_bbox = match all_sel.len() {
+            0 => None,
+            1 => widget_snapshots
+                .iter()
+                .find(|w| w.entity == all_sel[0] && !w.locked)
+                .map(|w| {
+                    let vw = w.width * w.scale_x.abs();
+                    let vh = w.height * w.scale_y.abs();
+                    let cx = w.x + w.width * 0.5;
+                    let cy = w.y + w.height * 0.5;
+                    (cx - vw * 0.5, cy - vh * 0.5, vw, vh, w.rotation)
+                }),
+            _ => selection_bbox(&widget_snapshots, &all_sel).map(|(x, y, w, h)| (x, y, w, h, 0.0)),
+        };
+
+        if let Some((bx, by, bw, bh, rot)) = gizmo_bbox {
+            let rect = Rect::from_min_size(
+                Pos2::new(canvas_rect.min.x + bx * z, canvas_rect.min.y + by * z),
+                Vec2::new(bw * z, bh * z),
+            );
+            let center = rect.center();
+
+            // Rotated bounding outline (4 corners joined)
+            let corners = rotated_corners(rect, rot);
+            let outline_stroke = Stroke::new(1.5, accent);
+            for i in 0..4 {
+                painter.line_segment([corners[i], corners[(i + 1) % 4]], outline_stroke);
+            }
+
+            // Rotation handle tether + knob (above the top edge, in widget-local space)
+            let top_mid_local = Pos2::new(center.x, rect.min.y);
+            let rot_knob_local = Pos2::new(center.x, rect.min.y - ROTATE_HANDLE_OFFSET);
+            let top_mid = rotate_around(top_mid_local, center, rot);
+            let rot_knob = rotate_around(rot_knob_local, center, rot);
+            painter.line_segment([top_mid, rot_knob], Stroke::new(1.0, accent));
+            painter.circle_filled(rot_knob, ROTATE_HANDLE_RADIUS, Color32::WHITE);
+            painter.circle_stroke(rot_knob, ROTATE_HANDLE_RADIUS, Stroke::new(1.5, accent));
+
+            // 8 resize handles
+            for (_handle, pos) in handle_positions(rect, rot) {
+                painter.circle_filled(pos, HANDLE_RADIUS, Color32::WHITE);
+                painter.circle_stroke(pos, HANDLE_RADIUS, Stroke::new(1.5, accent));
             }
         }
 
@@ -1327,6 +1669,7 @@ impl EditorPanel for UiCanvasPanel {
         // ── Keyboard shortcuts ───────────────────────────────────────────
         let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.mac_cmd);
         let shift = ui.input(|i| i.modifiers.shift);
+        let alt = ui.input(|i| i.modifiers.alt);
 
         // Delete selected widgets
         if response.has_focus() || response.hovered() {
@@ -1538,14 +1881,80 @@ impl EditorPanel for UiCanvasPanel {
 
         // ── Interaction: click, shift-click, box-select, drag ────────────
 
-        // Click: select or shift-toggle
-        if response.clicked() {
+        // Escape cancels draw mode
+        if state.draw_mode.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            state.draw_mode = None;
+            state.draw_state = None;
+        }
+
+        // Draw-mode drag: when a shape tool is active, pointer-down starts a
+        // rubber-band rectangle. Preempts all other interactions.
+        if state.draw_mode.is_some() && response.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(pointer) = response.interact_pointer_pos() {
+                if canvas_rect.contains(pointer) {
+                    let wt = state.draw_mode.clone().unwrap();
+                    state.draw_state = Some(DrawState {
+                        widget_type: wt,
+                        start: pointer,
+                        current: pointer,
+                    });
+                }
+            }
+        }
+        if let Some(ds) = &mut state.draw_state {
+            if response.dragged_by(egui::PointerButton::Primary) {
+                if let Some(pointer) = ui.ctx().pointer_latest_pos() {
+                    ds.current = pointer;
+                }
+            }
+        }
+        // Finalize draw on release
+        if !ui.ctx().input(|i| i.pointer.any_down()) {
+            if let Some(ds) = state.draw_state.take() {
+                // Convert screen rect to design-space coordinates.
+                let sx = ((ds.start.x.min(ds.current.x)) - canvas_rect.min.x) / z;
+                let sy = ((ds.start.y.min(ds.current.y)) - canvas_rect.min.y) / z;
+                let sw = (ds.current.x - ds.start.x).abs() / z;
+                let sh = (ds.current.y - ds.start.y).abs() / z;
+                // Require a minimum size so stray clicks don't spawn tiny widgets
+                if sw >= 4.0 && sh >= 4.0 {
+                    let wt = ds.widget_type.clone();
+                    let ac = active_canvas;
+                    commands.push(move |world: &mut World| {
+                        let entity = crate::spawn::spawn_widget(world, &wt, ac);
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut node) = em.get_mut::<Node>() {
+                                node.position_type = bevy::ui::PositionType::Absolute;
+                                node.left = bevy::ui::Val::Percent(sx / ref_w * 100.0);
+                                node.top = bevy::ui::Val::Percent(sy / ref_h * 100.0);
+                                node.width = bevy::ui::Val::Percent(sw / ref_w * 100.0);
+                                node.height = bevy::ui::Val::Percent(sh / ref_h * 100.0);
+                            }
+                        }
+                        if let Some(sel) = world.get_resource::<EditorSelection>() {
+                            sel.set(Some(entity));
+                        }
+                    });
+                }
+                // Exit draw mode so the user is back in selection mode immediately.
+                // Hold Shift during placement to keep drawing multiple shapes.
+                if !shift {
+                    state.draw_mode = None;
+                }
+            }
+        }
+
+        // Click: select or shift-toggle (rotation-aware)
+        // (skipped when a draw is in progress or just finished)
+        if state.draw_mode.is_some() {
+            // Suppress default select/drag behavior while a shape tool is active.
+        } else if response.clicked() {
             let pointer = response.interact_pointer_pos().unwrap_or_default();
             let mut clicked_entity = None;
 
             for ws in widget_snapshots.iter().rev() {
                 let rect = ws_screen_rect(ws, canvas_rect, z);
-                if rect.contains(pointer) {
+                if rotated_rect_contains(rect, ws.rotation, pointer) {
                     clicked_entity = Some(ws.entity);
                     break;
                 }
@@ -1568,75 +1977,109 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
-        // Drag start
-        if response.drag_started_by(egui::PointerButton::Primary) {
+        // Drag start — unified: rotation handle → resize handle → body drag → box-select.
+        if response.drag_started_by(egui::PointerButton::Primary) && state.draw_mode.is_none() {
             if let Some(pointer) = response.interact_pointer_pos() {
                 let all_sel = state.all_selected(selected_entity);
 
-                // Check resize handles (single selection only)
-                if all_sel.len() == 1 {
-                    if let Some(ws) = widget_snapshots.iter().find(|w| w.entity == all_sel[0]) {
-                        let rect = ws_screen_rect(ws, canvas_rect, z);
-                        let handles = [
-                            (Pos2::new(rect.min.x, rect.min.y), ResizeHandle::TopLeft),
-                            (Pos2::new(rect.max.x, rect.min.y), ResizeHandle::TopRight),
-                            (Pos2::new(rect.min.x, rect.max.y), ResizeHandle::BottomLeft),
-                            (Pos2::new(rect.max.x, rect.max.y), ResizeHandle::BottomRight),
-                        ];
-                        let mut found_handle = false;
-                        for (pos, handle) in &handles {
-                            let hr = Rect::from_center_size(*pos, Vec2::splat(8.0));
-                            if hr.contains(pointer) && !ws.locked {
-                                state.resizing = Some(ResizeState {
-                                    entity: ws.entity,
-                                    start_pos: pointer,
-                                    original_w: ws.width,
-                                    original_h: ws.height,
-                                    original_x: ws.x,
-                                    original_y: ws.y,
-                                    handle: *handle,
-                                });
-                                found_handle = true;
-                                break;
-                            }
+                // Compute gizmo bbox (same logic as the draw pass)
+                let gizmo = match all_sel.len() {
+                    0 => None,
+                    1 => widget_snapshots
+                        .iter()
+                        .find(|w| w.entity == all_sel[0] && !w.locked)
+                        .map(|w| (w.x, w.y, w.width, w.height, w.rotation)),
+                    _ => selection_bbox(&widget_snapshots, &all_sel)
+                        .map(|(x, y, w, h)| (x, y, w, h, 0.0)),
+                };
+
+                let mut handled = false;
+
+                if let Some((bx, by, bw, bh, rot)) = gizmo {
+                    let rect = Rect::from_min_size(
+                        Pos2::new(canvas_rect.min.x + bx * z, canvas_rect.min.y + by * z),
+                        Vec2::new(bw * z, bh * z),
+                    );
+                    let center = rect.center();
+
+                    // Rotation handle (single selection only)
+                    if !handled && all_sel.len() == 1 {
+                        let rot_knob_local = Pos2::new(center.x, rect.min.y - ROTATE_HANDLE_OFFSET);
+                        let rot_knob = rotate_around(rot_knob_local, center, rot);
+                        if rot_knob.distance(pointer) <= HANDLE_HIT_RADIUS {
+                            let start_angle = (pointer.y - center.y).atan2(pointer.x - center.x);
+                            state.rotating = Some(RotateState {
+                                entity: all_sel[0],
+                                pivot: center,
+                                start_angle_offset: start_angle - rot,
+                                original_rotation: rot,
+                            });
+                            handled = true;
                         }
-                        if found_handle {
-                            // handled below
-                        } else if rect.contains(pointer) && !ws.locked {
-                            // Single widget drag
-                            state.dragging = Some(DragState {
-                                entities: all_sel.clone(),
-                                start_pos: pointer,
-                                originals: all_sel
+                    }
+
+                    // Resize handles (all 8). Ctrl+drag = scale via UiTransform
+                    // (single selection only).
+                    if !handled {
+                        for (handle, pos) in handle_positions(rect, rot) {
+                            if pos.distance(pointer) <= HANDLE_HIT_RADIUS {
+                                let originals: Vec<(f32, f32, f32, f32)> = all_sel
                                     .iter()
                                     .filter_map(|e| {
                                         widget_snapshots
                                             .iter()
                                             .find(|w| w.entity == *e)
-                                            .map(|w| (w.x, w.y))
+                                            .map(|w| (w.x, w.y, w.width, w.height))
                                     })
-                                    .collect(),
-                            });
-                        } else {
-                            // Start box-select
-                            state.box_select = Some(BoxSelectState {
-                                start: pointer,
-                                current: pointer,
-                            });
+                                    .collect();
+                                let is_scale = ctrl && all_sel.len() == 1 && handle.is_corner();
+                                // Always capture the widget's scale for single-select so
+                                // normal resize can divide the visual delta by scale and
+                                // produce the correct layout delta.
+                                let (orig_scale_x, orig_scale_y) = if all_sel.len() == 1 {
+                                    widget_snapshots
+                                        .iter()
+                                        .find(|w| w.entity == all_sel[0])
+                                        .map(|w| (w.scale_x, w.scale_y))
+                                        .unwrap_or((1.0, 1.0))
+                                } else {
+                                    (1.0, 1.0)
+                                };
+                                let scale_origin_dist = pointer.distance(center).max(1.0);
+                                state.resizing = Some(ResizeState {
+                                    entities: all_sel.clone(),
+                                    start_pos: pointer,
+                                    bbox_x: bx,
+                                    bbox_y: by,
+                                    bbox_w: bw,
+                                    bbox_h: bh,
+                                    originals,
+                                    handle,
+                                    is_scale,
+                                    scale_pivot: center,
+                                    scale_origin_dist,
+                                    orig_scale_x,
+                                    orig_scale_y,
+                                });
+                                handled = true;
+                                break;
+                            }
                         }
-                    } else {
-                        state.box_select = Some(BoxSelectState {
-                            start: pointer,
-                            current: pointer,
-                        });
                     }
-                } else if !all_sel.is_empty() {
-                    // Multi-drag: check if pointer is on any selected widget
+                }
+
+                if !handled {
+                    // Body drag: pointer inside any selected widget (rotation-aware)?
                     let on_selected = widget_snapshots.iter().rev().any(|ws| {
                         all_sel.contains(&ws.entity)
-                            && ws_screen_rect(ws, canvas_rect, z).contains(pointer)
+                            && !ws.locked
+                            && rotated_rect_contains(
+                                ws_screen_rect(ws, canvas_rect, z),
+                                ws.rotation,
+                                pointer,
+                            )
                     });
-                    if on_selected {
+                    if on_selected && !all_sel.is_empty() {
                         state.dragging = Some(DragState {
                             entities: all_sel.clone(),
                             start_pos: pointer,
@@ -1656,12 +2099,6 @@ impl EditorPanel for UiCanvasPanel {
                             current: pointer,
                         });
                     }
-                } else {
-                    // Nothing selected, start box select
-                    state.box_select = Some(BoxSelectState {
-                        start: pointer,
-                        current: pointer,
-                    });
                 }
             }
         }
@@ -1699,42 +2136,127 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
-        // Apply resize (with snap)
+        // Apply resize (with snap, modifiers, and multi-select scaling)
         if let Some(resize) = &state.resizing {
             if response.dragged_by(egui::PointerButton::Primary) {
                 if let Some(pointer) = ui.ctx().pointer_latest_pos() {
-                    let dx = (pointer.x - resize.start_pos.x) / z;
-                    let dy = (pointer.y - resize.start_pos.y) / z;
-                    let snap_on = state.snap_enabled;
-                    let grid = state.grid_size;
+                    // Scale mode: apply UiTransform.scale instead of resizing Node.
+                    // Early-exit of the resize branch — but NOT of the whole method.
+                    let mut handled_scale = false;
+                    if resize.is_scale {
+                        handled_scale = true;
+                        let d = pointer.distance(resize.scale_pivot);
+                        let ratio = d / resize.scale_origin_dist;
+                        // Uniform scale: same ratio on both axes. Shift = non-uniform
+                        // (uses raw dx/dy projected onto widget local axes).
+                        let (sx, sy) = if shift {
+                            // Non-uniform: project pointer delta into widget-local frame
+                            let rot = widget_snapshots
+                                .iter()
+                                .find(|w| resize.entities.first() == Some(&w.entity))
+                                .map(|w| w.rotation)
+                                .unwrap_or(0.0);
+                            let raw_dx = (pointer.x - resize.start_pos.x) / z;
+                            let raw_dy = (pointer.y - resize.start_pos.y) / z;
+                            let (sin, cos) = ((-rot).sin(), (-rot).cos());
+                            let ldx = raw_dx * cos - raw_dy * sin;
+                            let ldy = raw_dx * sin + raw_dy * cos;
+                            let (l, t, r, b) = resize.handle.sides();
+                            let fx = if r { 1.0 + ldx / resize.bbox_w.max(1.0) }
+                                else if l { 1.0 - ldx / resize.bbox_w.max(1.0) }
+                                else { 1.0 };
+                            let fy = if b { 1.0 + ldy / resize.bbox_h.max(1.0) }
+                                else if t { 1.0 - ldy / resize.bbox_h.max(1.0) }
+                                else { 1.0 };
+                            (resize.orig_scale_x * fx, resize.orig_scale_y * fy)
+                        } else {
+                            (resize.orig_scale_x * ratio, resize.orig_scale_y * ratio)
+                        };
 
-                    let (mut nw, mut nh, mut nx, mut ny) = match resize.handle {
-                        ResizeHandle::BottomRight => (
-                            (resize.original_w + dx).max(10.0),
-                            (resize.original_h + dy).max(10.0),
-                            resize.original_x,
-                            resize.original_y,
-                        ),
-                        ResizeHandle::TopRight => (
-                            (resize.original_w + dx).max(10.0),
-                            (resize.original_h - dy).max(10.0),
-                            resize.original_x,
-                            resize.original_y + dy,
-                        ),
-                        ResizeHandle::BottomLeft => (
-                            (resize.original_w - dx).max(10.0),
-                            (resize.original_h + dy).max(10.0),
-                            resize.original_x + dx,
-                            resize.original_y,
-                        ),
-                        ResizeHandle::TopLeft => (
-                            (resize.original_w - dx).max(10.0),
-                            (resize.original_h - dy).max(10.0),
-                            resize.original_x + dx,
-                            resize.original_y + dy,
-                        ),
+                        let entity = resize.entities[0];
+                        commands.push(move |world: &mut World| {
+                            if let Ok(mut em) = world.get_entity_mut(entity) {
+                                let mut t = em.get_mut::<bevy::ui::UiTransform>();
+                                if t.is_none() {
+                                    em.insert(bevy::ui::UiTransform::IDENTITY);
+                                    t = em.get_mut::<bevy::ui::UiTransform>();
+                                }
+                                if let Some(mut t) = t {
+                                    t.scale = bevy::math::Vec2::new(sx, sy);
+                                }
+                            }
+                        });
+                    }
+
+                    if handled_scale {
+                        // Fall through: skip the Node-resize branch below but
+                        // keep the rest of the frame running (cursor, readout, release).
+                    } else {
+                    // Convert pointer delta into the rotation frame of the
+                    // handle. We use single-selection rotation; for multi-select
+                    // rotation is always 0 (selection_bbox returns an AABB).
+                    let single_rot = if resize.entities.len() == 1 {
+                        widget_snapshots
+                            .iter()
+                            .find(|w| w.entity == resize.entities[0])
+                            .map(|w| w.rotation)
+                            .unwrap_or(0.0)
+                    } else {
+                        0.0
                     };
 
+                    // Delta in local (un-rotated) frame. When the widget has a
+                    // non-unit scale, the visible rect is larger than the layout
+                    // rect — divide the visual delta by scale to get the layout delta.
+                    let raw_dx = (pointer.x - resize.start_pos.x) / z;
+                    let raw_dy = (pointer.y - resize.start_pos.y) / z;
+                    let (sin, cos) = ((-single_rot).sin(), (-single_rot).cos());
+                    let visual_dx = raw_dx * cos - raw_dy * sin;
+                    let visual_dy = raw_dx * sin + raw_dy * cos;
+                    let dx = if resize.orig_scale_x.abs() > 0.001 {
+                        visual_dx / resize.orig_scale_x.abs()
+                    } else { visual_dx };
+                    let dy = if resize.orig_scale_y.abs() > 0.001 {
+                        visual_dy / resize.orig_scale_y.abs()
+                    } else { visual_dy };
+
+                    let (l, t, r, b) = resize.handle.sides();
+                    let mut nx = resize.bbox_x + if l { dx } else { 0.0 };
+                    let mut ny = resize.bbox_y + if t { dy } else { 0.0 };
+                    let mut nw = resize.bbox_w + if r { dx } else { 0.0 } - if l { dx } else { 0.0 };
+                    let mut nh = resize.bbox_h + if b { dy } else { 0.0 } - if t { dy } else { 0.0 };
+
+                    // Shift = preserve original aspect ratio (corner handles only)
+                    if shift && resize.handle.is_corner() && resize.bbox_h > 0.0 {
+                        let aspect = resize.bbox_w / resize.bbox_h;
+                        // Drive height from width to keep the corner the user is dragging stable.
+                        let forced_h = (nw / aspect).max(10.0);
+                        let dh = forced_h - nh;
+                        nh = forced_h;
+                        if t { ny -= dh; }
+                    }
+
+                    // Alt = resize from center (mirror the delta across the opposite edge)
+                    if alt {
+                        let cx = resize.bbox_x + resize.bbox_w * 0.5;
+                        let cy = resize.bbox_y + resize.bbox_h * 0.5;
+                        if l || r {
+                            // Horizontal: grow/shrink symmetrically around cx
+                            nw = if l { resize.bbox_w - 2.0 * dx } else { resize.bbox_w + 2.0 * dx };
+                            nx = cx - nw * 0.5;
+                        }
+                        if t || b {
+                            nh = if t { resize.bbox_h - 2.0 * dy } else { resize.bbox_h + 2.0 * dy };
+                            ny = cy - nh * 0.5;
+                        }
+                    }
+
+                    // Enforce min size
+                    nw = nw.max(10.0);
+                    nh = nh.max(10.0);
+
+                    let snap_on = state.snap_enabled;
+                    let grid = state.grid_size;
                     if snap_on {
                         nw = snap(nw, grid).max(grid);
                         nh = snap(nh, grid).max(grid);
@@ -1742,15 +2264,61 @@ impl EditorPanel for UiCanvasPanel {
                         ny = snap(ny, grid);
                     }
 
-                    let entity = resize.entity;
+                    // Scale factors vs original bbox
+                    let sx = if resize.bbox_w > 0.0 { nw / resize.bbox_w } else { 1.0 };
+                    let sy = if resize.bbox_h > 0.0 { nh / resize.bbox_h } else { 1.0 };
+                    let tx = nx - resize.bbox_x * sx;
+                    let ty = ny - resize.bbox_y * sy;
+
+                    // Apply to each entity: position + size scaled into the new bbox.
+                    let entity_updates: Vec<(Entity, f32, f32, f32, f32)> = resize
+                        .entities
+                        .iter()
+                        .zip(resize.originals.iter())
+                        .map(|(e, (ox, oy, ow, oh))| {
+                            (*e, ox * sx + tx, oy * sy + ty, ow * sx, oh * sy)
+                        })
+                        .collect();
+
+                    commands.push(move |world: &mut World| {
+                        for (entity, nx, ny, nw, nh) in &entity_updates {
+                            if let Ok(mut em) = world.get_entity_mut(*entity) {
+                                if let Some(mut node) = em.get_mut::<Node>() {
+                                    node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
+                                    node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
+                                    node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                    node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
+                                    node.position_type = bevy::ui::PositionType::Absolute;
+                                }
+                            }
+                        }
+                    });
+                    } // end !handled_scale branch
+                }
+            }
+        }
+
+        // Apply rotation
+        if let Some(rotate) = &state.rotating {
+            if response.dragged_by(egui::PointerButton::Primary) {
+                if let Some(pointer) = ui.ctx().pointer_latest_pos() {
+                    let a = (pointer.y - rotate.pivot.y).atan2(pointer.x - rotate.pivot.x);
+                    let mut rot = a - rotate.start_angle_offset;
+                    // Ctrl = snap to 15°
+                    if ctrl {
+                        let step = 15f32.to_radians();
+                        rot = (rot / step).round() * step;
+                    }
+                    let entity = rotate.entity;
                     commands.push(move |world: &mut World| {
                         if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut node) = em.get_mut::<Node>() {
-                                node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
-                                node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
-                                node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
-                                node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
-                                node.position_type = bevy::ui::PositionType::Absolute;
+                            let mut t = em.get_mut::<bevy::ui::UiTransform>();
+                            if t.is_none() {
+                                em.insert(bevy::ui::UiTransform::IDENTITY);
+                                t = em.get_mut::<bevy::ui::UiTransform>();
+                            }
+                            if let Some(mut t) = t {
+                                t.rotation = bevy::math::Rot2::radians(rot);
                             }
                         }
                     });
@@ -1767,10 +2335,232 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
-        // End drag/resize/box-select on release
+        // ── Draw-mode ghost ─────────────────────────────────────────────
+        if let Some(ds) = &state.draw_state {
+            let r = Rect::from_two_pos(ds.start, ds.current);
+            painter.rect_filled(
+                r,
+                0.0,
+                Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+            );
+            painter.rect_stroke(
+                r,
+                0.0,
+                Stroke::new(1.5, accent),
+                egui::StrokeKind::Inside,
+            );
+            let label = format!("{} {:.0}×{:.0}", ds.widget_type.label(), r.width() / z, r.height() / z);
+            painter.text(
+                Pos2::new(r.center().x, r.max.y + 14.0),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(11.0),
+                Color32::WHITE,
+            );
+        }
+
+        // ── Cursor icons + live readout ─────────────────────────────────
+        {
+            let pointer = ui.ctx().pointer_latest_pos();
+            let all_sel = state.all_selected(selected_entity);
+            // Track whether to render a custom rotate glyph at the pointer
+            // (egui has no native rotate cursor, so we hide the system cursor
+            // and paint a phosphor icon instead).
+            let mut show_rotate_cursor = false;
+
+            // Draw mode: crosshair cursor everywhere in the canvas panel.
+            if state.draw_mode.is_some() {
+                if pointer.map_or(false, |p| available.contains(p)) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                }
+            } else
+
+            // Active-drag cursors (must re-assert each frame since egui resets)
+            if state.rotating.is_some() {
+                show_rotate_cursor = true;
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if let Some(resize) = &state.resizing {
+                let rot = if resize.entities.len() == 1 {
+                    widget_snapshots
+                        .iter()
+                        .find(|w| w.entity == resize.entities[0])
+                        .map(|w| w.rotation)
+                        .unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                ui.ctx().set_cursor_icon(resize.handle.cursor(rot));
+            } else if state.dragging.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else if let Some(p) = pointer {
+                // Hover cursors: anywhere inside the canvas panel (handles can
+                // sit outside the logical viewport rect, especially the rotation knob).
+                if available.contains(p) {
+                    // Compute gizmo bbox same as draw pass
+                    let gizmo = match all_sel.len() {
+                        0 => None,
+                        1 => widget_snapshots
+                            .iter()
+                            .find(|w| w.entity == all_sel[0] && !w.locked)
+                            .map(|w| (w.x, w.y, w.width, w.height, w.rotation)),
+                        _ => selection_bbox(&widget_snapshots, &all_sel)
+                            .map(|(x, y, w, h)| (x, y, w, h, 0.0)),
+                    };
+
+                    let mut hover_cursor: Option<egui::CursorIcon> = None;
+
+                    if let Some((bx, by, bw, bh, rot)) = gizmo {
+                        let rect = Rect::from_min_size(
+                            Pos2::new(canvas_rect.min.x + bx * z, canvas_rect.min.y + by * z),
+                            Vec2::new(bw * z, bh * z),
+                        );
+                        let center = rect.center();
+
+                        // Rotation knob (single selection only) — custom glyph cursor
+                        if all_sel.len() == 1 {
+                            let rot_knob_local =
+                                Pos2::new(center.x, rect.min.y - ROTATE_HANDLE_OFFSET);
+                            let rot_knob = rotate_around(rot_knob_local, center, rot);
+                            if rot_knob.distance(p) <= HANDLE_HIT_RADIUS {
+                                show_rotate_cursor = true;
+                                hover_cursor = Some(egui::CursorIcon::None);
+                            }
+                        }
+
+                        // Resize handles
+                        if hover_cursor.is_none() {
+                            for (handle, pos) in handle_positions(rect, rot) {
+                                if pos.distance(p) <= HANDLE_HIT_RADIUS {
+                                    hover_cursor = Some(handle.cursor(rot));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Body hover: pointer over any selected unlocked widget → grab cursor
+                    if hover_cursor.is_none() {
+                        let on_selected = widget_snapshots.iter().rev().any(|ws| {
+                            all_sel.contains(&ws.entity)
+                                && !ws.locked
+                                && rotated_rect_contains(
+                                    ws_screen_rect(ws, canvas_rect, z),
+                                    ws.rotation,
+                                    p,
+                                )
+                        });
+                        if on_selected {
+                            hover_cursor = Some(egui::CursorIcon::Grab);
+                        }
+                    }
+
+                    if let Some(c) = hover_cursor {
+                        ui.ctx().set_cursor_icon(c);
+                    }
+                }
+            }
+
+            // Live size/position/rotation readout during drag/resize/rotate
+            let readout: Option<(String, Pos2)> = if let Some(resize) = &state.resizing {
+                let rect = Rect::from_min_size(
+                    Pos2::new(canvas_rect.min.x + resize.bbox_x * z, canvas_rect.min.y + resize.bbox_y * z),
+                    Vec2::new(resize.bbox_w * z, resize.bbox_h * z),
+                );
+                if resize.is_scale {
+                    // Read live scale from the snapshot of the first entity.
+                    let (sx, sy) = widget_snapshots
+                        .iter()
+                        .find(|w| resize.entities.first() == Some(&w.entity))
+                        .map(|w| (w.scale_x, w.scale_y))
+                        .unwrap_or((1.0, 1.0));
+                    Some((
+                        format!("{:.0}% × {:.0}%", sx * 100.0, sy * 100.0),
+                        Pos2::new(rect.center().x, rect.max.y + 12.0),
+                    ))
+                } else {
+                    let live = widget_snapshots
+                        .iter()
+                        .find(|w| resize.entities.first() == Some(&w.entity))
+                        .map(|w| (w.width, w.height))
+                        .unwrap_or((resize.bbox_w, resize.bbox_h));
+                    Some((
+                        format!("{:.0} × {:.0}", live.0, live.1),
+                        Pos2::new(rect.center().x, rect.max.y + 12.0),
+                    ))
+                }
+            } else if let Some(drag) = &state.dragging {
+                let first = drag.entities.first().copied();
+                first.and_then(|e| {
+                    widget_snapshots
+                        .iter()
+                        .find(|w| w.entity == e)
+                        .map(|w| {
+                            let r = ws_screen_rect(w, canvas_rect, z);
+                            (
+                                format!("{:.0}, {:.0}", w.x, w.y),
+                                Pos2::new(r.center().x, r.max.y + 12.0),
+                            )
+                        })
+                })
+            } else if let Some(rot) = &state.rotating {
+                widget_snapshots
+                    .iter()
+                    .find(|w| w.entity == rot.entity)
+                    .map(|w| {
+                        let r = ws_screen_rect(w, canvas_rect, z);
+                        (
+                            format!("{:.1}°", w.rotation.to_degrees()),
+                            Pos2::new(r.center().x, r.max.y + 12.0),
+                        )
+                    })
+            } else {
+                None
+            };
+
+            if let Some((text, pos)) = readout {
+                let font = egui::FontId::proportional(11.0);
+                let galley = painter.layout_no_wrap(text.clone(), font.clone(), Color32::WHITE);
+                let padding = Vec2::new(6.0, 3.0);
+                let bg_rect = Rect::from_center_size(
+                    pos,
+                    galley.size() + padding * 2.0,
+                );
+                painter.rect_filled(bg_rect, 3.0, Color32::from_black_alpha(200));
+                painter.text(pos, egui::Align2::CENTER_CENTER, text, font, Color32::WHITE);
+            }
+
+            // Custom rotate glyph at the pointer — stands in for the
+            // missing CursorIcon::Rotate that egui doesn't expose.
+            if show_rotate_cursor {
+                if let Some(p) = pointer {
+                    let glyph_pos = Pos2::new(p.x + 10.0, p.y + 10.0);
+                    let fg = ui.ctx().layer_painter(egui::LayerId::new(
+                        egui::Order::Tooltip,
+                        ui.id().with("rotate_cursor"),
+                    ));
+                    fg.text(
+                        glyph_pos,
+                        egui::Align2::LEFT_TOP,
+                        egui_phosphor::regular::ARROW_CLOCKWISE,
+                        egui::FontId::proportional(18.0),
+                        Color32::BLACK,
+                    );
+                    fg.text(
+                        Pos2::new(glyph_pos.x - 1.0, glyph_pos.y - 1.0),
+                        egui::Align2::LEFT_TOP,
+                        egui_phosphor::regular::ARROW_CLOCKWISE,
+                        egui::FontId::proportional(18.0),
+                        Color32::WHITE,
+                    );
+                }
+            }
+        }
+
+        // End drag/resize/rotate/box-select on release
         if !ui.ctx().input(|i| i.pointer.any_down()) {
             state.dragging = None;
             state.resizing = None;
+            state.rotating = None;
 
             // Finalize box-select
             if let Some(bs) = state.box_select.take() {
@@ -1877,24 +2667,9 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
-        // ── Empty state ──────────────────────────────────────────────────
-        if state.canvases.is_empty() {
-            painter.text(
-                available.center(),
-                egui::Align2::CENTER_CENTER,
-                "Add a UI Canvas from the Widget palette to get started",
-                egui::FontId::proportional(13.0),
-                text_muted,
-            );
-        } else if widget_snapshots.is_empty() && world.get_resource::<WidgetDragPayload>().is_none() {
-            painter.text(
-                canvas_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "Drag widgets from the palette or click to add them here",
-                egui::FontId::proportional(12.0),
-                text_muted,
-            );
-        }
+        // Empty-state hint labels removed — canvases are self-evident once a
+        // canvas and/or widgets exist, and the empty viewport is easy to read.
+        let _ = text_muted;
     }
 
     fn default_location(&self) -> PanelLocation {
@@ -2228,6 +3003,16 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 }
             } else { WidgetDataSnapshot::None }
         }
+        UiWidgetType::Rectangle => {
+            if let Some(d) = world.get::<RectangleShape>(entity) {
+                WidgetDataSnapshot::ShapeRectangle {
+                    color: c2a(d.color),
+                    stroke_color: c2a(d.stroke_color),
+                    stroke_width: d.stroke_width,
+                    corner_radius: d.corner_radius,
+                }
+            } else { WidgetDataSnapshot::None }
+        }
         UiWidgetType::Wedge => {
             if let Some(d) = world.get::<WedgeShape>(entity) {
                 WidgetDataSnapshot::ShapeWedge {
@@ -2467,22 +3252,25 @@ fn paint_widget_preview(
             paint_shape_circle(painter, rect, z, color, stroke_color, *stroke_width);
         }
         WidgetDataSnapshot::ShapeArc { color, start_angle, end_angle } => {
-            paint_shape_arc(painter, rect, z, color, *start_angle, *end_angle);
+            paint_shape_arc(painter, rect, z, ws.rotation, color, *start_angle, *end_angle);
         }
         WidgetDataSnapshot::ShapeTriangle { color, stroke_color } => {
-            paint_shape_triangle(painter, rect, z, color, stroke_color);
+            paint_shape_triangle(painter, rect, z, ws.rotation, color, stroke_color);
         }
         WidgetDataSnapshot::ShapeLine { color, thickness } => {
-            paint_shape_line(painter, rect, z, color, *thickness);
+            paint_shape_line(painter, rect, z, ws.rotation, color, *thickness);
         }
         WidgetDataSnapshot::ShapePolygon { color, stroke_color, sides } => {
-            paint_shape_polygon(painter, rect, z, color, stroke_color, *sides);
+            paint_shape_polygon(painter, rect, z, ws.rotation, color, stroke_color, *sides);
+        }
+        WidgetDataSnapshot::ShapeRectangle { color, stroke_color, stroke_width, corner_radius } => {
+            paint_shape_rectangle(painter, rect, ws.rotation, color, stroke_color, *stroke_width, corner_radius);
         }
         WidgetDataSnapshot::ShapeWedge { color, start_angle, end_angle } => {
-            paint_shape_wedge(painter, rect, z, color, *start_angle, *end_angle);
+            paint_shape_wedge(painter, rect, z, ws.rotation, color, *start_angle, *end_angle);
         }
         WidgetDataSnapshot::ShapeRadialProgress { color, track_color, value } => {
-            paint_shape_radial_progress(painter, rect, z, color, track_color, *value);
+            paint_shape_radial_progress(painter, rect, z, ws.rotation, color, track_color, *value);
         }
         // ── Menu ──
         WidgetDataSnapshot::InventoryGrid { columns, rows, slot_size, slot_bg_color, slot_border_color } => {
@@ -2525,10 +3313,8 @@ fn paint_widget_preview(
         }
     }
 
-    // ── Selection highlight (always on top) ──────────────────────────
-    if is_sel {
-        painter.rect_stroke(rect, rounding, Stroke::new(2.0, accent), egui::StrokeKind::Outside);
-    } else if ws.stroke_width > 0.0 && ws.has_border {
+    // ── Widget border (selection outline is drawn by the rotation-aware gizmo) ──
+    if !is_sel && ws.stroke_width > 0.0 && ws.has_border {
         let sc = arr_to_c32(&ws.border_color);
         painter.rect_stroke(rect, rounding, Stroke::new(ws.stroke_width * z, sc), egui::StrokeKind::Outside);
     }
@@ -2540,23 +3326,43 @@ fn paint_widget_preview(
 // ── Individual widget painters ──────────────────────────────────────────────
 
 fn paint_generic(painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding) {
-    // Image widget with texture
+    // Image widget with texture — draw as a rotated quad so UiTransform.rotation
+    // shows in the preview (egui's painter.image() is axis-aligned only).
     if let Some(tex_id) = ws.image_texture_id {
-        painter.image(
-            tex_id, rect,
-            egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-            Color32::WHITE,
-        );
+        let corners = rotated_corners(rect, ws.rotation);
+        let mut mesh = egui::Mesh::with_texture(tex_id);
+        let uvs = [
+            Pos2::new(0.0, 0.0),
+            Pos2::new(1.0, 0.0),
+            Pos2::new(1.0, 1.0),
+            Pos2::new(0.0, 1.0),
+        ];
+        for i in 0..4 {
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: corners[i],
+                uv: uvs[i],
+                color: Color32::WHITE,
+            });
+        }
+        mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+        painter.add(egui::Shape::mesh(mesh));
         return;
     }
 
-    // Background fill
+    // Background fill — rotated via convex_polygon when the widget has rotation,
+    // otherwise use the faster rounded-rect path.
     let bg = if ws.has_bg {
         arr_to_c32(&ws.bg_color)
     } else {
         Color32::from_rgba_unmultiplied(50, 50, 60, 40)
     };
-    painter.rect_filled(rect, rounding, bg);
+    if ws.rotation.abs() > 0.001 {
+        let corners = rotated_corners(rect, ws.rotation);
+        let path = egui::epaint::PathShape::convex_polygon(corners.to_vec(), bg, Stroke::NONE);
+        painter.add(path);
+    } else {
+        painter.rect_filled(rect, rounding, bg);
+    }
 
     // Text content (for Text / Button widgets)
     if let Some(ref text) = ws.text_content {
@@ -2589,6 +3395,9 @@ fn paint_slider(
     value: f32, min: f32, max: f32,
     track_color: &[f32; 4], fill_color: &[f32; 4], thumb_color: &[f32; 4],
 ) {
+    // Track width already follows `rect.width()`, so horizontal scaling is
+    // automatic. Use the rect height to scale the track thickness and thumb.
+    let z = z * (rect.height() / 24.0).clamp(0.3, 5.0);
     let track_h = (6.0 * z).max(2.0);
     let track_y = rect.center().y - track_h / 2.0;
     let track_rect = Rect::from_min_size(
@@ -2639,6 +3448,9 @@ fn paint_checkbox(
     painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
     checked: bool, label: &str, check_color: &[f32; 4], box_color: &[f32; 4],
 ) {
+    // Scale box with UiTransform (use min scale so it stays square)
+    let s = ws.scale_x.abs().min(ws.scale_y.abs()).max(0.05);
+    let z = z * s;
     let box_size = (18.0 * z).max(8.0);
     let box_y = rect.center().y - box_size / 2.0;
     let box_rect = Rect::from_min_size(Pos2::new(rect.min.x, box_y), Vec2::splat(box_size));
@@ -2673,8 +3485,15 @@ fn paint_toggle(
     on: bool, label: &str,
     on_color: &[f32; 4], off_color: &[f32; 4], knob_color: &[f32; 4],
 ) {
-    let track_w = (44.0 * z).max(20.0);
-    let track_h = (24.0 * z).max(12.0);
+    // Respect UiTransform.scale in the preview: bump the effective zoom per axis
+    // so the toggle visibly scales with the widget's transform.
+    let sx = ws.scale_x.abs().max(0.05);
+    let sy = ws.scale_y.abs().max(0.05);
+    let zx = z * sx;
+    let zy = z * sy;
+
+    let track_w = (44.0 * zx).max(20.0);
+    let track_h = (24.0 * zy).max(12.0);
     let track_y = rect.center().y - track_h / 2.0;
     let track_rect = Rect::from_min_size(Pos2::new(rect.min.x, track_y), Vec2::new(track_w, track_h));
     let track_round = round_f(track_h / 2.0);
@@ -2683,11 +3502,11 @@ fn paint_toggle(
     painter.rect_filled(track_rect, track_round, track_color);
 
     // Knob
-    let knob_r = (track_h - 4.0 * z) / 2.0;
+    let knob_r = (track_h - 4.0 * zy) / 2.0;
     let knob_x = if on {
-        track_rect.max.x - knob_r - 2.0 * z
+        track_rect.max.x - knob_r - 2.0 * zx
     } else {
-        track_rect.min.x + knob_r + 2.0 * z
+        track_rect.min.x + knob_r + 2.0 * zx
     };
     painter.circle_filled(Pos2::new(knob_x, rect.center().y), knob_r, arr_to_c32(knob_color));
 
@@ -2821,6 +3640,8 @@ fn paint_radio_button(
     painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
     selected: bool, label: &str, active_color: &[f32; 4],
 ) {
+    let s = ws.scale_x.abs().min(ws.scale_y.abs()).max(0.05);
+    let z = z * s;
     let circle_r = (9.0 * z).max(4.0);
     let cx = rect.min.x + circle_r;
     let cy = rect.center().y;
@@ -3135,7 +3956,7 @@ fn paint_shape_circle(
 }
 
 fn paint_shape_arc(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], start_angle: f32, end_angle: f32,
 ) {
     let center = rect.center();
@@ -3143,8 +3964,8 @@ fn paint_shape_arc(
     let c = arr_to_c32(color);
     let sw = (3.0 * z).max(1.0);
 
-    let start_rad = start_angle.to_radians();
-    let end_rad = end_angle.to_radians();
+    let start_rad = start_angle.to_radians() + rotation;
+    let end_rad = end_angle.to_radians() + rotation;
     let segments = 32;
     let sweep = end_rad - start_rad;
 
@@ -3158,7 +3979,7 @@ fn paint_shape_arc(
 }
 
 fn paint_shape_triangle(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], stroke_color: &[f32; 4],
 ) {
     let center = rect.center();
@@ -3166,11 +3987,10 @@ fn paint_shape_triangle(
     let half_h = rect.height() / 2.0 - 2.0 * z;
     let c = arr_to_c32(color);
 
-    let top = Pos2::new(center.x, center.y - half_h);
-    let bl = Pos2::new(center.x - half_w, center.y + half_h);
-    let br = Pos2::new(center.x + half_w, center.y + half_h);
+    let top = rotate_around(Pos2::new(center.x, center.y - half_h), center, rotation);
+    let bl = rotate_around(Pos2::new(center.x - half_w, center.y + half_h), center, rotation);
+    let br = rotate_around(Pos2::new(center.x + half_w, center.y + half_h), center, rotation);
 
-    // Filled triangle via PathShape
     let path = egui::epaint::PathShape::convex_polygon(vec![top, bl, br], c, Stroke::NONE);
     painter.add(path);
 
@@ -3183,20 +4003,19 @@ fn paint_shape_triangle(
 }
 
 fn paint_shape_line(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], thickness: f32,
 ) {
     let c = arr_to_c32(color);
     let sw = (thickness * z).max(1.0);
-    // Diagonal from top-left to bottom-right
-    painter.line_segment(
-        [rect.left_top(), rect.right_bottom()],
-        Stroke::new(sw, c),
-    );
+    let center = rect.center();
+    let p0 = rotate_around(rect.left_top(), center, rotation);
+    let p1 = rotate_around(rect.right_bottom(), center, rotation);
+    painter.line_segment([p0, p1], Stroke::new(sw, c));
 }
 
 fn paint_shape_polygon(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], stroke_color: &[f32; 4], sides: u32,
 ) {
     let center = rect.center();
@@ -3206,7 +4025,9 @@ fn paint_shape_polygon(
 
     let mut points = Vec::with_capacity(n);
     for i in 0..n {
-        let angle = std::f32::consts::TAU * i as f32 / n as f32 - std::f32::consts::FRAC_PI_2;
+        let angle = std::f32::consts::TAU * i as f32 / n as f32
+            - std::f32::consts::FRAC_PI_2
+            + rotation;
         points.push(Pos2::new(center.x + radius * angle.cos(), center.y + radius * angle.sin()));
     }
 
@@ -3221,16 +4042,42 @@ fn paint_shape_polygon(
     }
 }
 
+/// Paint a (possibly rotated) rectangle with optional stroke.
+///
+/// `rotation` is in radians, clockwise to match `UiTransform`. Rendered as a
+/// convex polygon so the fill rotates correctly. Corner radius isn't visualised
+/// in the preview (egui's polygon doesn't round corners) — the widget still
+/// renders with the correct radius at runtime via the WGSL shader.
+fn paint_shape_rectangle(
+    painter: &egui::Painter, rect: Rect, rotation: f32,
+    color: &[f32; 4], stroke_color: &[f32; 4], stroke_width: f32, _corner_radius: &[f32; 4],
+) {
+    let corners = rotated_corners(rect, rotation);
+    let c = arr_to_c32(color);
+    let path = egui::epaint::PathShape::convex_polygon(corners.to_vec(), c, Stroke::NONE);
+    painter.add(path);
+
+    let sc = arr_to_c32(stroke_color);
+    if sc.a() > 0 && stroke_width > 0.0 {
+        for i in 0..4 {
+            painter.line_segment(
+                [corners[i], corners[(i + 1) % 4]],
+                Stroke::new(stroke_width.max(1.0), sc),
+            );
+        }
+    }
+}
+
 fn paint_shape_wedge(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], start_angle: f32, end_angle: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
     let c = arr_to_c32(color);
 
-    let start_rad = start_angle.to_radians();
-    let end_rad = end_angle.to_radians();
+    let start_rad = start_angle.to_radians() + rotation;
+    let end_rad = end_angle.to_radians() + rotation;
     let segments = 24;
     let sweep = end_rad - start_rad;
 
@@ -3246,20 +4093,20 @@ fn paint_shape_wedge(
 }
 
 fn paint_shape_radial_progress(
-    painter: &egui::Painter, rect: Rect, z: f32,
+    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
     color: &[f32; 4], track_color: &[f32; 4], value: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
     let sw = (4.0 * z).max(2.0);
 
-    // Track (full circle)
+    // Track (full circle) — unaffected by rotation
     let tc = arr_to_c32(track_color);
     painter.circle_stroke(center, radius, Stroke::new(sw, tc));
 
     // Filled arc
     let c = arr_to_c32(color);
-    let start_angle = -std::f32::consts::FRAC_PI_2; // top
+    let start_angle = -std::f32::consts::FRAC_PI_2 + rotation; // top, offset by rotation
     let sweep = std::f32::consts::TAU * value.clamp(0.0, 1.0);
     let segments = 32;
 

@@ -67,6 +67,7 @@ pub enum UiWidgetType {
     Line,
     Triangle,
     Polygon,
+    Rectangle,
     Wedge,
 }
 
@@ -116,6 +117,7 @@ impl UiWidgetType {
             Self::Line => "Line",
             Self::Triangle => "Triangle",
             Self::Polygon => "Polygon",
+            Self::Rectangle => "Rectangle",
             Self::Wedge => "Wedge",
         }
     }
@@ -167,6 +169,7 @@ impl UiWidgetType {
             Self::Line => LINE_SEGMENT,
             Self::Triangle => TRIANGLE,
             Self::Polygon => HEXAGON,
+            Self::Rectangle => RECTANGLE,
             Self::Wedge => CHART_PIE_SLICE,
         }
     }
@@ -182,7 +185,7 @@ impl UiWidgetType {
             Self::Crosshair | Self::AmmoCounter | Self::Compass | Self::StatusEffectBar | Self::NotificationFeed | Self::RadialMenu | Self::Minimap => "HUD",
             Self::InventoryGrid | Self::DialogBox | Self::ObjectiveTracker | Self::LoadingScreen | Self::KeybindRow | Self::SettingsRow => "Menu",
             Self::Separator | Self::NumberInput | Self::VerticalSlider | Self::Scrollbar | Self::List => "Extra",
-            Self::Circle | Self::Arc | Self::RadialProgress | Self::Line | Self::Triangle | Self::Polygon | Self::Wedge => "Shapes",
+            Self::Circle | Self::Arc | Self::RadialProgress | Self::Line | Self::Triangle | Self::Polygon | Self::Rectangle | Self::Wedge => "Shapes",
         }
     }
 }

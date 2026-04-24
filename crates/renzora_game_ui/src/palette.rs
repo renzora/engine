@@ -137,6 +137,7 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
         UiWidgetType::List,
     ]),
     ("Shapes", regular::SHAPES, &[
+        UiWidgetType::Rectangle,
         UiWidgetType::Circle,
         UiWidgetType::Arc,
         UiWidgetType::RadialProgress,
@@ -295,9 +296,6 @@ impl EditorPanel for WidgetPalettePanel {
                                 egui::FontId::proportional(11.0),
                                 text_primary,
                             );
-                            response
-                                .clone()
-                                .on_hover_text(format!("Drag onto canvas or click to add a {} widget", wtype.label()));
                             if response.drag_started() {
                                 if let Some(pos) = ui.ctx().pointer_latest_pos() {
                                     let wt = (*wtype).clone();

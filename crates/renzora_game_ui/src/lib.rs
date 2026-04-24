@@ -679,6 +679,7 @@ fn register_ui_presets(app: &mut App) {
     widget_preset!(Line, "ui_line", "Line");
     widget_preset!(Triangle, "ui_triangle", "Triangle");
     widget_preset!(Polygon, "ui_polygon", "Polygon");
+    widget_preset!(Rectangle, "ui_rectangle", "Rectangle");
     widget_preset!(Wedge, "ui_wedge", "Wedge");
 }
 
