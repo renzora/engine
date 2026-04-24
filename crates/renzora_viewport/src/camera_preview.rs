@@ -10,7 +10,7 @@ use bevy::core_pipeline::Skybox;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
-use renzora_editor_framework::EditorSelection;
+use renzora_editor_framework::{DockingState, EditorSelection};
 use renzora::core::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera};
 
 /// Preview image size.
@@ -67,6 +67,36 @@ pub fn setup_camera_preview(
 /// Manages the camera preview — spawns/updates/despawns the preview camera.
 ///
 /// Shows: selected Camera3d → DefaultCamera → first scene Camera3d.
+/// Run condition: true when the Camera Preview panel is in the active dock tree.
+pub fn camera_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
+    docking.map_or(false, |d| d.tree.contains_panel("camera_preview"))
+}
+
+/// Toggles the Camera Preview camera on/off with panel visibility and despawns
+/// the preview camera entity when the panel closes.
+pub fn sync_camera_preview_activation(
+    docking: Option<Res<DockingState>>,
+    mut preview_cameras: Query<&mut Camera, With<CameraPreviewMarker>>,
+    preview_entities: Query<Entity, With<CameraPreviewMarker>>,
+    mut preview_state: Option<ResMut<CameraPreviewState>>,
+    mut commands: Commands,
+) {
+    let mounted = docking.map_or(false, |d| d.tree.contains_panel("camera_preview"));
+    for mut camera in preview_cameras.iter_mut() {
+        if camera.is_active != mounted {
+            camera.is_active = mounted;
+        }
+    }
+    if !mounted {
+        for entity in preview_entities.iter() {
+            commands.entity(entity).despawn();
+        }
+        if let Some(ref mut state) = preview_state {
+            state.previewing = None;
+        }
+    }
+}
+
 pub fn update_camera_preview(
     mut commands: Commands,
     selection: Res<EditorSelection>,

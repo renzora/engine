@@ -264,6 +264,7 @@ impl Plugin for AnimationEditorPlugin {
         app.insert_resource(bridge);
 
         studio_preview::register_preview_gizmos(app);
+        app.add_observer(studio_preview::hide_new_preview_descendants);
 
         app.add_systems(
             PostStartup,
@@ -276,6 +277,17 @@ impl Plugin for AnimationEditorPlugin {
                 sync_selection,
                 sync_anim_editor_bridge,
                 cache_clip_duration,
+                studio_preview::sync_studio_preview_activation,
+            )
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        );
+
+        // Heavy studio-preview work: only run when the Studio Preview panel is
+        // actually in the dock tree. Other layouts (e.g. pure Scene) shouldn't
+        // pay for an offscreen render + duplicate GLTF clone.
+        app.add_systems(
+            Update,
+            (
                 preview::update_animation_preview,
                 preview::sync_preview_animation_graph,
                 preview::sync_preview_clear_color,
@@ -288,7 +300,8 @@ impl Plugin for AnimationEditorPlugin {
                 studio_preview::sync_floor_visibility,
             )
                 .chain()
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(studio_preview::studio_preview_panel_mounted),
         );
 
         app.register_panel(animation_panel::AnimationPanel::new(arc.clone()));

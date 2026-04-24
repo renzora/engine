@@ -27,7 +27,8 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
 use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor_framework::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
+use renzora::core::EditorCamera;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
 use renzora_theme::ThemeManager;
@@ -92,7 +93,6 @@ impl Plugin for ViewportPlugin {
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::foliage::material::GrassMaterial>,
                 ),
                 render_systems::update_shadow_settings,
-                camera_preview::update_camera_preview,
                 play_mode::handle_play_mode_transitions,
                 effect_routing::update_effect_routing,
                 model_drop::spawn_loaded_gltfs,
@@ -114,6 +114,22 @@ impl Plugin for ViewportPlugin {
                         .after(persistence::apply_prefs_on_project_load),
                 ),
             ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+
+        // Always-on panel-visibility gates — toggle is_active on the offscreen
+        // cameras when their panels are / are not in the current dock tree so
+        // layouts that don't show a given panel don't pay for its render pass.
+        app.add_systems(Update, (
+            sync_viewport_camera_activation,
+            camera_preview::sync_camera_preview_activation,
+        ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+
+        // Camera-preview spawn/update logic only when its panel is mounted.
+        app.add_systems(
+            Update,
+            camera_preview::update_camera_preview
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(camera_preview::camera_preview_panel_mounted),
+        );
 
 // Register the crosshair overlay so the cursor goes to Crosshair
         // whenever the pointer is over the viewport rect.
@@ -976,4 +992,20 @@ fn render_axis_gizmo(
             // Center dot
             painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
         });
+}
+
+/// Toggles the Editor Camera's `is_active` based on whether the Viewport panel
+/// is currently mounted in the dock tree. Closing the Viewport panel means its
+/// offscreen render target isn't displayed anywhere, so there's no point
+/// running the editor scene render pass.
+fn sync_viewport_camera_activation(
+    docking: Option<Res<DockingState>>,
+    mut cameras: Query<&mut Camera, With<EditorCamera>>,
+) {
+    let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
+    for mut camera in cameras.iter_mut() {
+        if camera.is_active != mounted {
+            camera.is_active = mounted;
+        }
+    }
 }

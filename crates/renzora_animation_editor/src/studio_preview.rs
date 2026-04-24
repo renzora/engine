@@ -11,10 +11,46 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use renzora::core::{IsolatedCamera, MeshInstanceData, EditorLocked, HideInHierarchy};
+use renzora_editor_framework::DockingState;
 
 use crate::AnimationEditorState;
 
 pub const STUDIO_PREVIEW_LAYER: usize = 10;
+
+/// Run condition: `true` when the Studio Preview panel is in the active dock
+/// tree. All expensive studio-preview work (camera rendering, model cloning,
+/// skeleton drawing, etc.) is gated on this so other layouts don't pay for it.
+pub fn studio_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
+    docking.map_or(false, |d| d.tree.contains_panel("studio_preview"))
+}
+
+/// Toggles the studio-preview camera on/off with panel visibility and tears
+/// down the cloned model + tracker when the panel closes. Runs every frame
+/// regardless of panel state so close transitions are always caught.
+pub fn sync_studio_preview_activation(
+    docking: Option<Res<DockingState>>,
+    mut camera_q: Query<&mut Camera, With<StudioPreviewCamera>>,
+    preview_q: Query<Entity, With<StudioPreviewModel>>,
+    mut tracker: ResMut<StudioPreviewTracker>,
+    mut commands: Commands,
+) {
+    let mounted = docking.map_or(false, |d| d.tree.contains_panel("studio_preview"));
+    for mut camera in camera_q.iter_mut() {
+        if camera.is_active != mounted {
+            camera.is_active = mounted;
+        }
+    }
+    if !mounted {
+        for entity in preview_q.iter() {
+            commands.entity(entity).despawn();
+        }
+        // Reset so the next remount re-clones even if selection hasn't changed.
+        if tracker.source_entity.is_some() {
+            tracker.source_entity = None;
+            tracker.auto_fitted = false;
+        }
+    }
+}
 
 /// Toggle settings for the studio preview viewport.
 #[derive(Resource)]
@@ -403,10 +439,42 @@ pub fn sync_preview_model(
         Visibility::Visible,
         InheritedVisibility::VISIBLE,
         ViewVisibility::default(),
+        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+        HideInHierarchy,
         ChildOf(root),
     ));
 
     info!("[studio_preview] Loaded model '{}' into preview", model_path);
+}
+
+/// Observer: the moment any entity is parented into the studio-preview subtree
+/// (e.g. a GLB-internal node like `RootNode.001` that Bevy's `SpawnScene`
+/// schedule just inserted), stamp it with `HideInHierarchy` + the preview
+/// `RenderLayers`. Runs synchronously with `ChildOf` insertion, so the entity
+/// never leaks to the main camera or the hierarchy panel for a frame.
+pub fn hide_new_preview_descendants(
+    trigger: On<Insert, ChildOf>,
+    parent_q: Query<&ChildOf>,
+    preview_root_q: Query<(), With<StudioPreviewModel>>,
+    already_hidden: Query<(), With<HideInHierarchy>>,
+    mut commands: Commands,
+) {
+    let entity = trigger.entity;
+    if already_hidden.contains(entity) {
+        return;
+    }
+    let mut cursor = entity;
+    while let Ok(child_of) = parent_q.get(cursor) {
+        let parent = child_of.parent();
+        if preview_root_q.contains(parent) || already_hidden.contains(parent) {
+            commands.entity(entity).try_insert((
+                RenderLayers::layer(STUDIO_PREVIEW_LAYER),
+                HideInHierarchy,
+            ));
+            return;
+        }
+        cursor = parent;
+    }
 }
 
 /// Continuously propagate `RenderLayers` + `HideInHierarchy` to all
