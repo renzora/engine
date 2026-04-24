@@ -239,6 +239,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
+use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::egui;
 use renzora_theme::ThemeManager;
@@ -261,7 +262,12 @@ struct ProjectScanTimer(f64);
 
 /// Cached SystemState for the editor exclusive system (avoids per-frame allocation).
 #[derive(Resource)]
-struct EditorEguiState(SystemState<EguiContexts<'static, 'static>>);
+struct EditorEguiState(
+    SystemState<(
+        EguiContexts<'static, 'static>,
+        Query<'static, 'static, &'static Window, With<PrimaryWindow>>,
+    )>,
+);
 
 /// Whether the editor overlay is active or hidden.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -613,7 +619,7 @@ pub fn editor_ui_system(world: &mut World) {
         world.insert_resource(s);
     }
     let mut cached = world.remove_resource::<EditorEguiState>().unwrap();
-    let mut contexts = cached.0.get_mut(world);
+    let (mut contexts, window_q) = cached.0.get_mut(world);
     let ctx = match contexts.ctx_mut() {
         Ok(c) => c.clone(), // Arc clone — cheap
         Err(_) => {
@@ -621,6 +627,20 @@ pub fn editor_ui_system(world: &mut World) {
             return;
         }
     };
+    // Sync egui's pixels_per_point with the primary window's actual DPI scale.
+    // Without this, glyphs on fractional-DPI displays (125%, 150%, etc.) get
+    // rasterized at the wrong density and look soft after bilinear resample.
+    // Must happen BEFORE the first `init_fonts` call so the atlas is rasterized
+    // at the correct physical pixel size. Egui no-ops when the value is unchanged,
+    // so calling every frame is cheap and handles monitor-to-monitor drags.
+    let window_ppp = window_q
+        .iter()
+        .next()
+        .map(|w| w.scale_factor())
+        .unwrap_or(1.0);
+    if (ctx.pixels_per_point() - window_ppp).abs() > f32::EPSILON {
+        ctx.set_pixels_per_point(window_ppp);
+    }
     cached.0.apply(world);
     world.insert_resource(cached);
 
