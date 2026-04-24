@@ -145,6 +145,20 @@ impl DockTree {
         }
     }
 
+    /// Is `panel` the currently-selected tab in its leaf (i.e. actually
+    /// visible to the user, not just present somewhere in the layout)?
+    pub fn is_active_tab(&self, panel: &str) -> bool {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.is_active_tab(panel) || second.is_active_tab(panel)
+            }
+            DockTree::Leaf { tabs, active_tab } => tabs
+                .get(*active_tab)
+                .map_or(false, |t| t == panel),
+            DockTree::Empty => false,
+        }
+    }
+
     /// Collapse empty leaves and single-child splits.
     fn cleanup_empty(&mut self) {
         match self {

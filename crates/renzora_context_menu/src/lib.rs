@@ -27,7 +27,7 @@ use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_editor_framework::{
-    ActiveTool, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
+    ActiveTool, DockingState, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
 };
 use renzora_theme::ThemeManager;
@@ -143,6 +143,7 @@ fn detect_right_click_tap(
     active_tool: Option<Res<ActiveTool>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     selection: Option<Res<EditorSelection>>,
+    docking: Option<Res<DockingState>>,
 ) {
     // Accumulate motion every frame — works even when the camera has
     // grabbed the cursor. Only counts while the button is held.
@@ -191,6 +192,15 @@ fn detect_right_click_tap(
 
     let Some(cursor) = cursor else { return };
     let Some(viewport) = viewport.as_deref() else { return };
+    // Suppress the viewport context menu if the Viewport panel isn't the
+    // currently-visible tab in its dock leaf. Otherwise a right-click in a
+    // Blueprint / Material / other panel that shares the same dock slot
+    // would spawn the scene's Add / EntityActions menu, because
+    // ViewportState.screen_position is stale from when the Viewport tab
+    // was last rendered.
+    if !docking.as_deref().map_or(true, |d| d.tree.is_active_tab("viewport")) {
+        return;
+    }
     let vp_min = viewport.screen_position;
     let vp_max = vp_min + viewport.screen_size;
     if cursor.x < vp_min.x || cursor.y < vp_min.y
