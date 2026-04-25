@@ -47,10 +47,10 @@ pub struct Sun {
 impl Default for Sun {
     fn default() -> Self {
         Self {
-            azimuth: 210.0,
-            elevation: 45.0,
+            azimuth: 90.0,
+            elevation: 25.0,
             color: Vec3::new(1.0, 0.95, 0.88),
-            illuminance: 80_000.0,
+            illuminance: 40_000.0,
             shadows_enabled: true,
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
