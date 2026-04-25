@@ -79,6 +79,7 @@ impl Plugin for ViewportPlugin {
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
             .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
+            .init_resource::<model_drop::ModelDragPreviewState>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .init_resource::<BrushCursorHiddenByUs>()
@@ -99,6 +100,12 @@ impl Plugin for ViewportPlugin {
                 model_flatten::flatten_pending_scenes,
                 model_drop::auto_discover_animations,
                 model_drop::align_models_to_ground,
+                (
+                    model_drop::track_model_drag_preview,
+                    model_drop::update_model_drag_ghost,
+                    model_drop::apply_ghost_material_override,
+                    model_drop::cleanup_model_drag_ghost,
+                ).chain(),
                 shape_drop::shape_drag_ground_tracking
                     .before(shape_drop::shape_drag_raycast_system),
                 shape_drop::shape_drag_raycast_system
@@ -421,6 +428,9 @@ impl EditorPanel for ViewportPanel {
             );
         }
 
+        // Overlay: model load progress (mesh-only ghost + textured drops)
+        render_model_load_progress(ui, world, rect);
+
         // Overlay: axis orientation gizmo
         let show_axis = world
             .get_resource::<ViewportSettings>()
@@ -739,6 +749,67 @@ fn handle_play_shortcuts(
             play_mode.request_scripts_only = true;
         }
     }
+}
+
+// ── Model load progress overlay ────────────────────────────────────────────
+
+fn render_model_load_progress(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
+    let entries = model_drop::collect_model_load_progress(world);
+    if entries.is_empty() {
+        return;
+    }
+
+    let theme = match world.get_resource::<ThemeManager>() {
+        Some(tm) => tm.active_theme.clone(),
+        None => return,
+    };
+
+    let panel_width: f32 = 240.0;
+    let row_height: f32 = 32.0;
+    let padding: f32 = 8.0;
+    let total_height = padding * 2.0 + row_height * entries.len() as f32;
+    let pos = egui::Pos2::new(
+        viewport_rect.min.x + 12.0,
+        viewport_rect.max.y - total_height - 12.0,
+    );
+
+    egui::Area::new(egui::Id::new("viewport_model_load_progress"))
+        .fixed_pos(pos)
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ui.ctx(), |ui| {
+            let frame = egui::Frame::NONE
+                .fill(theme.surfaces.panel.to_color32())
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    theme.widgets.border.to_color32(),
+                ))
+                .inner_margin(egui::Margin::symmetric(8, 8))
+                .corner_radius(egui::CornerRadius::same(4));
+            frame.show(ui, |ui| {
+                ui.set_width(panel_width);
+                for (name, frac) in entries {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        renzora_ui::widgets::spinner(ui, 12.0, &theme);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(name)
+                                    .font(egui::FontId::proportional(10.0))
+                                    .color(theme.text.primary.to_color32()),
+                            );
+                            renzora_ui::widgets::progress_bar(
+                                ui,
+                                frac.unwrap_or(0.4),
+                                4.0,
+                                &theme,
+                            );
+                        });
+                    });
+                }
+            });
+        });
+    ui.ctx().request_repaint();
 }
 
 // ── On-screen console log overlay (play mode) ──────────────────────────────
