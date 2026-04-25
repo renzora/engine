@@ -772,10 +772,13 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
     }
 
     // Unrecognized kind — fall back to opening in code editor if it's a text-ish file.
+    // `.ron` is intentionally absent: it's the engine's scene format and is
+    // routed to a Scene doc tab via `asset_doc_kind` so the scene system
+    // can load it instead of dumping the raw text into the code editor.
     let is_editable = path.extension()
         .and_then(|e| e.to_str())
         .map(|e| matches!(e.to_lowercase().as_str(),
-            "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md" | "ron"
+            "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
         ))
         .unwrap_or(false);
     if is_editable {
@@ -803,6 +806,7 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
     }
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
+        "ron" => DocTabKind::Scene,
         "rhai" | "lua" | "js" | "ts" | "py" => DocTabKind::Script,
         "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
