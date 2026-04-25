@@ -9377,6 +9377,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
+ "egui",
  "egui-phosphor",
  "egui_code_editor",
  "renzora",

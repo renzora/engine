@@ -527,7 +527,7 @@
 
 ## Small Bugs / Polish
 - Ensure all nav mesh collider types are handled (segment, triangle, polyline, halfspace, custom, voxels currently warn)
-- ✅ Fix dimmed undo/redo buttons throughout editor (no-op)
+- ✅ Fix dimmed undo/redo buttons throughout editor (no-op) — [`df06133`](https://github.com/renzora/engine/commit/df06133)
 - Handle set_menu_item_checked in plugin host
 
 ## Documentation

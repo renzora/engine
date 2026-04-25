@@ -19,3 +19,4 @@ renzora_animation = { path = "../renzora_animation" }
 renzora_shader = { path = "../renzora_shader" }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_engine = { path = "../renzora_engine" }
+serde_json = "1"

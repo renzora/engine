@@ -6,6 +6,7 @@
 pub mod camera_preview;
 pub mod debug_material;
 pub mod effect_routing;
+pub mod glb_compat;
 pub mod header;
 pub mod material_drop;
 pub mod model_drop;
