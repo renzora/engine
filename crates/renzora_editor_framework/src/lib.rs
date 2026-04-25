@@ -41,6 +41,8 @@ pub use toolbar_registry::{ToolEntry, ToolSection, ToolbarRegistry};
 pub struct EditorActionHooks {
     pub undo: Option<fn(&mut bevy::prelude::World)>,
     pub redo: Option<fn(&mut bevy::prelude::World)>,
+    pub can_undo: Option<fn(&bevy::prelude::World) -> bool>,
+    pub can_redo: Option<fn(&bevy::prelude::World) -> bool>,
 }
 
 /// Debounce state for the auto-save layout system — tracks "dirty since N
@@ -761,6 +763,15 @@ pub fn editor_ui_system(world: &mut World) {
     let mut window_queue = world
         .remove_resource::<renzora_ui::window_chrome::WindowActionQueue>()
         .unwrap_or_default();
+    let (can_undo, can_redo) = world
+        .get_resource::<EditorActionHooks>()
+        .map(|h| {
+            (
+                h.can_undo.map(|f| f(world)).unwrap_or(false),
+                h.can_redo.map(|f| f(world)).unwrap_or(false),
+            )
+        })
+        .unwrap_or((false, false));
     let title_action = renzora_ui::title_bar::render_title_bar(
         &ctx,
         &theme,
@@ -770,6 +781,8 @@ pub fn editor_ui_system(world: &mut World) {
         sign_in_open,
         signed_in_username.as_deref(),
         &mut window_queue,
+        can_undo,
+        can_redo,
     );
 
     // 6. Document tabs (below title bar)

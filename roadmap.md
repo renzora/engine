@@ -23,7 +23,7 @@
 - Add property undo/redo history
 
 ## Inspector — Views & Filtering
-- Add lock inspector to entity (stop following selection)
+- ✅ Add lock inspector to entity (stop following selection) — [`c5fd231`](https://github.com/renzora/engine/commit/c5fd231)
 - Add multi-entity comparison view
 - ✅ Add component search/filter — [`3a3e9d2`](https://github.com/renzora/engine/commit/3a3e9d2)
 - Add component presets/templates
@@ -93,6 +93,7 @@
 ## Editor UX — Undo/Redo & Clipboard
 - ✅ Add global undo/redo system across all editors — [`63fd98e`](https://github.com/renzora/engine/commit/63fd98e)
 - ✅ Wire undo/redo to viewport toolbar and Edit menu — [`cc028c8`](https://github.com/renzora/engine/commit/cc028c8)
+- ✅ Add History panel showing undo/redo stack with click-to-jump — [`dfb7b94`](https://github.com/renzora/engine/commit/dfb7b94)
 - Add global clipboard for entities/components/nodes
 
 ## Editor UX — Layouts & Help
@@ -526,7 +527,7 @@
 
 ## Small Bugs / Polish
 - Ensure all nav mesh collider types are handled (segment, triangle, polyline, halfspace, custom, voxels currently warn)
-- Fix dimmed undo/redo buttons throughout editor (no-op)
+- ✅ Fix dimmed undo/redo buttons throughout editor (no-op)
 - Handle set_menu_item_checked in plugin host
 
 ## Documentation

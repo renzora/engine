@@ -66,6 +66,8 @@ pub fn render_title_bar(
     sign_in_open: bool,
     signed_in_username: Option<&str>,
     window_queue: &mut WindowActionQueue,
+    can_undo: bool,
+    can_redo: bool,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
     let mut any_widget_hovered = false;
@@ -164,11 +166,11 @@ pub fn render_title_bar(
                 switch_top_menu_on_hover(ui.ctx(), &file_menu.response);
 
                 let edit_menu = ui.menu_button("Edit", |ui| {
-                    if ui.button("Undo").clicked() {
+                    if ui.add_enabled(can_undo, egui::Button::new("Undo")).clicked() {
                         action = TitleBarAction::Undo;
                         ui.close();
                     }
-                    if ui.button("Redo").clicked() {
+                    if ui.add_enabled(can_redo, egui::Button::new("Redo")).clicked() {
                         action = TitleBarAction::Redo;
                         ui.close();
                     }

@@ -149,7 +149,23 @@ impl Plugin for UndoPlugin {
             .resource_mut::<renzora_editor_framework::EditorActionHooks>();
         hooks.undo = Some(undo_once);
         hooks.redo = Some(redo_once);
+        hooks.can_undo = Some(can_undo_active);
+        hooks.can_redo = Some(can_redo_active);
     }
+}
+
+fn can_undo_active(world: &World) -> bool {
+    world
+        .get_resource::<UndoStacks>()
+        .map(|s| s.can_undo(&s.active))
+        .unwrap_or(false)
+}
+
+fn can_redo_active(world: &World) -> bool {
+    world
+        .get_resource::<UndoStacks>()
+        .map(|s| s.can_redo(&s.active))
+        .unwrap_or(false)
 }
 
 fn shortcut_input(
