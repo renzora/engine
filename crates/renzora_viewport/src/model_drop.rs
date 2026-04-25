@@ -528,10 +528,9 @@ pub fn track_model_drag_preview(
 
         let ghost_material = state.ghost_material.clone().unwrap_or_else(|| {
             materials.add(StandardMaterial {
-                base_color: Color::srgba(0.78, 0.80, 0.85, 0.85),
+                base_color: Color::srgb(0.78, 0.80, 0.85),
                 perceptual_roughness: 0.6,
                 metallic: 0.0,
-                alpha_mode: AlphaMode::Blend,
                 ..default()
             })
         });
