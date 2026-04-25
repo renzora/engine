@@ -8,12 +8,13 @@ crate-type = ["dylib"]
 
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }
+egui = { workspace = true }
 egui-phosphor = { workspace = true }
+egui_code_editor = { workspace = true }
 bevy_egui = { workspace = true }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-egui_code_editor = "0.2"
 renzora_ui = { path = "../renzora_ui" }
 renzora_shader = { path = "../renzora_shader" }
 serde = { version = "1", features = ["derive"] }

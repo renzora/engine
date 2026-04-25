@@ -55,7 +55,13 @@ bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "
 # Shared external deps. Plugins opt in by name (`bevy_egui = { workspace = true }`)
 # so versions stay locked across the workspace.
 bevy_egui = "0.39"
+# Pin egui to the version bevy_egui 0.39 ships with. Any third-party crate that
+# imports `egui::*` directly (e.g. `egui_code_editor`) must consume this same
+# version, otherwise their `egui::Ui` and bevy_egui's `egui::Ui` are different
+# types and won't unify at the call boundary.
+egui = "0.33"
 egui-phosphor = { version = "0.11", features = ["regular"] }
+egui_code_editor = "0.2"
 log = "0.4"
 
 [package]
