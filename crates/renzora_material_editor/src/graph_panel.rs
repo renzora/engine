@@ -22,6 +22,7 @@ use renzora_shader::material::codegen;
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
 use renzora_ui::asset_drag::AssetDragPayload;
+use renzora_ui::{DocTabKind, EditorContext};
 use renzora::core::CurrentProject;
 
 use crate::{MaterialEditorState, MaterialEditMode};
@@ -59,33 +60,64 @@ impl EditorPanel for MaterialGraphPanel {
             return;
         };
 
-        // ── Selection sync ──────────────────────────────────────────────
-        let selection = world.get_resource::<EditorSelection>();
-        let selected_entity = selection.and_then(|s| s.get());
-        let mat_ref_path = selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
-
-        // Detect entity change OR MaterialRef change on the same entity
-        let current_edit_path = match &editor_state.edit_mode {
-            MaterialEditMode::Existing { path, .. } => Some(path.clone()),
-            _ => None,
-        };
-        let entity_changed = selected_entity != editor_state.editing_entity;
-        let path_changed = !entity_changed && mat_ref_path != current_edit_path;
-
-        if entity_changed || path_changed {
-            let new_entity = selected_entity;
-            let has_mesh = new_entity.map_or(false, |e| world.get::<Mesh3d>(e).is_some());
-            let entity_name = new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
-
-            cmds.push(move |world: &mut World| {
-                sync_to_entity(world, new_entity, has_mesh, mat_ref_path, entity_name);
+        // ── Context-aware sync ─────────────────────────────────────────
+        // Asset mode: editor's open-document tab is a standalone .material
+        // file → load from path, ignore EditorSelection. Scene mode: follow
+        // the selected entity's MaterialRef.
+        let asset_path: Option<String> = world
+            .get_resource::<EditorContext>()
+            .and_then(|ctx| match ctx {
+                EditorContext::Asset { path, kind: DocTabKind::Material } => Some(path.clone()),
+                _ => None,
             });
-            GRAPH_EDITOR_STATE.with(|cell| {
-                cell.borrow_mut().needs_sync = true;
-            });
+
+        if let Some(path) = asset_path {
+            // Need to (re)load if we're not already editing this exact file.
+            let needs_load = !matches!(
+                &editor_state.edit_mode,
+                MaterialEditMode::EditingFile { path: p } if p == &path
+            );
+            if needs_load {
+                let path_for_sync = path.clone();
+                cmds.push(move |world: &mut World| {
+                    sync_to_file(world, path_for_sync);
+                });
+                GRAPH_EDITOR_STATE.with(|cell| {
+                    cell.borrow_mut().needs_sync = true;
+                });
+            }
+        } else {
+            // Scene mode: drive sync from selected entity.
+            let selection = world.get_resource::<EditorSelection>();
+            let selected_entity = selection.and_then(|s| s.get());
+            let mat_ref_path = selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
+
+            let current_edit_path = match &editor_state.edit_mode {
+                MaterialEditMode::Existing { path, .. } => Some(path.clone()),
+                _ => None,
+            };
+            let entity_changed = selected_entity != editor_state.editing_entity;
+            let path_changed = !entity_changed && mat_ref_path != current_edit_path;
+            // Also re-sync when leaving asset mode back to scene mode.
+            let leaving_asset_mode = matches!(editor_state.edit_mode, MaterialEditMode::EditingFile { .. });
+
+            if entity_changed || path_changed || leaving_asset_mode {
+                let new_entity = selected_entity;
+                let has_mesh = new_entity.map_or(false, |e| world.get::<Mesh3d>(e).is_some());
+                let entity_name = new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
+
+                cmds.push(move |world: &mut World| {
+                    sync_to_entity(world, new_entity, has_mesh, mat_ref_path, entity_name);
+                });
+                GRAPH_EDITOR_STATE.with(|cell| {
+                    cell.borrow_mut().needs_sync = true;
+                });
+            }
         }
 
         // ── Inactive state — show empty message ─────────────────────────
+        // Only reachable in scene mode; asset mode always has a path so it
+        // never falls into Inactive.
         if matches!(editor_state.edit_mode, MaterialEditMode::Inactive) {
             let text_muted = theme.text.muted.to_color32();
             renzora_editor_framework::empty_state(
@@ -207,6 +239,48 @@ impl EditorPanel for MaterialGraphPanel {
     }
 }
 
+/// Deferred: load a material graph from a file path (asset mode). No entity
+/// context — this runs when the editor is showing a standalone .material
+/// document tab. Saves write back to the same path via `apply_material`.
+fn sync_to_file(world: &mut World, path: String) {
+    let fs_path = if let Some(project) = world.get_resource::<CurrentProject>() {
+        project.resolve_path(&path).to_string_lossy().to_string()
+    } else {
+        path.clone()
+    };
+
+    let mut state = world.resource_mut::<MaterialEditorState>();
+    state.editing_entity = None;
+    state.selected_node = None;
+    state.is_dirty = false;
+
+    if let Ok(json) = std::fs::read_to_string(&fs_path) {
+        if let Ok(graph) = serde_json::from_str::<MaterialGraph>(&json) {
+            let result = codegen::compile(&graph);
+            state.compiled_wgsl = Some(result.fragment_shader);
+            state.compile_errors = result.errors;
+            state.graph = graph;
+            state.edit_mode = MaterialEditMode::EditingFile { path };
+            return;
+        }
+    }
+
+    // File missing or unparseable — start a fresh graph named after the file
+    // so the user can save it back into place.
+    warn!("[material_editor] Failed to load asset '{}', starting fresh", path);
+    let name = std::path::Path::new(&path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("material")
+        .to_string();
+    let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+    let result = codegen::compile(&graph);
+    state.compiled_wgsl = Some(result.fragment_shader);
+    state.compile_errors = result.errors;
+    state.graph = graph;
+    state.edit_mode = MaterialEditMode::EditingFile { path };
+}
+
 /// Deferred: load or create a material graph for the newly selected entity.
 fn sync_to_entity(
     world: &mut World,
@@ -308,6 +382,7 @@ fn render_toolbar(
         let name_icon = match &editor_state.edit_mode {
             MaterialEditMode::Pending { .. } => egui_phosphor::regular::PENCIL_SIMPLE,
             MaterialEditMode::Existing { .. } => egui_phosphor::regular::FILE,
+            MaterialEditMode::EditingFile { .. } => egui_phosphor::regular::FILE,
             MaterialEditMode::Inactive => egui_phosphor::regular::CUBE,
         };
         ui.label(RichText::new(format!("{name_icon} {}", graph.name)).size(12.0).color(text_color));

@@ -6,8 +6,11 @@ use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
 
 use renzora_blueprint::graph::*;
 use renzora_blueprint::{BlueprintGraph, nodes};
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor_framework::{
+    DocTabKind, EditorCommands, EditorContext, EditorPanel, PanelLocation,
+};
 use renzora_theme::ThemeManager;
+use renzora::core::CurrentProject;
 
 use crate::BlueprintEditorState;
 
@@ -44,20 +47,37 @@ impl EditorPanel for BlueprintPropertiesPanel {
         let text_secondary = theme.text.secondary.to_color32();
         let text_primary = theme.text.primary.to_color32();
 
-        // Need both an entity and a selected node
-        let Some(entity) = bp_state.editing_entity else {
-            centered_message(ui, "No entity selected", text_muted);
-            return;
-        };
+        // Asset mode: graph comes from BlueprintEditorState::file_graph and
+        // edits are persisted by saving the file. Scene mode: graph is the
+        // BlueprintGraph component on the editing entity.
+        let asset_mode = matches!(
+            world.get_resource::<EditorContext>(),
+            Some(EditorContext::Asset { kind: DocTabKind::Blueprint, .. })
+        );
+
         let Some(selected_id) = bp_state.selected_node else {
             centered_message(ui, "Select a node to edit its properties", text_muted);
             return;
         };
 
-        let Some(graph) = world.get::<BlueprintGraph>(entity) else {
-            centered_message(ui, "Entity has no blueprint", text_muted);
-            return;
+        let (graph, scene_entity): (BlueprintGraph, Option<Entity>) = if asset_mode {
+            let Some(g) = bp_state.file_graph.as_ref() else {
+                centered_message(ui, "No blueprint loaded", text_muted);
+                return;
+            };
+            (g.clone(), None)
+        } else {
+            let Some(entity) = bp_state.editing_entity else {
+                centered_message(ui, "No entity selected", text_muted);
+                return;
+            };
+            let Some(g) = world.get::<BlueprintGraph>(entity) else {
+                centered_message(ui, "Entity has no blueprint", text_muted);
+                return;
+            };
+            (g.clone(), Some(entity))
         };
+        let graph = &graph;
 
         let Some(node) = graph.get_node(selected_id) else {
             centered_message(ui, "Node not found", text_muted);
@@ -221,15 +241,42 @@ impl EditorPanel for BlueprintPropertiesPanel {
                 }
             });
 
-        // Apply changes
+        // Apply changes — write back to the entity component (scene mode)
+        // or to BlueprintEditorState::file_graph (asset mode). The graph
+        // panel's save loop will pick up the dirty flag and persist.
         if !updated_values.is_empty() {
             let node_id = selected_id;
             cmds.push(move |world: &mut World| {
-                if let Some(mut graph) = world.get_mut::<BlueprintGraph>(entity) {
-                    if let Some(node) = graph.get_node_mut(node_id) {
-                        for (name, value) in updated_values {
-                            node.input_values.insert(name, value);
+                if let Some(entity) = scene_entity {
+                    if let Some(mut graph) = world.get_mut::<BlueprintGraph>(entity) {
+                        if let Some(node) = graph.get_node_mut(node_id) {
+                            for (name, value) in updated_values {
+                                node.input_values.insert(name, value);
+                            }
                         }
+                    }
+                } else {
+                    // Asset mode: mutate the in-memory graph and persist to
+                    // the .blueprint file in one go — the graph panel only
+                    // saves on its own edits, so we own the persistence path.
+                    let (saved_path, saved_graph) = {
+                        let mut state = world.resource_mut::<BlueprintEditorState>();
+                        let path = state.editing_file_path.clone();
+                        if let Some(graph) = state.file_graph.as_mut() {
+                            if let Some(node) = graph.get_node_mut(node_id) {
+                                for (name, value) in updated_values {
+                                    node.input_values.insert(name, value);
+                                }
+                            }
+                        }
+                        let graph_clone = state.file_graph.clone();
+                        state.is_dirty = true;
+                        (path, graph_clone)
+                    };
+                    if let (Some(path), Some(graph)) = (saved_path, saved_graph) {
+                        let project = world.get_resource::<CurrentProject>().cloned();
+                        crate::graph_panel::save_blueprint_file(project.as_ref(), &path, &graph);
+                        world.resource_mut::<BlueprintEditorState>().is_dirty = false;
                     }
                 }
             });

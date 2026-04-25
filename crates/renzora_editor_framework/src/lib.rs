@@ -320,8 +320,23 @@ impl Plugin for RenzoraEditorPlugin {
                         manager.layouts.push(def.clone());
                     }
                 }
+                // Re-stamp the `hidden` flag from defaults so workspaces saved
+                // before asset-mode layouts existed correctly hide them from
+                // the title bar.
+                for layout in &mut manager.layouts {
+                    if let Some(def) = defaults.layouts.iter().find(|d| d.name == layout.name) {
+                        layout.hidden = def.hidden;
+                    }
+                }
                 manager.active_index = previous_active_name
                     .and_then(|name| manager.layouts.iter().position(|l| l.name == name))
+                    .unwrap_or(0);
+                // Initial last-scene = current if it's a scene layout, else 0.
+                manager.last_scene_index = manager
+                    .layouts
+                    .get(manager.active_index)
+                    .filter(|l| !l.hidden)
+                    .map(|_| manager.active_index)
                     .unwrap_or(0);
                 let tree = manager
                     .layouts
@@ -340,6 +355,7 @@ impl Plugin for RenzoraEditorPlugin {
             .insert_resource(initial_manager)
             .init_resource::<FloatingPanels>()
             .init_resource::<DocumentTabState>()
+            .init_resource::<renzora_ui::EditorContext>()
             .init_resource::<EditorSelection>()
             .init_resource::<EditorCommands>()
             .init_resource::<InspectorRegistry>()
@@ -1024,7 +1040,7 @@ pub fn editor_ui_system(world: &mut World) {
             if let Some(sel) = world.get_resource::<EditorSelection>() {
                 sel.set(None);
             }
-            switch_layout(world, i);
+            handle_title_bar_layout_switch(world, i);
         }
         TitleBarAction::NewProject => handle_new_project(world),
         TitleBarAction::OpenProject => handle_open_project(world),
@@ -1115,10 +1131,10 @@ pub fn editor_ui_system(world: &mut World) {
             if let Some((old_id, new_id)) = ids {
                 world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
+            // Sync EditorContext + route layout based on what was just activated.
+            sync_context_and_layout_for_active_tab(world);
+            // Code-editor-backed kinds: also push the file into OpenCodeEditorFile.
             if let Some(kind) = target_kind {
-                if let Some(layout) = kind.layout_name() {
-                    switch_layout_by_name(world, layout);
-                }
                 if matches!(kind, renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader) {
                     if let Some(rel) = target_path {
                         let abs = world
@@ -1131,7 +1147,7 @@ pub fn editor_ui_system(world: &mut World) {
             }
         }
         DocTabAction::Close(idx) => {
-            // If closing the active tab, switch to adjacent first
+            // If closing the active tab, switch to adjacent first.
             let switch_and_close = {
                 if let Some(ts) = world.get_resource::<DocumentTabState>() {
                     if idx == ts.active_tab && ts.tabs.len() > 1 {
@@ -1148,14 +1164,16 @@ pub fn editor_ui_system(world: &mut World) {
             };
 
             if let Some((old_id, new_id, new_active)) = switch_and_close {
-                // Activate adjacent tab first
+                // Activate adjacent tab first (touches scene MRU if it's a scene).
                 if let Some(mut ts) = world.get_resource_mut::<DocumentTabState>() {
                     ts.active_tab = new_active;
+                    ts.touch_scene_mru(new_active);
                 }
                 world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
 
-            // Close the tab and clean up buffer
+            // Close the tab and clean up buffer. May be denied (last tab, last
+            // scene tab) — `close_tab` returns `None` in that case.
             let closed_id = world
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.close_tab(idx));
@@ -1163,6 +1181,10 @@ pub fn editor_ui_system(world: &mut World) {
                 if let Some(mut buffers) = world.get_resource_mut::<renzora::SceneTabBuffers>() {
                     buffers.buffers.remove(&id);
                 }
+            }
+            // Sync context if the active tab actually changed.
+            if switch_and_close.is_some() {
+                sync_context_and_layout_for_active_tab(world);
             }
         }
         DocTabAction::Reorder(from, to) => {
@@ -1176,6 +1198,7 @@ pub fn editor_ui_system(world: &mut World) {
                     let old_id = ts.active_tab_id().unwrap_or(0);
                     let idx = ts.add_tab("Untitled Scene".into(), None);
                     ts.active_tab = idx;
+                    ts.touch_scene_mru(idx);
                     let new_id = ts.tabs[idx].id;
                     (old_id, new_id)
                 } else {
@@ -1185,6 +1208,8 @@ pub fn editor_ui_system(world: &mut World) {
             if old_id != 0 {
                 world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
             }
+            // New tab is always a Scene → restore last scene-mode layout.
+            sync_context_and_layout_for_active_tab(world);
         }
         DocTabAction::None => {}
     }
@@ -1249,6 +1274,101 @@ pub fn editor_ui_system(world: &mut World) {
     world.insert_resource(window_queue);
 }
 
+/// Sync `EditorContext` to whatever the active document tab represents and
+/// route the workspace layout accordingly. Scene tabs restore the user's
+/// last chosen scene-mode layout (`last_scene_index`); asset tabs force
+/// their hidden asset-mode variant.
+///
+/// Call this after any change to the active document tab (activate, close,
+/// add). Idempotent — safe to call when nothing changed.
+fn sync_context_and_layout_for_active_tab(world: &mut World) {
+    use renzora_ui::{DocumentTabState, EditorContext};
+
+    let Some(tab) = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.active_tab().cloned())
+    else {
+        return;
+    };
+
+    let new_ctx = EditorContext::from_tab(&tab);
+    world.insert_resource(new_ctx.clone());
+
+    match new_ctx {
+        EditorContext::Scene => {
+            let restore_idx = world
+                .get_resource::<LayoutManager>()
+                .map(|lm| lm.last_scene_index)
+                .unwrap_or(0);
+            // Only switch if we're currently in a different (likely hidden)
+            // layout — avoids resetting the user's dock edits unnecessarily.
+            let needs_switch = world
+                .get_resource::<LayoutManager>()
+                .map(|lm| lm.active_index != restore_idx)
+                .unwrap_or(false);
+            if needs_switch {
+                switch_layout(world, restore_idx);
+            }
+        }
+        EditorContext::Asset { kind, .. } => {
+            // Prefer the hidden asset-mode layout when the kind has one
+            // (panels know how to render from file path). Otherwise fall
+            // back to the scene-mode layout for that kind — same as the
+            // pre-context-aware behaviour, until those panels are wired.
+            if let Some(layout) = kind.asset_layout_name().or_else(|| kind.layout_name()) {
+                switch_layout_by_name(world, layout);
+            }
+        }
+    }
+}
+
+/// Handle a title-bar layout-tab click. If the editor is in Asset mode,
+/// first jump back to the most-recently-used scene tab (which clears Asset
+/// mode), then switch to the chosen layout. Updates `last_scene_index` so
+/// future scene-tab activations restore this same layout.
+fn handle_title_bar_layout_switch(world: &mut World, target_index: usize) {
+    use renzora_ui::{DocumentTabState, EditorContext};
+
+    // Refuse to switch to a hidden (asset-mode) layout from the title bar.
+    let target_hidden = world
+        .get_resource::<LayoutManager>()
+        .and_then(|lm| lm.layouts.get(target_index).map(|l| l.hidden))
+        .unwrap_or(false);
+    if target_hidden {
+        return;
+    }
+
+    // If currently in Asset mode, leave it: activate the MRU scene tab.
+    let in_asset = world
+        .get_resource::<EditorContext>()
+        .map(|c| c.is_asset())
+        .unwrap_or(false);
+    if in_asset {
+        let mru_idx = world
+            .get_resource_mut::<DocumentTabState>()
+            .and_then(|mut ts| ts.find_mru_scene_tab());
+        if let Some(idx) = mru_idx {
+            let ids = world
+                .get_resource_mut::<DocumentTabState>()
+                .and_then(|mut ts| ts.activate_tab(idx));
+            if let Some((old_id, new_id)) = ids {
+                world.insert_resource(renzora::TabSwitchRequest {
+                    old_tab_id: old_id,
+                    new_tab_id: new_id,
+                });
+            }
+        }
+        // Reset context — we're back in scene mode.
+        world.insert_resource(EditorContext::Scene);
+    }
+
+    // Switch to the chosen scene-mode layout and remember it.
+    switch_layout(world, target_index);
+    if let Some(mut lm) = world.get_resource_mut::<LayoutManager>() {
+        lm.last_scene_index = target_index;
+    }
+}
+
 /// Switch to a layout by index.
 fn switch_layout(world: &mut World, index: usize) {
     let new_tree = world
@@ -1310,6 +1430,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
         let new_id = world.get_resource_mut::<DocumentTabState>().map(|mut ts| {
             let idx = ts.add_tab_of_kind(name, Some(rel), kind);
             ts.active_tab = idx;
+            ts.touch_scene_mru(idx); // no-op for asset kinds
             ts.tabs[idx].id
         });
         match (old_id, new_id) {
@@ -1325,9 +1446,8 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
         });
     }
 
-    if let Some(layout) = kind.layout_name() {
-        switch_layout_by_name(world, layout);
-    }
+    // Sync EditorContext + route to the appropriate (asset-mode or scene-mode) layout.
+    sync_context_and_layout_for_active_tab(world);
 
     if matches!(kind, DocTabKind::Script | DocTabKind::Shader) {
         world.insert_resource(renzora::core::OpenCodeEditorFile {

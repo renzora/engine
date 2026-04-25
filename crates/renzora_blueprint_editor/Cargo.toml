@@ -16,3 +16,4 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ui = { path = "../renzora_ui" }
 renzora_blueprint = { path = "../renzora_blueprint" }
 renzora_scripting = { path = "../renzora_scripting" }
+serde_json = "1"

@@ -2118,6 +2118,7 @@ fn gallery_layout() -> WorkspaceLayout {
             ),
             0.25,
         ),
+        hidden: false,
     }
 }
 

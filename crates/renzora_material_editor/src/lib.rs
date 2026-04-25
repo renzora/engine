@@ -25,8 +25,12 @@ pub enum MaterialEditMode {
     Inactive,
     /// Entity has no MaterialRef yet — showing empty graph, will save on first edit.
     Pending { entity: Entity },
-    /// Editing an existing .material file.
+    /// Editing an existing .material file linked from a scene entity.
     Existing { path: String, entity: Entity },
+    /// Asset-mode: editing a .material file standalone (opened via the asset
+    /// browser, lives in a document tab). No entity context — saves write
+    /// to `path` directly.
+    EditingFile { path: String },
 }
 
 impl Default for MaterialEditMode {
@@ -95,6 +99,7 @@ pub fn apply_material(world: &mut World) {
         let state = world.resource::<MaterialEditorState>();
         let path = match &state.edit_mode {
             MaterialEditMode::Existing { path, .. } => path.clone(),
+            MaterialEditMode::EditingFile { path } => path.clone(),
             _ => return,
         };
         let json = match serde_json::to_string_pretty(&state.graph) {

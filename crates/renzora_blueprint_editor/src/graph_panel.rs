@@ -9,9 +9,12 @@ use egui_phosphor::regular::{
     FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
 };
 
-use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor_framework::{
+    DocTabKind, EditorCommands, EditorContext, EditorPanel, EditorSelection, PanelLocation,
+};
 use renzora_theme::ThemeManager;
 use renzora_blueprint::BlueprintGraph;
+use renzora::core::CurrentProject;
 
 use crate::BlueprintEditorState;
 use crate::graph_editor::{self, GraphEditorState};
@@ -50,16 +53,37 @@ impl EditorPanel for BlueprintGraphPanel {
         };
         let selection = world.get_resource::<EditorSelection>();
         let project_path = world
-            .get_resource::<renzora::core::CurrentProject>()
+            .get_resource::<CurrentProject>()
             .map(|p| p.path.clone());
+
+        // Asset mode: a `.blueprint` doc tab is active.
+        let asset_path: Option<String> = world
+            .get_resource::<EditorContext>()
+            .and_then(|ctx| match ctx {
+                EditorContext::Asset { path, kind: DocTabKind::Blueprint } => Some(path.clone()),
+                _ => None,
+            });
+
+        if let Some(rel_path) = asset_path {
+            // Render the file-driven branch: load on first frame / when path
+            // changes, render the graph editor against `file_graph`, save on edit.
+            self.render_asset_mode(ui, world, cmds, bp_state, &rel_path, &theme);
+            return;
+        }
 
         let selected_entity = selection.and_then(|s| s.get());
 
-        // Track if the selected entity changed
-        if selected_entity != bp_state.editing_entity {
+        // Track if the selected entity changed. Also clear any leftover
+        // asset-mode state — we're back in scene mode now.
+        let leftover_asset_state = bp_state.editing_file_path.is_some();
+        if selected_entity != bp_state.editing_entity || leftover_asset_state {
             let new_entity = selected_entity;
             cmds.push(move |world: &mut World| {
-                world.resource_mut::<BlueprintEditorState>().editing_entity = new_entity;
+                let mut s = world.resource_mut::<BlueprintEditorState>();
+                s.editing_entity = new_entity;
+                s.editing_file_path = None;
+                s.file_graph = None;
+                s.is_dirty = false;
             });
             GRAPH_EDITOR_STATE.with(|cell| {
                 cell.borrow_mut().needs_sync = true;
@@ -171,6 +195,158 @@ impl EditorPanel for BlueprintGraphPanel {
 
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Center
+    }
+}
+
+impl BlueprintGraphPanel {
+    /// Render the panel in asset mode: graph lives in
+    /// `BlueprintEditorState::file_graph`, edits write back to the file at
+    /// `rel_path` (project-relative). No entity context.
+    fn render_asset_mode(
+        &self,
+        ui: &mut egui::Ui,
+        world: &World,
+        cmds: &EditorCommands,
+        bp_state: &BlueprintEditorState,
+        rel_path: &str,
+        theme: &renzora_theme::Theme,
+    ) {
+        // (Re)load when the active asset tab changed.
+        let needs_load = bp_state.editing_file_path.as_deref() != Some(rel_path);
+        if needs_load {
+            let project = world.get_resource::<CurrentProject>().cloned();
+            let path_owned = rel_path.to_string();
+            cmds.push(move |world: &mut World| {
+                let graph = load_blueprint_file(project.as_ref(), &path_owned)
+                    .unwrap_or_else(BlueprintGraph::new);
+                let mut state = world.resource_mut::<BlueprintEditorState>();
+                state.editing_file_path = Some(path_owned);
+                state.file_graph = Some(graph);
+                state.editing_entity = None;
+                state.selected_node = None;
+                state.is_dirty = false;
+            });
+            GRAPH_EDITOR_STATE.with(|cell| {
+                cell.borrow_mut().needs_sync = true;
+            });
+            // Wait one frame for the load to complete.
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    RichText::new("Loading...")
+                        .size(13.0)
+                        .color(theme.text.muted.to_color32()),
+                );
+            });
+            return;
+        }
+
+        let Some(file_graph) = bp_state.file_graph.as_ref() else {
+            return;
+        };
+        let mut graph = file_graph.clone();
+
+        let file_name = std::path::Path::new(rel_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("blueprint")
+            .to_string();
+
+        // ── Toolbar (asset mode) ──
+        // Reuse the scene-mode toolbar with `Entity::PLACEHOLDER` — its only
+        // entity-bound action is "Apply (compile to Lua)", which the toolbar
+        // suppresses when `project_path` is `None`. The remaining actions
+        // (Add Node, Center, Zoom) are entity-independent.
+        let toolbar_modified = GRAPH_EDITOR_STATE.with(|cell| {
+            let mut gs = cell.borrow_mut();
+            render_toolbar(
+                ui,
+                &mut graph,
+                &mut gs,
+                cmds,
+                &file_name,
+                true,
+                Entity::PLACEHOLDER,
+                theme,
+                &None,
+            )
+        });
+
+        ui.separator();
+
+        // ── Graph canvas ──
+        let (graph_modified, selected) = GRAPH_EDITOR_STATE.with(|cell| {
+            let mut gs = cell.borrow_mut();
+            let m = graph_editor::render_graph_editor(ui, &mut graph, &mut gs, theme);
+            let sel = if gs.widget_state.selected.len() == 1 {
+                Some(gs.widget_state.selected[0])
+            } else {
+                None
+            };
+            (m, sel)
+        });
+
+        if selected != bp_state.selected_node {
+            let sel = selected;
+            cmds.push(move |world: &mut World| {
+                world.resource_mut::<BlueprintEditorState>().selected_node = sel;
+            });
+        }
+
+        if graph_modified || toolbar_modified {
+            let project = world.get_resource::<CurrentProject>().cloned();
+            let updated = graph.clone();
+            let save_path = rel_path.to_string();
+            cmds.push(move |world: &mut World| {
+                {
+                    let mut state = world.resource_mut::<BlueprintEditorState>();
+                    state.file_graph = Some(updated.clone());
+                    state.is_dirty = true;
+                }
+                save_blueprint_file(project.as_ref(), &save_path, &updated);
+                world.resource_mut::<BlueprintEditorState>().is_dirty = false;
+            });
+        }
+    }
+}
+
+/// Load a `.blueprint` file (JSON-serialised `BlueprintGraph`). Resolves the
+/// project-relative path via `CurrentProject` if available. Returns `None`
+/// if the file is missing or unparseable — caller should fall back to an
+/// empty graph.
+fn load_blueprint_file(
+    project: Option<&CurrentProject>,
+    rel_path: &str,
+) -> Option<BlueprintGraph> {
+    let abs = project
+        .map(|p| p.resolve_path(rel_path))
+        .unwrap_or_else(|| std::path::PathBuf::from(rel_path));
+    let json = std::fs::read_to_string(&abs).ok()?;
+    // `.blueprint` files are JSON-serialised BlueprintGraph; new files
+    // created from the asset browser start out as `{}` which deserialises
+    // to a default graph.
+    serde_json::from_str(&json).ok()
+}
+
+/// Persist `graph` back to the `.blueprint` file at `rel_path`. Errors are
+/// logged but not propagated.
+pub(crate) fn save_blueprint_file(
+    project: Option<&CurrentProject>,
+    rel_path: &str,
+    graph: &BlueprintGraph,
+) {
+    let abs = project
+        .map(|p| p.resolve_path(rel_path))
+        .unwrap_or_else(|| std::path::PathBuf::from(rel_path));
+    if let Some(parent) = abs.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(graph) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&abs, json) {
+                warn!("[blueprint_editor] save failed for {}: {}", rel_path, e);
+            }
+        }
+        Err(e) => warn!("[blueprint_editor] serialise failed for {}: {}", rel_path, e),
     }
 }
 

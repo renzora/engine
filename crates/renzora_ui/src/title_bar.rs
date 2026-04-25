@@ -5,7 +5,7 @@
 use bevy_egui::egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Vec2};
 use renzora_theme::Theme;
 
-use crate::layouts::LayoutManager;
+use crate::layouts::{LayoutManager, WorkspaceLayout};
 use crate::panel::PanelRegistry;
 use crate::window_chrome::{self, WindowActionQueue};
 
@@ -205,11 +205,17 @@ pub fn render_title_bar(
                 // --- Center: layout tabs ---
                 let font = egui::FontId::proportional(TAB_FONT_SIZE);
 
+                // Visible (non-hidden) layouts paired with their original
+                // index in `layout_manager.layouts`. Asset-mode layouts have
+                // `hidden = true` and are filtered out — the editor switches
+                // to them automatically when an asset tab is activated.
+                let visible_layouts: Vec<(usize, &WorkspaceLayout)> =
+                    layout_manager.visible_layouts().collect();
+
                 // Measure total tabs width for centering
-                let tab_widths: Vec<f32> = layout_manager
-                    .layouts
+                let tab_widths: Vec<f32> = visible_layouts
                     .iter()
-                    .map(|l| {
+                    .map(|(_, l)| {
                         let galley = ui.painter().layout_no_wrap(
                             l.name.clone(),
                             font.clone(),
@@ -234,9 +240,23 @@ pub fn render_title_bar(
                 let tab_y = panel_rect.min.y;
                 let tab_h = panel_rect.height();
 
-                for (i, layout) in layout_manager.layouts.iter().enumerate() {
-                    let is_active = i == layout_manager.active_index;
-                    let tw = tab_widths[i];
+                for (visible_idx, (i, layout)) in visible_layouts.iter().enumerate() {
+                    let i = *i;
+                    // A title-bar tab is "active" when either its own layout
+                    // is the live one, OR the editor is currently in a hidden
+                    // asset-mode layout that derives from this scene-mode one
+                    // (i.e. `last_scene_index` points here). That way, opening
+                    // a `.material` doesn't visually deselect "Materials" in
+                    // the title bar.
+                    let active_visible = i == layout_manager.active_index
+                        || (layout_manager
+                            .layouts
+                            .get(layout_manager.active_index)
+                            .map(|l| l.hidden)
+                            .unwrap_or(false)
+                            && i == layout_manager.last_scene_index);
+                    let is_active = active_visible;
+                    let tw = tab_widths[visible_idx];
 
                     let tab_rect = Rect::from_min_size(
                         Pos2::new(ui.cursor().left(), tab_y),

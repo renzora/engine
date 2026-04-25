@@ -12,6 +12,8 @@ use egui_phosphor::regular::{
 
 use renzora_editor_framework::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
+use renzora_editor_framework::{DocTabKind, EditorContext};
+use renzora::core::CurrentProject;
 
 use renzora_hanabi::{
     HanabiEffectDefinition, HanabiEmitShape, ShapeDimension, SpawnMode, VelocityMode,
@@ -58,6 +60,38 @@ impl EditorPanel for ParticleEditorPanel {
         let Some(editor_state) = world.get_resource::<ParticleEditorState>() else {
             return;
         };
+
+        // ── Asset-mode sync ─────────────────────────────────────────────
+        // Editor context says we're focused on a .particle file → make sure
+        // ParticleEditorState mirrors that file. Resolve the project-relative
+        // path to absolute via CurrentProject.
+        let asset_path: Option<String> = world
+            .get_resource::<EditorContext>()
+            .and_then(|ctx| match ctx {
+                EditorContext::Asset { path, kind: DocTabKind::Particle } => Some(path.clone()),
+                _ => None,
+            });
+        if let Some(rel_path) = asset_path {
+            let abs_path = world
+                .get_resource::<CurrentProject>()
+                .map(|p| p.resolve_path(&rel_path).to_string_lossy().to_string())
+                .unwrap_or_else(|| rel_path.clone());
+            // Re-load only when the active tab points somewhere new.
+            if editor_state.current_file_path.as_deref() != Some(abs_path.as_str()) {
+                let load_path = PathBuf::from(&abs_path);
+                let abs_for_state = abs_path.clone();
+                cmds.push(move |world: &mut World| {
+                    let effect = load_effect_from_file(&load_path)
+                        .unwrap_or_else(|| HanabiEffectDefinition::default());
+                    let mut state = world.resource_mut::<ParticleEditorState>();
+                    state.current_effect = Some(effect);
+                    state.current_file_path = Some(abs_for_state);
+                    state.is_modified = false;
+                });
+                // Fall through and render welcome this frame; the next frame
+                // will see the loaded effect.
+            }
+        }
 
         // Check if we have an effect loaded
         if editor_state.current_effect.is_none() {

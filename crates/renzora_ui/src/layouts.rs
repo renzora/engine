@@ -10,6 +10,21 @@ use crate::dock_tree::{DockTree, DockingState};
 pub struct WorkspaceLayout {
     pub name: String,
     pub tree: DockTree,
+    /// Hidden layouts don't show up in the title-bar layout switcher. Used
+    /// for asset-mode variants (e.g. `Materials-Asset`) which the editor
+    /// switches to automatically when the user opens a single asset file.
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+impl WorkspaceLayout {
+    fn scene(name: &str, tree: DockTree) -> Self {
+        Self { name: name.into(), tree, hidden: false }
+    }
+
+    fn asset(name: &str, tree: DockTree) -> Self {
+        Self { name: name.into(), tree, hidden: true }
+    }
 }
 
 /// Resource managing available workspace layouts.
@@ -17,26 +32,41 @@ pub struct WorkspaceLayout {
 pub struct LayoutManager {
     pub layouts: Vec<WorkspaceLayout>,
     pub active_index: usize,
+    /// Index of the last *non-hidden* (scene-mode) layout the user explicitly
+    /// chose from the title bar. When the editor leaves Asset mode (user
+    /// closes the asset tab or clicks back to a scene tab), this is the
+    /// layout we restore.
+    #[serde(default)]
+    pub last_scene_index: usize,
 }
 
 impl Default for LayoutManager {
     fn default() -> Self {
         let layouts = vec![
-            WorkspaceLayout { name: "Scene".into(), tree: scene_layout() },
-            WorkspaceLayout { name: "Blueprints".into(), tree: layout_blueprints() },
-            WorkspaceLayout { name: "Scripting".into(), tree: layout_scripting() },
-            WorkspaceLayout { name: "Animation".into(), tree: layout_animation() },
-            WorkspaceLayout { name: "Materials".into(), tree: layout_materials() },
-            WorkspaceLayout { name: "Particles".into(), tree: layout_particles() },
-            WorkspaceLayout { name: "UI".into(), tree: layout_ui() },
-            WorkspaceLayout { name: "Audio".into(), tree: layout_audio() },
-            WorkspaceLayout { name: "Debug".into(), tree: layout_debug() },
+            // ── Scene-mode layouts (visible in title bar) ────────────────
+            WorkspaceLayout::scene("Scene", scene_layout()),
+            WorkspaceLayout::scene("Blueprints", layout_blueprints()),
+            WorkspaceLayout::scene("Scripting", layout_scripting()),
+            WorkspaceLayout::scene("Animation", layout_animation()),
+            WorkspaceLayout::scene("Materials", layout_materials()),
+            WorkspaceLayout::scene("Particles", layout_particles()),
+            WorkspaceLayout::scene("UI", layout_ui()),
+            WorkspaceLayout::scene("Audio", layout_audio()),
+            WorkspaceLayout::scene("Debug", layout_debug()),
+            // ── Asset-mode layouts (hidden, auto-activated when an asset
+            // doc tab is focused). Add new variants here as panels for
+            // those kinds learn to render from `EditorContext`.
+            WorkspaceLayout::asset("Materials-Asset", layout_materials_asset()),
+            WorkspaceLayout::asset("Scripting-Asset", layout_scripting_asset()),
+            WorkspaceLayout::asset("Blueprints-Asset", layout_blueprints_asset()),
+            WorkspaceLayout::asset("Particles-Asset", layout_particles_asset()),
         ];
 
 
         Self {
             layouts,
             active_index: 0,
+            last_scene_index: 0,
         }
     }
 }
@@ -61,6 +91,33 @@ impl LayoutManager {
             docking.tree = layout.tree.clone();
             self.active_index = index;
         }
+    }
+
+    /// Ensure every layout in the factory default exists in this manager,
+    /// preserving any user-customised trees. Called after loading from disk
+    /// so older saved workspaces pick up newly-added layouts (e.g. the
+    /// asset-mode variants) without a manual reset.
+    pub fn merge_missing_defaults(&mut self) {
+        let defaults = Self::default();
+        for default_layout in &defaults.layouts {
+            let exists = self.layouts.iter().any(|l| l.name == default_layout.name);
+            if !exists {
+                self.layouts.push(default_layout.clone());
+            } else if let Some(existing) = self.layouts.iter_mut().find(|l| l.name == default_layout.name) {
+                // Always re-stamp the hidden flag from the factory definition
+                // so a workspace saved before `hidden` existed still hides
+                // the asset-mode variants from the title bar.
+                existing.hidden = default_layout.hidden;
+            }
+        }
+    }
+
+    /// Iterate visible (title-bar-eligible) layouts with their original index.
+    pub fn visible_layouts(&self) -> impl Iterator<Item = (usize, &WorkspaceLayout)> {
+        self.layouts
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| !l.hidden)
     }
 
     /// Reset the active layout's tree to its hardcoded factory default.
@@ -309,6 +366,63 @@ fn layout_ui() -> DockTree {
             0.82,
         ),
         0.15,
+    )
+}
+
+// ── Asset-mode layouts ──────────────────────────────────────────────────────
+//
+// These activate when the user opens a single asset file (double-click in the
+// asset browser → opens a doc tab → editor enters Asset mode). They drop the
+// hierarchy/outline panels because there's no entity context — the panels in
+// these layouts read the file path from `EditorContext` directly.
+
+/// Materials (asset mode): Preview + Properties | MaterialGraph
+/// Same shape as the scene-mode layout but explicitly without hierarchy —
+/// makes it obvious the user is editing a file, not an entity's material.
+fn layout_materials_asset() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("material_inspector"),
+            0.5,
+        ),
+        DockTree::leaf("material_graph"),
+        0.25,
+    )
+}
+
+/// Scripting (asset mode): CodeEditor + Console+Problems
+/// No hierarchy, no scripts_on_entity, no viewport — you're editing one file.
+fn layout_scripting_asset() -> DockTree {
+    DockTree::vertical(
+        DockTree::leaf("code_editor"),
+        DockTree::Leaf {
+            tabs: vec!["console".into(), "problems".into()],
+            active_tab: 0,
+        },
+        0.75,
+    )
+}
+
+/// Blueprints (asset mode): BlueprintGraph | NodeProperties
+/// No hierarchy — the graph being edited comes from a `.blueprint` file,
+/// not from a scene entity.
+fn layout_blueprints_asset() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("blueprint_graph"),
+        DockTree::leaf("blueprint_properties"),
+        0.78,
+    )
+}
+
+/// Particles (asset mode): ParticlePreview | ParticleEditor
+/// Same shape as scene-mode particles layout — particle editor is already
+/// file-driven, so no hierarchy is needed even in scene mode.
+fn layout_particles_asset() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("particle_preview"),
+        DockTree::leaf("particle_editor"),
+        0.7,
     )
 }
 
