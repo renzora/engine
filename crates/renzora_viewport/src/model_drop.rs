@@ -21,6 +21,7 @@ use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
 use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
+use crate::glb_compat;
 use crate::model_flatten::{ImportedRoot, PendingFlatten};
 use crate::ViewportState;
 
@@ -223,8 +224,11 @@ fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_pos
             }
         }
 
+        glb_compat::ensure_loadable(&dest);
+
         project.make_asset_relative(&dest)
     } else {
+        glb_compat::ensure_loadable(&path);
         path.to_string_lossy().replace('\\', "/")
     };
 
@@ -516,6 +520,11 @@ pub fn track_model_drag_preview(
         if asset_path.contains(':') || asset_path.starts_with("..") {
             return;
         }
+
+        // Patch the file in place before loading so Bevy doesn't choke on
+        // unsupported `extensionsRequired` entries (e.g. third-party GLBs that
+        // declare `KHR_materials_pbrSpecularGlossiness`).
+        glb_compat::ensure_loadable(&payload.path);
 
         // IMPORTANT: load with default settings. Loading the same path twice
         // with different `GltfLoaderSettings` poisons Bevy's image cache —

@@ -9612,6 +9612,7 @@ dependencies = [
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
+ "serde_json",
 ]
 
 [[package]]
