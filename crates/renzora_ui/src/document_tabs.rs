@@ -397,61 +397,96 @@ pub fn render_document_tabs(
             let mut dragging: Option<usize> = ui.memory(|m| m.data.get_temp(drag_id));
             let mut drop_target_idx: Option<usize> = None;
 
-            let mut x_offset = panel_rect.min.x + 8.0;
+            // ── Pre-compute display text + width for every tab ───────────
+            let font_id = egui::FontId::proportional(12.0);
+            let base_width = TAB_PADDING * 2.0 + ICON_WIDTH + CLOSE_BTN_WIDTH;
+            let max_text_width = MAX_TAB_WIDTH - base_width;
+            let layouts: Vec<(String, f32)> = tab_state
+                .tabs
+                .iter()
+                .map(|tab| {
+                    let tab_text = if tab.is_modified {
+                        format!("{}*", tab.name)
+                    } else {
+                        tab.name.clone()
+                    };
+                    let text_width = ui.fonts_mut(|f| {
+                        f.layout_no_wrap(tab_text.clone(), font_id.clone(), Color32::WHITE).size().x
+                    });
+                    let (display_text, display_text_width) = if text_width > max_text_width {
+                        let ellipsis_width = ui.fonts_mut(|f| {
+                            f.layout_no_wrap("...".to_string(), font_id.clone(), Color32::WHITE).size().x
+                        });
+                        let available_for_text = max_text_width - ellipsis_width;
+                        let mut truncated = String::new();
+                        for ch in tab_text.chars() {
+                            let test = format!("{}{}", truncated, ch);
+                            let test_width = ui.fonts_mut(|f| {
+                                f.layout_no_wrap(test.clone(), font_id.clone(), Color32::WHITE).size().x
+                            });
+                            if test_width > available_for_text {
+                                break;
+                            }
+                            truncated.push(ch);
+                        }
+                        let final_text = format!("{}...", truncated);
+                        let final_width = ui.fonts_mut(|f| {
+                            f.layout_no_wrap(final_text.clone(), font_id.clone(), Color32::WHITE).size().x
+                        });
+                        (final_text, final_width)
+                    } else {
+                        (tab_text, text_width)
+                    };
+                    let tab_width = (display_text_width + base_width).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+                    (display_text, tab_width)
+                })
+                .collect();
 
-            // Collect tab rects for drop detection
+            // ── Decide visible vs overflow ───────────────────────────────
+            // The "+" button is always visible, pinned to the right. If the
+            // remaining tabs don't all fit, we also reserve room for an
+            // overflow chevron and route the rest into a dropdown.
+            let bar_left = panel_rect.min.x + 8.0;
+            let bar_right = panel_rect.max.x - 8.0;
+            let add_btn_w = 24.0;
+            let overflow_btn_w = 28.0;
+            let right_inner_gap = 4.0;
+
+            let fit_count = |max_x: f32| -> usize {
+                let mut x = bar_left;
+                let mut count = 0usize;
+                for (i, (_, w)) in layouts.iter().enumerate() {
+                    let next_x = x + w + if i > 0 { TAB_GAP } else { 0.0 };
+                    if next_x <= max_x {
+                        x = next_x;
+                        count += 1;
+                    } else {
+                        break;
+                    }
+                }
+                count
+            };
+
+            let max_x_no_overflow = bar_right - add_btn_w - right_inner_gap;
+            let visible_count_no_overflow = fit_count(max_x_no_overflow);
+            let needs_overflow = visible_count_no_overflow < layouts.len();
+            let visible_count = if needs_overflow {
+                fit_count(max_x_no_overflow - overflow_btn_w - right_inner_gap)
+            } else {
+                visible_count_no_overflow
+            };
+
+            let mut x_offset = bar_left;
+
+            // Collect visible tab rects for drop detection
             let mut tab_rects: Vec<(usize, Rect)> = Vec::new();
 
-            for (order_idx, tab) in tab_state.tabs.iter().enumerate() {
+            for order_idx in 0..visible_count {
+                let tab = &tab_state.tabs[order_idx];
+                let display_text = layouts[order_idx].0.clone();
+                let tab_width = layouts[order_idx].1;
                 let is_active = order_idx == tab_state.active_tab;
                 let is_being_dragged = dragging == Some(order_idx);
-
-                // Build display text
-                let tab_text = if tab.is_modified {
-                    format!("{}*", tab.name)
-                } else {
-                    tab.name.clone()
-                };
-
-                // Calculate tab width based on text
-                let font_id = egui::FontId::proportional(12.0);
-                let base_width = TAB_PADDING * 2.0 + ICON_WIDTH + CLOSE_BTN_WIDTH;
-                let max_text_width = MAX_TAB_WIDTH - base_width;
-
-                // Measure actual text width
-                let text_width = ui.fonts_mut(|f| {
-                    f.layout_no_wrap(tab_text.clone(), font_id.clone(), Color32::WHITE).size().x
-                });
-
-                // Truncate text if needed
-                let (display_text, display_text_width) = if text_width > max_text_width {
-                    let ellipsis_width = ui.fonts_mut(|f| {
-                        f.layout_no_wrap("...".to_string(), font_id.clone(), Color32::WHITE).size().x
-                    });
-                    let available_for_text = max_text_width - ellipsis_width;
-
-                    let mut truncated = String::new();
-                    for ch in tab_text.chars() {
-                        let test = format!("{}{}", truncated, ch);
-                        let test_width = ui.fonts_mut(|f| {
-                            f.layout_no_wrap(test.clone(), font_id.clone(), Color32::WHITE).size().x
-                        });
-                        if test_width > available_for_text {
-                            break;
-                        }
-                        truncated.push(ch);
-                    }
-                    let final_text = format!("{}...", truncated);
-                    let final_width = ui.fonts_mut(|f| {
-                        f.layout_no_wrap(final_text.clone(), font_id.clone(), Color32::WHITE).size().x
-                    });
-                    (final_text, final_width)
-                } else {
-                    (tab_text, text_width)
-                };
-
-                // Calculate final tab width
-                let tab_width = (display_text_width + base_width).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
 
                 let tab_rect = Rect::from_min_size(
                     Pos2::new(x_offset, top_y + TOP_MARGIN + 2.0),
@@ -579,12 +614,165 @@ pub fn render_document_tabs(
                 x_offset += tab_width + TAB_GAP;
             }
 
-            // + button — plain button, no dropdown
+            // ── Right-side controls ──────────────────────────────────────
+            // Both controls flow right after the last visible tab, with the
+            // chevron (only shown when tabs overflow) coming first and the
+            // "+" button last so it visually closes the strip.
             let tab_area_y = top_y + TOP_MARGIN + 2.0;
             let tab_area_h = TAB_HEIGHT - 2.0;
-            let add_btn_size = Vec2::new(24.0, tab_area_h);
-            let add_btn_pos = Pos2::new(x_offset, tab_area_y);
-            let add_btn_rect = Rect::from_min_size(add_btn_pos, add_btn_size);
+
+            // Overflow chevron + popup, only when some tabs were hidden.
+            // Painted directly (not via `ui.button`) so its content can't
+            // overflow its rect and push the tab bar's height around.
+            if needs_overflow {
+                let chevron_x = x_offset;
+                let chevron_rect = Rect::from_min_size(
+                    Pos2::new(chevron_x, tab_area_y),
+                    Vec2::new(overflow_btn_w, tab_area_h),
+                );
+                let active_in_overflow = tab_state.active_tab >= visible_count;
+                let hidden_count = layouts.len() - visible_count;
+                let popup_id = egui::Id::new("renzora_doc_tab_overflow");
+
+                let chevron_response = ui.allocate_rect(chevron_rect, Sense::click());
+                let is_hovered = chevron_response.hovered();
+                if is_hovered {
+                    ctx.set_cursor_icon(CursorIcon::PointingHand);
+                }
+
+                let bg = if is_hovered { tab_hover_bg } else { tab_bg };
+                ui.painter().rect(
+                    chevron_rect,
+                    CornerRadius::ZERO,
+                    bg,
+                    Stroke::NONE,
+                    StrokeKind::Outside,
+                );
+
+                let _ = active_in_overflow; // visually flagged via popup highlight, not chevron color
+                let label = format!("{} {}", regular::CARET_DOWN, hidden_count);
+                ui.painter().text(
+                    chevron_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &label,
+                    egui::FontId::proportional(11.0),
+                    Color32::WHITE,
+                );
+
+                if chevron_response.clicked() {
+                    #[allow(deprecated)]
+                    ui.memory_mut(|m| m.toggle_popup(popup_id));
+                }
+
+                #[allow(deprecated)]
+                egui::popup_below_widget(
+                    ui,
+                    popup_id,
+                    &chevron_response,
+                    egui::PopupCloseBehavior::CloseOnClick,
+                    |ui| {
+                        ui.set_min_width(200.0);
+
+                        for hidden_idx in visible_count..tab_state.tabs.len() {
+                            let tab = &tab_state.tabs[hidden_idx];
+                            let is_active = hidden_idx == tab_state.active_tab;
+                            let label_text = if tab.is_modified {
+                                format!("{}  {}*", tab.kind.icon(), tab.name)
+                            } else {
+                                format!("{}  {}", tab.kind.icon(), tab.name)
+                            };
+                            let label_color = if is_active { accent } else { text_color };
+
+                            // Manual row paint so text is left-aligned (egui
+                            // Buttons center-align by default and there's no
+                            // built-in flag to change that).
+                            let row_h = 22.0;
+                            let (row_rect, row_response) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), row_h),
+                                Sense::click(),
+                            );
+                            let row_hovered = row_response.hovered();
+
+                            // Inset close (X) on the right of the row, sized
+                            // and styled like the tab-bar close button.
+                            let can_close = tab_state.tabs.len() > 1
+                                && !(tab.kind == DocTabKind::Scene
+                                    && tab_state
+                                        .tabs
+                                        .iter()
+                                        .filter(|t| t.kind == DocTabKind::Scene)
+                                        .count()
+                                        <= 1);
+                            let close_rect = Rect::from_min_size(
+                                Pos2::new(row_rect.max.x - 22.0, row_rect.min.y + 4.0),
+                                Vec2::new(14.0, 14.0),
+                            );
+                            let close_response = ui.allocate_rect(close_rect, Sense::click());
+                            let close_hovered = close_response.hovered();
+
+                            if close_hovered || row_hovered {
+                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                            }
+
+                            let bg = if row_hovered {
+                                tab_hover_bg
+                            } else if is_active {
+                                tab_active_bg
+                            } else {
+                                Color32::TRANSPARENT
+                            };
+                            ui.painter().rect_filled(row_rect, CornerRadius::ZERO, bg);
+
+                            ui.painter().text(
+                                egui::pos2(row_rect.min.x + 8.0, row_rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                &label_text,
+                                egui::FontId::proportional(12.0),
+                                label_color,
+                            );
+
+                            if can_close {
+                                let close_color = if close_hovered {
+                                    theme.semantic.error.to_color32()
+                                } else if row_hovered || is_active {
+                                    theme.text.muted.to_color32()
+                                } else {
+                                    theme.text.disabled.to_color32()
+                                };
+                                let cx = close_rect.center();
+                                let s = 4.0;
+                                ui.painter().line_segment(
+                                    [Pos2::new(cx.x - s, cx.y - s), Pos2::new(cx.x + s, cx.y + s)],
+                                    Stroke::new(1.5, close_color),
+                                );
+                                ui.painter().line_segment(
+                                    [Pos2::new(cx.x + s, cx.y - s), Pos2::new(cx.x - s, cx.y + s)],
+                                    Stroke::new(1.5, close_color),
+                                );
+                            }
+
+                            // Close click takes precedence over activate.
+                            if can_close && close_response.clicked() {
+                                action = DocTabAction::Close(hidden_idx);
+                            } else if row_response.clicked() {
+                                action = DocTabAction::Activate(hidden_idx);
+                            }
+                        }
+                    },
+                );
+            }
+
+            // "+" button — sits after the chevron when overflowing, or
+            // right after the last visible tab otherwise.
+            let add_btn_x = if needs_overflow {
+                x_offset + overflow_btn_w + right_inner_gap
+            } else {
+                x_offset
+            };
+            let add_btn_rect = Rect::from_min_size(
+                Pos2::new(add_btn_x, tab_area_y),
+                Vec2::new(add_btn_w, tab_area_h),
+            );
 
             #[allow(deprecated)]
             ui.allocate_ui_at_rect(add_btn_rect, |ui| {
