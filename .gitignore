@@ -3,7 +3,9 @@
 /target-runtime/
 updater/target/
 **/target/
-Cargo.lock
+# Ignore sub-crate lockfiles (only the workspace root Cargo.lock is tracked).
+crates/**/Cargo.lock
+updater/Cargo.lock
 
 # Build artifacts
 rustc-ice-*.txt
