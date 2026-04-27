@@ -180,6 +180,8 @@ pub struct RenderToggles {
     pub wireframe: bool,
     pub lighting: bool,
     pub shadows: bool,
+    /// Solid mesh rendering. Off hides mesh fill (wireframe still renders if on).
+    pub mesh: bool,
 }
 
 impl Default for RenderToggles {
@@ -189,6 +191,7 @@ impl Default for RenderToggles {
             wireframe: false,
             lighting: true,
             shadows: true,
+            mesh: true,
         }
     }
 }
@@ -325,6 +328,8 @@ pub struct PersistedViewportSettings {
     pub wireframe: bool,
     pub lighting: bool,
     pub shadows: bool,
+    #[serde(default = "default_true")]
+    pub mesh: bool,
     pub visualization_mode: String,
     pub show_grid: bool,
     pub show_subgrid: bool,
@@ -362,6 +367,7 @@ impl PersistedViewportSettings {
             wireframe: rt.wireframe,
             lighting: rt.lighting,
             shadows: rt.shadows,
+            mesh: rt.mesh,
             visualization_mode: format!("{:?}", s.visualization_mode),
             show_grid: s.show_grid,
             show_subgrid: s.show_subgrid,
@@ -396,6 +402,7 @@ impl PersistedViewportSettings {
             wireframe: self.wireframe,
             lighting: self.lighting,
             shadows: self.shadows,
+            mesh: self.mesh,
         };
         s.visualization_mode = match self.visualization_mode.as_str() {
             "Normals" => VisualizationMode::Normals,
@@ -443,6 +450,8 @@ impl PersistedViewportSettings {
         };
     }
 }
+
+fn default_true() -> bool { true }
 
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
 /// The runtime ignores this section, and `renzora_export` strips it from

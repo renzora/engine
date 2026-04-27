@@ -123,6 +123,11 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
 /// Pass `false` for `StandardMaterial` (lighting is handled via `unlit` mutation)
 /// and `true` for custom materials whose shaders don't expose an unlit flag.
 fn desired_mode_inner(settings: &ViewportSettings, include_lighting: bool) -> Option<f32> {
+    // Mesh hidden — let the standard-material pass discard its pixels instead
+    // of swapping in the (still-solid) debug shader.
+    if !settings.render_toggles.mesh {
+        return None;
+    }
     if let Some(m) = viz_to_mode_index(settings.visualization_mode) {
         return Some(m);
     }
@@ -182,10 +187,36 @@ pub fn update_render_toggles(
 
     // When swap path is active, StandardMaterial is handled by the debug
     // shader — don't mutate it here. Swap is active if viz is set OR
-    // textures toggle is off.
-    let swap_active = settings.visualization_mode != VisualizationMode::None
-        || !toggles.textures;
-    let is_default = toggles.textures && toggles.lighting && !toggles.wireframe;
+    // textures toggle is off. Mesh-off bypasses the swap so we can discard
+    // pixels via the standard pipeline.
+    let swap_active = toggles.mesh
+        && (settings.visualization_mode != VisualizationMode::None || !toggles.textures);
+    let is_default = toggles.mesh && toggles.textures && toggles.lighting && !toggles.wireframe;
+
+    // Mesh-hidden path: discard every StandardMaterial fragment via alpha mask.
+    // Wireframe is rendered by a separate pipeline that picks up Mesh3d, so it
+    // remains visible when mesh is off.
+    if !toggles.mesh {
+        if !toggles_changed && !new_materials {
+            return;
+        }
+        last_state.toggles = Some(toggles);
+        wireframe_config.global = toggles.wireframe;
+
+        let ids: Vec<AssetId<StandardMaterial>> = materials.iter().map(|(id, _)| id).collect();
+        for id in &ids {
+            if !original_states.states.contains_key(id) {
+                if let Some(m) = materials.get(*id) {
+                    original_states.states.insert(*id, MaterialState::capture(m));
+                }
+            }
+        }
+        for (_, m) in materials.iter_mut() {
+            m.base_color = Color::NONE;
+            m.alpha_mode = AlphaMode::Mask(0.5);
+        }
+        return;
+    }
 
     if !toggles_changed && !(new_materials && !is_default && !swap_active) {
         return;
