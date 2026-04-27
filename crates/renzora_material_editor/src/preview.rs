@@ -14,7 +14,7 @@ use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
 use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
-use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_shader::material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
 use renzora_theme::ThemeManager;
 
@@ -489,7 +489,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     for &s in PreviewShape::ALL {
                         if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
                             let shape = s;
-                            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+                            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                                 cmds.push(move |world: &mut World| {
                                     world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
                                 });
@@ -516,7 +516,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     .clicked()
                 {
                     let new_val = !orbit.auto_rotate;
-                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             world.resource_mut::<MaterialPreviewOrbit>().auto_rotate = new_val;
                         });
@@ -534,7 +534,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     .clicked()
                 {
                     let new_val = !orbit.dark_bg;
-                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             world.resource_mut::<MaterialPreviewOrbit>().dark_bg = new_val;
                         });
@@ -579,7 +579,7 @@ impl EditorPanel for MaterialPreviewPanel {
                     || (new_pitch - orbit.pitch).abs() > 1e-5
                     || (new_distance - orbit.distance).abs() > 1e-5
                 {
-                    if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             let mut orbit = world.resource_mut::<MaterialPreviewOrbit>();
                             orbit.yaw = new_yaw;

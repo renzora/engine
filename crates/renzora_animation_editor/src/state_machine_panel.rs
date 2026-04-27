@@ -15,7 +15,7 @@ use renzora_animation::{
     state_machine::{AnimCondition, AnimState, AnimTransition, AnimationStateMachine, StateMotion},
     AnimatorComponent,
 };
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::AnimationEditorState;

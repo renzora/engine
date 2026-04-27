@@ -12,7 +12,7 @@ pub mod preview;
 pub mod store;
 
 use bevy::prelude::*;
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 #[derive(Default)]
 pub struct HubPlugin;
@@ -26,4 +26,3 @@ impl Plugin for HubPlugin {
     }
 }
 
-renzora::add!(HubPlugin, Editor);

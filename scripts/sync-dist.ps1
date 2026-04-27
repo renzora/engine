@@ -20,7 +20,7 @@ $sysroot = (rustc --print sysroot)
 Copy-Item (Join-Path $sysroot "bin/std-*.dll") dist/ -Force -ErrorAction SilentlyContinue
 
 # SDK DLLs (needed for community plugins to link against)
-foreach ($dll in @("renzora.dll", "renzora_runtime.dll")) {
+foreach ($dll in @("renzora.dll", "renzora_editor.dll", "renzora_runtime.dll")) {
     if (Test-Path "target/dist/$dll") {
         Copy-Item "target/dist/$dll" "dist/$dll" -Force
     }

@@ -61,35 +61,9 @@ description = "Build runtime and sync to dist/"
 dependencies = ["clean-outputs-runtime", "build-runtime-cargo", "sync-dist-runtime"]
 
 [tasks.build-runtime-cargo]
-description = "Compile workspace (runtime, excluding editor plugins)"
-[tasks.build-runtime-cargo.windows]
-script_runner = "powershell.exe"
-script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
-script_extension = "ps1"
-script = '''
-$ErrorActionPreference = "Stop"
-$names = Get-ChildItem crates\*\Cargo.toml | Where-Object {
-    Select-String -Path $_.FullName -Pattern 'features = \[("[^"]*", *)*"editor"' -Quiet
-} | ForEach-Object {
-    $content = Get-Content $_.FullName
-    foreach ($line in $content) {
-        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
-    }
-}
-$args = @()
-foreach ($n in $names) { $args += "--exclude"; $args += $n }
-& cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime @args
-'''
-[tasks.build-runtime-cargo.linux]
-script = '''
-EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
-cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
-'''
-[tasks.build-runtime-cargo.mac]
-script = '''
-EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
-cargo build --profile dist --workspace --no-default-features --features runtime --target-dir target/runtime $EXCLUDES
-'''
+description = "Compile the runtime binary (no editor crates in the dep tree)"
+command = "cargo"
+args = ["build", "--profile", "dist", "--bin", "renzora", "--no-default-features", "--features", "runtime", "--target-dir", "target/runtime"]
 
 # makers build-server — compile server + plugins
 [tasks.build-server]
@@ -97,35 +71,9 @@ description = "Build server and sync to dist/"
 dependencies = ["clean-outputs-server", "build-server-cargo", "sync-dist-server"]
 
 [tasks.build-server-cargo]
-description = "Compile workspace (server, excluding editor plugins)"
-[tasks.build-server-cargo.windows]
-script_runner = "powershell.exe"
-script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
-script_extension = "ps1"
-script = '''
-$ErrorActionPreference = "Stop"
-$names = Get-ChildItem crates\*\Cargo.toml | Where-Object {
-    Select-String -Path $_.FullName -Pattern 'features = \[("[^"]*", *)*"editor"' -Quiet
-} | ForEach-Object {
-    $content = Get-Content $_.FullName
-    foreach ($line in $content) {
-        if ($line -match '^name\s*=\s*"(.+)"') { $Matches[1]; break }
-    }
-}
-$args = @()
-foreach ($n in $names) { $args += "--exclude"; $args += $n }
-& cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server @args
-'''
-[tasks.build-server-cargo.linux]
-script = '''
-EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
-cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
-'''
-[tasks.build-server-cargo.mac]
-script = '''
-EXCLUDES=$(grep -l 'features = \[\(\"[^"]*\", \)*\"editor\"' crates/*/Cargo.toml | xargs grep -h '^name' | sed 's/name = "\(.*\)"/--exclude \1/')
-cargo build --profile dist --workspace --no-default-features --features server --target-dir target/server $EXCLUDES
-'''
+description = "Compile the server binary (no editor crates in the dep tree)"
+command = "cargo"
+args = ["build", "--profile", "dist", "--bin", "renzora", "--no-default-features", "--features", "server", "--target-dir", "target/server"]
 
 # makers run — build + run the editor from dist/
 [tasks.run]
@@ -314,11 +262,12 @@ Get-ChildItem $src/deps/bevy_dylib-*.dll -ErrorAction SilentlyContinue | Sort-Ob
 $sysroot = (rustc --print sysroot)
 Copy-Item (Join-Path $sysroot "bin/std-*.dll") $dir/ -Force -ErrorAction SilentlyContinue
 
-# SDK DLL
+# SDK DLLs — small contracts crate + editor framework (only present in editor builds)
 if (Test-Path "$src/renzora.dll") { Copy-Item "$src/renzora.dll" "$dir/renzora.dll" -Force }
+if (Test-Path "$src/renzora_editor.dll") { Copy-Item "$src/renzora_editor.dll" "$dir/renzora_editor.dll" -Force }
 
 # Plugins — everything else
-$skip = @("renzora.dll", "bevy_dylib.dll", "renzora_macros.dll")
+$skip = @("renzora.dll", "renzora_editor.dll", "bevy_dylib.dll", "renzora_macros.dll")
 Get-ChildItem $src/*.dll -ErrorAction SilentlyContinue | ForEach-Object {
     if ($skip -notcontains $_.Name) { Copy-Item $_.FullName "$dir/plugins/$($_.Name)" -Force }
 }
@@ -359,6 +308,7 @@ chmod +x "$ROOT/$BIN_NAME" 2>/dev/null || true
 
 # SDK
 [ -f "$SRC/librenzora.so" ] && cp "$SRC/librenzora.so" "$ROOT/"
+[ -f "$SRC/librenzora_editor.so" ] && cp "$SRC/librenzora_editor.so" "$ROOT/"
 
 # bevy_dylib (newest only)
 ls -t $SRC/deps/libbevy_dylib-*.so 2>/dev/null | head -1 | xargs -I{} cp {} "$ROOT/"
@@ -373,6 +323,7 @@ done
 for f in $SRC/*.so; do
     name=$(basename "$f")
     [ "$name" = "librenzora.so" ] && continue
+    [ "$name" = "librenzora_editor.so" ] && continue
     cp "$f" "$ROOT/plugins/"
 done
 
@@ -476,6 +427,7 @@ chmod +x "$MACOS/$BIN_NAME"
 
 # SDK
 [ -f "$SRC/librenzora.dylib" ] && cp "$SRC/librenzora.dylib" "$MACOS/"
+[ -f "$SRC/librenzora_editor.dylib" ] && cp "$SRC/librenzora_editor.dylib" "$MACOS/"
 
 # bevy_dylib (newest only)
 ls -t $SRC/deps/libbevy_dylib-*.dylib 2>/dev/null | head -1 | xargs -I{} cp {} "$MACOS/"
@@ -491,6 +443,7 @@ done
 for f in $SRC/*.dylib; do
     name=$(basename "$f")
     [ "$name" = "librenzora.dylib" ] && continue
+    [ "$name" = "librenzora_editor.dylib" ] && continue
     cp "$f" "$MACOS/plugins/"
 done
 

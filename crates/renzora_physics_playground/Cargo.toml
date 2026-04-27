@@ -3,14 +3,11 @@ name = "renzora_physics_playground"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }
 egui-phosphor = { workspace = true }
 bevy_egui = { workspace = true }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_physics = { path = "../renzora_physics" }

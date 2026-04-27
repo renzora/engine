@@ -1,7 +1,6 @@
 pub mod auth;
 pub mod config;
 pub mod github;
-pub mod launcher;
 pub mod loading;
 pub mod project;
 mod ui;
@@ -42,19 +41,10 @@ pub struct SplashWindowState {
     pub maximized: bool,
 }
 
-/// Controls whether the splash screen, loading overlay, or editor is shown.
-///
-/// After the user selects a project we first enter `Loading`, which renders a
-/// full-window overlay showing progress for tasks registered in
-/// [`LoadingTasks`] (material thumbnails, future plugin/scene load, etc.).
-/// Once every registered task reports complete, we transition to `Editor`.
-#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum SplashState {
-    #[default]
-    Splash,
-    Loading,
-    Editor,
-}
+// SplashState now lives in the `renzora` SDK — coordination contract used
+// by both the splash UI and the editor framework. Re-exported here for
+// back-compat so existing `renzora_splash::SplashState` paths keep working.
+pub use renzora::SplashState;
 
 pub struct SplashPlugin;
 
@@ -86,7 +76,63 @@ impl Plugin for SplashPlugin {
                 Update,
                 loading::auto_advance_to_editor.run_if(in_state(SplashState::Loading)),
             )
+            .add_systems(Update, handle_request_open_project)
             .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
+    }
+}
+
+/// Consume `renzora::RequestOpenProject` markers (inserted by the editor's
+/// File menu). Owns the file dialog + validation + AppConfig update +
+/// state transition so `renzora_editor` doesn't need to depend on splash.
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_request_open_project(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestOpenProject>>,
+    mut app_config: ResMut<AppConfig>,
+    mut next_state: ResMut<NextState<SplashState>>,
+) {
+    if request.is_none() {
+        return;
+    }
+    commands.remove_resource::<renzora::RequestOpenProject>();
+
+    let Some(file) = rfd::FileDialog::new()
+        .set_title("Open Project")
+        .add_filter("Project File", &["toml"])
+        .pick_file()
+    else {
+        return;
+    };
+
+    let project = match project::open_project(&file) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to open project: {}", e);
+            rfd::MessageDialog::new()
+                .set_title("Invalid Project")
+                .set_description(&format!("Failed to open project: {}", e))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
+    };
+
+    app_config.add_recent_project(project.path.clone());
+    let _ = app_config.save();
+    commands.insert_resource(project);
+    commands.insert_resource(PendingProjectReopen);
+    next_state.set(SplashState::Splash);
+    info!("Opening project...");
+}
+
+#[cfg(target_arch = "wasm32")]
+fn handle_request_open_project(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestOpenProject>>,
+) {
+    if request.is_some() {
+        commands.remove_resource::<renzora::RequestOpenProject>();
+        warn!("Open Project is not available in the browser");
     }
 }
 

@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2};
 use egui_phosphor::regular as icons;
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{
+use renzora_editor::{
     asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry,
 };
 use renzora_terrain::data::TerrainData;

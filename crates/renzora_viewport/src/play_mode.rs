@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
 use bevy::window::{CursorGrabMode, CursorOptions};
-use renzora_editor_framework::camera::EditorUiCamera;
+use renzora_editor::camera::EditorUiCamera;
 use renzora::core::{
     DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, PlayState,
     SceneCamera, ViewportRenderTarget,

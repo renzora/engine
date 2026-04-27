@@ -23,7 +23,7 @@ impl Plugin for DockerBuilderPlugin {
         info!("[editor] DockerBuilderPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use renzora_editor_framework::{AppEditorExt, SplashState};
+            use renzora_editor::{AppEditorExt, SplashState};
             use state::{ActionBridge, DockerBuilderState};
 
             _app.init_resource::<DockerBuilderState>()

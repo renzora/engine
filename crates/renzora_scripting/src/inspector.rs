@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     asset_drop_target, inline_property, search_overlay, toggle_switch, AssetDragPayload,
     EditorCommands, InspectorEntry, OverlayAction, OverlayEntry,
 };
@@ -17,7 +17,7 @@ use crate::ScriptValue;
 
 /// Register the script inspector entry via `AppEditorExt`.
 pub fn register_script_inspector(app: &mut App) {
-    use renzora_editor_framework::AppEditorExt;
+    use renzora_editor::AppEditorExt;
     app.register_inspector(script_component_entry());
 }
 

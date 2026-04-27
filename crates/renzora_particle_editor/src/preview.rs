@@ -10,7 +10,7 @@ use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
 use renzora::core::{IsolatedCamera, EditorLocked, HideInHierarchy};
-use renzora_editor_framework::DockingState;
+use renzora_editor::DockingState;
 
 use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;

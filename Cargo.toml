@@ -1,54 +1,11 @@
 [workspace]
 members = [
     ".",
+    "crates/renzora",
     "crates/renzora_runtime",
     "crates/renzora_editor",
-    "crates/renzora",
-    # Standalone editor plugins (loaded dynamically from plugins/)
-    "crates/renzora_debugger",
-    "crates/renzora_gamepad",
-    "crates/renzora_widget_gallery",
-    "crates/renzora_tutorial",
-    "crates/renzora_inspector",
-    "crates/renzora_test_component",
-    "crates/renzora_mesh_draw",
-    "crates/renzora_mesh_edit",
-    "crates/renzora_command_palette",
-    "crates/renzora_context_menu",
-    "crates/renzora_viewport",
-    "crates/renzora_hierarchy",
-    "crates/renzora_asset_browser",
-    "crates/renzora_grid",
-    "crates/renzora_camera",
-    "crates/renzora_keybindings",
-    "crates/renzora_scene",
-    "crates/renzora_export",
-    "crates/renzora_import_ui",
-    "crates/renzora_mixer",
-    "crates/renzora_console",
-    "crates/renzora_physics_playground",
-    "crates/renzora_gizmo",
-    "crates/renzora_settings",
-    "crates/renzora_particle_editor",
-    "crates/renzora_material_editor",
-    "crates/renzora_terrain_editor",
-    "crates/renzora_foliage_editor",
-    "crates/renzora_code_editor",
-    "crates/renzora_script_variables",
-    "crates/renzora_blueprint_editor",
-    "crates/renzora_network_editor",
-    "crates/renzora_daw",
-    "crates/renzora_level_presets",
-    "crates/renzora_shader_editor",
-    "crates/renzora_animation_editor",
-    "crates/renzora_hub",
-    "crates/renzora_auth",
-    "crates/renzora_shape_library",
-    "crates/renzora_system_monitor",
-    "crates/renzora_history",
-    "crates/renzora_theme_status",
+    "crates/renzora_record",
 ]
-# Note: crates/renzora_editor produces the editor SDK
 
 [workspace.dependencies]
 bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "experimental_pbr_pcss", "jpeg"] }
@@ -70,10 +27,6 @@ version = "0.2.0"
 edition = "2021"
 default-run = "renzora"
 
-[lib]
-name = "renzora_app"
-path = "src/runtime.rs"
-
 [[bin]]
 name = "renzora"
 path = "src/main.rs"
@@ -81,9 +34,9 @@ path = "src/main.rs"
 [features]
 default = ["editor"]
 editor = [
-    "dep:renzora_editor",
-    "renzora_editor/lua",
-    "renzora_editor/editor",
+    "dep:renzora_runtime",
+    "renzora_runtime/lua",
+    "renzora_runtime/editor",
 ]
 runtime = ["dep:renzora_runtime", "renzora_runtime/lua"]
 server = ["dep:renzora_runtime"]
@@ -113,9 +66,8 @@ wasm = [
 [dependencies]
 bevy = { workspace = true }
 
-# Shared libraries — only ONE is linked per build (editor OR runtime, never both)
+# Single shared library — `editor` feature on this crate adds editor extras.
 renzora_runtime = { path = "crates/renzora_runtime", optional = true }
-renzora_editor = { path = "crates/renzora_editor", optional = true }
 uuid = "1"
 
 # Misc

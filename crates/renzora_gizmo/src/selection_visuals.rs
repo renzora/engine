@@ -13,7 +13,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::gizmos::config::GizmoConfigStore;
 use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
 
-use renzora_editor_framework::{EditorSelection, EditorSettings, SelectionHighlightMode, HideInHierarchy};
+use renzora_editor::{EditorSelection, EditorSettings, SelectionHighlightMode, HideInHierarchy};
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
 

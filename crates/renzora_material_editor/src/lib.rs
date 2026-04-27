@@ -13,7 +13,7 @@ mod thumbnails;
 
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
+use renzora_editor::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
@@ -159,4 +159,3 @@ pub fn apply_material(world: &mut World) {
     world.resource_mut::<MaterialEditorState>().is_dirty = false;
 }
 
-renzora::add!(MaterialEditorPlugin, Editor);

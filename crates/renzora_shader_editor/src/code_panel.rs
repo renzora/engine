@@ -7,7 +7,7 @@ use egui_phosphor::regular::{
     FLOPPY_DISK, LIGHTNING, PLAY, FILE_PLUS, FOLDER_OPEN,
 };
 
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::file::{ShaderFile, ShaderType};
 use renzora_shader::registry::ShaderBackendRegistry;
 use renzora_theme::ThemeManager;

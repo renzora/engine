@@ -10,7 +10,7 @@ mod preview_panel;
 mod widgets;
 
 use bevy::prelude::*;
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 #[derive(Default)]
 pub struct ParticleEditorPlugin;
@@ -25,4 +25,3 @@ impl Plugin for ParticleEditorPlugin {
     }
 }
 
-renzora::add!(ParticleEditorPlugin, Editor);

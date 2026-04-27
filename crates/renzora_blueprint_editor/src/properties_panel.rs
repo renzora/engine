@@ -6,7 +6,7 @@ use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
 
 use renzora_blueprint::graph::*;
 use renzora_blueprint::{BlueprintGraph, nodes};
-use renzora_editor_framework::{
+use renzora_editor::{
     DocTabKind, EditorCommands, EditorContext, EditorPanel, PanelLocation,
 };
 use renzora_theme::ThemeManager;

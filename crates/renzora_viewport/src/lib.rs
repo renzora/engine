@@ -28,7 +28,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
 use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor_framework::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
 use renzora::core::EditorCamera;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
@@ -121,7 +121,7 @@ impl Plugin for ViewportPlugin {
                     persistence::save_on_change
                         .after(persistence::apply_prefs_on_project_load),
                 ),
-            ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+            ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         // Always-on panel-visibility gates — toggle is_active on the offscreen
         // cameras when their panels are / are not in the current dock tree so
@@ -129,20 +129,20 @@ impl Plugin for ViewportPlugin {
         app.add_systems(Update, (
             sync_viewport_camera_activation,
             camera_preview::sync_camera_preview_activation,
-        ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+        ).run_if(in_state(renzora_editor::SplashState::Editor)));
 
         // Camera-preview spawn/update logic only when its panel is mounted.
         app.add_systems(
             Update,
             camera_preview::update_camera_preview
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(in_state(renzora_editor::SplashState::Editor))
                 .run_if(camera_preview::camera_preview_panel_mounted),
         );
 
 // Register the crosshair overlay so the cursor goes to Crosshair
         // whenever the pointer is over the viewport rect.
         app.world_mut()
-            .resource_mut::<renzora_editor_framework::ViewportOverlayRegistry>()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(150, draw_viewport_cursor_overlay);
 
         app.register_panel(ViewportPanel);
@@ -160,7 +160,7 @@ fn draw_viewport_cursor_overlay(
     rect: bevy_egui::egui::Rect,
 ) {
     use bevy_egui::egui::CursorIcon;
-    use renzora_editor_framework::ActiveTool;
+    use renzora_editor::ActiveTool;
 
     // Brushes hide the cursor entirely; don't fight them with a crosshair icon.
     if let Some(tool) = world.get_resource::<ActiveTool>() {
@@ -196,12 +196,12 @@ struct BrushCursorHiddenByUs(bool);
 /// the viewport. Only acts on transitions we own — if someone else (e.g.
 /// modal transform) has hidden the cursor, we don't touch it.
 fn hide_cursor_for_brushes(
-    active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
+    active_tool: Option<Res<renzora_editor::ActiveTool>>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
     mut cursor_options: Query<&mut bevy::window::CursorOptions>,
     mut ours: ResMut<BrushCursorHiddenByUs>,
 ) {
-    use renzora_editor_framework::ActiveTool;
+    use renzora_editor::ActiveTool;
     let Ok(mut cursor) = cursor_options.single_mut() else { return };
     let brush_active = matches!(
         active_tool.as_deref(),
@@ -264,8 +264,10 @@ fn setup_viewport(
     };
     image.texture_descriptor.size = size;
     image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
+        | TextureUsages::COPY_DST
+        | TextureUsages::COPY_SRC
+        | TextureUsages::RENDER_ATTACHMENT;
 
     let image_handle = images.add(image);
 
@@ -374,7 +376,7 @@ impl EditorPanel for ViewportPanel {
 
             // CPU-projected overlays (grid, gizmos) paint on top of the 3D
             // image, bypassing the Bevy render pipeline entirely.
-            if let Some(overlay) = world.get_resource::<renzora_editor_framework::ViewportOverlayRegistry>() {
+            if let Some(overlay) = world.get_resource::<renzora_editor::ViewportOverlayRegistry>() {
                 overlay.draw_all(ui, world, rect);
             }
         } else {
@@ -903,7 +905,7 @@ fn render_axis_gizmo(
 ) {
     let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() else { return };
     let Some(nav) = world.get_resource::<NavOverlayState>() else { return };
-    let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() else { return };
+    let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() else { return };
     let center = egui::Pos2::new(
         viewport_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
         viewport_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,

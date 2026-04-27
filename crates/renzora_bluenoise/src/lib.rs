@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor_framework::{AppEditorExt, InspectorEntry},
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 /// Blue Noise Temporal Jittered shadow filtering.

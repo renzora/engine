@@ -12,7 +12,7 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, Ra
 use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::ViewportState;
-use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
+use renzora_editor::{EditorCamera, EditorSelection, HideInHierarchy};
 use renzora_physics::{ColliderEditMode, CollisionShapeData, CollisionShapeType};
 
 use crate::GizmoMaterial;

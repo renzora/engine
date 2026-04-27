@@ -5,7 +5,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_scripting::{ScriptEngine, ScriptVariableDefinition};
 use renzora_theme::ThemeManager;
 
@@ -116,4 +116,3 @@ impl Plugin for ScriptVariablesPlugin {
     }
 }
 
-renzora::add!(ScriptVariablesPlugin, Editor);

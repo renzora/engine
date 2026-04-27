@@ -1,0 +1,54 @@
+[package]
+name = "renzora_vst"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+log = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_audio = { path = "../renzora_audio" }
+
+# `clack-host` is the right Rust SDK for hosting CLAP plugins (see memory
+# note `reference_clap_hosting_in_rust.md`). It is git-only and requires
+# Rust 1.85+ (edition 2024). The `clap-host` feature pulls it in along with
+# the clack extensions we use today (gui, log, params) and crossbeam for
+# the plugin → main-thread message channel.
+#
+# Built with the feature ON by default so plugin Open Editor actually works
+# out of the box. Build with `--no-default-features` to drop the integration
+# (e.g. for headless server builds where the audio plugin host isn't useful
+# anyway).
+[features]
+default = ["clap-host"]
+clap-host = [
+    "dep:clack-host",
+    "dep:clack-extensions",
+    "dep:crossbeam-channel",
+    "dep:windows-sys",
+]
+
+[dependencies.clack-host]
+git = "https://github.com/prokopyl/clack"
+optional = true
+default-features = true
+
+[dependencies.clack-extensions]
+git = "https://github.com/prokopyl/clack"
+optional = true
+features = ["clack-host", "gui", "log", "params"]
+
+[dependencies.crossbeam-channel]
+version = "0.5"
+optional = true
+
+# Windows-only: AddDllDirectoryW so plugin bundles that ship sidecar DLLs
+# next to the .clap can resolve them when the bundle is dlopened.
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.59"
+optional = true
+features = [
+    "Win32_System_LibraryLoader",
+    "Win32_Foundation",
+]

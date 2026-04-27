@@ -19,7 +19,7 @@ const HANDLE_RADIUS: f32 = 0.35;
 pub fn draw_spline_gizmos_system(
     mut gizmos: Gizmos,
     splines: Query<(Entity, &GlobalTransform, &SplinePath)>,
-    selection: Option<Res<renzora_editor_framework::EditorSelection>>,
+    selection: Option<Res<renzora_editor::EditorSelection>>,
 ) {
     let selected_entity = selection.as_ref().and_then(|s| s.get());
 

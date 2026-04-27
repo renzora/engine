@@ -6,7 +6,7 @@ use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use bevy_egui::EguiUserTextures;
 use egui_phosphor::regular;
 
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::studio_preview::{StudioPreviewImage, StudioPreviewOrbit, StudioPreviewSettings};

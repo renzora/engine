@@ -69,7 +69,7 @@ impl Plugin for TerrainPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor_framework::{AppEditorExt, EntityPreset};
+            use renzora_editor::{AppEditorExt, EntityPreset};
             app.register_entity_preset(EntityPreset {
                 id: "terrain",
                 display_name: "Terrain",

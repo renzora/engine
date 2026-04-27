@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense};
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     empty_state, AppEditorExt, EditorCommands, EditorPanel, PanelLocation,
 };
 use renzora_theme::{Theme, ThemeManager};
@@ -256,4 +256,3 @@ impl Plugin for HistoryPanelPlugin {
     }
 }
 
-renzora::add!(HistoryPanelPlugin, Editor);

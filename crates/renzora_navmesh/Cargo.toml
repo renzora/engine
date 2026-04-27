@@ -7,7 +7,7 @@ description = "Navigation mesh and pathfinding for the Renzora engine"
 [features]
 default = ["lua"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
-editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui"]
+editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:bevy_egui"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -19,7 +19,7 @@ vleue_navigator = { path = "../vleue_navigator", features = ["avian3d", "debug-w
 polyanya = { version = "0.16", features = ["serde"] }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_ui = { path = "../renzora_ui" }
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 egui-phosphor = { workspace = true, optional = true }
 bevy_egui = { workspace = true, optional = true }
 

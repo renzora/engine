@@ -29,7 +29,7 @@ pub use settings::{RtLighting, RtQuality};
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 

@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     collapsible_section, collapsible_section_removable, collapsible_section_with_actions,
     empty_state, search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
     InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
@@ -332,7 +332,7 @@ impl Plugin for InspectorPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] InspectorPanelPlugin");
         // Inspector entries are now self-registered by their owning crates:
-        // - Bevy built-ins: renzora_editor_framework::bevy_inspectors
+        // - Bevy built-ins: renzora_editor::bevy_inspectors
         // - Physics: renzora_physics::inspector (editor feature)
         // - Scripts: renzora_scripting::inspector (editor feature)
         // - Material: renzora_material_editor::material_inspector
@@ -343,4 +343,3 @@ impl Plugin for InspectorPanelPlugin {
     }
 }
 
-renzora::add!(InspectorPanelPlugin, Editor);

@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 use vleue_navigator::{
     NavMesh,
     prelude::{ManagedNavMesh, NavMeshStatus, NavMeshUpdateMode},

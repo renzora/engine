@@ -51,6 +51,7 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
             WorkspaceLayout::scene("UI", layout_ui()),
+            WorkspaceLayout::scene("Video", layout_video()),
             WorkspaceLayout::scene("Audio", layout_audio()),
             WorkspaceLayout::scene("Debug", layout_debug()),
             // ── Asset-mode layouts (hidden, auto-activated when an asset
@@ -423,6 +424,32 @@ fn layout_particles_asset() -> DockTree {
         DockTree::leaf("particle_preview"),
         DockTree::leaf("particle_editor"),
         0.7,
+    )
+}
+
+/// Video: Premiere-style cinematics workspace.
+///
+/// Top row: Hierarchy | Viewport (preview) | Inspector
+/// Bottom row: Sequencer with Mixer + Assets tabbed alongside it.
+fn layout_video() -> DockTree {
+    DockTree::vertical(
+        // Top: hierarchy on the left, viewport (preview) center, inspector right.
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(
+                DockTree::leaf("viewport"),
+                DockTree::leaf("inspector"),
+                0.78,
+            ),
+            0.15,
+        ),
+        // Bottom: sequencer is the main work surface; mixer + assets tab in
+        // beside it so audio levels and clip sources are one click away.
+        DockTree::Leaf {
+            tabs: vec!["sequencer".into(), "mixer".into(), "assets".into()],
+            active_tab: 0,
+        },
+        0.55,
     )
 }
 

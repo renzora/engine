@@ -1,7 +1,62 @@
 #![allow(unused_imports)]
 
 use bevy::prelude::*;
-use renzora_app::{renzora_shared, init_app, add_default_rendering, add_engine_plugins};
+
+// ── App setup helpers ────────────────────────────────────────────────────
+//
+// Most setup lives in `renzora_runtime` (the shared meta-crate). The two
+// items below stay here because they are binary-level deployment decisions:
+// `add_default_rendering` swaps in a no-window plugin set for the dedicated
+// server, and `build_runtime_app` is the entry point WASM bindings call.
+
+pub fn init_app() -> App {
+    renzora_runtime::init_app()
+}
+
+pub fn add_engine_plugins(app: &mut App) {
+    renzora_runtime::add_engine_plugins(app);
+}
+
+pub fn add_default_rendering(app: &mut App) {
+    #[cfg(any(feature = "editor", not(feature = "server")))]
+    renzora_runtime::add_default_rendering(app);
+
+    #[cfg(all(feature = "server", not(feature = "editor")))]
+    {
+        app.add_plugins(
+            DefaultPlugins
+                .set(bevy::window::WindowPlugin {
+                    primary_window: None,
+                    exit_condition: bevy::window::ExitCondition::DontExit,
+                    ..default()
+                })
+        );
+    }
+}
+
+/// Build the full runtime app (used by WASM `start` and the dedicated server).
+pub fn build_runtime_app() -> App {
+    let mut app = init_app();
+    add_default_rendering(&mut app);
+    add_engine_plugins(&mut app);
+    app
+}
+
+/// Scan `<exe_dir>/plugins/` for dynamic plugins and load them. Called once
+/// at startup, before `app.run()`. The plugin loader filters by scope so an
+/// editor-scope plugin won't activate in a runtime build and vice versa.
+fn load_global_plugins(app: &mut App, is_editor: bool) {
+    let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+    else {
+        return;
+    };
+    let plugins = exe_dir.join("plugins");
+    if plugins.exists() {
+        dynamic_plugin_loader::load_plugins(app, &plugins, is_editor);
+    }
+}
 
 // ── WASM runtime ─────────────────────────────────────────────────────────
 
@@ -11,13 +66,13 @@ fn main() {}
 #[cfg(all(target_arch = "wasm32", feature = "runtime"))]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn set_rpak(data: &[u8]) {
-    renzora_shared::renzora_engine::vfs::set_wasm_rpak(data.to_vec());
+    renzora_runtime::renzora_engine::vfs::set_wasm_rpak(data.to_vec());
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "runtime"))]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn start() {
-    let mut app = renzora_app::build_runtime_app();
+    let mut app = build_runtime_app();
     app.run();
 }
 
@@ -25,97 +80,38 @@ pub fn start() {
 
 #[cfg(not(all(target_arch = "wasm32", feature = "runtime")))]
 fn main() {
-    renzora_shared::renzora_engine::crash::install_panic_hook();
+    renzora_runtime::renzora_engine::crash::install_panic_hook();
 
     // ── Editor ───────────────────────────────────────────────────────
+    //
+    // Single Bevy app with both splash and editor plugins. The splash UI
+    // runs while `SplashState::Splash`, transitions through `Loading`, and
+    // hands off to the editor UI on `SplashState::Editor`. No subprocess
+    // spawn, no IPC, no sentinel.
     #[cfg(feature = "editor")]
     {
-        let project_path = std::env::args()
-            .skip_while(|a| a != "--project")
-            .nth(1)
-            .map(std::path::PathBuf::from);
-
-        if let Some(ref p) = project_path {
-            log::info!("[ENGINE] --project arg: {:?}", p);
-        }
-
-        // No --project arg = show splash, pick project, restart with --project
-        if project_path.is_none() {
-            run_splash();
-            return;
-        }
-
-        // Project-wide plugin scan: any dylib anywhere in the project is picked
-        // up. Users can place a plugin alongside its assets (marketplace bundle
-        // pattern) or in a dedicated plugins/ folder — both work.
-        let plugins_dir = project_path.as_ref().cloned();
-
         let mut app = init_app();
         add_default_rendering(&mut app);
         add_engine_plugins(&mut app);
-        app.add_plugins(renzora_shared::renzora_engine::crash::CrashReportPlugin);
+        app.add_plugins(renzora_runtime::renzora_engine::crash::CrashReportPlugin);
+        renzora_runtime::add_editor_plugins(&mut app);
 
-        // Core editor infrastructure (must load before dynamic plugins)
-        app.add_plugins(renzora_shared::renzora_undo::UndoPlugin);
-        app.add_plugins(renzora_shared::renzora_splash::SplashPlugin);
-        app.add_plugins(renzora_shared::renzora_editor_framework::RenzoraEditorPlugin);
-        app.add_plugins(renzora_shared::renzora_grid::GridPlugin);
-        app.add_plugins(renzora_shared::renzora_keybindings::KeybindingsPlugin);
-        app.add_plugins(renzora_shared::renzora_viewport::ViewportPlugin);
-        app.add_plugins(renzora_shared::renzora_camera::CameraPlugin);
-        app.add_plugins(renzora_shared::renzora_gizmo::GizmoPlugin);
-        app.add_plugins(renzora_shared::renzora_scene::ScenePlugin);
-        app.add_plugins(renzora_shared::renzora_console::ConsolePlugin);
-
-        app.insert_resource(renzora_shared::renzora_splash::PendingProjectReopen);
-
-        if let Some(ref path) = project_path {
-            log::info!("[ENGINE] Opening project: {}", path.display());
-            let project_toml = path.join("project.toml");
-            match renzora_shared::renzora::open_project(&project_toml) {
+        // Optional `--project <path>` shortcut for dev workflows: skip the
+        // splash UI and jump straight into the project. Splash plugin sees
+        // `PendingProjectReopen` and immediately transitions to Loading.
+        if let Some(project_path) = parse_project_arg() {
+            log::info!("[ENGINE] --project arg: {}", project_path.display());
+            let project_toml = project_path.join("project.toml");
+            match renzora_runtime::renzora::open_project(&project_toml) {
                 Ok(project) => {
-                    log::info!("[ENGINE] Project opened successfully");
                     app.insert_resource(project);
+                    app.insert_resource(renzora_runtime::renzora_splash::PendingProjectReopen);
                 }
-                Err(e) => {
-                    log::error!("[ENGINE] Failed to open project: {}", e);
-                }
+                Err(e) => log::error!("[ENGINE] Failed to open project: {}", e),
             }
         }
 
-        // Load core plugins (next to the exe)
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-        if let Some(ref dir) = exe_dir {
-            let core_plugins = dir.join("plugins");
-            if core_plugins.exists() {
-                dynamic_plugin_loader::load_plugins(&mut app, &core_plugins, true);
-            }
-        }
-
-        // Load project plugins (recursive — dylibs can live anywhere in the
-        // game project, alongside their prefabs/assets).
-        if let Some(ref dir) = plugins_dir {
-            dynamic_plugin_loader::load_plugins_recursive(&mut app, dir, true);
-        }
-
-        // Keep the editor window hidden until our own Loading phase finishes
-        // — the parent splash process has its own loader overlay on top, and
-        // we don't want a half-initialized editor window peeking out behind
-        // it. When we reach Editor state we make the window visible and
-        // maximize it onto the primary monitor (fixes multi-monitor issues
-        // where a default-positioned window could span two screens).
-        app.add_systems(bevy::app::Startup, hide_editor_window_until_ready);
-        app.add_systems(
-            bevy::state::state::OnEnter(renzora_shared::renzora_splash::SplashState::Editor),
-            (
-                print_editor_ready_sentinel,
-                reveal_editor_window_maximized,
-            ),
-        );
-        app.add_systems(bevy::app::Update, tick_editor_focus_fix);
-
+        load_global_plugins(&mut app, true);
         app.run();
     }
 
@@ -125,187 +121,42 @@ fn main() {
         let mut app = init_app();
         add_default_rendering(&mut app);
         add_engine_plugins(&mut app);
-        app.add_plugins(renzora_shared::renzora_engine::crash::CrashReportPlugin);
-
-        // Load plugins from plugins/ next to the exe
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-        if let Some(ref dir) = exe_dir {
-            let plugins = dir.join("plugins");
-            if plugins.exists() {
-                dynamic_plugin_loader::load_plugins(&mut app, &plugins, false);
-            }
-        }
-
+        app.add_plugins(renzora_runtime::renzora_engine::crash::CrashReportPlugin);
+        load_global_plugins(&mut app, false);
         app.run();
     }
 
     // ── Server ───────────────────────────────────────────────────────
     #[cfg(feature = "server")]
     {
-        let mut app = renzora_app::build_runtime_app();
-        app.add_plugins(renzora_shared::renzora_engine::crash::CrashReportPlugin);
+        let mut app = build_runtime_app();
+        app.add_plugins(renzora_runtime::renzora_engine::crash::CrashReportPlugin);
 
         let net_config = load_server_config();
         info!(
             "[server] Starting dedicated server on {}:{}",
             net_config.server_addr, net_config.port
         );
-        app.add_plugins(renzora_shared::renzora_network::NetworkServerPlugin::new(net_config));
+        app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(net_config));
+        load_global_plugins(&mut app, false);
         app.run();
     }
 }
 
-// ── Editor-ready sentinel + window lifecycle ────────────────────────────
-
-/// Printed to stdout once the editor's own `SplashState::Loading` phase has
-/// completed and we've transitioned to `Editor`. The parent splash process
-/// reads this line from the subprocess stdout pipe and hands its Child
-/// handle to a waiter thread (see `launcher::watch_for_ready`).
-#[cfg(feature = "editor")]
-fn print_editor_ready_sentinel() {
-    use std::io::Write;
-    println!("{}", renzora_shared::renzora_splash::launcher::EDITOR_READY_SENTINEL);
-    let _ = std::io::stdout().flush();
-}
-
-/// Runs at `Startup` in the editor subprocess. The editor window was just
-/// created by `DefaultPlugins` and would otherwise appear behind the splash
-/// at full size — we hide it so the only thing on screen during the load is
-/// the compact splash loader overlay.
-#[cfg(feature = "editor")]
-fn hide_editor_window_until_ready(
-    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
-) {
-    for mut window in windows.iter_mut() {
-        window.visible = false;
-    }
-}
-
-/// Runs on `OnEnter(Editor)`. Shows the window, re-enables resizing, and
-/// centers+maximizes it on the primary monitor. `set_maximized` fixes the
-/// multi-monitor bug where a default-positioned window could span two
-/// monitors — maximizing forces the window to snap to a single monitor.
-#[cfg(feature = "editor")]
-fn reveal_editor_window_maximized(
-    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
-    mut commands: Commands,
-) {
-    use bevy::window::{MonitorSelection, WindowPosition};
-    for mut window in windows.iter_mut() {
-        window.position = WindowPosition::Centered(MonitorSelection::Primary);
-        window.resizable = true;
-        window.visible = true;
-        window.focused = true;
-        window.set_maximized(true);
-    }
-    // If the splash lost focus during loading (user clicked elsewhere
-    // while waiting), Windows hands this subprocess's new window a
-    // half-activated state on splash close — input events chime until
-    // something cleanly reactivates it. `focused = true` above can be
-    // blocked by Windows' foreground-lock; a minimize→restore cycle is
-    // always accepted as a real activation, so schedule that for a few
-    // frames out.
-    commands.insert_resource(EditorFocusFix { frames: 0 });
-}
-
-#[cfg(feature = "editor")]
-#[derive(bevy::prelude::Resource)]
-struct EditorFocusFix {
-    frames: u8,
-}
-
-/// Staggered minimize→restore on frames 5 and 10 after reveal. Doing both
-/// in the same frame tends to coalesce in winit on Windows.
-#[cfg(feature = "editor")]
-fn tick_editor_focus_fix(
-    fix: Option<bevy::prelude::ResMut<EditorFocusFix>>,
-    mut windows: Query<&mut bevy::prelude::Window, With<bevy::window::PrimaryWindow>>,
-    mut commands: Commands,
-) {
-    let Some(mut fix) = fix else { return };
-    fix.frames = fix.frames.saturating_add(1);
-
-    match fix.frames {
-        5 => {
-            for mut window in windows.iter_mut() {
-                window.set_minimized(true);
-            }
-        }
-        10 => {
-            for mut window in windows.iter_mut() {
-                window.set_minimized(false);
-                window.set_maximized(true);
-                window.focused = true;
-            }
-            commands.remove_resource::<EditorFocusFix>();
-        }
-        _ => {}
-    }
-}
-
-// ── Splash screen ────────────────────────────────────────────────────────
-
-#[cfg(feature = "editor")]
-fn run_splash() {
-    use bevy::window::{MonitorSelection, WindowPlugin, WindowPosition};
-
-    let mut app = App::new();
-
-    app.add_plugins(
-        DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(bevy::window::Window {
-                title: "Renzora".into(),
-                resolution: bevy::window::WindowResolution::new(1280, 720),
-                decorations: false,
-                resizable: true,
-                // Pin the splash to the primary monitor so it starts centered
-                // there rather than wherever winit defaults (which on some
-                // multi-monitor setups can place it spanning two screens).
-                position: WindowPosition::Centered(MonitorSelection::Primary),
-                ..default()
-            }),
-            ..default()
-        }),
-    );
-    app.add_plugins(renzora_shared::renzora_splash::SplashPlugin);
-    // Launches the editor subprocess when the user picks a project and streams
-    // its stdout/stderr into the splash overlay. Only registered in this
-    // outer splash binary — never in the editor subprocess itself.
-    let (launcher, pending_child) =
-        renzora_shared::renzora_splash::launcher::SplashLauncherPlugin::new();
-    app.add_plugins(launcher);
-    app.add_systems(bevy::app::Startup, |mut commands: Commands| {
-        commands.spawn(Camera2d);
-    });
-
-    app.run();
-
-    // Two ways we get here:
-    //  - Sentinel path: the waiter thread took the Child, slot is empty.
-    //    Park main so the process stays up; the waiter will exit it when
-    //    the editor dies.
-    //  - User force-closed the splash before sentinel: Child is still in
-    //    the slot. Kill the orphan and return normally.
-    let orphan = pending_child.0.lock().ok().and_then(|mut g| g.take());
-    if let Some(mut child) = orphan {
-        let _ = child.kill();
-        let _ = child.wait();
-        return;
-    }
-
-    loop {
-        std::thread::park();
-    }
+#[cfg(all(feature = "editor", not(target_arch = "wasm32")))]
+fn parse_project_arg() -> Option<std::path::PathBuf> {
+    std::env::args()
+        .skip_while(|a| a != "--project")
+        .nth(1)
+        .map(std::path::PathBuf::from)
 }
 
 // ── Server config ────────────────────────────────────────────────────────
 
 #[cfg(feature = "server")]
-fn load_server_config() -> renzora_shared::renzora_network::NetworkConfig {
-    use renzora_shared::renzora_network;
-    use renzora_shared::renzora;
+fn load_server_config() -> renzora_runtime::renzora_network::NetworkConfig {
+    use renzora_runtime::renzora_network;
+    use renzora_runtime::renzora;
 
     let mut config = renzora_network::NetworkConfig::default();
     let args: Vec<String> = std::env::args().collect();

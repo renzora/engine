@@ -11,7 +11,7 @@ use egui_phosphor::regular::*;
 use std::sync::atomic::Ordering;
 
 use renzora::core::PlayModeState;
-use renzora_editor_framework::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
+use renzora_editor::{EditorCommands, ToolEntry, ToolSection, ToolbarRegistry};
 
 use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
 

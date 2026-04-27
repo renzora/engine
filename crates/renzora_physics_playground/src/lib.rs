@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_physics::{
     CollisionShapeData, PhysicsBodyData, PhysicsBodyType, PhysicsPropertiesState,
 };
@@ -2721,7 +2721,7 @@ impl Plugin for PhysicsPanelPlugin {
         let arc = bridge.pending.clone();
         app.insert_resource(bridge);
 
-        use renzora_editor_framework::SplashState;
+        use renzora_editor::SplashState;
         app.add_systems(
             Update,
             (
@@ -2746,7 +2746,7 @@ impl Plugin for PhysicsPanelPlugin {
 }
 
 fn register_physics_starter(app: &mut App) {
-    use renzora_editor_framework::SceneStarter;
+    use renzora_editor::SceneStarter;
 
     app.register_scene_starter(SceneStarter {
         id: "physics_arena",
@@ -2837,4 +2837,3 @@ fn register_physics_starter(app: &mut App) {
     });
 }
 
-renzora::add!(PhysicsPanelPlugin, Editor);

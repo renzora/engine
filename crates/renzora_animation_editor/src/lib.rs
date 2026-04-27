@@ -13,7 +13,7 @@ pub mod studio_preview;
 mod studio_preview_panel;
 
 use bevy::prelude::*;
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 use std::sync::{Arc, Mutex};
 
@@ -223,7 +223,7 @@ fn cache_clip_duration(
 /// Sync EditorSelection into AnimationEditorState so the animation panels
 /// automatically follow the entity selected in the hierarchy/inspector.
 fn sync_selection(
-    selection: Res<renzora_editor_framework::EditorSelection>,
+    selection: Res<renzora_editor::EditorSelection>,
     mut editor_state: ResMut<AnimationEditorState>,
     animators: Query<&renzora_animation::AnimatorComponent>,
 ) {
@@ -279,7 +279,7 @@ impl Plugin for AnimationEditorPlugin {
                 cache_clip_duration,
                 studio_preview::sync_studio_preview_activation,
             )
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+                .run_if(in_state(renzora_editor::SplashState::Editor)),
         );
 
         // Heavy studio-preview work: only run when the Studio Preview panel is
@@ -300,7 +300,7 @@ impl Plugin for AnimationEditorPlugin {
                 studio_preview::sync_floor_visibility,
             )
                 .chain()
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(in_state(renzora_editor::SplashState::Editor))
                 .run_if(studio_preview::studio_preview_panel_mounted),
         );
 
@@ -312,4 +312,3 @@ impl Plugin for AnimationEditorPlugin {
     }
 }
 
-renzora::add!(AnimationEditorPlugin, Editor);

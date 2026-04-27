@@ -12,7 +12,7 @@
 //! [dependencies]
 //! bevy = { workspace = true }
 //! renzora = { path = "..." }                 # types + events
-//! renzora_editor_framework = { path = "..." } # editor panels, inspector
+//! renzora_editor = { path = "..." } # editor panels, inspector
 //! renzora_postprocess = { path = "..." }      # post-process effect derive
 //! ```
 
@@ -35,3 +35,25 @@ pub use core::*;
 mod plugin_meta;
 pub use plugin_meta::PluginScope;
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
+
+// ── App lifecycle state ──────────────────────────────────────────────────
+//
+// Coordination contract used by both the splash screen UI and the editor
+// framework. Lives in the SDK so neither side has to depend on the other's
+// implementation crate.
+
+/// Top-level app phase. The splash UI runs while `Splash`, a loading
+/// overlay during `Loading`, and the full editor while `Editor`.
+#[derive(bevy::prelude::States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SplashState {
+    #[default]
+    Splash,
+    Loading,
+    Editor,
+}
+
+/// Marker request: open a different project. Inserted by the editor's File
+/// menu; consumed by the splash plugin which shows the file dialog,
+/// validates, updates recent projects, and transitions state.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestOpenProject;

@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 use renzora_auth::marketplace::{AssetComment, AssetDetail, AssetRating, CommentsResponse};
 use renzora_auth::session::AuthSession;
-use renzora_editor_framework::EditorCommands;
+use renzora_editor::EditorCommands;
 
 
 use crate::images::ImageCache;

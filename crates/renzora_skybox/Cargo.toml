@@ -5,13 +5,13 @@ edition = "2021"
 
 [features]
 default = []
-editor = ["dep:renzora_editor_framework", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_ui", "dep:renzora_theme", "dep:rfd"]
+editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_ui", "dep:renzora_theme", "dep:rfd"]
 
 [dependencies]
 bevy = { workspace = true }
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_ui = { path = "../renzora_ui", optional = true }
 serde = { version = "1", features = ["derive"] }

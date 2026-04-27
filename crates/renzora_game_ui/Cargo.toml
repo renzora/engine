@@ -7,7 +7,7 @@ edition = "2021"
 editor = [
     "dep:bevy_egui",
     "dep:egui-phosphor",
-    "dep:renzora_editor_framework",
+    "dep:renzora_editor",
     "dep:renzora_theme",
     "dep:image",
 ]
@@ -20,6 +20,6 @@ renzora = { path = "../renzora", default-features = false }
 # Editor-only dependencies
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
 image = { version = "0.25", default-features = false, optional = true }

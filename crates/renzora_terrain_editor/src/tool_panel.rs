@@ -13,9 +13,9 @@ use egui_phosphor::regular::*;
 use renzora_terrain::data::*;
 use renzora_terrain::paint::*;
 use renzora_theme::Theme;
-use renzora_editor_framework::EditorCommands;
-use renzora_editor_framework::{collapsible_section, inline_property};
-use renzora_editor_framework::{asset_drop_target, AssetDragPayload};
+use renzora_editor::EditorCommands;
+use renzora_editor::{collapsible_section, inline_property};
+use renzora_editor::{asset_drop_target, AssetDragPayload};
 use renzora::core::CurrentProject;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType};

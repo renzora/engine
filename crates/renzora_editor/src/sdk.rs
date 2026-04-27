@@ -8,7 +8,7 @@
 //! The typical use is as Bevy `run_if` conditions:
 //!
 //! ```ignore
-//! use renzora_editor_framework::sdk::conditions::*;
+//! use renzora_editor::sdk::conditions::*;
 //! use renzora::core::viewport_types::ViewportMode;
 //!
 //! app.add_systems(Update, my_edit_system.run_if(in_mode(ViewportMode::Edit)));

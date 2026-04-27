@@ -1296,7 +1296,7 @@ fn render_toolbar(
     scripts_dir: &Option<PathBuf>,
     active_idx: usize,
 ) {
-    use renzora_editor_framework::MonoFont;
+    use renzora_editor::MonoFont;
 
     let muted = theme.text.muted.to_color32();
     let disabled = theme.text.disabled.to_color32();

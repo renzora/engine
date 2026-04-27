@@ -8,7 +8,7 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora::core::CurrentProject;
 use renzora_camera::OrbitCameraState;
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_engine::scene_io;
 use renzora_theme::ThemeManager;
 

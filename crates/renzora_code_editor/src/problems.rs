@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, CursorIcon, FontFamily, FontId, RichText, Sense, Vec2};
 use egui_phosphor::regular::{CHECK_CIRCLE, WARNING};
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::state::CodeEditorState;

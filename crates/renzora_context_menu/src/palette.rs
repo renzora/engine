@@ -7,7 +7,7 @@ use std::sync::{Mutex, RwLock};
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText};
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     EditorPanel, EditorSelection, InspectorRegistry, PanelLocation, SpawnRegistry,
 };
 use renzora_theme::ThemeManager;
@@ -138,7 +138,7 @@ impl PalettePanel {
             return;
         };
 
-        let mut groups: Vec<(&str, Vec<&renzora_editor_framework::EntityPreset>)> = Vec::new();
+        let mut groups: Vec<(&str, Vec<&renzora_editor::EntityPreset>)> = Vec::new();
         for preset in registry.iter() {
             let matches = q.is_empty()
                 || preset.display_name.to_lowercase().contains(q)
@@ -216,7 +216,7 @@ impl PalettePanel {
         let selection = world.get_resource::<EditorSelection>();
         let targets = selection.map(|s| s.get_all()).unwrap_or_default();
 
-        let mut groups: Vec<(&str, Vec<&renzora_editor_framework::InspectorEntry>)> = Vec::new();
+        let mut groups: Vec<(&str, Vec<&renzora_editor::InspectorEntry>)> = Vec::new();
         for entry in registry.iter() {
             if entry.add_fn.is_none() { continue; }
             // Hide if ALL selected entities already have it

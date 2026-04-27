@@ -6,7 +6,7 @@ mod properties_panel;
 
 use bevy::prelude::*;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 /// Tracks what the blueprint editor is currently focused on. Two modes:
 ///
@@ -44,4 +44,3 @@ impl Plugin for BlueprintEditorPlugin {
     }
 }
 
-renzora::add!(BlueprintEditorPlugin, Editor);

@@ -5,7 +5,7 @@ use bevy_egui::egui;
 use bevy_egui::EguiUserTextures;
 use egui_phosphor::regular::EYE;
 
-use renzora_editor_framework::EditorPanel;
+use renzora_editor::EditorPanel;
 use renzora_theme::ThemeManager;
 
 use crate::preview::ParticlePreviewImage;

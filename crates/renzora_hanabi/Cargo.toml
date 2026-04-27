@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:renzora_editor_framework", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor"]
+editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -15,7 +15,7 @@ serde_json = "1"
 ron = "0.8"
 
 # Editor-only deps
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
 bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }

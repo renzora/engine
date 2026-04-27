@@ -5,7 +5,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, CursorIcon, Vec2};
 use egui_phosphor::regular;
-use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::components::{UiCanvas, UiWidgetType};

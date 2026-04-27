@@ -410,7 +410,7 @@ const SERVER_STRIP_EXACT: &[&str] = &[
 /// the runtime binary can deserialize scenes without editor types.
 const EDITOR_ONLY_PREFIXES: &[&str] = &[
     "renzora_camera::",
-    "renzora_editor_framework::",
+    "renzora_editor::",
     "renzora_gizmo::",
     "renzora_grid::",
     "renzora_hierarchy::",

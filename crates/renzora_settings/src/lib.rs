@@ -18,7 +18,7 @@ use egui_phosphor::regular::{
     WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER, INFO, PLUS, TRASH, LIST_PLUS, X,
 };
 
-use renzora_editor_framework::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
+use renzora_editor::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 use renzora_keybindings::{bindable_keys, EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
@@ -36,7 +36,7 @@ impl Plugin for SettingsPlugin {
         app.add_systems(
             EguiPrimaryContextPass,
             settings_overlay_system
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+                .run_if(in_state(renzora_editor::SplashState::Editor)),
         );
     }
 }
@@ -86,7 +86,7 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
     // Snapshot plugin shortcut metadata so the Shortcuts tab can display
     // plugin-registered shortcuts alongside built-in ones.
     let plugin_shortcuts: Vec<PluginShortcutRow> = world
-        .get_resource::<renzora_editor_framework::ShortcutRegistry>()
+        .get_resource::<renzora_editor::ShortcutRegistry>()
         .map(|reg| {
             reg.entries()
                 .iter()
@@ -400,8 +400,8 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
                 Err(e) => warn!("[settings] Failed to clear thumbnail cache: {}", e),
             }
         }
-        if let Some(mut registry) = world.get_resource_mut::<renzora_editor_framework::MaterialThumbnailRegistry>() {
-            *registry = renzora_editor_framework::MaterialThumbnailRegistry::default();
+        if let Some(mut registry) = world.get_resource_mut::<renzora_editor::MaterialThumbnailRegistry>() {
+            *registry = renzora_editor::MaterialThumbnailRegistry::default();
         }
     }
 }
@@ -1652,4 +1652,3 @@ fn render_plugins_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &
     ui.label(RichText::new("Restart the editor to load plugins from a new directory.").size(11.0).color(text_muted));
 }
 
-renzora::add!(SettingsPlugin, Editor);

@@ -13,9 +13,9 @@ use material::{PoolWaterMaterial, PoolWaterUniforms};
 use simulation::WaterSim;
 
 #[cfg(feature = "editor")]
-use renzora::editor as renzora_editor_framework;
+use renzora::editor as renzora_editor;
 #[cfg(feature = "editor")]
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 // ── Components ────────────────────────────────────────────────────────────────
 
@@ -302,8 +302,8 @@ fn hash_f32(x: f32) -> f32 {
 // ── Inspector ─────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "editor")]
-fn pool_water_inspector_entry() -> renzora_editor_framework::InspectorEntry {
-    use renzora_editor_framework::{InspectorEntry, FieldDef, FieldType, FieldValue};
+fn pool_water_inspector_entry() -> renzora_editor::InspectorEntry {
+    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
 
     InspectorEntry {
         type_id: "pool_water",

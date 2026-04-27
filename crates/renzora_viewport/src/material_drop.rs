@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora::core::{CurrentProject, EditorCamera};
-use renzora_editor_framework::EditorCommands;
+use renzora_editor::EditorCommands;
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
 use renzora_ui::asset_drag::AssetDragPayload;

@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use serde;
 use renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora::editor as renzora_editor_framework;
+use renzora::editor as renzora_editor;
 #[cfg(feature = "editor")]
-use renzora_editor_framework::AppEditorExt;
+use renzora_editor::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "grayscale.wgsl", name = "Grayscale", icon = "DROP_HALF_BOTTOM")]
 pub struct GrayscaleSettings {

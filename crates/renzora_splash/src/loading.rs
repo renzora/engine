@@ -8,8 +8,10 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
-use crate::launcher::{LoadPhase, LoadProgress};
 use crate::SplashState;
+
+/// Centered letterbox dimensions for the loading overlay (width, height).
+const LETTERBOX_SIZE: (f32, f32) = (600.0, 180.0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct LoadingTaskHandle(u32);
@@ -104,7 +106,7 @@ impl LoadingTasks {
 
 pub(crate) fn loading_ui_system(
     mut contexts: EguiContexts,
-    progress: Option<Res<LoadProgress>>,
+    tasks: Res<LoadingTasks>,
     time: Res<Time>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -116,72 +118,107 @@ pub(crate) fn loading_ui_system(
     // animations need a new frame even when no user input arrives.
     ctx.request_repaint();
 
-    let snapshot = progress.map(|p| p.snapshot()).unwrap_or_default();
-    let phase_label = snapshot.phase.label();
-    let fraction = snapshot.fraction();
+    // Compute aggregate progress from registered loading tasks. Each task
+    // contributes its `completed/total` to the bar.
+    let (total_completed, total_total): (u64, u64) = tasks
+        .tasks
+        .iter()
+        .fold((0, 0), |(sc, st), (_, t)| {
+            (sc + t.completed as u64, st + t.total as u64)
+        });
+    let fraction = if total_total == 0 {
+        1.0
+    } else {
+        (total_completed as f32 / total_total as f32).clamp(0.0, 1.0)
+    };
     let percent = (fraction * 100.0).round() as u32;
 
-    let current = if snapshot.current.is_empty() {
-        String::new()
-    } else {
-        match snapshot.phase {
-            LoadPhase::Plugins => format!("Loading plugin: {}", snapshot.current),
-            LoadPhase::Thumbnails => format!("Rendering: {}", snapshot.current),
-            _ => snapshot.current.clone(),
-        }
-    };
+    let phase_label = "Loading";
+    let current = tasks
+        .tasks
+        .iter()
+        .find(|(_, t)| !t.is_done())
+        .map(|(_, t)| match &t.detail {
+            Some(d) => format!("{} — {}", t.label, d),
+            None => t.label.clone(),
+        })
+        .unwrap_or_default();
 
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(10, 10, 14)))
         .show(ctx, |ui| {
-            let rect = ui.max_rect();
+            let full_rect = ui.max_rect();
             let t = time.elapsed_secs_f64();
 
-            draw_neon_grid(ui.painter(), rect, t);
+            // Centered letterbox — the loading UI fits in a compact strip
+            // instead of swallowing the whole window. Clamp so it never
+            // exceeds the available viewport on tiny displays.
+            let target = egui::vec2(
+                LETTERBOX_SIZE.0.min(full_rect.width() - 16.0),
+                LETTERBOX_SIZE.1.min(full_rect.height() - 16.0),
+            );
+            let letterbox = egui::Rect::from_center_size(full_rect.center(), target);
 
-            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                ui.add_space(22.0);
+            // Translucent fill so the strip lifts off the surrounding window
+            // — slightly bluer than the backdrop and semi-opaque so the
+            // rosette underneath stays visible through it.
+            ui.painter().rect_filled(
+                letterbox,
+                egui::CornerRadius::same(6),
+                egui::Color32::from_rgba_unmultiplied(20, 22, 32, 215),
+            );
+
+            // Spirograph rosette painted inside the letterbox only.
+            draw_neon_grid(ui.painter(), letterbox, t);
+
+            // Soft outline framing the strip — drawn last so it stays clean
+            // over the rosette's edges.
+            ui.painter().rect_stroke(
+                letterbox,
+                egui::CornerRadius::same(6),
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(48, 50, 72)),
+                egui::StrokeKind::Inside,
+            );
+
+            ui.scope_builder(egui::UiBuilder::new().max_rect(letterbox), |ui| {
+                ui.add_space(18.0);
 
                 ui.horizontal(|ui| {
-                    ui.add_space(22.0);
+                    ui.add_space(18.0);
                     ui.vertical(|ui| {
                         ui.label(
                             egui::RichText::new(phase_label)
-                                .size(20.0)
+                                .size(18.0)
                                 .strong()
                                 .color(egui::Color32::from_rgb(240, 240, 248)),
                         );
-                        ui.add_space(3.0);
+                        ui.add_space(2.0);
                         if !current.is_empty() {
                             ui.label(
                                 egui::RichText::new(&current)
-                                    .size(14.0)
+                                    .size(12.0)
                                     .color(egui::Color32::from_rgb(170, 175, 190)),
                             );
                         } else {
                             ui.label(
                                 egui::RichText::new(" ")
-                                    .size(14.0)
+                                    .size(12.0)
                                     .color(egui::Color32::TRANSPARENT),
                             );
                         }
                     });
                 });
 
-                ui.add_space(18.0);
+                ui.add_space(14.0);
 
-                // Progress bar row: bar + percentage.
+                // Progress bar row: bar + percentage, anchored to the letterbox.
                 let bar_rect = {
-                    let h = 14.0;
-                    let available = ui.available_width();
+                    let h = 12.0;
                     let margin = 18.0;
-                    let pct_width = 48.0;
+                    let pct_width = 44.0;
                     let spacing = 10.0;
-                    let bar_width = available - margin * 2.0 - pct_width - spacing;
-                    let origin = egui::pos2(
-                        ui.min_rect().left() + margin,
-                        ui.cursor().top(),
-                    );
+                    let bar_width = letterbox.width() - margin * 2.0 - pct_width - spacing;
+                    let origin = egui::pos2(letterbox.left() + margin, ui.cursor().top());
                     egui::Rect::from_min_size(origin, egui::vec2(bar_width, h))
                 };
 
@@ -190,18 +227,15 @@ pub(crate) fn loading_ui_system(
                 // Percentage label aligned right of the bar.
                 let pct_rect = egui::Rect::from_min_size(
                     egui::pos2(bar_rect.right() + 10.0, bar_rect.top() - 2.0),
-                    egui::vec2(48.0, 18.0),
+                    egui::vec2(44.0, 16.0),
                 );
                 ui.painter().text(
                     pct_rect.left_center(),
                     egui::Align2::LEFT_CENTER,
                     format!("{}%", percent),
-                    egui::FontId::monospace(15.0),
+                    egui::FontId::monospace(14.0),
                     egui::Color32::from_rgb(220, 225, 240),
                 );
-
-                // Advance cursor past the bar so any follow-up layout (tasks below) stacks cleanly.
-                ui.allocate_space(egui::vec2(ui.available_width(), bar_rect.height() + 8.0));
             });
         });
 }

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Pos2, Rect};
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
-use renzora_editor_framework::{DockTree, DockingState, SplashState};
+use renzora_editor::{DockTree, DockingState, SplashState};
 use renzora_theme::ThemeManager;
 
 use overlay::TutorialAction;
@@ -34,7 +34,7 @@ impl Plugin for TutorialPlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 tutorial_overlay_system
-                    .after(renzora_editor_framework::editor_ui_system)
+                    .after(renzora_editor::editor_ui_system)
                     .run_if(in_state(SplashState::Editor))
                     .run_if(|state: Res<TutorialState>| state.active),
             );
@@ -182,7 +182,6 @@ fn tutorial_overlay_system(world: &mut World) {
     world.insert_resource(state);
 }
 
-renzora::add!(TutorialPlugin, Editor);
 
 // ── Panel rect computation ─────────────────────────────────────────────────────
 
@@ -223,14 +222,14 @@ fn walk_tree(tree: &DockTree, rect: Rect, out: &mut HashMap<String, Rect>) {
             second,
         } => {
             let (r1, r2) = match direction {
-                renzora_editor_framework::SplitDirection::Horizontal => {
+                renzora_editor::SplitDirection::Horizontal => {
                     let mid = rect.min.x + rect.width() * ratio;
                     (
                         Rect::from_min_max(rect.min, Pos2::new(mid - RESIZE_HANDLE / 2.0, rect.max.y)),
                         Rect::from_min_max(Pos2::new(mid + RESIZE_HANDLE / 2.0, rect.min.y), rect.max),
                     )
                 }
-                renzora_editor_framework::SplitDirection::Vertical => {
+                renzora_editor::SplitDirection::Vertical => {
                     let mid = rect.min.y + rect.height() * ratio;
                     (
                         Rect::from_min_max(rect.min, Pos2::new(rect.max.x, mid - RESIZE_HANDLE / 2.0)),

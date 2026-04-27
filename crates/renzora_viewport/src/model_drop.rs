@@ -18,7 +18,7 @@ use bevy_egui::egui;
 
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
-use renzora_editor_framework::{EditorCommands, EditorSelection};
+use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::glb_compat;

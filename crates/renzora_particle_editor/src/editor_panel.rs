@@ -10,9 +10,9 @@ use egui_phosphor::regular::{
     PROHIBIT, ATOM, SPIRAL, PLANET, GAUGE,
 };
 
-use renzora_editor_framework::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{collapsible_section, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
-use renzora_editor_framework::{DocTabKind, EditorContext};
+use renzora_editor::{DocTabKind, EditorContext};
 use renzora::core::CurrentProject;
 
 use renzora_hanabi::{
@@ -105,7 +105,7 @@ impl EditorPanel for ParticleEditorPanel {
             let label = if is_advanced { "Switch to Simple" } else { "Switch to Advanced" };
             if ui.small_button(label).clicked() {
                 cmds.push(move |world: &mut World| {
-                    use renzora_editor_framework::dock_tree::DockingState;
+                    use renzora_editor::dock_tree::DockingState;
                     let mut state = world.resource_mut::<ParticleEditorState>();
                     if is_advanced {
                         state.editor_mode = EditorMode::Simple;
@@ -122,9 +122,9 @@ impl EditorPanel for ParticleEditorPanel {
                     // Swap layout
                     if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
                         docking.tree = if is_advanced {
-                            renzora_editor_framework::layouts::layout_particles()
+                            renzora_editor::layouts::layout_particles()
                         } else {
-                            renzora_editor_framework::layouts::layout_particles_advanced()
+                            renzora_editor::layouts::layout_particles_advanced()
                         };
                     }
                 });

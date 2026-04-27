@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:renzora_editor_framework"]
+editor = ["dep:renzora_editor"]
 
 [dependencies]
 egui-phosphor = { workspace = true }
@@ -13,5 +13,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
 renzora = { path = "../renzora", default-features = false }
-renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_physics = { path = "../renzora_physics" }

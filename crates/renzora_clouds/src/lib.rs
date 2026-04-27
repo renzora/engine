@@ -7,7 +7,7 @@ use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::CLOUD_SUN;
 #[cfg(feature = "editor")]
-use renzora_editor_framework::{
+use renzora_editor::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 use serde::{Deserialize, Serialize};

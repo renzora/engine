@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use {
     bevy_egui::egui,
     egui_phosphor::regular::SUN_HORIZON,
-    renzora_editor_framework::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
     renzora_theme::Theme,
 };
 

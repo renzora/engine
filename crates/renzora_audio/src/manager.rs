@@ -22,7 +22,22 @@ use kira::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::microphone::MicrophoneSoundHandle;
 use crate::mixer::MixerState;
+
+/// One opened mic capture stream bound to a mixer bus. Stored on the
+/// NonSend `KiraAudioManager` because `cpal::Stream` is `!Send`.
+pub struct ActiveInputStream {
+    /// Name of the cpal input device this stream is reading from. Used to
+    /// detect when the user picks a different device and we need to tear
+    /// the stream down + reopen.
+    pub device_name: String,
+    /// Holds the cpal stream alive. Dropping it stops capture.
+    pub stream: cpal::Stream,
+    /// Handle to the Kira `Sound` consuming the stream's ringbuffer.
+    /// Dropping it signals the sound to finish so Kira can release it.
+    pub sound: MicrophoneSoundHandle,
+}
 
 /// Spatial audio distance rolloff model.
 #[derive(Clone, Debug, Default, PartialEq, Reflect, serde::Serialize, serde::Deserialize)]
@@ -97,6 +112,11 @@ pub struct KiraAudioManager {
     /// Per-entity sub-tracks with send routing (created when reverb_send/delay_send > 0)
     pub emitter_send_tracks: HashMap<Entity, TrackHandle>,
 
+    /// Live mic capture streams keyed by bus name (built-ins use "Master" /
+    /// "Sfx" / "Music" / "Ambient"; custom buses use their display name).
+    /// One entry per active input device binding.
+    pub input_streams: HashMap<String, ActiveInputStream>,
+
     /// Global master volume (0.0-1.0, linear amplitude)
     pub master_volume: f64,
 
@@ -158,6 +178,7 @@ impl KiraAudioManager {
             reverb_send,
             delay_send,
             emitter_send_tracks: HashMap::new(),
+            input_streams: HashMap::new(),
             master_volume: 1.0,
             project_path: None,
         }

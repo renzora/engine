@@ -26,7 +26,7 @@ use egui_phosphor::regular;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora_editor_framework::{
+use renzora_editor::{
     ActiveTool, DockingState, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
 };
@@ -107,12 +107,11 @@ impl Plugin for ContextMenuPlugin {
                 render_context_menu.run_if(in_state(SplashState::Editor)),
             );
 
-        use renzora_editor_framework::AppEditorExt;
+        use renzora_editor::AppEditorExt;
         app.register_panel(palette::PalettePanel::new());
     }
 }
 
-renzora::add!(ContextMenuPlugin, Editor);
 
 /// Drain pending [`OpenAddComponentMenuRequest`] — set by hierarchy /
 /// inspector / any panel that wants to trigger the component picker.
@@ -683,7 +682,7 @@ fn render_add_component_menu(
     };
 
     let q = query.to_lowercase();
-    let mut groups: Vec<(&'static str, Vec<&renzora_editor_framework::InspectorEntry>)> = Vec::new();
+    let mut groups: Vec<(&'static str, Vec<&renzora_editor::InspectorEntry>)> = Vec::new();
     for entry in registry.iter() {
         if entry.add_fn.is_none() { continue; }
         if !targets.is_empty() && targets.iter().all(|e| (entry.has_fn)(world, *e)) {

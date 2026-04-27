@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, StrokeKind, Vec2};
 use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
-use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 
 use crate::images::ImageCache;
 use crate::install;

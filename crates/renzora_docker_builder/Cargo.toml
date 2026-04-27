@@ -11,7 +11,7 @@ bevy = { workspace = true }
 bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_editor = { path = "../renzora_editor" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
 

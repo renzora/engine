@@ -21,7 +21,7 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::egui::{self, Color32 as EColor, CursorIcon as ECursor};
 use renzora::core::EditorCamera;
 use renzora::core::viewport_types::ViewportState;
-use renzora_editor_framework::{
+use renzora_editor::{
     ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry,
     ToolEntry, ToolSection, ViewportOverlayRegistry,
 };
@@ -181,7 +181,6 @@ impl Plugin for MeshDrawPlugin {
     }
 }
 
-renzora::add!(MeshDrawPlugin, Editor);
 
 // ── Toolbar activation ─────────────────────────────────────────────────────
 

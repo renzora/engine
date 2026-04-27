@@ -109,7 +109,7 @@ impl Plugin for PhysicsPlugin {
             auto_fit::auto_fit_collision_shapes,
         ).chain());
 
-        // Listen for editor pause/unpause events (decoupled from renzora_editor_framework)
+        // Listen for editor pause/unpause events (decoupled from renzora_editor)
         app.add_observer(on_pause_physics)
            .add_observer(on_unpause_physics);
 

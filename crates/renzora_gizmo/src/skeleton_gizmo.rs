@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy::animation::AnimationTargetId;
 use bevy::asset::RenderAssetUsages;
 
-use renzora_editor_framework::{EditorSelection, HideInHierarchy};
+use renzora_editor::{EditorSelection, HideInHierarchy};
 
 use crate::GizmoMaterial;
 

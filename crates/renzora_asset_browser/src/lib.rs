@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
-use renzora_editor_framework::{AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
@@ -71,7 +71,7 @@ impl EditorPanel for AssetBrowserPanel {
 
         // Sync extension allow-list from the global filter resource each frame.
         let filter_now = world
-            .get_resource::<renzora_editor_framework::AssetBrowserExtensionFilter>()
+            .get_resource::<renzora_editor::AssetBrowserExtensionFilter>()
             .and_then(|r| r.0.clone());
         if state.extension_filter != filter_now {
             state.extension_filter = filter_now;
@@ -723,7 +723,7 @@ impl EditorPanel for AssetBrowserPanel {
         // Import button clicked — request import overlay
         if state.import_clicked {
             state.import_clicked = false;
-            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                 let target_dir = state.current_folder.as_ref().and_then(|folder| {
                     let project = world.get_resource::<renzora::core::CurrentProject>()?;
                     folder.strip_prefix(&project.path).ok().map(|rel| {
@@ -759,13 +759,13 @@ impl EditorPanel for AssetBrowserPanel {
 /// layout. All recognized kinds also spawn a document tab. Unknown file
 /// types fall through to the legacy code-editor "plain text" flow.
 fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
-    use renzora_editor_framework::DocTabKind;
+    use renzora_editor::DocTabKind;
 
     if let Some(kind) = asset_doc_kind(&path) {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             let p = path.clone();
             cmds.push(move |world: &mut bevy::prelude::World| {
-                renzora_editor_framework::open_asset_tab(world, &p, kind);
+                renzora_editor::open_asset_tab(world, &p, kind);
             });
         }
         return;
@@ -784,7 +784,7 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
     if is_editable {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             cmds.push(move |world: &mut bevy::prelude::World| {
-                renzora_editor_framework::open_asset_tab(world, &path, DocTabKind::Script);
+                renzora_editor::open_asset_tab(world, &path, DocTabKind::Script);
             });
         }
     }
@@ -792,8 +792,8 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
 
 /// Map a file path to the document tab kind it represents, or `None` if the
 /// file doesn't correspond to a known editor-opening asset type.
-fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::DocTabKind> {
-    use renzora_editor_framework::DocTabKind;
+fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> {
+    use renzora_editor::DocTabKind;
     let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
     if name.ends_with(".material_bp") || name.ends_with(".material") {
         return Some(DocTabKind::Material);
@@ -1112,4 +1112,3 @@ fn emit_asset_path_change(
     });
 }
 
-renzora::add!(AssetBrowserPlugin, Editor);

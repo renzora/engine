@@ -75,4 +75,3 @@ fn export_overlay_system(world: &mut World) {
     overlay::draw_export_overlay(world, &ctx);
 }
 
-renzora::add!(ExportPlugin, Editor);

@@ -12,7 +12,7 @@ use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
-use renzora_editor_framework::{
+use renzora_editor::{
     EditorLocked, EditorSelection, FieldValue, InspectorRegistry, SpawnRegistry,
 };
 
@@ -138,7 +138,7 @@ impl Plugin for UndoPlugin {
             // Ensure the hooks resource exists regardless of plugin order —
             // RenzoraEditorPlugin also initialises it, but we can't rely on
             // that running first.
-            .init_resource::<renzora_editor_framework::EditorActionHooks>()
+            .init_resource::<renzora_editor::EditorActionHooks>()
             .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain());
 
         // Register undo/redo as late-bound hooks so the editor framework's
@@ -146,7 +146,7 @@ impl Plugin for UndoPlugin {
         // dependency on this crate (which would create a cycle).
         let mut hooks = app
             .world_mut()
-            .resource_mut::<renzora_editor_framework::EditorActionHooks>();
+            .resource_mut::<renzora_editor::EditorActionHooks>();
         hooks.undo = Some(undo_once);
         hooks.redo = Some(redo_once);
         hooks.can_undo = Some(can_undo_active);
@@ -366,8 +366,8 @@ impl UndoCommand for SetHierarchyOrderCmd {
 fn apply_order(world: &mut World, entity: Entity, order: Option<u32>) {
     let Ok(mut e) = world.get_entity_mut(entity) else { return };
     match order {
-        Some(o) => { e.insert(renzora_editor_framework::HierarchyOrder(o)); }
-        None => { e.remove::<renzora_editor_framework::HierarchyOrder>(); }
+        Some(o) => { e.insert(renzora_editor::HierarchyOrder(o)); }
+        None => { e.remove::<renzora_editor::HierarchyOrder>(); }
     }
 }
 

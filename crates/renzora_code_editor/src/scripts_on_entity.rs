@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, CursorIcon, FontId, RichText, Sense, Stroke, Vec2};
 use egui_phosphor::regular::{CODE, EYE, EYE_SLASH, FILE_PLUS, TRASH};
-use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 

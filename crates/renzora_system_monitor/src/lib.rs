@@ -8,7 +8,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy_egui::egui;
 use egui_phosphor::regular;
 
-use renzora_editor_framework::{AppEditorExt, StatusBarItem, StatusBarAlignment, SplashState};
+use renzora_editor::{AppEditorExt, StatusBarItem, StatusBarAlignment, SplashState};
 use renzora_theme::ThemeManager;
 
 // ============================================================================
@@ -256,4 +256,3 @@ impl Plugin for SystemMonitorPlugin {
     }
 }
 
-renzora::add!(SystemMonitorPlugin, Editor);

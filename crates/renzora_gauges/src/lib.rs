@@ -49,7 +49,7 @@ impl Plugin for GaugesPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor_framework::AppEditorExt;
+            use renzora_editor::AppEditorExt;
             app.register_inspector(inspector::gauges_inspector_entry());
             app.register_panel(panel::GaugesPanel::default());
         }

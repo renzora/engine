@@ -2,12 +2,89 @@
 name = "renzora_runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Shared runtime library for the Renzora engine"
+description = "Shared engine library for the Renzora binary. The `editor` feature pulls in editor-only crates and panels on top of the runtime."
 
 
 [features]
 default = []
 lua = []
+editor = [
+    # Editor-only crates
+    "dep:renzora_undo",
+    "dep:renzora_editor",
+    "dep:renzora_splash",
+    "dep:renzora_viewport",
+    "dep:renzora_camera",
+    "dep:renzora_gizmo",
+    "dep:renzora_grid",
+    "dep:renzora_scene",
+    "dep:renzora_keybindings",
+    "dep:renzora_console",
+    # First-party editor panels
+    "dep:renzora_animation_editor",
+    "dep:renzora_asset_browser",
+    "dep:renzora_auth",
+    "dep:renzora_blueprint_editor",
+    "dep:renzora_code_editor",
+    "dep:renzora_command_palette",
+    "dep:renzora_context_menu",
+    "dep:renzora_daw",
+    "dep:renzora_debugger",
+    "dep:renzora_export",
+    "dep:renzora_foliage_editor",
+    "dep:renzora_gamepad",
+    "dep:renzora_hierarchy",
+    "dep:renzora_history",
+    "dep:renzora_hub",
+    "dep:renzora_import_ui",
+    "dep:renzora_inspector",
+    "dep:renzora_level_presets",
+    "dep:renzora_material_editor",
+    "dep:renzora_mesh_draw",
+    "dep:renzora_mesh_edit",
+    "dep:renzora_mixer",
+    "dep:renzora_network_editor",
+    "dep:renzora_particle_editor",
+    "dep:renzora_physics_playground",
+    "dep:renzora_script_variables",
+    "dep:renzora_sequencer",
+    "dep:renzora_settings",
+    "dep:renzora_shader_editor",
+    "dep:renzora_shape_library",
+    "dep:renzora_system_monitor",
+    "dep:renzora_terrain_editor",
+    "dep:renzora_test_component",
+    "dep:renzora_theme_status",
+    "dep:renzora_tutorial",
+    "dep:renzora_vst",
+    "dep:renzora_widget_gallery",
+    # Cascade editor sub-features into dual-mode crates
+    "renzora_engine/editor",
+    "renzora_physics/editor",
+    "renzora_scripting/editor",
+    "renzora_lighting/editor",
+    "renzora_hanabi/editor",
+    "renzora_tonemapping/editor",
+    "renzora_bloom_effect/editor",
+    "renzora_dof/editor",
+    "renzora_motion_blur/editor",
+    "renzora_antialiasing/editor",
+    "renzora_distance_fog/editor",
+    "renzora_atmosphere/editor",
+    "renzora_ssao/editor",
+    "renzora_ssr/editor",
+    "renzora_auto_exposure/editor",
+    "renzora_oit/editor",
+    "renzora_skybox/editor",
+    "renzora_night_stars/editor",
+    "renzora_clouds/editor",
+    "renzora_network/editor",
+    "renzora_animation/editor",
+    "renzora_water/editor",
+    "renzora_game_ui/editor",
+    "renzora_gauges/editor",
+    "renzora_navmesh/editor",
+]
 
 [dependencies]
 bevy = { workspace = true }
@@ -51,3 +128,55 @@ renzora_atmosphere = { path = "../renzora_atmosphere" }
 renzora_skybox = { path = "../renzora_skybox" }
 renzora_clouds = { path = "../renzora_clouds" }
 renzora_night_stars = { path = "../renzora_night_stars" }
+
+# ── Editor-only crates (only compiled when `editor` feature is on) ────────
+renzora_undo = { path = "../renzora_undo", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
+renzora_splash = { path = "../renzora_splash", optional = true }
+renzora_viewport = { path = "../renzora_viewport", optional = true }
+renzora_camera = { path = "../renzora_camera", optional = true }
+renzora_gizmo = { path = "../renzora_gizmo", optional = true }
+renzora_grid = { path = "../renzora_grid", optional = true }
+renzora_scene = { path = "../renzora_scene", optional = true }
+renzora_keybindings = { path = "../renzora_keybindings", optional = true }
+renzora_console = { path = "../renzora_console", optional = true }
+
+# First-party editor panels — statically linked when `editor` feature is on.
+# Third-party plugins still load dynamically from plugins/ via the SDK.
+renzora_animation_editor = { path = "../renzora_animation_editor", optional = true }
+renzora_asset_browser = { path = "../renzora_asset_browser", optional = true }
+renzora_auth = { path = "../renzora_auth", optional = true }
+renzora_blueprint_editor = { path = "../renzora_blueprint_editor", optional = true }
+renzora_code_editor = { path = "../renzora_code_editor", optional = true }
+renzora_command_palette = { path = "../renzora_command_palette", optional = true }
+renzora_context_menu = { path = "../renzora_context_menu", optional = true }
+renzora_daw = { path = "../renzora_daw", optional = true }
+renzora_debugger = { path = "../renzora_debugger", optional = true }
+renzora_export = { path = "../renzora_export", optional = true }
+renzora_foliage_editor = { path = "../renzora_foliage_editor", optional = true }
+renzora_gamepad = { path = "../renzora_gamepad", optional = true }
+renzora_hierarchy = { path = "../renzora_hierarchy", optional = true }
+renzora_history = { path = "../renzora_history", optional = true }
+renzora_hub = { path = "../renzora_hub", optional = true }
+renzora_import_ui = { path = "../renzora_import_ui", optional = true }
+renzora_inspector = { path = "../renzora_inspector", optional = true }
+renzora_level_presets = { path = "../renzora_level_presets", optional = true }
+renzora_material_editor = { path = "../renzora_material_editor", optional = true }
+renzora_mesh_draw = { path = "../renzora_mesh_draw", optional = true }
+renzora_mesh_edit = { path = "../renzora_mesh_edit", optional = true }
+renzora_mixer = { path = "../renzora_mixer", optional = true }
+renzora_network_editor = { path = "../renzora_network_editor", optional = true }
+renzora_particle_editor = { path = "../renzora_particle_editor", optional = true }
+renzora_physics_playground = { path = "../renzora_physics_playground", optional = true }
+renzora_script_variables = { path = "../renzora_script_variables", optional = true }
+renzora_sequencer = { path = "../renzora_sequencer", optional = true }
+renzora_settings = { path = "../renzora_settings", optional = true }
+renzora_shader_editor = { path = "../renzora_shader_editor", optional = true }
+renzora_shape_library = { path = "../renzora_shape_library", optional = true }
+renzora_system_monitor = { path = "../renzora_system_monitor", optional = true }
+renzora_terrain_editor = { path = "../renzora_terrain_editor", optional = true }
+renzora_test_component = { path = "../renzora_test_component", optional = true }
+renzora_theme_status = { path = "../renzora_theme_status", optional = true }
+renzora_tutorial = { path = "../renzora_tutorial", optional = true }
+renzora_vst = { path = "../renzora_vst", optional = true }
+renzora_widget_gallery = { path = "../renzora_widget_gallery", optional = true }

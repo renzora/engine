@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, Vec2};
 use egui_phosphor::regular;
 use renzora::core::{ShapeEntry, ShapeRegistry};
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation, ShapeDragState};
 use renzora_theme::ThemeManager;
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 

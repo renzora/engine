@@ -113,11 +113,11 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
     #[cfg(feature = "editor")]
     {
         if let Some(requests) =
-            world.get_resource::<renzora_editor_framework::HierarchyExpandRequests>()
+            world.get_resource::<renzora_editor::HierarchyExpandRequests>()
         {
             requests.push(canvas_entity);
         }
-        if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+        if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
             sel.set(Some(entity));
         }
     }
@@ -2412,7 +2412,7 @@ pub fn spawn_image_at(
     world.entity_mut(entity).set_parent_in_place(canvas_entity);
 
     #[cfg(feature = "editor")]
-    if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+    if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
         sel.set(Some(entity));
     }
 }

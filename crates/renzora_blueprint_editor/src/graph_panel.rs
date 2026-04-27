@@ -9,7 +9,7 @@ use egui_phosphor::regular::{
     FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
 };
 
-use renzora_editor_framework::{
+use renzora_editor::{
     DocTabKind, EditorCommands, EditorContext, EditorPanel, EditorSelection, PanelLocation,
 };
 use renzora_theme::ThemeManager;

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use renzora_editor_framework::{EditorCommands, InspectorEntry, InspectorRegistry};
+use renzora_editor::{EditorCommands, InspectorEntry, InspectorRegistry};
 use renzora_theme::Theme;
 
 use crate::data::*;

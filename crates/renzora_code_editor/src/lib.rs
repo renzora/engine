@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 
@@ -83,7 +83,7 @@ impl EditorPanel for CodeEditorPanel {
         }
 
         // Sync user preferences (EditorSettings → CodeEditorState).
-        if let Some(settings) = world.get_resource::<renzora_editor_framework::EditorSettings>() {
+        if let Some(settings) = world.get_resource::<renzora_editor::EditorSettings>() {
             if let Ok(mut local) = self.local.write() {
                 local.auto_close_pairs = settings.code_auto_close_pairs;
                 local.trim_trailing_whitespace_on_save =
@@ -220,7 +220,7 @@ impl Plugin for CodeEditorPlugin {
         let arc = bridge.pending.clone();
 
         app.insert_resource(bridge);
-        use renzora_editor_framework::SplashState;
+        use renzora_editor::SplashState;
         app.add_systems(
             Update,
             (
@@ -244,7 +244,7 @@ impl Plugin for CodeEditorPlugin {
 /// it's eventually serialised).
 fn sync_code_editor_prefs_to_settings(
     editor_state: Res<CodeEditorState>,
-    mut settings: ResMut<renzora_editor_framework::EditorSettings>,
+    mut settings: ResMut<renzora_editor::EditorSettings>,
 ) {
     if settings.code_show_minimap != editor_state.show_minimap {
         settings.code_show_minimap = editor_state.show_minimap;
@@ -281,8 +281,8 @@ fn consume_open_code_editor_file(
 /// formats (scripts, shaders, configs). Reset when leaving so other workspaces
 /// see the full asset list again.
 fn sync_asset_filter_for_scripting(
-    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
-    mut filter: ResMut<renzora_editor_framework::AssetBrowserExtensionFilter>,
+    layout_mgr: Res<renzora_editor::LayoutManager>,
+    mut filter: ResMut<renzora_editor::AssetBrowserExtensionFilter>,
 ) {
     let is_scripting = layout_mgr.active_name() == "Scripting";
     let desired: Option<Vec<String>> = if is_scripting {
@@ -300,4 +300,3 @@ fn sync_asset_filter_for_scripting(
     }
 }
 
-renzora::add!(CodeEditorPlugin, Editor);

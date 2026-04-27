@@ -8,7 +8,7 @@ use renzora::core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, Ne
 use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_engine::scene_io;
-use renzora_editor_framework::SplashState;
+use renzora_editor::SplashState;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
@@ -469,7 +469,7 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScenePlugin");
-        use renzora_editor_framework::{AppEditorExt, ComponentIconEntry};
+        use renzora_editor::{AppEditorExt, ComponentIconEntry};
         app.register_panel(panel::ScenesPanel::default());
 
         // Hierarchy icon for nested-scene instance roots (distinguishes them

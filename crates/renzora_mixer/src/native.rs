@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_audio::{ChannelStrip, MixerState};
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_audio::{BusInsertsSummary, ChannelStrip, MixerState, PluginCatalog};
+use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 // ---------------------------------------------------------------------------
@@ -144,9 +144,18 @@ impl EditorPanel for MixerPanel {
             )
         };
 
+        // Bridge mirrors live in `renzora_audio` so the FX popover works
+        // whether or not `renzora_vst` is loaded — empty resources just mean
+        // "no plugins available", and click handlers no-op.
+        let inserts = world.get_resource::<BusInsertsSummary>();
+        let catalog = world.get_resource::<PluginCatalog>();
+        let commands = world.get_resource::<EditorCommands>();
+
         if let Ok(mut snap) = self.local.write() {
             let mut tmp = snap.to_mixer_state();
-            render::render_mixer_content(ui, &mut tmp, panel_bg, muted_color);
+            render::render_mixer_content(
+                ui, &mut tmp, panel_bg, muted_color, inserts, catalog, commands,
+            );
             *snap = MixerSnapshot::from_mixer(&tmp);
         }
 
@@ -185,11 +194,11 @@ pub fn build(app: &mut App) {
     app.insert_resource(bridge);
     app.add_systems(
         Update,
-        sync_mixer_bridge.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        sync_mixer_bridge.run_if(in_state(renzora_editor::SplashState::Editor)),
     );
     app.register_panel(MixerPanel::new(arc));
-    app.init_resource::<renzora_editor_framework::InspectorRegistry>();
+    app.init_resource::<renzora_editor::InspectorRegistry>();
     inspectors::register_audio_inspectors(
-        &mut app.world_mut().resource_mut::<renzora_editor_framework::InspectorRegistry>(),
+        &mut app.world_mut().resource_mut::<renzora_editor::InspectorRegistry>(),
     );
 }

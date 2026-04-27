@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, Rounding, CursorIcon, RichText};
 use egui_phosphor::regular::*;
 
-use renzora_editor_framework::{ActiveTool, EditorCommands, EditorSelection, inline_property};
+use renzora_editor::{ActiveTool, EditorCommands, EditorSelection, inline_property};
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use renzora_theme::Theme;
 

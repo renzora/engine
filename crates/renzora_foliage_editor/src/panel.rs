@@ -9,10 +9,10 @@ use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular::{TREE, PAINT_BRUSH, ERASER, PLUS, TRASH};
 
 use renzora_theme::ThemeManager;
-use renzora_editor_framework::EditorPanel;
+use renzora_editor::EditorPanel;
 use renzora_terrain::foliage::{FoliageConfig, FoliageDensityMap, FoliageType};
 use renzora_terrain::data::TerrainChunkData;
-use renzora_editor_framework::EditorCommands;
+use renzora_editor::EditorCommands;
 
 use renzora_terrain::foliage::{FoliageBrushType, FoliagePaintSettings};
 use crate::systems::FoliageToolState;
@@ -58,8 +58,8 @@ impl EditorPanel for FoliagePanel {
         Some(TREE)
     }
 
-    fn default_location(&self) -> renzora_editor_framework::PanelLocation {
-        renzora_editor_framework::PanelLocation::Left
+    fn default_location(&self) -> renzora_editor::PanelLocation {
+        renzora_editor::PanelLocation::Left
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

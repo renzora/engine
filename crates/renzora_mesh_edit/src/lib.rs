@@ -19,8 +19,8 @@
 
 use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportMode;
-use renzora_editor_framework::AppEditorExt;
-use renzora_editor_framework::sdk::conditions::in_mode;
+use renzora_editor::AppEditorExt;
+use renzora_editor::sdk::conditions::in_mode;
 
 pub mod edit_mesh;
 pub mod header;
@@ -65,7 +65,6 @@ impl Plugin for MeshEditPlugin {
     }
 }
 
-renzora::add!(MeshEditPlugin, Editor);
 
 fn not_in_edit_mode(
     s: Option<Res<renzora::core::viewport_types::ViewportSettings>>,

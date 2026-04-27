@@ -11,7 +11,7 @@ mod tool_panel;
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     ActiveTool, AppEditorExt, EditorSelection, EntityPreset, InspectorEntry, ToolEntry,
     ToolOptionsRegistry, ToolSection,
 };
@@ -243,4 +243,3 @@ fn terrain_data_entry() -> InspectorEntry {
 }
 
 
-renzora::add!(TerrainEditorPlugin, Editor);

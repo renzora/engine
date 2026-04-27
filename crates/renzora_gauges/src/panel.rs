@@ -9,7 +9,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::GaugesSnapshot;

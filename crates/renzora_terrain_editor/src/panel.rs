@@ -18,9 +18,9 @@ use renzora_terrain::paint::*;
 #[allow(unused_imports)]
 use renzora_terrain::splatmap_material::LayerAnimationType;
 use renzora_theme::{Theme, ThemeManager};
-use renzora_editor_framework::EditorCommands;
-use renzora_editor_framework::EditorPanel;
-use renzora_editor_framework::{asset_drop_target, AssetDragPayload};
+use renzora_editor::EditorCommands;
+use renzora_editor::EditorPanel;
+use renzora_editor::{asset_drop_target, AssetDragPayload};
 use renzora::core::CurrentProject;
 
 // ── Panel ────────────────────────────────────────────────────────────────────
@@ -72,8 +72,8 @@ impl EditorPanel for TerrainToolsPanel {
         Some(MOUNTAINS)
     }
 
-    fn default_location(&self) -> renzora_editor_framework::PanelLocation {
-        renzora_editor_framework::PanelLocation::Left
+    fn default_location(&self) -> renzora_editor::PanelLocation {
+        renzora_editor::PanelLocation::Left
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

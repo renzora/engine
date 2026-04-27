@@ -11,3 +11,8 @@ cfg-if = "1"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
 mint = "0.5"
+# Direct deps for live mic input — both are already in the dep tree as
+# transitives of kira, listed explicitly here so we can implement a custom
+# `Sound` backed by a cpal input stream piped through an rtrb SPSC ringbuffer.
+cpal = "0.17"
+rtrb = "0.3"

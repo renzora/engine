@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor_framework::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
-use renzora_editor_framework::TreeDropZone;
+use renzora_editor::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
+use renzora_editor::TreeDropZone;
 
 /// Persistent UI state for the hierarchy panel.
 pub struct HierarchyState {

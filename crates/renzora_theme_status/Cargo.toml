@@ -3,12 +3,9 @@ name = "renzora_theme_status"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_editor = { path = "../renzora_editor" }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 bevy = { workspace = true }
 bevy_egui = { workspace = true }

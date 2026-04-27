@@ -12,7 +12,7 @@ use bevy::window::{CursorOptions, PrimaryWindow};
 use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
-use renzora_editor_framework::{EditorSelection, EditorCamera, HideInHierarchy};
+use renzora_editor::{EditorSelection, EditorCamera, HideInHierarchy};
 
 use crate::OverlayGizmoGroup;
 

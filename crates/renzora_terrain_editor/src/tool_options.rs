@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
-use renzora_editor_framework::EditorCommands;
+use renzora_editor::EditorCommands;
 use egui_phosphor::regular::*;
 use renzora_theme::ThemeManager;
 use renzora_terrain::data::{BrushFalloffType, BrushShape, TerrainSettings};

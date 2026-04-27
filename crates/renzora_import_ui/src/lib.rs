@@ -53,7 +53,7 @@ fn import_overlay_system(world: &mut World) {
     world.insert_resource(cached);
 
     let auto_import = world
-        .get_resource::<renzora_editor_framework::EditorSettings>()
+        .get_resource::<renzora_editor::EditorSettings>()
         .map(|s| s.auto_import_on_drop)
         .unwrap_or(true);
 
@@ -139,4 +139,3 @@ fn import_overlay_system(world: &mut World) {
     overlay::draw_import_overlay(world, &ctx);
 }
 
-renzora::add!(ImportPlugin, Editor);

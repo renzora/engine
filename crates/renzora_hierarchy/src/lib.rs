@@ -9,7 +9,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
     HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
     SceneStarter, SceneStarterRegistry, SpawnRegistry,
@@ -95,7 +95,7 @@ impl EditorPanel for HierarchyPanel {
         // unnamed intermediaries like GLTF's SceneRoot, so we must mirror that.
         // Drain any external expand requests (e.g. from spawn_widget) so newly
         // spawned children are revealed under their parent.
-        if let Some(requests) = world.get_resource::<renzora_editor_framework::HierarchyExpandRequests>() {
+        if let Some(requests) = world.get_resource::<renzora_editor::HierarchyExpandRequests>() {
             for entity in requests.drain() {
                 state.expanded.insert(entity);
             }
@@ -128,7 +128,7 @@ impl EditorPanel for HierarchyPanel {
                 while let Some(child_of) = world.get::<ChildOf>(cur) {
                     let parent = child_of.parent();
                     let named = world.get::<Name>(parent).is_some();
-                    let hidden = world.get::<renzora_editor_framework::HideInHierarchy>(parent).is_some();
+                    let hidden = world.get::<renzora_editor::HideInHierarchy>(parent).is_some();
                     if named && !hidden {
                         state.expanded.insert(parent);
                     }
@@ -203,7 +203,7 @@ impl EditorPanel for HierarchyPanel {
             // Gate entries by active workspace: Scene hides "ui" presets,
             // UI hides everything except "ui" presets. Other layouts show all.
             let active_layout = world
-                .get_resource::<renzora_editor_framework::LayoutManager>()
+                .get_resource::<renzora_editor::LayoutManager>()
                 .map(|lm| lm.active_name().to_string())
                 .unwrap_or_default();
             let is_ui_layout = active_layout == "UI";
@@ -502,7 +502,7 @@ impl EditorPanel for HierarchyPanel {
             if let Some((target, zone)) = state.drop_target.take() {
                 let drag_entities = std::mem::take(&mut state.drag_entities);
                 commands.push(move |world: &mut World| {
-                    use renzora_editor_framework::TreeDropZone;
+                    use renzora_editor::TreeDropZone;
                     // Capture old parents + all root orders before mutation.
                     let old_parents: Vec<(Entity, Option<Entity>)> = drag_entities.iter()
                         .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
@@ -654,9 +654,9 @@ impl EditorPanel for HierarchyPanel {
                     let target_name = find_node_name(nodes, target_entity)
                         .unwrap_or_else(|| format!("{:?}", target_entity));
                     match zone {
-                        renzora_editor_framework::TreeDropZone::Before => format!("Move above {}", target_name),
-                        renzora_editor_framework::TreeDropZone::After => format!("Move below {}", target_name),
-                        renzora_editor_framework::TreeDropZone::AsChild => format!("Move into {}", target_name),
+                        renzora_editor::TreeDropZone::Before => format!("Move above {}", target_name),
+                        renzora_editor::TreeDropZone::After => format!("Move below {}", target_name),
+                        renzora_editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
                     }
                 } else {
                     let count = state.drag_entities.len();
@@ -771,7 +771,7 @@ impl Plugin for HierarchyPanelPlugin {
         ));
 
         // Spawn presets are now self-registered by their owning crates:
-        // - Bevy types (Empty, lights, camera): renzora_editor_framework::bevy_inspectors
+        // - Bevy types (Empty, lights, camera): renzora_editor::bevy_inspectors
         // - Physics: renzora_physics::inspector (editor feature)
         // - Terrain: renzora_terrain (editor feature)
         // - World Environment/Sun: renzora_level_presets
@@ -1021,4 +1021,3 @@ fn render_starter_card(
     });
 }
 
-renzora::add!(HierarchyPanelPlugin, Editor);

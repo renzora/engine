@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Sense, Vec2};
-use renzora_editor_framework::EditorCommands;
+use renzora_editor::EditorCommands;
 use renzora_theme::ThemeManager;
 
 use crate::selection::{MeshSelection, SelectMode};

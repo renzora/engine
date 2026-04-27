@@ -44,7 +44,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
                 .unwrap_or(Vec3::ZERO);
             let normal = drag_state.drag_surface_normal;
 
-            if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
                 cmds.push(move |world: &mut World| {
                     let state = world.resource_mut::<ShapeDragState>();
                     state.into_inner().pending_drop = Some(PendingShapeDrop {
@@ -56,7 +56,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
             }
         }
         // Clear dragging in both cases (drop or cancel)
-        if let Some(cmds) = world.get_resource::<renzora_editor_framework::EditorCommands>() {
+        if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
             cmds.push(|world: &mut World| {
                 let mut state = world.resource_mut::<ShapeDragState>();
                 state.dragging_shape = None;

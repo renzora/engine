@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, EntityCountDiagnosticsPlugin, SystemInformationDiagnosticsPlugin};
 use bevy_egui::egui;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::*;
@@ -385,7 +385,7 @@ impl Plugin for DebuggerPlugin {
         app.insert_resource(bridge);
 
         // Update systems
-        use renzora_editor_framework::SplashState;
+        use renzora_editor::SplashState;
         app.add_systems(Update, (
             update_diagnostics_state,
             update_render_stats,
@@ -413,4 +413,3 @@ impl Plugin for DebuggerPlugin {
     }
 }
 
-renzora::add!(DebuggerPlugin, Editor);

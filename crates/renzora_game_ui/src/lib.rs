@@ -164,7 +164,7 @@ impl Plugin for GameUiPlugin {
         // ── Editor panels & systems ─────────────────────────────────────
         #[cfg(feature = "editor")]
         {
-            use renzora_editor_framework::AppEditorExt;
+            use renzora_editor::AppEditorExt;
             info!("[editor] GameUiPlugin (editor panels)");
 
             app.register_panel(palette::WidgetPalettePanel::default());
@@ -175,14 +175,14 @@ impl Plugin for GameUiPlugin {
             app.register_panel(inspector::UiInspectorPanel::default());
 
             // Register hierarchy icons for UI entities
-            app.register_component_icon(renzora_editor_framework::ComponentIconEntry {
+            app.register_component_icon(renzora_editor::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiCanvas>(),
                 icon: egui_phosphor::regular::FRAME_CORNERS,
                 color: [130, 200, 255],
                 priority: 70,
                 dynamic_icon_fn: None,
             });
-            app.register_component_icon(renzora_editor_framework::ComponentIconEntry {
+            app.register_component_icon(renzora_editor::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiWidget>(),
                 icon: egui_phosphor::regular::SQUARES_FOUR,
                 color: [130, 200, 255],
@@ -358,12 +358,12 @@ fn sync_ui_zindex(
 /// own sync systems (e.g. materials → `Mesh3d`) still apply.
 #[cfg(feature = "editor")]
 fn sync_hierarchy_filter_for_ui_workspace(
-    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
-    mut filter: ResMut<renzora_editor_framework::HierarchyFilter>,
+    layout_mgr: Res<renzora_editor::LayoutManager>,
+    mut filter: ResMut<renzora_editor::HierarchyFilter>,
 ) {
     let desired = match layout_mgr.active_name() {
-        "UI" => renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"]),
-        "Scene" => renzora_editor_framework::HierarchyFilter::ExcludeDescendantsOf(vec!["UiCanvas"]),
+        "UI" => renzora_editor::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"]),
+        "Scene" => renzora_editor::HierarchyFilter::ExcludeDescendantsOf(vec!["UiCanvas"]),
         _ => return,
     };
     if *filter != desired {
@@ -379,8 +379,8 @@ struct UiWorkspaceActive(bool);
 
 #[cfg(feature = "editor")]
 fn reset_ui_preview_on_layout_enter(
-    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
-    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
+    layout_mgr: Res<renzora_editor::LayoutManager>,
+    settings: Option<Res<renzora_editor::EditorSettings>>,
     mut last: ResMut<UiWorkspaceActive>,
     mut preview: ResMut<canvas::UiCanvasPreviewEnabled>,
 ) {
@@ -399,11 +399,11 @@ fn reset_ui_preview_on_layout_enter(
 /// must not be hijacked by selection changes.
 #[cfg(feature = "editor")]
 fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
-    let active = world.resource::<renzora_editor_framework::LayoutManager>().active_name().to_string();
+    let active = world.resource::<renzora_editor::LayoutManager>().active_name().to_string();
     if active != "Scene" && active != "UI" {
         return;
     }
-    let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() else {
+    let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() else {
         return;
     };
     let Some(entity) = sel.get() else { return };
@@ -419,8 +419,8 @@ fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
     };
     match (is_ui, active.as_str()) {
         (true, "UI") | (false, "Scene") => {}
-        (true, _) => renzora_editor_framework::switch_layout_by_name(world, "UI"),
-        (false, _) => renzora_editor_framework::switch_layout_by_name(world, "Scene"),
+        (true, _) => renzora_editor::switch_layout_by_name(world, "UI"),
+        (false, _) => renzora_editor::switch_layout_by_name(world, "Scene"),
     }
 }
 
@@ -429,7 +429,7 @@ fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
 /// Top of hierarchy (lowest HierarchyOrder) gets the highest sort_order → renders on top.
 #[cfg(feature = "editor")]
 fn sync_canvas_sort_order_from_hierarchy(
-    mut canvases: Query<(&mut UiCanvas, &renzora_editor_framework::HierarchyOrder), Without<ChildOf>>,
+    mut canvases: Query<(&mut UiCanvas, &renzora_editor::HierarchyOrder), Without<ChildOf>>,
 ) {
     let max_order = canvases.iter().map(|(_, h)| h.0).max().unwrap_or(0) as i32;
     for (mut canvas, order) in &mut canvases {
@@ -580,7 +580,7 @@ fn debug_ui_tree(
 /// which finds (or creates) a canvas and parents the new widget to it.
 #[cfg(feature = "editor")]
 fn register_ui_presets(app: &mut App) {
-    use renzora_editor_framework::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora_editor::{AppEditorExt, EntityPreset, SceneStarter};
 
     fn spawn_ui_canvas(world: &mut World) -> Entity {
         world
@@ -615,7 +615,7 @@ fn register_ui_presets(app: &mut App) {
         icon: egui_phosphor::regular::FRAME_CORNERS,
         spawn_fn: |world: &mut World| {
             let canvas = spawn_ui_canvas(world);
-            if let Some(selection) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+            if let Some(selection) = world.get_resource::<renzora_editor::EditorSelection>() {
                 selection.set(Some(canvas));
             }
         },

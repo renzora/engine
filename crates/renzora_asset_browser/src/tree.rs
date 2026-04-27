@@ -14,14 +14,14 @@ const ROW_HEIGHT: f32 = 24.0;
 const INDENT: f32 = 14.0;
 
 /// Renders the folder tree in the left pane (legacy-matching style).
-/// Returns a populated [`renzora_editor_framework::AssetDragPayload`] when the user
+/// Returns a populated [`renzora_editor::AssetDragPayload`] when the user
 /// starts dragging a file row, mirroring the grid's drag behavior so the
 /// viewport can spawn the dragged asset on release.
 pub fn tree_ui(
     ui: &mut egui::Ui,
     state: &mut AssetBrowserState,
     theme: &Theme,
-) -> Option<renzora_editor_framework::AssetDragPayload> {
+) -> Option<renzora_editor::AssetDragPayload> {
     let root = state.root();
     let root_name = root
         .file_name()
@@ -168,7 +168,7 @@ pub fn tree_ui(
                     if response.drag_started() {
                         state.drag_moving = vec![fav_path.clone()];
                         let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-                        state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+                        state.pending_drag_payload = Some(renzora_editor::AssetDragPayload {
                             path: fav_path.clone(),
                             paths: vec![fav_path.clone()],
                             name: fav_name.clone(),
@@ -349,7 +349,7 @@ pub fn tree_ui(
                             if response.drag_started() {
                                 state.drag_moving = vec![recent_path.clone()];
                                 let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-                                state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+                                state.pending_drag_payload = Some(renzora_editor::AssetDragPayload {
                                     path: recent_path.clone(),
                                     paths: vec![recent_path.clone()],
                                     name: name.clone(),
@@ -587,7 +587,7 @@ fn render_folder_children(
             }
 
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+            state.pending_drag_payload = Some(renzora_editor::AssetDragPayload {
                 path: folder.clone(),
                 paths: state.drag_moving.clone(),
                 name: name.clone(),
@@ -688,7 +688,7 @@ fn render_folder_files(
 
             let (icon, color) = file_icon(file);
             let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-            state.pending_drag_payload = Some(renzora_editor_framework::AssetDragPayload {
+            state.pending_drag_payload = Some(renzora_editor::AssetDragPayload {
                 path: file.clone(),
                 paths: state.drag_moving.clone(),
                 name: name.clone(),

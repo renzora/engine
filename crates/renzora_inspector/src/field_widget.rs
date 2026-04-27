@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use renzora_editor_framework::{
+use renzora_editor::{
     asset_drop_target, inline_property, toggle_switch, AssetDragPayload, EditorCommands,
     FieldDef, FieldType, FieldValue,
 };

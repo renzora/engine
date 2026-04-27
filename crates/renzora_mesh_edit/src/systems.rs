@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use renzora::core::EditorCamera;
 use renzora::core::viewport_types::ViewportState;
-use renzora_editor_framework::{ActiveTool, EditorSelection};
+use renzora_editor::{ActiveTool, EditorSelection};
 
 use crate::edit_mesh::{EditMesh, VertexId};
 use crate::operators;

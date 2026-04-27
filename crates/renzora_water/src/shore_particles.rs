@@ -231,8 +231,8 @@ pub fn cleanup_shore_splashes(
 // ── Inspector entry ─────────────────────────────────────────────────────────
 
 #[cfg(feature = "editor")]
-pub fn shore_particles_inspector_entry() -> renzora_editor_framework::InspectorEntry {
-    use renzora_editor_framework::{InspectorEntry, FieldDef, FieldType, FieldValue};
+pub fn shore_particles_inspector_entry() -> renzora_editor::InspectorEntry {
+    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
 
     InspectorEntry {
         type_id: "water_shore_particles",

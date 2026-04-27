@@ -18,8 +18,10 @@ fi
 OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir>}"
 mkdir -p "$OUTPUT_DIR"
 
-# Editor plugins to exclude from runtime/server builds
-EDITOR_EXCLUDES=$(grep -l 'features = \[\("[^"]*", \)*"editor"' crates/*/Cargo.toml 2>/dev/null | xargs grep -h '^name' 2>/dev/null | tr -d '\r' | sed 's/name = "\(.*\)"/--exclude \1/')
+# Editor crates aren't workspace members anymore — they're transitive
+# path-deps of the binary, gated behind the `editor` feature. Runtime and
+# server builds drop `--workspace` (build the binary's dep tree only) so
+# editor crates never enter the build graph.
 
 # ── Helper: copy shared libraries for a platform ────────────────────────────
 # Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext>
@@ -34,8 +36,8 @@ copy_shared_libs() {
     local BEVY_DLL=$(ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 || true)
     [ -n "$BEVY_DLL" ] && cp "$BEVY_DLL" "$OUT/"
 
-    # SDK
-    for f in "$SRC/librenzora.$EXT" "$SRC/renzora.$EXT"; do
+    # SDK — small contracts crate + editor framework (only present in editor builds)
+    for f in "$SRC/librenzora.$EXT" "$SRC/renzora.$EXT" "$SRC/librenzora_editor.$EXT" "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -48,6 +50,8 @@ copy_shared_libs() {
         [[ "$base" == *renzora_macros* ]] && continue
         [[ "$base" == librenzora."$EXT" ]] && continue
         [[ "$base" == renzora."$EXT" ]] && continue
+        [[ "$base" == librenzora_editor."$EXT" ]] && continue
+        [[ "$base" == renzora_editor."$EXT" ]] && continue
         cp "$f" "$OUT/plugins/"
     done
 }
@@ -69,13 +73,18 @@ build_desktop() {
         SRC="target/$FEATURE/$RUST_TARGET/dist"
     fi
 
-    local EXCLUDES=""
-    if [ "$FEATURE" != "editor" ]; then
-        EXCLUDES="$EDITOR_EXCLUDES"
+    # Editor build uses --workspace so dylib plugins (renzora_record, etc.)
+    # also build alongside the binary. Runtime/server build only the bin's
+    # dep tree — no editor-only crates enter compilation.
+    local SCOPE
+    if [ "$FEATURE" = "editor" ]; then
+        SCOPE="--workspace"
+    else
+        SCOPE="--bin renzora"
     fi
 
     echo "=== Building $PLATFORM ($FEATURE) ==="
-    cargo build --profile dist --workspace --no-default-features --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG $EXCLUDES
+    cargo build --profile dist $SCOPE --no-default-features --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG
 
     local OUT="$OUTPUT_DIR/$PLATFORM/$FEATURE"
     mkdir -p "$OUT"

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use egui_phosphor::regular::*;
-use renzora_editor_framework::{
+use renzora_editor::{
     ActiveTool, EditorCommands, ToolOptionsRegistry, ViewportModeOptionsRegistry,
 };
 use renzora_theme::ThemeManager;

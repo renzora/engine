@@ -31,4 +31,3 @@ impl Plugin for MixerPlugin {
     }
 }
 
-renzora::add!(MixerPlugin, Editor);

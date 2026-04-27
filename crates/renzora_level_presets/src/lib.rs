@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_lighting::Sun;
 use renzora_theme::ThemeManager;
 
@@ -166,7 +166,7 @@ impl Plugin for LevelPresetsPlugin {
         let arc = bridge.pending.clone();
         app.insert_resource(bridge);
 
-        use renzora_editor_framework::SplashState;
+        use renzora_editor::SplashState;
         app.add_systems(
             Update,
             (sync_bridge, process_level_commands).run_if(in_state(SplashState::Editor)),
@@ -976,7 +976,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
 }
 
 fn register_lighting_presets(app: &mut App) {
-    use renzora_editor_framework::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora_editor::{AppEditorExt, EntityPreset, SceneStarter};
     use egui_phosphor::regular;
 
     app.register_entity_preset(EntityPreset {
@@ -1035,4 +1035,3 @@ fn register_lighting_presets(app: &mut App) {
     });
 }
 
-renzora::add!(LevelPresetsPlugin, Editor);

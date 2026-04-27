@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 renzora_undo = { path = "../renzora_undo" }
 bevy_egui = { workspace = true }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 bevy_mod_outline = { path = "../bevy_mod_outline" }

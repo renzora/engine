@@ -11,7 +11,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use renzora::core::{IsolatedCamera, MeshInstanceData, EditorLocked, HideInHierarchy};
-use renzora_editor_framework::DockingState;
+use renzora_editor::DockingState;
 
 use crate::AnimationEditorState;
 

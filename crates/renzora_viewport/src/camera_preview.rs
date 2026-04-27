@@ -10,7 +10,7 @@ use bevy::core_pipeline::Skybox;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
-use renzora_editor_framework::{DockingState, EditorSelection};
+use renzora_editor::{DockingState, EditorSelection};
 use renzora::core::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera};
 
 /// Preview image size.

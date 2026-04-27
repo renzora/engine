@@ -1,0 +1,15 @@
+[package]
+name = "renzora_sequencer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_editor = { path = "../renzora_editor" }
+renzora_ui = { path = "../renzora_ui" }
+renzora_theme = { path = "../renzora_theme" }
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+egui-phosphor = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"

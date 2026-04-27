@@ -3,13 +3,10 @@ name = "renzora_context_menu"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
 renzora_theme = { path = "../renzora_theme" }
 bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
-renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }

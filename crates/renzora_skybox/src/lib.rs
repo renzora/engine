@@ -12,7 +12,7 @@ use bevy_egui::egui;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::SUN;
 #[cfg(feature = "editor")]
-use renzora_editor_framework::{
+use renzora_editor::{
     file_drop_zone, get_theme_colors, inline_property, sanitize_f32, AppEditorExt,
     EditorCommands, InspectorEntry,
 };

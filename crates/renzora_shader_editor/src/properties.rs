@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 
-use renzora_editor_framework::{
+use renzora_editor::{
     collapsible_section, inline_property,
     EditorCommands, EditorPanel, PanelLocation,
 };

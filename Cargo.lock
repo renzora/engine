@@ -235,7 +235,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed7572b7ba83a31e20d1b48970ee402d2e3e0537dcfe0a3ff4d6eb7508617d43"
 dependencies = [
  "alsa-sys",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cfg-if",
  "libc",
 ]
@@ -247,7 +247,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c88dbbce13b232b26250e1e2e6ac18b6a891a646b8148285036ebce260ac5c3"
 dependencies = [
  "alsa-sys",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cfg-if",
  "libc",
 ]
@@ -269,7 +269,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef6978589202a00cd7e118380c448a08b6ed394c3a8df3a430d0898e3a42d046"
 dependencies = [
  "android-properties",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cc",
  "cesu8",
  "jni 0.21.1",
@@ -665,7 +665,7 @@ dependencies = [
  "bevy_heavy",
  "bevy_math 0.18.0",
  "bevy_transform_interpolation",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "derive_more 2.1.1",
  "disqualified",
  "glam_matrix_extras",
@@ -689,7 +689,7 @@ dependencies = [
  "bevy_heavy",
  "bevy_math 0.18.0",
  "bevy_transform_interpolation",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "derive_more 2.1.1",
  "disqualified",
  "glam_matrix_extras",
@@ -711,7 +711,7 @@ dependencies = [
  "bevy_heavy",
  "bevy_math 0.18.0",
  "bevy_transform_interpolation",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "derive_more 2.1.1",
  "disqualified",
  "glam_matrix_extras",
@@ -957,7 +957,7 @@ dependencies = [
  "bevy_reflect 0.18.0",
  "bevy_tasks 0.18.0",
  "bevy_utils 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "blake3",
  "crossbeam-channel",
  "derive_more 2.1.1",
@@ -1087,7 +1087,7 @@ dependencies = [
  "bevy_transform 0.18.0",
  "bevy_utils 0.18.0",
  "bevy_window",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "nonmax",
  "radsort",
  "smallvec",
@@ -1199,7 +1199,7 @@ dependencies = [
  "bevy_reflect 0.15.1",
  "bevy_tasks 0.15.3",
  "bevy_utils 0.15.3",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "concurrent-queue",
  "derive_more 1.0.0",
  "disqualified",
@@ -1223,7 +1223,7 @@ dependencies = [
  "bevy_reflect 0.18.0",
  "bevy_tasks 0.18.0",
  "bevy_utils 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bumpalo",
  "concurrent-queue",
  "derive_more 2.1.1",
@@ -1327,7 +1327,7 @@ checksum = "f5e4981e85546349e7ccce7e68aaf9c36e6eed556f7f29087dee184ee7941fb9"
 dependencies = [
  "bevy 0.18.0",
  "bevy_enhanced_input_macros",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "log",
  "serde",
  "smallvec",
@@ -1482,7 +1482,7 @@ version = "0.18.0"
 dependencies = [
  "anyhow",
  "bevy 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "fixedbitset 0.5.7",
  "naga",
@@ -1536,7 +1536,7 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect 0.18.0",
  "bevy_utils 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "futures-lite",
  "guillotiere",
@@ -1810,7 +1810,7 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect 0.18.0",
  "bevy_transform 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "derive_more 2.1.1",
  "hexasphere",
@@ -1862,7 +1862,7 @@ dependencies = [
  "bevy_shader",
  "bevy_transform 0.18.0",
  "bevy_utils 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "derive_more 2.1.1",
  "fixedbitset 0.5.7",
@@ -1940,7 +1940,7 @@ dependencies = [
  "bevy_transform 0.18.0",
  "bevy_utils 0.18.0",
  "bevy_window",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "nonmax",
  "radsort",
  "smallvec",
@@ -1967,7 +1967,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85f3856331b3f75e900db0fd47c34d7e63dc7f736f455e9d0e6d775a24099c37"
 dependencies = [
  "bevy 0.15.1",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "log",
  "nalgebra 0.33.3",
  "rapier3d",
@@ -2076,7 +2076,7 @@ dependencies = [
  "bevy_transform 0.18.0",
  "bevy_utils 0.18.0",
  "bevy_window",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "derive_more 2.1.1",
  "downcast-rs 2.0.2",
@@ -2199,7 +2199,7 @@ dependencies = [
  "bevy_text",
  "bevy_transform 0.18.0",
  "bevy_utils 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "derive_more 2.1.1",
  "fixedbitset 0.5.7",
@@ -2533,7 +2533,7 @@ version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
@@ -2553,7 +2553,7 @@ version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
@@ -2600,9 +2600,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.10.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 dependencies = [
  "bytemuck",
  "serde_core",
@@ -2777,7 +2777,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b99da2f8558ca23c71f4fd15dc57c906239752dd27ff3c00a1d56b685b7cbfec"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "log",
  "polling",
  "rustix 0.38.44",
@@ -2958,6 +2958,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "clack-common"
+version = "0.1.0"
+source = "git+https://github.com/prokopyl/clack#4541f03792635dfdc6be9441a01b786e9b4ccf18"
+dependencies = [
+ "bitflags 2.11.1",
+ "clap-sys",
+]
+
+[[package]]
+name = "clack-extensions"
+version = "0.1.0"
+source = "git+https://github.com/prokopyl/clack#4541f03792635dfdc6be9441a01b786e9b4ccf18"
+dependencies = [
+ "bitflags 2.11.1",
+ "clack-common",
+ "clack-host",
+ "clap-sys",
+]
+
+[[package]]
+name = "clack-host"
+version = "0.1.0"
+source = "git+https://github.com/prokopyl/clack#4541f03792635dfdc6be9441a01b786e9b4ccf18"
+dependencies = [
+ "clack-common",
+ "clap-sys",
+ "libloading",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2976,6 +3007,12 @@ checksum = "b193af5b67834b676abd72466a96c1024e6a6ad978a1f484bd90b85c94041351"
 dependencies = [
  "clap_builder",
 ]
+
+[[package]]
+name = "clap-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76abbdb2907f6fd97fb6bc0b7be96b77d328f2dd9669d1075cc03369ed22154"
 
 [[package]]
 name = "clap_builder"
@@ -3185,7 +3222,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "core-foundation 0.10.1",
  "libc",
 ]
@@ -3239,7 +3276,7 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4cadaea21e24c49c0c82116f2b465ae6a49d63c90e428b0f8d9ae1f638ac91f"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "fontdb",
  "harfrust",
  "linebender_resource_handle",
@@ -3709,7 +3746,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89a09f22a6c6069a18470eb92d2298acf25463f14256d24778e1230d789a2aec"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.6.2",
  "libc",
  "objc2 0.6.3",
@@ -3828,7 +3865,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a9b567d356674e9a5121ed3fedfb0a7c31e059fe71f6972b691bcd0bfc284e3"
 dependencies = [
  "ahash",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "emath",
  "epaint",
  "log",
@@ -4120,6 +4157,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "ffmpeg-sidecar"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42bc8b8df567bc8a9dcf9004a22be12c4e0766649b2116b2397dd04f25c8f2fe"
+dependencies = [
+ "anyhow",
+ "tar",
+ "ureq",
+ "xz2",
+ "zip 4.6.1",
+]
+
+[[package]]
+name = "filetime"
+version = "0.2.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f98844151eee8917efc50bd9e8318cb963ae8b297431495d3f758616ea5c57db"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "libredox",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4164,6 +4225,7 @@ checksum = "b375d6465b98090a5f25b1c7703f3859783755aa9a80433b36e0379a3ec2f369"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -4825,7 +4887,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbcd2dba93594b227a1f57ee09b8b9da8892c34d55aa332e034a228d0fe6a171"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "gpu-alloc-types",
 ]
 
@@ -4835,7 +4897,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98ff03b468aa837d70984d55f5d3f846f6ec31fe34bbb97c4f85219caeee1ca4"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -4856,7 +4918,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b89c83349105e3732062a895becfc71a8f921bb71ecbbdd8ff99263e3b53a0ca"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "gpu-descriptor-types",
  "hashbrown 0.15.5",
 ]
@@ -4867,7 +4929,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdf242682df893b86f33a73828fb09ca4b2d3bb6cc95249707fc684d27484b91"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -4904,7 +4966,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0caaee032384c10dd597af4579c67dee16650d862a9ccbe1233ff1a379abc07"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "core_maths",
  "read-fonts 0.36.0",
@@ -5262,7 +5324,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "inotify-sys",
  "libc",
 ]
@@ -5478,7 +5540,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff7f53bdf698e7aa7ec916411bbdc8078135da11b66db5182675b2227f6c0d07"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -5564,7 +5626,7 @@ version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "libc",
  "redox_syscall 0.7.0",
 ]
@@ -6401,7 +6463,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0cad96c96b1c198160517f5dc7c247ef36ebb9d49015c0cfca0c0ee8d7d1bbc"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cc",
  "float-cmp 0.9.0",
  "thiserror 1.0.69",
@@ -6413,7 +6475,7 @@ version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00c15a6f673ff72ddcc22394663290f870fb224c1bfce55734a75c414150e605"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block",
  "core-graphics-types 0.2.0",
  "foreign-types",
@@ -6531,7 +6593,7 @@ checksum = "066cf25f0e8b11ee0df221219010f213ad429855f57c494f995590c861a9a7d8"
 dependencies = [
  "arrayvec",
  "bit-set",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cfg-if",
  "cfg_aliases",
  "codespan-reporting",
@@ -6652,7 +6714,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2076a31b7010b17a38c01907c45b945e8f11495ee4dd588309718901b1f7a5b7"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "jni-sys 0.3.0",
  "log",
  "ndk-sys 0.5.0+25.2.9519653",
@@ -6666,7 +6728,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "jni-sys 0.3.0",
  "log",
  "ndk-sys 0.6.0+11769913",
@@ -6714,7 +6776,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cfg-if",
  "cfg_aliases",
  "libc",
@@ -6878,7 +6940,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9bff0aa1d48904a1385ea2a8b97576fbdcbc9a3cfccd0d31fe978e1c4038c5"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "libloading",
  "nvml-wrapper-sys",
  "static_assertions",
@@ -6935,7 +6997,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "libc",
  "objc2 0.5.2",
@@ -6951,7 +7013,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.6.2",
  "objc2 0.6.3",
  "objc2-core-graphics",
@@ -6964,7 +7026,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6948501a91121d6399b79abaa33a8aa4ea7857fe019f341b8c23ad6e81b79b08"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "libc",
  "objc2 0.6.3",
  "objc2-core-audio",
@@ -6989,7 +7051,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74dd3b56391c7a0596a295029734d3c1c5e7e510a4cb30245f8221ccea96b009"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-core-location",
@@ -7026,7 +7088,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a89f2ec274a0cf4a32642b2991e8b351a404d290da87bb6a9a9d8632490bd1c"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "objc2 0.6.3",
 ]
 
@@ -7036,7 +7098,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "617fbf49e071c178c0b24c080767db52958f716d9eabdf0890523aeae54773ef"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
@@ -7048,7 +7110,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.6.2",
  "dispatch2",
  "libc",
@@ -7061,7 +7123,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "dispatch2",
  "objc2 0.6.3",
  "objc2-core-foundation",
@@ -7104,7 +7166,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ee638a5da3799329310ad4cfa62fbf045d5f56e3ef5ba4149e7452dcf89d5a8"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "dispatch",
  "libc",
@@ -7117,7 +7179,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.6.2",
  "libc",
  "objc2 0.6.3",
@@ -7130,7 +7192,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "libc",
  "objc2-core-foundation",
 ]
@@ -7141,7 +7203,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "objc2 0.6.3",
  "objc2-core-foundation",
 ]
@@ -7164,7 +7226,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
@@ -7176,7 +7238,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e42bee7bff906b14b167da2bac5efe6b6a07e6f7c0a21a7308d40c960242dc7a"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
@@ -7199,7 +7261,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8bb46798b20cd6b91cbd113524c490f1686f4c4e8f49502431415f3512e2b6f"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-cloud-kit",
@@ -7231,7 +7293,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76cfcbf642358e8689af64cee815d139339f3ed8ad05103ed5eaf73db8d84cb3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-core-location",
@@ -7432,7 +7494,7 @@ checksum = "ef681740349cec3ab9b5996b03b459b383b6998e1ffcb2804e8b57eb1e8491d9"
 dependencies = [
  "approx",
  "arrayvec",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "downcast-rs 2.0.2",
  "either",
  "ena",
@@ -7458,7 +7520,7 @@ checksum = "ecb572cea5c76b06bc744aaefdbb9e6ea9e5695f50f79c0227bddecd6ec925a4"
 dependencies = [
  "approx",
  "arrayvec",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "downcast-rs 1.2.1",
  "either",
  "ena",
@@ -7484,7 +7546,7 @@ checksum = "2e04d21bda5249438b5695e7f08f1655524a6025bcdb186c324b7a66562f2d61"
 dependencies = [
  "approx",
  "arrayvec",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "downcast-rs 2.0.2",
  "either",
  "ena",
@@ -7721,7 +7783,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97baced388464909d42d89643fe4361939af9b7ce7a31ee32a168f832a70f2a0"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "crc32fast",
  "fdeflate",
  "flate2",
@@ -7906,7 +7968,7 @@ version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57206b407293d2bcd3af849ce869d52068623f19e1b5ff8e8778e3309439682b"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "memchr",
  "unicase",
 ]
@@ -8163,7 +8225,7 @@ dependencies = [
  "approx",
  "arrayvec",
  "bit-vec 0.7.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "crossbeam",
  "downcast-rs 1.2.1",
  "log",
@@ -8184,7 +8246,7 @@ version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -8288,7 +8350,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -8297,7 +8359,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f3fe0889e69e2ae9e41f4d6c4c0181701d00e4697b356fb1f74173a5e0ee27"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -8376,7 +8438,7 @@ dependencies = [
  "egui-phosphor",
  "mlua",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
@@ -8393,7 +8455,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_animation",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_ui",
  "ron 0.8.1",
@@ -8407,7 +8469,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -8421,7 +8483,6 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "log",
- "renzora_editor",
  "renzora_runtime",
  "toml 0.8.23",
  "uuid",
@@ -8437,9 +8498,9 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -8450,7 +8511,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -8461,8 +8522,10 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "cfg-if",
+ "cpal 0.17.1",
  "kira",
  "mint",
+ "rtrb",
  "serde",
 ]
 
@@ -8488,7 +8551,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
  "renzora_theme",
  "serde",
@@ -8501,7 +8564,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -8526,7 +8589,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_blueprint",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
@@ -8539,7 +8602,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "serde",
 ]
 
@@ -8550,7 +8613,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_lighting",
  "serde",
 ]
@@ -8564,7 +8627,7 @@ dependencies = [
  "egui-phosphor",
  "log",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
 ]
@@ -8577,7 +8640,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -8589,7 +8652,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
 ]
@@ -8602,7 +8665,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -8613,10 +8676,12 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
  "egui-phosphor",
+ "kira",
  "renzora",
  "renzora_audio",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
+ "renzora_ui",
 ]
 
 [[package]]
@@ -8628,7 +8693,7 @@ dependencies = [
  "egui-phosphor",
  "memory-stats",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
  "renzora_theme",
 ]
@@ -8641,7 +8706,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -8654,7 +8719,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
  "renzora_theme",
  "serde",
@@ -8665,62 +8730,11 @@ name = "renzora_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "renzora",
- "renzora_animation",
- "renzora_antialiasing",
- "renzora_atmosphere",
- "renzora_audio",
- "renzora_auto_exposure",
- "renzora_bloom_effect",
- "renzora_blueprint",
- "renzora_camera",
- "renzora_clouds",
- "renzora_console",
- "renzora_distance_fog",
- "renzora_dof",
- "renzora_editor_framework",
- "renzora_engine",
- "renzora_game_ui",
- "renzora_gauges",
- "renzora_gizmo",
- "renzora_grid",
- "renzora_hanabi",
- "renzora_input",
- "renzora_keybindings",
- "renzora_lighting",
- "renzora_motion_blur",
- "renzora_navmesh",
- "renzora_network",
- "renzora_night_stars",
- "renzora_oit",
- "renzora_physics",
- "renzora_postprocess",
- "renzora_runtime",
- "renzora_scene",
- "renzora_scripting",
- "renzora_shader",
- "renzora_skybox",
- "renzora_splash",
- "renzora_ssao",
- "renzora_ssr",
- "renzora_terrain",
- "renzora_tonemapping",
- "renzora_undo",
- "renzora_viewport",
- "renzora_water",
-]
-
-[[package]]
-name = "renzora_editor_framework"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
  "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_macros",
  "renzora_postprocess",
- "renzora_splash",
  "renzora_theme",
  "renzora_ui",
  "rfd",
@@ -8771,7 +8785,7 @@ dependencies = [
  "ring",
  "serde",
  "toml 0.8.23",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -8782,7 +8796,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_terrain",
  "renzora_theme",
 ]
@@ -8796,7 +8810,7 @@ dependencies = [
  "egui-phosphor",
  "image",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -8809,7 +8823,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -8822,7 +8836,7 @@ dependencies = [
  "bevy_gauge",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -8834,7 +8848,7 @@ dependencies = [
  "bevy_egui",
  "bevy_mod_outline",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_lighting",
  "renzora_physics",
  "renzora_terrain",
@@ -8855,7 +8869,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
 ]
 
 [[package]]
@@ -8867,7 +8881,7 @@ dependencies = [
  "bevy_hanabi",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "ron 0.8.1",
  "serde",
@@ -8883,7 +8897,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_blueprint",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_engine",
  "renzora_macros",
  "renzora_physics",
@@ -8901,7 +8915,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_undo",
 ]
@@ -8917,12 +8931,12 @@ dependencies = [
  "kira",
  "renzora",
  "renzora_auth",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_shader",
  "renzora_splash",
  "renzora_theme",
  "ureq",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -8944,7 +8958,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tobj",
  "ufbx",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -8956,7 +8970,7 @@ dependencies = [
  "egui-phosphor",
  "log",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_import",
  "renzora_material",
  "renzora_theme",
@@ -8981,7 +8995,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_undo",
 ]
@@ -9006,7 +9020,7 @@ dependencies = [
  "renzora_bloom_effect",
  "renzora_clouds",
  "renzora_distance_fog",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_lighting",
  "renzora_terrain",
  "renzora_theme",
@@ -9020,7 +9034,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -9056,7 +9070,7 @@ dependencies = [
  "egui-phosphor",
  "image",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_shader",
  "renzora_splash",
  "renzora_theme",
@@ -9075,7 +9089,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_undo",
 ]
 
@@ -9087,7 +9101,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_undo",
 ]
@@ -9101,7 +9115,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_audio",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -9112,7 +9126,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -9128,7 +9142,7 @@ dependencies = [
  "mlua",
  "polyanya",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_terrain",
  "renzora_ui",
@@ -9156,7 +9170,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_network",
  "renzora_theme",
 ]
@@ -9169,7 +9183,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_lighting",
  "renzora_theme",
  "serde",
@@ -9183,7 +9197,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -9197,7 +9211,7 @@ dependencies = [
  "bevy_hanabi",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_hanabi",
  "renzora_theme",
  "renzora_ui",
@@ -9216,7 +9230,7 @@ dependencies = [
  "egui-phosphor",
  "mlua",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
  "serde",
@@ -9230,7 +9244,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_physics",
  "renzora_theme",
 ]
@@ -9245,11 +9259,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_record"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "crossbeam-channel",
+ "egui-phosphor",
+ "ffmpeg-sidecar",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "renzora_ui",
+]
+
+[[package]]
 name = "renzora_rpak"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
- "renzora_editor_framework",
+ "renzora_editor",
  "toml 0.8.23",
  "zstd",
 ]
@@ -9261,38 +9290,85 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_animation",
+ "renzora_animation_editor",
  "renzora_antialiasing",
+ "renzora_asset_browser",
  "renzora_atmosphere",
  "renzora_audio",
+ "renzora_auth",
  "renzora_auto_exposure",
  "renzora_bloom_effect",
  "renzora_blueprint",
+ "renzora_blueprint_editor",
+ "renzora_camera",
  "renzora_clouds",
+ "renzora_code_editor",
+ "renzora_command_palette",
+ "renzora_console",
+ "renzora_context_menu",
+ "renzora_daw",
+ "renzora_debugger",
  "renzora_distance_fog",
  "renzora_dof",
+ "renzora_editor",
  "renzora_engine",
+ "renzora_export",
+ "renzora_foliage_editor",
  "renzora_game_ui",
+ "renzora_gamepad",
  "renzora_gauges",
+ "renzora_gizmo",
  "renzora_globals",
+ "renzora_grid",
  "renzora_hanabi",
+ "renzora_hierarchy",
+ "renzora_history",
+ "renzora_hub",
+ "renzora_import_ui",
  "renzora_input",
+ "renzora_inspector",
+ "renzora_keybindings",
+ "renzora_level_presets",
  "renzora_lighting",
+ "renzora_material_editor",
+ "renzora_mesh_draw",
+ "renzora_mesh_edit",
+ "renzora_mixer",
  "renzora_motion_blur",
  "renzora_navmesh",
  "renzora_network",
+ "renzora_network_editor",
  "renzora_night_stars",
  "renzora_oit",
+ "renzora_particle_editor",
  "renzora_physics",
+ "renzora_physics_playground",
  "renzora_postprocess",
+ "renzora_scene",
+ "renzora_script_variables",
  "renzora_scripting",
+ "renzora_sequencer",
+ "renzora_settings",
  "renzora_shader",
+ "renzora_shader_editor",
+ "renzora_shape_library",
  "renzora_skybox",
+ "renzora_splash",
  "renzora_spline",
  "renzora_ssao",
  "renzora_ssr",
+ "renzora_system_monitor",
  "renzora_terrain",
+ "renzora_terrain_editor",
+ "renzora_test_component",
+ "renzora_theme_status",
  "renzora_tonemapping",
+ "renzora_tutorial",
+ "renzora_undo",
+ "renzora_viewport",
+ "renzora_vst",
  "renzora_water",
+ "renzora_widget_gallery",
 ]
 
 [[package]]
@@ -9304,7 +9380,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_camera",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_engine",
  "renzora_keybindings",
  "renzora_theme",
@@ -9321,7 +9397,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_code_editor",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
 ]
@@ -9336,9 +9412,24 @@ dependencies = [
  "log",
  "mlua",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "rhai",
+ "serde",
+]
+
+[[package]]
+name = "renzora_sequencer"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "renzora_ui",
+ "ron 0.8.1",
  "serde",
 ]
 
@@ -9350,7 +9441,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_input",
  "renzora_keybindings",
  "renzora_splash",
@@ -9381,7 +9472,7 @@ dependencies = [
  "egui-phosphor",
  "egui_code_editor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_shader",
  "renzora_theme",
  "renzora_ui",
@@ -9398,7 +9489,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_undo",
 ]
@@ -9411,7 +9502,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "renzora_ui",
  "rfd",
@@ -9451,7 +9542,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "serde",
 ]
 
@@ -9462,7 +9553,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "serde",
 ]
 
@@ -9475,7 +9566,7 @@ dependencies = [
  "egui-phosphor",
  "nvml-wrapper",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "sysinfo 0.35.2",
 ]
@@ -9488,7 +9579,7 @@ dependencies = [
  "egui-phosphor",
  "png 0.17.16",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_physics",
  "serde",
  "serde_json",
@@ -9502,7 +9593,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_spline",
  "renzora_terrain",
  "renzora_theme",
@@ -9517,7 +9608,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_macros",
 ]
 
@@ -9542,7 +9633,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -9554,7 +9645,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
  "serde",
 ]
@@ -9567,7 +9658,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -9591,7 +9682,7 @@ dependencies = [
  "bevy 0.18.0",
  "log",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
 ]
 
 [[package]]
@@ -9604,7 +9695,7 @@ dependencies = [
  "renzora",
  "renzora_animation",
  "renzora_console",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_engine",
  "renzora_keybindings",
  "renzora_shader",
@@ -9616,13 +9707,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_vst"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "clack-extensions",
+ "clack-host",
+ "crossbeam-channel",
+ "log",
+ "renzora",
+ "renzora_audio",
+ "serde",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "renzora_water"
 version = "0.1.0"
 dependencies = [
  "avian3d 0.5.0",
  "bevy 0.18.0",
  "egui-phosphor",
- "renzora_editor_framework",
+ "renzora_editor",
  "serde",
 ]
 
@@ -9634,7 +9740,7 @@ dependencies = [
  "bevy_egui",
  "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
+ "renzora_editor",
  "renzora_theme",
 ]
 
@@ -9646,7 +9752,7 @@ checksum = "dd207dd0644bd506d8017195865d72274dae648923596438255a0da00836f548"
 dependencies = [
  "anyhow",
  "bevy_reflect 0.18.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "glam 0.30.10",
  "serde",
  "slotmap",
@@ -9685,7 +9791,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f9ef5dabe4c0b43d8f1187dc6beb67b53fe607fff7e30c5eb7f71b814b8c2c1"
 dependencies = [
  "ahash",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "no-std-compat",
  "num-traits",
  "once_cell",
@@ -9750,7 +9856,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b91f7eff05f748767f183df4320a63d6936e9c6107d97c9e6bdd9784f4289c94"
 dependencies = [
  "base64 0.21.7",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "serde",
  "serde_derive",
 ]
@@ -9762,7 +9868,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "beceb6f7bf81c73e73aeef6dd1356d9a1b2b4909e1f0fc3e59b034f9572d7b7f"
 dependencies = [
  "base64 0.22.1",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "serde",
  "serde_derive",
  "unicode-ident",
@@ -9774,7 +9880,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd490c5b18261893f14449cbd28cb9c0b637aebf161cd77900bfdedaff21ec32"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "once_cell",
  "serde",
  "serde_derive",
@@ -9841,7 +9947,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -9854,7 +9960,7 @@ version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "146c9e247ccc180c1f61615433868c99f3de3ae256a30a43b49f67c2d9171f34"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
@@ -9999,7 +10105,7 @@ version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d17b898a6d6948c3a8ee4372c17cb384f90d2e6e912ef00895b14fd7ab54ec38"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "libc",
@@ -10282,7 +10388,7 @@ version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3457dea1f0eb631b4034d61d4d8c32074caa6cd1ab2d59f2327bd8461e2c0016"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "calloop",
  "calloop-wayland-source",
  "cursor-icon",
@@ -10372,7 +10478,7 @@ version = "0.3.0+sdk-1.3.268.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
 ]
 
 [[package]]
@@ -10413,7 +10519,7 @@ version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "722f54c70818b8debdc25b18618b77a0a69fa280012c29e7904d32f9136299fc"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "paste",
  "steamworks-sys",
  "thiserror 2.0.18",
@@ -10666,6 +10772,17 @@ dependencies = [
  "grid",
  "serde",
  "slotmap",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
 ]
 
 [[package]]
@@ -11545,7 +11662,7 @@ version = "0.31.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8e6faa537fbb6c186cb9f1d41f2f811a4120d1b57ec61f50da451a0c5122bec"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "rustix 1.1.3",
  "wayland-backend",
  "wayland-scanner",
@@ -11557,7 +11674,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "625c5029dbd43d25e6aa9615e88b829a5cad13b2819c4ae129fdbb7c31ab4c7e"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cursor-icon",
  "wayland-backend",
 ]
@@ -11579,7 +11696,7 @@ version = "0.32.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baeda9ffbcfc8cd6ddaade385eaf2393bd2115a69523c735f12242353c3df4f3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
@@ -11591,7 +11708,7 @@ version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa98634619300a535a9a97f338aed9a5ff1e01a461943e8346ff4ae26007306b"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -11604,7 +11721,7 @@ version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9597cdf02cf0c34cd5823786dce6b5ae8598f05c2daf5621b6e178d4f7345f3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -11729,7 +11846,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfe68bac7cde125de7a731c3400723cadaaf1703795ad3f4805f187459cd7a77"
 dependencies = [
  "arrayvec",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "cfg-if",
  "cfg_aliases",
  "document-features",
@@ -11759,7 +11876,7 @@ dependencies = [
  "arrayvec",
  "bit-set",
  "bit-vec 0.8.0",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "cfg_aliases",
  "document-features",
@@ -11819,7 +11936,7 @@ dependencies = [
  "arrayvec",
  "ash",
  "bit-set",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block",
  "bytemuck",
  "cfg-if",
@@ -11864,7 +11981,7 @@ version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afdcf84c395990db737f2dd91628706cb31e86d72e53482320d368e52b5da5eb"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "bytemuck",
  "js-sys",
  "log",
@@ -12524,7 +12641,7 @@ dependencies = [
  "ahash",
  "android-activity",
  "atomic-waker",
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "block2 0.5.1",
  "bytemuck",
  "calloop",
@@ -12714,6 +12831,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix 1.1.3",
+]
+
+[[package]]
 name = "xcursor"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12725,7 +12852,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d039de8032a9a8856a6be89cea3e5d12fdd82306ab7c94d74e6deab2460651c5"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.11.1",
  "dlib",
  "log",
  "once_cell",
@@ -13016,6 +13143,26 @@ dependencies = [
  "zopfli",
  "zstd",
 ]
+
+[[package]]
+name = "zip"
+version = "4.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
+dependencies = [
+ "arbitrary",
+ "crc32fast",
+ "flate2",
+ "indexmap",
+ "memchr",
+ "zopfli",
+]
+
+[[package]]
+name = "zlib-rs"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40990edd51aae2c2b6907af74ffb635029d5788228222c4bb811e9351c0caad3"
 
 [[package]]
 name = "zmij"

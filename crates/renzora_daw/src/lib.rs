@@ -2,67 +2,42 @@
 //!
 //! Provides a timeline-based audio arrangement view with track lanes,
 //! waveform display, clip editing, and transport controls.
+//!
+//! Disabled on WASM — depends on the native Kira audio backend.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
-
-// ============================================================================
-// DAW Panel — timeline-based audio arrangement
-// ============================================================================
-
-struct DawPanel;
-
-impl EditorPanel for DawPanel {
-    fn id(&self) -> &str { "daw" }
-    fn title(&self) -> &str { "Audio" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::WAVEFORM) }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Center }
-    fn min_size(&self) -> [f32; 2] { [400.0, 200.0] }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = world.get_resource::<ThemeManager>()
-            .map(|tm| tm.active_theme.clone())
-            .unwrap_or_default();
-        let muted = theme.text.muted.to_color32();
-
-        ui.vertical_centered(|ui| {
-            ui.add_space(60.0);
-            ui.label(
-                egui::RichText::new(egui_phosphor::regular::WAVEFORM)
-                    .size(48.0)
-                    .color(muted),
-            );
-            ui.add_space(12.0);
-            ui.label(
-                egui::RichText::new("Audio Workstation")
-                    .size(16.0)
-                    .color(muted),
-            );
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("Drag audio files from Assets to create tracks.\nArrange clips on the timeline, mix with the Mixer panel.")
-                    .size(11.0)
-                    .color(muted),
-            );
-        });
-    }
-}
-
-// ============================================================================
-// Plugin
-// ============================================================================
+#[cfg(not(target_arch = "wasm32"))]
+mod drop;
+#[cfg(not(target_arch = "wasm32"))]
+mod panel;
+#[cfg(not(target_arch = "wasm32"))]
+mod waveform_cache;
 
 #[derive(Default)]
 pub struct DawPlugin;
 
+#[cfg(target_arch = "wasm32")]
 impl Plugin for DawPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] DawPlugin");
-        app.register_panel(DawPanel);
+    fn build(&self, _app: &mut App) {
+        info!("[editor] DawPlugin (disabled on WASM)");
     }
 }
 
-renzora::add!(DawPlugin, Editor);
+#[cfg(not(target_arch = "wasm32"))]
+impl Plugin for DawPlugin {
+    fn build(&self, app: &mut App) {
+        info!("[editor] DawPlugin");
+        use crate::panel::{apply_intents, request_clip_waveforms, DawIntentBuffer, DawPanel};
+        use crate::waveform_cache::WaveformCache;
+        use renzora_editor::AppEditorExt;
+
+        app.init_resource::<DawIntentBuffer>();
+        app.init_resource::<WaveformCache>();
+        app.register_panel(DawPanel::default());
+        // Apply panel intents before the audio scheduler sees them.
+        app.add_systems(Update, apply_intents);
+        app.add_systems(Update, request_clip_waveforms);
+    }
+}
+

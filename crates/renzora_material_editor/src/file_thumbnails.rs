@@ -28,7 +28,7 @@ use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor_framework::{material_thumb_path, MaterialThumbnailRegistry};
+use renzora_editor::{material_thumb_path, MaterialThumbnailRegistry};
 use renzora_shader::material::codegen::{self, CompileResult, TextureKind};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::runtime::{new_graph_material, FallbackTexture, GraphMaterial};

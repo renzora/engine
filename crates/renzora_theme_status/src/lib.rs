@@ -7,7 +7,7 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 
-use renzora_editor_framework::{
+use renzora_editor::{
     AppEditorExt, DockingState, FloatingPanels, PanelRegistry, SplashState,
     StatusBarAlignment, StatusBarItem,
 };
@@ -300,4 +300,3 @@ impl Plugin for ThemeStatusPlugin {
     }
 }
 
-renzora::add!(ThemeStatusPlugin, Editor);

@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2};
 use renzora_auth::marketplace::{AssetSummary, Category, MarketplaceListResponse};
 use renzora_auth::session::AuthSession;
-use renzora_editor_framework::{EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_theme::Theme;
 
 use crate::images::ImageCache;

@@ -12,7 +12,7 @@ use egui_phosphor::regular::{
     SPARKLE,
 };
 
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
 
 use renzora_hanabi::{

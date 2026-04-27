@@ -22,6 +22,14 @@ pub struct ChannelStrip {
     pub soloed: bool,
     /// Current real-time peak amplitude (0.0 - 1.5) for VU meters
     pub peak_level: f32,
+    /// cpal input device name. `Some` ⇒ a live mic capture stream is opened
+    /// on this bus; samples mix into the bus track exactly like a played
+    /// sound, so volume / pan / mute / solo all apply normally.
+    pub input_device: Option<String>,
+    /// cpal output device name. Reserved for future per-bus device routing
+    /// (currently unused by the audio pipeline; the field is here so the
+    /// mixer panel can carry the value while the routing side is built out).
+    pub output_device: Option<String>,
 }
 
 impl Default for ChannelStrip {
@@ -32,6 +40,8 @@ impl Default for ChannelStrip {
             muted: false,
             soloed: false,
             peak_level: 0.0,
+            input_device: None,
+            output_device: None,
         }
     }
 }

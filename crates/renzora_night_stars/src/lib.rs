@@ -11,7 +11,7 @@ use bevy_egui::egui;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::MOON_STARS;
 #[cfg(feature = "editor")]
-use renzora_editor_framework::{get_theme_colors, inline_property, AppEditorExt, EditorCommands, InspectorEntry};
+use renzora_editor::{get_theme_colors, inline_property, AppEditorExt, EditorCommands, InspectorEntry};
 #[cfg(feature = "editor")]
 use renzora_theme::Theme;
 

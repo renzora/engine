@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{EditorCommands, InspectorEntry};
+use renzora_editor::{EditorCommands, InspectorEntry};
 use renzora_theme::Theme;
 
 use crate::{Attributes, Gauges};

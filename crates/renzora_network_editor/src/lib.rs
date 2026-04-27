@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_network::{NetworkStatus, Networked, NetworkId, NetworkOwner, OwnerKind};
 use renzora_network::status::ConnectionState;
 use renzora::core::CurrentProject;
@@ -378,4 +378,3 @@ impl Plugin for NetworkEditorPlugin {
     }
 }
 
-renzora::add!(NetworkEditorPlugin, Editor);

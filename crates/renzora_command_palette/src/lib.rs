@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Align, Color32, Layout, RichText};
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora_editor_framework::{
+use renzora_editor::{
     AppEditorExt, EditorCommands, ShortcutEntry, ShortcutRegistry, SplashState,
     ToolEntry, ToolbarRegistry,
 };
@@ -57,7 +57,6 @@ impl Plugin for CommandPalettePlugin {
     }
 }
 
-renzora::add!(CommandPalettePlugin, Editor);
 
 fn toggle_palette(world: &mut World) {
     let mut state = world.resource_mut::<CommandPaletteState>();

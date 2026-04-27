@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]

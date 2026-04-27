@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry, MaterialThumbnailRegistry,
 };
 use renzora_shader::material::material_ref::MaterialRef;

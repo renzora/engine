@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor_framework::{
+use renzora_editor::{
     inline_property, toggle_switch, EditorCommands, EditorSelection, InspectorEntry,
     ToolEntry, ToolSection,
 };
@@ -100,7 +100,7 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
 pub fn register_physics_inspectors(app: &mut App) {
     // Auto-insert default collider on new MeshPrimitive entities
     app.add_observer(auto_insert_collider_for_shape);
-    use renzora_editor_framework::{AppEditorExt, EntityPreset};
+    use renzora_editor::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
        .register_inspector(collision_shape_entry());

@@ -15,7 +15,7 @@ use egui_phosphor::regular::{
     FLOW_ARROW, CUBE,
 };
 
-use renzora_editor_framework::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
 use renzora_shader::material::graph::{MaterialGraph, PinValue};
 use renzora_shader::material::codegen;
@@ -120,7 +120,7 @@ impl EditorPanel for MaterialGraphPanel {
         // never falls into Inactive.
         if matches!(editor_state.edit_mode, MaterialEditMode::Inactive) {
             let text_muted = theme.text.muted.to_color32();
-            renzora_editor_framework::empty_state(
+            renzora_editor::empty_state(
                 ui,
                 egui_phosphor::regular::CUBE,
                 "No mesh selected",
@@ -365,7 +365,7 @@ fn render_toolbar(
     graph: &mut MaterialGraph,
     state: &mut GraphEditorState,
     editor_state: &MaterialEditorState,
-    cmds: &renzora_editor_framework::EditorCommands,
+    cmds: &renzora_editor::EditorCommands,
     world: &World,
     theme: &Theme,
 ) -> bool {

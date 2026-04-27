@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora_animation::{AnimClip, AnimatorComponent, AnimatorState};
-use renzora_editor_framework::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 use renzora_ui::widgets::{collapsible_section, inline_property};
 

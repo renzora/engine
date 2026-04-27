@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 
-use renzora_editor_framework::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use state::{GamepadDebugState, update_gamepad_debug_state};
@@ -77,10 +77,9 @@ impl Plugin for GamepadPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GamepadPlugin");
         app.init_resource::<GamepadDebugState>();
-        use renzora_editor_framework::SplashState;
+        use renzora_editor::SplashState;
         app.add_systems(Update, update_gamepad_debug_state.run_if(in_state(SplashState::Editor)));
         app.register_panel(GamepadPanel::default());
     }
 }
 
-renzora::add!(GamepadPlugin, Editor);

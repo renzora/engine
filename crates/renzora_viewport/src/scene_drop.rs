@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor_framework::{EditorCommands, EditorSelection};
+use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 use renzora_ui::{DocumentTabState, Toasts};
 use renzora::core::{CurrentProject, EditorCamera};

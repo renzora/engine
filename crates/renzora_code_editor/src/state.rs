@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use renzora_editor_framework::MonoFont;
+use renzora_editor::MonoFont;
 
 /// An open script/file tab in the code editor.
 #[derive(Clone)]
