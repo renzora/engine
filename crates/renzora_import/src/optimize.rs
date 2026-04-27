@@ -62,6 +62,12 @@ pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<
         return Ok(glb_bytes.to_vec());
     }
 
+    // Strip `extensionsRequired` entries the gltf crate refuses to parse but
+    // which have a usable PBR fallback (e.g. KHR_materials_pbrSpecularGlossiness).
+    // Otherwise the document parse below would fail on third-party assets.
+    let cleaned = crate::glb_compat::strip_unsupported_extensions(glb_bytes);
+    let glb_bytes = cleaned.as_slice();
+
     // Parse GLB for raw chunk access
     let glb = gltf::Glb::from_slice(glb_bytes)
         .map_err(|e| format!("GLB parse error: {e}"))?;

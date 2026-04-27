@@ -8,6 +8,7 @@ pub mod formats;
 pub mod settings;
 pub mod anim_extract;
 pub mod optimize;
+pub mod glb_compat;
 
 mod gltf_pass;
 mod obj;

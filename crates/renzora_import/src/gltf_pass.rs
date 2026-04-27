@@ -24,7 +24,7 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
         // Passthrough — keep the GLB exactly as-is (embedded textures
         // included). The user can re-enable extraction later and re-import.
         return Ok(ImportResult {
-            glb_bytes: bytes,
+            glb_bytes: crate::glb_compat::strip_unsupported_extensions(&bytes),
             warnings: Vec::new(),
             extracted_textures: Vec::new(), extracted_materials: Vec::new(),
         });
@@ -36,7 +36,7 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
         });
 
     Ok(ImportResult {
-        glb_bytes: rewritten,
+        glb_bytes: crate::glb_compat::strip_unsupported_extensions(&rewritten),
         warnings,
         extracted_textures, extracted_materials: Vec::new(),
     })
@@ -212,7 +212,7 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
     let glb_bytes = pack_glb(&json_bytes, if bin_data.is_empty() { None } else { Some(&bin_data) });
 
     Ok(ImportResult {
-        glb_bytes,
+        glb_bytes: crate::glb_compat::strip_unsupported_extensions(&glb_bytes),
         warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
     })
 }
