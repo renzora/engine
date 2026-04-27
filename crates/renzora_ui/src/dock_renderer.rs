@@ -43,6 +43,20 @@ pub struct DockRenderResult {
 
 // ── Public entry point ───────────────────────────────────────────────────────
 
+/// Information a split passes down to each of its children so a leaf can act
+/// as a secondary handle for the parent's resize boundary (e.g. drag the
+/// tab bar to resize the panel above it).
+#[derive(Clone, Copy)]
+struct ParentSplitInfo {
+    direction: SplitDirection,
+    /// `false` when this child is the left/top one, `true` for right/bottom.
+    is_second: bool,
+    ratio: f32,
+    /// Parent's interior length minus the visual handle, used to convert a
+    /// drag delta into a ratio delta.
+    total: f32,
+}
+
 /// Render the full dock tree into `rect`.
 pub fn render_dock_tree(
     ui: &mut egui::Ui,
@@ -55,7 +69,7 @@ pub fn render_dock_tree(
     drag: Option<&DragState>,
 ) -> DockRenderResult {
     let mut result = DockRenderResult::default();
-    render_node(ui, tree, rect, registry, world, base_id, &[], &mut result, theme, drag);
+    render_node(ui, tree, rect, registry, world, base_id, &[], &mut result, theme, drag, None);
     result
 }
 
@@ -72,13 +86,14 @@ fn render_node(
     result: &mut DockRenderResult,
     theme: &Theme,
     drag: Option<&DragState>,
+    parent_split: Option<ParentSplitInfo>,
 ) {
     match node {
         DockTree::Split { direction, ratio, first, second } => {
             render_split(ui, *direction, *ratio, first, second, rect, registry, world, base_id, path, result, theme, drag);
         }
         DockTree::Leaf { tabs, active_tab } => {
-            render_leaf(ui, tabs, *active_tab, rect, registry, world, base_id, path, result, theme, drag);
+            render_leaf(ui, tabs, *active_tab, rect, registry, world, base_id, path, result, theme, drag, parent_split);
         }
         DockTree::Empty => {
             ui.painter().rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
@@ -162,14 +177,23 @@ fn render_split(
 ) {
     let (first_rect, handle_rect, second_rect) = calculate_split_rects(direction, ratio, rect);
 
+    // Information each child needs so a leaf inside it can act as a drag
+    // handle for our resize boundary.
+    let total = match direction {
+        SplitDirection::Horizontal => rect.width() - RESIZE_HANDLE_VISUAL,
+        SplitDirection::Vertical => rect.height() - RESIZE_HANDLE_VISUAL,
+    };
+    let first_parent = ParentSplitInfo { direction, is_second: false, ratio, total };
+    let second_parent = ParentSplitInfo { direction, is_second: true, ratio, total };
+
     // Render children
     let mut first_path = path.to_vec();
     first_path.push(false);
-    render_node(ui, first, first_rect, registry, world, base_id, &first_path, result, theme, drag);
+    render_node(ui, first, first_rect, registry, world, base_id, &first_path, result, theme, drag, Some(first_parent));
 
     let mut second_path = path.to_vec();
     second_path.push(true);
-    render_node(ui, second, second_rect, registry, world, base_id, &second_path, result, theme, drag);
+    render_node(ui, second, second_rect, registry, world, base_id, &second_path, result, theme, drag, Some(second_parent));
 
     // Interactive resize area (wider than the visual line)
     let interact_rect = match direction {
@@ -257,6 +281,7 @@ fn render_leaf(
     result: &mut DockRenderResult,
     theme: &Theme,
     drag: Option<&DragState>,
+    parent_split: Option<ParentSplitInfo>,
 ) {
     if tabs.is_empty() {
         return;
@@ -499,6 +524,61 @@ fn render_leaf(
                 });
             },
         );
+    }
+
+    // Tab bar empty area → secondary resize handle for the parent split.
+    // Only meaningful when the tab bar is on the side of the panel that
+    // borders the parent's resize boundary:
+    //   - vertical parent + this leaf is the bottom child → tab bar at our
+    //     top edge sits right under the boundary (drag.y resizes).
+    //   - horizontal parent + this leaf is the left child → empty area sits
+    //     at the right of the tab bar, against the boundary (drag.x resizes).
+    if let Some(ps) = parent_split {
+        let aligned = matches!(
+            (ps.direction, ps.is_second),
+            (SplitDirection::Vertical, true) | (SplitDirection::Horizontal, false),
+        );
+        if aligned && !is_dragging && !path.is_empty() {
+            let plus_width = 22.0;
+            let plus_gap = 4.0;
+            let empty_start_x = tab_x + 2.0 + plus_width + plus_gap;
+            let empty_rect = Rect::from_min_max(
+                Pos2::new(empty_start_x, rect.min.y),
+                Pos2::new(rect.max.x, rect.min.y + TAB_BAR_HEIGHT),
+            );
+            if empty_rect.width() > 8.0 {
+                let handle_id = base_id.with(("tabbar_resize", path));
+                let resp = ui.interact(empty_rect, handle_id, Sense::drag());
+
+                if resp.hovered() || resp.dragged() {
+                    let cursor = match ps.direction {
+                        SplitDirection::Horizontal => CursorIcon::ResizeHorizontal,
+                        SplitDirection::Vertical => CursorIcon::ResizeVertical,
+                    };
+                    ui.ctx().set_cursor_icon(cursor);
+                }
+
+                if resp.dragged() && ps.total > 0.0 {
+                    let delta = resp.drag_delta();
+                    let delta_ratio = match ps.direction {
+                        SplitDirection::Horizontal => delta.x / ps.total,
+                        SplitDirection::Vertical => delta.y / ps.total,
+                    };
+                    let new_ratio = (ps.ratio + delta_ratio).clamp(0.1, 0.9);
+                    if (new_ratio - ps.ratio).abs() > 0.001
+                        && result.ratio_update.is_none()
+                    {
+                        let parent_path = path[..path.len() - 1].to_vec();
+                        result.ratio_update = Some((parent_path, new_ratio));
+                    }
+                }
+
+                if resp.double_clicked() && result.ratio_update.is_none() {
+                    let parent_path = path[..path.len() - 1].to_vec();
+                    result.ratio_update = Some((parent_path, 0.5));
+                }
+            }
+        }
     }
 
     // Separator line under tab bar
