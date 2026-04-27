@@ -33,6 +33,17 @@ pub struct HierarchyState {
     /// collapsed in the tree, and the user sees nothing).
     pub last_selection: Vec<Entity>,
 
+    /// On the next render, nudge the scroll just enough to bring this
+    /// entity's row into the visible area. Set whenever the selection
+    /// changes (e.g. viewport pick), uses `Align::None` so already-visible
+    /// rows don't move the viewport at all.
+    pub pending_reveal: Option<Entity>,
+
+    /// Force the tree's scroll back to the top on the next render. Set when
+    /// the user edits the search field so filtered results always start
+    /// from the top instead of the previous scroll position.
+    pub pending_scroll_top: bool,
+
     // Batch rename
     pub batch_rename_active: bool,
     pub batch_rename_base: String,
@@ -64,6 +75,8 @@ impl Default for HierarchyState {
             visible_entity_order: Vec::new(),
             building_entity_order: Vec::new(),
             last_selection: Vec::new(),
+            pending_reveal: None,
+            pending_scroll_top: false,
             batch_rename_active: false,
             batch_rename_base: String::new(),
             batch_rename_start: 1,

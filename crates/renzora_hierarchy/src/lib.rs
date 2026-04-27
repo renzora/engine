@@ -135,6 +135,10 @@ impl EditorPanel for HierarchyPanel {
                     cur = parent;
                 }
             }
+            // Reveal the new primary selection on this render — `Align::None`
+            // means it only nudges the scroll if the row would otherwise be
+            // clipped, so visible rows don't cause the viewport to jump.
+            state.pending_reveal = current.first().copied();
             state.last_selection = current;
         }
 
@@ -167,13 +171,18 @@ impl EditorPanel for HierarchyPanel {
         let row_height = ui.spacing().interact_size.y;
         let popup_id = egui::Id::new("hierarchy_type_filter_popup");
         let mut filter_resp: Option<egui::Response> = None;
-        ui.horizontal(|ui| {
+        // Top-align so a shorter Add button sits flush with the top of the
+        // search box rather than being vertically centered (which makes it
+        // look offset downward).
+        ui.with_layout(
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
             ui.add_space(4.0);
-            let add_width = 50.0;
+            let add_width = 80.0;
             let add_height = (row_height - 2.0).max(16.0);
             let filter_width = row_height; // square icon button
             let spacing = ui.spacing().item_spacing.x;
-            let right_margin = 12.0;
+            let right_margin = 8.0;
             let search_width =
                 ui.available_width() - add_width - filter_width - spacing * 2.0 - right_margin;
 
@@ -203,14 +212,25 @@ impl EditorPanel for HierarchyPanel {
             // Search box — `add_sized` keeps its height aligned with the
             // flanking icon buttons; plain `ui.add` would size to the
             // text-edit's intrinsic height and look offset.
-            ui.add_sized(
+            let search_resp = ui.add_sized(
                 [search_width, row_height],
                 egui::TextEdit::singleline(&mut state.search)
                     .hint_text(format!("{} Search entities...", regular::MAGNIFYING_GLASS)),
             );
+            if search_resp.changed() {
+                if state.search.is_empty() {
+                    // Cleared the filter — bring the selected entity back
+                    // into view so the user lands where they left off.
+                    state.pending_reveal = selection.get();
+                    state.pending_scroll_top = false;
+                } else {
+                    // Typing — show results from the top.
+                    state.pending_scroll_top = true;
+                }
+            }
 
             let btn = egui::Button::new(
-                egui::RichText::new(format!("{} Add", regular::PLUS))
+                egui::RichText::new(format!("{} Add Entity", regular::PLUS))
                     .color(theme.text.secondary.to_color32())
                     .size(11.0),
             );
@@ -248,6 +268,7 @@ impl EditorPanel for HierarchyPanel {
                             } else {
                                 state.type_filter.remove(*name);
                             }
+                            state.pending_scroll_top = true;
                         }
                     }
 
@@ -262,11 +283,13 @@ impl EditorPanel for HierarchyPanel {
                         } else {
                             state.type_filter.remove("__other__");
                         }
+                        state.pending_scroll_top = true;
                     }
 
                     ui.separator();
                     if ui.button("Clear").clicked() {
                         state.type_filter.clear();
+                        state.pending_scroll_top = true;
                     }
                 },
             );
@@ -522,9 +545,14 @@ impl EditorPanel for HierarchyPanel {
 
         // Render the tree
         let state = &mut *state;
-        egui::ScrollArea::vertical()
+        let mut tree_scroll = egui::ScrollArea::vertical()
             .id_salt("hierarchy_tree")
-            .auto_shrink([false, false])
+            .auto_shrink([false, false]);
+        if state.pending_scroll_top {
+            tree_scroll = tree_scroll.vertical_scroll_offset(0.0);
+            state.pending_scroll_top = false;
+        }
+        tree_scroll
             .show(ui, |ui| {
                 ui.style_mut().spacing.item_spacing.y = 0.0;
                 tree::render_tree(

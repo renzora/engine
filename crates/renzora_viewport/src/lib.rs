@@ -362,7 +362,13 @@ impl EditorPanel for ViewportPanel {
             req.height.store(h, Ordering::Relaxed);
             req.screen_x.store(rect.min.x.to_bits(), Ordering::Relaxed);
             req.screen_y.store(rect.min.y.to_bits(), Ordering::Relaxed);
-            let is_hovered = ui.rect_contains_pointer(rect);
+            // Treat the viewport as NOT hovered while any egui widget is
+            // being dragged (panel resize handle, tab undock, hierarchy
+            // drag, etc.) so the gizmo's box-select gesture doesn't arm
+            // and viewport-only systems sleep until the drag releases.
+            let egui_dragging = ui.ctx().dragged_id().is_some()
+                || ui.ctx().is_using_pointer();
+            let is_hovered = ui.rect_contains_pointer(rect) && !egui_dragging;
             req.hovered.store(is_hovered, Ordering::Relaxed);
         }
 

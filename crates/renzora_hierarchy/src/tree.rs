@@ -99,6 +99,19 @@ fn render_node(
     *row_index += 1;
     state.row_rects.push((node.entity, result.rect));
 
+    // Reveal a freshly selected entity if the row is currently scrolled out
+    // of view. `Align::None` is a no-op for rows already in the viewport, so
+    // clicks on visible entries never cause a jump. Use `ScrollAnimation::none()`
+    // so the scroll snaps instantly instead of animating.
+    if state.pending_reveal == Some(node.entity) {
+        ui.scroll_to_rect_animation(
+            result.rect,
+            None,
+            egui::style::ScrollAnimation::none(),
+        );
+        state.pending_reveal = None;
+    }
+
     let painter = ui.painter();
 
     // === Dim dragged / hidden entities (overlay rect, matching legacy) ===

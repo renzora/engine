@@ -311,6 +311,29 @@ impl EditorPanel for InspectorPanel {
                     });
                 }
 
+                // Centered "Add Component" button at the bottom of the list,
+                // mirroring the top toolbar control for users who scroll past
+                // the existing components.
+                ui.add_space(12.0);
+                ui.vertical_centered(|ui| {
+                    let resp = ui.add(
+                        egui::Button::new(
+                            RichText::new(format!(
+                                "{} Add Component",
+                                regular::PUZZLE_PIECE
+                            ))
+                            .size(12.0),
+                        )
+                        .min_size(egui::vec2(180.0, 24.0)),
+                    );
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    }
+                    if resp.clicked() {
+                        state.show_add_overlay = true;
+                        state.add_search.clear();
+                    }
+                });
                 ui.add_space(8.0);
             });
     }
