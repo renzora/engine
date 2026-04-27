@@ -98,6 +98,29 @@ pub struct GhostMaterialApplied;
 #[derive(Component)]
 pub struct AnimationDiscoveryDone;
 
+/// Tracks a freshly-spawned GLTF model that still needs its mesh entities
+/// bound to `MaterialRef` components. Held on the `ImportedRoot` entity. The
+/// `Handle<Gltf>` keeps the asset alive long enough to read its
+/// `named_materials` map, which is how we recover the original material name
+/// for each `MeshMaterial3d<StandardMaterial>` handle the scene spawner
+/// attached.
+#[derive(Component)]
+pub struct PendingMaterialBinding {
+    pub gltf_handle: Handle<Gltf>,
+    pub frames_waited: u32,
+}
+
+/// Marker: this mesh entity has already been processed by the material
+/// binder (it either got a `MaterialRef` or it has no extractable material).
+/// Prevents repeat work on subsequent frames while the binding is still
+/// pending for sibling meshes.
+#[derive(Component)]
+pub struct MaterialBindingDone;
+
+/// How many frames the binder waits for the scene to populate before giving
+/// up. Matches `model_flatten`'s budget so a stuck spawn fails consistently.
+const MATERIAL_BIND_MAX_WAIT_FRAMES: u32 = 30;
+
 /// Called from the viewport panel's `ui()` method (read-only `&World`).
 ///
 /// Detects when a model asset is being dragged over the viewport and, on release,
@@ -199,6 +222,100 @@ fn compute_ground_position(
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
 
+/// Run the import pipeline on `source`, write the result to `dest`, dump
+/// extracted textures under `<model_dir>/textures/`, and fire one
+/// `PbrMaterialExtracted` event per material so `renzora_material` writes a
+/// `.material` file per entry.
+///
+/// Logs and falls back to a plain file copy on failure — the GLB still loads
+/// for the user, just without per-material editable graphs.
+fn run_import_pipeline(
+    world: &mut World,
+    source: &std::path::Path,
+    dest: &std::path::Path,
+    model_dir: &std::path::Path,
+    project_path: &std::path::Path,
+) {
+    use renzora_import::{convert_to_glb, ImportSettings};
+
+    // Skip mesh optimization for the drop path — these reorder triangle
+    // buffers and are only meaningful for re-importing source files. The
+    // drop pipeline is for getting an existing GLB into the project quickly.
+    let settings = ImportSettings {
+        optimize_vertex_cache: false,
+        optimize_overdraw: false,
+        optimize_vertex_fetch: false,
+        ..Default::default()
+    };
+
+    let result = match convert_to_glb(source, &settings) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("[model_drop] convert failed for {:?}: {}; falling back to plain copy", source, e);
+            if source != dest {
+                if let Err(ce) = std::fs::copy(source, dest) {
+                    error!("[model_drop] copy fallback failed: {}", ce);
+                }
+            }
+            return;
+        }
+    };
+
+    if let Err(e) = std::fs::write(dest, &result.glb_bytes) {
+        error!("[model_drop] write GLB to {:?}: {}", dest, e);
+        return;
+    }
+
+    if !result.extracted_textures.is_empty() {
+        let tex_dir = model_dir.join("textures");
+        if let Err(e) = std::fs::create_dir_all(&tex_dir) {
+            warn!("[model_drop] create textures dir: {}", e);
+        } else {
+            for tex in &result.extracted_textures {
+                let tex_path = tex_dir.join(format!("{}.{}", tex.name, tex.extension));
+                if let Err(e) = std::fs::write(&tex_path, &tex.data) {
+                    warn!("[model_drop] write texture '{}': {}", tex.name, e);
+                }
+            }
+        }
+    }
+
+    if !result.extracted_materials.is_empty() {
+        let mat_dir = model_dir.join("materials");
+        // Texture URIs from the converter are relative to the model folder
+        // (e.g. `textures/diffuse.png`). The material observer wants
+        // project-relative paths so the resolver can find them — prefix with
+        // the model folder's location under the project root.
+        let model_rel = model_dir
+            .strip_prefix(project_path)
+            .ok()
+            .and_then(|p| p.to_str())
+            .map(|s| s.replace('\\', "/"))
+            .unwrap_or_default();
+        let prefix = |uri: &Option<String>| -> Option<String> {
+            uri.as_ref().map(|u| {
+                if model_rel.is_empty() {
+                    u.clone()
+                } else {
+                    format!("{}/{}", model_rel, u)
+                }
+            })
+        };
+
+        for mat in &result.extracted_materials {
+            world.trigger(renzora::core::PbrMaterialExtracted {
+                name: mat.name.clone(),
+                output_dir: mat_dir.clone(),
+                base_color: mat.base_color,
+                metallic: mat.metallic,
+                roughness: mat.roughness,
+                base_color_texture: prefix(&mat.base_color_texture),
+                normal_texture: prefix(&mat.normal_texture),
+            });
+        }
+    }
+}
+
 /// Initiate loading a model file — called from a deferred `EditorCommands` closure.
 fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_position: Vec3) {
     // Compute asset-relative path. Each model gets its own folder under
@@ -216,17 +333,21 @@ fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_pos
         let file_name = path.file_name().unwrap_or_default();
         let dest = model_dir.join(file_name);
 
-        if !dest.exists() || path.canonicalize().ok() != dest.canonicalize().ok() {
-            if let Err(e) = std::fs::copy(&path, &dest) {
-                error!("Failed to copy model to project: {}", e);
-            } else {
-                info!("Copied model to project: {:?}", dest);
-            }
-        }
+        let project_path = project.path.clone();
+        let asset_rel = project.make_asset_relative(&dest);
+
+        // Run the import pipeline so the model lands in the project with
+        // textures pulled into `textures/` and a `.material` file written per
+        // material under `materials/`. Each spawned mesh entity later gets a
+        // `MaterialRef` to the matching `.material`, which the resolver swaps
+        // in for the GLB's embedded `StandardMaterial`. Falls back to a plain
+        // copy if conversion fails — the model still loads, just without the
+        // editable per-material graphs.
+        run_import_pipeline(world, &path, &dest, &model_dir, &project_path);
 
         glb_compat::ensure_loadable(&dest);
 
-        project.make_asset_relative(&dest)
+        asset_rel
     } else {
         glb_compat::ensure_loadable(&path);
         path.to_string_lossy().replace('\\', "/")
@@ -287,6 +408,10 @@ pub fn spawn_loaded_gltfs(
                     model_path: Some(load.asset_path.clone()),
                 },
                 ImportedRoot,
+                PendingMaterialBinding {
+                    gltf_handle: load.handle.clone(),
+                    frames_waited: 0,
+                },
             ))
             .id();
 
@@ -729,5 +854,139 @@ pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> 
     }
 
     out
+}
+
+// ── Material binding ───────────────────────────────────────────────────────
+
+/// System: walks each `PendingMaterialBinding` model, finds its mesh
+/// descendants, and inserts a `MaterialRef` pointing at the per-material
+/// `.material` file the import pipeline wrote. The existing
+/// `MaterialResolverPlugin` then loads each file and swaps the GLB's
+/// `StandardMaterial` for the editable `GraphMaterial`.
+///
+/// Runs every frame while a binding is pending. Most spawns finish in a few
+/// frames once Bevy's scene spawner has populated the subtree; we cap the
+/// wait at `MATERIAL_BIND_MAX_WAIT_FRAMES` so a broken scene doesn't keep
+/// the marker alive forever.
+pub fn bind_material_refs(
+    mut commands: Commands,
+    mut pending_query: Query<(Entity, &mut PendingMaterialBinding, &MeshInstanceData)>,
+    children_query: Query<&Children>,
+    mesh_mat_query: Query<
+        &MeshMaterial3d<StandardMaterial>,
+        (With<Mesh3d>, Without<MaterialBindingDone>, Without<renzora::MaterialRef>),
+    >,
+    gltf_assets: Res<Assets<Gltf>>,
+) {
+    use std::collections::HashMap;
+
+    for (root_entity, mut pending, mesh_data) in pending_query.iter_mut() {
+        let Some(gltf) = gltf_assets.get(&pending.gltf_handle) else {
+            // GLB not loaded yet — should be by the time we got here, but
+            // guard just in case the asset was unloaded behind us.
+            pending.frames_waited += 1;
+            if pending.frames_waited >= MATERIAL_BIND_MAX_WAIT_FRAMES {
+                commands.entity(root_entity).remove::<PendingMaterialBinding>();
+            }
+            continue;
+        };
+
+        // Build lookup: every material handle in the GLB → its name. Named
+        // entries use the GLTF's authored name; unnamed entries fall back to
+        // `material_{index}` matching what `extract_glb_materials` produced
+        // and what the `.material` filename was therefore based on.
+        let mut name_by_id: HashMap<AssetId<StandardMaterial>, String> = HashMap::new();
+        for (name, handle) in gltf.named_materials.iter() {
+            name_by_id.insert(handle.id(), name.to_string());
+        }
+        for (i, handle) in gltf.materials.iter().enumerate() {
+            name_by_id
+                .entry(handle.id())
+                .or_insert_with(|| format!("material_{}", i));
+        }
+
+        // Compute the materials directory relative to the project — the
+        // `.material` files live next to the GLB at
+        // `<model_dir>/materials/`. `MeshInstanceData::model_path` is the
+        // asset-relative GLB path (e.g. `models/bistro/bistro.glb`).
+        let Some(model_path) = mesh_data.model_path.as_deref() else {
+            commands.entity(root_entity).remove::<PendingMaterialBinding>();
+            continue;
+        };
+        let model_dir_rel = std::path::Path::new(model_path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.replace('\\', "/"))
+            .unwrap_or_default();
+        let materials_dir_rel = if model_dir_rel.is_empty() {
+            "materials".to_string()
+        } else {
+            format!("{}/materials", model_dir_rel)
+        };
+
+        // Walk descendants, applying MaterialRef where applicable.
+        let mut bound_any = false;
+        let mut stack: Vec<Entity> = vec![root_entity];
+        let mut total_meshes = 0usize;
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children_query.get(entity) {
+                stack.extend(kids.iter());
+            }
+            if let Ok(mat) = mesh_mat_query.get(entity) {
+                total_meshes += 1;
+                if let Some(name) = name_by_id.get(&mat.0.id()) {
+                    let safe = sanitize_material_name(name);
+                    let path = format!("{}/{}.material", materials_dir_rel, safe);
+                    commands
+                        .entity(entity)
+                        .insert((renzora::MaterialRef(path), MaterialBindingDone));
+                    bound_any = true;
+                } else {
+                    // Mesh has a material handle the GLB didn't expose — could
+                    // happen with procedurally-spawned children. Mark done so
+                    // we don't keep retrying.
+                    commands.entity(entity).insert(MaterialBindingDone);
+                }
+            }
+        }
+
+        // The scene spawner is async; a freshly-spawned root may have zero
+        // mesh descendants for a few frames. Wait until at least one mesh
+        // appears (then we've seen the spawn complete), then drop the marker.
+        if total_meshes == 0 {
+            pending.frames_waited += 1;
+            if pending.frames_waited >= MATERIAL_BIND_MAX_WAIT_FRAMES {
+                commands.entity(root_entity).remove::<PendingMaterialBinding>();
+            }
+            continue;
+        }
+
+        // Once we've hit at least one mesh, treat the binding as done. The
+        // `MaterialBindingDone` marker on each child prevents re-processing
+        // if more meshes get added later (rare).
+        let _ = bound_any;
+        commands.entity(root_entity).remove::<PendingMaterialBinding>();
+    }
+}
+
+/// Sanitize a material name for use as a filename. Mirrors
+/// `renzora_material::on_pbr_material_extracted` so binding paths agree with
+/// the writer.
+fn sanitize_material_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if safe.is_empty() {
+        "material".to_string()
+    } else {
+        safe
+    }
 }
 

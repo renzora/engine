@@ -47,6 +47,12 @@ pub fn spawn_editor_camera(
         },
         AtmosphereSettings::default(),
         Hdr,
+        // Bevy's atmosphere/sky pipeline binds the depth texture as
+        // non-multisampled (binding 13 in `render_sky_bind_group`). Leaving
+        // MSAA at its `Sample4` default trips a wgpu validation crash —
+        // surfaces during layout switches that retrigger camera prep when
+        // the viewport panel isn't visible (e.g. the audio layout).
+        Msaa::Off,
     ));
 
     if let Some(ref image) = render_target.image {

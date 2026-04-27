@@ -97,10 +97,13 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_shadow_settings,
                 play_mode::handle_play_mode_transitions,
                 effect_routing::update_effect_routing,
-                model_drop::spawn_loaded_gltfs,
-                model_flatten::flatten_pending_scenes,
-                model_drop::auto_discover_animations,
-                model_drop::align_models_to_ground,
+                (
+                    model_drop::spawn_loaded_gltfs,
+                    model_flatten::flatten_pending_scenes,
+                    model_drop::bind_material_refs,
+                    model_drop::auto_discover_animations,
+                    model_drop::align_models_to_ground,
+                ),
                 (
                     model_drop::track_model_drag_preview,
                     model_drop::update_model_drag_ghost,

@@ -60,6 +60,11 @@ fn sync_atmosphere(
                     break;
                 }
 
+                // Bevy's atmosphere/sky pipeline binds depth as
+                // non-multisampled (binding 13). MSAA on the same camera
+                // crashes wgpu with "expects multisampled = false". Force
+                // MSAA off for any camera currently rendering atmosphere.
+
                 let handle = if let Some(h) = existing_handle {
                     h.0.clone()
                 } else {
@@ -85,6 +90,7 @@ fn sync_atmosphere(
                         rendering_method,
                         ..default()
                     },
+                    Msaa::Off,
                 ));
                 found = true;
                 break;

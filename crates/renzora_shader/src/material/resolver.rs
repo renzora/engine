@@ -155,7 +155,15 @@ fn resolve_material_refs(
                     ));
                 }
                 None => {
+                    // File missing or malformed. Mark resolved anyway so we
+                    // don't reopen it every frame — for a model with N mesh
+                    // entities all referencing the same broken file, that
+                    // would be N file-open syscalls per frame. The mesh
+                    // keeps its existing StandardMaterial as a fallback.
                     warn!("Failed to resolve .material: {}", path);
+                    commands.entity(entity).try_insert(
+                        MaterialResolved { source_path: path.clone() },
+                    );
                 }
             }
         } else if path.ends_with(".shader") {

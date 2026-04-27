@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::convert::{ExtractedTexture, ImportError, ImportResult};
+use crate::convert::{ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult};
 use crate::settings::ImportSettings;
 
 /// GLB files: read the binary directly, then extract any embedded images to
@@ -23,10 +23,16 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
     if !settings.extract_textures {
         // Passthrough — keep the GLB exactly as-is (embedded textures
         // included). The user can re-enable extraction later and re-import.
+        let extracted_materials = if settings.extract_materials {
+            extract_glb_materials(&bytes)
+        } else {
+            Vec::new()
+        };
         return Ok(ImportResult {
             glb_bytes: crate::glb_compat::strip_unsupported_extensions(&bytes),
             warnings: Vec::new(),
-            extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+            extracted_textures: Vec::new(),
+            extracted_materials,
         });
     }
 
@@ -35,11 +41,116 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
             (bytes.clone(), Vec::new(), vec![format!("texture extraction: {}", e)])
         });
 
+    let extracted_materials = if settings.extract_materials {
+        extract_glb_materials(&rewritten)
+    } else {
+        Vec::new()
+    };
+
     Ok(ImportResult {
         glb_bytes: crate::glb_compat::strip_unsupported_extensions(&rewritten),
         warnings,
-        extracted_textures, extracted_materials: Vec::new(),
+        extracted_textures,
+        extracted_materials,
     })
+}
+
+/// Walk the GLB JSON's `materials` array and produce a flat
+/// [`ExtractedPbrMaterial`] per entry. When called after
+/// `extract_glb_textures` the texture URIs reference the now-external
+/// `textures/...` files; when textures stay embedded the URI is `None` and
+/// downstream consumers fall back to the PBR factors only.
+fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
+    let Ok(glb) = gltf::Glb::from_slice(glb_bytes) else {
+        return Vec::new();
+    };
+    let Ok(root) = serde_json::from_slice::<serde_json::Value>(&glb.json) else {
+        return Vec::new();
+    };
+
+    let materials = root
+        .get("materials")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let textures = root
+        .get("textures")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let images = root
+        .get("images")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let texture_uri = |idx: usize| -> Option<String> {
+        let tex = textures.get(idx)?;
+        let img_idx = tex.get("source")?.as_u64()? as usize;
+        let img = images.get(img_idx)?;
+        img.get("uri")?.as_str().map(String::from)
+    };
+
+    let mut out = Vec::new();
+    for (i, mat) in materials.iter().enumerate() {
+        let name = mat
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| format!("material_{}", i));
+
+        let pbr = mat.get("pbrMetallicRoughness");
+
+        let base_color = pbr
+            .and_then(|p| p.get("baseColorFactor"))
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                let r = arr.first()?.as_f64()? as f32;
+                let g = arr.get(1)?.as_f64()? as f32;
+                let b = arr.get(2)?.as_f64()? as f32;
+                let a = arr
+                    .get(3)
+                    .and_then(|v| v.as_f64())
+                    .map(|x| x as f32)
+                    .unwrap_or(1.0);
+                Some([r, g, b, a])
+            })
+            .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+
+        let metallic = pbr
+            .and_then(|p| p.get("metallicFactor"))
+            .and_then(|v| v.as_f64())
+            .map(|x| x as f32)
+            .unwrap_or(1.0);
+
+        let roughness = pbr
+            .and_then(|p| p.get("roughnessFactor"))
+            .and_then(|v| v.as_f64())
+            .map(|x| x as f32)
+            .unwrap_or(1.0);
+
+        let base_color_texture = pbr
+            .and_then(|p| p.get("baseColorTexture"))
+            .and_then(|t| t.get("index"))
+            .and_then(|i| i.as_u64())
+            .and_then(|i| texture_uri(i as usize));
+
+        let normal_texture = mat
+            .get("normalTexture")
+            .and_then(|t| t.get("index"))
+            .and_then(|i| i.as_u64())
+            .and_then(|i| texture_uri(i as usize));
+
+        out.push(ExtractedPbrMaterial {
+            name,
+            base_color,
+            metallic,
+            roughness,
+            base_color_texture,
+            normal_texture,
+        });
+    }
+    out
 }
 
 /// Parse a GLB, pull every `bufferView`-backed image out of the BIN chunk,
