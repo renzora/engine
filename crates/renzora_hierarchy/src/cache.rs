@@ -52,6 +52,7 @@ pub fn mark_hierarchy_dirty(
     mut removed_name: RemovedComponents<Name>,
     mut removed_child_of: RemovedComponents<ChildOf>,
     mut removed_hide: RemovedComponents<HideInHierarchy>,
+    mut removed_label: RemovedComponents<EntityLabelColor>,
 ) {
     if dirty.0 { return }
 
@@ -70,6 +71,7 @@ pub fn mark_hierarchy_dirty(
         || removed_name.read().next().is_some()
         || removed_child_of.read().next().is_some()
         || removed_hide.read().next().is_some()
+        || removed_label.read().next().is_some()
     {
         dirty.0 = true;
     }

@@ -132,6 +132,8 @@ pub struct EditorSettings {
     pub auto_import_on_drop: bool,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
+    /// Pin expanded ancestor rows to the top of the hierarchy as you scroll.
+    pub hierarchy_parent_stacking: bool,
     /// Whether the settings overlay is open
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
@@ -163,6 +165,7 @@ impl Default for EditorSettings {
             hide_cursor_in_play_mode: true,
             auto_import_on_drop: true,
             ui_preview_by_default: true,
+            hierarchy_parent_stacking: true,
             show_settings: false,
             plugins_dir: "plugins".to_string(),
             code_auto_close_pairs: true,

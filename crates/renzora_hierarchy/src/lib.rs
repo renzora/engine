@@ -567,8 +567,15 @@ impl EditorPanel for HierarchyPanel {
                 // Sticky-parent overlay: when the user scrolls down inside an
                 // expanded subtree, paint the chain of expanded ancestors as
                 // pinned headers at the top of the viewport so the user
-                // always knows which group they're inside.
-                paint_sticky_parents(ui, state, &theme);
+                // always knows which group they're inside. Skipped when the
+                // user has disabled it in settings.
+                let stacking_enabled = world
+                    .get_resource::<renzora_editor::EditorSettings>()
+                    .map(|s| s.hierarchy_parent_stacking)
+                    .unwrap_or(true);
+                if stacking_enabled {
+                    paint_sticky_parents(ui, state, commands, &theme);
+                }
 
                 // Marquee drag selection — fill remaining visible space below
                 // the tree rows so the user can click/drag from the empty area.
@@ -958,10 +965,17 @@ impl Plugin for HierarchyPanelPlugin {
 fn paint_sticky_parents(
     ui: &mut egui::Ui,
     state: &state::HierarchyState,
+    commands: &EditorCommands,
     theme: &renzora_theme::Theme,
 ) {
-    use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT};
+    use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN};
     use renzora_ui::widgets::tree::{INDENT_SIZE, ROW_HEIGHT};
+
+    // Right-edge layout for the eye + lock icons. Mirrors `tree.rs`.
+    const SUFFIX_WIDTH: f32 = 40.0;
+    const SUFFIX_PAD: f32 = 4.0;
+    const ICON_W: f32 = 18.0;
+    const SUFFIX_ICON_SIZE: f32 = 13.0;
 
     if state.row_meta.is_empty() {
         return;
@@ -1005,8 +1019,10 @@ fn paint_sticky_parents(
     // Reverse so the outermost ancestor sits on top.
     sticky.reverse();
 
+    // `Order::Middle` so title-bar dropdown popups (which use `Foreground`)
+    // still draw above the sticky stack.
     let layer_id = egui::LayerId::new(
-        egui::Order::Foreground,
+        egui::Order::Middle,
         egui::Id::new("hierarchy_sticky"),
     );
     let painter = ui.ctx().layer_painter(layer_id);
@@ -1021,12 +1037,14 @@ fn paint_sticky_parents(
             egui::vec2(row_w, ROW_HEIGHT),
         );
 
-        // Click target — scrolls the live row into view so the user lands on
-        // the actual parent in the tree. Allocated before painting so the
-        // hovered/active state can tint the background, and registered after
-        // tree rendering so this overlay wins overlap arbitration.
+        // Row click target — scrolls the live row into view. Sized to stop
+        // before the eye/lock hit areas so those buttons get clicks instead.
+        let row_click_rect = egui::Rect::from_min_max(
+            rect.min,
+            egui::pos2(rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD * 2.0, rect.max.y),
+        );
         let resp = ui.interact(
-            rect,
+            row_click_rect,
             egui::Id::new(("hierarchy_sticky_row", meta.entity)),
             egui::Sense::click(),
         );
@@ -1089,15 +1107,108 @@ fn paint_sticky_parents(
             meta.icon_color,
         );
 
-        // Label
+        // Label — single-line, truncated with ellipsis so long entity names
+        // don't bleed under (or past) the eye/lock icons on the right.
         let label_x = icon_x + 22.0 + 4.0;
-        painter.text(
-            egui::pos2(label_x, center_y),
-            egui::Align2::LEFT_CENTER,
-            &meta.name,
-            egui::FontId::proportional(13.0),
-            theme.text.primary.to_color32(),
+        let label_max_x = rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD * 2.0 - 4.0;
+        let label_max_w = (label_max_x - label_x).max(0.0);
+        let label_color = theme.text.primary.to_color32();
+        let label_font = egui::FontId::proportional(13.0);
+        let mut job = egui::text::LayoutJob::single_section(
+            meta.name.clone(),
+            egui::TextFormat::simple(label_font, label_color),
         );
+        job.wrap.max_width = label_max_w;
+        job.wrap.max_rows = 1;
+        job.wrap.break_anywhere = true;
+        job.wrap.overflow_character = Some('…');
+        let galley = painter.layout_job(job);
+        let text_h = galley.rect.height();
+        painter.galley(
+            egui::pos2(label_x, center_y - text_h / 2.0),
+            galley,
+            label_color,
+        );
+
+        // ── Eye (visibility) toggle, leftmost of the suffix pair ────────
+        {
+            let vis_icon = if meta.is_visible { EYE } else { EYE_SLASH };
+            let vis_color = if meta.is_visible {
+                egui::Color32::from_rgb(140, 180, 220)
+            } else {
+                egui::Color32::from_rgb(90, 90, 100)
+            };
+            let vis_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD, rect.min.y),
+                egui::vec2(ICON_W, ROW_HEIGHT),
+            );
+            let vis_resp = ui.interact(
+                vis_rect,
+                egui::Id::new(("hierarchy_sticky_eye", meta.entity)),
+                egui::Sense::click(),
+            );
+            painter.text(
+                vis_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                vis_icon,
+                egui::FontId::proportional(SUFFIX_ICON_SIZE),
+                vis_color,
+            );
+            if vis_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if vis_resp.clicked() {
+                let entity = meta.entity;
+                let was_visible = meta.is_visible;
+                commands.push(move |world: &mut World| {
+                    renzora_undo::execute(
+                        world,
+                        UndoContext::Scene,
+                        Box::new(renzora_undo::VisibilityToggleCmd { entity, was_visible }),
+                    );
+                });
+            }
+        }
+
+        // ── Lock toggle, rightmost slot ─────────────────────────────────
+        {
+            let lock_icon = if meta.is_locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
+            let lock_color = if meta.is_locked {
+                egui::Color32::from_rgb(220, 80, 80)
+            } else {
+                egui::Color32::from_rgb(90, 90, 100)
+            };
+            let lock_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.max.x - ICON_W - SUFFIX_PAD, rect.min.y),
+                egui::vec2(ICON_W, ROW_HEIGHT),
+            );
+            let lock_resp = ui.interact(
+                lock_rect,
+                egui::Id::new(("hierarchy_sticky_lock", meta.entity)),
+                egui::Sense::click(),
+            );
+            painter.text(
+                lock_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                lock_icon,
+                egui::FontId::proportional(SUFFIX_ICON_SIZE),
+                lock_color,
+            );
+            if lock_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if lock_resp.clicked() {
+                let entity = meta.entity;
+                let was_locked = meta.is_locked;
+                commands.push(move |world: &mut World| {
+                    renzora_undo::execute(
+                        world,
+                        UndoContext::Scene,
+                        Box::new(renzora_undo::LockToggleCmd { entity, was_locked }),
+                    );
+                });
+            }
+        }
     }
 
     // Hairline at the bottom of the sticky stack to separate from the live

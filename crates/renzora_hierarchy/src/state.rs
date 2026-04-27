@@ -109,6 +109,8 @@ pub struct StickyRowMeta {
     pub icon: &'static str,
     pub icon_color: Color32,
     pub label_color: Option<[u8; 3]>,
+    pub is_visible: bool,
+    pub is_locked: bool,
 }
 
 /// A node in the entity tree, built from ECS data. Cached in
@@ -122,7 +124,13 @@ pub struct EntityNode {
     pub icon: &'static str,
     pub icon_color: Color32,
     pub children: Vec<EntityNode>,
+    /// Effective label color for rendering — the entity's own color, or the
+    /// nearest ancestor's color if this entity hasn't been assigned one.
     pub label_color: Option<[u8; 3]>,
+    /// The entity's own assigned color, ignoring inheritance. Used by the
+    /// inspector / right-click menu so "Clear" and swatch highlights only
+    /// reflect what was actually set on this entity.
+    pub own_label_color: Option<[u8; 3]>,
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_camera: bool,
@@ -366,13 +374,18 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         index: usize,
         entries: &[Entry],
         children_map: &HashMap<Entity, Vec<usize>>,
+        inherited_label_color: Option<[u8; 3]>,
     ) -> EntityNode {
         let entry = &entries[index];
+        // An explicit color on this entity wins; otherwise inherit from the
+        // nearest ancestor that had one. Children further down inherit the
+        // effective color so the cascade continues through subtrees.
+        let effective_label_color = entry.label_color.or(inherited_label_color);
         let mut children = Vec::new();
 
         if let Some(child_indices) = children_map.get(&entry.entity) {
             for &ci in child_indices {
-                children.push(build_node(ci, entries, children_map));
+                children.push(build_node(ci, entries, children_map, effective_label_color));
             }
         }
 
@@ -393,7 +406,8 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             icon: final_icon,
             icon_color: final_color,
             children,
-            label_color: entry.label_color,
+            label_color: effective_label_color,
+            own_label_color: entry.label_color,
             is_visible: entry.is_visible,
             is_locked: entry.is_locked,
             is_camera: entry.is_camera,
@@ -406,7 +420,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
 
     root_indices
         .iter()
-        .map(|&i| build_node(i, &entries, &children_map))
+        .map(|&i| build_node(i, &entries, &children_map, None))
         .collect()
 }
 

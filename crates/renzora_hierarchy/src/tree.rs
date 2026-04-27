@@ -109,6 +109,8 @@ fn render_node(
         icon: node.icon,
         icon_color: node.icon_color,
         label_color: node.label_color,
+        is_visible: node.is_visible,
+        is_locked: node.is_locked,
     });
 
     // Reveal a freshly selected entity if the row is currently scrolled out
@@ -621,8 +623,10 @@ fn context_menu(
 
     ui.separator();
 
-    // Label Color inline picker (swatch grid, matching legacy)
-    let current_label_color = node.label_color;
+    // Label Color inline picker (swatch grid, matching legacy). Uses the
+    // entity's *own* color (ignoring parent inheritance) so "Clear" and the
+    // selected-swatch ring reflect what was actually set on this entity.
+    let current_label_color = node.own_label_color;
     ui.horizontal(|ui| {
         ui.add_space(8.0);
         ui.label(egui::RichText::new(format!("{} Label Color", regular::PALETTE)).size(13.0));

@@ -16,6 +16,7 @@ use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, DESKTOP,
     FOLDER_OPEN, VIDEO_CAMERA, KEYBOARD, PALETTE, TEXT_AA, GAUGE,
     WRENCH, GRID_FOUR, CUBE, GAME_CONTROLLER, INFO, PLUS, TRASH, LIST_PLUS, X,
+    LIST_BULLETS,
 };
 
 use renzora_editor::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
@@ -754,6 +755,12 @@ fn render_interface_tab(
                 .range(10.0..=24.0)
                 .speed(0.5)
                 .suffix(" px"))
+        });
+    });
+
+    render_category(ui, LIST_BULLETS, "Hierarchy", CategoryStyle::interface(), "settings_hierarchy", true, theme, |ui| {
+        settings_row(ui, 0, "Parent Stacking", theme, |ui| {
+            ui.checkbox(&mut settings.hierarchy_parent_stacking, "Pin expanded ancestor rows when scrolling")
         });
     });
 }
