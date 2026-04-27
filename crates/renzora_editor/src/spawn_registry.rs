@@ -79,6 +79,9 @@ impl SceneStarterRegistry {
 pub struct ComponentIconEntry {
     /// Bevy component TypeId — used for runtime archetype checks.
     pub type_id: std::any::TypeId,
+    /// Human-readable type label (e.g. "Camera", "Mesh"). Surfaced by the
+    /// hierarchy's "filter by type" UI.
+    pub name: &'static str,
     /// Icon string (egui-phosphor).
     pub icon: &'static str,
     /// Icon color in the hierarchy.
@@ -130,5 +133,26 @@ impl ComponentIconRegistry {
             }
         }
         None
+    }
+
+    /// Return the registered type label for an entity, picked by priority.
+    /// `None` means the entity didn't match any registered icon entry — the
+    /// hierarchy filter treats those as "Other".
+    pub fn entity_type_name(&self, world: &bevy::ecs::world::World, entity: bevy::ecs::entity::Entity) -> Option<&'static str> {
+        for entry in &self.entries {
+            if let Some(component_id) = world.components().get_id(entry.type_id) {
+                let er = world.entity(entity);
+                if er.contains_id(component_id) {
+                    return Some(entry.name);
+                }
+            }
+        }
+        None
+    }
+
+    /// Iterate the registered entries — used by the hierarchy filter UI to
+    /// list available types.
+    pub fn iter(&self) -> impl Iterator<Item = &ComponentIconEntry> {
+        self.entries.iter()
     }
 }

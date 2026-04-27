@@ -144,16 +144,13 @@ impl LayoutManager {
 /// Scene: Hierarchy+Shapes | Viewport+BottomTabs | Inspector+History
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        // Left column: hierarchy+scenes tabbed on top, tool settings + shape library tabbed below
+        // Left column: hierarchy+scenes tabbed on top, shape library below
         DockTree::vertical(
             DockTree::Leaf {
                 tabs: vec!["hierarchy".into(), "scenes".into()],
                 active_tab: 0,
             },
-            DockTree::Leaf {
-                tabs: vec!["tool_settings".into(), "shape_library".into()],
-                active_tab: 0,
-            },
+            DockTree::leaf("shape_library"),
             0.6,
         ),
         DockTree::horizontal(
@@ -176,7 +173,7 @@ pub fn scene_layout() -> DockTree {
             },
             0.78,
         ),
-        0.15,
+        0.2,
     )
 }
 

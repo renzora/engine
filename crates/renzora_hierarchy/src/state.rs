@@ -42,6 +42,11 @@ pub struct HierarchyState {
     // Marquee drag selection
     pub marquee_origin: Option<egui::Pos2>,
     pub row_rects: Vec<(Entity, egui::Rect)>,
+
+    /// Filter-by-type — set of registered type names the user wants to show.
+    /// Empty means no filter (show everything). The `"__other__"` sentinel
+    /// matches entities that don't have a registered type.
+    pub type_filter: HashSet<&'static str>,
 }
 
 impl Default for HierarchyState {
@@ -65,6 +70,7 @@ impl Default for HierarchyState {
             batch_rename_entities: Vec::new(),
             marquee_origin: None,
             row_rects: Vec::new(),
+            type_filter: HashSet::new(),
         }
     }
 }
@@ -87,6 +93,10 @@ pub struct EntityNode {
     pub is_default_camera: bool,
     pub has_blueprint: bool,
     pub is_scene_instance: bool,
+    /// Registered type label from `ComponentIconRegistry`, or `None` when the
+    /// entity didn't match any registered icon entry. Used by the hierarchy's
+    /// "filter by type" UI — `None` is grouped under "Other".
+    pub type_name: Option<&'static str>,
 }
 
 /// Build the entity tree from the world.
@@ -113,7 +123,23 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     };
     let filter_component_ids = include_ids;
 
-    let mut entries: Vec<(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool, bool, bool)> = Vec::new();
+    struct Entry {
+        entity: Entity,
+        name: String,
+        icon: &'static str,
+        color: Color32,
+        parent: Option<Entity>,
+        label_color: Option<[u8; 3]>,
+        is_visible: bool,
+        is_locked: bool,
+        is_camera: bool,
+        is_default_camera: bool,
+        has_blueprint: bool,
+        is_scene_instance: bool,
+        type_name: Option<&'static str>,
+    }
+
+    let mut entries: Vec<Entry> = Vec::new();
     let mut named_entities: HashSet<Entity> = HashSet::new();
 
     for archetype in world.archetypes().iter() {
@@ -182,6 +208,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             // descendant individually (see `studio_preview` for the pattern).
             let name_str = name.as_str().to_string();
             let (icon, color) = entity_icon(world, entity);
+            let type_name = world
+                .get_resource::<ComponentIconRegistry>()
+                .and_then(|reg| reg.entity_type_name(world, entity));
             let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
             let label_color = world.get::<EntityLabelColor>(entity).map(|c| c.0);
             let is_visible = world
@@ -195,19 +224,33 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             let is_scene_instance = world.get::<renzora::SceneInstance>(entity).is_some();
 
             named_entities.insert(entity);
-            entries.push((entity, name_str, icon, color, parent, label_color, is_visible, is_locked, is_camera, is_default_camera, has_blueprint, is_scene_instance));
+            entries.push(Entry {
+                entity,
+                name: name_str,
+                icon,
+                color,
+                parent,
+                label_color,
+                is_visible,
+                is_locked,
+                is_camera,
+                is_default_camera,
+                has_blueprint,
+                is_scene_instance,
+                type_name,
+            });
         }
     }
 
     let mut children_map: HashMap<Entity, Vec<usize>> = HashMap::new();
     let mut root_indices: Vec<usize> = Vec::new();
 
-    for (i, &(_, _, _, _, ref parent, _, _, _, _, _, _, _)) in entries.iter().enumerate() {
+    for (i, entry) in entries.iter().enumerate() {
         // Walk up the ancestor chain to find the nearest named parent.
         // This handles unnamed intermediaries (e.g. SceneRoot entities in GLTF
         // hierarchies) by reparenting children to the closest visible ancestor.
         let mut resolved_parent = None;
-        if let Some(mut p) = *parent {
+        if let Some(mut p) = entry.parent {
             loop {
                 if named_entities.contains(&p) {
                     resolved_parent = Some(p);
@@ -233,7 +276,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     // tiebreaker so the order is deterministic even when archetype iteration
     // order shifts (e.g. after component additions from selection changes).
     root_indices.sort_by_key(|&idx| {
-        let entity = entries[idx].0;
+        let entity = entries[idx].entity;
         let order = world.get::<HierarchyOrder>(entity).map(|h| h.0).unwrap_or(u32::MAX);
         (order, entity)
     });
@@ -256,7 +299,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     };
 
     let chain_key = |idx: usize, resolved_parent: Entity, world: &World| -> Vec<usize> {
-        let entity = entries[idx].0;
+        let entity = entries[idx].entity;
         let mut path = Vec::new();
         let mut current = entity;
         while current != resolved_parent {
@@ -277,7 +320,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         // (shouldn't happen for valid hierarchies, but cheap insurance).
         let mut keyed: Vec<(Vec<usize>, Entity, usize)> = child_indices
             .iter()
-            .map(|&idx| (chain_key(idx, parent, world), entries[idx].0, idx))
+            .map(|&idx| (chain_key(idx, parent, world), entries[idx].entity, idx))
             .collect();
         keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         *child_indices = keyed.into_iter().map(|(_, _, idx)| idx).collect();
@@ -285,42 +328,43 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
 
     fn build_node(
         index: usize,
-        entries: &[(Entity, String, &'static str, Color32, Option<Entity>, Option<[u8; 3]>, bool, bool, bool, bool, bool, bool)],
+        entries: &[Entry],
         children_map: &HashMap<Entity, Vec<usize>>,
     ) -> EntityNode {
-        let (entity, name, icon, color, _, label_color, is_visible, is_locked, is_camera, is_default_camera, has_blueprint, is_scene_instance) = &entries[index];
+        let entry = &entries[index];
         let mut children = Vec::new();
 
-        if let Some(child_indices) = children_map.get(entity) {
+        if let Some(child_indices) = children_map.get(&entry.entity) {
             for &ci in child_indices {
                 children.push(build_node(ci, entries, children_map));
             }
         }
 
-        let final_icon = if !children.is_empty() && *icon == regular::CIRCLE {
+        let final_icon = if !children.is_empty() && entry.icon == regular::CIRCLE {
             regular::FOLDER
         } else {
-            icon
+            entry.icon
         };
-        let final_color = if !children.is_empty() && *icon == regular::CIRCLE {
+        let final_color = if !children.is_empty() && entry.icon == regular::CIRCLE {
             Color32::from_rgb(170, 175, 190)
         } else {
-            *color
+            entry.color
         };
 
         EntityNode {
-            entity: *entity,
-            name: name.clone(),
+            entity: entry.entity,
+            name: entry.name.clone(),
             icon: final_icon,
             icon_color: final_color,
             children,
-            label_color: *label_color,
-            is_visible: *is_visible,
-            is_locked: *is_locked,
-            is_camera: *is_camera,
-            is_default_camera: *is_default_camera,
-            has_blueprint: *has_blueprint,
-            is_scene_instance: *is_scene_instance,
+            label_color: entry.label_color,
+            is_visible: entry.is_visible,
+            is_locked: entry.is_locked,
+            is_camera: entry.is_camera,
+            is_default_camera: entry.is_default_camera,
+            has_blueprint: entry.has_blueprint,
+            is_scene_instance: entry.is_scene_instance,
+            type_name: entry.type_name,
         }
     }
 
@@ -359,6 +403,42 @@ fn filter_node(node: EntityNode, search: &str) -> Option<EntityNode> {
         .collect();
 
     if name_matches || !filtered_children.is_empty() {
+        Some(EntityNode {
+            children: filtered_children,
+            ..node
+        })
+    } else {
+        None
+    }
+}
+
+/// Filter the tree to only include nodes whose type label is in `allowed`,
+/// or whose descendants are. `None`-typed nodes match the sentinel
+/// `"__other__"` so the popup can offer an "Other" toggle for entities that
+/// don't match any registered type.
+pub fn filter_tree_by_type(
+    nodes: Vec<EntityNode>,
+    allowed: &std::collections::HashSet<&'static str>,
+) -> Vec<EntityNode> {
+    nodes
+        .into_iter()
+        .filter_map(|node| filter_node_by_type(node, allowed))
+        .collect()
+}
+
+fn filter_node_by_type(
+    node: EntityNode,
+    allowed: &std::collections::HashSet<&'static str>,
+) -> Option<EntityNode> {
+    let key = node.type_name.unwrap_or("__other__");
+    let type_matches = allowed.contains(key);
+    let filtered_children: Vec<EntityNode> = node
+        .children
+        .into_iter()
+        .filter_map(|child| filter_node_by_type(child, allowed))
+        .collect();
+
+    if type_matches || !filtered_children.is_empty() {
         Some(EntityNode {
             children: filtered_children,
             ..node

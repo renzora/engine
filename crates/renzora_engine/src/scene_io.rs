@@ -1449,3 +1449,40 @@ pub fn rehydrate_suns(
         );
     }
 }
+
+/// Backfill required components on light entities loaded from a scene.
+///
+/// Bevy's `DynamicScene::write_to_world` inserts components via reflection,
+/// which doesn't run the required-components machinery. Lights deserialize
+/// fine but often arrive missing `Transform`, `Visibility`, etc — the
+/// dependent components that `#[require(...)]` would normally auto-insert
+/// when the light was first added via Commands. Without those, the light
+/// either doesn't render or renders at world origin.
+///
+/// This system runs every frame and patches in any missing companions on
+/// freshly-loaded light entities. Cheap when there are no lights to fix
+/// (the `Without<...>` filters keep the query empty).
+pub fn rehydrate_lights(
+    mut commands: Commands,
+    needs_transform: Query<
+        Entity,
+        (
+            Or<(With<bevy::light::PointLight>, With<bevy::light::SpotLight>, With<bevy::light::DirectionalLight>)>,
+            Without<Transform>,
+        ),
+    >,
+    needs_visibility: Query<
+        Entity,
+        (
+            Or<(With<bevy::light::PointLight>, With<bevy::light::SpotLight>, With<bevy::light::DirectionalLight>)>,
+            Without<Visibility>,
+        ),
+    >,
+) {
+    for entity in &needs_transform {
+        commands.entity(entity).try_insert(Transform::default());
+    }
+    for entity in &needs_visibility {
+        commands.entity(entity).try_insert(Visibility::default());
+    }
+}

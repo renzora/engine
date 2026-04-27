@@ -117,6 +117,7 @@ impl Plugin for RuntimePlugin {
                 .add_systems(Update, (
                     scene_io::rehydrate_meshes,
                     scene_io::rehydrate_suns,
+                    scene_io::rehydrate_lights,
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,

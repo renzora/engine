@@ -177,6 +177,7 @@ impl Plugin for GameUiPlugin {
             // Register hierarchy icons for UI entities
             app.register_component_icon(renzora_editor::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiCanvas>(),
+                name: "UI Canvas",
                 icon: egui_phosphor::regular::FRAME_CORNERS,
                 color: [130, 200, 255],
                 priority: 70,
@@ -184,6 +185,7 @@ impl Plugin for GameUiPlugin {
             });
             app.register_component_icon(renzora_editor::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiWidget>(),
+                name: "UI Widget",
                 icon: egui_phosphor::regular::SQUARES_FOUR,
                 color: [130, 200, 255],
                 priority: 60,

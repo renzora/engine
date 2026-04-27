@@ -19,7 +19,7 @@ use renzora_theme::ThemeManager;
 use renzora_undo::{self, CompoundCmd, RenameCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
 
 use cache::{HierarchyDirty, HierarchyTreeCache};
-use state::{filter_tree, HierarchyState};
+use state::{filter_tree, filter_tree_by_type, HierarchyState};
 
 /// Label color presets: ([r, g, b], name).
 pub const LABEL_COLORS: &[([u8; 3], &str)] = &[
@@ -146,30 +146,131 @@ impl EditorPanel for HierarchyPanel {
             commands.push(|w: &mut World| { w.remove_resource::<renzora::core::CreateNodeRequested>(); });
         }
 
-        // Search bar + "Add Entity" button
+        // Collect distinct type entries from the icon registry up front so
+        // the popup closure can use them without holding a `world` borrow
+        // alongside the `state` borrow.
+        let type_filter_entries: Vec<(&'static str, &'static str, [u8; 3])> = {
+            let mut out: Vec<(&'static str, &'static str, [u8; 3])> = Vec::new();
+            if let Some(registry) = world.get_resource::<renzora_editor::ComponentIconRegistry>() {
+                for e in registry.iter() {
+                    if !out.iter().any(|(n, _, _)| *n == e.name) {
+                        out.push((e.name, e.icon, e.color));
+                    }
+                }
+            }
+            out.sort_by_key(|(n, _, _)| *n);
+            out
+        };
+
+        // Search bar + "Filter" + "Add Entity" buttons
         ui.add_space(4.0);
         let row_height = ui.spacing().interact_size.y;
+        let popup_id = egui::Id::new("hierarchy_type_filter_popup");
+        let mut filter_resp: Option<egui::Response> = None;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             let add_width = 50.0;
+            let add_height = (row_height - 2.0).max(16.0);
+            let filter_width = row_height; // square icon button
             let spacing = ui.spacing().item_spacing.x;
-            let search_width = ui.available_width() - add_width - spacing - 8.0;
-            ui.add(
+            let right_margin = 12.0;
+            let search_width =
+                ui.available_width() - add_width - filter_width - spacing * 2.0 - right_margin;
+
+            // Filter-by-type button — left of the search box. Highlighted
+            // when a filter is active. Frameless so it reads as an icon, not
+            // a button.
+            let active = !state.type_filter.is_empty();
+            let icon_color = if active {
+                theme.semantic.accent.to_color32()
+            } else {
+                theme.text.secondary.to_color32()
+            };
+            let filter_btn = egui::Button::new(
+                egui::RichText::new(regular::FUNNEL)
+                    .color(icon_color)
+                    .size(13.0),
+            )
+            .frame(false);
+            let resp = ui
+                .add_sized([filter_width, row_height], filter_btn)
+                .on_hover_text("Filter by type");
+            if resp.clicked() {
+                ui.memory_mut(|m| m.toggle_popup(popup_id));
+            }
+            filter_resp = Some(resp);
+
+            // Search box — `add_sized` keeps its height aligned with the
+            // flanking icon buttons; plain `ui.add` would size to the
+            // text-edit's intrinsic height and look offset.
+            ui.add_sized(
+                [search_width, row_height],
                 egui::TextEdit::singleline(&mut state.search)
-                    .desired_width(search_width)
                     .hint_text(format!("{} Search entities...", regular::MAGNIFYING_GLASS)),
             );
+
             let btn = egui::Button::new(
                 egui::RichText::new(format!("{} Add", regular::PLUS))
-                    .color(theme.semantic.accent.to_color32())
+                    .color(theme.text.secondary.to_color32())
                     .size(11.0),
             );
-            if ui.add_sized([add_width, row_height], btn).clicked() {
+            if ui.add_sized([add_width, add_height], btn).clicked() {
                 state.show_add_overlay = true;
                 state.add_search.clear();
             }
         });
         ui.add_space(4.0);
+
+        if let Some(resp) = &filter_resp {
+            egui::popup_below_widget(
+                ui,
+                popup_id,
+                resp,
+                egui::PopupCloseBehavior::CloseOnClickOutside,
+                |ui| {
+                    ui.set_min_width(180.0);
+                    ui.label(
+                        egui::RichText::new("Filter by type")
+                            .size(11.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
+                    ui.separator();
+
+                    for (name, icon, [r, g, b]) in &type_filter_entries {
+                        let mut on = state.type_filter.contains(name);
+                        let color = egui::Color32::from_rgb(*r, *g, *b);
+                        let label = egui::RichText::new(format!("{}  {}", icon, name))
+                            .color(color)
+                            .size(12.0);
+                        if ui.checkbox(&mut on, label).changed() {
+                            if on {
+                                state.type_filter.insert(*name);
+                            } else {
+                                state.type_filter.remove(*name);
+                            }
+                        }
+                    }
+
+                    // "Other" — entities that didn't match any registered type.
+                    let mut other_on = state.type_filter.contains("__other__");
+                    let other_label = egui::RichText::new(format!("{}  Other", regular::CIRCLE))
+                        .color(theme.text.secondary.to_color32())
+                        .size(12.0);
+                    if ui.checkbox(&mut other_on, other_label).changed() {
+                        if other_on {
+                            state.type_filter.insert("__other__");
+                        } else {
+                            state.type_filter.remove("__other__");
+                        }
+                    }
+
+                    ui.separator();
+                    if ui.button("Clear").clicked() {
+                        state.type_filter.clear();
+                    }
+                },
+            );
+        }
 
         // Collider stamp progress strip — shown while a bulk stamp is in flight.
         if let Some(queue) = world.get_resource::<renzora_physics::ColliderStampQueue>() {
@@ -387,13 +488,24 @@ impl EditorPanel for HierarchyPanel {
 
         // Read the cached entity tree. Rebuilt by `update_hierarchy_cache`
         // (Update schedule) only when the tree actually changed. When no
-        // search is active we read directly from the cache (no clone);
-        // search creates a filtered owned copy.
+        // search or type filter is active we read directly from the cache
+        // (no clone); otherwise we create a filtered owned copy.
         let cache_ref = world.get_resource::<HierarchyTreeCache>();
-        let filtered_nodes: Option<Vec<state::EntityNode>> = if state.search.trim().is_empty() {
+        let search_active = !state.search.trim().is_empty();
+        let type_filter_active = !state.type_filter.is_empty();
+        let filtered_nodes: Option<Vec<state::EntityNode>> = if !search_active && !type_filter_active {
             None
         } else {
-            cache_ref.map(|c| filter_tree(c.nodes.clone(), state.search.trim()))
+            cache_ref.map(|c| {
+                let mut nodes = c.nodes.clone();
+                if type_filter_active {
+                    nodes = filter_tree_by_type(nodes, &state.type_filter);
+                }
+                if search_active {
+                    nodes = filter_tree(nodes, state.search.trim());
+                }
+                nodes
+            })
         };
         let nodes: &[state::EntityNode] = match filtered_nodes.as_ref() {
             Some(v) => v.as_slice(),

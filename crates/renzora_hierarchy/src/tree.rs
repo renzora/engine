@@ -9,8 +9,14 @@ use renzora_undo::{self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, Lock
 use crate::state::{EntityNode, HierarchyState};
 use crate::LABEL_COLORS;
 
-/// Width reserved for visibility + lock icons in the prefix area.
-const PREFIX_WIDTH: f32 = 28.0;
+/// Width reserved for visibility + lock icons drawn at the right edge of each row.
+const SUFFIX_WIDTH: f32 = 40.0;
+/// Right padding inside the row before the lock icon.
+const SUFFIX_PAD: f32 = 4.0;
+/// Width of one icon hit area.
+const ICON_W: f32 = 18.0;
+/// Glyph point size for the eye / lock icons.
+const SUFFIX_ICON_SIZE: f32 = 13.0;
 
 /// Render the entity tree recursively using `tree_row`.
 pub fn render_tree(
@@ -67,6 +73,10 @@ fn render_node(
     // Track entity order for range selection and marquee row rects
     state.building_entity_order.push(node.entity);
 
+    // Capture parity before tree_row consumes the index — used below to
+    // paint the suffix-icon strip in the matching odd/even tone.
+    let row_parity_odd = *row_index % 2 == 1;
+
     let result = renzora_editor::tree_row(
         ui,
         &TreeRowConfig {
@@ -83,7 +93,7 @@ fn render_node(
             label: if is_renaming { "" } else { &node.name },
             label_color: node.label_color,
             theme,
-            prefix_width: PREFIX_WIDTH,
+            prefix_width: 0.0,
         },
     );
     *row_index += 1;
@@ -98,7 +108,41 @@ fn render_node(
         painter.rect_filled(result.rect, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 60));
     }
 
-    // === Visibility icon (in prefix area, left slot) ===
+    // === Suffix strip background — mirrors the row's odd/even tone (and
+    // selection/hover overlay) so the eye + lock icons sit on a solid
+    // surface that blends with the rest of the row. ===
+    {
+        let strip_rect = egui::Rect::from_min_max(
+            Pos2::new(
+                result.rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD * 2.0,
+                result.rect.min.y,
+            ),
+            result.rect.max,
+        );
+        let strip_bg = if row_parity_odd {
+            theme.panels.inspector_row_odd.to_color32()
+        } else {
+            theme.panels.inspector_row_even.to_color32()
+        };
+        painter.rect_filled(strip_rect, 0.0, strip_bg);
+        if is_selected {
+            let [r, g, b, _] = theme.semantic.selection.to_color32().to_array();
+            painter.rect_filled(
+                strip_rect,
+                0.0,
+                Color32::from_rgba_unmultiplied(r, g, b, 160),
+            );
+        } else if result.response.hovered() {
+            let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+            painter.rect_filled(
+                strip_rect,
+                0.0,
+                Color32::from_rgba_unmultiplied(r, g, b, 40),
+            );
+        }
+    }
+
+    // === Visibility icon (right side, leftmost of the suffix pair) ===
     {
         let vis_icon = if node.is_visible { regular::EYE } else { regular::EYE_SLASH };
         let vis_color = if node.is_visible {
@@ -107,8 +151,11 @@ fn render_node(
             Color32::from_rgb(90, 90, 100)
         };
         let vis_rect = egui::Rect::from_min_size(
-            Pos2::new(result.prefix_rect.min.x, result.rect.min.y),
-            Vec2::new(14.0, 20.0),
+            Pos2::new(
+                result.rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD,
+                result.rect.min.y,
+            ),
+            Vec2::new(ICON_W, 20.0),
         );
         let vis_id = ui.id().with(("vis_btn", *row_index));
         let vis_resp = ui.interact(vis_rect, vis_id, Sense::click());
@@ -116,7 +163,7 @@ fn render_node(
             vis_rect.center(),
             egui::Align2::CENTER_CENTER,
             vis_icon,
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(SUFFIX_ICON_SIZE),
             vis_color,
         );
         if vis_resp.hovered() {
@@ -134,7 +181,7 @@ fn render_node(
         vis_resp.on_hover_text(if node.is_visible { "Hide" } else { "Show" });
     }
 
-    // === Lock icon (in prefix area, right slot) ===
+    // === Lock icon (right side, rightmost slot) ===
     {
         let lock_icon = if node.is_locked { regular::LOCK_SIMPLE } else { regular::LOCK_SIMPLE_OPEN };
         let lock_color = if node.is_locked {
@@ -143,8 +190,11 @@ fn render_node(
             Color32::from_rgb(90, 90, 100)
         };
         let lock_rect = egui::Rect::from_min_size(
-            Pos2::new(result.prefix_rect.min.x + 14.0, result.rect.min.y),
-            Vec2::new(14.0, 20.0),
+            Pos2::new(
+                result.rect.max.x - ICON_W - SUFFIX_PAD,
+                result.rect.min.y,
+            ),
+            Vec2::new(ICON_W, 20.0),
         );
         let lock_id = ui.id().with(("lock_btn", *row_index));
         let lock_resp = ui.interact(lock_rect, lock_id, Sense::click());
@@ -152,7 +202,7 @@ fn render_node(
             lock_rect.center(),
             egui::Align2::CENTER_CENTER,
             lock_icon,
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(SUFFIX_ICON_SIZE),
             lock_color,
         );
         if lock_resp.hovered() {
@@ -183,11 +233,16 @@ fn render_node(
 
     // === Inline rename (replaces label area) ===
     if is_renaming {
-        // Calculate where label would be: after prefix + icon area
+        // Calculate where label would be: after prefix + icon area. Stop
+        // before the right-side eye/lock icons so the text edit doesn't
+        // overlap them.
         let label_x = result.prefix_rect.max.x + 20.0 + 4.0; // icon width + gap
         let rename_rect = egui::Rect::from_min_max(
             Pos2::new(label_x, result.rect.min.y + 1.0),
-            Pos2::new(result.rect.max.x - 4.0, result.rect.max.y - 1.0),
+            Pos2::new(
+                result.rect.max.x - SUFFIX_WIDTH - SUFFIX_PAD - 4.0,
+                result.rect.max.y - 1.0,
+            ),
         );
 
         let rename_id = egui::Id::new(("hierarchy_rename", node.entity));

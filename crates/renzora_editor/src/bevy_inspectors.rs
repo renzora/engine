@@ -137,6 +137,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
 pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Camera3d>(),
+        name: "Camera",
         icon: regular::VIDEO_CAMERA,
         color: [100, 180, 255],
         priority: 100,
@@ -144,6 +145,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<DirectionalLight>(),
+        name: "Directional Light",
         icon: regular::SUN,
         color: [255, 220, 100],
         priority: 90,
@@ -151,6 +153,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<PointLight>(),
+        name: "Point Light",
         icon: regular::LIGHTBULB,
         color: [255, 200, 80],
         priority: 90,
@@ -158,6 +161,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<SpotLight>(),
+        name: "Spot Light",
         icon: regular::FLASHLIGHT,
         color: [255, 200, 80],
         priority: 90,
@@ -165,6 +169,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<AmbientLight>(),
+        name: "Ambient Light",
         icon: regular::SUN_DIM,
         color: [200, 200, 150],
         priority: 80,
@@ -172,6 +177,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Mesh3d>(),
+        name: "Mesh",
         icon: regular::CUBE,
         color: [255, 170, 100],
         priority: 50,

@@ -15,7 +15,7 @@ use crate::panel::PanelRegistry;
 
 const TAB_BAR_HEIGHT: f32 = 28.0;
 const RESIZE_HANDLE_VISUAL: f32 = 1.0;
-const RESIZE_INTERACT_SIZE: f32 = 8.0;
+const RESIZE_INTERACT_SIZE: f32 = 6.0;
 const MIN_PANEL_SIZE: f32 = 50.0;
 
 // ── Render result ────────────────────────────────────────────────────────────
@@ -89,20 +89,33 @@ fn render_node(
 // ── Split node ───────────────────────────────────────────────────────────────
 
 fn calculate_split_rects(direction: SplitDirection, ratio: f32, rect: Rect) -> (Rect, Rect, Rect) {
+    // The resize handle's interaction zone is wider than the visible 1px line.
+    // To stop it from overlapping the child panels (which causes cursor flicker
+    // when hovering near a panel's scrollbar), we inset each child by half the
+    // overhang on the side facing the handle. The handle's hit area then sits
+    // entirely in the gap between children.
+    let inset = ((RESIZE_INTERACT_SIZE - RESIZE_HANDLE_VISUAL) * 0.5).max(0.0);
     match direction {
         SplitDirection::Horizontal => {
             let avail = rect.width() - RESIZE_HANDLE_VISUAL;
             let first_w = (avail * ratio).max(MIN_PANEL_SIZE);
             let second_w = (avail - first_w).max(MIN_PANEL_SIZE);
 
-            let first_rect = Rect::from_min_size(rect.min, Vec2::new(first_w, rect.height()));
+            let first_visible_w = (first_w - inset).max(0.0);
+            let second_x = rect.min.x + first_w + RESIZE_HANDLE_VISUAL + inset;
+            let second_visible_w = (second_w - inset).max(0.0);
+
+            let first_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(first_visible_w, rect.height()),
+            );
             let handle_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x + first_w, rect.min.y),
                 Vec2::new(RESIZE_HANDLE_VISUAL, rect.height()),
             );
             let second_rect = Rect::from_min_size(
-                Pos2::new(rect.min.x + first_w + RESIZE_HANDLE_VISUAL, rect.min.y),
-                Vec2::new(second_w, rect.height()),
+                Pos2::new(second_x, rect.min.y),
+                Vec2::new(second_visible_w, rect.height()),
             );
             (first_rect, handle_rect, second_rect)
         }
@@ -111,14 +124,21 @@ fn calculate_split_rects(direction: SplitDirection, ratio: f32, rect: Rect) -> (
             let first_h = (avail * ratio).max(MIN_PANEL_SIZE);
             let second_h = (avail - first_h).max(MIN_PANEL_SIZE);
 
-            let first_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), first_h));
+            let first_visible_h = (first_h - inset).max(0.0);
+            let second_y = rect.min.y + first_h + RESIZE_HANDLE_VISUAL + inset;
+            let second_visible_h = (second_h - inset).max(0.0);
+
+            let first_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(rect.width(), first_visible_h),
+            );
             let handle_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x, rect.min.y + first_h),
                 Vec2::new(rect.width(), RESIZE_HANDLE_VISUAL),
             );
             let second_rect = Rect::from_min_size(
-                Pos2::new(rect.min.x, rect.min.y + first_h + RESIZE_HANDLE_VISUAL),
-                Vec2::new(rect.width(), second_h),
+                Pos2::new(rect.min.x, second_y),
+                Vec2::new(rect.width(), second_visible_h),
             );
             (first_rect, handle_rect, second_rect)
         }
@@ -196,7 +216,14 @@ fn render_split(
         result.ratio_update = Some((path.to_vec(), 0.5));
     }
 
-    // Draw the 1px visual separator line
+    // Fill the gap between children with the surface color so the inset
+    // pixels around the handle don't show through to whatever was painted
+    // last frame. Then draw the 1px visual separator line on top.
+    ui.painter().rect_filled(
+        interact_rect,
+        0.0,
+        theme.surfaces.extreme.to_color32(),
+    );
     let line_color = theme.widgets.border.to_color32();
     match direction {
         SplitDirection::Horizontal => {

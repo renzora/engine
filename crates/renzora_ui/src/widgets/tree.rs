@@ -38,7 +38,7 @@ use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT};
 use renzora_theme::Theme;
 
 /// Indentation per depth level in logical pixels.
-pub const INDENT_SIZE: f32 = 18.0;
+pub const INDENT_SIZE: f32 = 12.0;
 
 /// Height of a single tree row.
 pub const ROW_HEIGHT: f32 = 24.0;
