@@ -85,6 +85,17 @@ pub struct SurfaceGraphExt {
     #[sampler(107)]
     pub texture_3: Option<Handle<Image>>,
 
+    /// Extra D2 slots so a fully-extracted PBR material (base color +
+    /// metallic-roughness + normal + emissive + occlusion = 5 maps) can fit
+    /// without trimming. Bindings 114/115 and 116/117.
+    #[texture(114)]
+    #[sampler(115)]
+    pub texture_4: Option<Handle<Image>>,
+
+    #[texture(116)]
+    #[sampler(117)]
+    pub texture_5: Option<Handle<Image>>,
+
     /// User cubemap slot (bindings 108/109). Lets a material sample a
     /// user-supplied skybox/IBL-style cube beyond Bevy's built-in env map —
     /// e.g., a baked local reflection cube, a stylized sky, a custom
@@ -147,6 +158,19 @@ impl MaterialExtension for SurfaceGraphExt {
         _layout: &MeshVertexBufferLayoutRef,
         key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        // Skip the swap on prepass / shadow pipelines. Our generated shader is
+        // forward-only — it imports `apply_pbr_lighting`, which is gated on
+        // `#ifndef PREPASS_FRAGMENT`, and reads `forward_io::VertexOutput`
+        // which differs from `prepass_io::VertexOutput`. Forcing our shader
+        // into the prepass triggers naga errors. Letting Bevy keep
+        // StandardMaterial's prepass shader handles alpha cutout for `Mask`
+        // materials and depth correctly.
+        let label = descriptor.label.as_deref().unwrap_or("");
+        let is_prepass_or_shadow =
+            label.contains("prepass") || label.contains("shadow");
+        if is_prepass_or_shadow {
+            return Ok(());
+        }
         if let Some(uuid) = key.bind_group_data.shader_uuid {
             if let Some(ref mut frag) = descriptor.fragment {
                 frag.shader = Handle::<Shader>::Uuid(uuid, PhantomData);
@@ -175,6 +199,8 @@ pub fn new_graph_material(fallback: &super::runtime::FallbackTexture) -> GraphMa
             texture_1: Some(fallback.0.clone()),
             texture_2: Some(fallback.0.clone()),
             texture_3: Some(fallback.0.clone()),
+            texture_4: Some(fallback.0.clone()),
+            texture_5: Some(fallback.0.clone()),
             // cube/array/3d stay None — Bevy's FallbackImage covers the
             // bind-group layout until the user assigns real handles.
             cube_0: None,

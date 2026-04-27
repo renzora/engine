@@ -61,13 +61,29 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
     };
     let path = ev.output_dir.join(format!("{}.material", file_name));
 
+    use crate::material::graph::AlphaMode as GraphAlpha;
+    let alpha_mode = match ev.alpha_mode {
+        renzora::core::PbrAlphaMode::Opaque => GraphAlpha::Opaque,
+        renzora::core::PbrAlphaMode::Mask => GraphAlpha::Mask {
+            cutoff: ev.alpha_cutoff,
+        },
+        renzora::core::PbrAlphaMode::Blend => GraphAlpha::Blend,
+    };
+
     let inputs = pbr_build::PbrInputs {
         name: ev.name.clone(),
         base_color: ev.base_color,
         metallic: ev.metallic,
         roughness: ev.roughness,
+        emissive: ev.emissive,
         base_color_texture: ev.base_color_texture.clone(),
         normal_texture: ev.normal_texture.clone(),
+        metallic_roughness_texture: ev.metallic_roughness_texture.clone(),
+        emissive_texture: ev.emissive_texture.clone(),
+        occlusion_texture: ev.occlusion_texture.clone(),
+        specular_glossiness_texture: ev.specular_glossiness_texture.clone(),
+        alpha_mode,
+        double_sided: ev.double_sided,
     };
 
     match pbr_build::pbr_to_json(&inputs) {

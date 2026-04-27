@@ -254,8 +254,16 @@ fn collect_usd_textures_and_materials(
                 ],
                 metallic: mat.metallic,
                 roughness: mat.roughness,
+                emissive: [0.0, 0.0, 0.0],
                 base_color_texture: base_color_uri,
                 normal_texture: normal_uri,
+                metallic_roughness_texture: None,
+                emissive_texture: None,
+                occlusion_texture: None,
+                specular_glossiness_texture: None,
+                alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                alpha_cutoff: 0.5,
+                double_sided: false,
             });
         }
     }

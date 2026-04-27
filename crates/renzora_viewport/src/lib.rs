@@ -100,6 +100,12 @@ impl Plugin for ViewportPlugin {
                 (
                     model_drop::spawn_loaded_gltfs,
                     model_flatten::flatten_pending_scenes,
+                    // After flatten: any wrappers that survived (e.g. a
+                    // multi-child RootNode that flatten couldn't collapse)
+                    // get tagged HideInHierarchy. Ordered so we don't write
+                    // to entities that flatten is in the middle of despawning.
+                    model_flatten::hide_gltf_wrappers
+                        .after(model_flatten::flatten_pending_scenes),
                     model_drop::bind_material_refs,
                     model_drop::auto_discover_animations,
                     model_drop::align_models_to_ground,

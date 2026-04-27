@@ -302,3 +302,102 @@ fn count_descendants(root: Entity, world: &World) -> usize {
     }
     count
 }
+
+// ── GLTF wrapper hiding ───────────────────────────────────────────────────
+
+/// Marker placed on an `ImportedRoot` once its GLTF wrapper descendants have
+/// been processed by `hide_gltf_wrappers`. Once present, the system skips the
+/// root — wrapper names don't change for the life of the entity.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct WrappersHidden;
+
+/// Per-frame wait counter for `hide_gltf_wrappers`, kept on the root until
+/// the scene finishes spawning. Cleared when children appear and the actual
+/// hiding pass runs.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct WrappersPending {
+    pub frames_waited: u32,
+}
+
+/// Returns true for entity names that come from Bevy's GLTF spawner or the
+/// drop pipeline as plumbing rather than user-meaningful content.
+///
+/// Examples that match: `SceneRoot` (spawned by `model_drop`), `RootNode`,
+/// `RootNode.001` (Blender-exported), `RootNode_2` (some GLTF tooling),
+/// `Scene` (Blender's default scene).
+fn is_gltf_wrapper_name(name: &str) -> bool {
+    if name == "SceneRoot" || name == "RootNode" || name == "Scene" {
+        return true;
+    }
+    let suffix_only_digits = |sep: char| {
+        name.split_once(sep).map_or(false, |(prefix, rest)| {
+            prefix == "RootNode" && !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+        })
+    };
+    suffix_only_digits('.') || suffix_only_digits('_')
+}
+
+/// System: walk each newly-imported model's subtree and tag GLTF wrapper
+/// nodes with `HideInHierarchy` so they don't clutter the hierarchy panel.
+/// The hierarchy panel skips hidden entities and re-parents their visible
+/// children to the nearest visible ancestor — so the dropped model shows
+/// `ModelRoot → Mesh1, Mesh2, ...` instead of
+/// `ModelRoot → SceneRoot → RootNode.001 → Mesh1, Mesh2, ...`.
+///
+/// Waits up to `MAX_WAIT_FRAMES` for the spawned scene to populate before
+/// stamping `WrappersHidden`. Once stamped, won't re-process — wrapper
+/// names are stable for the life of the entity.
+pub fn hide_gltf_wrappers(
+    mut commands: Commands,
+    pending: Query<
+        (Entity, Option<&Children>, Option<&WrappersPending>),
+        // Use `MeshInstanceData` rather than `ImportedRoot` so rehydrated
+        // scenes loaded from disk get the same treatment — `ImportedRoot`
+        // is a runtime-only marker that isn't serialized.
+        (With<renzora::MeshInstanceData>, Without<WrappersHidden>),
+    >,
+    name_query: Query<&Name>,
+    children_query: Query<&Children>,
+    hidden_query: Query<(), With<renzora::HideInHierarchy>>,
+) {
+    for (root, root_children, pending_marker) in pending.iter() {
+        let has_children = root_children.map(|c| !c.is_empty()).unwrap_or(false);
+        if !has_children {
+            let frames = pending_marker.map(|p| p.frames_waited).unwrap_or(0);
+            if frames >= MAX_WAIT_FRAMES {
+                commands.entity(root).try_insert(WrappersHidden);
+                commands.entity(root).remove::<WrappersPending>();
+            } else {
+                commands.entity(root).try_insert(WrappersPending {
+                    frames_waited: frames + 1,
+                });
+            }
+            continue;
+        }
+
+        // Walk descendants (skip the root itself — its name is the file name
+        // and the user expects to see it). Use `try_insert` so the command
+        // no-ops if an entity is despawned between this frame and command
+        // application — `flatten_pending_scenes` runs in the same set and
+        // collapses some of these wrappers, so a wrapper we tagged here may
+        // be gone by the time the insert applies.
+        let mut stack: Vec<Entity> = root_children
+            .map(|c| c.iter().collect())
+            .unwrap_or_default();
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children_query.get(entity) {
+                stack.extend(kids.iter());
+            }
+            if hidden_query.get(entity).is_ok() {
+                continue;
+            }
+            let Ok(name) = name_query.get(entity) else { continue };
+            if is_gltf_wrapper_name(name.as_str()) {
+                commands.entity(entity).try_insert(renzora::HideInHierarchy);
+            }
+        }
+
+        commands.entity(root).try_insert(WrappersHidden);
+        commands.entity(root).remove::<WrappersPending>();
+    }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "renzora_rmip"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora Mipmapped Texture (.rmip) — pre-baked GPU-ready texture container with full mipmap chain. Loader is always available; the baker is gated behind the `bake` feature so runtime crates don't pull in `image`."
+
+[features]
+default = []
+# Pulls in the `image` crate so import-side code can encode .rmip files.
+# Editor/runtime crates only need the loader and stay lightweight without
+# this feature.
+bake = ["dep:image"]
+
+[dependencies]
+bevy = { workspace = true }
+thiserror = "2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"], optional = true }

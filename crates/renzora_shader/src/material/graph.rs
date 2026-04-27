@@ -265,6 +265,22 @@ impl MaterialNode {
 
 // ── Material graph ──────────────────────────────────────────────────────────
 
+/// Per-graph alpha behavior. Maps directly onto Bevy's `AlphaMode` at
+/// resolve time. Default is `Opaque` so existing materials (which omit
+/// the field on disk) continue to render unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AlphaMode {
+    Opaque,
+    /// Discard fragments below `cutoff`. Used for foliage, masks.
+    Mask { cutoff: f32 },
+    /// Standard alpha blending. Used for glass, smoke, decals.
+    Blend,
+}
+
+impl Default for AlphaMode {
+    fn default() -> Self { Self::Opaque }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterialGraph {
     pub name: String,
@@ -272,6 +288,13 @@ pub struct MaterialGraph {
     pub nodes: Vec<MaterialNode>,
     pub connections: Vec<Connection>,
     next_id: u64,
+    /// How transparency should be rendered. `#[serde(default)]` keeps old
+    /// `.material` files (written before this field existed) loadable.
+    #[serde(default)]
+    pub alpha_mode: AlphaMode,
+    /// Render back faces too. `#[serde(default)]` for the same reason.
+    #[serde(default)]
+    pub double_sided: bool,
 }
 
 impl Default for MaterialGraph {
@@ -288,6 +311,8 @@ impl MaterialGraph {
             nodes: Vec::new(),
             connections: Vec::new(),
             next_id: 1,
+            alpha_mode: AlphaMode::Opaque,
+            double_sided: false,
         };
         // Always start with the output node
         graph.add_output_node(domain);

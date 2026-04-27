@@ -34,7 +34,7 @@ mod bvh;
 mod blend;
 pub mod units;
 
-pub use convert::{convert_to_glb, ImportError, ImportResult};
+pub use convert::{convert_to_glb, ExtractedAlphaMode, ExtractedPbrMaterial, ImportError, ImportResult};
 pub use formats::{detect_format, supported_extensions, ModelFormat};
 pub use settings::{ImportSettings, UpAxis};
 pub use anim_extract::extract_animations_from_glb;

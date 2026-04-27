@@ -292,10 +292,15 @@ pub(crate) fn queue_outline_mesh(
         let view_mask = view_mask.unwrap_or_default();
         let rangefinder = OutlineRangefinder::new(view);
 
-        let outline_view_cache = outline_cache
-            .view_map
-            .get(&view.retained_view_entity)
-            .unwrap();
+        // The outline cache populates per-view entries lazily. When an
+        // entity (e.g. the World Environment) is deleted mid-frame Bevy
+        // tears down render-world views before the cache catches up,
+        // leaving a brief window where this lookup misses. The phase
+        // lookups just below use the same `let ... else { continue }`
+        // pattern; mirror it here so deletes don't panic.
+        let Some(outline_view_cache) = outline_cache.view_map.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         let (Some(stencil_phase), Some(opaque_phase), Some(transparent_phase)) = (
             stencil_phases.get_mut(&view.retained_view_entity),

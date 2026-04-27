@@ -899,8 +899,20 @@ fn import_worker(
                                 base_color: mat.base_color,
                                 metallic: mat.metallic,
                                 roughness: mat.roughness,
+                                emissive: mat.emissive,
                                 base_color_texture: rewrite_uri(&mat.base_color_texture),
                                 normal_texture: rewrite_uri(&mat.normal_texture),
+                                metallic_roughness_texture: rewrite_uri(&mat.metallic_roughness_texture),
+                                emissive_texture: rewrite_uri(&mat.emissive_texture),
+                                occlusion_texture: rewrite_uri(&mat.occlusion_texture),
+                                specular_glossiness_texture: rewrite_uri(&mat.specular_glossiness_texture),
+                                alpha_mode: match mat.alpha_mode {
+                                    renzora_import::ExtractedAlphaMode::Opaque => renzora::core::PbrAlphaMode::Opaque,
+                                    renzora_import::ExtractedAlphaMode::Mask => renzora::core::PbrAlphaMode::Mask,
+                                    renzora_import::ExtractedAlphaMode::Blend => renzora::core::PbrAlphaMode::Blend,
+                                },
+                                alpha_cutoff: mat.alpha_cutoff,
+                                double_sided: mat.double_sided,
                             },
                         ));
                     }

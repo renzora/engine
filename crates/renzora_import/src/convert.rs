@@ -27,11 +27,44 @@ pub struct ExtractedPbrMaterial {
     pub base_color: [f32; 4],
     pub metallic: f32,
     pub roughness: f32,
-    /// Project-relative URI to the base-color texture written alongside the
-    /// model (e.g. `"models/character/textures/diffuse.png"`), or `None` if
-    /// the source had no base-color map.
+    /// glTF emissive factor (`emissiveFactor`). Multiplies emissive_texture
+    /// when present, or used directly when the texture is absent.
+    pub emissive: [f32; 3],
+    /// Project-relative URI to the base-color texture, e.g.
+    /// `"models/character/textures/diffuse.png"`. `None` if the source had no map.
     pub base_color_texture: Option<String>,
     pub normal_texture: Option<String>,
+    /// Combined glTF metallic-roughness map. Channels: G = roughness, B = metallic.
+    pub metallic_roughness_texture: Option<String>,
+    pub emissive_texture: Option<String>,
+    /// Ambient occlusion map. Bevy reads only the R channel.
+    pub occlusion_texture: Option<String>,
+    /// glTF spec-gloss `specularGlossinessTexture` (RGB = specular color,
+    /// A = glossiness). Spec-gloss-only — `None` for metal-rough materials.
+    /// The graph builder routes the inverted alpha channel into the
+    /// `roughness` pin so per-pixel gloss (puddles vs dry stone) survives
+    /// the spec-gloss → metal-rough conversion.
+    pub specular_glossiness_texture: Option<String>,
+    /// glTF `alphaMode`: how transparency is rendered.
+    pub alpha_mode: ExtractedAlphaMode,
+    /// glTF `alphaCutoff` — discard threshold for `Mask` mode. Ignored otherwise.
+    pub alpha_cutoff: f32,
+    /// glTF `doubleSided` — render back faces too. Glass, foliage, fabric.
+    pub double_sided: bool,
+}
+
+/// Mirrors the glTF 2.0 `alphaMode` enum. Importers populate this from the
+/// source file; downstream the material resolver maps it onto Bevy's
+/// `AlphaMode` so transparency renders correctly without artist intervention.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ExtractedAlphaMode {
+    Opaque,
+    Mask,
+    Blend,
+}
+
+impl Default for ExtractedAlphaMode {
+    fn default() -> Self { Self::Opaque }
 }
 
 /// Result of a successful import.

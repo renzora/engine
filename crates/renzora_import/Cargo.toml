@@ -44,3 +44,8 @@ quick-xml = "0.37"
 thiserror = "2"
 log = "0.4"
 serde_json = "1"
+
+# `.rmip` baker — pulls in the `image` crate transitively for decode +
+# downsample. Loader-only consumers (editor, runtime) skip this feature
+# and stay light.
+renzora_rmip = { path = "../renzora_rmip", features = ["bake"] }

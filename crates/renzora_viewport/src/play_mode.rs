@@ -2,6 +2,10 @@
 
 use bevy::prelude::*;
 use bevy::camera::RenderTarget;
+use bevy::core_pipeline::prepass::NormalPrepass;
+use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::render::view::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions};
 use renzora_editor::camera::EditorUiCamera;
 use renzora::core::{
@@ -115,6 +119,32 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         }
     }
 
+    // Match the editor camera's render setup. Atmosphere components must
+    // be attached at the moment Bevy first renders this camera —
+    // attaching them later would expand the bind group layout and crash
+    // wgpu with a binding mismatch. `EffectRouting` later replaces these
+    // values with whatever a `WorldEnvironment` entity authored, so the
+    // play camera ends up rendering identically to the editor camera.
+    let medium_handle = world
+        .resource_mut::<Assets<ScatteringMedium>>()
+        .add(ScatteringMedium::default());
+    world.entity_mut(cam_entity).insert((
+        Hdr,
+        NormalPrepass,
+        Atmosphere {
+            bottom_radius: 6_360_000.0,
+            top_radius: 6_460_000.0,
+            ground_albedo: Vec3::splat(0.3),
+            medium: medium_handle,
+        },
+        AtmosphereSettings::default(),
+        AtmosphereEnvironmentMapLight {
+            intensity: 0.0,
+            ..default()
+        },
+        Msaa::Off,
+    ));
+
     world.entity_mut(cam_entity).insert(PlayModeCamera);
     console_info("PlayMode", format!("Inserted PlayModeCamera marker on {:?}", cam_entity));
 
@@ -149,9 +179,20 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         if let Some(mut cam) = world.get_mut::<Camera>(entity) {
             cam.is_active = false;
         }
-        world.entity_mut(entity).remove::<PlayModeCamera>();
-        world.entity_mut(entity).remove::<Camera>();
-        world.entity_mut(entity).remove::<Camera3d>();
+        let mut e = world.entity_mut(entity);
+        e.remove::<PlayModeCamera>();
+        e.remove::<Camera>();
+        e.remove::<Camera3d>();
+        // Strip everything we added on entry so the authored `SceneCamera`
+        // returns to its baseline state. Bevy's bind group layout for the
+        // camera also goes away when `Camera3d` is removed, so re-adding
+        // these on a future play-mode entry rebuilds it cleanly.
+        e.remove::<Hdr>();
+        e.remove::<NormalPrepass>();
+        e.remove::<Atmosphere>();
+        e.remove::<AtmosphereSettings>();
+        e.remove::<AtmosphereEnvironmentMapLight>();
+        e.remove::<Msaa>();
     }
 
     // Re-enable editor camera and restore its render target

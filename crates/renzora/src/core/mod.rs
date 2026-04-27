@@ -308,9 +308,10 @@ pub struct MeshPrimitive(pub String);
 
 /// Event fired when a model importer has pulled PBR material data out of a
 /// source file and needs somewhere to persist it as a `.material` graph.
-/// `renzora_import_ui` triggers this per extracted material; a handler in
-/// `renzora_material` (or any other provider) observes and writes the file.
-/// Both sides communicate only through this type — no sibling crate deps.
+/// Importers (the import dialog and the viewport drop pipeline) trigger this
+/// per extracted material; an observer in `renzora_shader::material` writes
+/// a node-graph `.material` file. Both sides communicate only through this
+/// type — no sibling crate deps.
 #[derive(Event, Debug, Clone)]
 pub struct PbrMaterialExtracted {
     /// Human-friendly name for the material; becomes the `.material` filename.
@@ -320,10 +321,44 @@ pub struct PbrMaterialExtracted {
     pub base_color: [f32; 4],
     pub metallic: f32,
     pub roughness: f32,
-    /// Asset-relative URI to the base-color texture (e.g.
-    /// `"models/character/textures/diffuse.png"`), or `None`.
+    /// glTF emissive factor (RGB linear). Multiplied with `emissive_texture`
+    /// when present; used as a constant when not.
+    pub emissive: [f32; 3],
+    /// Asset-relative URIs to the corresponding textures, e.g.
+    /// `"models/car/textures/body_albedo.png"`. `None` if absent.
     pub base_color_texture: Option<String>,
     pub normal_texture: Option<String>,
+    /// glTF metallic-roughness map. Channels: G = roughness, B = metallic.
+    pub metallic_roughness_texture: Option<String>,
+    pub emissive_texture: Option<String>,
+    /// Ambient occlusion map (R channel only).
+    pub occlusion_texture: Option<String>,
+    /// glTF spec-gloss `specularGlossinessTexture` (RGB = specular color,
+    /// A = glossiness). The material observer routes its inverted alpha
+    /// channel into the `roughness` pin so per-pixel glossiness survives
+    /// the spec-gloss → metal-rough conversion. `None` for metal-rough
+    /// materials.
+    pub specular_glossiness_texture: Option<String>,
+    /// glTF alpha behavior. The graph resolver maps this onto Bevy's
+    /// `AlphaMode` so transparency renders correctly.
+    pub alpha_mode: PbrAlphaMode,
+    /// Alpha discard threshold for `Mask` mode. Ignored otherwise.
+    pub alpha_cutoff: f32,
+    /// `doubleSided` flag — render both faces (glass, foliage, fabric).
+    pub double_sided: bool,
+}
+
+/// Mirrors glTF 2.0 `alphaMode`. Lives in core so the import event and the
+/// material graph use a single shared enum without crate-cycle gymnastics.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum PbrAlphaMode {
+    Opaque,
+    Mask,
+    Blend,
+}
+
+impl Default for PbrAlphaMode {
+    fn default() -> Self { Self::Opaque }
 }
 
 /// Event fired when a file or folder is renamed/moved inside the project's

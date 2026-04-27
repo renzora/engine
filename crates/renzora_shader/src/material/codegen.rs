@@ -2385,9 +2385,18 @@ fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // group 3 (`MATERIAL_BIND_GROUP_INDEX`), filtering duplicates. As long as
     // our bindings don't collide with StandardMaterial's, they coexist fine.
     let mut s = String::new();
-    for slot in 0..4u32 {
-        let tex_binding = 100 + slot * 2;
-        let samp_binding = tex_binding + 1;
+    // Slots 0..3 live on bindings 100/101..106/107. Slots 4..5 live on 114/115
+    // and 116/117 — the cubemap/array/3D slots sit between them at 108-113, so
+    // we can't keep the linear `100 + slot*2` formula past slot 3.
+    const D2_BINDINGS: [(u32, u32); 6] = [
+        (100, 101),
+        (102, 103),
+        (104, 105),
+        (106, 107),
+        (114, 115),
+        (116, 117),
+    ];
+    for (slot, (tex_binding, samp_binding)) in D2_BINDINGS.iter().enumerate() {
         s.push_str(&format!(
             "@group(3) @binding({tex_binding}) var texture_{slot}: texture_2d<f32>;\n",
         ));

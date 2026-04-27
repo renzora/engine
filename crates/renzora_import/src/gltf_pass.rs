@@ -2,8 +2,79 @@
 
 use std::path::Path;
 
-use crate::convert::{ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult};
+use renzora_rmip::RmipFormat;
+
+use crate::convert::{ExtractedAlphaMode, ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult};
 use crate::settings::ImportSettings;
+
+/// Walk the GLB JSON's materials and assign each image to either sRGB
+/// (color) or linear (data). Default is `Rgba8UnormSrgb`. Anything used
+/// as a normal / metallic-roughness / occlusion / specular-glossiness
+/// map flips to `Rgba8Unorm` so the GPU doesn't apply gamma decode to
+/// data values — a gamma-corrected normal is wrong everywhere.
+///
+/// Returns a vec indexed by glTF image index. If parsing fails the vec is
+/// empty and the extractor falls back to the sRGB default per image.
+fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
+    let Ok(glb) = gltf::Glb::from_slice(glb_bytes) else { return Vec::new() };
+    let Ok(root) = serde_json::from_slice::<serde_json::Value>(&glb.json) else {
+        return Vec::new();
+    };
+
+    let images = root.get("images").and_then(|v| v.as_array()).map(|v| v.len()).unwrap_or(0);
+    let textures = root
+        .get("textures")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let materials = root
+        .get("materials")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Resolve a texture index → image index.
+    let image_of = |tex_idx: usize| -> Option<usize> {
+        textures
+            .get(tex_idx)
+            .and_then(|t| t.get("source"))
+            .and_then(|s| s.as_u64())
+            .map(|s| s as usize)
+    };
+    let texture_info_image = |info: Option<&serde_json::Value>| -> Option<usize> {
+        info.and_then(|t| t.get("index"))
+            .and_then(|i| i.as_u64())
+            .and_then(|i| image_of(i as usize))
+    };
+
+    let mut formats = vec![RmipFormat::Rgba8UnormSrgb; images];
+    let mut mark_linear = |idx: Option<usize>| {
+        if let Some(i) = idx {
+            if let Some(slot) = formats.get_mut(i) {
+                *slot = RmipFormat::Rgba8Unorm;
+            }
+        }
+    };
+
+    for mat in &materials {
+        let pbr = mat.get("pbrMetallicRoughness");
+        mark_linear(texture_info_image(mat.get("normalTexture")));
+        mark_linear(texture_info_image(mat.get("occlusionTexture")));
+        mark_linear(texture_info_image(
+            pbr.and_then(|p| p.get("metallicRoughnessTexture")),
+        ));
+        // KHR_materials_pbrSpecularGlossiness specularGlossinessTexture
+        // packs sRGB-encoded specular RGB plus linear glossiness in alpha.
+        // We only sample the alpha (for roughness), so treat as linear —
+        // gamma-decoding the alpha would be wrong.
+        let sg = mat
+            .get("extensions")
+            .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
+        mark_linear(texture_info_image(sg.and_then(|s| s.get("specularGlossinessTexture"))));
+    }
+
+    formats
+}
 
 /// GLB files: read the binary directly, then extract any embedded images to
 /// sit alongside the GLB in `<model_dir>/textures/`. Embedded image entries
@@ -36,8 +107,14 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
         });
     }
 
+    // Pre-scan materials so the texture extractor knows which images are
+    // color (sRGB) vs. data (linear) before baking. Doing it in one pass
+    // produces wrong gamma for normal/MR/occlusion maps, which look
+    // correct to the eye on color textures but break shading on data ones.
+    let format_by_image = scan_image_formats(&bytes);
+
     let (rewritten, extracted_textures, warnings) =
-        extract_glb_textures(&bytes).unwrap_or_else(|e| {
+        extract_glb_textures(&bytes, &format_by_image).unwrap_or_else(|e| {
             (bytes.clone(), Vec::new(), vec![format!("texture extraction: {}", e)])
         });
 
@@ -88,7 +165,21 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
         let tex = textures.get(idx)?;
         let img_idx = tex.get("source")?.as_u64()? as usize;
         let img = images.get(img_idx)?;
-        img.get("uri")?.as_str().map(String::from)
+        let uri: &str = img.get("uri")?.as_str()?;
+        // Materials reference the mipmapped `.rmip` file rather than the
+        // original PNG/JPG/etc that Bevy's GLB loader uses. Both files
+        // sit in the same `textures/` folder under the same stem; we just
+        // swap the extension at the boundary.
+        let stem = uri.rsplit_once('.').map(|(s, _)| s).unwrap_or(uri);
+        Some(format!("{}.rmip", stem))
+    };
+
+    // Pull the texture index nested under any glTF "*Texture" entry — they
+    // all share the shape `{ "index": N, "texCoord": M }`.
+    let texture_info_uri = |info: Option<&serde_json::Value>| -> Option<String> {
+        info.and_then(|t| t.get("index"))
+            .and_then(|i| i.as_u64())
+            .and_then(|i| texture_uri(i as usize))
     };
 
     let mut out = Vec::new();
@@ -129,25 +220,123 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             .map(|x| x as f32)
             .unwrap_or(1.0);
 
-        let base_color_texture = pbr
-            .and_then(|p| p.get("baseColorTexture"))
-            .and_then(|t| t.get("index"))
-            .and_then(|i| i.as_u64())
-            .and_then(|i| texture_uri(i as usize));
+        // glTF default emissive is black [0, 0, 0]. Multiplied with
+        // emissiveTexture per the spec; we surface both and let the graph
+        // builder decide how to wire them.
+        let emissive = mat
+            .get("emissiveFactor")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                let r = arr.first()?.as_f64()? as f32;
+                let g = arr.get(1)?.as_f64()? as f32;
+                let b = arr.get(2)?.as_f64()? as f32;
+                Some([r, g, b])
+            })
+            .unwrap_or([0.0, 0.0, 0.0]);
 
-        let normal_texture = mat
-            .get("normalTexture")
-            .and_then(|t| t.get("index"))
-            .and_then(|i| i.as_u64())
-            .and_then(|i| texture_uri(i as usize));
+        let mut base_color_texture = texture_info_uri(pbr.and_then(|p| p.get("baseColorTexture")));
+        let metallic_roughness_texture =
+            texture_info_uri(pbr.and_then(|p| p.get("metallicRoughnessTexture")));
+        let normal_texture = texture_info_uri(mat.get("normalTexture"));
+        let emissive_texture = texture_info_uri(mat.get("emissiveTexture"));
+        let occlusion_texture = texture_info_uri(mat.get("occlusionTexture"));
+
+        // Fallback for the legacy `KHR_materials_pbrSpecularGlossiness` workflow.
+        // Many third-party Sketchfab GLBs ship with all the actual texture and
+        // color data inside this extension and an empty `pbrMetallicRoughness`
+        // block. Spec-gloss → metal-rough is mathematically lossy, but pulling
+        // diffuse + glossiness gives the user a recognizable starting point
+        // they can refine in the material editor.
+        //
+        // Detection: presence of the extension AND no explicit metalRough fields
+        // (everything reads as the glTF default) — that's the unambiguous
+        // "spec-gloss-only" case where we should override the metalRough
+        // defaults rather than respect them.
+        let spec_gloss = mat
+            .get("extensions")
+            .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
+        let pbr_block_empty = pbr
+            .map(|p| p.as_object().map_or(true, |o| o.is_empty()))
+            .unwrap_or(true);
+
+        let mut roughness = roughness;
+        let mut metallic = metallic;
+        let mut base_color = base_color;
+        // Always pull the spec-gloss texture path when the extension is
+        // present so the graph builder can route per-pixel glossiness into
+        // the roughness pin. Without this, every spec-gloss material gets
+        // one uniform roughness and reflective surfaces (wet stone, glass)
+        // render as flat matte.
+        let specular_glossiness_texture = spec_gloss
+            .and_then(|sg| texture_info_uri(sg.get("specularGlossinessTexture")));
+        if let Some(sg) = spec_gloss {
+            if base_color_texture.is_none() {
+                base_color_texture = texture_info_uri(sg.get("diffuseTexture"));
+            }
+            // Diffuse factor only overrides if the metal-rough side didn't
+            // declare its own (default white).
+            if base_color == [1.0, 1.0, 1.0, 1.0] {
+                if let Some(arr) = sg.get("diffuseFactor").and_then(|v| v.as_array()) {
+                    let r = arr.first().and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
+                    let g = arr.get(1).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
+                    let b = arr.get(2).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
+                    let a = arr.get(3).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
+                    base_color = [r, g, b, a];
+                }
+            }
+            // Glossiness → roughness inversion when no metalRough roughness
+            // was supplied. glTF default for both metallicFactor and
+            // roughnessFactor is 1.0 — `pbr_block_empty` lets us tell apart
+            // "explicitly default" from "missing entirely".
+            if pbr_block_empty {
+                if let Some(g) = sg.get("glossinessFactor").and_then(|v| v.as_f64()) {
+                    roughness = 1.0 - (g as f32);
+                }
+                // Spec-gloss materials don't carry a metallic concept — almost
+                // every surface authored this way is a dielectric. Force
+                // metallic to 0 so we don't render every untextured wall as a
+                // mirror under HDR lighting (which is what
+                // `metallicFactor`'s default of 1.0 produces).
+                metallic = 0.0;
+            }
+        }
+
+        let alpha_mode = match mat
+            .get("alphaMode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("OPAQUE")
+        {
+            "BLEND" => ExtractedAlphaMode::Blend,
+            "MASK" => ExtractedAlphaMode::Mask,
+            _ => ExtractedAlphaMode::Opaque,
+        };
+
+        let alpha_cutoff = mat
+            .get("alphaCutoff")
+            .and_then(|v| v.as_f64())
+            .map(|x| x as f32)
+            .unwrap_or(0.5);
+
+        let double_sided = mat
+            .get("doubleSided")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         out.push(ExtractedPbrMaterial {
             name,
             base_color,
             metallic,
             roughness,
+            emissive,
             base_color_texture,
             normal_texture,
+            metallic_roughness_texture,
+            emissive_texture,
+            occlusion_texture,
+            specular_glossiness_texture,
+            alpha_mode,
+            alpha_cutoff,
+            double_sided,
         });
     }
     out
@@ -160,6 +349,7 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
 /// the caller falls back to passthrough.
 fn extract_glb_textures(
     glb_bytes: &[u8],
+    format_by_image: &[RmipFormat],
 ) -> Result<(Vec<u8>, Vec<ExtractedTexture>, Vec<String>), String> {
     let glb = gltf::Glb::from_slice(glb_bytes)
         .map_err(|e| format!("parse GLB: {}", e))?;
@@ -222,14 +412,21 @@ fn extract_glb_textures(
             ));
             continue;
         }
-        let data = bin[byte_offset..end].to_vec();
+        let raw = &bin[byte_offset..end];
 
+        // Detect the source image format. The GLB references the texture
+        // by URI under its original extension so Bevy's GLB loader can
+        // decode it via its own image loader (anything else trips a
+        // settings-type mismatch — Bevy hardcodes `ImageLoaderSettings`
+        // for embedded URIs). Materials separately reference a `.rmip`
+        // file under the same stem.
         let extension = match image.mime_type.as_ref().map(|m| m.0.as_str()) {
             Some("image/png") => "png",
             Some("image/jpeg") => "jpg",
             Some("image/webp") => "webp",
-            _ => sniff_image_extension(&data),
+            _ => sniff_image_extension(raw),
         };
+
         let mut name = format!("image_{}", i);
         let mut n = 1;
         while used_names.contains(&name) {
@@ -238,14 +435,43 @@ fn extract_glb_textures(
         }
         used_names.insert(name.clone());
 
+        // Bake the .rmip (decoded RGBA8 + Lanczos3 mip chain) using the
+        // sRGB/linear classification we computed up-front. Falls back to
+        // sRGB for any image not in the format map (rare — the GLB has an
+        // image no material references).
+        let format = format_by_image
+            .get(i)
+            .copied()
+            .unwrap_or(RmipFormat::Rgba8UnormSrgb);
+        let rmip_bytes = match renzora_rmip::bake::bake_from_image_bytes(raw, format) {
+            Ok(b) => b,
+            Err(e) => {
+                warnings.push(format!("image {}: bake .rmip failed: {}", i, e));
+                continue;
+            }
+        };
+
+        // GLB references the original-extension file. Bevy loads this
+        // through its own image loader and we discard the result later
+        // (the resolver swaps StandardMaterial for GraphMaterial), but
+        // the load has to *succeed* for Bevy not to flood the log with
+        // settings-mismatch errors.
         let uri = format!("textures/{}.{}", name, extension);
         image.uri = Some(uri);
         image.mime_type = None;
 
+        // Original encoded bytes — what Bevy's GLB loader reads.
+        extracted.push(ExtractedTexture {
+            name: name.clone(),
+            extension: extension.to_string(),
+            data: raw.to_vec(),
+        });
+
+        // Mipmapped + decoded version for our material graph resolver.
         extracted.push(ExtractedTexture {
             name,
-            extension: extension.to_string(),
-            data,
+            extension: "rmip".to_string(),
+            data: rmip_bytes,
         });
     }
 
@@ -260,8 +486,9 @@ fn extract_glb_textures(
     Ok((new_glb, extracted, warnings))
 }
 
-/// Very small magic-byte sniff — mirrors the ufbx path so GLB and FBX
-/// extractors agree on extensions.
+/// Magic-byte sniff for embedded image bytes when the GLB doesn't carry a
+/// MIME type. Mirrors the FBX-side helper so both extractors agree on
+/// which extension to write.
 fn sniff_image_extension(data: &[u8]) -> &'static str {
     if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
     else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }

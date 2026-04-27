@@ -279,8 +279,16 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                     base_color: m.base_color,
                     metallic: m.metallic,
                     roughness: m.roughness,
+                    emissive: [0.0, 0.0, 0.0],
                     base_color_texture: lookup(m.base_color_texture),
                     normal_texture: lookup(m.normal_texture),
+                    metallic_roughness_texture: None,
+                    emissive_texture: None,
+                    occlusion_texture: None,
+                    specular_glossiness_texture: None,
+                    alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                    alpha_cutoff: 0.5,
+                    double_sided: false,
                 }
             })
             .collect()

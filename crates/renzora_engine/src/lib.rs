@@ -40,6 +40,10 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::EntityTag>()
             .register_type::<Sun>();
 
+        // Register the .rmip asset loader so import-baked mipmapped
+        // textures can be loaded via `asset_server.load("...rmip")`.
+        app.init_asset_loader::<renzora_rmip::RmipAssetLoader>();
+
         // Asset-path rename/move notifications. Observers (MeshInstanceData,
         // AnimatorComponent, etc.) listen and patch stored asset-relative
         // paths so moved assets don't leave dangling references in the scene.

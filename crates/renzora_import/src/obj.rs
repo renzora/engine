@@ -283,8 +283,16 @@ fn extract_obj_materials(
                 base_color,
                 metallic: 0.0,
                 roughness,
+                emissive: [0.0, 0.0, 0.0],
                 base_color_texture: lookup(base_tex),
                 normal_texture: lookup(normal_tex),
+                metallic_roughness_texture: None,
+                emissive_texture: None,
+                occlusion_texture: None,
+                specular_glossiness_texture: None,
+                alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                alpha_cutoff: 0.5,
+                double_sided: false,
             });
         }
     }

@@ -3060,6 +3060,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4542,6 +4548,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
+dependencies = [
+ "color_quant",
+ "weezl",
+]
+
+[[package]]
 name = "gilrs"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5281,6 +5297,8 @@ checksum = "e6506c6c10786659413faa717ceebcb8f70731c0a60cbae39795fdf114519c1a"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
  "image-webp",
  "moxcms",
  "num-traits",
@@ -8758,6 +8776,7 @@ dependencies = [
  "renzora_macros",
  "renzora_network",
  "renzora_physics",
+ "renzora_rmip",
  "renzora_rpak",
  "renzora_scripting",
  "renzora_shader",
@@ -8765,7 +8784,21 @@ dependencies = [
  "rfd",
  "ron 0.8.1",
  "serde",
+ "thiserror 2.0.18",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora_environment_map"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "serde",
 ]
 
 [[package]]
@@ -8953,6 +8986,7 @@ dependencies = [
  "ply-rs",
  "quick-xml 0.37.5",
  "renzora",
+ "renzora_rmip",
  "serde_json",
  "stl_io",
  "thiserror 2.0.18",
@@ -9274,6 +9308,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_rmip"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "image",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "renzora_rpak"
 version = "0.1.0"
 dependencies = [
@@ -9312,6 +9355,7 @@ dependencies = [
  "renzora_dof",
  "renzora_editor",
  "renzora_engine",
+ "renzora_environment_map",
  "renzora_export",
  "renzora_foliage_editor",
  "renzora_game_ui",

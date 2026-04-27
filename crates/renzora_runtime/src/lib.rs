@@ -46,6 +46,7 @@ pub use renzora_distance_fog;
 
 // Environment
 pub use renzora_atmosphere;
+pub use renzora_environment_map;
 pub use renzora_skybox;
 pub use renzora_clouds;
 pub use renzora_night_stars;
@@ -150,6 +151,17 @@ pub fn add_default_rendering(app: &mut App) {
                     address_mode_u: bevy::image::ImageAddressMode::Repeat,
                     address_mode_v: bevy::image::ImageAddressMode::Repeat,
                     address_mode_w: bevy::image::ImageAddressMode::Repeat,
+                    // Trilinear + 16x anisotropic filtering by default. Bevy's
+                    // default sampler runs with `anisotropy_clamp = 1` which
+                    // looks blocky on textures viewed at oblique angles
+                    // (brick walls, ground planes). Most assets here come from
+                    // Sketchfab GLBs without baked mipmaps — anisotropy alone
+                    // already cleans up the worst aliasing; full mipmap
+                    // generation is a separate piece of work.
+                    mag_filter: bevy::image::ImageFilterMode::Linear,
+                    min_filter: bevy::image::ImageFilterMode::Linear,
+                    mipmap_filter: bevy::image::ImageFilterMode::Linear,
+                    anisotropy_clamp: 16,
                     ..default()
                 },
                 ..default()
@@ -205,6 +217,7 @@ pub fn add_engine_plugins(app: &mut App) {
     app.add_plugins(renzora_antialiasing::AntiAliasingPlugin);
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin);
     app.add_plugins(renzora_atmosphere::AtmospherePlugin);
+    app.add_plugins(renzora_environment_map::EnvironmentMapPlugin);
     app.add_plugins(renzora_ssao::SsaoPlugin);
     app.add_plugins(renzora_ssr::SsrPlugin);
     app.add_plugins(renzora_auto_exposure::AutoExposurePlugin);

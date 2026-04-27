@@ -71,6 +71,7 @@ editor = [
     "renzora_antialiasing/editor",
     "renzora_distance_fog/editor",
     "renzora_atmosphere/editor",
+    "renzora_environment_map/editor",
     "renzora_ssao/editor",
     "renzora_ssr/editor",
     "renzora_auto_exposure/editor",
@@ -125,6 +126,7 @@ renzora_distance_fog = { path = "../renzora_distance_fog" }
 
 # Environment
 renzora_atmosphere = { path = "../renzora_atmosphere" }
+renzora_environment_map = { path = "../renzora_environment_map" }
 renzora_skybox = { path = "../renzora_skybox" }
 renzora_clouds = { path = "../renzora_clouds" }
 renzora_night_stars = { path = "../renzora_night_stars" }

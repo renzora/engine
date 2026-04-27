@@ -174,11 +174,12 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                     continue;
                 }
             }
-            if let Some(child_of) = world.get::<ChildOf>(entity) {
-                if world.get::<HideInHierarchy>(child_of.parent()).is_some() {
-                    continue;
-                }
-            }
+            // Children of `HideInHierarchy` parents are NOT auto-hidden — that
+            // lets us mark GLTF wrapper nodes (`SceneRoot`, `RootNode.NNN`)
+            // hidden so the dropped model's mesh entities promote into the
+            // model root rather than appearing under invisible plumbing.
+            // Callers that genuinely want to hide a whole subtree mark each
+            // descendant individually (see `studio_preview` for the pattern).
             let name_str = name.as_str().to_string();
             let (icon, color) = entity_icon(world, entity);
             let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
@@ -237,19 +238,49 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         (order, entity)
     });
 
-    // Sort children by their order in the parent's Children component
-    for (parent_entity, child_indices) in &mut children_map {
-        if let Some(children_component) = world.get::<Children>(*parent_entity) {
-            let child_order: HashMap<Entity, usize> = children_component
-                .iter()
-                .enumerate()
-                .map(|(pos, e)| (e, pos))
-                .collect();
-            child_indices.sort_by_key(|&idx| {
-                let child_entity = entries[idx].0;
-                child_order.get(&child_entity).copied().unwrap_or(usize::MAX)
-            });
+    // Sort children by a key that's deterministic even when entries were
+    // promoted through a hidden ancestor (e.g. a `RootNode_2` wrapper).
+    //
+    // The sort key for each entry is a path of positions: starting from the
+    // entry, walk toward the resolved parent and collect the entry's index
+    // inside each direct parent's `Children` component along the way. This
+    // preserves the GLB-authored order even when intermediate wrappers are
+    // hidden, and is stable across archetype iteration order changes (which
+    // shift every frame in play mode and would otherwise scramble promoted
+    // siblings here).
+    let position_in_parent = |entity: Entity, parent: Entity, world: &World| -> usize {
+        world
+            .get::<Children>(parent)
+            .and_then(|children| children.iter().position(|c| c == entity))
+            .unwrap_or(usize::MAX)
+    };
+
+    let chain_key = |idx: usize, resolved_parent: Entity, world: &World| -> Vec<usize> {
+        let entity = entries[idx].0;
+        let mut path = Vec::new();
+        let mut current = entity;
+        while current != resolved_parent {
+            let Some(direct_parent) = world.get::<ChildOf>(current).map(|c| c.parent()) else {
+                break;
+            };
+            path.push(position_in_parent(current, direct_parent, world));
+            current = direct_parent;
         }
+        path.reverse();
+        path
+    };
+
+    for (parent_entity, child_indices) in &mut children_map {
+        let parent = *parent_entity;
+        // Decorate-sort-undecorate so we don't recompute the chain on every
+        // comparison. Tiebreak by Entity for determinism when keys collide
+        // (shouldn't happen for valid hierarchies, but cheap insurance).
+        let mut keyed: Vec<(Vec<usize>, Entity, usize)> = child_indices
+            .iter()
+            .map(|&idx| (chain_key(idx, parent, world), entries[idx].0, idx))
+            .collect();
+        keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        *child_indices = keyed.into_iter().map(|(_, _, idx)| idx).collect();
     }
 
     fn build_node(

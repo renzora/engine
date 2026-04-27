@@ -203,13 +203,29 @@ pub fn run_scripts(world: &mut World) {
     for sed in &script_entities {
         // Get parent/child transforms
         let parent_transform = sed.parent.and_then(|p| world.get::<Transform>(p).copied());
-        let child_infos: Vec<(Entity, String, Transform)> = sed.children.iter().filter_map(|&child_e| {
-            let t = world.get::<Transform>(child_e)?;
+        // Walk the whole subtree, not just direct children, so scripts can
+        // address descendants by name regardless of how deep the GLTF
+        // wrapper hierarchy parks them. `set_child_rotation("wheel_frontleft", …)`
+        // attached to a car root finds `wheel_frontleft` even if it sits
+        // under an intermediate `RootNode_2` group.
+        //
+        // Traversal is breadth-first so direct children are recorded before
+        // their descendants. The Lua API matches on `name` equality and
+        // breaks on the first hit — putting shallower entries first lines
+        // up with what users expect when names accidentally repeat.
+        use std::collections::VecDeque;
+        let mut child_infos: Vec<(Entity, String, Transform)> = Vec::new();
+        let mut queue: VecDeque<Entity> = sed.children.iter().copied().collect();
+        while let Some(child_e) = queue.pop_front() {
+            let Some(t) = world.get::<Transform>(child_e) else { continue };
             let name = world.get::<Name>(child_e)
                 .map(|n| n.as_str().to_string())
                 .unwrap_or_else(|| format!("Entity_{}", child_e.index()));
-            Some((child_e, name, *t))
-        }).collect();
+            child_infos.push((child_e, name, *t));
+            if let Some(grandchildren) = world.get::<Children>(child_e) {
+                queue.extend(grandchildren.iter());
+            }
+        }
 
         // Take the ScriptComponent off the entity so we can use world freely
         let Some(mut sc) = world.entity_mut(sed.entity).take::<ScriptComponent>() else { continue };

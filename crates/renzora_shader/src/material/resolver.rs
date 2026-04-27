@@ -393,6 +393,20 @@ fn resolve_graph_material(
         mat.base.specular_transmission = 0.5;
     }
 
+    // Map graph-level alpha mode and double-sided flag onto Bevy's
+    // StandardMaterial. Without this, transparent materials (glass, foliage,
+    // decals) render as opaque garbage even when the alpha pin is wired up.
+    mat.base.alpha_mode = match graph.alpha_mode {
+        crate::material::graph::AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
+        crate::material::graph::AlphaMode::Mask { cutoff } => bevy::prelude::AlphaMode::Mask(cutoff),
+        crate::material::graph::AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
+    };
+    mat.base.cull_mode = if graph.double_sided {
+        None
+    } else {
+        Some(bevy::render::render_resource::Face::Back)
+    };
+
     for tb in &result.texture_bindings {
         if tb.asset_path.is_empty() {
             continue;
@@ -403,10 +417,15 @@ fn resolve_graph_material(
             (codegen::TextureKind::D2, 1) => mat.extension.texture_1 = Some(handle),
             (codegen::TextureKind::D2, 2) => mat.extension.texture_2 = Some(handle),
             (codegen::TextureKind::D2, 3) => mat.extension.texture_3 = Some(handle),
+            (codegen::TextureKind::D2, 4) => mat.extension.texture_4 = Some(handle),
+            (codegen::TextureKind::D2, 5) => mat.extension.texture_5 = Some(handle),
             (codegen::TextureKind::Cube, 0) => mat.extension.cube_0 = Some(handle),
             (codegen::TextureKind::D2Array, 0) => mat.extension.array_0 = Some(handle),
             (codegen::TextureKind::D3, 0) => mat.extension.volume_0 = Some(handle),
-            _ => {}
+            _ => warn!(
+                "Material '{}' wants more textures than the extension provides ({:?} slot {})",
+                path, tb.kind, tb.binding
+            ),
         }
     }
 

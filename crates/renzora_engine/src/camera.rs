@@ -3,8 +3,10 @@
 use bevy::prelude::*;
 use bevy::camera::{Camera, RenderTarget};
 use bevy::camera::visibility::RenderLayers;
-use bevy::render::view::Hdr;
+use bevy::core_pipeline::prepass::NormalPrepass;
+use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::render::view::Hdr;
 use renzora::viewport_types::EditorCameraMatrix;
 use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
@@ -13,14 +15,25 @@ use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 /// If `ViewportRenderTarget` already has an image (editor mode),
 /// the camera renders to it. Otherwise it renders to the window.
 /// The camera is hidden from the hierarchy and locked from editing.
+///
+/// Render-effect components (`Atmosphere`, `AtmosphereSettings`,
+/// `AtmosphereEnvironmentMapLight`, `Msaa::Off`, etc.) are attached at
+/// spawn so Bevy 0.18's atmosphere/sky pipeline can lock in its bind
+/// group layout once and never need to grow it. Trying to add atmosphere
+/// at runtime crashes wgpu with "20 vs 23 bindings" — Bevy specializes
+/// the layout per-camera at first render, and atmosphere bindings are
+/// gated on whether the component existed at that moment.
+///
+/// `EffectRouting` + `renzora_atmosphere::sync_atmosphere` then *update*
+/// these components in-place from a `WorldEnvironment` source entity (or
+/// any entity with `AtmosphereComponentSettings`), giving us one logical
+/// source of truth that drives both editor and play cameras identically.
+/// The plugin replaces, never removes — see its file for the why.
 pub fn spawn_editor_camera(
     mut commands: Commands,
     render_target: Res<ViewportRenderTarget>,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
-    // Pre-insert Atmosphere so Bevy's mesh view bind group layout always
-    // includes atmosphere bindings. Without this, adding atmosphere at
-    // runtime causes a bind group mismatch crash (20 vs 23 bindings).
     let default_medium = mediums.add(ScatteringMedium::default());
 
     let mut entity = commands.spawn((
@@ -39,6 +52,7 @@ pub fn spawn_editor_camera(
         EditorLocked,
         RenderLayers::from_layers(&[0, 1]),
         Name::new("Editor Camera"),
+        Hdr,
         Atmosphere {
             bottom_radius: 6_360_000.0,
             top_radius: 6_460_000.0,
@@ -46,13 +60,26 @@ pub fn spawn_editor_camera(
             medium: default_medium,
         },
         AtmosphereSettings::default(),
-        Hdr,
-        // Bevy's atmosphere/sky pipeline binds the depth texture as
-        // non-multisampled (binding 13 in `render_sky_bind_group`). Leaving
-        // MSAA at its `Sample4` default trips a wgpu validation crash —
-        // surfaces during layout switches that retrigger camera prep when
-        // the viewport panel isn't visible (e.g. the audio layout).
+        // IBL is off by default — `intensity: 0.0` keeps the bind-group
+        // slots present (Bevy 0.18 won't let us add this component at
+        // runtime without a pipeline crash) but contributes nothing
+        // visually. Adding an `EnvironmentMapComponentSettings` to any
+        // entity in the scene routes a non-zero intensity onto the
+        // camera; removing it pushes intensity back to 0. See
+        // `renzora_environment_map`.
+        AtmosphereEnvironmentMapLight {
+            intensity: 0.0,
+            ..default()
+        },
+        // Atmosphere/sky binds depth as non-multisampled (binding 13);
+        // any MSAA on the same camera trips a wgpu validation crash.
         Msaa::Off,
+        // Force the prepass to carry world normals. Without this,
+        // `pbr_fragment.wgsl::pbr_input_from_vertex_output` fails to compile
+        // for any material with `alpha_mode = Mask` because the prepass
+        // calls into it to do alpha cutout, but the prepass `VertexOutput`
+        // gates `world_normal` behind `NORMAL_PREPASS_OR_DEFERRED_PREPASS`.
+        NormalPrepass,
     ));
 
     if let Some(ref image) = render_target.image {
