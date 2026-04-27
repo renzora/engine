@@ -38,6 +38,62 @@ const GIZMO_SCALE_REF_DIST: f32 = 10.0;
 const GIZMO_PLANE_SIZE: f32 = 0.5;
 const GIZMO_PLANE_OFFSET: f32 = 0.6;
 
+// ── Pivot computation ───────────────────────────────────────────────────────
+
+/// Return the world-space pivot to anchor the gizmo on for `entity`.
+///
+/// Many GLBs (e.g. scenes exported from Blender or assembled in DCCs) author
+/// every mesh node with its origin at world (0,0,0) and bake the actual
+/// position into the vertex data. Anchoring on `GlobalTransform.translation`
+/// would put the gizmo at the world origin instead of on top of the mesh —
+/// which is what users hit when dropping large scene GLBs into the editor.
+///
+/// We instead compute the world-space AABB center over the entity's mesh and
+/// every descendant mesh, falling back to the entity's transform if no AABBs
+/// are available yet (e.g. just-spawned entities before mesh load).
+fn compute_gizmo_pivot(
+    entity: Entity,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: &Query<&Children>,
+    fallback_gt: &GlobalTransform,
+) -> Vec3 {
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+    collect_pivot_aabb(entity, aabbs, children, &mut min, &mut max);
+    if min.x <= max.x {
+        (min + max) * 0.5
+    } else {
+        fallback_gt.translation()
+    }
+}
+
+fn collect_pivot_aabb(
+    entity: Entity,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: &Query<&Children>,
+    min: &mut Vec3,
+    max: &mut Vec3,
+) {
+    if let Ok((Some(aabb), gt)) = aabbs.get(entity) {
+        let c = Vec3::from(aabb.center);
+        let h = Vec3::from(aabb.half_extents);
+        for sx in [-1.0_f32, 1.0] {
+            for sy in [-1.0_f32, 1.0] {
+                for sz in [-1.0_f32, 1.0] {
+                    let corner = gt.transform_point(c + h * Vec3::new(sx, sy, sz));
+                    *min = min.min(corner);
+                    *max = max.max(corner);
+                }
+            }
+        }
+    }
+    if let Ok(kids) = children.get(entity) {
+        for child in kids.iter() {
+            collect_pivot_aabb(child, aabbs, children, min, max);
+        }
+    }
+}
+
 // ── GizmoMaterial — always renders on top ───────────────────────────────────
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -522,7 +578,9 @@ fn update_gizmo_transforms(
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmo_state: ResMut<GizmoState>,
-    transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
+    transforms: Query<&GlobalTransform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_q: Query<&Children>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
     mut gizmo_parts: Query<(&GizmoPart, &mut Visibility), (With<GizmoMesh>, Without<GizmoRoot>)>,
     camera_query: Query<&GlobalTransform, With<EditorCamera>>,
@@ -548,17 +606,23 @@ fn update_gizmo_transforms(
     }
 
     if let Some(selected) = selected {
-        if let Ok(sel_t) = transforms.get(selected) {
-            root_transform.translation = sel_t.translation;
+        if let Ok(sel_gt) = transforms.get(selected) {
+            // Anchor on the world-space AABB center so the gizmo lands on top
+            // of the visible mesh even when the entity's pivot was authored at
+            // world (0,0,0) (common for scene-style GLBs). The hover hit-test
+            // and immediate-mode line gizmos use the same pivot, so visual,
+            // pick, and drag agree.
+            let sel_world = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
+            root_transform.translation = sel_world;
 
             if let Ok(cam_gt) = camera_query.single() {
-                let dist = (cam_gt.translation() - sel_t.translation).length().max(0.1);
+                let dist = (cam_gt.translation() - sel_world).length().max(0.1);
                 let scale = dist / GIZMO_SCALE_REF_DIST;
 
                 // Per-axis signs: each axis arrow points toward the camera
                 // so handles stay visible. Locked while dragging so the
                 // axis doesn't flip out from under the user.
-                let cam_dir = cam_gt.translation() - sel_t.translation;
+                let cam_dir = cam_gt.translation() - sel_world;
                 if gizmo_state.active_axis.is_none() {
                     gizmo_state.axis_signs = Vec3::new(
                         if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
@@ -634,7 +698,9 @@ fn draw_line_gizmos(
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
-    transform_q: Query<&Transform, (Without<EditorCamera>, Without<GizmoRoot>, Without<GizmoMesh>)>,
+    transform_q: Query<&GlobalTransform, (Without<EditorCamera>, Without<GizmoRoot>, Without<GizmoMesh>)>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_q: Query<&Children>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the gizmo's
     // immediate-mode planes/axis lines so they don't sit under the modal
@@ -643,8 +709,8 @@ fn draw_line_gizmos(
     if collider_edit.map(|c| c.active).unwrap_or(false) { return; }
 
     let Some(selected) = selection.get() else { return };
-    let Ok(sel_t) = transform_q.get(selected) else { return };
-    let pos = sel_t.translation;
+    let Ok(sel_gt) = transform_q.get(selected) else { return };
+    let pos = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
     let gs = gizmo_state.gizmo_scale;
 
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) { return; }
@@ -1260,6 +1326,8 @@ fn gizmo_hover_detect(
     viewport: Option<Res<ViewportState>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     transform_q: Query<&GlobalTransform, Without<EditorCamera>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_q: Query<&Children>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
@@ -1279,7 +1347,7 @@ fn gizmo_hover_detect(
     let Ok(window) = window_q.single() else { return };
     let Some(ray) = viewport_cursor_ray(window, viewport, cam_gt, projection) else { return };
 
-    let entity_pos = entity_gt.translation();
+    let entity_pos = compute_gizmo_pivot(selected, &aabbs, &children_q, entity_gt);
     let gs = gizmo_state.gizmo_scale.max(0.01);
     let gizmo_size = GIZMO_SIZE * gs;
     let threshold = pick_threshold(cam_gt, entity_pos, projection, viewport.screen_size.y);
@@ -1348,8 +1416,10 @@ fn gizmo_drag(
     viewport_settings: Option<Res<ViewportSettings>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     mut transform_q: Query<&mut Transform, (Without<EditorCamera>, Without<EditorLocked>, Without<GizmoRoot>, Without<GizmoMesh>)>,
-    _global_q: Query<&GlobalTransform, Without<EditorCamera>>,
+    global_q: Query<&GlobalTransform, Without<EditorCamera>>,
     aabb_q: Query<&bevy::camera::primitives::Aabb>,
+    pivot_aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children_q: Query<&Children>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut commands: Commands,
@@ -1443,11 +1513,25 @@ fn gizmo_drag(
     for ev in mouse_motion.read() { total_delta += ev.delta; }
     if total_delta.length_squared() < 1e-6 { return; }
 
+    // Drag-start positions are local-space (so writes go back into local
+    // Transform). For camera-distance scaling we need the world-space pivot,
+    // so average GlobalTransform translations of the selected entities.
     let center = if gizmo_state.drag_starts.is_empty() { Vec3::ZERO } else {
         let sum: Vec3 = gizmo_state.drag_starts.iter().map(|(_, t, _, _)| *t).sum();
         sum / gizmo_state.drag_starts.len() as f32
     };
-    let distance = (cam_gt.translation() - center).length();
+    let world_center = if selected_entities.is_empty() { center } else {
+        let mut sum = Vec3::ZERO;
+        let mut n = 0u32;
+        for &e in &selected_entities {
+            if let Ok(gt) = global_q.get(e) {
+                sum += compute_gizmo_pivot(e, &pivot_aabbs, &children_q, gt);
+                n += 1;
+            }
+        }
+        if n > 0 { sum / n as f32 } else { center }
+    };
+    let distance = (cam_gt.translation() - world_center).length();
 
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
@@ -1861,28 +1945,27 @@ fn find_named_ancestor(
     named: &Query<(Entity, Has<SelectionStop>), With<Name>>,
     parents: &Query<&ChildOf>,
 ) -> Option<Entity> {
-    // Walk toward the root remembering the topmost named entity. A
-    // `SelectionStop` on any ancestor halts the walk so the terrain root (or
-    // other compound entity) is selected instead of a containing scene group.
-    let (mut topmost, start_stop) = match named.get(entity) {
-        Ok((e, stop)) => (Some(e), stop),
-        Err(_) => (None, false),
-    };
-    if start_stop {
-        return topmost;
-    }
+    // Walk toward the root and return the leaf-most named entity, so a click
+    // on a child mesh of an imported model selects the mesh itself rather
+    // than bubbling up to the model root. A `SelectionStop` on any entity in
+    // the chain overrides this — it acts as a compound boundary (terrain
+    // root, etc.) whose internals shouldn't be selected individually.
+    let mut nearest: Option<Entity> = None;
     let mut current = entity;
-    while let Ok(child_of) = parents.get(current) {
-        let parent = child_of.parent();
-        if let Ok((e, stop)) = named.get(parent) {
-            topmost = Some(e);
+    loop {
+        if let Ok((e, stop)) = named.get(current) {
+            if nearest.is_none() {
+                nearest = Some(e);
+            }
             if stop {
-                return topmost;
+                return Some(e);
             }
         }
-        current = parent;
+        match parents.get(current) {
+            Ok(child_of) => current = child_of.parent(),
+            Err(_) => return nearest,
+        }
     }
-    topmost
 }
 
 // ── Box selection overlay ────────────────────────────────────────────────────
