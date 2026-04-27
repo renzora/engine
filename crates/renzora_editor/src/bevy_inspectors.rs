@@ -4,6 +4,7 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::prelude::*;
+use bevy::camera::primitives::Aabb;
 use bevy::pbr::Lightmap;
 use bevy::light::{EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricFog, VolumetricLight};
 use egui_phosphor::regular;
@@ -392,8 +393,12 @@ fn directional_light_entry() -> InspectorEntry {
         icon: regular::SUN,
         category: "lighting",
         has_fn: |world, entity| world.get::<DirectionalLight>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(DirectionalLight::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<DirectionalLight>();
+        }),
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
@@ -462,8 +467,14 @@ fn point_light_entry() -> InspectorEntry {
         icon: regular::LIGHTBULB,
         category: "lighting",
         has_fn: |world, entity| world.get::<PointLight>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
+        add_fn: Some(|world, entity| {
+            spawn_light_child(world, entity, "Point Light", |child| {
+                child.insert(PointLight::default());
+            });
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<PointLight>();
+        }),
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
@@ -552,8 +563,14 @@ fn spot_light_entry() -> InspectorEntry {
         icon: regular::FLASHLIGHT,
         category: "lighting",
         has_fn: |world, entity| world.get::<SpotLight>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
+        add_fn: Some(|world, entity| {
+            spawn_light_child(world, entity, "Spot Light", |child| {
+                child.insert(SpotLight::default());
+            });
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<SpotLight>();
+        }),
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
@@ -1181,4 +1198,45 @@ fn volumetric_fog_entry() -> InspectorEntry {
         ],
         custom_ui_fn: None,
     }
+}
+
+/// Add a positional light (PointLight/SpotLight) to an entity such that the
+/// emitter sits at the visible center of the entity's geometry rather than
+/// at its `Transform` origin.
+///
+/// Many imported GLBs (sketchfab scenes especially) have meshes whose local
+/// `Transform` is `(0,0,0)` with all the world position baked into the
+/// vertex data. A `PointLight` attached directly reads the entity's
+/// `GlobalTransform` — `(0,0,0)` — and emits from world origin, nowhere
+/// near where the light bulb actually appears.
+///
+/// To put the light where the artist expects, we spawn it on a CHILD
+/// entity with `Transform.translation` set to the parent's local AABB
+/// center. The child's `GlobalTransform` then composes into the AABB world
+/// center, which is what the user clicked on. Light moves with the parent
+/// when reparented or transformed, same as any normal child.
+///
+/// If the entity has no `Aabb` (typical for empty entities the user
+/// created themselves to hold a light), the child still gets created but
+/// at the parent's origin — equivalent to attaching the light directly,
+/// just one level of indirection.
+fn spawn_light_child(
+    world: &mut World,
+    parent: Entity,
+    name: &str,
+    insert: impl FnOnce(&mut bevy::ecs::world::EntityWorldMut),
+) {
+    let center = world
+        .get::<Aabb>(parent)
+        .map(|a| Vec3::from(a.center))
+        .unwrap_or(Vec3::ZERO);
+
+    let mut child_cmd = world.spawn((
+        Name::new(name.to_string()),
+        Transform::from_translation(center),
+        Visibility::default(),
+    ));
+    insert(&mut child_cmd);
+    let child = child_cmd.id();
+    world.entity_mut(parent).add_child(child);
 }
