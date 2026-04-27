@@ -54,6 +54,12 @@ pub struct HierarchyState {
     pub marquee_origin: Option<egui::Pos2>,
     pub row_rects: Vec<(Entity, egui::Rect)>,
 
+    /// Per-rendered-row metadata captured by the tree pass and consumed by
+    /// the sticky-parent overlay in `lib.rs`. Cleared and rebuilt on each
+    /// render. Keeps just enough info to re-paint a row as a sticky header
+    /// without re-walking the cache.
+    pub row_meta: Vec<StickyRowMeta>,
+
     /// Filter-by-type — set of registered type names the user wants to show.
     /// Empty means no filter (show everything). The `"__other__"` sentinel
     /// matches entities that don't have a registered type.
@@ -83,9 +89,26 @@ impl Default for HierarchyState {
             batch_rename_entities: Vec::new(),
             marquee_origin: None,
             row_rects: Vec::new(),
+            row_meta: Vec::new(),
             type_filter: HashSet::new(),
         }
     }
+}
+
+/// Data captured per rendered row, used by the sticky-parent overlay so it
+/// can re-paint a parent row at the top of the scroll viewport when the
+/// original row has scrolled off screen.
+#[derive(Clone)]
+pub struct StickyRowMeta {
+    pub entity: Entity,
+    pub rect: egui::Rect,
+    pub depth: usize,
+    pub has_children: bool,
+    pub is_expanded: bool,
+    pub name: String,
+    pub icon: &'static str,
+    pub icon_color: Color32,
+    pub label_color: Option<[u8; 3]>,
 }
 
 /// A node in the entity tree, built from ECS data. Cached in

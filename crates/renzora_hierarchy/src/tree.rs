@@ -33,6 +33,7 @@ pub fn render_tree(
 
     state.building_entity_order.clear();
     state.row_rects.clear();
+    state.row_meta.clear();
 
     for (i, node) in nodes.iter().enumerate() {
         let is_last = i == count - 1;
@@ -98,6 +99,17 @@ fn render_node(
     );
     *row_index += 1;
     state.row_rects.push((node.entity, result.rect));
+    state.row_meta.push(crate::state::StickyRowMeta {
+        entity: node.entity,
+        rect: result.rect,
+        depth,
+        has_children,
+        is_expanded,
+        name: node.name.clone(),
+        icon: node.icon,
+        icon_color: node.icon_color,
+        label_color: node.label_color,
+    });
 
     // Reveal a freshly selected entity if the row is currently scrolled out
     // of view. `Align::None` is a no-op for rows already in the viewport, so

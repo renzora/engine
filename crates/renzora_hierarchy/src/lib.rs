@@ -564,6 +564,12 @@ impl EditorPanel for HierarchyPanel {
                     &theme,
                 );
 
+                // Sticky-parent overlay: when the user scrolls down inside an
+                // expanded subtree, paint the chain of expanded ancestors as
+                // pinned headers at the top of the viewport so the user
+                // always knows which group they're inside.
+                paint_sticky_parents(ui, state, &theme);
+
                 // Marquee drag selection — fill remaining visible space below
                 // the tree rows so the user can click/drag from the empty area.
                 let content_bottom = ui.cursor().top();
@@ -937,6 +943,173 @@ impl Plugin for HierarchyPanelPlugin {
             },
         });
     }
+}
+
+/// Paint pinned "sticky" headers for the stack of expanded ancestors above
+/// the topmost visible row. Mirrors how a file-explorer keeps the current
+/// folder path visible as you scroll deeper into a tree.
+///
+/// Strategy: walk the row metadata captured during `tree::render_tree`,
+/// find the topmost row currently in the viewport, then walk back through
+/// rows with strictly decreasing depth. Each ancestor whose own row has
+/// scrolled above the clip rect's top becomes a sticky header, painted at
+/// the top of the viewport via a foreground layer so it covers the live
+/// rows below.
+fn paint_sticky_parents(
+    ui: &mut egui::Ui,
+    state: &state::HierarchyState,
+    theme: &renzora_theme::Theme,
+) {
+    use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT};
+    use renzora_ui::widgets::tree::{INDENT_SIZE, ROW_HEIGHT};
+
+    if state.row_meta.is_empty() {
+        return;
+    }
+    let clip = ui.clip_rect();
+    let clip_top = clip.min.y;
+
+    // Topmost visible row index — first row whose bottom is below clip_top.
+    let Some(top_idx) = state
+        .row_meta
+        .iter()
+        .position(|m| m.rect.max.y > clip_top)
+    else {
+        return;
+    };
+
+    // Walk back through rows with strictly decreasing depth — those are the
+    // ancestors of the topmost visible row in the rendered tree.
+    let mut sticky: Vec<&state::StickyRowMeta> = Vec::new();
+    let mut current_depth = state.row_meta[top_idx].depth;
+    if current_depth == 0 {
+        // Top row is a root — nothing to pin.
+        return;
+    }
+    for i in (0..top_idx).rev() {
+        let meta = &state.row_meta[i];
+        if meta.depth < current_depth {
+            // Only pin parents whose own row has scrolled off the top.
+            if meta.rect.max.y <= clip_top {
+                sticky.push(meta);
+            }
+            current_depth = meta.depth;
+            if meta.depth == 0 {
+                break;
+            }
+        }
+    }
+    if sticky.is_empty() {
+        return;
+    }
+    // Reverse so the outermost ancestor sits on top.
+    sticky.reverse();
+
+    let layer_id = egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("hierarchy_sticky"),
+    );
+    let painter = ui.ctx().layer_painter(layer_id);
+
+    let row_w = clip.width();
+    let bg = theme.surfaces.panel.to_color32();
+    let border = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60);
+
+    for (i, meta) in sticky.iter().enumerate() {
+        let rect = egui::Rect::from_min_size(
+            egui::pos2(clip.min.x, clip_top + i as f32 * ROW_HEIGHT),
+            egui::vec2(row_w, ROW_HEIGHT),
+        );
+
+        // Click target — scrolls the live row into view so the user lands on
+        // the actual parent in the tree. Allocated before painting so the
+        // hovered/active state can tint the background, and registered after
+        // tree rendering so this overlay wins overlap arbitration.
+        let resp = ui.interact(
+            rect,
+            egui::Id::new(("hierarchy_sticky_row", meta.entity)),
+            egui::Sense::click(),
+        );
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if resp.clicked() {
+            ui.scroll_to_rect_animation(
+                meta.rect,
+                Some(egui::Align::TOP),
+                egui::style::ScrollAnimation::none(),
+            );
+        }
+
+        // Solid background — overdraws the live row underneath.
+        painter.rect_filled(rect, 0.0, bg);
+        if resp.hovered() {
+            let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+            painter.rect_filled(
+                rect,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(r, g, b, 50),
+            );
+        }
+
+        // Optional left stripe if the row had a label color, mirroring the
+        // tree row's accent strip.
+        if let Some([r, g, b]) = meta.label_color {
+            let stripe = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.min.x + 3.0, rect.max.y),
+            );
+            painter.rect_filled(stripe, 0.0, egui::Color32::from_rgb(r, g, b));
+        }
+
+        let base_x = rect.min.x + 4.0;
+        let center_y = rect.center().y;
+        let content_x = base_x + (meta.depth as f32 * INDENT_SIZE);
+
+        // Caret (parents always have children, but check anyway).
+        if meta.has_children {
+            let caret = if meta.is_expanded { CARET_DOWN } else { CARET_RIGHT };
+            let caret_color = egui::Color32::from_rgb(150, 150, 160);
+            painter.text(
+                egui::pos2(content_x + 8.0, center_y),
+                egui::Align2::CENTER_CENTER,
+                caret,
+                egui::FontId::proportional(12.0),
+                caret_color,
+            );
+        }
+
+        // Icon
+        let icon_x = content_x + 16.0;
+        painter.text(
+            egui::pos2(icon_x + 6.0, center_y),
+            egui::Align2::LEFT_CENTER,
+            meta.icon,
+            egui::FontId::proportional(14.0),
+            meta.icon_color,
+        );
+
+        // Label
+        let label_x = icon_x + 22.0 + 4.0;
+        painter.text(
+            egui::pos2(label_x, center_y),
+            egui::Align2::LEFT_CENTER,
+            &meta.name,
+            egui::FontId::proportional(13.0),
+            theme.text.primary.to_color32(),
+        );
+    }
+
+    // Hairline at the bottom of the sticky stack to separate from the live
+    // rows scrolling underneath.
+    let last_y = clip_top + sticky.len() as f32 * ROW_HEIGHT;
+    painter.line_segment(
+        [
+            egui::pos2(clip.min.x, last_y),
+            egui::pos2(clip.max.x, last_y),
+        ],
+        egui::Stroke::new(1.0, border),
+    );
 }
 
 /// A request from the keybinding system to start renaming an entity in the
