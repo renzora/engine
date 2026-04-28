@@ -14,7 +14,7 @@ use bevy::asset::LoadState;
 use bevy::camera::primitives::Aabb;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use bevy::scene::SceneRoot;
+use bevy::scene::{SceneInstanceReady, SceneRoot};
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui;
 
@@ -971,6 +971,70 @@ pub fn bind_material_refs(
             }
         }
     }
+}
+
+/// Observer: bring scene-loaded model instances onto the production
+/// material-binding path the moment Bevy finishes spawning the GLB
+/// hierarchy.
+///
+/// Drag-and-drop spawns its own production markers from the deferred drop
+/// handler — by the time that handler runs, the user's mouse-up has given
+/// Bevy several frames to spawn the scene, so the markers don't race the
+/// spawn. The load path has no such delay: `finish_mesh_instance_rehydrate`
+/// spawns a `SceneRoot` child the same frame the GLB asset finishes
+/// loading, and `SceneSpawner::write_to_world` is still in flight when the
+/// next system runs. Polling on `Children` non-empty was racing that
+/// in-flight spawn; switching to the `SceneInstanceReady` event means we
+/// fire exactly once, after every entity in the scene is committed to the
+/// world.
+///
+/// `event_target()` on a `SceneInstanceReady` is the entity holding the
+/// `SceneRoot` component — that's the child we spawned in
+/// `finish_mesh_instance_rehydrate`. We walk up to its `MeshInstanceData`
+/// parent, skip if it already has `ImportedRoot` (drag-drop entities
+/// arrive with the marker pre-attached), and add the same trio of markers
+/// the drop handler does so the binder + flatten + resolver chain runs.
+pub fn decorate_rehydrated_scene_on_ready(
+    trigger: On<SceneInstanceReady>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    parents: Query<&ChildOf>,
+    mesh_instances: Query<&MeshInstanceData, Without<ImportedRoot>>,
+) {
+    let scene_root_entity = trigger.event().entity;
+    if scene_root_entity == Entity::PLACEHOLDER {
+        return;
+    }
+
+    // SceneRoot child → MeshInstanceData parent. If the SceneRoot bearer
+    // isn't a child (no ChildOf), this isn't a load-path scene — bail.
+    let Ok(child_of) = parents.get(scene_root_entity) else {
+        return;
+    };
+    let parent_entity = child_of.parent();
+
+    let Ok(mesh_instance) = mesh_instances.get(parent_entity) else {
+        return;
+    };
+
+    let Some(model_path) = mesh_instance.model_path.clone() else {
+        // No GLB to bind. Mark imported so the filter above keeps us out
+        // for any future SceneInstanceReady this entity might trigger.
+        commands.entity(parent_entity).try_insert(ImportedRoot);
+        return;
+    };
+
+    // Bevy hands back the same handle for a path we've already loaded;
+    // calling load again is just a refcount bump on the cached asset.
+    let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
+
+    commands.entity(parent_entity).try_insert((
+        ImportedRoot,
+        PendingMaterialBinding { gltf_handle },
+    ));
+    commands
+        .entity(scene_root_entity)
+        .try_insert(PendingFlatten::default());
 }
 
 /// Sanitize a material name for use as a filename. Mirrors

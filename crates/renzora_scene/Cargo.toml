@@ -11,6 +11,7 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_engine = { path = "../renzora_engine" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_camera = { path = "../renzora_camera" }
+renzora_splash = { path = "../renzora_splash" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
 bevy_egui = { workspace = true }

@@ -4,11 +4,12 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera, SceneCamera, TabSwitchRequest, TabSceneSnapshot, SceneTabBuffers};
+use renzora::core::{CurrentProject, MeshInstanceData, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera, SceneCamera, TabSwitchRequest, TabSceneSnapshot, SceneTabBuffers};
 use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_engine::scene_io;
 use renzora_editor::SplashState;
+use renzora_splash::{LoadingTaskHandle, LoadingTasks};
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
@@ -404,8 +405,42 @@ fn open_scene_system(world: &mut World) {
 // Load on entering editor
 // ============================================================================
 
-fn load_scene_on_enter(world: &mut World) {
-    info!("load_scene_on_enter triggered");
+/// Tracks the splash-loading tasks that hold the loading screen up while the
+/// scene's assets are fetched and instantiated. Two phases get their own
+/// task so the user sees the work as the bar fills:
+///
+/// 1. **Loading assets** — Gltf bytes read from disk, textures decoded,
+///    StandardMaterial assets created. Bound to `PendingMeshInstanceRehydrate`
+///    presence: while a model still carries that marker, its Gltf asset
+///    hasn't finished loading.
+/// 2. **Processing models** — Bevy's `SceneSpawner` runs `write_to_world` for
+///    each scene, instantiating the GLB hierarchy under the `SceneRoot`
+///    child. Bound to whether the `SceneRoot` has children of its own.
+///
+/// (Material compilation runs lazily in the editor — drag-dropped models
+/// kick the production pipeline; load-path models render via the Gltf
+/// loader's `StandardMaterial`s. There's nothing to gate the splash on.)
+#[derive(Resource, Default)]
+struct SceneLoadProgress {
+    loading_task: Option<LoadingTaskHandle>,
+    processing_task: Option<LoadingTaskHandle>,
+    /// How many `MeshInstanceData` entities the scene file rehydrated.
+    /// Denominator for both tasks.
+    total_instances: u32,
+    /// Per-task progress counters (incremental — `LoadingTasks::advance` is
+    /// additive, so we track the previous value for delta computation).
+    last_loaded: u32,
+    last_processed: u32,
+}
+
+/// Loads the scene file the moment we transition into `SplashState::Loading`,
+/// then registers a `LoadingTasks` task whose progress reflects how many
+/// `MeshInstanceData` entities still need their GLB scene fetched and
+/// instantiated. The loading screen stays up until every pending GLB has
+/// landed (plus the standard `min_frames_remaining` grace period), so the
+/// editor only opens onto a fully-populated entity tree.
+fn load_scene_on_enter_loading(world: &mut World) {
+    info!("[loading] entered Loading state, kicking off scene load");
 
     // Ensure the asset reader knows the project path before loading the scene.
     if let Some(project) = world.get_resource::<CurrentProject>() {
@@ -458,6 +493,34 @@ fn load_scene_on_enter(world: &mut World) {
         }
     }
 
+    // Count the model instances we need to resolve. Used as the denominator
+    // for the progress bar.
+    let instance_count = {
+        let mut q = world.query_filtered::<Entity, With<MeshInstanceData>>();
+        q.iter(world).count() as u32
+    };
+
+    // Two tasks so the user sees each phase as the bar fills:
+    //   1. Asset I/O   — Gltf bytes from disk, texture decode.
+    //   2. Scene spawn — Bevy's SceneSpawner instantiating the GLB.
+    let n = instance_count.max(1);
+    let (loading_task, processing_task) = world
+        .get_resource_mut::<LoadingTasks>()
+        .map(|mut tasks| {
+            (
+                Some(tasks.register("Loading assets", n)),
+                Some(tasks.register("Processing models", n)),
+            )
+        })
+        .unwrap_or((None, None));
+    world.insert_resource(SceneLoadProgress {
+        loading_task,
+        processing_task,
+        total_instances: instance_count,
+        last_loaded: 0,
+        last_processed: 0,
+    });
+
     // Ask the hierarchy to auto-select its top entity once the cache is
     // populated. The flag is consumed by `auto_select_first_hierarchy_entity`
     // in `renzora_hierarchy` — we can't do it here because entities have
@@ -466,6 +529,133 @@ fn load_scene_on_enter(world: &mut World) {
     if let Some(mut flag) = world.get_resource_mut::<renzora_editor::AutoSelectFirstHierarchyEntity>() {
         flag.0 = true;
     }
+}
+
+/// Runs every frame in `SplashState::Loading`. Reports how many
+/// `MeshInstanceData` entities are *fully* spawned — meaning their GLB
+/// asset has loaded, `finish_mesh_instance_rehydrate` has spawned a
+/// `SceneRoot` child, *and* Bevy's `SceneSpawner` has populated the GLB
+/// hierarchy under that `SceneRoot`. The last condition is the one that
+/// matters for visibility — `PendingMeshInstanceRehydrate` getting removed
+/// only signals "asset arrived"; mesh entities don't appear under the
+/// SceneRoot for another frame or two while Bevy actually instantiates.
+fn tick_scene_load_progress(
+    progress: Option<ResMut<SceneLoadProgress>>,
+    mut tasks: ResMut<LoadingTasks>,
+    instances: Query<(&MeshInstanceData, Option<&Children>)>,
+    pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
+    children_q: Query<&Children>,
+    scene_roots: Query<Entity, With<SceneRoot>>,
+) {
+    let Some(mut progress) = progress else { return };
+
+    // Empty-scene case: complete every task immediately so the grace
+    // timer is the only thing holding the loading screen up.
+    if progress.total_instances == 0 {
+        for task in [progress.loading_task, progress.processing_task]
+            .into_iter()
+            .flatten()
+        {
+            tasks.complete(task);
+        }
+        return;
+    }
+
+    // ── Phase 1: asset I/O ─────────────────────────────────────────────
+    //
+    // An instance is "loaded" iff:
+    //  * its `model_path` is `None` (nothing to load), or
+    //  * it no longer carries `PendingMeshInstanceRehydrate` — meaning the
+    //    Gltf asset finished loading and `finish_mesh_instance_rehydrate`
+    //    advanced it.
+    let total = progress.total_instances;
+    let still_pending = pending
+        .iter()
+        .filter(|d| d.model_path.is_some())
+        .count() as u32;
+    let loaded = total.saturating_sub(still_pending);
+
+    let mut current_loading_name: Option<String> = None;
+    if loaded < total {
+        // Find the first not-yet-loaded model's name to surface as detail.
+        if let Some(p) = pending.iter().find_map(|d| d.model_path.as_ref()) {
+            current_loading_name = Some(short_name(p));
+        }
+    }
+
+    if let Some(task) = progress.loading_task {
+        if loaded > progress.last_loaded {
+            tasks.advance(task, loaded - progress.last_loaded);
+            progress.last_loaded = loaded;
+        }
+        match &current_loading_name {
+            Some(n) => tasks.set_detail(task, n.clone()),
+            None => {
+                if loaded >= total {
+                    tasks.complete(task);
+                }
+            }
+        }
+    }
+
+    // ── Phase 2: scene spawn ───────────────────────────────────────────
+    //
+    // An instance is "processed" iff:
+    //  * its `model_path` is `None` (no GLB, trivially processed), or
+    //  * its parent has a `SceneRoot` child whose own `Children` is
+    //    non-empty — proof Bevy's `SceneSpawner` has actually run
+    //    `write_to_world`, not just queued the asset.
+    let mut next_processing_name: Option<String> = None;
+    let processed: u32 = instances
+        .iter()
+        .filter(|(data, kids)| {
+            if data.model_path.is_none() {
+                return true;
+            }
+            let done = kids
+                .map(|c| {
+                    c.iter().any(|child| {
+                        scene_roots.contains(child)
+                            && children_q
+                                .get(child)
+                                .map(|gc| !gc.is_empty())
+                                .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if !done && next_processing_name.is_none() {
+                if let Some(p) = data.model_path.as_ref() {
+                    next_processing_name = Some(short_name(p));
+                }
+            }
+            done
+        })
+        .count() as u32;
+
+    if let Some(task) = progress.processing_task {
+        if processed > progress.last_processed {
+            tasks.advance(task, processed - progress.last_processed);
+            progress.last_processed = processed;
+        }
+        match next_processing_name {
+            Some(n) => tasks.set_detail(task, n),
+            None => {
+                if processed >= total {
+                    tasks.complete(task);
+                }
+            }
+        }
+    }
+}
+
+/// Strip the directory off an asset-relative path, leaving just the
+/// file name (or stem) for display in the loading screen.
+fn short_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| path.to_string())
 }
 
 // ============================================================================
@@ -492,7 +682,32 @@ impl Plugin for ScenePlugin {
             dynamic_icon_fn: None,
         });
         app.init_resource::<SceneTabBuffers>()
-            .add_systems(OnEnter(SplashState::Editor), load_scene_on_enter)
+            .init_resource::<SceneLoadProgress>()
+            // Scene load shifts to `OnEnter(Loading)` — the user's scene
+            // file is parsed and entities rehydrated *behind* the loading
+            // screen. The screen stays up until every GLB asset has been
+            // fetched and instantiated, so the editor only opens onto a
+            // fully-populated, race-free entity tree.
+            .add_systems(OnEnter(SplashState::Loading), load_scene_on_enter_loading)
+            // Rehydrate systems run during Loading too. They drive GLB
+            // resolution + spawn while the loading screen ticks.
+            .add_systems(
+                Update,
+                (
+                    scene_io::rehydrate_meshes,
+                    scene_io::rehydrate_cameras,
+                    scene_io::rehydrate_suns,
+                    scene_io::rehydrate_lights,
+                    scene_io::rehydrate_visibility,
+                    scene_io::rehydrate_mesh_instances,
+                    scene_io::finish_mesh_instance_rehydrate,
+                    tick_scene_load_progress,
+                )
+                    .run_if(in_state(SplashState::Loading)),
+            )
+            // Editor-state systems unchanged: rehydrate stays available
+            // (drop creates `MeshInstanceData` post-load, so the rehydrate
+            // hooks still need to fire), plus the file-action handlers.
             .add_systems(
                 Update,
                 (

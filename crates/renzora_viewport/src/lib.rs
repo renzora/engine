@@ -78,6 +78,11 @@ impl Plugin for ViewportPlugin {
             .init_resource::<render_systems::LastVizState<renzora_terrain::foliage::material::GrassMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::foliage::material::GrassMaterial>>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
+            // Bring scene-loaded model instances onto the production
+            // material-binding path the moment Bevy finishes spawning the
+            // GLB hierarchy. Drag-drop entities short-circuit this via the
+            // `Without<ImportedRoot>` filter inside the observer.
+            .add_observer(model_drop::decorate_rehydrated_scene_on_ready)
             .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<model_drop::ModelDragPreviewState>()
