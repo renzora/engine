@@ -17,6 +17,9 @@ pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scen
 mod panel;
 pub use panel::ScenesPanel;
 
+mod tab_asset_cache;
+pub use tab_asset_cache::TabAssetCache;
+
 // ============================================================================
 // Tab Switch System
 // ============================================================================
@@ -683,6 +686,11 @@ impl Plugin for ScenePlugin {
         });
         app.init_resource::<SceneTabBuffers>()
             .init_resource::<SceneLoadProgress>()
+            .init_resource::<TabAssetCache>()
+            // When the user closes a tab, drop its strong handles so
+            // the assets it pinned can evict (assuming no other tab
+            // still references them).
+            .add_observer(tab_asset_cache::evict_closed_tab)
             // Scene load shifts to `OnEnter(Loading)` — the user's scene
             // file is parsed and entities rehydrated *behind* the loading
             // screen. The screen stays up until every GLB asset has been
@@ -701,6 +709,7 @@ impl Plugin for ScenePlugin {
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
+                    tab_asset_cache::cache_added_mesh_instances,
                     tick_scene_load_progress,
                 )
                     .run_if(in_state(SplashState::Loading)),
@@ -718,6 +727,7 @@ impl Plugin for ScenePlugin {
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
+                    tab_asset_cache::cache_added_mesh_instances,
                     detect_file_keybindings,
                     save_scene_system,
                     save_as_scene_system,

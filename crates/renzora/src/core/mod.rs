@@ -496,6 +496,15 @@ pub struct ScriptsReloaded {
 #[derive(bevy::prelude::Event)]
 pub struct SaveCurrentScene;
 
+/// Fired by the editor immediately after a document tab is closed, with
+/// the closed tab's id. Lets per-tab caches (asset handles, undo stacks,
+/// etc.) drop their entries without coupling the editor to every
+/// downstream consumer.
+#[derive(bevy::prelude::Event, Debug, Clone, Copy)]
+pub struct TabClosed {
+    pub tab_id: u64,
+}
+
 // ============================================================================
 // Character Controller Commands (shared between scripting and physics)
 // ============================================================================

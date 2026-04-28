@@ -1207,6 +1207,10 @@ pub fn editor_ui_system(world: &mut World) {
                 if let Some(mut buffers) = world.get_resource_mut::<renzora::SceneTabBuffers>() {
                     buffers.buffers.remove(&id);
                 }
+                // Notify per-tab caches (asset handles, undo stacks, etc.)
+                // so they can release the closed tab's resources without
+                // coupling the editor to every downstream consumer.
+                world.trigger(renzora::core::TabClosed { tab_id: id });
             }
             // Sync context if the active tab actually changed.
             if switch_and_close.is_some() {
