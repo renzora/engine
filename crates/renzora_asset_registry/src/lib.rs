@@ -83,6 +83,13 @@ pub struct AssetEntry {
     pub path: String,
     pub kind: AssetKind,
     pub size_bytes: u64,
+    /// Last-modified time as Unix seconds. `None` if the underlying
+    /// filesystem doesn't expose mtime (rare). Used as a cache-bust key
+    /// for derived artefacts (thumbnails, decoded textures, etc.) — when
+    /// the source file changes, every cache entry keyed on the old
+    /// `mtime_secs` becomes naturally stale without an explicit
+    /// invalidation pass.
+    pub mtime_secs: Option<u64>,
 }
 
 /// Metadata index of every file under the current project's root.
@@ -205,7 +212,13 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
             Err(_) => continue,
         };
 
-        let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let metadata = entry.metadata().ok();
+        let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime_secs = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
         let kind = AssetKind::from_path(&path);
 
         out.insert(
@@ -214,6 +227,7 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
                 path: rel,
                 kind,
                 size_bytes,
+                mtime_secs,
             },
         );
     }
