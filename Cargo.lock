@@ -8880,6 +8880,7 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
  "bevy_mod_outline",
+ "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_lighting",

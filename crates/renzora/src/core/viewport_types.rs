@@ -288,6 +288,8 @@ pub struct ViewportSettings {
     pub show_grid: bool,
     pub show_subgrid: bool,
     pub show_axis_gizmo: bool,
+    /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
+    pub show_scene_icons: bool,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -305,6 +307,7 @@ impl Default for ViewportSettings {
             show_grid: true,
             show_subgrid: true,
             show_axis_gizmo: true,
+            show_scene_icons: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -334,6 +337,8 @@ pub struct PersistedViewportSettings {
     pub show_grid: bool,
     pub show_subgrid: bool,
     pub show_axis_gizmo: bool,
+    #[serde(default = "default_true")]
+    pub show_scene_icons: bool,
     pub collision_always: bool,
     pub orthographic: bool,
     pub move_speed: f32,
@@ -372,6 +377,7 @@ impl PersistedViewportSettings {
             show_grid: s.show_grid,
             show_subgrid: s.show_subgrid,
             show_axis_gizmo: s.show_axis_gizmo,
+            show_scene_icons: s.show_scene_icons,
             collision_always: matches!(s.collision_gizmo_visibility, CollisionGizmoVisibility::Always),
             orthographic: matches!(s.projection_mode, ProjectionMode::Orthographic),
             move_speed: c.move_speed,
@@ -415,6 +421,7 @@ impl PersistedViewportSettings {
         s.show_grid = self.show_grid;
         s.show_subgrid = self.show_subgrid;
         s.show_axis_gizmo = self.show_axis_gizmo;
+        s.show_scene_icons = self.show_scene_icons;
         s.collision_gizmo_visibility = if self.collision_always {
             CollisionGizmoVisibility::Always
         } else {

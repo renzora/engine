@@ -600,6 +600,7 @@ fn display_dropdown(
     let mut show_grid = settings.show_grid;
     let mut show_subgrid = settings.show_subgrid;
     let mut show_axis = settings.show_axis_gizmo;
+    let mut show_scene_icons = settings.show_scene_icons;
     let collision_vis = settings.collision_gizmo_visibility;
 
     #[allow(deprecated)]
@@ -649,6 +650,7 @@ fn display_dropdown(
             });
         });
         check_row(ui, "Axis Gizmo", &mut show_axis);
+        check_row(ui, "Scene Icons", &mut show_scene_icons);
 
         ui.add_space(4.0);
         ui.separator();
@@ -670,6 +672,7 @@ fn display_dropdown(
             s.show_grid = show_grid;
             s.show_subgrid = show_subgrid;
             s.show_axis_gizmo = show_axis;
+            s.show_scene_icons = show_scene_icons;
         }
     });
 }

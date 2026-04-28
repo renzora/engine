@@ -7,6 +7,7 @@
 //! and scale (lines + cube caps) modes.
 
 mod camera_gizmo;
+mod light_gizmo;
 pub mod modal_transform;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
@@ -393,6 +394,19 @@ impl Plugin for GizmoPlugin {
             )
             .add_systems(
                 Update,
+                light_gizmo::draw_light_gizmos
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            .init_resource::<light_gizmo::SceneIconCache>()
+            .add_systems(
+                Update,
+                light_gizmo::update_scene_icon_cache
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            .add_systems(
+                Update,
                 (
                     collider_handles::pick_and_drag_handles,
                     collider_handles::spawn_handle_meshes,
@@ -409,6 +423,17 @@ impl Plugin for GizmoPlugin {
                     .run_if(in_state(renzora_editor::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             );
+
+        // Always-visible scene icons painted as phosphor glyphs on the
+        // viewport overlay. Order 150 sits between the gizmo band (~100)
+        // and HUD band (~200) so icons paint above wireframes but under
+        // modal HUDs.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(150, light_gizmo::draw_light_icon_overlay);
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(150, camera_gizmo::draw_camera_icon_overlay);
     }
 }
 
@@ -619,14 +644,16 @@ fn update_gizmo_transforms(
                 let dist = (cam_gt.translation() - sel_world).length().max(0.1);
                 let scale = dist / GIZMO_SCALE_REF_DIST;
 
-                // Per-axis signs: each axis arrow points toward the camera
-                // so handles stay visible. Locked while dragging so the
-                // axis doesn't flip out from under the user.
+                // Per-axis signs: X and Z flip toward the camera so handles
+                // stay visible. Y stays +1 always — the up arrow must always
+                // point up, never flip when looking from below (otherwise the
+                // gizmo can read as upside-down). Locked while dragging so
+                // the axis doesn't flip out from under the user.
                 let cam_dir = cam_gt.translation() - sel_world;
                 if gizmo_state.active_axis.is_none() {
                     gizmo_state.axis_signs = Vec3::new(
                         if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
-                        if cam_dir.y >= 0.0 { 1.0 } else { -1.0 },
+                        1.0,
                         if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
                     );
                 }

@@ -135,6 +135,17 @@ struct CameraDragState {
     dragging: bool,
 }
 
+/// Smoothed WASD velocity for the editor camera. Each frame the controller
+/// computes a target velocity from held keys and lerps the current velocity
+/// toward it, so motion eases in when keys are pressed and eases out for a
+/// few frames after they're released. Stored separately from `OrbitCameraState`
+/// because it's transient per-session state, not something to persist in
+/// scene RON.
+#[derive(Resource, Default)]
+struct CameraVelocityState {
+    velocity: Vec3,
+}
+
 /// When `true`, zoom and pan preserve `orbit.focus` (the pivot) so orbit
 /// rotations stay centered on whatever was focused. Zoom becomes a dolly
 /// (changes `distance`), pan is suppressed. Engaged automatically by Focus
@@ -152,6 +163,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<OrbitCameraState>()
             .init_resource::<CameraSettings>()
             .init_resource::<CameraDragState>()
+            .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
             .add_systems(Update, toggle_pivot_lock.run_if(in_state(renzora_editor::SplashState::Editor)))
             .add_systems(PostStartup, apply_initial_orbit)
@@ -421,6 +433,7 @@ fn camera_controller(
     settings: Res<CameraSettings>,
     mut pivot_lock: ResMut<PivotLock>,
     mut drag: ResMut<CameraDragState>,
+    mut velocity: ResMut<CameraVelocityState>,
     viewport: Option<Res<ViewportState>>,
     active_tool: Option<Res<renzora_editor::ActiveTool>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
@@ -436,6 +449,7 @@ fn camera_controller(
     if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
         mouse_motion.clear();
         scroll_events.clear();
+        velocity.velocity = Vec3::ZERO;
         return;
     }
 
@@ -444,6 +458,7 @@ fn camera_controller(
     let Ok(mut transform) = camera_query.single_mut() else {
         mouse_motion.clear();
         scroll_events.clear();
+        velocity.velocity = Vec3::ZERO;
         return;
     };
 
@@ -471,6 +486,47 @@ fn camera_controller(
     let zoom_speed = settings.zoom_sensitivity * slow_mult * distance_mult;
     let move_speed = settings.move_speed * slow_mult * distance_mult;
     let delta = time.delta_secs();
+
+    // --- WASD smoothed velocity ---
+    // Compute target velocity from held WASD/QE while right-dragging, then
+    // lerp the current velocity toward it. Runs every frame so motion eases
+    // out for a few frames after release rather than stopping instantly.
+    let mut target_velocity = Vec3::ZERO;
+    if right_pressed && drag.dragging {
+        let forward = Vec3::new(
+            orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.pitch.sin(),
+            orbit.pitch.cos() * orbit.yaw.cos(),
+        )
+        .normalize();
+        let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
+
+        let mut move_delta = Vec3::ZERO;
+        if keyboard.pressed(KeyCode::KeyW) { move_delta -= forward; }
+        if keyboard.pressed(KeyCode::KeyS) { move_delta += forward; }
+        if keyboard.pressed(KeyCode::KeyA) { move_delta -= right_dir; }
+        if keyboard.pressed(KeyCode::KeyD) { move_delta += right_dir; }
+        if keyboard.pressed(KeyCode::KeyE) { move_delta += Vec3::Y; }
+        if keyboard.pressed(KeyCode::KeyQ) { move_delta -= Vec3::Y; }
+        if move_delta.length_squared() > 0.0 {
+            target_velocity = move_delta.normalize() * move_speed;
+        }
+    }
+    // Frame-rate independent exponential smoothing — stiffness ~14 gives
+    // ~0.2s ease-in/out, subtle but noticeable.
+    let smooth = (1.0 - (-14.0 * delta).exp()).clamp(0.0, 1.0);
+    velocity.velocity = velocity.velocity.lerp(target_velocity, smooth);
+    if velocity.velocity.length_squared() > 1e-8 {
+        orbit.focus += velocity.velocity * delta;
+        // WASD fly breaks pivot lock — only when actively pressing keys, not
+        // during the trailing decay (otherwise pivot lock stays off forever
+        // after a single tap).
+        if target_velocity.length_squared() > 0.0 && pivot_lock.0 {
+            pivot_lock.0 = false;
+        }
+    } else {
+        velocity.velocity = Vec3::ZERO;
+    }
 
     // --- Cursor lock/unlock ---
     // Only start drag if the click originated inside the viewport
@@ -535,44 +591,11 @@ fn camera_controller(
         return;
     }
 
-    // === Right-click: look around + WASD fly (or Shift+Right to pan) ===
+    // === Right-click: look around (or Shift+Right to pan) ===
+    // WASD fly is handled above via the smoothed-velocity block so motion
+    // eases in/out independently of the look/pan state machine.
     if right_pressed {
-        // WASD movement works in both modes.
-        let forward = Vec3::new(
-            orbit.pitch.cos() * orbit.yaw.sin(),
-            orbit.pitch.sin(),
-            orbit.pitch.cos() * orbit.yaw.cos(),
-        )
-        .normalize();
-
         let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
-
-        let mut move_delta = Vec3::ZERO;
-        if keyboard.pressed(KeyCode::KeyW) {
-            move_delta -= forward;
-        }
-        if keyboard.pressed(KeyCode::KeyS) {
-            move_delta += forward;
-        }
-        if keyboard.pressed(KeyCode::KeyA) {
-            move_delta -= right_dir;
-        }
-        if keyboard.pressed(KeyCode::KeyD) {
-            move_delta += right_dir;
-        }
-        if keyboard.pressed(KeyCode::KeyE) {
-            move_delta += Vec3::Y;
-        }
-        if keyboard.pressed(KeyCode::KeyQ) {
-            move_delta -= Vec3::Y;
-        }
-
-        if move_delta.length_squared() > 0.0 {
-            orbit.focus += move_delta.normalize() * move_speed * delta;
-            // WASD fly breaks pivot lock — you're flying, not orbiting.
-            if pivot_lock.0 { pivot_lock.0 = false; }
-        }
-
         if shift_held {
             // Shift+Right drag = pan the camera (slide focus in view plane).
             // Suppressed when pivot is locked so orbit stays centered.

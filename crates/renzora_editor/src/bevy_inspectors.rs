@@ -810,6 +810,31 @@ fn camera_entry() -> InspectorEntry {
                 },
                 set_fn: |_, _, _| {},
             },
+            FieldDef {
+                name: "FOV",
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 10.0,
+                    max: 170.0,
+                },
+                get_fn: |world, entity| {
+                    world.get::<Projection>(entity).and_then(|p| match p {
+                        Projection::Perspective(persp) => {
+                            Some(FieldValue::Float(persp.fov.to_degrees()))
+                        }
+                        _ => None,
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut p) = world.get_mut::<Projection>(entity) {
+                            if let Projection::Perspective(ref mut persp) = *p {
+                                persp.fov = v.clamp(10.0, 170.0).to_radians();
+                            }
+                        }
+                    }
+                },
+            },
         ],
         custom_ui_fn: None,
     }

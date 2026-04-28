@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 renzora_undo = { path = "../renzora_undo" }
 bevy_egui = { workspace = true }
+egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
