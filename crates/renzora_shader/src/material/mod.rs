@@ -6,6 +6,7 @@ pub mod runtime;
 pub mod material_ref;
 pub mod resolver;
 pub mod pbr_build;
+pub mod standard_build;
 
 // Re-export the public asset type at module root so downstream code can write
 // `material::GraphMaterial` the same way it did before this rewrite.

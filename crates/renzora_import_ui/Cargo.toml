@@ -10,7 +10,6 @@ bevy_egui = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_import = { path = "../renzora_import" }
-renzora_material = { path = "../renzora_material" }
 renzora_editor = { path = "../renzora_editor" }
 log = "0.4"
 

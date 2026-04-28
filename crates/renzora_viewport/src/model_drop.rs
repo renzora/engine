@@ -1,10 +1,12 @@
 //! Drag-and-drop model spawning — detects asset drops on the viewport and
 //! spawns GLTF/GLB models into the scene.
 //!
-//! While a model is being dragged over the viewport, a flat-grey "ghost"
-//! preview is loaded mesh-only (no textures) and follows the cursor so the
-//! user can see placement before the slow textured load runs. The ghost is
-//! discarded on drop and replaced by the standard textured spawn pipeline.
+//! While a model is being dragged over the viewport, the full textured GLB
+//! is spawned and follows the cursor — same materials as the eventual drop,
+//! so the user sees the actual placement preview rather than a flat-grey
+//! placeholder. The preview entity is discarded on drop or cancel; the
+//! committed entity is spawned fresh through the normal pipeline so it picks
+//! up the import-pipeline-generated `.material` files via the resolver.
 
 use std::path::PathBuf;
 
@@ -47,7 +49,7 @@ pub struct NeedsGroundAlignment {
     pub target_y: f32,
 }
 
-/// State for the ghost preview shown while a model is being dragged over the
+/// State for the live preview shown while a model is being dragged over the
 /// viewport. Cleared when the drag ends (drop or cancel).
 #[derive(Resource, Default)]
 pub struct ModelDragPreviewState {
@@ -57,12 +59,10 @@ pub struct ModelDragPreviewState {
     pub asset_path: Option<String>,
     /// Display name carried over to the real entity on drop.
     pub name: Option<String>,
-    /// Mesh-only Gltf handle (loaded with `load_materials` empty).
+    /// Gltf handle for the previewed model.
     pub mesh_handle: Option<Handle<Gltf>>,
-    /// Spawned ghost root entity. `None` until the mesh-only load completes.
+    /// Spawned preview root entity. `None` until the Gltf load completes.
     pub ghost_root: Option<Entity>,
-    /// Shared flat-grey material applied to all ghost meshes.
-    pub ghost_material: Option<Handle<StandardMaterial>>,
     /// Last known cursor ground position (Y=0 plane).
     pub ground_position: Vec3,
     /// True when the cursor is currently over the viewport rect.
@@ -70,8 +70,6 @@ pub struct ModelDragPreviewState {
 }
 
 impl ModelDragPreviewState {
-    /// Wipe everything except `ghost_material` — that handle is cheap to keep
-    /// around and will be reused for the next drag if it happens.
     pub fn clear(&mut self) {
         self.origin_path = None;
         self.asset_path = None;
@@ -83,14 +81,9 @@ impl ModelDragPreviewState {
     }
 }
 
-/// Marker on the spawned ghost root entity.
+/// Marker on the spawned preview root entity.
 #[derive(Component)]
 pub struct ModelDragGhost;
-
-/// Marker on a ghost mesh entity whose material has already been overridden,
-/// so the swap system doesn't keep re-applying it every frame.
-#[derive(Component)]
-pub struct GhostMaterialApplied;
 
 /// Marker: animation discovery has been attempted for this entity (hit or
 /// miss). Prevents `auto_discover_animations` from re-scanning the
@@ -224,8 +217,8 @@ fn compute_ground_position(
 
 /// Run the import pipeline on `source`, write the result to `dest`, dump
 /// extracted textures under `<model_dir>/textures/`, and fire one
-/// `PbrMaterialExtracted` event per material so `renzora_material` writes a
-/// `.material` file per entry.
+/// `PbrMaterialExtracted` event per material so `renzora_shader::material`
+/// writes a `.material` file per entry.
 ///
 /// Logs and falls back to a plain file copy on failure — the GLB still loads
 /// for the user, just without per-material editable graphs.
@@ -614,7 +607,7 @@ pub fn auto_discover_animations(
 
 // ── Drag-time mesh-only preview ────────────────────────────────────────────
 
-/// System: track the active model drag, kick off the mesh-only Gltf load the
+/// System: track the active model drag, kick off the full Gltf load the
 /// first time it enters the viewport, and update the cursor ground position
 /// every frame.
 pub fn track_model_drag_preview(
@@ -625,7 +618,6 @@ pub fn track_model_drag_preview(
     viewport: Res<ViewportState>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // No payload (or wrong kind) → leave any existing ghost alone; cleanup
     // runs in its own system once the resource is removed.
@@ -663,28 +655,15 @@ pub fn track_model_drag_preview(
         // declare `KHR_materials_pbrSpecularGlossiness`).
         glb_compat::ensure_loadable(&payload.path);
 
-        // IMPORTANT: load with default settings. Loading the same path twice
-        // with different `GltfLoaderSettings` poisons Bevy's image cache —
-        // any URI-referenced texture gets registered with whichever
-        // `render_asset_usages` ran first, and the later full load reuses
-        // the cached handle, leaving textures missing on the dropped entity.
-        // The ghost stays visually material-less because we override every
-        // child mesh's `MeshMaterial3d` after spawn.
+        // Load with default settings — same Gltf the dropped entity will use,
+        // so the preview shows real materials (matching Godot's drag-feel).
+        // Loading the same path twice with different `GltfLoaderSettings`
+        // would poison Bevy's image cache.
         let handle: Handle<Gltf> = asset_server.load(&asset_path);
-
-        let ghost_material = state.ghost_material.clone().unwrap_or_else(|| {
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.78, 0.80, 0.85),
-                perceptual_roughness: 0.6,
-                metallic: 0.0,
-                ..default()
-            })
-        });
 
         state.asset_path = Some(asset_path);
         state.name = Some(payload.name.clone());
         state.mesh_handle = Some(handle);
-        state.ghost_material = Some(ghost_material);
     }
 
     // Update cursor ground position whenever it's over the viewport.
@@ -789,37 +768,6 @@ pub fn update_model_drag_ghost(
     state.ghost_root = Some(root);
 }
 
-/// System: replace `MeshMaterial3d<StandardMaterial>` on every descendant of
-/// the ghost root with the shared flat-grey override material. Runs every
-/// frame because Bevy's scene spawner may add children asynchronously.
-pub fn apply_ghost_material_override(
-    mut commands: Commands,
-    state: Res<ModelDragPreviewState>,
-    children_query: Query<&Children>,
-    candidates: Query<
-        Entity,
-        (
-            With<MeshMaterial3d<StandardMaterial>>,
-            Without<GhostMaterialApplied>,
-        ),
-    >,
-) {
-    let Some(root) = state.ghost_root else { return };
-    let Some(material) = state.ghost_material.clone() else { return };
-
-    let mut stack = vec![root];
-    while let Some(entity) = stack.pop() {
-        if let Ok(kids) = children_query.get(entity) {
-            stack.extend(kids.iter());
-        }
-        if candidates.contains(entity) {
-            commands
-                .entity(entity)
-                .insert((MeshMaterial3d(material.clone()), GhostMaterialApplied));
-        }
-    }
-}
-
 /// System: clean up the ghost when the asset drag resource has been removed
 /// (drop or cancel) without the drop handler having already cleared it.
 pub fn cleanup_model_drag_ghost(
@@ -894,12 +842,10 @@ pub fn bind_material_refs(
 
     for (root_entity, mut pending, mesh_data) in pending_query.iter_mut() {
         let Some(gltf) = gltf_assets.get(&pending.gltf_handle) else {
-            // GLB not loaded yet — should be by the time we got here, but
-            // guard just in case the asset was unloaded behind us.
-            pending.frames_waited += 1;
-            if pending.frames_waited >= MATERIAL_BIND_MAX_WAIT_FRAMES {
-                commands.entity(root_entity).remove::<PendingMaterialBinding>();
-            }
+            // GLB still loading from disk. Project-load with a cold asset
+            // cache (e.g. Bistro) can take many seconds — don't count this
+            // against `frames_waited`, or we'll give up before the asset
+            // even arrives.
             continue;
         };
 
@@ -981,9 +927,107 @@ pub fn bind_material_refs(
     }
 }
 
+/// System: bring scene-loaded model instances onto the same material-binding
+/// path that drag-dropped models use.
+///
+/// The drag path (`spawn_loaded_gltfs`) attaches `ImportedRoot` +
+/// `PendingMaterialBinding` to the parent and `PendingFlatten` to the spawned
+/// `SceneRoot` child up-front. The load path goes through
+/// `renzora_engine::scene_io::finish_mesh_instance_rehydrate`, which spawns the
+/// `SceneRoot` child but doesn't add any of those markers — so loaded models
+/// keep Bevy's GLB-decoded `StandardMaterial`s and never run through the
+/// resolver. That divergence is what made the Bistro look one way after a
+/// drop and a different way after save+reload.
+///
+/// This system closes the gap. It detects "rehydrated" instances by their
+/// shape: an entity has `MeshInstanceData` + at least one child but no
+/// `ImportedRoot` (the drag path always adds `ImportedRoot` itself). For each
+/// match it attaches the same markers the drag path attaches, so the binder,
+/// flattener, and resolver run identically on both paths.
+///
+/// Idempotent: once `ImportedRoot` is on, the entity falls out of the query.
+pub fn attach_binding_to_rehydrated_instances(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    // Match on `MeshInstanceData` alone — don't require `Children`. On
+    // project load, Bevy populates `Children` after `ChildOf` is set on the
+    // SceneRoot child, and the auto-derivation timing relative to scene
+    // deserialization isn't guaranteed; requiring `Children` was making the
+    // system silently miss rehydrated entities. The downstream binder is
+    // patient enough to wait for descendants on its own (frames_waited cap).
+    instances: Query<
+        (Entity, &MeshInstanceData),
+        (Without<ImportedRoot>,),
+    >,
+    children_q: Query<&Children>,
+    scene_roots: Query<Entity, (With<SceneRoot>, Without<PendingFlatten>)>,
+) {
+    for (entity, instance) in instances.iter() {
+        let Some(model_path) = instance.model_path.clone() else {
+            // Without a model_path there's no GLB to bind materials from.
+            // Mark it as a (degenerate) imported root so we don't keep
+            // re-checking it every frame.
+            commands.entity(entity).try_insert(ImportedRoot);
+            continue;
+        };
+
+        // `asset_server.load` is idempotent — the GLB is already loading from
+        // `finish_mesh_instance_rehydrate`. We just need a handle that keeps
+        // the asset alive long enough for `bind_material_refs` to read the
+        // GLB's `named_materials` map. Owned String required because
+        // `AssetServer::load` takes `Into<AssetPath<'static>>`.
+        let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
+
+        commands.entity(entity).try_insert((
+            ImportedRoot,
+            PendingMaterialBinding {
+                gltf_handle,
+                frames_waited: 0,
+            },
+        ));
+
+        // If the SceneRoot has already been spawned, tag it for flatten now;
+        // otherwise the standalone `tag_scene_roots_for_flatten` system
+        // catches it as soon as it appears on a later frame.
+        if let Ok(children) = children_q.get(entity) {
+            for child in children.iter() {
+                if scene_roots.get(child).is_ok() {
+                    commands.entity(child).try_insert(PendingFlatten::default());
+                }
+            }
+        }
+    }
+}
+
+/// Catch-up system for SceneRoot children that show up *after*
+/// `attach_binding_to_rehydrated_instances` has already tagged their parent.
+///
+/// On scene load, `finish_mesh_instance_rehydrate` spawns the SceneRoot child
+/// asynchronously (it has to wait for the `Gltf` asset to finish loading).
+/// `attach_binding` runs the moment the parent appears with `MeshInstanceData`
+/// and tags `ImportedRoot` immediately — long before the SceneRoot exists.
+/// This system handles the second half: any newly-spawned SceneRoot whose
+/// parent already carries `ImportedRoot` (so we know the binding pipeline
+/// owns it) gets `PendingFlatten` so the flatten pass can collapse the
+/// gltf wrapper nodes.
+pub fn tag_scene_roots_for_flatten(
+    mut commands: Commands,
+    candidates: Query<
+        (Entity, &ChildOf),
+        (With<SceneRoot>, Without<PendingFlatten>, Added<SceneRoot>),
+    >,
+    imported_roots: Query<(), With<ImportedRoot>>,
+) {
+    for (entity, child_of) in candidates.iter() {
+        if imported_roots.get(child_of.parent()).is_ok() {
+            commands.entity(entity).try_insert(PendingFlatten::default());
+        }
+    }
+}
+
 /// Sanitize a material name for use as a filename. Mirrors
-/// `renzora_material::on_pbr_material_extracted` so binding paths agree with
-/// the writer.
+/// `renzora_shader::material::on_pbr_material_extracted` so binding paths
+/// agree with the writer.
 fn sanitize_material_name(name: &str) -> String {
     let safe: String = name
         .chars()

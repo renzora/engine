@@ -329,9 +329,13 @@ impl<'a> Ctx<'a> {
         match node.node_type.as_str() {
             // ── Inputs ──────────────────────────────────────────────
             "input/uv" => {
-                self.set_out(id, "uv", "in.uv".into());
-                self.set_out(id, "u", "in.uv.x".into());
-                self.set_out(id, "v", "in.uv.y".into());
+                // `mat_uv` is aliased at fragment entry behind `#ifdef
+                // VERTEX_UVS_A`. Meshes without a UV attribute (e.g. some
+                // Bistro submeshes) don't get the field on `VertexOutput`,
+                // so referencing `in.uv` directly fails to compile.
+                self.set_out(id, "uv", "mat_uv".into());
+                self.set_out(id, "u", "mat_uv.x".into());
+                self.set_out(id, "v", "mat_uv.y".into());
             }
             "input/world_position" => {
                 self.set_out(id, "position", "in.world_position.xyz".into());
@@ -363,7 +367,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let scale = self.input(node, "scale");
                 let offset = self.input(node, "offset");
@@ -375,7 +379,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let center = self.input(node, "center");
                 let v = self.next_var("polar");
@@ -399,7 +403,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let angle = self.input(node, "angle");
                 let center = self.input(node, "center");
@@ -419,7 +423,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let speed = self.input(node, "speed");
                 let toff = self.input(node, "time_offset");
@@ -430,11 +434,13 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "uv", v);
             }
             "input/vertex_color" => {
-                self.set_out(id, "color", "in.color".into());
-                self.set_out(id, "r", "in.color.r".into());
-                self.set_out(id, "g", "in.color.g".into());
-                self.set_out(id, "b", "in.color.b".into());
-                self.set_out(id, "a", "in.color.a".into());
+                // Aliased behind `#ifdef VERTEX_COLORS` — meshes without a
+                // color attribute don't have the field on `VertexOutput`.
+                self.set_out(id, "color", "mat_vertex_color".into());
+                self.set_out(id, "r", "mat_vertex_color.r".into());
+                self.set_out(id, "g", "mat_vertex_color.g".into());
+                self.set_out(id, "b", "mat_vertex_color.b".into());
+                self.set_out(id, "a", "mat_vertex_color.a".into());
             }
             "input/camera_position" => {
                 self.set_out(id, "position", "view.world_position.xyz".into());
@@ -450,7 +456,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let path = node.input_values.get("texture")
                     .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
@@ -483,7 +489,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let strength = self.input(node, "strength");
                 let path = node.input_values.get("texture")
@@ -513,7 +519,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let lod = self.input(node, "lod");
                 let path = node.input_values.get("texture")
@@ -546,7 +552,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let ddx = self.input(node, "ddx");
                 let ddy = self.input(node, "ddy");
@@ -603,7 +609,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let layer = self.input(node, "layer");
                 let path = node.input_values.get("texture")
@@ -1430,7 +1436,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let scale = self.input(node, "scale");
                 let variation = self.input(node, "variation");
@@ -1487,7 +1493,7 @@ impl<'a> Ctx<'a> {
                 let uv = if self.graph.connection_to(node.id, "uv").is_some() {
                     self.input(node, "uv")
                 } else {
-                    "in.uv".to_string()
+                    "mat_uv".to_string()
                 };
                 let frame = self.input(node, "frame");
                 let cols = self.input(node, "cols");
@@ -2375,6 +2381,24 @@ fn emit_module_prelude(ctx: &Ctx, s: &mut String) {
     }
 }
 
+/// WGSL snippet that aliases mesh-conditional VertexOutput fields. Generated
+/// graph code references `mat_uv` / `mat_vertex_color` instead of `in.uv` /
+/// `in.color` so a mesh without those attributes still compiles — the
+/// `#ifdef` falls back to a sane default (zeroed UV, white vertex color).
+fn fragment_input_aliases() -> String {
+    r#"#ifdef VERTEX_UVS_A
+    let mat_uv = in.uv;
+#else
+    let mat_uv = vec2<f32>(0.0, 0.0);
+#endif
+#ifdef VERTEX_COLORS
+    let mat_vertex_color = in.color;
+#else
+    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+#endif
+"#.to_string()
+}
+
 fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // Extension-material texture slots live at bindings 100..113 in group 3,
     // alongside StandardMaterial's own bindings (which occupy 0..~30). The
@@ -2485,6 +2509,12 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     shader.push_str("\n@fragment\n");
     shader.push_str("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {\n");
     shader.push_str("    var pbr_input = pbr_input_from_standard_material(in, is_front);\n");
+    // Alias mesh-conditional VertexOutput fields so generated graph code can
+    // reference them unconditionally. Bevy's pipeline specialization defines
+    // `VERTEX_UVS_A` / `VERTEX_COLORS` based on the actual mesh attributes;
+    // meshes without those attributes don't get the corresponding fields, so
+    // referencing `in.uv` directly would fail to compile for them.
+    shader.push_str(&fragment_input_aliases());
 
     // Graph body — runs between the StandardMaterial init and the mutations.
     for line in &ctx.lines {
@@ -2580,6 +2610,15 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
         ));
     }
 
+    // Run alpha_discard before lighting — this is what bevy_pbr::pbr.wgsl
+    // does. For OPAQUE materials it forces base_color.a = 1.0; for MASK it
+    // either clamps to 1.0 or `discard`s. Skipping it leaves emissive
+    // unscaled by alpha — `apply_pbr_lighting` does `emissive_light =
+    // emissive.rgb * output_color.a`, so a glTF material authored with
+    // baseColorFactor.a = 0 (common for emissive-only string lights) would
+    // otherwise render with no glow.
+    shader.push_str("    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material, pbr_input.material.base_color);\n");
+
     shader.push_str("\n    var out: FragmentOutput;\n");
     shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
     shader.push_str("    out.color = pbr_functions::main_pass_post_lighting_processing(pbr_input, out.color);\n");
@@ -2607,6 +2646,9 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
     shader.push_str("    // Alias inputs for compatibility\n");
     shader.push_str("    struct FakeIn { uv: vec2<f32>, world_position: vec4<f32>, world_normal: vec3<f32> };\n");
     shader.push_str("    let in = FakeIn(uv, vec4<f32>(world_pos, 1.0), world_normal);\n");
+    // Terrain has explicit UV; vertex_color isn't meaningful here so use white.
+    shader.push_str("    let mat_uv = uv;\n");
+    shader.push_str("    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n");
     for line in &ctx.lines {
         shader.push_str(line);
         shader.push('\n');
@@ -2646,6 +2688,7 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     shader.push_str("\n@fragment\n");
     shader.push_str("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {\n");
     shader.push_str("    var pbr_input = pbr_input_from_standard_material(in, is_front);\n");
+    shader.push_str(&fragment_input_aliases());
 
     for line in &ctx.lines {
         shader.push_str(line);
@@ -2664,6 +2707,9 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
         let e = resolved.get("alpha").unwrap();
         shader.push_str(&format!("    pbr_input.material.base_color.a = {e};\n"));
     }
+
+    // Match bevy_pbr::pbr.wgsl — alpha_discard handles OPAQUE/MASK before lighting.
+    shader.push_str("    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material, pbr_input.material.base_color);\n");
 
     shader.push_str("\n    var out: FragmentOutput;\n");
     shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
@@ -2697,7 +2743,11 @@ fn build_vegetation_vertex_shader(_ctx: &Ctx, resolved: &HashMap<String, String>
     shader.push_str("    out.world_position = world_pos;\n");
     shader.push_str("    out.position = mesh_functions::mesh_position_world_to_clip(world_pos);\n");
     shader.push_str("    out.world_normal = mesh_functions::mesh_normal_local_to_world(in.normal, in.instance_index);\n");
+    // Both `Vertex.uv` and `VertexOutput.uv` are gated on `VERTEX_UVS_A` —
+    // omit the assignment when the mesh has no UV attribute.
+    shader.push_str("#ifdef VERTEX_UVS_A\n");
     shader.push_str("    out.uv = in.uv;\n");
+    shader.push_str("#endif\n");
     shader.push_str("    return out;\n");
     shader.push_str("}\n");
 

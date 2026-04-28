@@ -43,9 +43,22 @@ fn load_sibling_functions(material_path: &str) -> FunctionRegistry {
 }
 
 /// Cache of compiled materials to avoid redundant recompilation.
+///
+/// `.material` graphs that fall in the "trivial" subset (texture + factor →
+/// PBR pin) compile to plain `StandardMaterial` and live in
+/// `standard_materials`. Anything procedural (math, noise, animation, custom
+/// WGSL) compiles to a `GraphMaterial` (`ExtendedMaterial<StandardMaterial,
+/// SurfaceGraphExt>`) and lives in `graph_materials`. A given path is in at
+/// most one map at a time; `invalidate` clears both so a graph that crosses
+/// the trivial/procedural boundary on edit recompiles cleanly.
 #[derive(Resource, Default)]
 pub struct MaterialCache {
-    /// Compiled graph materials by file path.
+    /// Compiled trivial materials — plain StandardMaterial assets that go
+    /// through Bevy's stock PBR pipeline. The vast majority of imported
+    /// .material files land here.
+    standard_materials: HashMap<String, Handle<bevy::pbr::StandardMaterial>>,
+    /// Compiled procedural materials — ExtendedMaterial wrapping a custom
+    /// fragment shader generated from the graph.
     graph_materials: HashMap<String, Handle<GraphMaterial>>,
     /// Compiled code shader materials by file path.
     code_materials: HashMap<String, Handle<CodeShaderMaterial>>,
@@ -57,6 +70,7 @@ pub struct MaterialCache {
 impl MaterialCache {
     /// Remove a cached material so the resolver re-loads it from disk.
     pub fn invalidate(&mut self, path: &str) {
+        self.standard_materials.remove(path);
         self.graph_materials.remove(path);
         self.code_materials.remove(path);
         self.loaded_paths.remove(path);
@@ -67,6 +81,17 @@ impl MaterialCache {
 #[derive(Component)]
 pub struct MaterialResolved {
     pub source_path: String,
+}
+
+/// Outcome of compiling a `.material` file. The classifier in
+/// `standard_build` decides which variant we get based on the graph's nodes.
+enum CompiledMaterial {
+    /// Trivial graph — compiled to a plain StandardMaterial. Renders via
+    /// Bevy's stock PBR pipeline, no custom shader.
+    Standard(Handle<bevy::pbr::StandardMaterial>),
+    /// Procedural graph — compiled to a custom WGSL fragment running on top
+    /// of StandardMaterial via ExtendedMaterial.
+    Graph(Handle<GraphMaterial>),
 }
 
 /// Plugin that resolves `MaterialRef` components to actual materials.
@@ -90,6 +115,7 @@ fn resolve_material_refs(
     mut commands: Commands,
     query: Query<(Entity, &MaterialRef), Without<MaterialResolved>>,
     mut cache: ResMut<MaterialCache>,
+    standard_materials: Option<ResMut<Assets<bevy::pbr::StandardMaterial>>>,
     graph_materials: Option<ResMut<Assets<GraphMaterial>>>,
     code_materials: Option<ResMut<Assets<CodeShaderMaterial>>>,
     shaders: Option<ResMut<Assets<Shader>>>,
@@ -101,6 +127,7 @@ fn resolve_material_refs(
     file_reader: Option<Res<renzora::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
+    let Some(mut standard_materials) = standard_materials else { return; };
     let Some(mut graph_materials) = graph_materials else { return; };
     let Some(mut code_materials) = code_materials else { return; };
     let Some(mut shaders) = shaders else { return; };
@@ -112,8 +139,22 @@ fn resolve_material_refs(
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
 
-        // Check graph material cache
+        // Check the trivial (StandardMaterial) cache first — it's the fast
+        // path for imported materials.
+        if let Some(handle) = cache.standard_materials.get(path) {
+            // Strip any leftover GraphMaterial from a prior render frame so
+            // the entity ends up with exactly one MeshMaterial3d component.
+            commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
+            commands.entity(entity).try_insert((
+                MeshMaterial3d(handle.clone()),
+                MaterialResolved { source_path: path.clone() },
+            ));
+            continue;
+        }
+
+        // Check graph material cache (procedural path)
         if let Some(handle) = cache.graph_materials.get(path) {
+            commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
             commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
                 MaterialResolved { source_path: path.clone() },
@@ -144,10 +185,30 @@ fn resolve_material_refs(
 
         // Determine file type and resolve
         if path.ends_with(".material") {
-            match resolve_graph_material(&fs_path, &mut graph_materials, &mut shaders, &mut shader_state, &fallback_texture, &asset_server, reader) {
-                Some(handle) => {
+            match resolve_material_file(
+                &fs_path,
+                &mut standard_materials,
+                &mut graph_materials,
+                &mut shaders,
+                &mut shader_state,
+                &fallback_texture,
+                &asset_server,
+                reader,
+            ) {
+                Some(CompiledMaterial::Standard(handle)) => {
+                    cache.standard_materials.insert(path.clone(), handle.clone());
+                    // Strip a stale GraphMaterial component if present (e.g.
+                    // hot-reload that crossed the trivial/procedural boundary).
+                    commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
+                    commands.entity(entity).try_insert((
+                        MeshMaterial3d(handle),
+                        MaterialResolved { source_path: path.clone() },
+                    ));
+                }
+                Some(CompiledMaterial::Graph(handle)) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
-                    // Remove StandardMaterial so it doesn't keep rendering over the custom one
+                    // Strip the GLB-decoded StandardMaterial so it doesn't
+                    // render alongside the GraphMaterial.
                     commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
@@ -308,16 +369,27 @@ fn resolve_raw_shader(
     Some(materials.add(mat))
 }
 
-/// Load a `.material` JSON file, compile its graph to WGSL, and create a `GraphMaterial` asset.
-fn resolve_graph_material(
+/// Read and parse a `.material` file, then route through either the trivial
+/// (StandardMaterial) compiler or the full graph codegen.
+///
+/// The classifier in `standard_build::try_build_standard_material` walks the
+/// graph; if every reachable node maps onto a StandardMaterial field, we
+/// produce a plain `Handle<StandardMaterial>` — same Material asset every
+/// other PBR mesh in the scene uses, so we share the stock PBR pipeline and
+/// pay zero per-material shader compile.
+///
+/// Returns `None` if the file is missing, unparseable, or — for procedural
+/// graphs — fails to compile to WGSL.
+fn resolve_material_file(
     path: &str,
-    materials: &mut Assets<GraphMaterial>,
+    standard_materials: &mut Assets<bevy::pbr::StandardMaterial>,
+    graph_materials: &mut Assets<GraphMaterial>,
     shaders: &mut Assets<Shader>,
-    _shader_state: &mut GraphMaterialShaderState,
+    shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
     reader: &renzora::VirtualFileReader,
-) -> Option<Handle<GraphMaterial>> {
+) -> Option<CompiledMaterial> {
     let content = match reader.read_string(path) {
         Some(c) => c,
         None => {
@@ -333,6 +405,46 @@ fn resolve_graph_material(
             return None;
         }
     };
+
+    // Trivial fast path: graph is just textures + factors → PBR pins.
+    // Compiles directly to StandardMaterial; no shader codegen, shared with
+    // Bevy's stock PBR pipeline. Imported glTF materials all land here.
+    if let Some(mat) =
+        super::standard_build::try_build_standard_material(&graph, asset_server)
+    {
+        return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
+    }
+
+    // Procedural fallback: hand off to the existing graph→WGSL codegen and
+    // wrap the result in an ExtendedMaterial. Same code path as before.
+    let handle = resolve_graph_material_from_graph(
+        path,
+        &graph,
+        graph_materials,
+        shaders,
+        shader_state,
+        fallback_texture,
+        asset_server,
+    )?;
+    Some(CompiledMaterial::Graph(handle))
+}
+
+/// Compile an already-parsed [`MaterialGraph`] into a procedural
+/// [`GraphMaterial`] (`ExtendedMaterial<StandardMaterial, SurfaceGraphExt>`).
+///
+/// This is the path for graphs containing procedural / math / animation /
+/// custom-WGSL nodes. Same code that used to live in `resolve_graph_material`
+/// — the file-read and parse steps were lifted up into `resolve_material_file`
+/// so the trivial classifier can run on the parsed graph without re-reading.
+fn resolve_graph_material_from_graph(
+    path: &str,
+    graph: &MaterialGraph,
+    materials: &mut Assets<GraphMaterial>,
+    shaders: &mut Assets<Shader>,
+    _shader_state: &mut GraphMaterialShaderState,
+    fallback_texture: &Option<Res<FallbackTexture>>,
+    asset_server: &AssetServer,
+) -> Option<Handle<GraphMaterial>> {
 
     // Load any sibling `.material_function` files in the same directory so the
     // graph can reference them via function/call nodes.

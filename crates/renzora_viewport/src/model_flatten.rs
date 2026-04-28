@@ -237,7 +237,7 @@ fn try_collapse_into_child(
     let child_parent_after = world
         .get::<ChildOf>(child)
         .map(|c| c.parent());
-    info!(
+    debug!(
         "[flatten] collapsed {:?}({}) into child {:?}({}); child.parent={:?}, grandparent_was={:?}",
         entity, entity_name, child, child_name, child_parent_after, grandparent
     );
@@ -282,7 +282,7 @@ pub fn flatten_pending_scenes(world: &mut World) {
         let before = count_descendants(entity, world);
         flatten_subtree(entity, world);
         let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
-        info!(
+        debug!(
             "[flatten] scene_root={:?} descendants_before={} parent_after={:?}",
             entity, before, parent
         );

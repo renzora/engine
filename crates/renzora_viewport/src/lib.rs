@@ -99,6 +99,18 @@ impl Plugin for ViewportPlugin {
                 effect_routing::update_effect_routing,
                 (
                     model_drop::spawn_loaded_gltfs,
+                    // Catch up scene-loaded models so they go through the
+                    // same flatten + bind + resolver path as drag-dropped
+                    // ones. Must run before `bind_material_refs` so the
+                    // markers are in place when the binder iterates.
+                    model_drop::attach_binding_to_rehydrated_instances
+                        .before(model_drop::bind_material_refs),
+                    // Tag SceneRoot children with PendingFlatten as soon as
+                    // they appear under an ImportedRoot parent — handles the
+                    // load-path case where the parent was tagged before its
+                    // SceneRoot child existed.
+                    model_drop::tag_scene_roots_for_flatten
+                        .before(model_flatten::flatten_pending_scenes),
                     model_flatten::flatten_pending_scenes,
                     // After flatten: any wrappers that survived (e.g. a
                     // multi-child RootNode that flatten couldn't collapse)
@@ -113,7 +125,6 @@ impl Plugin for ViewportPlugin {
                 (
                     model_drop::track_model_drag_preview,
                     model_drop::update_model_drag_ghost,
-                    model_drop::apply_ghost_material_override,
                     model_drop::cleanup_model_drag_ghost,
                 ).chain(),
                 shape_drop::shape_drag_ground_tracking

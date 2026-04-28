@@ -9007,7 +9007,6 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_import",
- "renzora_material",
  "renzora_theme",
  "rfd",
 ]
@@ -9082,18 +9081,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "renzora_material"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "renzora",
- "renzora_shader",
- "ron 0.8.1",
- "serde",
- "serde_json",
 ]
 
 [[package]]

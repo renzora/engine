@@ -873,7 +873,7 @@ fn import_worker(
                 let warn_count = result.warnings.len();
 
                 // Materials: fire a PbrMaterialExtracted event per material.
-                // Any crate observing it (e.g. renzora_material) writes the
+                // The observer in renzora_shader::material writes the
                 // `.material` file; this overlay stays oblivious to the
                 // material graph format.
                 if settings.extract_materials && !result.extracted_materials.is_empty() {

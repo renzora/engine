@@ -1,7 +1,7 @@
 //! Bevy `AssetLoader` for `.rmip` files.
 
 use bevy::asset::{io::Reader, AssetLoader, LoadContext, RenderAssetUsages};
-use bevy::image::{Image, ImageSampler};
+use bevy::image::{Image, ImageLoaderSettings, ImageSampler};
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::{
     Extent3d, TextureDataOrder, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
@@ -38,13 +38,21 @@ pub enum RmipLoadError {
 
 impl AssetLoader for RmipAssetLoader {
     type Asset = Image;
-    type Settings = ();
+    // We use `ImageLoaderSettings` rather than `()` so that Bevy's GLB
+    // loader — which calls `load_context.load::<Image, ImageLoaderSettings>(...)`
+    // for every embedded texture URI — can route through us without tripping
+    // a settings-type-mismatch error. Old projects (pre-0921dc8) baked `.rmip`
+    // URIs directly into the GLB JSON; with this loader's settings type
+    // matching, the load goes through cleanly. Settings are otherwise advisory
+    // — the format (sRGB vs linear) is baked into the `.rmip` header at import
+    // time, so we ignore `is_srgb`/`format`/etc here.
+    type Settings = ImageLoaderSettings;
     type Error = RmipLoadError;
 
     async fn load(
         &self,
         reader: &mut dyn Reader,
-        _settings: &(),
+        _settings: &ImageLoaderSettings,
         _load_context: &mut LoadContext<'_>,
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
