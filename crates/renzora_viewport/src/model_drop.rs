@@ -81,10 +81,6 @@ impl ModelDragPreviewState {
     }
 }
 
-/// Marker on the spawned preview root entity.
-#[derive(Component)]
-pub struct ModelDragGhost;
-
 /// Marker: animation discovery has been attempted for this entity (hit or
 /// miss). Prevents `auto_discover_animations` from re-scanning the
 /// filesystem on every frame for models that have no `.anim` files.
@@ -97,10 +93,15 @@ pub struct AnimationDiscoveryDone;
 /// `named_materials` map, which is how we recover the original material name
 /// for each `MeshMaterial3d<StandardMaterial>` handle the scene spawner
 /// attached.
+///
+/// The marker lives on the parent for the entire life of the model — the
+/// binder is idempotent (the query filter excludes already-bound meshes),
+/// so the descendant walk is free once everything has been bound, and any
+/// late-spawned mesh from Bevy's incremental scene spawner gets caught the
+/// frame it appears.
 #[derive(Component)]
 pub struct PendingMaterialBinding {
     pub gltf_handle: Handle<Gltf>,
-    pub frames_waited: u32,
 }
 
 /// Marker: this mesh entity has already been processed by the material
@@ -109,10 +110,6 @@ pub struct PendingMaterialBinding {
 /// pending for sibling meshes.
 #[derive(Component)]
 pub struct MaterialBindingDone;
-
-/// How many frames the binder waits for the scene to populate before giving
-/// up. Matches `model_flatten`'s budget so a stuck spawn fails consistently.
-const MATERIAL_BIND_MAX_WAIT_FRAMES: u32 = 30;
 
 /// Called from the viewport panel's `ui()` method (read-only `&World`).
 ///
@@ -159,26 +156,70 @@ pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect
                 .or_else(|| compute_ground_position(world, screen_pos, vp_rect))
                 .unwrap_or(Vec3::ZERO);
 
-            despawn_ghost(world);
-            initiate_model_load(world, path, name, ground_pos);
-        });
-    }
-}
+            // If we spawned a preview entity during drag (in-project
+            // asset), promote it in place: add the production markers
+            // that drive the binder/resolver/flatten pipeline. Same
+            // entity, no despawn, no second SceneSpawner instantiation.
+            //
+            // We clear `placement_entity` and `mesh_handle` so neither
+            // cleanup nor `update_model_placement` will touch the entity
+            // again, but we leave `origin_path` set so
+            // `track_model_drag_preview` skips re-initializing for the
+            // still-active drag (egui can hold the payload one extra
+            // frame after release).
+            let promotion = world
+                .get_resource_mut::<ModelDragPreviewState>()
+                .and_then(|mut s| {
+                    let entity = s.ghost_root.take();
+                    let asset_path = s.asset_path.take();
+                    let gltf_handle = s.mesh_handle.take();
+                    s.name = None;
+                    s.cursor_in_viewport = false;
+                    entity.zip(asset_path).zip(gltf_handle).map(|((e, p), h)| (e, p, h))
+                });
 
-/// Despawn the ghost entity and clear the preview state. Safe to call when
-/// no ghost exists.
-fn despawn_ghost(world: &mut World) {
-    let ghost = world
-        .get_resource_mut::<ModelDragPreviewState>()
-        .and_then(|mut s| {
-            let g = s.ghost_root.take();
-            s.clear();
-            g
+            if let Some((entity, asset_path, gltf_handle)) = promotion {
+                // Add production markers to the parent entity in place.
+                if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+                    entity_mut.insert((
+                        MeshInstanceData {
+                            model_path: Some(asset_path),
+                        },
+                        ImportedRoot,
+                        PendingMaterialBinding { gltf_handle },
+                        NeedsGroundAlignment {
+                            target_y: ground_pos.y,
+                        },
+                    ));
+                }
+                // Add `PendingFlatten` to the entity's SceneRoot child so
+                // the flatten pass collapses gltf wrapper nodes once the
+                // scene is fully populated.
+                let candidate_children: Vec<Entity> = world
+                    .get::<Children>(entity)
+                    .map(|kids| kids.iter().collect())
+                    .unwrap_or_default();
+                let mut scene_root_child: Option<Entity> = None;
+                for child in candidate_children {
+                    if world.get::<SceneRoot>(child).is_some() {
+                        scene_root_child = Some(child);
+                        break;
+                    }
+                }
+                if let Some(child) = scene_root_child {
+                    world.entity_mut(child).insert(PendingFlatten::default());
+                }
+                if let Some(selection) = world.get_resource::<EditorSelection>() {
+                    selection.set(Some(entity));
+                }
+            } else {
+                // No placement entity — out-of-project drag (the preview
+                // path skipped this asset because it wasn't already in the
+                // project). Run the import-then-spawn pipeline so the GLB
+                // gets copied into the project and a fresh entity spawned.
+                initiate_model_load(world, path, name, ground_pos);
+            }
         });
-    if let Some(entity) = ghost {
-        if let Ok(entity_mut) = world.get_entity_mut(entity) {
-            entity_mut.despawn();
-        }
     }
 }
 
@@ -415,7 +456,6 @@ pub fn spawn_loaded_gltfs(
                 ImportedRoot,
                 PendingMaterialBinding {
                     gltf_handle: load.handle.clone(),
-                    frames_waited: 0,
                 },
             ))
             .id();
@@ -708,8 +748,17 @@ pub fn track_model_drag_preview(
     }
 }
 
-/// System: spawn the ghost root once its mesh-only Gltf is loaded; otherwise
-/// just update its transform to track the cursor.
+/// System: spawn the model entity once its Gltf is loaded, then track
+/// the cursor with its transform until the user releases the mouse.
+///
+/// The entity we spawn here is the **final** scene entity — same components
+/// any post-drop spawn would produce. While the drag is active, this system
+/// updates its transform every frame so it follows the cursor. On release,
+/// `check_viewport_model_drop`'s deferred handler adds `NeedsGroundAlignment`
+/// and clears the placement state; from there the entity is just a regular
+/// scene entity. No "ghost", no despawn-and-respawn — Bevy's SceneSpawner
+/// only instantiates the GLB once, and that single instance becomes the
+/// real scene model.
 pub fn update_model_drag_ghost(
     mut commands: Commands,
     mut state: ResMut<ModelDragPreviewState>,
@@ -749,16 +798,28 @@ pub fn update_model_drag_ghost(
         return;
     };
 
+    let display_name = state
+        .name
+        .clone()
+        .unwrap_or_else(|| "Model".to_string());
+
+    // Spawn a minimal preview entity: just the SceneRoot scene under a
+    // transform parent. No production markers (`MeshInstanceData`,
+    // `ImportedRoot`, `PendingMaterialBinding`, `PendingFlatten`) — those
+    // would kick off the binder/resolver/flatten pipeline mid-drag, which
+    // we don't want until the user actually commits the placement on
+    // drop. The entity *itself* is the final entity though — the drop
+    // handler decorates it in place rather than despawning + respawning.
     let root = commands
         .spawn((
-            Name::new("ModelDragGhost"),
+            Name::new(display_name),
             Transform::from_translation(state.ground_position),
             Visibility::Inherited,
-            ModelDragGhost,
         ))
         .id();
+
     commands.spawn((
-        Name::new("ModelDragGhostScene"),
+        Name::new("SceneRoot"),
         SceneRoot(scene),
         Transform::default(),
         Visibility::Inherited,
@@ -824,13 +885,18 @@ pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> 
 /// `MaterialResolverPlugin` then loads each file and swaps the GLB's
 /// `StandardMaterial` for the editable `GraphMaterial`.
 ///
-/// Runs every frame while a binding is pending. Most spawns finish in a few
-/// frames once Bevy's scene spawner has populated the subtree; we cap the
-/// wait at `MATERIAL_BIND_MAX_WAIT_FRAMES` so a broken scene doesn't keep
-/// the marker alive forever.
+/// Runs every frame for as long as the marker exists. Bevy's scene spawner
+/// populates large GLBs incrementally — Bistro / Audi can take dozens of
+/// frames to fully spawn, with new mesh entities appearing throughout.
+/// The earlier "found one mesh → done" logic was leaving most of those
+/// meshes unbinded, so we just keep going. The work is idempotent: the
+/// query filter excludes meshes that already carry `MaterialRef` /
+/// `MaterialBindingDone`, so a fully-bound model costs one descendant walk
+/// per frame and zero binds. The marker disappears when the parent is
+/// despawned.
 pub fn bind_material_refs(
     mut commands: Commands,
-    mut pending_query: Query<(Entity, &mut PendingMaterialBinding, &MeshInstanceData)>,
+    pending_query: Query<(Entity, &PendingMaterialBinding, &MeshInstanceData)>,
     children_query: Query<&Children>,
     mesh_mat_query: Query<
         &MeshMaterial3d<StandardMaterial>,
@@ -840,13 +906,30 @@ pub fn bind_material_refs(
 ) {
     use std::collections::HashMap;
 
-    for (root_entity, mut pending, mesh_data) in pending_query.iter_mut() {
+    for (root_entity, pending, mesh_data) in pending_query.iter() {
         let Some(gltf) = gltf_assets.get(&pending.gltf_handle) else {
-            // GLB still loading from disk. Project-load with a cold asset
-            // cache (e.g. Bistro) can take many seconds — don't count this
-            // against `frames_waited`, or we'll give up before the asset
-            // even arrives.
+            // GLB still loading. Wait — `PendingMaterialBinding` holds the
+            // handle so the asset is kept alive.
             continue;
+        };
+
+        // Compute the materials directory relative to the project — the
+        // `.material` files live next to the GLB at `<model_dir>/materials/`.
+        // No `model_path` means there's nothing to bind to; the marker is
+        // useless on this entity, drop it.
+        let Some(model_path) = mesh_data.model_path.as_deref() else {
+            commands.entity(root_entity).remove::<PendingMaterialBinding>();
+            continue;
+        };
+        let model_dir_rel = std::path::Path::new(model_path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.replace('\\', "/"))
+            .unwrap_or_default();
+        let materials_dir_rel = if model_dir_rel.is_empty() {
+            "materials".to_string()
+        } else {
+            format!("{}/materials", model_dir_rel)
         };
 
         // Build lookup: every material handle in the GLB → its name. Named
@@ -863,164 +946,29 @@ pub fn bind_material_refs(
                 .or_insert_with(|| format!("material_{}", i));
         }
 
-        // Compute the materials directory relative to the project — the
-        // `.material` files live next to the GLB at
-        // `<model_dir>/materials/`. `MeshInstanceData::model_path` is the
-        // asset-relative GLB path (e.g. `models/bistro/bistro.glb`).
-        let Some(model_path) = mesh_data.model_path.as_deref() else {
-            commands.entity(root_entity).remove::<PendingMaterialBinding>();
-            continue;
-        };
-        let model_dir_rel = std::path::Path::new(model_path)
-            .parent()
-            .and_then(|p| p.to_str())
-            .map(|s| s.replace('\\', "/"))
-            .unwrap_or_default();
-        let materials_dir_rel = if model_dir_rel.is_empty() {
-            "materials".to_string()
-        } else {
-            format!("{}/materials", model_dir_rel)
-        };
-
-        // Walk descendants, applying MaterialRef where applicable.
-        let mut bound_any = false;
+        // Walk descendants and bind any meshes that haven't been bound yet.
+        // The query filter ensures already-bound meshes are skipped; once
+        // every descendant has been processed this loop is effectively a
+        // no-op.
         let mut stack: Vec<Entity> = vec![root_entity];
-        let mut total_meshes = 0usize;
         while let Some(entity) = stack.pop() {
             if let Ok(kids) = children_query.get(entity) {
                 stack.extend(kids.iter());
             }
             if let Ok(mat) = mesh_mat_query.get(entity) {
-                total_meshes += 1;
                 if let Some(name) = name_by_id.get(&mat.0.id()) {
                     let safe = sanitize_material_name(name);
                     let path = format!("{}/{}.material", materials_dir_rel, safe);
                     commands
                         .entity(entity)
                         .insert((renzora::MaterialRef(path), MaterialBindingDone));
-                    bound_any = true;
                 } else {
-                    // Mesh has a material handle the GLB didn't expose — could
-                    // happen with procedurally-spawned children. Mark done so
-                    // we don't keep retrying.
+                    // Mesh has a material handle the GLB didn't expose —
+                    // could happen with procedurally-spawned children. Mark
+                    // done so we don't keep retrying it.
                     commands.entity(entity).insert(MaterialBindingDone);
                 }
             }
-        }
-
-        // The scene spawner is async; a freshly-spawned root may have zero
-        // mesh descendants for a few frames. Wait until at least one mesh
-        // appears (then we've seen the spawn complete), then drop the marker.
-        if total_meshes == 0 {
-            pending.frames_waited += 1;
-            if pending.frames_waited >= MATERIAL_BIND_MAX_WAIT_FRAMES {
-                commands.entity(root_entity).remove::<PendingMaterialBinding>();
-            }
-            continue;
-        }
-
-        // Once we've hit at least one mesh, treat the binding as done. The
-        // `MaterialBindingDone` marker on each child prevents re-processing
-        // if more meshes get added later (rare).
-        let _ = bound_any;
-        commands.entity(root_entity).remove::<PendingMaterialBinding>();
-    }
-}
-
-/// System: bring scene-loaded model instances onto the same material-binding
-/// path that drag-dropped models use.
-///
-/// The drag path (`spawn_loaded_gltfs`) attaches `ImportedRoot` +
-/// `PendingMaterialBinding` to the parent and `PendingFlatten` to the spawned
-/// `SceneRoot` child up-front. The load path goes through
-/// `renzora_engine::scene_io::finish_mesh_instance_rehydrate`, which spawns the
-/// `SceneRoot` child but doesn't add any of those markers — so loaded models
-/// keep Bevy's GLB-decoded `StandardMaterial`s and never run through the
-/// resolver. That divergence is what made the Bistro look one way after a
-/// drop and a different way after save+reload.
-///
-/// This system closes the gap. It detects "rehydrated" instances by their
-/// shape: an entity has `MeshInstanceData` + at least one child but no
-/// `ImportedRoot` (the drag path always adds `ImportedRoot` itself). For each
-/// match it attaches the same markers the drag path attaches, so the binder,
-/// flattener, and resolver run identically on both paths.
-///
-/// Idempotent: once `ImportedRoot` is on, the entity falls out of the query.
-pub fn attach_binding_to_rehydrated_instances(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    // Match on `MeshInstanceData` alone — don't require `Children`. On
-    // project load, Bevy populates `Children` after `ChildOf` is set on the
-    // SceneRoot child, and the auto-derivation timing relative to scene
-    // deserialization isn't guaranteed; requiring `Children` was making the
-    // system silently miss rehydrated entities. The downstream binder is
-    // patient enough to wait for descendants on its own (frames_waited cap).
-    instances: Query<
-        (Entity, &MeshInstanceData),
-        (Without<ImportedRoot>,),
-    >,
-    children_q: Query<&Children>,
-    scene_roots: Query<Entity, (With<SceneRoot>, Without<PendingFlatten>)>,
-) {
-    for (entity, instance) in instances.iter() {
-        let Some(model_path) = instance.model_path.clone() else {
-            // Without a model_path there's no GLB to bind materials from.
-            // Mark it as a (degenerate) imported root so we don't keep
-            // re-checking it every frame.
-            commands.entity(entity).try_insert(ImportedRoot);
-            continue;
-        };
-
-        // `asset_server.load` is idempotent — the GLB is already loading from
-        // `finish_mesh_instance_rehydrate`. We just need a handle that keeps
-        // the asset alive long enough for `bind_material_refs` to read the
-        // GLB's `named_materials` map. Owned String required because
-        // `AssetServer::load` takes `Into<AssetPath<'static>>`.
-        let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
-
-        commands.entity(entity).try_insert((
-            ImportedRoot,
-            PendingMaterialBinding {
-                gltf_handle,
-                frames_waited: 0,
-            },
-        ));
-
-        // If the SceneRoot has already been spawned, tag it for flatten now;
-        // otherwise the standalone `tag_scene_roots_for_flatten` system
-        // catches it as soon as it appears on a later frame.
-        if let Ok(children) = children_q.get(entity) {
-            for child in children.iter() {
-                if scene_roots.get(child).is_ok() {
-                    commands.entity(child).try_insert(PendingFlatten::default());
-                }
-            }
-        }
-    }
-}
-
-/// Catch-up system for SceneRoot children that show up *after*
-/// `attach_binding_to_rehydrated_instances` has already tagged their parent.
-///
-/// On scene load, `finish_mesh_instance_rehydrate` spawns the SceneRoot child
-/// asynchronously (it has to wait for the `Gltf` asset to finish loading).
-/// `attach_binding` runs the moment the parent appears with `MeshInstanceData`
-/// and tags `ImportedRoot` immediately — long before the SceneRoot exists.
-/// This system handles the second half: any newly-spawned SceneRoot whose
-/// parent already carries `ImportedRoot` (so we know the binding pipeline
-/// owns it) gets `PendingFlatten` so the flatten pass can collapse the
-/// gltf wrapper nodes.
-pub fn tag_scene_roots_for_flatten(
-    mut commands: Commands,
-    candidates: Query<
-        (Entity, &ChildOf),
-        (With<SceneRoot>, Without<PendingFlatten>, Added<SceneRoot>),
-    >,
-    imported_roots: Query<(), With<ImportedRoot>>,
-) {
-    for (entity, child_of) in candidates.iter() {
-        if imported_roots.get(child_of.parent()).is_ok() {
-            commands.entity(entity).try_insert(PendingFlatten::default());
         }
     }
 }
