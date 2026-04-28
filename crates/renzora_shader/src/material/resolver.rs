@@ -8,7 +8,7 @@ use std::path::Path;
 use bevy::prelude::*;
 use uuid::Uuid;
 
-use super::codegen::{self, FunctionRegistry};
+use super::codegen::{self, FunctionRegistry, MaterialParam};
 use super::graph::{MaterialDomain, MaterialFunction, MaterialGraph};
 use super::material_ref::MaterialRef;
 use super::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
@@ -49,8 +49,8 @@ fn load_sibling_functions(material_path: &str) -> FunctionRegistry {
 /// `standard_materials`. Anything procedural (math, noise, animation, custom
 /// WGSL) compiles to a `GraphMaterial` (`ExtendedMaterial<StandardMaterial,
 /// SurfaceGraphExt>`) and lives in `graph_materials`. A given path is in at
-/// most one map at a time; `invalidate` clears both so a graph that crosses
-/// the trivial/procedural boundary on edit recompiles cleanly.
+/// most one map at a time; `invalidate` clears all maps so a graph that
+/// crosses the trivial/procedural boundary on edit recompiles cleanly.
 #[derive(Resource, Default)]
 pub struct MaterialCache {
     /// Compiled trivial materials — plain StandardMaterial assets that go
@@ -62,9 +62,23 @@ pub struct MaterialCache {
     graph_materials: HashMap<String, Handle<GraphMaterial>>,
     /// Compiled code shader materials by file path.
     code_materials: HashMap<String, Handle<CodeShaderMaterial>>,
+    /// Per-master metadata extracted at compile time. Material instances of
+    /// procedural masters look this up to find slot indices for their
+    /// override map and to copy the master's authored defaults into the
+    /// instance's parameter buffer. Keyed by master `.material` path.
+    master_meta: HashMap<String, MasterMeta>,
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
+}
+
+/// Compile-time metadata about a master `.material` file that material
+/// instances need to build their per-instance overrides.
+#[derive(Clone)]
+pub struct MasterMeta {
+    /// Parameters in slot order — index in this `Vec` equals the
+    /// `material_params.slots[i]` index the master's WGSL reads from.
+    pub parameters: Vec<MaterialParam>,
 }
 
 impl MaterialCache {
@@ -73,6 +87,7 @@ impl MaterialCache {
         self.standard_materials.remove(path);
         self.graph_materials.remove(path);
         self.code_materials.remove(path);
+        self.master_meta.remove(path);
         self.loaded_paths.remove(path);
     }
 }
@@ -90,8 +105,12 @@ enum CompiledMaterial {
     /// Bevy's stock PBR pipeline, no custom shader.
     Standard(Handle<bevy::pbr::StandardMaterial>),
     /// Procedural graph — compiled to a custom WGSL fragment running on top
-    /// of StandardMaterial via ExtendedMaterial.
-    Graph(Handle<GraphMaterial>),
+    /// of StandardMaterial via ExtendedMaterial. Carries the parameter list
+    /// so callers can stash per-master metadata for instance overrides.
+    Graph {
+        handle: Handle<GraphMaterial>,
+        parameters: Vec<MaterialParam>,
+    },
 }
 
 /// Plugin that resolves `MaterialRef` components to actual materials.
@@ -205,8 +224,11 @@ fn resolve_material_refs(
                         MaterialResolved { source_path: path.clone() },
                     ));
                 }
-                Some(CompiledMaterial::Graph(handle)) => {
+                Some(CompiledMaterial::Graph { handle, parameters }) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
+                    cache
+                        .master_meta
+                        .insert(path.clone(), MasterMeta { parameters });
                     // Strip the GLB-decoded StandardMaterial so it doesn't
                     // render alongside the GraphMaterial.
                     commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
@@ -222,6 +244,45 @@ fn resolve_material_refs(
                     // would be N file-open syscalls per frame. The mesh
                     // keeps its existing StandardMaterial as a fallback.
                     warn!("Failed to resolve .material: {}", path);
+                    commands.entity(entity).try_insert(
+                        MaterialResolved { source_path: path.clone() },
+                    );
+                }
+            }
+        } else if path.ends_with(".material_instance") {
+            // Top-of-loop cache lookups already covered any `.material_instance`
+            // result that previously compiled to either Standard or Graph. We
+            // only get here on a cache miss for this instance path.
+            match resolve_material_instance_file(
+                &fs_path,
+                project.as_deref(),
+                &mut *cache,
+                &mut standard_materials,
+                &mut graph_materials,
+                &mut shaders,
+                &mut shader_state,
+                &fallback_texture,
+                &asset_server,
+                reader,
+            ) {
+                Some(CompiledMaterial::Standard(handle)) => {
+                    cache.standard_materials.insert(path.clone(), handle.clone());
+                    commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
+                    commands.entity(entity).try_insert((
+                        MeshMaterial3d(handle),
+                        MaterialResolved { source_path: path.clone() },
+                    ));
+                }
+                Some(CompiledMaterial::Graph { handle, .. }) => {
+                    cache.graph_materials.insert(path.clone(), handle.clone());
+                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands.entity(entity).try_insert((
+                        MeshMaterial3d(handle),
+                        MaterialResolved { source_path: path.clone() },
+                    ));
+                }
+                None => {
+                    warn!("Failed to resolve .material_instance: {}", path);
                     commands.entity(entity).try_insert(
                         MaterialResolved { source_path: path.clone() },
                     );
@@ -417,7 +478,7 @@ fn resolve_material_file(
 
     // Procedural fallback: hand off to the existing graph→WGSL codegen and
     // wrap the result in an ExtendedMaterial. Same code path as before.
-    let handle = resolve_graph_material_from_graph(
+    let (handle, parameters) = resolve_graph_material_from_graph(
         path,
         &graph,
         graph_materials,
@@ -426,11 +487,165 @@ fn resolve_material_file(
         fallback_texture,
         asset_server,
     )?;
-    Some(CompiledMaterial::Graph(handle))
+    Some(CompiledMaterial::Graph { handle, parameters })
+}
+
+/// Read a `.material_instance` file, resolve its master, splice in the
+/// instance's parameter overrides, and produce a fresh material handle.
+///
+/// Two paths:
+///
+/// **Trivial master** — classifier accepts `param/*` nodes by reading the
+/// (override-patched) defaults, so overrides land on `StandardMaterial`
+/// fields naturally. Each instance gets its own `Handle<StandardMaterial>`.
+///
+/// **Procedural master** — the master is compiled once (cached under its
+/// own path); each instance clones the master's `GraphMaterial` and rewrites
+/// only the parameter UBO with the instance's overrides on top of the
+/// master's authored defaults. The shader UUID and texture bindings are
+/// inherited from the master, so wgpu reuses the same specialized pipeline
+/// across every instance.
+fn resolve_material_instance_file(
+    path: &str,
+    project: Option<&renzora::CurrentProject>,
+    cache: &mut MaterialCache,
+    standard_materials: &mut Assets<bevy::pbr::StandardMaterial>,
+    graph_materials: &mut Assets<GraphMaterial>,
+    shaders: &mut Assets<Shader>,
+    shader_state: &mut GraphMaterialShaderState,
+    fallback_texture: &Option<Res<FallbackTexture>>,
+    asset_server: &AssetServer,
+    reader: &renzora::VirtualFileReader,
+) -> Option<CompiledMaterial> {
+    use super::instance::{
+        apply_overrides_to_param_slots, graph_with_overrides_applied, MaterialInstance,
+    };
+
+    let content = match reader.read_string(path) {
+        Some(c) => c,
+        None => {
+            error!("Failed to read material_instance file '{}'", path);
+            return None;
+        }
+    };
+
+    let instance: MaterialInstance = match serde_json::from_str(&content) {
+        Ok(i) => i,
+        Err(e) => {
+            error!("Failed to parse material_instance '{}': {}", path, e);
+            return None;
+        }
+    };
+
+    // The instance stores `master` as an asset-relative path. Use it both
+    // as the cache key (for downstream `cache.graph_materials` and
+    // `cache.master_meta` lookups) and resolve a filesystem variant for the
+    // file reader.
+    let master_key = instance.master.clone();
+    let master_fs_path = if Path::new(&master_key).is_absolute() {
+        master_key.clone()
+    } else if let Some(proj) = project {
+        let raw = proj.resolve_path(&master_key).to_string_lossy().to_string();
+        let normalized = raw.replace('\\', "/");
+        normalized
+            .strip_prefix("./")
+            .unwrap_or(&normalized)
+            .to_string()
+    } else {
+        master_key.clone()
+    };
+
+    let master_content = match reader.read_string(&master_fs_path) {
+        Some(c) => c,
+        None => {
+            error!(
+                "material_instance '{}' references missing master '{}'",
+                path, master_fs_path
+            );
+            return None;
+        }
+    };
+
+    let master_graph: MaterialGraph = match serde_json::from_str(&master_content) {
+        Ok(g) => g,
+        Err(e) => {
+            error!(
+                "Failed to parse master '{}' for instance '{}': {}",
+                master_fs_path, path, e
+            );
+            return None;
+        }
+    };
+
+    // ── Trivial path ────────────────────────────────────────────────────
+    //
+    // Patch overrides into the graph and re-classify. If the master qualifies
+    // as trivial (and overrides don't introduce a node that would push it
+    // off the trivial path — they can't, since they only edit param node
+    // defaults), we get a fresh StandardMaterial whose factors and texture
+    // handles reflect the overrides. No shader compilation, no uniform
+    // plumbing — just a different StandardMaterial asset.
+    let patched = graph_with_overrides_applied(&master_graph, &instance.overrides);
+    if let Some(mat) =
+        super::standard_build::try_build_standard_material(&patched, asset_server)
+    {
+        return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
+    }
+
+    // ── Procedural path ────────────────────────────────────────────────
+    //
+    // 1. Ensure the master is compiled. If it isn't, compile it now and
+    //    cache both the GraphMaterial handle and the parameter list. Two
+    //    instances of the same master share this compilation.
+    if cache.graph_materials.get(&master_key).is_none() {
+        let (handle, parameters) = resolve_graph_material_from_graph(
+            &master_fs_path,
+            &master_graph,
+            graph_materials,
+            shaders,
+            shader_state,
+            fallback_texture,
+            asset_server,
+        )?;
+        cache.graph_materials.insert(master_key.clone(), handle);
+        cache
+            .master_meta
+            .insert(master_key.clone(), MasterMeta { parameters });
+    }
+
+    // 2. Pull the master GraphMaterial out of the asset store. We can't
+    //    just clone the handle — instances need their own asset (different
+    //    parameter UBO contents) — so we deep-clone the asset and add a
+    //    new entry.
+    let master_handle = cache.graph_materials.get(&master_key)?.clone();
+    let master_meta = cache.master_meta.get(&master_key)?.clone();
+    let mut instance_mat = graph_materials.get(&master_handle)?.clone();
+
+    // 3. Overlay the instance's overrides on top of the master's defaults.
+    //    The master's authored defaults are already in the slots from the
+    //    initial compile; we only touch slots whose names appear in the
+    //    override map.
+    apply_overrides_to_param_slots(
+        &mut instance_mat.extension.params.slots,
+        &master_meta.parameters,
+        &instance.overrides,
+    );
+
+    Some(CompiledMaterial::Graph {
+        handle: graph_materials.add(instance_mat),
+        // No new parameters were discovered — the instance shares the
+        // master's parameter list. Returning empty so the dispatch site
+        // doesn't accidentally insert a stale entry under the instance path.
+        parameters: Vec::new(),
+    })
 }
 
 /// Compile an already-parsed [`MaterialGraph`] into a procedural
 /// [`GraphMaterial`] (`ExtendedMaterial<StandardMaterial, SurfaceGraphExt>`).
+///
+/// Returns the asset handle paired with the parameter list the codegen
+/// discovered. The latter is what callers need to cache in `MasterMeta` so
+/// material instances of this master can write into the right uniform slots.
 ///
 /// This is the path for graphs containing procedural / math / animation /
 /// custom-WGSL nodes. Same code that used to live in `resolve_graph_material`
@@ -444,7 +659,7 @@ fn resolve_graph_material_from_graph(
     _shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
-) -> Option<Handle<GraphMaterial>> {
+) -> Option<(Handle<GraphMaterial>, Vec<MaterialParam>)> {
 
     // Load any sibling `.material_function` files in the same directory so the
     // graph can reference them via function/call nodes.
@@ -541,5 +756,11 @@ fn resolve_graph_material_from_graph(
         }
     }
 
-    Some(materials.add(mat))
+    // Seed the parameter UBO from the master's authored defaults so the
+    // master renders correctly out of the gate. Material instances will
+    // overlay their per-instance values on top of this seed.
+    mat.extension.params.slots =
+        super::instance::build_default_param_slots(&result.parameters);
+
+    Some((materials.add(mat), result.parameters))
 }

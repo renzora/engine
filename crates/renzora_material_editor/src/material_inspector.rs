@@ -58,7 +58,7 @@ fn material_custom_ui(
 
     let payload = world.get_resource::<AssetDragPayload>();
 
-    let mut all_exts: Vec<&str> = vec!["material"];
+    let mut all_exts: Vec<&str> = vec!["material", "material_instance"];
     all_exts.extend_from_slice(IMAGE_EXTENSIONS);
 
     let current_label = if current_path.is_empty() {
@@ -514,7 +514,7 @@ fn material_custom_ui(
             .unwrap_or("")
             .to_ascii_lowercase();
 
-        if ext == "material" {
+        if ext == "material" || ext == "material_instance" {
             cmds.push(move |world: &mut World| {
                 let mat_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
                     project.make_asset_relative(&dropped)
@@ -616,7 +616,10 @@ fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> 
                     stack.push((path, depth + 1));
                 }
             } else if ft.is_file()
-                && path.extension().and_then(|e| e.to_str()) == Some("material")
+                && matches!(
+                    path.extension().and_then(|e| e.to_str()),
+                    Some("material") | Some("material_instance")
+                )
             {
                 if let Ok(rel) = path.strip_prefix(project_root) {
                     let rel_str = rel.to_string_lossy().replace('\\', "/");

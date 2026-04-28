@@ -28,9 +28,15 @@ use bevy::pbr::{
     ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline,
 };
 use bevy::mesh::MeshVertexBufferLayoutRef;
-use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError};
+use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
 use bevy::shader::ShaderRef;
 use uuid::Uuid;
+
+/// Number of parameter slots exposed in the per-material uniform buffer.
+/// Each slot is one `Vec4`; scalars and bools occupy `.x`, `Vec2` uses `.xy`,
+/// `Vec3` uses `.xyz`, `Vec4`/`Color` use the whole slot. 32 slots is enough
+/// for any realistic master graph and keeps the UBO under 512 bytes.
+pub const SURFACE_GRAPH_PARAM_SLOTS: usize = 32;
 
 /// Well-known handle for the default (unmodified-StandardMaterial) extension
 /// fragment shader. Used as the fallback when a material hasn't been compiled
@@ -40,10 +46,20 @@ pub const SURFACE_GRAPH_EXT_DEFAULT_FRAG: Handle<Shader> =
 
 /// Minimal extension fragment shader: `pbr_input_from_standard_material` →
 /// `apply_pbr_lighting` → post-processing, with no mutations.
+///
+/// Declares the parameter UBO at binding 118 even though the default shader
+/// doesn't read from it — the bind group layout has to match the
+/// `AsBindGroup` derive on `SurfaceGraphExt`, otherwise wgpu rejects the
+/// pipeline at draw time.
 pub const DEFAULT_EXT_FRAG_SRC: &str = r#"
 #import bevy_pbr::pbr_fragment::pbr_input_from_standard_material
 #import bevy_pbr::pbr_functions
 #import bevy_pbr::forward_io::{VertexOutput, FragmentOutput}
+
+struct SurfaceGraphParams {
+    slots: array<vec4<f32>, 32>,
+}
+@group(3) @binding(118) var<uniform> material_params: SurfaceGraphParams;
 
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
@@ -119,6 +135,15 @@ pub struct SurfaceGraphExt {
     #[sampler(113)]
     pub volume_0: Option<Handle<Image>>,
 
+    /// Named-parameter uniform buffer. The codegen rewrites every `param/*`
+    /// node to read from a fixed slot in this buffer; the resolver writes
+    /// authored defaults (for masters) or instance overrides (for material
+    /// instances) into the slots. Two material instances of the same master
+    /// share one compiled shader and differ only in this buffer's contents,
+    /// so wgpu reuses the same specialized pipeline.
+    #[uniform(118)]
+    pub params: SurfaceGraphParams,
+
     /// UUID of this material's compiled fragment shader. The resolver inserts
     /// the Shader asset at `Handle::Uuid(shader_uuid, PhantomData)`, and
     /// `specialize()` reconstructs the handle the same way to swap the
@@ -126,6 +151,23 @@ pub struct SurfaceGraphExt {
     /// materials (default factory) have no compiled shader yet and must fall
     /// back to `SURFACE_GRAPH_EXT_DEFAULT_FRAG`.
     pub shader_uuid: Option<Uuid>,
+}
+
+/// Parameter buffer mirrored 1:1 in WGSL (see codegen for the matching
+/// struct declaration). Every `param/*` node lives in one slot; scalar
+/// types use `.x`, vec2 uses `.xy`, vec3 uses `.xyz`, vec4/color uses the
+/// whole slot.
+#[derive(ShaderType, Reflect, Debug, Clone)]
+pub struct SurfaceGraphParams {
+    pub slots: [Vec4; SURFACE_GRAPH_PARAM_SLOTS],
+}
+
+impl Default for SurfaceGraphParams {
+    fn default() -> Self {
+        Self {
+            slots: [Vec4::ZERO; SURFACE_GRAPH_PARAM_SLOTS],
+        }
+    }
 }
 
 /// Pipeline key carried across extraction. Everything that affects the
@@ -206,6 +248,7 @@ pub fn new_graph_material(fallback: &super::runtime::FallbackTexture) -> GraphMa
             cube_0: None,
             array_0: None,
             volume_0: None,
+            params: SurfaceGraphParams::default(),
             shader_uuid: None,
         },
     }

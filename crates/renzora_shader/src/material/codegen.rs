@@ -11,6 +11,12 @@ use super::nodes;
 /// Populated from disk by the resolver and passed to `compile()`.
 pub type FunctionRegistry = HashMap<String, MaterialFunction>;
 
+/// How many distinct named parameters one master graph can declare. Must
+/// match the array size in the WGSL `SurfaceGraphParams` declaration and
+/// `surface_ext::SURFACE_GRAPH_PARAM_SLOTS`. Bumping this requires updating
+/// all three locations together.
+pub const MAX_PARAMETER_SLOTS: usize = 32;
+
 /// Sanitize a function name into a WGSL-identifier-safe string.
 fn safe_fn_ident(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
@@ -144,10 +150,17 @@ struct Ctx<'a> {
     uses_cube_0: bool,
     uses_array_0: bool,
     uses_volume_0: bool,
-    /// Named parameters discovered while walking the graph. Order is the order
-    /// nodes were visited during recursion — stable across compiles of an
-    /// unchanged graph, which matters for instance override stability.
+    /// Named parameters discovered while walking the graph. The `Vec`'s
+    /// position is the slot index in `material_params.slots[N]` — codegen
+    /// emits reads keyed on that index, and the resolver writes the
+    /// corresponding default (or instance override) into the same slot.
+    /// Names are deduped: two `param/float` nodes with the same name share
+    /// one slot so changing one override updates every reader.
     parameters: Vec<MaterialParam>,
+    /// Name → slot index, mirroring `parameters` ordering. Lets the codegen
+    /// look up an already-allocated slot in O(1) when the same parameter
+    /// name appears on multiple nodes.
+    parameter_slots: HashMap<String, usize>,
 }
 
 impl<'a> Ctx<'a> {
@@ -190,7 +203,34 @@ impl<'a> Ctx<'a> {
             uses_array_0: false,
             uses_volume_0: false,
             parameters: Vec::new(),
+            parameter_slots: HashMap::new(),
         }
+    }
+
+    /// Allocate (or reuse) a parameter slot by name. The first call for a
+    /// given name appends to `parameters`; subsequent calls return the
+    /// existing slot. Saturates at the last slot if a graph exceeds the
+    /// uniform buffer's capacity — every read past the cap collides on
+    /// slot N-1, which is wrong but won't UB-trap the GPU. The compile
+    /// emits a warning so the user can split the master.
+    fn intern_parameter(&mut self, name: &str, kind: ParamKind, default: graph::PinValue) -> usize {
+        if let Some(&slot) = self.parameter_slots.get(name) {
+            return slot;
+        }
+        let slot = self.parameters.len();
+        if slot >= MAX_PARAMETER_SLOTS {
+            // Once we hit the cap, every subsequent unique name aliases the
+            // last slot. We still record the parameter so tooling can list
+            // it, but the actual reads will collide.
+            return MAX_PARAMETER_SLOTS - 1;
+        }
+        self.parameters.push(MaterialParam {
+            name: name.to_string(),
+            kind,
+            default,
+        });
+        self.parameter_slots.insert(name.to_string(), slot);
+        slot
     }
 
     fn next_var(&mut self, prefix: &str) -> String {
@@ -495,24 +535,23 @@ impl<'a> Ctx<'a> {
 
             // ── Parameters ──────────────────────────────────────────
             //
-            // Stage 2: each `param/*` node bakes its authored default into the
-            // shader as a literal AND records the (name, kind, default) so
-            // downstream tooling can build material instances. Stage 3 will
-            // swap the literal for a uniform read so instances can override
-            // without recompiling the master.
+            // Each `param/*` node reads from `material_params.slots[N]`
+            // where `N` is the slot index allocated by `intern_parameter`.
+            // The resolver writes the master's authored default into that
+            // slot when building the master GraphMaterial; material
+            // instances reuse the master's compiled shader and overwrite
+            // the same slot with their per-instance value.
             "param/float" => {
                 let name = param_name(node, "FloatParam");
                 let default = match node.input_values.get("default") {
                     Some(PinValue::Float(f)) => *f,
                     _ => 0.0,
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Float,
-                    default: PinValue::Float(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Float, PinValue::Float(default));
                 let v = self.next_var("param_f");
-                self.emit(format!("    let {v} = {:.6};", default));
+                self.emit(format!(
+                    "    let {v} = material_params.slots[{slot}].x;"
+                ));
                 self.set_out(id, "value", v);
             }
             "param/color" => {
@@ -521,16 +560,9 @@ impl<'a> Ctx<'a> {
                     Some(PinValue::Color(c)) => *c,
                     _ => [1.0, 1.0, 1.0, 1.0],
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Color,
-                    default: PinValue::Color(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Color, PinValue::Color(default));
                 let v = self.next_var("param_c");
-                self.emit(format!(
-                    "    let {v} = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
-                    default[0], default[1], default[2], default[3]
-                ));
+                self.emit(format!("    let {v} = material_params.slots[{slot}];"));
                 self.set_out(id, "value", v);
             }
             "param/vec2" => {
@@ -539,15 +571,10 @@ impl<'a> Ctx<'a> {
                     Some(PinValue::Vec2(v)) => *v,
                     _ => [0.0, 0.0],
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Vec2,
-                    default: PinValue::Vec2(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Vec2, PinValue::Vec2(default));
                 let v = self.next_var("param_v2");
                 self.emit(format!(
-                    "    let {v} = vec2<f32>({:.6}, {:.6});",
-                    default[0], default[1]
+                    "    let {v} = material_params.slots[{slot}].xy;"
                 ));
                 self.set_out(id, "value", v);
             }
@@ -557,15 +584,10 @@ impl<'a> Ctx<'a> {
                     Some(PinValue::Vec3(v)) => *v,
                     _ => [0.0, 0.0, 0.0],
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Vec3,
-                    default: PinValue::Vec3(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Vec3, PinValue::Vec3(default));
                 let v = self.next_var("param_v3");
                 self.emit(format!(
-                    "    let {v} = vec3<f32>({:.6}, {:.6}, {:.6});",
-                    default[0], default[1], default[2]
+                    "    let {v} = material_params.slots[{slot}].xyz;"
                 ));
                 self.set_out(id, "value", v);
             }
@@ -575,16 +597,9 @@ impl<'a> Ctx<'a> {
                     Some(PinValue::Vec4(v)) => *v,
                     _ => [0.0, 0.0, 0.0, 0.0],
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Vec4,
-                    default: PinValue::Vec4(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Vec4, PinValue::Vec4(default));
                 let v = self.next_var("param_v4");
-                self.emit(format!(
-                    "    let {v} = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
-                    default[0], default[1], default[2], default[3]
-                ));
+                self.emit(format!("    let {v} = material_params.slots[{slot}];"));
                 self.set_out(id, "value", v);
             }
             "param/bool" => {
@@ -593,15 +608,10 @@ impl<'a> Ctx<'a> {
                     Some(PinValue::Bool(b)) => *b,
                     _ => false,
                 };
-                self.parameters.push(MaterialParam {
-                    name,
-                    kind: ParamKind::Bool,
-                    default: PinValue::Bool(default),
-                });
+                let slot = self.intern_parameter(&name, ParamKind::Bool, PinValue::Bool(default));
                 let v = self.next_var("param_b");
                 self.emit(format!(
-                    "    let {v} = {};",
-                    if default { "true" } else { "false" }
+                    "    let {v} = material_params.slots[{slot}].x > 0.5;"
                 ));
                 self.set_out(id, "value", v);
             }
@@ -2602,6 +2612,13 @@ fn texture_bindings_wgsl(ctx: &Ctx) -> String {
         s.push_str("@group(3) @binding(112) var volume_0: texture_3d<f32>;\n");
         s.push_str("@group(3) @binding(113) var volume_0_sampler: sampler;\n");
     }
+    // Always declare the parameter UBO at @binding(118) — the
+    // `AsBindGroup` derive on `SurfaceGraphExt` requires this slot to be
+    // bound regardless of whether the graph reads any params, otherwise
+    // wgpu rejects the pipeline at draw time. Keep the slot count in sync
+    // with `surface_ext::SURFACE_GRAPH_PARAM_SLOTS`.
+    s.push_str("struct SurfaceGraphParams { slots: array<vec4<f32>, 32>, }\n");
+    s.push_str("@group(3) @binding(118) var<uniform> material_params: SurfaceGraphParams;\n");
     s
 }
 

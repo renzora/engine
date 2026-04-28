@@ -795,7 +795,10 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
 fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> {
     use renzora_editor::DocTabKind;
     let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
-    if name.ends_with(".material_bp") || name.ends_with(".material") {
+    if name.ends_with(".material_bp")
+        || name.ends_with(".material_instance")
+        || name.ends_with(".material")
+    {
         return Some(DocTabKind::Material);
     }
     if name.ends_with(".particle") {
