@@ -243,6 +243,7 @@ pub fn add_editor_plugins(app: &mut App) {
     // Editor infrastructure (must load before panels)
     app.add_plugins(renzora_undo::UndoPlugin);
     app.add_plugins(renzora_splash::SplashPlugin);
+    app.add_plugins(renzora_asset_registry::AssetRegistryPlugin);
     app.add_plugins(renzora_editor::RenzoraEditorPlugin);
     app.add_plugins(renzora_grid::GridPlugin);
     app.add_plugins(renzora_keybindings::KeybindingsPlugin);

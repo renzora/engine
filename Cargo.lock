@@ -8522,6 +8522,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_asset_registry"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_splash",
+]
+
+[[package]]
 name = "renzora_atmosphere"
 version = "0.1.0"
 dependencies = [
@@ -9324,6 +9333,7 @@ dependencies = [
  "renzora_animation_editor",
  "renzora_antialiasing",
  "renzora_asset_browser",
+ "renzora_asset_registry",
  "renzora_atmosphere",
  "renzora_audio",
  "renzora_auth",
@@ -9415,6 +9425,7 @@ dependencies = [
  "renzora_editor",
  "renzora_engine",
  "renzora_keybindings",
+ "renzora_splash",
  "renzora_theme",
  "renzora_ui",
  "rfd",
