@@ -10,7 +10,10 @@ pub mod web_storage;
 pub use auth::SplashAuth;
 pub use config::{AppConfig, UpdateConfig};
 pub use github::GithubStats;
-pub use loading::{LoadingTask, LoadingTaskHandle, LoadingTasks};
+pub use loading::{
+    paint_loading_overlay, EditorLoadingOverlayActive, LoadingTask, LoadingTaskHandle,
+    LoadingTasks,
+};
 pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;
@@ -64,6 +67,7 @@ impl Plugin for SplashPlugin {
             .init_resource::<PhosphorFontInstalled>()
             .init_resource::<SplashWindowState>()
             .init_resource::<LoadingTasks>()
+            .init_resource::<EditorLoadingOverlayActive>()
             .add_systems(
                 EguiPrimaryContextPass,
                 splash_ui_system.run_if(in_state(SplashState::Splash)),
@@ -71,6 +75,15 @@ impl Plugin for SplashPlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 loading::loading_ui_system.run_if(in_state(SplashState::Loading)),
+            )
+            // Editor-state modal overlay — paints over the editor while
+            // a tab's GLBs are decoding. Gated by
+            // `EditorLoadingOverlayActive`, which `renzora_scene` toggles
+            // based on outstanding `PendingMeshInstanceRehydrate` work.
+            .add_systems(
+                EguiPrimaryContextPass,
+                loading::editor_loading_overlay_ui_system
+                    .run_if(in_state(SplashState::Editor)),
             )
             .add_systems(
                 Update,

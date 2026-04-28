@@ -89,6 +89,22 @@ impl LoadingTasks {
         self.tasks.iter().all(|(_, t)| t.is_done())
     }
 
+    /// Drop every registered task. Used when transitioning between
+    /// loading sessions (e.g. splash → editor, or one editor overlay
+    /// session ending so the next can start) — without this, the
+    /// fraction calculation would still see the previous session's
+    /// completed totals and start the next bar partway full.
+    pub fn clear(&mut self) {
+        self.tasks.clear();
+    }
+
+    /// Drop only finished tasks; in-flight ones survive. Lets the editor
+    /// overlay tear down its session at the end while still being safe
+    /// to call mid-session if anything's still ticking.
+    pub fn clear_completed(&mut self) {
+        self.tasks.retain(|(_, t)| !t.is_done());
+    }
+
     pub fn tick_and_can_advance(&mut self) -> bool {
         if self.min_frames_remaining > 0 {
             self.min_frames_remaining -= 1;
@@ -118,6 +134,28 @@ pub(crate) fn loading_ui_system(
     // animations need a new frame even when no user input arrives.
     ctx.request_repaint();
 
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(10, 10, 14)))
+        .show(ctx, |ui| {
+            let full_rect = ui.max_rect();
+            paint_loading_overlay(ui, &tasks, full_rect, time.elapsed_secs_f64());
+        });
+}
+
+/// Paint the loading overlay widget (rosette + letterbox + animated bar)
+/// inside `paint_rect`. Caller decides where the overlay lives — the
+/// splash uses a fullscreen `CentralPanel`; the editor's modal uses a
+/// foreground-order `Area` so it floats over the editor without
+/// disturbing its panel layout.
+///
+/// Pulled out of `loading_ui_system` so both consumers render the same
+/// widget without copy-pasting 90 lines of egui calls.
+pub fn paint_loading_overlay(
+    ui: &mut egui::Ui,
+    tasks: &LoadingTasks,
+    paint_rect: egui::Rect,
+    time_secs: f64,
+) {
     // Compute aggregate progress from registered loading tasks. Each task
     // contributes its `completed/total` to the bar.
     let (total_completed, total_total): (u64, u64) = tasks
@@ -144,101 +182,146 @@ pub(crate) fn loading_ui_system(
         })
         .unwrap_or_default();
 
-    egui::CentralPanel::default()
-        .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(10, 10, 14)))
-        .show(ctx, |ui| {
-            let full_rect = ui.max_rect();
-            let t = time.elapsed_secs_f64();
+    // Centered letterbox — the loading UI fits in a compact strip
+    // instead of swallowing the whole window. Clamp so it never
+    // exceeds the available viewport on tiny displays.
+    let target = egui::vec2(
+        LETTERBOX_SIZE.0.min(paint_rect.width() - 16.0),
+        LETTERBOX_SIZE.1.min(paint_rect.height() - 16.0),
+    );
+    let letterbox = egui::Rect::from_center_size(paint_rect.center(), target);
 
-            // Centered letterbox — the loading UI fits in a compact strip
-            // instead of swallowing the whole window. Clamp so it never
-            // exceeds the available viewport on tiny displays.
-            let target = egui::vec2(
-                LETTERBOX_SIZE.0.min(full_rect.width() - 16.0),
-                LETTERBOX_SIZE.1.min(full_rect.height() - 16.0),
-            );
-            let letterbox = egui::Rect::from_center_size(full_rect.center(), target);
+    // Translucent fill so the strip lifts off the surrounding window
+    // — slightly bluer than the backdrop and semi-opaque so the
+    // rosette underneath stays visible through it.
+    ui.painter().rect_filled(
+        letterbox,
+        egui::CornerRadius::same(6),
+        egui::Color32::from_rgba_unmultiplied(20, 22, 32, 215),
+    );
 
-            // Translucent fill so the strip lifts off the surrounding window
-            // — slightly bluer than the backdrop and semi-opaque so the
-            // rosette underneath stays visible through it.
-            ui.painter().rect_filled(
-                letterbox,
-                egui::CornerRadius::same(6),
-                egui::Color32::from_rgba_unmultiplied(20, 22, 32, 215),
-            );
+    // Spirograph rosette painted inside the letterbox only.
+    draw_neon_grid(ui.painter(), letterbox, time_secs);
 
-            // Spirograph rosette painted inside the letterbox only.
-            draw_neon_grid(ui.painter(), letterbox, t);
+    // Soft outline framing the strip — drawn last so it stays clean
+    // over the rosette's edges.
+    ui.painter().rect_stroke(
+        letterbox,
+        egui::CornerRadius::same(6),
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(48, 50, 72)),
+        egui::StrokeKind::Inside,
+    );
 
-            // Soft outline framing the strip — drawn last so it stays clean
-            // over the rosette's edges.
-            ui.painter().rect_stroke(
-                letterbox,
-                egui::CornerRadius::same(6),
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(48, 50, 72)),
-                egui::StrokeKind::Inside,
-            );
+    ui.scope_builder(egui::UiBuilder::new().max_rect(letterbox), |ui| {
+        ui.add_space(18.0);
 
-            ui.scope_builder(egui::UiBuilder::new().max_rect(letterbox), |ui| {
-                ui.add_space(18.0);
-
-                ui.horizontal(|ui| {
-                    ui.add_space(18.0);
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(phase_label)
-                                .size(18.0)
-                                .strong()
-                                .color(egui::Color32::from_rgb(240, 240, 248)),
-                        );
-                        ui.add_space(2.0);
-                        if !current.is_empty() {
-                            ui.label(
-                                egui::RichText::new(&current)
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(170, 175, 190)),
-                            );
-                        } else {
-                            ui.label(
-                                egui::RichText::new(" ")
-                                    .size(12.0)
-                                    .color(egui::Color32::TRANSPARENT),
-                            );
-                        }
-                    });
-                });
-
-                ui.add_space(14.0);
-
-                // Progress bar row: bar + percentage, anchored to the letterbox.
-                let bar_rect = {
-                    let h = 12.0;
-                    let margin = 18.0;
-                    let pct_width = 44.0;
-                    let spacing = 10.0;
-                    let bar_width = letterbox.width() - margin * 2.0 - pct_width - spacing;
-                    let origin = egui::pos2(letterbox.left() + margin, ui.cursor().top());
-                    egui::Rect::from_min_size(origin, egui::vec2(bar_width, h))
-                };
-
-                draw_animated_bar(ui, bar_rect, fraction, time.elapsed_secs_f64());
-
-                // Percentage label aligned right of the bar.
-                let pct_rect = egui::Rect::from_min_size(
-                    egui::pos2(bar_rect.right() + 10.0, bar_rect.top() - 2.0),
-                    egui::vec2(44.0, 16.0),
+        ui.horizontal(|ui| {
+            ui.add_space(18.0);
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(phase_label)
+                        .size(18.0)
+                        .strong()
+                        .color(egui::Color32::from_rgb(240, 240, 248)),
                 );
-                ui.painter().text(
-                    pct_rect.left_center(),
-                    egui::Align2::LEFT_CENTER,
-                    format!("{}%", percent),
-                    egui::FontId::monospace(14.0),
-                    egui::Color32::from_rgb(220, 225, 240),
-                );
+                ui.add_space(2.0);
+                if !current.is_empty() {
+                    ui.label(
+                        egui::RichText::new(&current)
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(170, 175, 190)),
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new(" ")
+                            .size(12.0)
+                            .color(egui::Color32::TRANSPARENT),
+                    );
+                }
             });
         });
+
+        ui.add_space(14.0);
+
+        // Progress bar row: bar + percentage, anchored to the letterbox.
+        let bar_rect = {
+            let h = 12.0;
+            let margin = 18.0;
+            let pct_width = 44.0;
+            let spacing = 10.0;
+            let bar_width = letterbox.width() - margin * 2.0 - pct_width - spacing;
+            let origin = egui::pos2(letterbox.left() + margin, ui.cursor().top());
+            egui::Rect::from_min_size(origin, egui::vec2(bar_width, h))
+        };
+
+        draw_animated_bar(ui, bar_rect, fraction, time_secs);
+
+        // Percentage label aligned right of the bar.
+        let pct_rect = egui::Rect::from_min_size(
+            egui::pos2(bar_rect.right() + 10.0, bar_rect.top() - 2.0),
+            egui::vec2(44.0, 16.0),
+        );
+        ui.painter().text(
+            pct_rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            format!("{}%", percent),
+            egui::FontId::monospace(14.0),
+            egui::Color32::from_rgb(220, 225, 240),
+        );
+    });
 }
+
+/// Paint the editor's modal loading overlay. Renders the same widget
+/// the splash uses, but on a foreground-order `Area` with a fullscreen
+/// dimmed backdrop that absorbs pointer events — so the editor can't
+/// be clicked while a tab's assets are decoding.
+///
+/// Caller is responsible for deciding when to show this — the runner
+/// system in `renzora_scene` ticks `LoadingTasks` and the
+/// `EditorLoadingOverlayActive` resource that gates this UI.
+pub(crate) fn editor_loading_overlay_ui_system(
+    mut contexts: EguiContexts,
+    tasks: Res<LoadingTasks>,
+    time: Res<Time>,
+    active: Res<EditorLoadingOverlayActive>,
+) {
+    if !active.0 {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    ctx.request_repaint();
+
+    let screen = ctx.screen_rect();
+
+    egui::Area::new(egui::Id::new("editor_loading_overlay"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::LEFT_TOP, egui::vec2(0.0, 0.0))
+        .interactable(true)
+        .show(ctx, |ui| {
+            // Fullscreen dim absorbs pointer events. Allocating a
+            // click-and-drag-sense response over the whole screen is
+            // what makes this modal — egui won't let any widget
+            // beneath this layer get hovered or clicked while we hold
+            // the pointer here.
+            let resp = ui.allocate_response(screen.size(), egui::Sense::click_and_drag());
+            ui.painter().rect_filled(
+                resp.rect,
+                egui::CornerRadius::ZERO,
+                egui::Color32::from_rgba_unmultiplied(8, 10, 16, 180),
+            );
+
+            paint_loading_overlay(ui, &tasks, screen, time.elapsed_secs_f64());
+        });
+}
+
+/// Resource toggled by `renzora_scene::tick_editor_load_progress`.
+/// While `true`, [`editor_loading_overlay_ui_system`] paints the modal
+/// over the editor; while `false` (the steady state) the system is a
+/// no-op.
+#[derive(Resource, Default)]
+pub struct EditorLoadingOverlayActive(pub bool);
 
 fn draw_animated_bar(ui: &mut egui::Ui, rect: egui::Rect, fraction: f32, time_secs: f64) {
     let painter = ui.painter();

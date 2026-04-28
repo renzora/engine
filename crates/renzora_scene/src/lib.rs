@@ -9,7 +9,8 @@ use renzora_camera::OrbitCameraState;
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_engine::scene_io;
 use renzora_editor::SplashState;
-use renzora_splash::{LoadingTaskHandle, LoadingTasks};
+use renzora_splash::{EditorLoadingOverlayActive, LoadingTaskHandle, LoadingTasks};
+use renzora_viewport::model_flatten::ImportedRoot;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
 pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
@@ -42,6 +43,59 @@ pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
         }
     }
     to_despawn
+}
+
+/// On re-entering the splash from the editor (File → Open Project),
+/// tear down the previous project's scene state. Without this:
+///   - Previous project's entities stay in the world.
+///   - Their `Handle<Gltf>` still pin the previous project's assets via
+///     `TabAssetCache`.
+///   - When the new project's scene file rehydrates, the splash's
+///     "Processing models" task counts the *combined* MeshInstanceData
+///     set as the denominator — and the previous project's entities
+///     never reach a "processed" state from the splash's POV (their
+///     SceneRoot child was despawned by `flatten_pending_scenes` last
+///     session), so the bar gets stuck at <100%.
+///   - Tab buffers and asset cache hold paths from a project the user
+///     just left.
+///
+/// Runs on `OnEnter(SplashState::Splash)` so it fires whether the user
+/// is leaving the editor or coming straight from app start (in which
+/// case it's a no-op since nothing's spawned yet).
+fn teardown_for_project_switch(world: &mut World) {
+    let count = despawn_scene_entities(world).len();
+    if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
+        buffers.buffers.clear();
+    }
+    if let Some(mut cache) = world.get_resource_mut::<TabAssetCache>() {
+        // Drop every tab's entire handle set. Bevy's per-handle refcount
+        // does the rest — no other tab is holding a strong handle to
+        // the previous project's GLBs at this point, so they evict.
+        let stats = tab_asset_cache::cache_stats(&cache);
+        *cache = TabAssetCache::default();
+        if stats.0 > 0 {
+            debug!(
+                "[scene] cleared TabAssetCache on splash entry ({} tabs, {} paths)",
+                stats.0, stats.1
+            );
+        }
+    }
+    // Reset the editor-overlay tracker so a session left mid-flight (the
+    // user opened a new project while a tab was decoding) doesn't carry
+    // stale `active=true` + dangling task handles into the next editor
+    // session.
+    if let Some(mut progress) = world.get_resource_mut::<EditorLoadProgress>() {
+        *progress = EditorLoadProgress::default();
+    }
+    if let Some(mut overlay_active) = world.get_resource_mut::<EditorLoadingOverlayActive>() {
+        overlay_active.0 = false;
+    }
+    if count > 0 {
+        info!(
+            "[scene] teardown for project switch: despawned {} entities",
+            count
+        );
+    }
 }
 
 fn handle_tab_switch(world: &mut World) {
@@ -651,6 +705,225 @@ fn tick_scene_load_progress(
     }
 }
 
+// ============================================================================
+// In-editor loading overlay
+// ============================================================================
+//
+// When a tab switch or scene-open queues fresh `MeshInstanceData` entities
+// that aren't yet warm, we want the modal overlay (rendered by
+// `renzora_splash::editor_loading_overlay_ui_system`) to surface progress
+// the same way the splash bar does on initial project load. The trigger
+// has to handle a quirk: even *warm* tab switches go through
+// rehydrate_mesh_instances → finish_mesh_instance_rehydrate → SceneSpawner
+// for ~3 frames before the SceneRoot is populated. Showing the overlay
+// for those 3 frames would just be a flicker. So we only fire the overlay
+// after pending work has persisted for `OVERLAY_DELAY_FRAMES` — that
+// hysteresis hides warm switches and lets cold ones (real I/O) surface
+// the bar.
+
+#[derive(Resource, Default)]
+struct EditorLoadProgress {
+    /// Frames we've continuously seen pending work without dismissing.
+    /// Used as both a debounce (don't flash for warm switches) and the
+    /// trigger threshold for activating the overlay.
+    pending_frames: u32,
+    /// Frames we've continuously seen *no* pending work. Used as a
+    /// hold-down so the overlay doesn't flicker if a single frame's
+    /// query happens to be momentarily empty between phases.
+    idle_frames: u32,
+    /// Whether tasks have been registered (and the overlay is showing).
+    /// Distinct from `EditorLoadingOverlayActive` so we can tear down
+    /// task state and overlay flag together.
+    active: bool,
+    loading_task: Option<LoadingTaskHandle>,
+    processing_task: Option<LoadingTaskHandle>,
+    /// Number of `MeshInstanceData` entities the overlay was kicked off
+    /// with. Used as the per-task denominator for the duration of this
+    /// overlay session — additional entities arriving mid-session don't
+    /// rebase the bar's total (would look like progress going backwards).
+    total_instances: u32,
+    last_loaded: u32,
+    last_processed: u32,
+}
+
+/// Frames of continuous pending work before the overlay activates. ~166ms
+/// at 60fps — below human perception but enough to absorb warm tab
+/// switches that complete in ≤10 frames.
+const OVERLAY_DELAY_FRAMES: u32 = 10;
+/// Frames of no pending work before we tear down an active overlay. Holds
+/// the overlay one extra beat so a single empty-query frame between
+/// phases doesn't dismiss it prematurely.
+const OVERLAY_HOLD_DOWN_FRAMES: u32 = 6;
+
+/// Tick the in-editor loading overlay. Mirrors `tick_scene_load_progress`
+/// for the splash but auto-detects work instead of being kicked off by an
+/// `OnEnter` system, and uses hysteresis to skip the overlay for warm
+/// switches.
+fn tick_editor_load_progress(
+    mut progress: ResMut<EditorLoadProgress>,
+    mut tasks: ResMut<LoadingTasks>,
+    mut overlay_active: ResMut<EditorLoadingOverlayActive>,
+    // `Without<ImportedRoot>` is the load-vs-done discriminator. Drop
+    // paths attach `ImportedRoot` immediately (so they never enter the
+    // count); the load path attaches it via the SceneInstanceReady
+    // observer once Bevy has fully populated the GLB hierarchy. After
+    // that, `flatten_pending_scenes` may despawn the SceneRoot child
+    // (gltf wrappers get collapsed into the parent), which would make
+    // a "has SceneRoot child with non-empty children" check
+    // misclassify finished entities as still-unspawned forever. Filtering
+    // on `ImportedRoot` is both simpler and survives flatten.
+    instances: Query<(&MeshInstanceData, Option<&Children>), Without<ImportedRoot>>,
+    pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
+    children_q: Query<&Children>,
+    scene_roots: Query<Entity, With<SceneRoot>>,
+) {
+    // Two sub-counts feed the two-phase bar:
+    //   * `pending_assets` — entities still carrying
+    //     `PendingMeshInstanceRehydrate` (Gltf hasn't loaded yet).
+    //   * `unspawned` — entities whose model_path is set but whose
+    //     SceneRoot child either doesn't exist yet or has no Children.
+    // `pending_assets` is a subset of `unspawned` (an entity pending the
+    // Gltf has no SceneRoot child either), so the total-outstanding
+    // work is just `unspawned`.
+    let pending_assets = pending.iter().filter(|d| d.model_path.is_some()).count() as u32;
+    let unspawned: u32 = instances
+        .iter()
+        .filter(|(data, kids)| {
+            if data.model_path.is_none() {
+                return false;
+            }
+            let scene_populated = kids
+                .map(|c| {
+                    c.iter().any(|child| {
+                        scene_roots.contains(child)
+                            && children_q
+                                .get(child)
+                                .map(|gc| !gc.is_empty())
+                                .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            !scene_populated
+        })
+        .count() as u32;
+    let total_outstanding = unspawned;
+    let any_pending = total_outstanding > 0;
+
+    // Hysteresis state machine: count up while pending, count down once
+    // pending drops to zero. The overlay only activates after a sustained
+    // pending streak; only deactivates after a sustained idle streak.
+    if any_pending {
+        progress.pending_frames = progress.pending_frames.saturating_add(1);
+        progress.idle_frames = 0;
+    } else {
+        progress.idle_frames = progress.idle_frames.saturating_add(1);
+        if !progress.active {
+            // Reset the build-up counter so a future warm-switch-then-
+            // cold-switch sequence still gets fresh hysteresis.
+            progress.pending_frames = 0;
+        }
+    }
+
+    // ── Activation: enough sustained work to justify a modal ──────────
+    if !progress.active && progress.pending_frames >= OVERLAY_DELAY_FRAMES && any_pending {
+        // `total_outstanding` is the denominator for both phases — set
+        // *now* so a slow trickle of new entities mid-session doesn't
+        // make the bar appear to move backwards.
+        let n = total_outstanding.max(1);
+        progress.total_instances = n;
+        progress.last_loaded = 0;
+        progress.last_processed = 0;
+        progress.loading_task = Some(tasks.register("Loading assets", n));
+        progress.processing_task = Some(tasks.register("Processing models", n));
+        progress.active = true;
+        overlay_active.0 = true;
+    }
+
+    // ── While active: update the bar ──────────────────────────────────
+    if progress.active {
+        let total = progress.total_instances;
+        // Loaded = total minus those still pending the GLB asset.
+        let loaded = total.saturating_sub(pending_assets);
+        // Processed = total minus those whose SceneRoot is unpopulated.
+        let processed = total.saturating_sub(unspawned);
+
+        let mut current_loading_name: Option<String> = None;
+        if let Some(p) = pending.iter().find_map(|d| d.model_path.as_ref()) {
+            current_loading_name = Some(short_name(p));
+        }
+
+        if let Some(task) = progress.loading_task {
+            if loaded > progress.last_loaded {
+                tasks.advance(task, loaded - progress.last_loaded);
+                progress.last_loaded = loaded;
+            }
+            match &current_loading_name {
+                Some(n) => tasks.set_detail(task, n.clone()),
+                None => {
+                    if loaded >= total {
+                        tasks.complete(task);
+                    }
+                }
+            }
+        }
+
+        let mut next_processing_name: Option<String> = None;
+        for (data, kids) in instances.iter() {
+            if data.model_path.is_none() {
+                continue;
+            }
+            let populated = kids
+                .map(|c| {
+                    c.iter().any(|child| {
+                        scene_roots.contains(child)
+                            && children_q
+                                .get(child)
+                                .map(|gc| !gc.is_empty())
+                                .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if !populated {
+                if let Some(p) = data.model_path.as_ref() {
+                    next_processing_name = Some(short_name(p));
+                    break;
+                }
+            }
+        }
+
+        if let Some(task) = progress.processing_task {
+            if processed > progress.last_processed {
+                tasks.advance(task, processed - progress.last_processed);
+                progress.last_processed = processed;
+            }
+            match next_processing_name {
+                Some(n) => tasks.set_detail(task, n),
+                None => {
+                    if processed >= total {
+                        tasks.complete(task);
+                    }
+                }
+            }
+        }
+
+        // ── Deactivation: enough sustained idleness to dismiss ────────
+        if !any_pending && progress.idle_frames >= OVERLAY_HOLD_DOWN_FRAMES {
+            progress.active = false;
+            progress.loading_task = None;
+            progress.processing_task = None;
+            progress.total_instances = 0;
+            progress.last_loaded = 0;
+            progress.last_processed = 0;
+            progress.pending_frames = 0;
+            progress.idle_frames = 0;
+            overlay_active.0 = false;
+            // Drain completed tasks so the next overlay starts with a
+            // clean register set. Each session registers fresh tasks.
+            tasks.clear_completed();
+        }
+    }
+}
+
 /// Strip the directory off an asset-relative path, leaving just the
 /// file name (or stem) for display in the loading screen.
 fn short_name(path: &str) -> String {
@@ -686,17 +959,32 @@ impl Plugin for ScenePlugin {
         });
         app.init_resource::<SceneTabBuffers>()
             .init_resource::<SceneLoadProgress>()
+            .init_resource::<EditorLoadProgress>()
             .init_resource::<TabAssetCache>()
             // When the user closes a tab, drop its strong handles so
             // the assets it pinned can evict (assuming no other tab
             // still references them).
             .add_observer(tab_asset_cache::evict_closed_tab)
+            // Re-entering Splash means the user is opening a different
+            // project (or returning to the picker). Despawn the previous
+            // project's scene entities and clear per-tab caches so the
+            // new Loading session starts on a clean world.
+            .add_systems(OnEnter(SplashState::Splash), teardown_for_project_switch)
             // Scene load shifts to `OnEnter(Loading)` — the user's scene
             // file is parsed and entities rehydrated *behind* the loading
             // screen. The screen stays up until every GLB asset has been
             // fetched and instantiated, so the editor only opens onto a
             // fully-populated, race-free entity tree.
             .add_systems(OnEnter(SplashState::Loading), load_scene_on_enter_loading)
+            // Splash → Editor transition: the splash's Loading + Processing
+            // tasks have completed and (with the min-frames-remaining grace)
+            // are still sitting in `LoadingTasks` with completed=total. If
+            // we left them, the editor overlay's first session would
+            // aggregate them into its bar and start partway full. Drop
+            // them so each editor overlay session starts at 0%.
+            .add_systems(OnEnter(SplashState::Editor), |mut tasks: ResMut<LoadingTasks>| {
+                tasks.clear();
+            })
             // Rehydrate systems run during Loading too. They drive GLB
             // resolution + spawn while the loading screen ticks.
             .add_systems(
@@ -728,6 +1016,7 @@ impl Plugin for ScenePlugin {
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
                     tab_asset_cache::cache_added_mesh_instances,
+                    tick_editor_load_progress,
                     detect_file_keybindings,
                     save_scene_system,
                     save_as_scene_system,

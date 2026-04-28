@@ -651,6 +651,14 @@ fn queue_loading_thumbnails(
     mut tasks: ResMut<LoadingTasks>,
     project: Option<Res<CurrentProject>>,
 ) {
+    // Drop every entry the previous session populated so each request
+    // we enqueue below actually goes through. Otherwise re-entering
+    // Loading from the editor (File → Open Project) would find every
+    // path already in `entries` and silently no-op, leaving the
+    // "Material thumbnails" task stuck at 0/N. The on-disk PNG cache
+    // survives this — first request will reload from there.
+    registry.reset();
+
     let Some(project) = project else {
         // No project → nothing to do; still register a no-op task so the
         // loading screen has something to show and can transition.

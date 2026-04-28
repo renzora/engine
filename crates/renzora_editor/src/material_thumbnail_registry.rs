@@ -64,6 +64,21 @@ impl MaterialThumbnailRegistry {
         self.entries.remove(path);
         self.in_flight.remove(path);
     }
+
+    /// Clear every cached thumbnail entry, every in-flight marker, and
+    /// every pending request. Called when re-opening a project from
+    /// inside the editor — without this, [`request`](Self::request)
+    /// short-circuits on every path the previous session had thumbnailed,
+    /// no requests enqueue, and the splash's "Material thumbnails" task
+    /// is left stuck at 0/N forever.
+    ///
+    /// Doesn't touch the on-disk PNG cache — those are still valid
+    /// across sessions and will be reloaded by the first re-request.
+    pub fn reset(&mut self) {
+        self.entries.clear();
+        self.in_flight.clear();
+        self.incoming_requests.clear();
+    }
 }
 
 /// Path on disk where the cached PNG thumbnail for a `.material` file lives.

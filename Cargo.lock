@@ -9428,6 +9428,7 @@ dependencies = [
  "renzora_splash",
  "renzora_theme",
  "renzora_ui",
+ "renzora_viewport",
  "rfd",
 ]
 
