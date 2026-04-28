@@ -22,6 +22,10 @@ pub enum PinType {
     Bool,
     Texture2D,
     Sampler,
+    /// String literal — stored on the node, not consumed by the WGSL pipeline.
+    /// Used for things like parameter names that need to flow through the
+    /// inspector without ever entering the shader.
+    String,
 }
 
 impl PinType {
@@ -35,12 +39,18 @@ impl PinType {
             Self::Bool => "bool",
             Self::Texture2D => "texture_2d<f32>",
             Self::Sampler => "sampler",
+            // Strings never reach WGSL; this only exists so exhaustiveness
+            // holds at the type level.
+            Self::String => "f32",
         }
     }
 
     /// Can `from` connect to `to`?
     /// All numeric/vector/color types are freely inter-convertible at the graph level;
     /// `cast_expr` inserts the correct WGSL coercion so the compiled shader type-checks.
+    /// Strings are isolated — they only connect to other strings (which in
+    /// practice never happens, since parameter-name pins aren't connectable
+    /// targets), keeping accidental "Float → name" wires out of the graph.
     pub fn compatible(from: PinType, to: PinType) -> bool {
         if from == to {
             return true;

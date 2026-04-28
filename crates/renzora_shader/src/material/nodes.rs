@@ -20,6 +20,7 @@ pub struct MaterialNodeDef {
 // ── Category constants ──────────────────────────────────────────────────────
 
 pub const CAT_INPUT: &str = "Input";
+pub const CAT_PARAMETER: &str = "Parameter";
 pub const CAT_TEXTURE: &str = "Texture";
 pub const CAT_MATH: &str = "Math";
 pub const CAT_VECTOR: &str = "Vector";
@@ -34,6 +35,7 @@ pub const CAT_OUTPUT: &str = "Output";
 // ── Color constants for categories ──────────────────────────────────────────
 
 const CLR_INPUT: [u8; 3] = [100, 150, 220];
+const CLR_PARAMETER: [u8; 3] = [180, 110, 200];
 const CLR_TEXTURE: [u8; 3] = [200, 150, 120];
 const CLR_MATH: [u8; 3] = [120, 120, 120];
 const CLR_VECTOR: [u8; 3] = [127, 204, 25];
@@ -200,6 +202,104 @@ pub static OBJECT_POSITION: MaterialNodeDef = MaterialNodeDef {
     description: "Object pivot world position (for wind anchoring, etc.)",
     pins: || vec![PinTemplate::output("position", "Position", PinType::Vec3)],
     color: CLR_INPUT,
+};
+
+// =============================================================================
+// PARAMETER NODES
+// =============================================================================
+//
+// Named graph-boundary inputs. The `name` slot is the parameter identifier
+// material instances use to override the default. The `default` slot is the
+// value baked into the master shader; instances replace it via uniforms.
+
+pub static PARAM_FLOAT: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/float",
+    display_name: "Float Parameter",
+    category: CAT_PARAMETER,
+    description: "Named float parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("FloatParam".to_string())),
+        PinTemplate::input("default", "Default", PinType::Float)
+            .with_default(PinValue::Float(0.0)),
+        PinTemplate::output("value", "Value", PinType::Float),
+    ],
+    color: CLR_PARAMETER,
+};
+
+pub static PARAM_COLOR: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/color",
+    display_name: "Color Parameter",
+    category: CAT_PARAMETER,
+    description: "Named color parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("ColorParam".to_string())),
+        PinTemplate::input("default", "Default", PinType::Color)
+            .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+        PinTemplate::output("value", "Value", PinType::Color),
+    ],
+    color: CLR_PARAMETER,
+};
+
+pub static PARAM_VEC2: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/vec2",
+    display_name: "Vec2 Parameter",
+    category: CAT_PARAMETER,
+    description: "Named vec2 parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("Vec2Param".to_string())),
+        PinTemplate::input("default", "Default", PinType::Vec2)
+            .with_default(PinValue::Vec2([0.0, 0.0])),
+        PinTemplate::output("value", "Value", PinType::Vec2),
+    ],
+    color: CLR_PARAMETER,
+};
+
+pub static PARAM_VEC3: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/vec3",
+    display_name: "Vec3 Parameter",
+    category: CAT_PARAMETER,
+    description: "Named vec3 parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("Vec3Param".to_string())),
+        PinTemplate::input("default", "Default", PinType::Vec3)
+            .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        PinTemplate::output("value", "Value", PinType::Vec3),
+    ],
+    color: CLR_PARAMETER,
+};
+
+pub static PARAM_VEC4: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/vec4",
+    display_name: "Vec4 Parameter",
+    category: CAT_PARAMETER,
+    description: "Named vec4 parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("Vec4Param".to_string())),
+        PinTemplate::input("default", "Default", PinType::Vec4)
+            .with_default(PinValue::Vec4([0.0, 0.0, 0.0, 0.0])),
+        PinTemplate::output("value", "Value", PinType::Vec4),
+    ],
+    color: CLR_PARAMETER,
+};
+
+pub static PARAM_BOOL: MaterialNodeDef = MaterialNodeDef {
+    node_type: "param/bool",
+    display_name: "Bool Parameter",
+    category: CAT_PARAMETER,
+    description: "Named bool parameter — material instances can override its value.",
+    pins: || vec![
+        PinTemplate::input("name", "Name", PinType::String)
+            .with_default(PinValue::String("BoolParam".to_string())),
+        PinTemplate::input("default", "Default", PinType::Bool)
+            .with_default(PinValue::Bool(false)),
+        PinTemplate::output("value", "Value", PinType::Bool),
+    ],
+    color: CLR_PARAMETER,
 };
 
 // =============================================================================
@@ -2175,6 +2275,8 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
     &UV, &UV_SCALE, &UV_POLAR, &UV_ROTATOR, &UV_PANNER,
     &WORLD_POSITION, &WORLD_NORMAL, &VIEW_DIRECTION, &TIME, &VERTEX_COLOR,
     &CAMERA_POSITION, &OBJECT_POSITION,
+    // Parameter
+    &PARAM_FLOAT, &PARAM_COLOR, &PARAM_VEC2, &PARAM_VEC3, &PARAM_VEC4, &PARAM_BOOL,
     // Texture
     &SAMPLE_TEXTURE, &SAMPLE_NORMAL, &TRIPLANAR_SAMPLE,
     &SAMPLE_TEXTURE_LOD, &SAMPLE_TEXTURE_GRAD,
@@ -2226,7 +2328,7 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
 /// Get all unique categories in display order.
 pub fn categories() -> Vec<&'static str> {
     vec![
-        CAT_INPUT, CAT_TEXTURE, CAT_MATH, CAT_VECTOR, CAT_COLOR,
+        CAT_INPUT, CAT_PARAMETER, CAT_TEXTURE, CAT_MATH, CAT_VECTOR, CAT_COLOR,
         CAT_PROCEDURAL, CAT_ANIMATION, CAT_UTILITY, CAT_CONTROL, CAT_SCENE, CAT_OUTPUT,
     ]
 }

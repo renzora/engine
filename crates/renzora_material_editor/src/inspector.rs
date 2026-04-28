@@ -95,7 +95,7 @@ impl EditorPanel for MaterialInspectorPanel {
             "Math" | "Vector" | "Utility" => "scripting",
             "Color" => "effects",
             "Animation" => "effects",
-            "Input" => "transform",
+            "Input" | "Parameter" => "transform",
             "Output" => "rendering",
             _ => "rendering",
         };
@@ -155,6 +155,33 @@ impl EditorPanel for MaterialInspectorPanel {
                         .get(&pin.name)
                         .cloned()
                         .unwrap_or(pin.default_value.clone());
+
+                    // String pins (parameter names, function references) get
+                    // a TextEdit. The dispatch below routes by numeric type
+                    // and would render the wrong widget for a string.
+                    if pin.pin_type == PinType::String {
+                        let mut s = match &current {
+                            PinValue::String(s) => s.clone(),
+                            _ => String::new(),
+                        };
+                        inline_property(ui, row, &pin.label, &theme, |ui| {
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut s)
+                                    .hint_text("ParameterName")
+                                    .desired_width(f32::INFINITY),
+                            );
+                            if resp.changed() {
+                                node_mut
+                                    .input_values
+                                    .insert(pin.name.clone(), PinValue::String(s));
+                                any_changed = true;
+                                true
+                            } else {
+                                false
+                            }
+                        });
+                        continue;
+                    }
 
                     match pin.pin_type {
                         PinType::Float => {

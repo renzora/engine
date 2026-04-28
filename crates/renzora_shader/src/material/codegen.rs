@@ -24,6 +24,15 @@ fn safe_fn_ident(name: &str) -> String {
     out
 }
 
+/// Pull the parameter identifier off a `param/*` node, falling back to a
+/// type-appropriate default if the user hasn't authored one.
+fn param_name(node: &MaterialNode, fallback: &str) -> String {
+    match node.input_values.get("name") {
+        Some(PinValue::String(s)) if !s.trim().is_empty() => s.clone(),
+        _ => fallback.to_string(),
+    }
+}
+
 // ── Public result types ─────────────────────────────────────────────────────
 
 pub struct CompileResult {
@@ -43,6 +52,35 @@ pub struct CompileResult {
     /// populate `view_transmission_texture` — a runtime-only shader mutation
     /// isn't enough to trigger the pipeline decision.
     pub requires_transmission: bool,
+    /// Named parameters declared by `param/*` nodes in the graph. Each entry
+    /// is the master's authored default value; material instances supply
+    /// per-instance overrides keyed by name.
+    pub parameters: Vec<MaterialParam>,
+}
+
+/// One named graph-boundary parameter discovered by the compiler.
+///
+/// Master shaders bake the default value into the WGSL; downstream tooling
+/// (material instances, the inspector) consults this list to know what
+/// overrides are valid and what defaults they replace.
+#[derive(Debug, Clone)]
+pub struct MaterialParam {
+    /// Identifier the user authored on the parameter node (e.g. "BaseColor").
+    pub name: String,
+    /// What kind of value the parameter holds.
+    pub kind: ParamKind,
+    /// Authored default — what the master shader uses absent an override.
+    pub default: graph::PinValue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamKind {
+    Float,
+    Color,
+    Vec2,
+    Vec3,
+    Vec4,
+    Bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +144,10 @@ struct Ctx<'a> {
     uses_cube_0: bool,
     uses_array_0: bool,
     uses_volume_0: bool,
+    /// Named parameters discovered while walking the graph. Order is the order
+    /// nodes were visited during recursion — stable across compiles of an
+    /// unchanged graph, which matters for instance override stability.
+    parameters: Vec<MaterialParam>,
 }
 
 impl<'a> Ctx<'a> {
@@ -147,6 +189,7 @@ impl<'a> Ctx<'a> {
             uses_cube_0: false,
             uses_array_0: false,
             uses_volume_0: false,
+            parameters: Vec::new(),
         }
     }
 
@@ -448,6 +491,119 @@ impl<'a> Ctx<'a> {
             "input/object_position" => {
                 // mesh_functions provides mesh[in.instance_index]
                 self.set_out(id, "position", "mesh_functions::get_world_from_local(in.instance_index)[3].xyz".into());
+            }
+
+            // ── Parameters ──────────────────────────────────────────
+            //
+            // Stage 2: each `param/*` node bakes its authored default into the
+            // shader as a literal AND records the (name, kind, default) so
+            // downstream tooling can build material instances. Stage 3 will
+            // swap the literal for a uniform read so instances can override
+            // without recompiling the master.
+            "param/float" => {
+                let name = param_name(node, "FloatParam");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Float(f)) => *f,
+                    _ => 0.0,
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Float,
+                    default: PinValue::Float(default),
+                });
+                let v = self.next_var("param_f");
+                self.emit(format!("    let {v} = {:.6};", default));
+                self.set_out(id, "value", v);
+            }
+            "param/color" => {
+                let name = param_name(node, "ColorParam");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Color(c)) => *c,
+                    _ => [1.0, 1.0, 1.0, 1.0],
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Color,
+                    default: PinValue::Color(default),
+                });
+                let v = self.next_var("param_c");
+                self.emit(format!(
+                    "    let {v} = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
+                    default[0], default[1], default[2], default[3]
+                ));
+                self.set_out(id, "value", v);
+            }
+            "param/vec2" => {
+                let name = param_name(node, "Vec2Param");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Vec2(v)) => *v,
+                    _ => [0.0, 0.0],
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Vec2,
+                    default: PinValue::Vec2(default),
+                });
+                let v = self.next_var("param_v2");
+                self.emit(format!(
+                    "    let {v} = vec2<f32>({:.6}, {:.6});",
+                    default[0], default[1]
+                ));
+                self.set_out(id, "value", v);
+            }
+            "param/vec3" => {
+                let name = param_name(node, "Vec3Param");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Vec3(v)) => *v,
+                    _ => [0.0, 0.0, 0.0],
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Vec3,
+                    default: PinValue::Vec3(default),
+                });
+                let v = self.next_var("param_v3");
+                self.emit(format!(
+                    "    let {v} = vec3<f32>({:.6}, {:.6}, {:.6});",
+                    default[0], default[1], default[2]
+                ));
+                self.set_out(id, "value", v);
+            }
+            "param/vec4" => {
+                let name = param_name(node, "Vec4Param");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Vec4(v)) => *v,
+                    _ => [0.0, 0.0, 0.0, 0.0],
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Vec4,
+                    default: PinValue::Vec4(default),
+                });
+                let v = self.next_var("param_v4");
+                self.emit(format!(
+                    "    let {v} = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
+                    default[0], default[1], default[2], default[3]
+                ));
+                self.set_out(id, "value", v);
+            }
+            "param/bool" => {
+                let name = param_name(node, "BoolParam");
+                let default = match node.input_values.get("default") {
+                    Some(PinValue::Bool(b)) => *b,
+                    _ => false,
+                };
+                self.parameters.push(MaterialParam {
+                    name,
+                    kind: ParamKind::Bool,
+                    default: PinValue::Bool(default),
+                });
+                let v = self.next_var("param_b");
+                self.emit(format!(
+                    "    let {v} = {};",
+                    if default { "true" } else { "false" }
+                ));
+                self.set_out(id, "value", v);
             }
 
             // ── Textures ────────────────────────────────────────────
@@ -1944,6 +2100,7 @@ pub fn compile_with_functions(
                 errors,
                 warnings: Vec::new(),
                 requires_transmission: false,
+                parameters: Vec::new(),
             };
         }
     };
@@ -2023,6 +2180,7 @@ pub fn compile_with_functions(
         errors,
         warnings: Vec::new(),
         requires_transmission,
+        parameters: ctx.parameters,
     }
 }
 

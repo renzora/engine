@@ -75,14 +75,24 @@ pub fn try_build_standard_material(
         // Accept the whole-RGBA pin or the rgb-only pin. Other channels (.r,
         // .g, .b, .a alone) on a base_color route mean the user is doing
         // something non-PBR and we let codegen handle it.
-        if !is_texture_sample(src) {
-            return None;
-        }
-        match conn.from_pin.as_str() {
-            "color" | "rgb" => {
-                mat.base_color_texture = Some(asset_server.load(texture_path(src)?));
+        if is_param_node(src) {
+            // Param node — treat as a constant equivalent to the master's
+            // authored default. Stage 3 will rebind these as uniforms so
+            // material instances can override without recompiling.
+            if let Some(PinValue::Color(c)) = src.input_values.get("default") {
+                mat.base_color = Color::linear_rgba(c[0], c[1], c[2], c[3]);
+            } else {
+                return None;
             }
-            _ => return None,
+        } else if !is_texture_sample(src) {
+            return None;
+        } else {
+            match conn.from_pin.as_str() {
+                "color" | "rgb" => {
+                    mat.base_color_texture = Some(asset_server.load(texture_path(src)?));
+                }
+                _ => return None,
+            }
         }
     }
 
@@ -99,14 +109,21 @@ pub fn try_build_standard_material(
     // computed alpha) isn't expressible by StandardMaterial alone.
     if let Some(conn) = graph.connection_to(output.id, "alpha") {
         let src = graph.get_node(conn.from_node)?;
-        if !is_texture_sample(src) || conn.from_pin != "a" {
-            return None;
-        }
-        // Must be the same texture as base_color.
-        let bc_conn = graph.connection_to(output.id, "base_color");
-        match bc_conn {
-            Some(bc) if bc.from_node == conn.from_node => { /* ok */ }
-            _ => return None,
+        if is_param_node(src) {
+            if let Some(PinValue::Float(a)) = src.input_values.get("default") {
+                let bc = mat.base_color.to_linear();
+                mat.base_color = Color::linear_rgba(bc.red, bc.green, bc.blue, *a);
+            }
+        } else {
+            if !is_texture_sample(src) || conn.from_pin != "a" {
+                return None;
+            }
+            // Must be the same texture as base_color.
+            let bc_conn = graph.connection_to(output.id, "base_color");
+            match bc_conn {
+                Some(bc) if bc.from_node == conn.from_node => { /* ok */ }
+                _ => return None,
+            }
         }
     }
     if let Some(PinValue::Float(a)) = output.input_values.get("alpha") {
@@ -120,6 +137,13 @@ pub fn try_build_standard_material(
     }
     if let Some(PinValue::Float(r)) = output.input_values.get("roughness") {
         mat.perceptual_roughness = *r;
+    }
+    // Param connections feed factors directly with the authored default.
+    if let Some(PinValue::Float(m)) = param_default(graph, output.id, "metallic") {
+        mat.metallic = m;
+    }
+    if let Some(PinValue::Float(r)) = param_default(graph, output.id, "roughness") {
+        mat.perceptual_roughness = r;
     }
     let metallic_src = pin_texture_source(graph, output.id, "metallic", "b")?;
     let roughness_src = pin_texture_source(graph, output.id, "roughness", "g")?;
@@ -154,19 +178,30 @@ pub fn try_build_standard_material(
     }
     if let Some(conn) = graph.connection_to(output.id, "emissive") {
         let src = graph.get_node(conn.from_node)?;
-        if !is_texture_sample(src) {
-            return None;
-        }
-        match conn.from_pin.as_str() {
-            "rgb" | "color" => {
-                mat.emissive_texture = Some(asset_server.load(texture_path(src)?));
-                // If no factor was set, default to white so the texture
-                // shows through unmodulated.
-                if !output.input_values.contains_key("emissive") {
-                    mat.emissive = LinearRgba::WHITE;
+        if is_param_node(src) {
+            match src.input_values.get("default") {
+                Some(PinValue::Vec3(e)) => {
+                    mat.emissive = LinearRgba::new(e[0], e[1], e[2], 1.0);
                 }
+                Some(PinValue::Color(c)) => {
+                    mat.emissive = LinearRgba::new(c[0], c[1], c[2], 1.0);
+                }
+                _ => return None,
             }
-            _ => return None,
+        } else if !is_texture_sample(src) {
+            return None;
+        } else {
+            match conn.from_pin.as_str() {
+                "rgb" | "color" => {
+                    mat.emissive_texture = Some(asset_server.load(texture_path(src)?));
+                    // If no factor was set, default to white so the texture
+                    // shows through unmodulated.
+                    if !output.input_values.contains_key("emissive") {
+                        mat.emissive = LinearRgba::WHITE;
+                    }
+                }
+                _ => return None,
+            }
         }
     }
 
@@ -216,9 +251,11 @@ pub fn try_build_standard_material(
         mat.reflectance = *v;
     }
 
-    // Any of these pins being *connected* (not just constant-overridden)
-    // means the user is computing the value, which is the non-trivial case.
-    for pin in [
+    // Any of these pins being *connected* to a non-param node (i.e. the user
+    // is computing the value with math/textures) is non-trivial. Param-driven
+    // connections are folded into the StandardMaterial as the authored default
+    // so they remain in the trivial subset.
+    let scalar_ext_pins = [
         "specular_transmission",
         "diffuse_transmission",
         "thickness",
@@ -229,9 +266,31 @@ pub fn try_build_standard_material(
         "anisotropy_strength",
         "anisotropy_rotation",
         "reflectance",
-    ] {
-        if graph.connection_to(output.id, pin).is_some() {
-            return None;
+    ];
+    for pin in scalar_ext_pins {
+        match graph.connection_to(output.id, pin) {
+            None => {}
+            Some(conn) => {
+                let src = graph.get_node(conn.from_node)?;
+                if !is_param_node(src) {
+                    return None;
+                }
+                if let Some(PinValue::Float(v)) = src.input_values.get("default") {
+                    match pin {
+                        "specular_transmission" => mat.specular_transmission = *v,
+                        "diffuse_transmission" => mat.diffuse_transmission = *v,
+                        "thickness" => mat.thickness = *v,
+                        "ior" => mat.ior = *v,
+                        "attenuation_distance" => mat.attenuation_distance = *v,
+                        "clearcoat" => mat.clearcoat = *v,
+                        "clearcoat_roughness" => mat.clearcoat_perceptual_roughness = *v,
+                        "anisotropy_strength" => mat.anisotropy_strength = *v,
+                        "anisotropy_rotation" => mat.anisotropy_rotation = *v,
+                        "reflectance" => mat.reflectance = *v,
+                        _ => {}
+                    }
+                }
+            }
         }
     }
 
@@ -249,16 +308,18 @@ pub fn try_build_standard_material(
 
 /// Internal helper: how a particular output pin is sourced.
 enum PinSource {
-    /// Pin has no connection, only (optional) constant input_values.
+    /// Pin has no connection, only (optional) constant input_values, or it's
+    /// driven by a param/* node whose default has already been applied.
     Constant,
     /// Pin is connected to the named texture/sample node.
     Texture(NodeId),
 }
 
 /// Resolve the source of `pin_name` on the output node, requiring that any
-/// connection comes from a `texture/sample` node via `expected_channel`.
-/// Returns `None` if the connection routes through anything else (a math
-/// node, a different texture pin, etc.) — i.e. non-trivial.
+/// connection comes from a `texture/sample` node via `expected_channel` (or
+/// from a `param/*` node — treated like a constant). Returns `None` if the
+/// connection routes through anything else (a math node, a different texture
+/// pin, etc.) — i.e. non-trivial.
 fn pin_texture_source(
     graph: &MaterialGraph,
     output_id: NodeId,
@@ -269,6 +330,9 @@ fn pin_texture_source(
         None => Some(PinSource::Constant),
         Some(conn) => {
             let src = graph.get_node(conn.from_node)?;
+            if is_param_node(src) {
+                return Some(PinSource::Constant);
+            }
             if !is_texture_sample(src) || conn.from_pin != expected_channel {
                 return None;
             }
@@ -282,6 +346,27 @@ fn pin_texture_source(
 /// non-StandardMaterial sampling logic.
 fn is_texture_sample(node: &MaterialNode) -> bool {
     node.node_type == "texture/sample"
+}
+
+/// Returns true if `node` is one of the named-parameter nodes. Parameter
+/// nodes are treated as constants for trivial-classification purposes — the
+/// authored default value flows into the StandardMaterial just like a literal
+/// would. Stage 3 will rebind these as uniforms so material instances can
+/// override the value without recompiling.
+fn is_param_node(node: &MaterialNode) -> bool {
+    node.node_type.starts_with("param/")
+}
+
+/// If the given pin is connected to a param/* node, return the param's
+/// authored default. Otherwise None. Lets callers treat a connected param
+/// the same as if the value had been set on the output node's input_values.
+fn param_default(graph: &MaterialGraph, output_id: NodeId, pin_name: &str) -> Option<PinValue> {
+    let conn = graph.connection_to(output_id, pin_name)?;
+    let src = graph.get_node(conn.from_node)?;
+    if !is_param_node(src) {
+        return None;
+    }
+    src.input_values.get("default").cloned()
 }
 
 /// Pull the texture asset path off a `texture/sample` or
@@ -401,5 +486,45 @@ mod tests {
         assert!(mat.normal_map_texture.is_some());
         // HDR emissive lands as a LinearRgba > 1.0 — what bloom needs.
         assert_eq!(mat.emissive.red, 8.0);
+    }
+
+    #[test]
+    fn accepts_param_color_on_base_color() {
+        // A "master" graph: a single Color Parameter wired into base_color.
+        // Should classify as trivial and bake the param's authored default
+        // into the StandardMaterial's base_color.
+        let mut graph = MaterialGraph::new("Param", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let p = graph.add_node("param/color", [-200.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(p) {
+            n.input_values.insert("name".into(), PinValue::String("BaseColor".into()));
+            n.input_values.insert("default".into(), PinValue::Color([0.25, 0.5, 0.75, 1.0]));
+        }
+        graph.connect(p, "value", output_id, "base_color");
+
+        let app = App::new();
+        let asset_server = app.world().resource::<AssetServer>();
+        let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
+        let bc = mat.base_color.to_linear();
+        assert!((bc.red - 0.25).abs() < 1e-4);
+        assert!((bc.green - 0.5).abs() < 1e-4);
+        assert!((bc.blue - 0.75).abs() < 1e-4);
+    }
+
+    #[test]
+    fn accepts_param_float_on_metallic() {
+        let mut graph = MaterialGraph::new("Param", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let p = graph.add_node("param/float", [-200.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(p) {
+            n.input_values.insert("name".into(), PinValue::String("Metallic".into()));
+            n.input_values.insert("default".into(), PinValue::Float(0.7));
+        }
+        graph.connect(p, "value", output_id, "metallic");
+
+        let app = App::new();
+        let asset_server = app.world().resource::<AssetServer>();
+        let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
+        assert!((mat.metallic - 0.7).abs() < 1e-4);
     }
 }

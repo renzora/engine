@@ -31,6 +31,7 @@ fn pin_color(pin_type: PinType) -> Color32 {
         PinType::Color => Color32::from_rgb(255, 200, 60),
         PinType::Bool => Color32::from_rgb(255, 68, 68),
         PinType::Texture2D | PinType::Sampler => Color32::from_rgb(200, 150, 120),
+        PinType::String => Color32::from_rgb(180, 110, 200),
     }
 }
 
@@ -41,6 +42,7 @@ fn header_color(def: &MaterialNodeDef) -> Color32 {
 pub fn category_icon(category: &str) -> &'static str {
     match category {
         "Input" => egui_phosphor::regular::SIGN_IN,
+        "Parameter" => egui_phosphor::regular::SLIDERS_HORIZONTAL,
         "Texture" => egui_phosphor::regular::IMAGE,
         "Math" => egui_phosphor::regular::CALCULATOR,
         "Vector" => egui_phosphor::regular::ARROWS_OUT_CARDINAL,
