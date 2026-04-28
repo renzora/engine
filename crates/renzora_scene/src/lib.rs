@@ -457,6 +457,15 @@ fn load_scene_on_enter(world: &mut World) {
             }
         }
     }
+
+    // Ask the hierarchy to auto-select its top entity once the cache is
+    // populated. The flag is consumed by `auto_select_first_hierarchy_entity`
+    // in `renzora_hierarchy` — we can't do it here because entities have
+    // only just been queued for spawn and the hierarchy tree won't be
+    // built until the next frame.
+    if let Some(mut flag) = world.get_resource_mut::<renzora_editor::AutoSelectFirstHierarchyEntity>() {
+        flag.0 = true;
+    }
 }
 
 // ============================================================================

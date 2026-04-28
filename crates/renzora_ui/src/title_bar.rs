@@ -48,11 +48,14 @@ pub struct PlayModeInfo {
     pub is_playing: bool,
     pub is_paused: bool,
     pub is_scripts_only: bool,
+    /// Whether the scene contains at least one `SceneCamera`. Drives the
+    /// disabled state of the title bar's Play button.
+    pub has_scene_camera: bool,
 }
 
 impl Default for PlayModeInfo {
     fn default() -> Self {
-        Self { is_playing: false, is_paused: false, is_scripts_only: false }
+        Self { is_playing: false, is_paused: false, is_scripts_only: false, has_scene_camera: false }
     }
 }
 
@@ -335,19 +338,89 @@ pub fn render_title_bar(
                 // Reserve room on the right for the window min/max/close buttons.
                 let right_margin = WINDOW_CTRL_WIDTH + 8.0;
                 let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
-                // Play & Scripts entry points live in the viewport. Only pause+stop
-                // show here, and only while a play mode is active.
-                let play_controls_width = if in_any_play {
-                    btn_size * 2.0 + 4.0 // pause + stop
-                } else {
-                    0.0
-                };
+                // In edit mode show Play + Scripts; while playing/scripting
+                // show Pause + Stop. Both flavours occupy 2 buttons so the
+                // layout reserve is the same either way.
+                let play_controls_width = btn_size * 2.0 + 4.0;
                 let remaining = ui.available_width() - play_controls_width - 8.0 - sign_in_width - 8.0 - gear_size - right_margin;
                 if remaining > 0.0 {
                     ui.add_space(remaining);
                 }
 
-                // Play/Stop/Pause buttons
+                // ── Edit-mode controls: Play + Scripts ────────────────────
+                if !in_any_play {
+                    let play_clickable = play_mode.has_scene_camera;
+                    let play_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let play_id = ui.id().with("title_play");
+                    let play_resp = ui.interact(
+                        play_rect,
+                        play_id,
+                        if play_clickable { Sense::click() } else { Sense::hover() },
+                    );
+                    let play_color = if !play_clickable {
+                        theme.text.muted.to_color32()
+                    } else if play_resp.hovered() {
+                        Color32::from_rgb(150, 230, 150)
+                    } else {
+                        Color32::from_rgb(110, 200, 110)
+                    };
+                    ui.painter().text(
+                        play_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::PLAY,
+                        egui::FontId::proportional(14.0),
+                        play_color,
+                    );
+                    if play_clickable && play_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
+                    }
+                    let play_tip = if play_clickable {
+                        "Play (F5)"
+                    } else {
+                        "Scene has no camera — add one to play"
+                    };
+                    play_resp.clone().on_hover_text(play_tip);
+                    if play_clickable && play_resp.clicked() {
+                        action = TitleBarAction::Play;
+                    }
+                    ui.add_space(btn_size + 4.0);
+
+                    let scripts_rect = Rect::from_min_size(
+                        Pos2::new(ui.cursor().left(), tab_y + (tab_h - btn_size) / 2.0),
+                        Vec2::splat(btn_size),
+                    );
+                    let scripts_id = ui.id().with("title_scripts");
+                    let scripts_resp = ui.interact(scripts_rect, scripts_id, Sense::click());
+                    let scripts_color = if scripts_resp.hovered() {
+                        Color32::WHITE
+                    } else {
+                        accent
+                    };
+                    ui.painter().text(
+                        scripts_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        egui_phosphor::regular::CODE,
+                        egui::FontId::proportional(14.0),
+                        scripts_color,
+                    );
+                    if scripts_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                        any_widget_hovered = true;
+                    }
+                    scripts_resp
+                        .clone()
+                        .on_hover_text("Run Scripts (Shift+F5)");
+                    if scripts_resp.clicked() {
+                        action = TitleBarAction::ScriptsOnly;
+                    }
+                    ui.add_space(btn_size);
+                }
+
+                // Play/Stop/Pause buttons (active during play / scripts modes)
                 if in_any_play {
                     // Pause button
                     let pause_rect = Rect::from_min_size(

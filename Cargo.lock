@@ -9728,6 +9728,7 @@ dependencies = [
  "log",
  "renzora",
  "renzora_editor",
+ "renzora_ui",
 ]
 
 [[package]]

@@ -161,14 +161,22 @@ pub fn scene_layout() -> DockTree {
                     active_tab: 0,
                 },
                 DockTree::Leaf {
-                    tabs: vec!["assets".into(), "hub_store".into(), "console".into(), "mixer".into()],
+                    tabs: vec![
+                        "assets".into(),
+                        "hub_store".into(),
+                        "console".into(),
+                        "mixer".into(),
+                        "sequencer".into(),
+                        "timeline".into(),
+                        "record".into(),
+                    ],
                     active_tab: 0,
                 },
                 0.72,
             ),
-            // Right column: inspector with history tab
+            // Right column: inspector with history + gamepad as sibling tabs
             DockTree::Leaf {
-                tabs: vec!["inspector".into(), "history".into()],
+                tabs: vec!["inspector".into(), "gamepad".into(), "history".into()],
                 active_tab: 0,
             },
             0.78,

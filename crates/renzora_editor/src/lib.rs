@@ -136,6 +136,13 @@ pub struct EntityLabelColor(pub [u8; 3]);
 #[derive(Component, Clone, Copy)]
 pub struct HierarchyOrder(pub u32);
 
+/// One-shot flag set by scene loading code; read and cleared by the
+/// hierarchy crate after the tree cache is built. When `true`, the
+/// hierarchy will auto-select its top entity (provided the user hasn't
+/// already selected something on this scene).
+#[derive(Resource, Default)]
+pub struct AutoSelectFirstHierarchyEntity(pub bool);
+
 /// Pending entities to expand in the hierarchy panel next time it renders.
 /// Systems that spawn entities as children can push the parent entity here so
 /// the panel reveals the newly spawned child even if the user hasn't toggled
@@ -407,6 +414,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<HierarchyFilter>()
             .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
+            .init_resource::<AutoSelectFirstHierarchyEntity>()
             .init_resource::<renzora_ui::Toasts>()
             .add_plugins(renzora_ui::window_chrome::WindowChromePlugin)
             .add_systems(PostStartup, camera::spawn_ui_camera)
@@ -761,14 +769,32 @@ pub fn editor_ui_system(world: &mut World) {
     }
 
     // 5. Title bar (top) — returns action
+    let has_scene_camera = {
+        use renzora::SceneCamera;
+        let mut found = false;
+        for archetype in world.archetypes().iter() {
+            for ae in archetype.entities() {
+                if world.get::<SceneCamera>(ae.id()).is_some() {
+                    found = true;
+                    break;
+                }
+            }
+            if found { break; }
+        }
+        found
+    };
     let play_info = world
         .get_resource::<renzora::PlayModeState>()
         .map(|pm| renzora_ui::title_bar::PlayModeInfo {
             is_playing: pm.is_playing(),
             is_paused: pm.is_paused(),
             is_scripts_only: pm.is_scripts_only(),
+            has_scene_camera,
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| renzora_ui::title_bar::PlayModeInfo {
+            has_scene_camera,
+            ..Default::default()
+        });
     // Auth state comes from the AuthBridge resource (synced by AuthPlugin).
     let auth_bridge = world
         .get_resource::<renzora::AuthBridge>()

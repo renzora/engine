@@ -8,6 +8,8 @@
 
 mod camera_gizmo;
 mod light_gizmo;
+mod plane_fill;
+mod rotation_pie;
 pub mod modal_transform;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
@@ -23,7 +25,7 @@ use bevy::render::render_resource::{
 };
 use bevy::shader::ShaderRef;
 use bevy::mesh::MeshVertexBufferLayoutRef;
-use bevy::window::PrimaryWindow;
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use renzora::core::InputFocusState;
@@ -34,10 +36,10 @@ use renzora_editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarch
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const GIZMO_SIZE: f32 = 2.0;
+pub(crate) const GIZMO_SIZE: f32 = 2.0;
 const GIZMO_SCALE_REF_DIST: f32 = 10.0;
-const GIZMO_PLANE_SIZE: f32 = 0.5;
-const GIZMO_PLANE_OFFSET: f32 = 0.6;
+pub(crate) const GIZMO_PLANE_SIZE: f32 = 0.5;
+pub(crate) const GIZMO_PLANE_OFFSET: f32 = 0.6;
 
 // ── Pivot computation ───────────────────────────────────────────────────────
 
@@ -52,7 +54,7 @@ const GIZMO_PLANE_OFFSET: f32 = 0.6;
 /// We instead compute the world-space AABB center over the entity's mesh and
 /// every descendant mesh, falling back to the entity's transform if no AABBs
 /// are available yet (e.g. just-spawned entities before mesh load).
-fn compute_gizmo_pivot(
+pub(crate) fn compute_gizmo_pivot(
     entity: Entity,
     aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children: &Query<&Children>,
@@ -182,6 +184,19 @@ impl GizmoAxis {
             _ => None,
         }
     }
+
+    /// Plane axes with `axis_signs` baked in so plane handles flip into the
+    /// quadrant facing the camera, matching how single-axis arrows already
+    /// flip via `signed_direction`. Used by both the picking quads and the
+    /// egui plane fills so they stay aligned.
+    pub(crate) fn signed_plane_axes(self, signs: Vec3) -> Option<(Vec3, Vec3)> {
+        match self {
+            Self::XY => Some((Vec3::new(signs.x, 0.0, 0.0), Vec3::new(0.0, signs.y, 0.0))),
+            Self::XZ => Some((Vec3::new(signs.x, 0.0, 0.0), Vec3::new(0.0, 0.0, signs.z))),
+            Self::YZ => Some((Vec3::new(0.0, signs.y, 0.0), Vec3::new(0.0, 0.0, signs.z))),
+            _ => None,
+        }
+    }
 }
 
 const AXES: [GizmoAxis; 3] = [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z];
@@ -190,10 +205,10 @@ const PLANES: [GizmoAxis; 3] = [GizmoAxis::XY, GizmoAxis::XZ, GizmoAxis::YZ];
 // ── Components & Resources ──────────────────────────────────────────────────
 
 #[derive(Component)]
-struct GizmoRoot;
+pub(crate) struct GizmoRoot;
 
 #[derive(Component)]
-struct GizmoMesh;
+pub(crate) struct GizmoMesh;
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum GizmoPart {
@@ -405,6 +420,20 @@ impl Plugin for GizmoPlugin {
                     .run_if(in_state(renzora_editor::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             )
+            .init_resource::<rotation_pie::RotationPieState>()
+            .add_systems(
+                Update,
+                rotation_pie::update_rotation_pie_state
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            .init_resource::<plane_fill::PlaneFillState>()
+            .add_systems(
+                Update,
+                plane_fill::update_plane_fill_state
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
             .add_systems(
                 Update,
                 (
@@ -434,6 +463,18 @@ impl Plugin for GizmoPlugin {
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(150, camera_gizmo::draw_camera_icon_overlay);
+        // Rotation pie at order 130 — under icons (so the wedge doesn't
+        // hide them) but above the wireframe rotate ring. Wireframe gizmos
+        // paint into the 3D image first; the egui overlay blends on top.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(130, rotation_pie::draw_pie_overlay);
+        // Plane handle fills at order 130 too (same band as the pie). The
+        // arrows / cones still render as wireframe; the egui fills paint
+        // the XY/XZ/YZ squares as solid polygons over the 3D image.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(130, plane_fill::draw_plane_fill_overlay);
     }
 }
 
@@ -751,42 +792,9 @@ fn draw_line_gizmos(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            // Plane squares
-            let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
-            let po = GIZMO_PLANE_OFFSET * gs;
-
-            let xy_outline = if active == Some(GizmoAxis::XY) { highlight } else { Color::srgb(0.9, 0.9, 0.2) };
-            let xz_outline = if active == Some(GizmoAxis::XZ) { highlight } else { Color::srgb(0.9, 0.2, 0.9) };
-            let yz_outline = if active == Some(GizmoAxis::YZ) { highlight } else { Color::srgb(0.2, 0.9, 0.9) };
-            let fill_alpha = if active.is_some() { 0.45 } else { 0.22 };
-            let with_alpha = |c: Color, a: f32| {
-                let s = c.to_srgba();
-                Color::srgba(s.red, s.green, s.blue, a)
-            };
-
-            // XY plane
-            let c = pos + Vec3::new(po, po, 0.0);
-            draw_filled_quad(
-                &mut gizmos,
-                c, Vec3::X, Vec3::Y, plane_half,
-                xy_outline, with_alpha(xy_outline, fill_alpha),
-            );
-
-            // XZ plane
-            let c = pos + Vec3::new(po, 0.0, po);
-            draw_filled_quad(
-                &mut gizmos,
-                c, Vec3::X, Vec3::Z, plane_half,
-                xz_outline, with_alpha(xz_outline, fill_alpha),
-            );
-
-            // YZ plane
-            let c = pos + Vec3::new(0.0, po, po);
-            draw_filled_quad(
-                &mut gizmos,
-                c, Vec3::Y, Vec3::Z, plane_half,
-                yz_outline, with_alpha(yz_outline, fill_alpha),
-            );
+            // Plane handles (XY/XZ/YZ filled quads + outlines) are painted
+            // by `plane_fill::draw_plane_fill_overlay` so they render as
+            // proper solid polygons via egui rather than line gizmos.
         }
         GizmoMode::Rotate => {
             let radius = GIZMO_SIZE * gs * 0.7;
@@ -797,6 +805,9 @@ fn draw_line_gizmos(
             gizmos.circle(Isometry3d::new(pos, Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)), radius, x_color);
             gizmos.circle(Isometry3d::new(pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)), radius, y_color);
             gizmos.circle(Isometry3d::new(pos, Quat::IDENTITY), radius, z_color);
+            // Unity-style rotation pie is drawn as a filled egui polygon by
+            // `rotation_pie::draw_pie_overlay` — line gizmos can't paint
+            // proper triangles.
         }
         GizmoMode::Scale => {
             let scale_size = GIZMO_SIZE * gs;
@@ -1384,12 +1395,16 @@ fn gizmo_hover_detect(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            // Plane squares first
+            // Plane squares first — signed offsets so each plane sits in the
+            // same quadrant as the (flipped-toward-camera) single-axis arrows.
             let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
             let po = GIZMO_PLANE_OFFSET * gs;
             for plane in PLANES {
+                let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
+                let center = entity_pos + sa * po + sb * po;
+                // The picking math wants unsigned world axes for the quad
+                // basis; signs are already accounted for in the center.
                 let (a, b) = plane.plane_axes().unwrap();
-                let center = entity_pos + a * po + b * po;
                 let corner = center - a * plane_half - b * plane_half;
                 if ray_hits_plane_quad(&ray, corner, a, b, GIZMO_PLANE_SIZE * gs) {
                     best = Some((plane, 0.0));
@@ -1434,6 +1449,20 @@ fn gizmo_hover_detect(
 
 // ── Drag handling ───────────────────────────────────────────────────────────
 
+fn acquire_drag_cursor(cursor_q: &mut Query<&mut CursorOptions, With<PrimaryWindow>>) {
+    if let Ok(mut cursor) = cursor_q.single_mut() {
+        cursor.visible = false;
+        cursor.grab_mode = CursorGrabMode::Locked;
+    }
+}
+
+fn release_drag_cursor(cursor_q: &mut Query<&mut CursorOptions, With<PrimaryWindow>>) {
+    if let Ok(mut cursor) = cursor_q.single_mut() {
+        cursor.visible = true;
+        cursor.grab_mode = CursorGrabMode::None;
+    }
+}
+
 fn gizmo_drag(
     mut gizmo_state: ResMut<GizmoState>,
     mode: Res<GizmoMode>,
@@ -1449,6 +1478,7 @@ fn gizmo_drag(
     children_q: Query<&Children>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut commands: Commands,
 ) {
     let snap: SnapSettings = viewport_settings.as_deref().map(|s| s.snap).unwrap_or_default();
@@ -1457,6 +1487,9 @@ fn gizmo_drag(
         return;
     }
     if collider_edit.map(|c| c.active).unwrap_or(false) {
+        if gizmo_state.active_axis.is_some() {
+            release_drag_cursor(&mut cursor_options);
+        }
         gizmo_state.active_axis = None;
         gizmo_state.drag_starts.clear();
         mouse_motion.clear();
@@ -1465,6 +1498,9 @@ fn gizmo_drag(
 
     let selected_entities = selection.get_all();
     if selected_entities.is_empty() {
+        if gizmo_state.active_axis.is_some() {
+            release_drag_cursor(&mut cursor_options);
+        }
         gizmo_state.active_axis = None;
         gizmo_state.drag_starts.clear();
         mouse_motion.clear();
@@ -1490,6 +1526,10 @@ fn gizmo_drag(
             gizmo_state.drag_offset = Vec3::ZERO;
             gizmo_state.drag_angle = 0.0;
             gizmo_state.drag_scale_factor = 0.0;
+            // Hide and lock the cursor — same UX as camera drag, so the
+            // cursor can't fly off the viewport mid-drag and the user can
+            // make arbitrarily long mouse motions for fine control.
+            acquire_drag_cursor(&mut cursor_options);
             mouse_motion.clear();
             return;
         }
@@ -1517,6 +1557,7 @@ fn gizmo_drag(
         }
         gizmo_state.active_axis = None;
         gizmo_state.drag_starts.clear();
+        release_drag_cursor(&mut cursor_options);
         mouse_motion.clear();
         return;
     }
@@ -1529,6 +1570,7 @@ fn gizmo_drag(
     if !mouse_button.pressed(MouseButton::Left) {
         gizmo_state.active_axis = None;
         gizmo_state.drag_starts.clear();
+        release_drag_cursor(&mut cursor_options);
         mouse_motion.clear();
         return;
     }
@@ -1570,23 +1612,43 @@ fn gizmo_drag(
             };
 
             let offset = if axis.is_plane() {
+                // Decompose the screen-space mouse delta onto the plane's two
+                // world axes by solving the 2x2 linear system
+                //     mouse_delta * scale = sa * da + sb * db
+                // where sa/sb are the screen projections of `a`/`b` in
+                // world-units. The naive per-axis dot-product decomposition
+                // doesn't track the cursor when the plane is tilted relative
+                // to the camera (the screen projections of `a` and `b` are
+                // no longer orthogonal), and also under-counts due to
+                // foreshortening — both of which feel stiff and laggy.
                 let (a, b) = axis.plane_axes().unwrap();
                 let cam_right = cam_gt.right().as_vec3();
                 let cam_up = cam_gt.up().as_vec3();
                 let sa = Vec2::new(a.dot(cam_right), -a.dot(cam_up));
                 let sb = Vec2::new(b.dot(cam_right), -b.dot(cam_up));
-                let la = sa.length(); let lb = sb.length();
-                let da = if la > 1e-4 { total_delta.dot(sa / la) } else { 0.0 };
-                let db = if lb > 1e-4 { total_delta.dot(sb / lb) } else { 0.0 };
-                a * da * scale + b * db * scale
+                let det = sa.x * sb.y - sa.y * sb.x;
+                if det.abs() < 1e-4 {
+                    // Plane is edge-on to the camera — no meaningful drag.
+                    Vec3::ZERO
+                } else {
+                    let qx = total_delta.x * scale;
+                    let qy = total_delta.y * scale;
+                    let da = (qx * sb.y - qy * sb.x) / det;
+                    let db = (sa.x * qy - sa.y * qx) / det;
+                    a * da + b * db
+                }
             } else {
+                // Single-axis drag: project mouse delta onto the axis line in
+                // screen space, then unforeshorten by dividing by the squared
+                // screen length so the gizmo tracks the cursor 1:1 along the
+                // axis even when it's angled away from the camera.
                 let dir = axis.signed_direction(gizmo_state.axis_signs);
                 let cam_right = cam_gt.right().as_vec3();
                 let cam_up = cam_gt.up().as_vec3();
                 let sa = Vec2::new(dir.dot(cam_right), -dir.dot(cam_up));
-                let len = sa.length();
-                if len < 1e-4 { return; }
-                dir * total_delta.dot(sa / len) * scale
+                let len_sq = sa.length_squared();
+                if len_sq < 1e-6 { return; }
+                dir * total_delta.dot(sa) * scale / len_sq
             };
 
             gizmo_state.drag_offset += offset;
@@ -1695,28 +1757,6 @@ fn gizmo_drag(
             }
         }
     }
-}
-
-/// Draw a filled square centered at `center`, spanning ±`half` along `axis_a`
-/// and `axis_b`. Uses densely-spaced parallel lines for the fill (Bevy's
-/// immediate-mode gizmos don't support triangles) plus a bright outline.
-fn draw_filled_quad(
-    gizmos: &mut Gizmos<TransformGizmoGroup>,
-    center: Vec3,
-    axis_a: Vec3,
-    axis_b: Vec3,
-    half: f32,
-    outline: Color,
-    _fill: Color,
-) {
-    let c00 = center - axis_a * half - axis_b * half;
-    let c10 = center + axis_a * half - axis_b * half;
-    let c11 = center + axis_a * half + axis_b * half;
-    let c01 = center - axis_a * half + axis_b * half;
-    gizmos.line(c00, c10, outline);
-    gizmos.line(c10, c11, outline);
-    gizmos.line(c11, c01, outline);
-    gizmos.line(c01, c00, outline);
 }
 
 fn screen_delta_to_angle(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransform) -> f32 {

@@ -10,9 +10,9 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    search_overlay, AppEditorExt, EditorCommands, EditorPanel, EditorSelection,
-    HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
-    SceneStarter, SceneStarterRegistry, SpawnRegistry,
+    search_overlay, AppEditorExt, AutoSelectFirstHierarchyEntity, EditorCommands, EditorPanel,
+    EditorSelection, HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry,
+    PanelLocation, SceneStarter, SceneStarterRegistry, SpawnRegistry,
 };
 use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
@@ -907,6 +907,25 @@ impl EditorPanel for HierarchyPanel {
 }
 
 /// Plugin that registers the `HierarchyPanel` and built-in entity presets.
+/// One-shot consumer of `AutoSelectFirstHierarchyEntity`. After scene load,
+/// the scene crate sets the flag; once the cache rebuild lands a non-empty
+/// tree on the next frame, we select its first root entity (skipping if
+/// the user already manually selected something while the scene was loading).
+fn auto_select_first_hierarchy_entity(
+    mut pending: ResMut<AutoSelectFirstHierarchyEntity>,
+    cache: Res<HierarchyTreeCache>,
+    selection: Res<EditorSelection>,
+) {
+    if !pending.0 { return; }
+    if cache.nodes.is_empty() { return; }
+    if selection.get().is_none() {
+        if let Some(top) = cache.nodes.first() {
+            selection.set(Some(top.entity));
+        }
+    }
+    pending.0 = false;
+}
+
 #[derive(Default)]
 pub struct HierarchyPanelPlugin;
 
@@ -921,6 +940,7 @@ impl Plugin for HierarchyPanelPlugin {
             detect_selection_keybindings,
             cache::mark_hierarchy_dirty,
             cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
+            auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
         ));
 
         // Spawn presets are now self-registered by their owning crates:

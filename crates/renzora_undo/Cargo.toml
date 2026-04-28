@@ -7,4 +7,5 @@ edition = "2021"
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_editor = { path = "../renzora_editor" }
+renzora_ui = { path = "../renzora_ui" }
 log = "0.4"

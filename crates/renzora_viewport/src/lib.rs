@@ -422,7 +422,7 @@ impl EditorPanel for ViewportPanel {
         // Overlay: modal transform HUD (scale circle, mode text, axis info)
         render_modal_transform_hud(ui.ctx(), world, rect);
 
-        // Overlay: vertical tool bar (gizmo modes, terrain tools, play button)
+        // Overlay: horizontal tool bar under the header (gizmo modes, terrain tools)
         toolbar::render_tool_overlay(ui.ctx(), world, rect);
 
         // Overlay: on-screen console logs during play mode

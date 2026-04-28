@@ -100,6 +100,7 @@ pub fn execute(world: &mut World, context: UndoContext, mut cmd: Box<dyn UndoCom
 /// has already happened via code that can't easily be expressed as a single
 /// command (e.g. complex reparent with sibling index preservation).
 pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>) {
+    let is_scene = matches!(context, UndoContext::Scene);
     world.resource_scope(|_w, mut stacks: Mut<UndoStacks>| {
         let stack = stacks.stacks.entry(context).or_default();
         if let Some(back) = stack.undo.back_mut() {
@@ -112,6 +113,22 @@ pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>
         stack.redo.clear();
         while stack.undo.len() > MAX_DEPTH { stack.undo.pop_front(); }
     });
+    if is_scene {
+        mark_active_scene_tab_modified(world);
+    }
+}
+
+/// Flip the active document tab's `is_modified` flag so the Save button
+/// enables. The save handlers in `renzora_scene` clear it back to false.
+fn mark_active_scene_tab_modified(world: &mut World) {
+    if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
+        let active = tabs.active_tab;
+        if let Some(tab) = tabs.tabs.get_mut(active) {
+            if !tab.is_modified {
+                tab.is_modified = true;
+            }
+        }
+    }
 }
 
 // ── Messages ───────────────────────────────────────────────────────────────
@@ -200,6 +217,9 @@ pub fn undo_once(world: &mut World) {
     if let Some(s) = world.resource_mut::<UndoStacks>().stacks.get_mut(&active) {
         s.redo.push_back(cmd);
     }
+    if matches!(active, UndoContext::Scene) {
+        mark_active_scene_tab_modified(world);
+    }
 }
 
 /// Redo the most recently undone action on the active stack.
@@ -211,6 +231,9 @@ pub fn redo_once(world: &mut World) {
     cmd.execute(world);
     if let Some(s) = world.resource_mut::<UndoStacks>().stacks.get_mut(&active) {
         s.undo.push_back(cmd);
+    }
+    if matches!(active, UndoContext::Scene) {
+        mark_active_scene_tab_modified(world);
     }
 }
 

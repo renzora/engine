@@ -4,7 +4,8 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use egui_phosphor::regular::*;
 use renzora_editor::{
-    ActiveTool, EditorCommands, ToolOptionsRegistry, ViewportModeOptionsRegistry,
+    ActiveTool, EditorCommands, ToolEntry, ToolOptionsRegistry, ToolSection,
+    ToolbarRegistry, ViewportModeOptionsRegistry,
 };
 use renzora_theme::ThemeManager;
 
@@ -88,26 +89,25 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
     // the centered strip so the centering math can keep clear of it.
     let dropdowns_w = render_right_dropdowns(ui, settings, cmds, theme, inner);
 
-    // Render once per frame at a centered rect of the last measured width.
-    // Two-pass rendering was doubling popups (sizing pass still spawned Areas).
+    // The mode dropdown / tool options / inline snapping / cam-speed strip
+    // (formerly centered) now docks to the right next to the dropdowns. We
+    // cache its measured width across frames and place it just left of the
+    // right dropdowns so it stays anchored to the right edge.
     let width_id = ui.id().with("viewport_header_width");
-    let cached_w: f32 = ui.memory(|m| m.data.get_temp(width_id)).unwrap_or(600.0);
-    // Shrink the available-for-centering width so the centered strip never
-    // overlaps the left actions or the right dropdowns.
-    let centering_min_x = inner.min.x + actions_w + 8.0;
-    let centering_max_x = inner.max.x - dropdowns_w - 8.0;
-    let available_for_center = (centering_max_x - centering_min_x).max(0.0);
-    let content_w = cached_w.min(available_for_center);
-    let centering_center_x = (centering_min_x + centering_max_x) / 2.0;
-    let content_x = centering_center_x - content_w / 2.0;
-    let centered_rect = Rect::from_min_size(
+    let cached_w: f32 = ui.memory(|m| m.data.get_temp(width_id)).unwrap_or(400.0);
+    let leftmost_allowed_x = inner.min.x + actions_w + 8.0;
+    let strip_max_x = inner.max.x - dropdowns_w - 8.0;
+    let available_for_strip = (strip_max_x - leftmost_allowed_x).max(0.0);
+    let content_w = cached_w.min(available_for_strip);
+    let content_x = (strip_max_x - content_w).max(leftmost_allowed_x);
+    let strip_rect = Rect::from_min_size(
         egui::Pos2::new(content_x, inner.min.y),
         Vec2::new(content_w, inner.height()),
     );
 
     let mut strip = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(centered_rect)
+            .max_rect(strip_rect)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     strip.set_height(BTN_H);
@@ -394,7 +394,8 @@ fn render_left_actions(
 
     x += gap_group - gap_small;
 
-    // Play (or Stop when in full play mode)
+    // Play (or Stop when in full play mode). Title bar mirrors these — the
+    // viewport copies stay so the gizmo workflow has the controls inline.
     let play_clickable = is_playing || (is_editing && has_scene_camera);
     let (play_icon, play_icon_color, play_tip) = if is_playing {
         (STOP, stop_color, "Stop")
@@ -441,7 +442,127 @@ fn render_left_actions(
         });
     }
 
+    // Toolbar tool buttons (Select/Translate/Rotate/Scale + terrain + custom)
+    // sit on the left immediately after the action buttons.
+    let render_toolbar = !is_playing && !is_scripts;
+    if render_toolbar {
+        x = render_left_tools(ui, world, cmds, theme, x, y, hovered_bg);
+    }
+
     (x - inner.min.x).max(0.0)
+}
+
+/// Paint the registry's tool sections (Transform / Terrain / custom) into
+/// the header bar starting at `start_x`, with thin separators between
+/// sections. Returns the new x cursor.
+fn render_left_tools(
+    ui: &mut egui::Ui,
+    world: &World,
+    cmds: &EditorCommands,
+    theme: &renzora_theme::Theme,
+    start_x: f32,
+    y: f32,
+    hovered_bg: Color32,
+) -> f32 {
+    let registry = match world.get_resource::<ToolbarRegistry>() {
+        Some(r) => r,
+        None => return start_x,
+    };
+    let transform_tools = registry.visible_in_section(world, &ToolSection::Transform);
+    let terrain_tools = registry.visible_in_section(world, &ToolSection::Terrain);
+    let custom_sections: Vec<(&'static str, Vec<ToolEntry>)> = registry
+        .custom_sections()
+        .into_iter()
+        .map(|id| (id, registry.visible_in_section(world, &ToolSection::Custom(id))))
+        .filter(|(_, tools)| !tools.is_empty())
+        .collect();
+
+    if transform_tools.is_empty() && terrain_tools.is_empty() && custom_sections.is_empty() {
+        return start_x;
+    }
+
+    let active_color = theme.semantic.accent.to_color32();
+    let muted = theme.text.muted.to_color32();
+
+    let btn_size = Vec2::new(26.0, BTN_H);
+    let gap = 1.0;
+    let group_gap = 8.0;
+
+    // Vertical separator drawn between sections.
+    let separator = |ui: &mut egui::Ui, x: &mut f32| {
+        let sep_color = Color32::from_rgba_unmultiplied(
+            muted.r(), muted.g(), muted.b(), 70,
+        );
+        let y0 = y + 3.0;
+        let y1 = y + BTN_H - 3.0;
+        ui.painter().line_segment(
+            [Pos2::new(*x + 4.0, y0), Pos2::new(*x + 4.0, y1)],
+            egui::Stroke::new(1.0, sep_color),
+        );
+        *x += group_gap + 1.0;
+    };
+
+    let mut x = start_x + group_gap - 2.0;
+    // Initial separator between left actions and the toolbar so the
+    // boundary is clear.
+    let sep_color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 70);
+    ui.painter().line_segment(
+        [Pos2::new(x - 4.0, y + 3.0), Pos2::new(x - 4.0, y + BTN_H - 3.0)],
+        egui::Stroke::new(1.0, sep_color),
+    );
+
+    let mut paint_section = |ui: &mut egui::Ui, x: &mut f32, tools: &[ToolEntry], id_prefix: &str| {
+        for (i, entry) in tools.iter().enumerate() {
+            let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);
+            let is_active = (entry.is_active)(world);
+            let resp = ui.interact(
+                rect,
+                ui.id().with(id_prefix).with(i).with(entry.icon),
+                Sense::click(),
+            );
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if ui.is_rect_visible(rect) {
+                if is_active {
+                    ui.painter().rect_filled(rect, CornerRadius::same(3), active_color);
+                } else if resp.hovered() {
+                    ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_bg);
+                }
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    entry.icon,
+                    FontId::proportional(15.0),
+                    Color32::WHITE,
+                );
+            }
+            resp.clone().on_hover_text(entry.tooltip);
+            if resp.clicked() {
+                let activate = entry.activate.clone();
+                cmds.push(move |w: &mut World| { (activate)(w); });
+            }
+            *x += btn_size.x + gap;
+        }
+    };
+
+    let mut first = true;
+    if !transform_tools.is_empty() {
+        first = false;
+        paint_section(ui, &mut x, &transform_tools, "vp_hdr_tool_t");
+    }
+    if !terrain_tools.is_empty() {
+        if !first { separator(ui, &mut x); }
+        first = false;
+        paint_section(ui, &mut x, &terrain_tools, "vp_hdr_tool_te");
+    }
+    for (id, tools) in &custom_sections {
+        if !first { separator(ui, &mut x); }
+        first = false;
+        paint_section(ui, &mut x, tools, id);
+    }
+
+    x
 }
 
 /// Right-aligned dropdown strip (Display / Snap / Camera). Returns the total
