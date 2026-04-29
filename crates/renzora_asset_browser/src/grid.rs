@@ -8,7 +8,9 @@ use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileStat
 use renzora_theme::Theme;
 
 use crate::state::{file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection, SortMode};
-use crate::thumbnails::{supports_material_thumbnail, supports_thumbnail};
+use crate::thumbnails::{
+    supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail,
+};
 
 /// Entry in the file grid (folder or file).
 pub(crate) struct GridEntry {
@@ -27,6 +29,8 @@ pub struct GridResult {
     pub thumbnail_requests: Vec<PathBuf>,
     /// `.material` files that need a sphere preview rendered.
     pub material_thumbnail_requests: Vec<PathBuf>,
+    /// `.glb`/`.gltf` files that need an offscreen GLB capture rendered.
+    pub model_thumbnail_requests: Vec<PathBuf>,
 }
 
 /// Lookup for available thumbnails, passed in from the panel.
@@ -143,6 +147,7 @@ pub fn grid_ui_interactive(
                 double_clicked_file: None,
                 thumbnail_requests: Vec::new(),
                 material_thumbnail_requests: Vec::new(),
+                model_thumbnail_requests: Vec::new(),
             };
         }
     };
@@ -159,6 +164,7 @@ pub fn grid_ui_interactive(
             double_clicked_file: None,
             thumbnail_requests: Vec::new(),
             material_thumbnail_requests: Vec::new(),
+            model_thumbnail_requests: Vec::new(),
         };
     }
 
@@ -217,6 +223,7 @@ pub fn grid_ui_interactive(
     let mut drag_started_index: Option<usize> = None;
     let mut thumbnail_requests: Vec<PathBuf> = Vec::new();
     let mut material_thumbnail_requests: Vec<PathBuf> = Vec::new();
+    let mut model_thumbnail_requests: Vec<PathBuf> = Vec::new();
     let mut right_clicked = false;
     let mut pending_rename_rect: Option<egui::Rect> = None;
     let mut pending_rename_font: f32 = 11.0;
@@ -305,9 +312,17 @@ pub fn grid_ui_interactive(
                     pending_rename_font = tile.font_size;
                 }
 
-                // Try to render an image thumbnail for supported file types
+                // Try to render an image thumbnail for supported file types.
+                // Dispatch order: textures (image cache), materials (sphere
+                // capture), models (GLB capture). Each kind has its own
+                // registry/cache, but the rendered result lands in the same
+                // `thumbnails: ThumbnailLookup` map so display is uniform.
                 let mut drew_thumbnail = false;
-                if !entry.is_dir && (supports_thumbnail(&entry.name) || supports_material_thumbnail(&entry.name)) {
+                let supports_any_thumb = !entry.is_dir
+                    && (supports_thumbnail(&entry.name)
+                        || supports_material_thumbnail(&entry.name)
+                        || supports_model_thumbnail(&entry.name));
+                if supports_any_thumb {
                     if let Some(tex_id) = thumbnails.get(&entry.path) {
                         let uv = egui::Rect::from_min_max(
                             egui::pos2(0.0, 0.0),
@@ -322,6 +337,8 @@ pub fn grid_ui_interactive(
                         drew_thumbnail = true;
                     } else if supports_material_thumbnail(&entry.name) {
                         material_thumbnail_requests.push(entry.path.clone());
+                    } else if supports_model_thumbnail(&entry.name) {
+                        model_thumbnail_requests.push(entry.path.clone());
                     } else {
                         thumbnail_requests.push(entry.path.clone());
                     }
@@ -595,6 +612,7 @@ pub fn grid_ui_interactive(
         double_clicked_file,
         thumbnail_requests,
         material_thumbnail_requests,
+        model_thumbnail_requests,
     }
 }
 

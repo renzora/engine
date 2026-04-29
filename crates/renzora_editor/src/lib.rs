@@ -10,6 +10,7 @@ pub mod sdk;
 pub mod ext;
 pub mod inspector_registry;
 pub mod material_thumbnail_registry;
+pub mod model_thumbnail_registry;
 pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
@@ -30,6 +31,7 @@ pub use material_thumbnail_registry::{
     material_thumb_path, migrate_legacy_thumbnail_cache, thumbnail_cache_dir,
     MaterialThumbnailRegistry,
 };
+pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
 pub use ext::{AppEditorExt, InspectableComponent};
 pub use renzora_macros::{Inspectable, post_process};
 pub use selection::EditorSelection;
@@ -378,7 +380,8 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ViewportModeOptionsRegistry>()
             .init_resource::<ShortcutRegistry>()
             .init_resource::<EditorActionHooks>()
-            .init_resource::<MaterialThumbnailRegistry>();
+            .init_resource::<MaterialThumbnailRegistry>()
+            .init_resource::<ModelThumbnailRegistry>();
 
         register_builtin_tools(
             &mut app.world_mut().resource_mut::<ToolbarRegistry>(),

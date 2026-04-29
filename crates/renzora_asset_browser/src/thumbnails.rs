@@ -393,6 +393,15 @@ pub fn supports_material_thumbnail(filename: &str) -> bool {
     ext == "material"
 }
 
+/// Returns `true` if the file has a rendered thumbnail available through
+/// the model thumbnail registry. GLBs and GLTFs are the supported model
+/// formats — others (FBX, OBJ, USD) fall through to the generic icon
+/// because Bevy doesn't load them.
+pub fn supports_model_thumbnail(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "glb" | "gltf")
+}
+
 /// Try to register the image with egui. If the format is incompatible, convert
 /// it to Rgba8UnormSrgb first. Returns the egui TextureId on success.
 fn register_thumbnail(

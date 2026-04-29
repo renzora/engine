@@ -44,6 +44,12 @@ enum ImportMsg {
     /// UI-side poller triggers it on `&mut World` so observers in other
     /// crates can write the `.material` file without us depending on them.
     MaterialExtracted(renzora::core::PbrMaterialExtracted),
+    /// Absolute path of a `.glb` that was just successfully written into
+    /// the project. The poller forwards these to
+    /// [`ModelThumbnailRegistry::request`] so the offscreen capture
+    /// kicks off immediately — by the time the user closes the overlay
+    /// and opens the asset browser, the PNG is already on disk.
+    Imported(std::path::PathBuf),
     Done(String),
     Error(String),
 }
@@ -125,6 +131,7 @@ pub(crate) fn poll_import_task(world: &mut World) {
     // held), so we split them out and deliver after releasing the state
     // borrow.
     let mut material_events: Vec<renzora::core::PbrMaterialExtracted> = Vec::new();
+    let mut imported_models: Vec<std::path::PathBuf> = Vec::new();
     {
         let mut state = world.resource_mut::<ImportOverlayState>();
         for msg in progress_updates {
@@ -146,6 +153,9 @@ pub(crate) fn poll_import_task(world: &mut World) {
                 ImportMsg::MaterialExtracted(ev) => {
                     material_events.push(ev);
                 }
+                ImportMsg::Imported(path) => {
+                    imported_models.push(path);
+                }
                 ImportMsg::Done(msg) => {
                     state.progress = ImportProgress::Done(msg);
                     state.pending_files.clear();
@@ -163,6 +173,20 @@ pub(crate) fn poll_import_task(world: &mut World) {
 
     for ev in material_events {
         world.trigger(ev);
+    }
+
+    // Hand each freshly-imported `.glb` to the model thumbnail registry
+    // so its offscreen capture pipeline starts immediately. By the time
+    // the user closes the import overlay and opens the asset browser,
+    // the cached PNG is already on disk.
+    if !imported_models.is_empty() {
+        if let Some(mut registry) =
+            world.get_resource_mut::<renzora_editor::ModelThumbnailRegistry>()
+        {
+            for path in imported_models {
+                registry.request(path);
+            }
+        }
     }
 }
 
@@ -953,6 +977,11 @@ fn import_worker(
                             success: true,
                             message: msg,
                         }));
+                        // Kick off the thumbnail capture as soon as the
+                        // GLB is on disk. The model isn't yet in the
+                        // asset browser — the registry will load + spawn
+                        // it offscreen, capture, and write the PNG cache.
+                        let _ = tx.send(ImportMsg::Imported(output_path.clone()));
 
                         // --- Phase: extracting animations ---
                         if !settings.extract_animations {

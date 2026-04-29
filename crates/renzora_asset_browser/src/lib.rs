@@ -2,6 +2,7 @@
 
 mod grid;
 mod list;
+pub mod model_thumbnails;
 mod state;
 pub mod thumbnails;
 mod toolbar;
@@ -12,7 +13,10 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Sense, Stroke, Vec2};
 use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, PanelLocation};
+use renzora_editor::{
+    AppEditorExt, EditorCommands, EditorPanel, MaterialThumbnailRegistry, ModelThumbnailRegistry,
+    PanelLocation,
+};
 use renzora_theme::ThemeManager;
 
 use state::{AssetBrowserState, ViewMode};
@@ -181,6 +185,11 @@ impl EditorPanel for AssetBrowserPanel {
                 let cache = world.get_resource::<thumbnails::ThumbnailCache>();
                 let mut ids = cache.map(|c| c.texture_id_map()).unwrap_or_default();
                 if let Some(registry) = world.get_resource::<MaterialThumbnailRegistry>() {
+                    for (path, tid) in registry.entries() {
+                        ids.insert(path.clone(), *tid);
+                    }
+                }
+                if let Some(registry) = world.get_resource::<ModelThumbnailRegistry>() {
                     for (path, tid) in registry.entries() {
                         ids.insert(path.clone(), *tid);
                     }
@@ -707,6 +716,19 @@ impl EditorPanel for AssetBrowserPanel {
                 });
             }
         }
+        // Submit .glb/.gltf thumbnail requests to the model renderer registry
+        if !grid_result.model_thumbnail_requests.is_empty() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                let requests = grid_result.model_thumbnail_requests;
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    if let Some(mut registry) = world.get_resource_mut::<ModelThumbnailRegistry>() {
+                        for path in requests {
+                            registry.request(path);
+                        }
+                    }
+                });
+            }
+        }
         // Either pane can produce a drag payload; the tree wins if both fire
         // in the same frame, since tree-only mode is the only context where
         // the tree is the sole source of drags.
@@ -1081,6 +1103,7 @@ impl Plugin for AssetBrowserPlugin {
         info!("[editor] AssetBrowserPlugin");
         app.init_resource::<thumbnails::ThumbnailCache>()
             .add_systems(Update, thumbnails::update_thumbnail_cache)
+            .add_plugins(model_thumbnails::ModelThumbnailPlugin)
             .register_panel(AssetBrowserPanel::default());
     }
 }
