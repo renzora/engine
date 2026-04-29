@@ -8515,6 +8515,7 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
  "egui-phosphor",
+ "image",
  "renzora",
  "renzora_editor",
  "renzora_theme",

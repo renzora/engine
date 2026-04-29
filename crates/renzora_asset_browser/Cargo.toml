@@ -11,3 +11,8 @@ renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# `image` powers the persistent thumbnail downscale + PNG encode below.
+# `bmp` and `tga` cover the source formats `ThumbnailCache` accepts that
+# aren't handled by the default `image` set; HDR is read via Bevy's
+# loader so it's already in-memory by the time we cache it.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }

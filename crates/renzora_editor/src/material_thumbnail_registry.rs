@@ -4,7 +4,7 @@
 //! [`MaterialThumbnailRegistry::request`]. The material thumbnail renderer
 //! (in `renzora_material_editor`) drains `incoming_requests`, captures a
 //! one-shot render of a sphere with the compiled material, writes a PNG to
-//! `<project>/.thumbs/materials/<rel>.png`, and publishes the resulting egui
+//! `<project>/.cache/thumbnails/materials/<rel>.png`, and publishes the resulting egui
 //! `TextureId` via [`MaterialThumbnailRegistry::complete`].
 //!
 //! Thumbnails persist across sessions: when a request hits and the PNG is
@@ -81,16 +81,67 @@ impl MaterialThumbnailRegistry {
     }
 }
 
+/// Root directory for persistent thumbnail caches inside a project.
+///
+/// `<project>/.cache/thumbnails/<kind>/...`. Each asset kind (materials,
+/// textures, models, …) gets its own subdirectory so a thumbnail's path
+/// is recoverable from `(kind, asset-relative path)` alone.
+///
+/// Sits under `.cache/` rather than the legacy `.thumbs/` so future
+/// editor caches (compiled shaders, asset import state, etc.) can share
+/// the same gitignored umbrella without colliding with thumbnails.
+pub fn thumbnail_cache_dir(project: &CurrentProject, kind: &str) -> PathBuf {
+    project.path.join(".cache").join("thumbnails").join(kind)
+}
+
+/// Best-effort migration from the legacy `<project>/.thumbs/` directory
+/// to `<project>/.cache/thumbnails/`. Skipped if the new directory
+/// already exists or the legacy one is absent.
+///
+/// On rename failure (e.g. cross-volume on platforms where rename is
+/// volume-local), leaves both alone — regeneration under the new path
+/// kicks in and the user can clean up the legacy directory manually.
+pub fn migrate_legacy_thumbnail_cache(project: &CurrentProject) {
+    let legacy = project.path.join(".thumbs");
+    let new_root = project.path.join(".cache").join("thumbnails");
+    if !legacy.exists() || new_root.exists() {
+        return;
+    }
+    if let Some(parent) = new_root.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            bevy::log::warn!(
+                "[thumbnails] couldn't create {} for migration: {}",
+                parent.display(),
+                e
+            );
+            return;
+        }
+    }
+    match std::fs::rename(&legacy, &new_root) {
+        Ok(_) => bevy::log::info!(
+            "[thumbnails] migrated {} → {}",
+            legacy.display(),
+            new_root.display()
+        ),
+        Err(e) => bevy::log::warn!(
+            "[thumbnails] couldn't migrate {} → {} ({}); will regenerate",
+            legacy.display(),
+            new_root.display(),
+            e
+        ),
+    }
+}
+
 /// Path on disk where the cached PNG thumbnail for a `.material` file lives.
 ///
-/// Example: `<project>/assets/shaders/rock.material` → `<project>/.thumbs/materials/shaders/rock.png`.
+/// Example: `<project>/assets/shaders/rock.material` → `<project>/.cache/thumbnails/materials/shaders/rock.png`.
 /// If the material path isn't under the project, falls back to a flattened name.
 pub fn material_thumb_path(material_abs: &Path, project: &CurrentProject) -> PathBuf {
     let rel = project
         .make_relative(material_abs)
         .unwrap_or_else(|| material_abs.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
     let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
-    let mut out = project.path.join(".thumbs").join("materials").join(rel);
+    let mut out = thumbnail_cache_dir(project, "materials").join(rel);
     out.set_extension("png");
     out
 }

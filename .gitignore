@@ -45,3 +45,9 @@ Dockerfile.test
 
 # Editor cache
 .renzora/thumbnails/
+# Per-project caches (thumbnails, asset import state, etc.) generated
+# by the editor inside any project directory the user opens. The legacy
+# `.thumbs/` location is kept here too so old projects don't pollute
+# diffs while migration runs.
+.cache/
+.thumbs/

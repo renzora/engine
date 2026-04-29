@@ -392,7 +392,10 @@ fn draw_settings_overlay(world: &mut World, ctx: &egui::Context) {
 
     if clear_thumbnail_cache {
         if let Some(ref path) = project_path {
-            let thumbs_dir = path.join(".thumbs").join("materials");
+            let thumbs_dir = path
+                .join(".cache")
+                .join("thumbnails")
+                .join("materials");
             match std::fs::remove_dir_all(&thumbs_dir) {
                 Ok(_) => info!("[settings] Cleared material thumbnail cache at {}", thumbs_dir.display()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -658,7 +661,9 @@ fn render_project_tab(
 
     render_category(ui, TRASH, "Cache", CategoryStyle::interface(), "settings_cache", true, theme, |ui| {
         // Show the disk size so the user knows what they're clearing.
-        let thumbs_dir = project_path.map(|p| p.join(".thumbs").join("materials"));
+        let thumbs_dir = project_path.map(|p| {
+            p.join(".cache").join("thumbnails").join("materials")
+        });
         let cache_info = thumbs_dir
             .as_deref()
             .map(cache_stats)

@@ -28,7 +28,9 @@ use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::{material_thumb_path, MaterialThumbnailRegistry};
+use renzora_editor::{
+    material_thumb_path, migrate_legacy_thumbnail_cache, MaterialThumbnailRegistry,
+};
 use renzora_shader::material::codegen::{self, CompileResult, TextureKind};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::runtime::{new_graph_material, FallbackTexture, GraphMaterial};
@@ -627,8 +629,12 @@ fn scan_project_materials(project_root: &std::path::Path) -> Vec<PathBuf> {
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.is_dir() {
-                // Skip our own cache folder so we don't recurse into it.
-                if path.file_name().and_then(|n| n.to_str()) == Some(".thumbs") {
+                // Skip cache folders so we don't recurse into them. `.cache/`
+                // is the current home for thumbnails and other generated
+                // artifacts; `.thumbs/` is the legacy materials-only path
+                // we still skip in case a project hasn't been migrated yet.
+                let name = path.file_name().and_then(|n| n.to_str());
+                if name == Some(".cache") || name == Some(".thumbs") {
                     continue;
                 }
                 stack.push(path);
@@ -658,6 +664,14 @@ fn queue_loading_thumbnails(
     // "Material thumbnails" task stuck at 0/N. The on-disk PNG cache
     // survives this — first request will reload from there.
     registry.reset();
+
+    // Best-effort move from the legacy `.thumbs/` directory to
+    // `.cache/thumbnails/`. Runs before any thumbnail request so cache
+    // hits below find their PNGs at the new path. Skipped if either
+    // the legacy path is absent or the new path already exists.
+    if let Some(p) = project.as_deref() {
+        migrate_legacy_thumbnail_cache(p);
+    }
 
     let Some(project) = project else {
         // No project → nothing to do; still register a no-op task so the
