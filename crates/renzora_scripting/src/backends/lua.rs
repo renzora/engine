@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use mlua::prelude::*;
 
@@ -18,6 +18,23 @@ struct CachedScript {
     name: String,
     last_modified: std::time::SystemTime,
     props: Vec<ScriptVariableDefinition>,
+    /// Bumped each time the source is reloaded so persistent VMs know to
+    /// drop their cached compilation.
+    version: u64,
+}
+
+/// Persistent Lua VM associated with one (entity, script_path) pair.
+///
+/// Creating a `Lua` state and registering the API costs ~hundreds of
+/// `create_function` calls; doing it per script per entity per frame is
+/// what makes scripted scenes drop FPS at hundreds of entities. This
+/// struct lets us pay that cost once per entity-script lifetime instead.
+struct LuaInstance {
+    lua: Lua,
+    /// Version of the cached source that was last `exec`'d into this VM.
+    /// On mismatch we drop and rebuild — same observable behaviour as a
+    /// hot reload.
+    source_version: u64,
 }
 
 use super::{push_command, drain_commands};
@@ -25,6 +42,12 @@ use super::{push_command, drain_commands};
 pub struct LuaBackend {
     scripts_folder: Option<PathBuf>,
     cache: Arc<RwLock<HashMap<PathBuf, CachedScript>>>,
+    /// Per-(entity, script_path) Lua VMs reused across frames.
+    /// `mlua::Lua` is `Send` (with the `send` feature) but `!Sync`, so the
+    /// outer `Mutex` is what lets `LuaBackend` be a Bevy `Resource`. In
+    /// practice `run_scripts` is an exclusive system so the lock is never
+    /// contended.
+    instances: Arc<Mutex<HashMap<(u64, PathBuf), LuaInstance>>>,
     file_reader: Option<FileReader>,
 }
 
@@ -33,6 +56,7 @@ impl LuaBackend {
         Self {
             scripts_folder: None,
             cache: Arc::new(RwLock::new(HashMap::new())),
+            instances: Arc::new(Mutex::new(HashMap::new())),
             file_reader: None,
         }
     }
@@ -41,6 +65,23 @@ impl LuaBackend {
         let lua = Lua::new();
         register_api(&lua);
         lua
+    }
+
+    /// Drop every cached VM whose script path matches `path`. Called when
+    /// a script is reloaded so the next call rebuilds against fresh source.
+    fn evict_path(&self, path: &Path) {
+        if let Ok(mut instances) = self.instances.lock() {
+            instances.retain(|(_, p), _| p.as_path() != path);
+        }
+    }
+
+    /// Drop every cached VM owned by an entity that no longer exists.
+    /// Public so a Bevy system listening on `RemovedComponents<ScriptComponent>`
+    /// can call it; without this the map slowly grows as entities churn.
+    pub fn evict_entity(&self, entity_id: u64) {
+        if let Ok(mut instances) = self.instances.lock() {
+            instances.retain(|(eid, _), _| *eid != entity_id);
+        }
     }
 
     fn load_script(&self, path: &Path) -> Result<(), String> {
@@ -87,14 +128,20 @@ impl LuaBackend {
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
 
         if let Ok(mut cache) = self.cache.write() {
+            let prev_version = cache.get(path).map(|c| c.version).unwrap_or(0);
             cache.insert(path.to_path_buf(), CachedScript {
                 source,
                 path: path.to_path_buf(),
                 name,
                 last_modified,
                 props,
+                version: prev_version.wrapping_add(1),
             });
         }
+
+        // Source changed, so any persistent VM running the old chunk is
+        // stale. Drop them so the next call rebuilds against fresh source.
+        self.evict_path(path);
 
         Ok(())
     }
@@ -164,36 +211,51 @@ impl LuaBackend {
     ) -> Result<Vec<ScriptCommand>, String> {
         self.load_script(path)?;
 
-        let source = {
+        let (source, version) = {
             let cache = self.cache.read().map_err(|e| e.to_string())?;
             let cached = cache.get(path)
                 .ok_or_else(|| format!("Script not in cache: {}", path.display()))?;
-            cached.source.clone()
+            (cached.source.clone(), cached.version)
         };
 
-        let lua = self.create_lua();
+        let entity_id = ctx.self_entity_id;
+        let key = (entity_id, path.to_path_buf());
 
-        // Register extension functions (once per state creation)
-        if let Some(extensions) = ctx.extensions() {
-            extensions.register_lua_functions(&lua);
+        let mut instances = self.instances.lock().map_err(|e| e.to_string())?;
+
+        // (Re)build the VM if missing or stale. Otherwise reuse — this is
+        // the whole point of the cache: skip Lua::new + register_api +
+        // source compilation on every frame.
+        let needs_init = match instances.get(&key) {
+            None => true,
+            Some(inst) => inst.source_version != version,
+        };
+        if needs_init {
+            let lua = Lua::new();
+            register_api(&lua);
+            if let Some(extensions) = ctx.extensions() {
+                extensions.register_lua_functions(&lua);
+            }
+            lua.load(&source).exec()
+                .map_err(|e| format!("Lua error: {}", e))?;
+            instances.insert(key.clone(), LuaInstance { lua, source_version: version });
         }
 
-        // Set up globals
-        set_context_globals(&lua, ctx, vars);
+        let instance = instances.get(&key)
+            .ok_or_else(|| "Lua instance vanished".to_string())?;
+        let lua = &instance.lua;
 
-        // Set up extension context (per-frame data)
+        // Per-frame: refresh extension context + globals before each call.
+        // These tables/values are overwritten in place, so the cost scales
+        // with context size, not with API surface.
         if let Some(extensions) = ctx.extensions() {
-            extensions.setup_lua_context(&lua, &ctx.extension_data);
+            extensions.setup_lua_context(lua, &ctx.extension_data);
         }
+        set_context_globals(lua, ctx, vars);
 
-        // Drain stale commands
+        // Drain stale commands so this hook only sees its own output.
         drain_commands();
 
-        // Load and execute the script to define functions
-        lua.load(&source).exec()
-            .map_err(|e| format!("Lua error: {}", e))?;
-
-        // Call the hook function
         let globals = lua.globals();
         let func: Result<LuaFunction, _> = globals.get(hook);
         if let Ok(func) = func {
@@ -204,8 +266,7 @@ impl LuaBackend {
                 })?;
         }
 
-        // Read back variables
-        read_back_variables(&lua, vars);
+        read_back_variables(lua, vars);
 
         Ok(drain_commands())
     }
@@ -282,6 +343,9 @@ impl ScriptBackend for LuaBackend {
         if let Ok(mut cache) = self.cache.write() {
             cache.remove(path);
         }
+        // Drop any persistent VMs running the old source, otherwise their
+        // cached `on_update` would keep firing the previous chunk.
+        self.evict_path(path);
         self.load_script(path)
     }
 
@@ -544,8 +608,50 @@ fn register_api(lua: &Lua) {
         push_command(ScriptCommand::SpawnEntity { name });
         Ok(())
     }).unwrap());
+    // spawn_primitive(name, kind, x, y, z, [r, g, b])
+    //   kind: "cube" | "sphere" | "wall" | … (any id in ShapeRegistry)
+    //   r/g/b: optional, default to the shape's registered tint.
+    //
+    // Useful for procedural-generation scripts (voxel maps, particle
+    // emitters, etc.) — the spawned entity gets a `MeshPrimitive`
+    // component which the engine's rehydration system picks up next
+    // frame and turns into a real `Mesh3d` + `MeshMaterial3d`.
+    //
+    // Typed tuple args go through mlua's `FromLua` impl for `f32`,
+    // which coerces both Lua integer and float into f32. The earlier
+    // `LuaValue::as_f32()` path silently dropped integers (Lua's
+    // numeric for-loops yield integers) and every cube landed at the
+    // origin.
+    let _ = globals.set("spawn_primitive", lua.create_function(
+        |_, (name, kind, x, y, z, r, g, b): (
+            String, String, f32, f32, f32,
+            Option<f32>, Option<f32>, Option<f32>,
+        )| {
+            let color = match (r, g, b) {
+                (Some(r), Some(g), Some(b)) => Some([r, g, b, 1.0]),
+                _ => None,
+            };
+            push_command(ScriptCommand::SpawnPrimitive {
+                name,
+                primitive_type: kind,
+                position: Some(bevy::math::Vec3::new(x, y, z)),
+                scale: None,
+                color,
+            });
+            Ok(())
+        },
+    ).unwrap());
     let _ = globals.set("despawn_self", lua.create_function(|_, ()| {
         push_command(ScriptCommand::DespawnSelf);
+        Ok(())
+    }).unwrap());
+    // despawn_by_prefix("chunk_3_5_") — evicts every entity whose
+    // Name starts with the prefix. Used by streaming-world scripts
+    // that name spawned entities by chunk coordinate so the script
+    // can release a chunk in a single call instead of looping over
+    // every cube it spawned.
+    let _ = globals.set("despawn_by_prefix", lua.create_function(|_, prefix: String| {
+        push_command(ScriptCommand::DespawnByPrefix { prefix });
         Ok(())
     }).unwrap());
 
