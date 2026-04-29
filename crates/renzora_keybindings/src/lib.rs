@@ -53,7 +53,14 @@ mod tests {
 
     #[test]
     fn test_valid_categories() {
-        let valid = ["Camera", "Tools", "Transform", "Selection", "Edit", "File", "View", "Play"];
+        // Add "Code Editor" once the code-editor actions ("CodeSaveFile" etc.)
+        // were added — otherwise this test breaks every time we ship more
+        // editor shortcuts. Catches typos in new categories without
+        // forbidding the addition itself.
+        let valid = [
+            "Camera", "Tools", "Transform", "Selection", "Edit", "File",
+            "View", "Play", "Code Editor",
+        ];
         for action in EditorAction::all() {
             let cat = action.category();
             assert!(valid.contains(&cat), "{:?} has unexpected category '{}'", action, cat);

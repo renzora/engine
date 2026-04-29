@@ -1045,7 +1045,7 @@ pub enum PinDir {
 }
 
 /// Concrete values stored on pins (inline constants, defaults).
-#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect, PartialEq)]
 pub enum PinValue {
     None,
     Float(f32),
@@ -1243,5 +1243,213 @@ impl BlueprintNode {
 
     pub fn get_input_value(&self, pin_name: &str) -> Option<&PinValue> {
         self.input_values.get(pin_name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── ProjectConfig TOML round-trip ──────────────────────────────────────
+
+    #[test]
+    fn project_config_default_round_trips_through_toml() {
+        // The defaults are what greets a freshly-created project; they have
+        // to survive a save/load cycle byte-for-byte (modulo serializer
+        // formatting), otherwise a save without edits would silently mutate
+        // the project file.
+        let original = ProjectConfig::default();
+        let serialized = toml::to_string_pretty(&original).expect("serialize");
+        let parsed: ProjectConfig = toml::from_str(&serialized).expect("parse");
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn project_config_round_trips_with_editor_section() {
+        let original = ProjectConfig {
+            name: "Demo".into(),
+            version: "0.2.1".into(),
+            main_scene: "scenes/intro.ron".into(),
+            editor_last_scene: Some("scenes/wip.ron".into()),
+            icon: Some("assets/icon.png".into()),
+            window: WindowConfig {
+                width: 1920,
+                height: 1080,
+                resizable: false,
+                fullscreen: true,
+            },
+            network: None,
+            editor: Some(crate::core::viewport_types::EditorPrefs::default()),
+        };
+        let s = toml::to_string_pretty(&original).expect("serialize");
+        let parsed: ProjectConfig = toml::from_str(&s).expect("parse");
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn project_config_skips_none_optional_fields_in_toml() {
+        // `editor_last_scene`, `icon`, `network`, `editor` use
+        // skip_serializing_if = "Option::is_none". A round-trip with all
+        // None should produce TOML that has no mention of those keys —
+        // catches a regression where the attribute disappears.
+        let cfg = ProjectConfig::default();
+        let serialized = toml::to_string_pretty(&cfg).expect("serialize");
+        assert!(!serialized.contains("editor_last_scene"));
+        assert!(!serialized.contains("icon"));
+        assert!(!serialized.contains("[network]"));
+        assert!(!serialized.contains("[editor]"));
+    }
+
+    #[test]
+    fn project_config_parses_minimal_toml() {
+        // Hand-rolled TOML that omits everything optional. Defaults must
+        // fill in the gaps without erroring.
+        let s = r#"
+            name = "MyProject"
+            version = "1.0.0"
+            main_scene = "scenes/main.ron"
+        "#;
+        let parsed: ProjectConfig = toml::from_str(s).expect("parse minimal");
+        assert_eq!(parsed.name, "MyProject");
+        assert_eq!(parsed.version, "1.0.0");
+        assert_eq!(parsed.main_scene, "scenes/main.ron");
+        assert_eq!(parsed.editor_last_scene, None);
+        assert_eq!(parsed.icon, None);
+        assert_eq!(parsed.network, None);
+        assert_eq!(parsed.editor, None);
+        // window has its own #[serde(default)] so it should default cleanly.
+        assert_eq!(parsed.window, WindowConfig::default());
+    }
+
+    // ── WindowConfig / NetworkProjectConfig defaults ──────────────────────
+
+    #[test]
+    fn window_config_default_is_720p_resizable() {
+        let w = WindowConfig::default();
+        assert_eq!(w.width, 1280);
+        assert_eq!(w.height, 720);
+        assert!(w.resizable);
+        assert!(!w.fullscreen);
+    }
+
+    #[test]
+    fn network_config_default_uses_loopback_udp() {
+        let n = NetworkProjectConfig::default();
+        assert_eq!(n.server_addr, "127.0.0.1");
+        assert_eq!(n.port, 7636);
+        assert_eq!(n.transport, "udp");
+        assert_eq!(n.tick_rate, 64);
+        assert_eq!(n.max_clients, 32);
+    }
+
+    #[test]
+    fn network_config_round_trips() {
+        let n = NetworkProjectConfig {
+            server_addr: "10.0.0.5".into(),
+            port: 9000,
+            transport: "websocket".into(),
+            tick_rate: 30,
+            max_clients: 8,
+        };
+        let s = toml::to_string_pretty(&n).expect("serialize");
+        let parsed: NetworkProjectConfig = toml::from_str(&s).expect("parse");
+        assert_eq!(n, parsed);
+    }
+
+    // ── EntityTag default ─────────────────────────────────────────────────
+
+    #[test]
+    fn entity_tag_default_is_empty_string() {
+        // The script lookup tables short-circuit on empty tags. If this
+        // ever changed to e.g. "Untagged", every empty-tag entity would
+        // suddenly start getting indexed.
+        let tag = EntityTag::default();
+        assert!(tag.tag.is_empty());
+    }
+
+    // ── AssetPathChanged::rewrite ─────────────────────────────────────────
+
+    #[test]
+    fn rewrite_file_rename_exact_match() {
+        let evt = AssetPathChanged {
+            old: "models/old.glb".into(),
+            new: "models/new.glb".into(),
+            is_dir: false,
+        };
+        assert_eq!(evt.rewrite("models/old.glb"), Some("models/new.glb".into()));
+        assert_eq!(evt.rewrite("models/other.glb"), None);
+    }
+
+    #[test]
+    fn rewrite_dir_rename_rewrites_descendants() {
+        // `is_dir: true` rewrites anything under the folder, with a `/`
+        // separator check so "modelsX" doesn't accidentally match "models".
+        let evt = AssetPathChanged {
+            old: "models".into(),
+            new: "geometry".into(),
+            is_dir: true,
+        };
+        assert_eq!(evt.rewrite("models/car.glb"), Some("geometry/car.glb".into()));
+        assert_eq!(evt.rewrite("models"), Some("geometry".into()));
+        // Different folder — must not rewrite.
+        assert_eq!(evt.rewrite("modelsX/foo.glb"), None);
+        // Unrelated path.
+        assert_eq!(evt.rewrite("textures/a.png"), None);
+    }
+
+    #[test]
+    fn rewrite_file_rename_does_not_match_dir_prefix() {
+        // File rename requires exact match — must not rewrite something
+        // that starts with the file's name as a string.
+        let evt = AssetPathChanged {
+            old: "models/old".into(),
+            new: "models/new".into(),
+            is_dir: false,
+        };
+        assert_eq!(evt.rewrite("models/old/inner.glb"), None);
+    }
+
+    // ── PbrAlphaMode default ──────────────────────────────────────────────
+
+    #[test]
+    fn pbr_alpha_mode_default_is_opaque() {
+        assert_eq!(PbrAlphaMode::default(), PbrAlphaMode::Opaque);
+    }
+
+    // ── CurrentProject path helpers ───────────────────────────────────────
+
+    fn make_project(root: &str) -> CurrentProject {
+        CurrentProject {
+            path: PathBuf::from(root),
+            config: ProjectConfig::default(),
+        }
+    }
+
+    #[test]
+    fn resolve_path_joins_relative() {
+        let proj = make_project("/projects/demo");
+        let resolved = proj.resolve_path("scenes/main.ron");
+        assert_eq!(resolved, PathBuf::from("/projects/demo").join("scenes/main.ron"));
+    }
+
+    #[test]
+    fn resolve_path_keeps_absolute_input() {
+        // Wait, looking at impl: `self.path.join(relative)` — Path::join
+        // treats absolute paths as the new full path, so on Unix
+        // /etc/passwd would replace the project root entirely. That's
+        // already the documented behaviour ("if absolute, ignore root").
+        let proj = make_project("/projects/demo");
+        let abs = if cfg!(windows) { "C:/etc/x" } else { "/etc/x" };
+        let resolved = proj.resolve_path(abs);
+        assert_eq!(resolved, PathBuf::from(abs));
+    }
+
+    #[test]
+    fn make_relative_handles_relative_input() {
+        let proj = make_project(".");
+        // A path that's already relative is returned with normalized
+        // forward slashes regardless of input separator.
+        let rel = std::path::Path::new("scenes/main.ron");
+        assert_eq!(proj.make_relative(rel), Some("scenes/main.ron".into()));
     }
 }

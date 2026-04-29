@@ -158,6 +158,117 @@ impl InputAction {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_constructor_round_trips() {
+        // The Debug format of `KeyCode::KeyA` is `"KeyA"`. If Bevy ever
+        // changed that, our serialized input maps would silently stop
+        // resolving and every binding would go dead.
+        let binding = InputBinding::key(KeyCode::KeyA);
+        let InputBinding::Key(s) = binding else { panic!("wrong variant") };
+        assert_eq!(s, "KeyA");
+        assert_eq!(InputBinding::resolve_key(&s), Some(KeyCode::KeyA));
+    }
+
+    #[test]
+    fn key_round_trip_covers_letters_digits_and_specials() {
+        for kc in [
+            KeyCode::KeyW, KeyCode::Space, KeyCode::Escape, KeyCode::Enter,
+            KeyCode::Tab, KeyCode::Backspace, KeyCode::ShiftLeft,
+            KeyCode::ControlLeft, KeyCode::ArrowUp, KeyCode::F5,
+            KeyCode::Digit0, KeyCode::Digit9,
+        ] {
+            let binding = InputBinding::key(kc);
+            let InputBinding::Key(s) = binding else { panic!("wrong variant") };
+            assert_eq!(InputBinding::resolve_key(&s), Some(kc), "round trip failed for {:?}", kc);
+        }
+    }
+
+    #[test]
+    fn resolve_key_unknown_returns_none() {
+        assert_eq!(InputBinding::resolve_key("ImaginaryKey"), None);
+        assert_eq!(InputBinding::resolve_key(""), None);
+    }
+
+    #[test]
+    fn mouse_constructor_round_trips() {
+        for btn in [
+            bevy::prelude::MouseButton::Left,
+            bevy::prelude::MouseButton::Right,
+            bevy::prelude::MouseButton::Middle,
+        ] {
+            let binding = InputBinding::mouse(btn);
+            let InputBinding::MouseButton(s) = binding else { panic!() };
+            assert_eq!(InputBinding::resolve_mouse(&s), Some(btn));
+        }
+    }
+
+    #[test]
+    fn resolve_mouse_unknown_returns_none() {
+        assert_eq!(InputBinding::resolve_mouse("Wheel"), None);
+        assert_eq!(InputBinding::resolve_mouse(""), None);
+    }
+
+    #[test]
+    fn gamepad_button_round_trips() {
+        for btn in [GamepadButton::South, GamepadButton::DPadLeft, GamepadButton::Start] {
+            let binding = InputBinding::gamepad_button(btn);
+            let InputBinding::GamepadButton(s) = binding else { panic!() };
+            assert_eq!(InputBinding::resolve_gamepad_button(&s), Some(btn));
+        }
+    }
+
+    #[test]
+    fn gamepad_axis_round_trips() {
+        for axis in [
+            GamepadAxis::LeftStickX, GamepadAxis::LeftStickY,
+            GamepadAxis::RightStickX, GamepadAxis::RightStickY,
+        ] {
+            let binding = InputBinding::gamepad_axis(axis);
+            let InputBinding::GamepadAxis(s) = binding else { panic!() };
+            assert_eq!(InputBinding::resolve_gamepad_axis(&s), Some(axis));
+        }
+    }
+
+    #[test]
+    fn composite_2d_stores_debug_strings_per_direction() {
+        let binding = InputBinding::composite_2d(
+            KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD,
+        );
+        let InputBinding::Composite2D { up, down, left, right } = binding else { panic!() };
+        assert_eq!(up, "KeyW");
+        assert_eq!(down, "KeyS");
+        assert_eq!(left, "KeyA");
+        assert_eq!(right, "KeyD");
+    }
+
+    #[test]
+    fn action_button_has_button_kind_and_zero_dead_zone() {
+        let a = InputAction::button("jump", vec![InputBinding::key(KeyCode::Space)]);
+        assert_eq!(a.name, "jump");
+        assert_eq!(a.kind, ActionKind::Button);
+        assert_eq!(a.dead_zone, 0.0);
+        assert_eq!(a.bindings.len(), 1);
+    }
+
+    #[test]
+    fn action_axis_2d_carries_dead_zone() {
+        let a = InputAction::axis_2d("move", vec![], 0.15);
+        assert_eq!(a.kind, ActionKind::Axis2D);
+        assert!((a.dead_zone - 0.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn action_axis_1d_carries_dead_zone() {
+        let a = InputAction::axis_1d("look_x", vec![], 0.05);
+        assert_eq!(a.kind, ActionKind::Axis1D);
+        assert!((a.dead_zone - 0.05).abs() < 1e-6);
+    }
+}
+
 /// Parse a KeyCode from its Debug string representation.
 fn key_from_str(s: &str) -> Option<KeyCode> {
     Some(match s {

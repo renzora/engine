@@ -148,6 +148,177 @@ pub fn apply_buoyancy(
 
 // ── Inspector entry ──────────────────────────────────────────────────────────
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::component::{GerstnerWave, WaterSurface};
+
+    /// Build a minimal WaterSurface with a hand-rolled wave list. We want
+    /// deterministic inputs, so we override the heavy default surface.
+    fn surface_with(waves: Vec<GerstnerWave>) -> WaterSurface {
+        WaterSurface { waves, ..WaterSurface::default() }
+    }
+
+    #[test]
+    fn sample_height_empty_wave_list_is_zero() {
+        let surface = surface_with(Vec::new());
+        let h = sample_water_height(Vec2::new(5.0, 7.0), &surface, 1.23);
+        assert_eq!(h, 0.0);
+    }
+
+    #[test]
+    fn sample_height_zero_amplitude_wave_is_zero() {
+        // Amplitude under the 0.001 cutoff in gerstner_wave_height bypasses
+        // the trig entirely. Same behaviour we ship in production so the
+        // CPU path doesn't burn cycles on dead waves.
+        let wave = GerstnerWave {
+            direction: Vec2::new(1.0, 0.0),
+            steepness: 0.5,
+            wavelength: 10.0,
+            amplitude: 0.0,
+        };
+        let surface = surface_with(vec![wave]);
+        assert_eq!(sample_water_height(Vec2::ZERO, &surface, 0.0), 0.0);
+    }
+
+    #[test]
+    fn sample_height_zero_wavelength_wave_is_zero() {
+        // Same cutoff guard for degenerate wavelength.
+        let wave = GerstnerWave {
+            direction: Vec2::new(1.0, 0.0),
+            steepness: 0.5,
+            wavelength: 0.0,
+            amplitude: 1.0,
+        };
+        let surface = surface_with(vec![wave]);
+        assert_eq!(sample_water_height(Vec2::ZERO, &surface, 0.0), 0.0);
+    }
+
+    #[test]
+    fn sample_height_bounded_by_amplitude() {
+        // A single sine wave never exceeds its amplitude. This catches
+        // formula mistakes that would inflate the displacement.
+        let amp = 0.7;
+        let wave = GerstnerWave {
+            direction: Vec2::new(1.0, 0.0),
+            steepness: 0.5,
+            wavelength: 12.0,
+            amplitude: amp,
+        };
+        let surface = surface_with(vec![wave]);
+        // Sweep position + time so we hit a peak.
+        for i in 0..200 {
+            let t = i as f32 * 0.05;
+            for x in [-3.0, -1.5, 0.0, 1.5, 3.0] {
+                let h = sample_water_height(Vec2::new(x, 0.0), &surface, t);
+                assert!(
+                    h.abs() <= amp + 1e-4,
+                    "height {} exceeded amplitude {} at x={} t={}",
+                    h, amp, x, t,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sample_height_periodic_in_position() {
+        // Stepping along the wave direction by exactly one wavelength
+        // returns to the same height — a basic invariant of the Gerstner
+        // formulation.
+        let wavelength = 10.0;
+        let dir = Vec2::new(1.0, 0.0);
+        let wave = GerstnerWave {
+            direction: dir,
+            steepness: 0.5,
+            wavelength,
+            amplitude: 0.5,
+        };
+        let surface = surface_with(vec![wave]);
+        let pos = Vec2::new(2.5, 0.0);
+        let pos_shifted = pos + dir * wavelength;
+        let t = 0.42;
+        let h0 = sample_water_height(pos, &surface, t);
+        let h1 = sample_water_height(pos_shifted, &surface, t);
+        assert!(
+            (h0 - h1).abs() < 1e-4,
+            "expected periodic, got {} vs {}",
+            h0, h1,
+        );
+    }
+
+    #[test]
+    fn sample_height_sums_multiple_waves() {
+        // Sample at the origin where both waves contribute their peak
+        // through the time term — the total has to equal the sum of
+        // individual contributions, never less.
+        let waves = vec![
+            GerstnerWave { direction: Vec2::X,  steepness: 0.5, wavelength: 10.0, amplitude: 0.4 },
+            GerstnerWave { direction: Vec2::Y,  steepness: 0.5, wavelength: 14.0, amplitude: 0.3 },
+        ];
+        let surface = surface_with(waves.clone());
+        let pos = Vec2::new(0.0, 0.0);
+        let t = 0.7;
+        let total = sample_water_height(pos, &surface, t);
+        // Reproduce by querying each wave alone.
+        let alone_a = sample_water_height(pos, &surface_with(vec![waves[0].clone()]), t);
+        let alone_b = sample_water_height(pos, &surface_with(vec![waves[1].clone()]), t);
+        assert!(
+            (total - (alone_a + alone_b)).abs() < 1e-5,
+            "{} vs {} + {}",
+            total, alone_a, alone_b,
+        );
+    }
+
+    #[test]
+    fn sample_velocity_zero_amplitude_is_zero() {
+        let wave = GerstnerWave {
+            direction: Vec2::new(1.0, 0.0),
+            steepness: 0.5,
+            wavelength: 10.0,
+            amplitude: 0.0,
+        };
+        let surface = surface_with(vec![wave]);
+        let v = sample_wave_velocity(Vec2::ZERO, &surface, 0.0);
+        assert_eq!(v, Vec2::ZERO);
+    }
+
+    #[test]
+    fn sample_velocity_aligns_with_wave_direction() {
+        // Single 1D wave — the resulting horizontal velocity must lie
+        // along the wave's direction (or be zero at a node), never
+        // perpendicular to it.
+        let dir = Vec2::new(1.0, 0.0);
+        let wave = GerstnerWave {
+            direction: dir,
+            steepness: 0.5,
+            wavelength: 8.0,
+            amplitude: 0.4,
+        };
+        let surface = surface_with(vec![wave]);
+        for t in [0.1, 0.4, 0.9, 1.7] {
+            let v = sample_wave_velocity(Vec2::new(0.5, 0.0), &surface, t);
+            // Component perpendicular to dir should be ~0.
+            let perp = Vec2::new(-dir.y, dir.x);
+            assert!(
+                v.dot(perp).abs() < 1e-5,
+                "velocity {:?} not aligned with direction {:?} at t={}",
+                v, dir, t,
+            );
+        }
+    }
+
+    #[test]
+    fn buoyant_default_force_is_positive() {
+        // Sanity: a Buoyant with default values must push UP, otherwise
+        // the inspector spawns a sinker-by-default.
+        let b = Buoyant::default();
+        assert!(b.force > 0.0);
+        assert!(b.submerge_depth > 0.0);
+        assert!(b.damping >= 0.0);
+        assert!(b.drag >= 0.0);
+    }
+}
+
 #[cfg(feature = "editor")]
 pub fn buoyant_inspector_entry() -> renzora_editor::InspectorEntry {
     use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};

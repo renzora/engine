@@ -161,3 +161,131 @@ pub fn log_warning(console: &mut ConsoleState, category: &str, message: impl Int
 pub fn log_error(console: &mut ConsoleState, category: &str, message: impl Into<String>) {
     console.log(LogLevel::Error, category, message);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_appends_entry_with_level_and_message() {
+        let mut state = ConsoleState::default();
+        state.entries.clear(); // Default may have stray entries from a shared buffer.
+        state.log(LogLevel::Info, "test", "hello");
+        assert_eq!(state.entries.len(), 1);
+        let entry = &state.entries[0];
+        assert!(matches!(entry.level, LogLevel::Info));
+        assert_eq!(entry.message, "hello");
+        assert_eq!(entry.category, "test");
+    }
+
+    #[test]
+    fn log_tracks_seen_categories_uniquely() {
+        let mut state = ConsoleState::default();
+        state.seen_categories.clear();
+        state.log(LogLevel::Info, "alpha", "1");
+        state.log(LogLevel::Info, "alpha", "2"); // duplicate category
+        state.log(LogLevel::Info, "beta", "3");
+        assert_eq!(state.seen_categories, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn log_skips_empty_category_in_seen_list() {
+        let mut state = ConsoleState::default();
+        state.seen_categories.clear();
+        state.log(LogLevel::Info, "", "no category");
+        assert!(state.seen_categories.is_empty());
+    }
+
+    #[test]
+    fn log_caps_at_max_entries() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        // Push a few past the cap; oldest should fall out.
+        for i in 0..(MAX_LOG_ENTRIES + 5) {
+            state.log(LogLevel::Info, "cat", format!("msg-{}", i));
+        }
+        assert_eq!(state.entries.len(), MAX_LOG_ENTRIES);
+        // First entry kept should be one we pushed mid-loop, not msg-0.
+        assert_ne!(state.entries.front().unwrap().message, "msg-0");
+    }
+
+    #[test]
+    fn clear_empties_entries() {
+        let mut state = ConsoleState::default();
+        state.log(LogLevel::Info, "x", "y");
+        state.clear();
+        assert!(state.entries.is_empty());
+    }
+
+    #[test]
+    fn filter_hides_disabled_levels() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        state.log(LogLevel::Info, "c", "info-msg");
+        state.log(LogLevel::Warning, "c", "warn-msg");
+        state.log(LogLevel::Error, "c", "err-msg");
+        state.show_warnings = false;
+        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        assert_eq!(visible, vec!["info-msg", "err-msg"]);
+    }
+
+    #[test]
+    fn filter_hides_explicitly_hidden_categories() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        state.log(LogLevel::Info, "alpha", "a");
+        state.log(LogLevel::Info, "beta", "b");
+        state.hidden_categories.insert("alpha".into());
+        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        assert_eq!(visible, vec!["b"]);
+    }
+
+    #[test]
+    fn filter_category_substring_is_case_insensitive() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        state.log(LogLevel::Info, "Renderer", "1");
+        state.log(LogLevel::Info, "physics", "2");
+        state.category_filter = "REND".into();
+        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        assert_eq!(visible, vec!["1"]);
+    }
+
+    #[test]
+    fn filter_search_substring_is_case_insensitive() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        state.log(LogLevel::Info, "c", "Loading scene 'foo.ron'");
+        state.log(LogLevel::Info, "c", "spawned 12 entities");
+        state.search_filter = "LOAD".into();
+        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        assert_eq!(visible.len(), 1);
+        assert!(visible[0].contains("Loading"));
+    }
+
+    #[test]
+    fn empty_filters_show_everything_visible_by_level() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        state.log(LogLevel::Info, "a", "1");
+        state.log(LogLevel::Info, "b", "2");
+        state.log(LogLevel::Info, "", "3");
+        // No filters set, all default-on levels.
+        assert_eq!(state.filtered_entries().count(), 3);
+    }
+
+    #[test]
+    fn helper_log_functions_set_correct_level() {
+        let mut state = ConsoleState::default();
+        state.entries.clear();
+        log_info(&mut state, "h", "i");
+        log_success(&mut state, "h", "s");
+        log_warning(&mut state, "h", "w");
+        log_error(&mut state, "h", "e");
+        let levels: Vec<_> = state.entries.iter().map(|e| e.level).collect();
+        assert!(matches!(levels[0], LogLevel::Info));
+        assert!(matches!(levels[1], LogLevel::Success));
+        assert!(matches!(levels[2], LogLevel::Warning));
+        assert!(matches!(levels[3], LogLevel::Error));
+    }
+}

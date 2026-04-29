@@ -477,3 +477,162 @@ fn default_true() -> bool { true }
 pub struct EditorPrefs {
     pub viewport: PersistedViewportSettings,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nondefault_viewport() -> ViewportSettings {
+        // Touch every field so the round-trip really exercises the
+        // PersistedViewportSettings <-> ViewportSettings bridge — a missed
+        // field on either side would make this test fail.
+        ViewportSettings {
+            render_toggles: RenderToggles {
+                textures: false,
+                wireframe: true,
+                lighting: false,
+                shadows: false,
+                mesh: false,
+            },
+            visualization_mode: VisualizationMode::Normals,
+            show_grid: false,
+            show_subgrid: false,
+            show_axis_gizmo: false,
+            show_scene_icons: false,
+            collision_gizmo_visibility: CollisionGizmoVisibility::Always,
+            projection_mode: ProjectionMode::Orthographic,
+            viewport_mode: ViewportMode::default(),
+            camera: CameraSettingsState {
+                move_speed: 11.5,
+                look_sensitivity: 0.7,
+                orbit_sensitivity: 0.42,
+                pan_sensitivity: 1.7,
+                zoom_sensitivity: 2.3,
+                invert_y: true,
+                distance_relative_speed: false,
+            },
+            snap: SnapSettings {
+                translate_enabled: true,
+                translate_snap: 0.5,
+                translate_edge_snap: true,
+                rotate_enabled: true,
+                rotate_snap: 15.0,
+                scale_enabled: false,
+                scale_snap: 0.25,
+                scale_bottom_anchor: true,
+                object_snap_enabled: true,
+                object_snap_distance: 1.5,
+                floor_snap_enabled: true,
+                floor_y: -1.5,
+            },
+            pending_view_angle: None,
+            vsync: false,
+        }
+    }
+
+    #[test]
+    fn persisted_round_trip_preserves_every_field() {
+        let original = nondefault_viewport();
+        let persisted = PersistedViewportSettings::from_settings(&original);
+        let mut restored = ViewportSettings::default();
+        persisted.apply(&mut restored);
+
+        // Skip pending_view_angle (transient) and viewport_mode (not persisted).
+        assert_eq!(original.render_toggles, restored.render_toggles);
+        assert!(matches!(restored.visualization_mode, VisualizationMode::Normals));
+        assert_eq!(original.show_grid, restored.show_grid);
+        assert_eq!(original.show_subgrid, restored.show_subgrid);
+        assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
+        assert_eq!(original.show_scene_icons, restored.show_scene_icons);
+        assert!(matches!(restored.collision_gizmo_visibility, CollisionGizmoVisibility::Always));
+        assert!(matches!(restored.projection_mode, ProjectionMode::Orthographic));
+        assert_eq!(original.camera, restored.camera);
+        assert_eq!(original.snap, restored.snap);
+        assert_eq!(original.vsync, restored.vsync);
+    }
+
+    #[test]
+    fn vsync_round_trips() {
+        // The whole point of the recent vsync setting is that it survives
+        // a save/load. Lock that in.
+        let mut s = ViewportSettings::default();
+        s.vsync = false;
+        let persisted = PersistedViewportSettings::from_settings(&s);
+        let mut restored = ViewportSettings::default();
+        persisted.apply(&mut restored);
+        assert!(!restored.vsync);
+    }
+
+    #[test]
+    fn visualization_mode_string_round_trips_through_persisted() {
+        for mode in [
+            VisualizationMode::None,
+            VisualizationMode::Normals,
+            VisualizationMode::Roughness,
+            VisualizationMode::Metallic,
+            VisualizationMode::Depth,
+            VisualizationMode::UvChecker,
+        ] {
+            let mut s = ViewportSettings::default();
+            s.visualization_mode = mode;
+            let p = PersistedViewportSettings::from_settings(&s);
+            let mut restored = ViewportSettings::default();
+            p.apply(&mut restored);
+            assert!(
+                std::mem::discriminant(&restored.visualization_mode)
+                    == std::mem::discriminant(&mode),
+                "round trip lost mode {:?}, got {:?}",
+                mode, restored.visualization_mode,
+            );
+        }
+    }
+
+    #[test]
+    fn editor_prefs_default_has_default_viewport() {
+        let prefs = EditorPrefs::default();
+        assert_eq!(prefs.viewport, PersistedViewportSettings::default());
+    }
+
+    #[test]
+    fn persisted_viewport_serde_is_keyed_by_field_name() {
+        // Hand-rolled TOML has to deserialize cleanly — proves we didn't
+        // accidentally tag the struct or rename a field.
+        let s = r#"
+            textures = true
+            wireframe = false
+            lighting = true
+            shadows = true
+            mesh = true
+            visualization_mode = "None"
+            show_grid = true
+            show_subgrid = true
+            show_axis_gizmo = true
+            show_scene_icons = true
+            collision_always = false
+            orthographic = false
+            move_speed = 10.0
+            look_sensitivity = 1.0
+            orbit_sensitivity = 1.0
+            pan_sensitivity = 1.0
+            zoom_sensitivity = 1.0
+            invert_y = false
+            distance_relative_speed = true
+            translate_enabled = false
+            translate_snap = 1.0
+            translate_edge_snap = false
+            rotate_enabled = false
+            rotate_snap = 15.0
+            scale_enabled = false
+            scale_snap = 0.1
+            scale_bottom_anchor = false
+            object_snap_enabled = false
+            object_snap_distance = 1.0
+            floor_snap_enabled = false
+            floor_y = 0.0
+            vsync = true
+        "#;
+        let parsed: PersistedViewportSettings = toml::from_str(s).expect("parse");
+        assert!(parsed.vsync);
+        assert!(parsed.mesh);
+    }
+}

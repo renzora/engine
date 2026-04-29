@@ -772,3 +772,119 @@ fn strip_editor_section(text: &str) -> String {
     }
     toml::to_string_pretty(&value).unwrap_or_else(|_| text.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::read::RpakArchive;
+
+    #[test]
+    fn new_packer_is_empty() {
+        let p = RpakPacker::new();
+        assert!(p.is_empty());
+        assert_eq!(p.len(), 0);
+    }
+
+    #[test]
+    fn add_file_normalizes_backslashes() {
+        let mut p = RpakPacker::new();
+        p.add_file("models\\car.glb", vec![1, 2, 3]);
+        // Lookups go through normalize, so both spellings hit the same entry.
+        assert_eq!(p.get("models/car.glb"), Some(&[1u8, 2, 3][..]));
+        assert_eq!(p.len(), 1);
+    }
+
+    #[test]
+    fn add_file_overwrites_duplicate_path() {
+        // BTreeMap semantics — last write wins. Documented contract;
+        // pinning it so we don't accidentally start collecting duplicates.
+        let mut p = RpakPacker::new();
+        p.add_file("scenes/main.ron", vec![1]);
+        p.add_file("scenes/main.ron", vec![2, 3]);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p.get("scenes/main.ron"), Some(&[2u8, 3][..]));
+    }
+
+    #[test]
+    fn empty_archive_round_trips() {
+        let p = RpakPacker::new();
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+        assert!(archive.is_empty());
+        assert_eq!(archive.len(), 0);
+    }
+
+    #[test]
+    fn pack_then_read_preserves_files() {
+        let mut p = RpakPacker::new();
+        let scene = b"(\"main scene\")".to_vec();
+        let model: Vec<u8> = (0u8..=200).cycle().take(2048).collect();
+        p.add_file("scenes/main.ron", scene.clone());
+        p.add_file("models/car.glb", model.clone());
+        p.add_file("textures/wall.png", vec![0xff, 0xee, 0xdd]);
+
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+
+        assert_eq!(archive.len(), 3);
+        assert_eq!(archive.get("scenes/main.ron"), Some(scene.as_slice()));
+        assert_eq!(archive.get("models/car.glb"), Some(model.as_slice()));
+        assert_eq!(archive.get("textures/wall.png"), Some(&[0xff, 0xee, 0xdd][..]));
+    }
+
+    #[test]
+    fn read_normalizes_backslash_queries() {
+        // Archive paths are stored with forward slashes. Asking with
+        // backslashes (Windows callers) should find the file anyway.
+        let mut p = RpakPacker::new();
+        p.add_file("models/car.glb", vec![1, 2, 3]);
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+        assert_eq!(archive.get("models\\car.glb"), Some(&[1u8, 2, 3][..]));
+        assert!(archive.contains("models\\car.glb"));
+    }
+
+    #[test]
+    fn read_paths_iter_lists_all_entries() {
+        let mut p = RpakPacker::new();
+        p.add_file("a.txt", vec![1]);
+        p.add_file("b.txt", vec![2]);
+        p.add_file("nested/c.txt", vec![3]);
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+        let mut paths: Vec<&str> = archive.paths().collect();
+        paths.sort();
+        assert_eq!(paths, vec!["a.txt", "b.txt", "nested/c.txt"]);
+    }
+
+    #[test]
+    fn missing_file_returns_none() {
+        let mut p = RpakPacker::new();
+        p.add_file("only.txt", vec![42]);
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+        assert_eq!(archive.get("nope.txt"), None);
+        assert!(!archive.contains("nope.txt"));
+    }
+
+    #[test]
+    fn corrupted_bytes_return_error() {
+        // Random garbage is not valid zstd → archive load fails. The
+        // failure path used to silently produce an empty archive in an
+        // earlier version; locking the error path in.
+        let result = RpakArchive::from_bytes(&[0u8, 1, 2, 3]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn large_file_round_trips() {
+        // Sanity-check the offset/size arithmetic with a file bigger than
+        // the index header so any off-by-one in pos accounting shows up.
+        let mut p = RpakPacker::new();
+        let big: Vec<u8> = (0..10_000).map(|i| (i % 251) as u8).collect();
+        p.add_file("big.bin", big.clone());
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+        assert_eq!(archive.get("big.bin"), Some(big.as_slice()));
+    }
+}

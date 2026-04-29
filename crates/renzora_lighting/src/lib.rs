@@ -268,3 +268,90 @@ impl Plugin for LightingPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: compare two Vec3s within float tolerance.
+    fn approx_eq(a: Vec3, b: Vec3) {
+        let eps = 1e-5;
+        assert!(
+            (a - b).length() < eps,
+            "expected {:?}, got {:?} (diff {})",
+            b, a, (a - b).length(),
+        );
+    }
+
+    #[test]
+    fn direction_north_horizon_points_south() {
+        // Azimuth 0 = sun in the north on the horizon. Light travels away
+        // from the sun toward -Z.
+        let sun = Sun { azimuth: 0.0, elevation: 0.0, ..Sun::default() };
+        approx_eq(sun.direction(), Vec3::new(0.0, 0.0, -1.0));
+    }
+
+    #[test]
+    fn direction_overhead_points_straight_down() {
+        let sun = Sun { azimuth: 0.0, elevation: 90.0, ..Sun::default() };
+        approx_eq(sun.direction(), Vec3::new(0.0, -1.0, 0.0));
+    }
+
+    #[test]
+    fn direction_below_horizon_points_up() {
+        let sun = Sun { azimuth: 0.0, elevation: -90.0, ..Sun::default() };
+        approx_eq(sun.direction(), Vec3::new(0.0, 1.0, 0.0));
+    }
+
+    #[test]
+    fn direction_east_horizon_points_west() {
+        // Azimuth 90 = sun in the east on the horizon. Light travels to -X.
+        let sun = Sun { azimuth: 90.0, elevation: 0.0, ..Sun::default() };
+        approx_eq(sun.direction(), Vec3::new(-1.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn direction_south_horizon_points_north() {
+        // Azimuth 180 = sun in the south on the horizon. Light travels to +Z.
+        let sun = Sun { azimuth: 180.0, elevation: 0.0, ..Sun::default() };
+        approx_eq(sun.direction(), Vec3::new(0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn direction_is_always_unit_length() {
+        // Spot-check a spread of (az, el) pairs — the spherical
+        // construction should always produce a unit vector.
+        for az in [0.0, 37.5, 90.0, 175.0, 245.0, 359.0] {
+            for el in [-89.9, -45.0, 0.0, 22.5, 60.0, 89.9] {
+                let sun = Sun { azimuth: az, elevation: el, ..Sun::default() };
+                let len = sun.direction().length();
+                assert!(
+                    (len - 1.0).abs() < 1e-5,
+                    "az={} el={} produced direction with length {}",
+                    az, el, len,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_sun_matches_documented_values() {
+        // Defaults committed in 420b457 — locking these so a future tweak
+        // either updates the test or notices it changed the contract.
+        let sun = Sun::default();
+        assert_eq!(sun.azimuth, 90.0);
+        assert_eq!(sun.elevation, 25.0);
+        assert_eq!(sun.illuminance, 40_000.0);
+        assert!(sun.shadows_enabled);
+        assert_eq!(sun.angular_diameter, 0.53);
+    }
+
+    #[test]
+    fn azimuth_360_equivalent_to_zero() {
+        // Wraps because the construction is pure trig — 360° must produce
+        // the same direction as 0° within float precision.
+        let a = Sun { azimuth: 0.0, elevation: 30.0, ..Sun::default() };
+        let b = Sun { azimuth: 360.0, elevation: 30.0, ..Sun::default() };
+        approx_eq(a.direction(), b.direction());
+    }
+}

@@ -556,21 +556,21 @@
 - Add scene size bounds check before serialization
 
 ## Unit Tests — Core Systems
-- Add unit tests for renzora_core (project config, play state, entity tags)
+- ✅ Add unit tests for renzora_core (project config, play state, entity tags)
 - Add unit tests for renzora_scene (save/load roundtrip, camera serialization)
-- Add unit tests for renzora_input (input map loading, action state)
-- Add unit tests for renzora_audio (command queue, mixer routing)
-- Add unit tests for renzora_keybindings (action binding, modifier handling)
-- Add unit tests for renzora_settings (settings persistence, input map)
+- ✅ Add unit tests for renzora_input (input map loading, action state)
+- ✅ Add unit tests for renzora_audio (command queue, mixer routing)
+- ✅ Add unit tests for renzora_keybindings (action binding, modifier handling)
+- ✅ Add unit tests for renzora_settings (settings persistence, input map)
 
 ## Unit Tests — Visual Systems
 - Add unit tests for renzora_material (codegen, graph, resolver, node types)
 - Add unit tests for renzora_shader (backend registry, shader file parsing, param extraction)
 - Add unit tests for renzora_postprocess (effect registration, pipeline ordering)
-- Add unit tests for renzora_lighting (azimuth/elevation to direction math)
+- ✅ Add unit tests for renzora_lighting (azimuth/elevation to direction math)
 - Add unit tests for renzora_rt (quality presets, settings)
 - Add unit tests for renzora_hanabi (particle data, effect builder)
-- Add unit tests for renzora_theme (TOML loading, color serialization)
+- ✅ Add unit tests for renzora_theme (TOML loading, color serialization)
 
 ## Unit Tests — Gameplay Systems
 - Add unit tests for renzora_blueprint (interpreter, compiler, graph, node definitions)
@@ -583,7 +583,7 @@
 
 ## Unit Tests — World Systems
 - Add unit tests for renzora_terrain (heightmap, splatmap, brush operations, undo stack)
-- Add unit tests for renzora_water (Gerstner wave math, buoyancy calculation)
+- ✅ Add unit tests for renzora_water (Gerstner wave math, buoyancy calculation)
 - Add unit tests for renzora_game_ui (widget spawning, tween system, theme application, canvas scaling)
 
 ## Unit Tests — Editor & Tools
@@ -591,12 +591,12 @@
 - Add unit tests for renzora_editor (selection system, inspector registry)
 - Add unit tests for renzora_hierarchy (entity tree building, drag-drop reorder)
 - Add unit tests for renzora_asset_browser (directory scanning, thumbnail cache)
-- Add unit tests for renzora_console (log filtering, command history)
+- ✅ Add unit tests for renzora_console (log filtering, command history)
 - Add unit tests for renzora_splash (project config persistence)
 - Add unit tests for renzora_stinger (state transitions)
 
 ## Unit Tests — Pipeline & Packaging
-- Add unit tests for renzora_rpak (pack, read, archive roundtrip)
+- ✅ Add unit tests for renzora_rpak (pack, read, archive roundtrip)
 - Add unit tests for renzora_import (OBJ/STL/PLY/FBX conversion, mesh optimization)
 - Add unit tests for renzora_export (template management, rpak packing, APK signing)
 - Add unit tests for plugin host (plugin loading, ABI validation, dependency graph)

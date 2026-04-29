@@ -272,3 +272,181 @@ impl TimelineState {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── Transport math ────────────────────────────────────────────────────
+
+    #[test]
+    fn beats_to_seconds_at_120bpm() {
+        let t = Transport::default(); // bpm=120
+        // 1 beat at 120 BPM = 0.5s
+        assert!((t.beats_to_seconds(1.0) - 0.5).abs() < 1e-9);
+        // 4 beats (one bar) = 2s
+        assert!((t.beats_to_seconds(4.0) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn seconds_to_beats_inverts_beats_to_seconds() {
+        let t = Transport { bpm: 90.0, ..Transport::default() };
+        for beats in [0.0, 1.0, 2.5, 4.0, 7.25] {
+            let s = t.beats_to_seconds(beats);
+            let back = t.seconds_to_beats(s);
+            assert!((back - beats).abs() < 1e-9, "round trip failed for {} beats", beats);
+        }
+    }
+
+    #[test]
+    fn beats_to_seconds_clamps_zero_bpm() {
+        // Guard against division by zero — bpm is clamped at 1 internally.
+        let t = Transport { bpm: 0.0, ..Transport::default() };
+        // bpm=1 → 1 beat = 60s
+        assert!((t.beats_to_seconds(1.0) - 60.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snap_seconds_quantizes_to_grid() {
+        // 120 bpm, snap_div=4 → 16th-note cell = 0.125s.
+        let t = Transport::default();
+        // 0.13 should snap to 0.125, 0.20 to 0.25.
+        assert!((t.snap_seconds(0.13) - 0.125).abs() < 1e-9);
+        assert!((t.snap_seconds(0.20) - 0.25).abs() < 1e-9);
+        // Already on a grid line — no change.
+        assert!((t.snap_seconds(0.5) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snap_seconds_passthrough_when_disabled() {
+        let t = Transport { snap_div: 0, ..Transport::default() };
+        assert_eq!(t.snap_seconds(0.337), 0.337);
+    }
+
+    #[test]
+    fn is_playing_reflects_state() {
+        let mut t = Transport::default();
+        assert!(!t.is_playing());
+        t.state = TransportState::Playing;
+        assert!(t.is_playing());
+    }
+
+    // ── TimelineState CRUD ────────────────────────────────────────────────
+
+    #[test]
+    fn add_track_returns_distinct_ids() {
+        let mut tl = TimelineState::default();
+        let a = tl.add_track("Music", "Music");
+        let b = tl.add_track("Sfx", "Sfx");
+        assert_ne!(a, b);
+        assert_eq!(tl.tracks.len(), 2);
+    }
+
+    #[test]
+    fn track_lookup_finds_by_id() {
+        let mut tl = TimelineState::default();
+        let id = tl.add_track("Music", "Music");
+        let t = tl.track(id).expect("found");
+        assert_eq!(t.name, "Music");
+        assert_eq!(t.bus_name, "Music");
+    }
+
+    #[test]
+    fn add_clip_clamps_negative_start_to_zero() {
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let clip_id = tl.add_clip(track, PathBuf::from("song.ogg"), -1.0, 5.0);
+        let clip = tl.clip(clip_id).expect("found");
+        assert_eq!(clip.start, 0.0);
+    }
+
+    #[test]
+    fn add_clip_enforces_minimum_length() {
+        // Implementation clamps length to >= 0.05 to avoid zero-length clips.
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let clip_id = tl.add_clip(track, PathBuf::from("song.ogg"), 0.0, 0.0);
+        let clip = tl.clip(clip_id).expect("found");
+        assert!(clip.length >= 0.05);
+    }
+
+    #[test]
+    fn add_clip_uses_file_stem_as_name() {
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let id = tl.add_clip(track, PathBuf::from("songs/intro.wav"), 0.0, 1.0);
+        let clip = tl.clip(id).expect("found");
+        assert_eq!(clip.name, "intro");
+    }
+
+    #[test]
+    fn remove_track_also_removes_its_clips() {
+        // Otherwise dangling clips reference a missing track id and the
+        // scheduler can't route them anywhere.
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        tl.add_clip(track, PathBuf::from("a.ogg"), 0.0, 1.0);
+        tl.add_clip(track, PathBuf::from("b.ogg"), 1.0, 1.0);
+        tl.remove_track(track);
+        assert!(tl.tracks.is_empty());
+        assert!(tl.clips.is_empty());
+    }
+
+    #[test]
+    fn remove_clip_also_clears_selection() {
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let clip_id = tl.add_clip(track, PathBuf::from("a.ogg"), 0.0, 1.0);
+        tl.selected_clip = Some(clip_id);
+        tl.remove_clip(clip_id);
+        assert_eq!(tl.selected_clip, None);
+    }
+
+    #[test]
+    fn any_track_soloed_reflects_state() {
+        let mut tl = TimelineState::default();
+        let id = tl.add_track("Music", "Music");
+        assert!(!tl.any_track_soloed());
+        tl.track_mut(id).unwrap().soloed = true;
+        assert!(tl.any_track_soloed());
+    }
+
+    #[test]
+    fn is_clip_audible_respects_track_mute() {
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let clip_id = tl.add_clip(track, PathBuf::from("a.ogg"), 0.0, 1.0);
+        let clip = tl.clip(clip_id).unwrap().clone();
+        assert!(tl.is_clip_audible(&clip));
+        tl.track_mut(track).unwrap().muted = true;
+        assert!(!tl.is_clip_audible(&clip));
+    }
+
+    #[test]
+    fn is_clip_audible_respects_clip_mute() {
+        let mut tl = TimelineState::default();
+        let track = tl.add_track("Music", "Music");
+        let clip_id = tl.add_clip(track, PathBuf::from("a.ogg"), 0.0, 1.0);
+        tl.clip_mut(clip_id).unwrap().muted = true;
+        let clip = tl.clip(clip_id).unwrap().clone();
+        assert!(!tl.is_clip_audible(&clip));
+    }
+
+    #[test]
+    fn solo_silences_other_tracks() {
+        // Once any track is soloed, non-soloed tracks become inaudible
+        // even if they aren't muted — standard DAW behaviour.
+        let mut tl = TimelineState::default();
+        let lead = tl.add_track("Lead", "Music");
+        let pad = tl.add_track("Pad", "Music");
+        let lead_clip_id = tl.add_clip(lead, PathBuf::from("l.ogg"), 0.0, 1.0);
+        let pad_clip_id = tl.add_clip(pad, PathBuf::from("p.ogg"), 0.0, 1.0);
+
+        tl.track_mut(lead).unwrap().soloed = true;
+        let lead_clip = tl.clip(lead_clip_id).unwrap().clone();
+        let pad_clip = tl.clip(pad_clip_id).unwrap().clone();
+        assert!(tl.is_clip_audible(&lead_clip));
+        assert!(!tl.is_clip_audible(&pad_clip));
+    }
+}
