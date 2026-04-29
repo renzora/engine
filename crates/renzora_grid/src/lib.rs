@@ -1,10 +1,11 @@
 //! Renzora Grid — 3D editor grid with colored axis indicators.
 //!
-//! The grid is a real 3D line-list mesh rendered by the main editor camera
-//! on render layer 0, with a custom unlit `GridMaterial` so sun/point lights
-//! don't affect it. Being real 3D geometry gives it pixel-perfect depth
-//! testing against scene meshes for free. The material fades line alpha with
-//! horizontal distance from the camera for a soft Blender-style falloff.
+//! All grid geometry — major lines, minor (subgrid) lines, and the X/Y/Z
+//! axes — is packed into a single LineList mesh with per-vertex colors,
+//! so the GPU draws the whole grid in one call. The custom unlit
+//! `GridMaterial` only carries the camera-distance fade range; line color
+//! comes from the vertex COLOR attribute. Being real 3D geometry gives
+//! pixel-perfect depth testing against scene meshes for free.
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
@@ -18,11 +19,11 @@ use renzora::core::viewport_types::ViewportSettings;
 
 // ── GridMaterial ────────────────────────────────────────────────────────────
 
-/// Unlit line material with horizontal-distance alpha fade.
+/// Unlit line material with horizontal-distance alpha fade. Color is
+/// supplied per-vertex via `Mesh::ATTRIBUTE_COLOR` so every line in the
+/// merged grid mesh shares this same material handle.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct GridMaterial {
-    #[uniform(0)]
-    pub base_color: LinearRgba,
     #[uniform(0)]
     pub fade_start: f32,
     #[uniform(0)]
@@ -62,12 +63,6 @@ impl Material for GridMaterial {
 
 #[derive(Component)]
 pub struct EditorGrid;
-
-#[derive(Component)]
-pub struct AxisIndicator;
-
-#[derive(Component)]
-pub struct SubgridLines;
 
 #[derive(Resource)]
 pub struct GridConfig {
@@ -116,9 +111,7 @@ impl Plugin for GridPlugin {
                 Update,
                 (
                     sync_grid_from_viewport,
-                    toggle_grid_visibility,
-                    toggle_axis_visibility,
-                    toggle_subgrid_visibility,
+                    rebuild_grid_mesh,
                     update_fade_distance,
                 )
                     .run_if(in_state(renzora_editor::SplashState::Editor)),
@@ -134,104 +127,83 @@ fn spawn_grid(
     mut materials: ResMut<Assets<GridMaterial>>,
     config: Res<GridConfig>,
 ) {
-    let major_mesh = build_grid_mesh(&config, true);
-    let minor_mesh = build_grid_mesh(&config, false);
-
-    commands.spawn((
-        Mesh3d(meshes.add(major_mesh)),
-        MeshMaterial3d(materials.add(grid_material(config.major_color, &config))),
-        Transform::default(),
-        EditorGrid,
-        RenderLayers::layer(0),
-    ));
-
-    commands.spawn((
-        Mesh3d(meshes.add(minor_mesh)),
-        MeshMaterial3d(materials.add(grid_material(config.minor_color, &config))),
-        Transform::default(),
-        EditorGrid,
-        SubgridLines,
-        RenderLayers::layer(0),
-    ));
-
-    // Axes (R/G/B) share the same fade as major lines but with punchier tints.
-    spawn_axis(&mut commands, &mut meshes, &mut materials, &config,
-        Vec3::NEG_X * 500.0, Vec3::X * 500.0,
-        Color::srgba(0.92, 0.32, 0.36, 1.0),
-        Vec3::new(0.0, 0.005, 0.0));
-    spawn_axis(&mut commands, &mut meshes, &mut materials, &config,
-        Vec3::NEG_Z * 500.0, Vec3::Z * 500.0,
-        Color::srgba(0.30, 0.58, 0.95, 1.0),
-        Vec3::new(0.0, 0.005, 0.0));
-    spawn_axis(&mut commands, &mut meshes, &mut materials, &config,
-        Vec3::NEG_Y * 500.0, Vec3::Y * 500.0,
-        Color::srgba(0.40, 0.83, 0.44, 1.0),
-        Vec3::ZERO);
-}
-
-fn spawn_axis(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<GridMaterial>,
-    config: &GridConfig,
-    from: Vec3,
-    to: Vec3,
-    color: Color,
-    offset: Vec3,
-) {
-    let mesh = build_axis_line(from, to);
-    commands.spawn((
-        Mesh3d(meshes.add(mesh)),
-        MeshMaterial3d(materials.add(grid_material(color, config))),
-        Transform::from_translation(offset),
-        AxisIndicator,
-        RenderLayers::layer(0),
-    ));
-}
-
-fn grid_material(color: Color, config: &GridConfig) -> GridMaterial {
-    GridMaterial {
-        base_color: color.to_linear(),
+    let mesh = build_grid_mesh(&config);
+    let material = GridMaterial {
         fade_start: config.fade_start,
         fade_end: config.fade_end,
         _pad0: 0.0,
         _pad1: 0.0,
-    }
+    };
+
+    commands.spawn((
+        Mesh3d(meshes.add(mesh)),
+        MeshMaterial3d(materials.add(material)),
+        Transform::default(),
+        EditorGrid,
+        RenderLayers::layer(0),
+    ));
 }
 
-fn build_grid_mesh(config: &GridConfig, majors_only: bool) -> Mesh {
+/// Pack every visible line — major, minor, axes — into a single LineList
+/// mesh with vertex colors. One mesh + one material = one draw call for
+/// the whole grid.
+fn build_grid_mesh(config: &GridConfig) -> Mesh {
     let mut positions: Vec<[f32; 3]> = Vec::new();
-    let size = config.size;
-    let spacing = config.spacing;
-    let extent = size as f32 * spacing;
+    let mut colors: Vec<[f32; 4]> = Vec::new();
 
-    for i in -size..=size {
-        if i == 0 {
-            continue;
+    if config.visible {
+        let size = config.size;
+        let spacing = config.spacing;
+        let extent = size as f32 * spacing;
+        let major = linear_array(config.major_color);
+        let minor = linear_array(config.minor_color);
+
+        for i in -size..=size {
+            if i == 0 {
+                continue;
+            }
+            let is_major = i % config.major_every == 0;
+            if !is_major && !config.show_subgrid {
+                continue;
+            }
+            let color = if is_major { major } else { minor };
+            let pos = i as f32 * spacing;
+            // Lines parallel to Z, stepping along X.
+            positions.push([pos, 0.0, -extent]); colors.push(color);
+            positions.push([pos, 0.0,  extent]); colors.push(color);
+            // Lines parallel to X, stepping along Z.
+            positions.push([-extent, 0.0, pos]); colors.push(color);
+            positions.push([ extent, 0.0, pos]); colors.push(color);
         }
-        let is_major = i % config.major_every == 0;
-        if is_major != majors_only {
-            continue;
-        }
-        let pos = i as f32 * spacing;
-        positions.push([pos, 0.0, -extent]);
-        positions.push([pos, 0.0, extent]);
-        positions.push([-extent, 0.0, pos]);
-        positions.push([extent, 0.0, pos]);
+    }
+
+    if config.show_axes {
+        // Lift X/Z axes a hair so they sort cleanly above the grid plane,
+        // matching the previous per-entity offset.
+        let lift = 0.005;
+        let red   = [0.92, 0.32, 0.36, 1.0];
+        let blue  = [0.30, 0.58, 0.95, 1.0];
+        let green = [0.40, 0.83, 0.44, 1.0];
+
+        positions.push([-500.0, lift, 0.0]); colors.push(red);
+        positions.push([ 500.0, lift, 0.0]); colors.push(red);
+
+        positions.push([0.0, lift, -500.0]); colors.push(blue);
+        positions.push([0.0, lift,  500.0]); colors.push(blue);
+
+        positions.push([0.0, -500.0, 0.0]); colors.push(green);
+        positions.push([0.0,  500.0, 0.0]); colors.push(green);
     }
 
     let mut mesh = Mesh::new(PrimitiveTopology::LineList, default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, VertexAttributeValues::Float32x3(positions));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,    VertexAttributeValues::Float32x4(colors));
     mesh
 }
 
-fn build_axis_line(from: Vec3, to: Vec3) -> Mesh {
-    let mut mesh = Mesh::new(PrimitiveTopology::LineList, default());
-    mesh.insert_attribute(
-        Mesh::ATTRIBUTE_POSITION,
-        VertexAttributeValues::Float32x3(vec![from.to_array(), to.to_array()]),
-    );
-    mesh
+fn linear_array(c: Color) -> [f32; 4] {
+    let l = c.to_linear();
+    [l.red, l.green, l.blue, l.alpha]
 }
 
 // ── Systems ─────────────────────────────────────────────────────────────────
@@ -248,41 +220,22 @@ fn sync_grid_from_viewport(
     config.show_subgrid = vp.show_subgrid;
 }
 
-fn toggle_grid_visibility(
+/// Rebuild the merged grid mesh whenever toggles or sizing change. Cheap
+/// — the line count is small (~hundreds of vertices) — and runs at most
+/// once per change, not per frame.
+fn rebuild_grid_mesh(
     config: Res<GridConfig>,
-    mut grids: Query<&mut Visibility, (With<EditorGrid>, Without<SubgridLines>)>,
+    grid: Query<&Mesh3d, With<EditorGrid>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if !config.is_changed() {
         return;
     }
-    let vis = if config.visible { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut grids { *v = vis; }
-}
-
-fn toggle_axis_visibility(
-    config: Res<GridConfig>,
-    mut axes: Query<&mut Visibility, With<AxisIndicator>>,
-) {
-    if !config.is_changed() {
-        return;
+    let Ok(mesh_handle) = grid.single() else { return };
+    let new_mesh = build_grid_mesh(&config);
+    if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
+        *mesh = new_mesh;
     }
-    let vis = if config.show_axes { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut axes { *v = vis; }
-}
-
-fn toggle_subgrid_visibility(
-    config: Res<GridConfig>,
-    mut subgrids: Query<&mut Visibility, (With<SubgridLines>, With<EditorGrid>)>,
-) {
-    if !config.is_changed() {
-        return;
-    }
-    let vis = if config.visible && config.show_subgrid {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    for mut v in &mut subgrids { *v = vis; }
 }
 
 /// Scale fade distance with orbit distance so zooming out reveals a bigger
@@ -308,8 +261,12 @@ fn update_fade_distance(
     if (config.fade_start - new_start).abs() < 0.01 && (config.fade_end - new_end).abs() < 0.01 {
         return;
     }
-    config.fade_start = new_start;
-    config.fade_end = new_end;
+    // Bypass change detection so the rebuild system doesn't fire just
+    // because we tweaked fade — fade lives in the material UBO, not the
+    // mesh, and rebuilding on every camera nudge would defeat the cache.
+    let cfg = config.bypass_change_detection();
+    cfg.fade_start = new_start;
+    cfg.fade_end = new_end;
 
     for handle in &grid_entities {
         if let Some(mat) = materials.get_mut(&handle.0) {
