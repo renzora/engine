@@ -144,7 +144,7 @@
 - Add real-time preview updates while editing (not just on save)
 
 ## Material Editor — Advanced
-- Add material instances with parameter overrides
+- ✅ Add material instances with parameter overrides — [`5476cc4`](https://github.com/renzora/engine/commit/5476cc4)
 - Add material presets/library
 - Add material LOD/quality levels
 - Add shader variant generation
@@ -348,8 +348,8 @@
 - Implement cinemachine-style camera system with dolly tracks
 
 ## Lighting — Editor
-- Add point light editor support
-- Add spot light editor support
+- ✅ Add point light editor support — [`b8656e9`](https://github.com/renzora/engine/commit/b8656e9)
+- ✅ Add spot light editor support — [`b8656e9`](https://github.com/renzora/engine/commit/b8656e9)
 - Add area light editor support
 - Add shadow cascade settings
 - Add shadow quality presets
