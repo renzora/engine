@@ -297,6 +297,29 @@ fn swap_preview_shape(
 ///
 /// Uses a content hash to skip redundant work when only non-graph fields
 /// of MaterialEditorState change (e.g. selected_node).
+/// Hash a `PinValue` by its variant + payload bytes. Used to fingerprint
+/// `param/*` defaults for the preview's change detector — float/color/
+/// vec arrays are hashed via their `to_bits()` so semantically-equal
+/// values produce the same hash even though `f32` doesn't impl `Hash`.
+fn hash_pin_value<H: std::hash::Hasher>(
+    value: &renzora_shader::material::graph::PinValue,
+    state: &mut H,
+) {
+    use std::hash::Hash;
+    use renzora_shader::material::graph::PinValue;
+    match value {
+        PinValue::Float(f) => { 0u8.hash(state); f.to_bits().hash(state); }
+        PinValue::Vec2(v) => { 1u8.hash(state); for x in v { x.to_bits().hash(state); } }
+        PinValue::Vec3(v) => { 2u8.hash(state); for x in v { x.to_bits().hash(state); } }
+        PinValue::Vec4(v) => { 3u8.hash(state); for x in v { x.to_bits().hash(state); } }
+        PinValue::Color(c) => { 4u8.hash(state); for x in c { x.to_bits().hash(state); } }
+        PinValue::Int(i) => { 5u8.hash(state); i.hash(state); }
+        PinValue::Bool(b) => { 6u8.hash(state); b.hash(state); }
+        PinValue::TexturePath(s) | PinValue::String(s) => { 7u8.hash(state); s.hash(state); }
+        PinValue::None => { 8u8.hash(state); }
+    }
+}
+
 fn update_preview_material(
     editor_state: Res<MaterialEditorState>,
     asset_server: Res<AssetServer>,
@@ -325,8 +348,16 @@ fn update_preview_material(
         return;
     }
 
-    // Hash shader + texture bindings to detect actual graph changes.
-    // Skips redundant work when only selection/UI state changed.
+    // Hash shader + texture bindings + param defaults to detect actual
+    // graph changes. Skips redundant work when only selection/UI state
+    // changed.
+    //
+    // Param defaults are included because changing a `param/*` node's
+    // authored default *doesn't* change the emitted WGSL (defaults
+    // live in the params UBO, not in the shader source) — without
+    // hashing them, editing a Color Parameter's default in the graph
+    // would silently no-op the preview until the user disconnected
+    // and reconnected the cable to force a WGSL hash flip.
     use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
     let mut hasher = DefaultHasher::new();
@@ -334,6 +365,13 @@ fn update_preview_material(
     for tb in &result.texture_bindings {
         tb.binding.hash(&mut hasher);
         tb.asset_path.hash(&mut hasher);
+    }
+    for p in &result.parameters {
+        p.name.hash(&mut hasher);
+        // PinValue's bytes — float/color defaults boil down to f32
+        // arrays, so hash via their byte representation. Bools and
+        // ints come through their integer hashes naturally.
+        hash_pin_value(&p.default, &mut hasher);
     }
     let hash = hasher.finish();
 
@@ -395,10 +433,20 @@ fn update_preview_material(
     );
     let _ = shaders.insert(&preview_handle, shader);
 
-    // Set the per-material shader uuid on the preview sphere
+    // Set the per-material shader uuid on the preview sphere AND seed
+    // the parameter UBO from the graph's authored defaults. Without
+    // the seed, every `param/*` slot reads as zero — a graph whose
+    // BaseColor comes from a `param/color` would render as black even
+    // though the user authored an orange default. The resolver
+    // already does this in `resolve_material_file`; the preview path
+    // missed it because Stage 3 (instances) didn't update this code
+    // alongside the resolver.
+    let default_slots =
+        renzora_shader::material::instance::build_default_param_slots(&result.parameters);
     for mat_handle in preview_mesh.iter() {
         if let Some(material) = materials.get_mut(&mat_handle.0) {
             material.extension.shader_uuid = Some(preview_uuid);
+            material.extension.params.slots = default_slots;
         }
     }
     shader_state.last_wgsl_hash = Some(hash);

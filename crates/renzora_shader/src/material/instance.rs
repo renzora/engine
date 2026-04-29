@@ -204,9 +204,16 @@ pub fn graph_with_overrides_applied(
         if !node.node_type.starts_with("param/") {
             continue;
         }
+        // Mirror the codegen's fallback: a `param/*` node without an
+        // authored `name` input uses a kind-appropriate default
+        // (`FloatParam`, `ColorParam`, etc). Without this fallback
+        // here, overrides keyed by the same fallback name silently
+        // skipped these nodes — `try_build_standard_material` would
+        // then be handed an unpatched graph and the viewport would
+        // keep rendering the master's default values forever.
         let name = match node.input_values.get("name").cloned() {
-            Some(PinValue::String(s)) => s,
-            _ => continue,
+            Some(PinValue::String(s)) if !s.trim().is_empty() => s,
+            _ => fallback_param_name_for_node_type(&node.node_type).to_string(),
         };
         let Some(ov) = overrides.get(&name) else {
             continue;
@@ -215,6 +222,109 @@ pub fn graph_with_overrides_applied(
             .insert("default".to_string(), param_value_to_pin_value(ov));
     }
     out
+}
+
+/// Codegen fallback name for an unnamed `param/*` node. Mirrors the
+/// `param_name(node, "...")` calls in [`super::codegen`] — must stay
+/// in sync or override matching breaks for unnamed nodes.
+fn fallback_param_name_for_node_type(node_type: &str) -> &'static str {
+    match node_type {
+        "param/float" => "FloatParam",
+        "param/color" => "ColorParam",
+        "param/vec2" => "Vec2Param",
+        "param/vec3" => "Vec3Param",
+        "param/vec4" => "Vec4Param",
+        "param/bool" => "BoolParam",
+        _ => "Param",
+    }
+}
+
+/// Walk `graph` for every `param/*` node and collect the parameter
+/// list it would surface to the override editor.
+///
+/// Each `param/*` node maps to one [`MaterialParam`] entry: the
+/// authored name (or a kind-appropriate fallback like `"FloatParam"`
+/// when the user hasn't named it), the kind tag, and the authored
+/// default pin value (or the kind's zero-value if missing).
+///
+/// This is the lightweight introspection path — no WGSL codegen, no
+/// shader compile. The override editor uses it to render one widget
+/// per parameter while editing a derived `.material`.
+///
+/// Order matches the graph's node order, which is also the order the
+/// codegen visits them — keeps the inspector consistent with the
+/// uniform-buffer slot layout.
+pub fn collect_master_parameters(graph: &MaterialGraph) -> Vec<MaterialParam> {
+    let mut out = Vec::new();
+    for node in &graph.nodes {
+        let kind = match node.node_type.as_str() {
+            "param/float" => ParamKind::Float,
+            "param/color" => ParamKind::Color,
+            "param/vec2" => ParamKind::Vec2,
+            "param/vec3" => ParamKind::Vec3,
+            "param/vec4" => ParamKind::Vec4,
+            "param/bool" => ParamKind::Bool,
+            _ => continue,
+        };
+        let name = match node.input_values.get("name") {
+            Some(PinValue::String(s)) if !s.trim().is_empty() => s.clone(),
+            _ => default_param_name(kind).to_string(),
+        };
+        let default = node
+            .input_values
+            .get("default")
+            .cloned()
+            .unwrap_or_else(|| default_param_pin(kind));
+        out.push(MaterialParam {
+            name,
+            kind,
+            default,
+        });
+    }
+    out
+}
+
+/// Read a master `.material` file from disk and return its parameter
+/// list. Convenience wrapper over [`collect_master_parameters`] for
+/// callers (the inspector) that only have a path. Returns `Err` with
+/// a human-readable message on read or parse failure so the inspector
+/// can surface "couldn't read master" inline rather than silently
+/// rendering an empty editor.
+pub fn read_master_parameters(path: &std::path::Path) -> Result<Vec<MaterialParam>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("read failed for {}: {}", path.display(), e))?;
+    let graph: MaterialGraph = serde_json::from_str(&content)
+        .map_err(|e| format!("parse failed for {}: {}", path.display(), e))?;
+    Ok(collect_master_parameters(&graph))
+}
+
+/// Default name used when a `param/*` node has no authored `name`
+/// pin. Matches the fallback strings in the codegen so introspection
+/// agrees with what `compile()` would have used.
+fn default_param_name(kind: ParamKind) -> &'static str {
+    match kind {
+        ParamKind::Float => "FloatParam",
+        ParamKind::Color => "ColorParam",
+        ParamKind::Vec2 => "Vec2Param",
+        ParamKind::Vec3 => "Vec3Param",
+        ParamKind::Vec4 => "Vec4Param",
+        ParamKind::Bool => "BoolParam",
+    }
+}
+
+/// Default pin value for a `param/*` node that hasn't authored a
+/// `default`. Mirrors the per-kind zero values the codegen falls back
+/// on. Used by [`collect_master_parameters`] so callers always see a
+/// `MaterialParam.default` of the right variant.
+fn default_param_pin(kind: ParamKind) -> PinValue {
+    match kind {
+        ParamKind::Float => PinValue::Float(0.0),
+        ParamKind::Color => PinValue::Color([1.0, 1.0, 1.0, 1.0]),
+        ParamKind::Vec2 => PinValue::Vec2([0.0, 0.0]),
+        ParamKind::Vec3 => PinValue::Vec3([0.0, 0.0, 0.0]),
+        ParamKind::Vec4 => PinValue::Vec4([0.0, 0.0, 0.0, 0.0]),
+        ParamKind::Bool => PinValue::Bool(false),
+    }
 }
 
 #[cfg(test)]

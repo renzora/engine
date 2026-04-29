@@ -587,6 +587,384 @@ fn material_custom_ui(
             });
         }
     }
+
+    // ── Override editor for derived materials ────────────────────────────
+    //
+    // If the bound material is a derived `.material` (has a non-empty
+    // `master` field), surface its master's `param/*` parameters as
+    // editable rows below the slot row. Editing a value writes the
+    // updated overrides back to disk and invalidates the resolver
+    // cache so the entity re-renders with the new value.
+    render_overrides_section(ui, world, entity, cmds, theme, &current_path);
+}
+
+/// Render the override editor for a derived `.material` binding.
+/// No-ops if `current_path` doesn't point at a derived material —
+/// reads the file once per frame and bails on master files / parse
+/// errors / missing master, etc.
+fn render_overrides_section(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+    current_path: &str,
+) {
+    use renzora_shader::material::instance::{read_master_parameters, MaterialInstance};
+
+    if current_path.is_empty() {
+        return;
+    }
+
+    // Resolve the absolute path so we can read both the instance file
+    // and the master it references. Without a project we can't resolve
+    // either — bail.
+    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
+        return;
+    };
+    let instance_abs = project.resolve_path(current_path);
+
+    let Ok(content) = std::fs::read_to_string(&instance_abs) else {
+        return;
+    };
+    let Ok(instance_initial) = serde_json::from_str::<MaterialInstance>(&content) else {
+        return; // Master `.material` files don't deserialize as MaterialInstance — bail.
+    };
+    if instance_initial.master.is_empty() {
+        return; // Defensively: present but empty `master` is treated as "not derived".
+    }
+
+    let master_abs = project.resolve_path(&instance_initial.master);
+    let params = match read_master_parameters(&master_abs) {
+        Ok(p) => p,
+        Err(e) => {
+            ui.add_space(6.0);
+            ui.colored_label(
+                theme.semantic.error.to_color32(),
+                format!("Master unreadable: {}", e),
+            );
+            return;
+        }
+    };
+
+    if params.is_empty() {
+        // Master is procedural-but-no-params or trivial — nothing to
+        // override. Skip the section entirely so the inspector stays
+        // tight.
+        return;
+    }
+
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    // Section header — name + master link.
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("Overrides")
+                .size(11.0)
+                .strong()
+                .color(theme.text.primary.to_color32()),
+        );
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(format!("{}", regular::ARROW_UP_RIGHT))
+                .size(10.0)
+                .color(theme.text.muted.to_color32()),
+        );
+        ui.label(
+            egui::RichText::new(&instance_initial.master)
+                .size(10.0)
+                .color(theme.text.muted.to_color32()),
+        )
+        .on_hover_text("Master material — overrides apply on top of this graph's defaults");
+    });
+    ui.add_space(2.0);
+
+    // Local mutable copy so widgets can write into us this frame.
+    // After all widgets render we compare against `instance_initial`
+    // and queue a write if anything changed.
+    let mut overrides = instance_initial.overrides.clone();
+    let mut dirty = false;
+
+    for param in &params {
+        let row_resp = ui.horizontal(|ui| {
+            // Name column — fixed width so widgets line up.
+            ui.allocate_ui_with_layout(
+                egui::vec2(120.0, 20.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(&param.name)
+                                .size(11.0)
+                                .color(theme.text.primary.to_color32()),
+                        )
+                        .truncate(),
+                    );
+                },
+            );
+
+            // Widget column.
+            let is_overridden = overrides.contains_key(&param.name);
+            let current = overrides.get(&param.name).cloned().unwrap_or_else(|| {
+                pin_to_param(&param.default).unwrap_or(default_param_value(param.kind))
+            });
+
+            let new_value = render_param_widget(ui, param.kind, &current);
+            if let Some(v) = new_value {
+                if !param_value_eq(&v, &current) {
+                    overrides.insert(param.name.clone(), v);
+                    dirty = true;
+                }
+            }
+
+            // Revert button — only shown when overridden so masters
+            // with all-default values stay tidy.
+            if is_overridden {
+                let resp = ui
+                    .small_button(egui::RichText::new(regular::ARROW_COUNTER_CLOCKWISE).size(10.0))
+                    .on_hover_text("Revert to master default");
+                if resp.clicked() {
+                    overrides.remove(&param.name);
+                    dirty = true;
+                }
+            } else {
+                // Reserve the space so widget alignment matches across
+                // overridden and non-overridden rows.
+                ui.add_space(20.0);
+            }
+        });
+        let _ = row_resp;
+    }
+
+    if dirty {
+        let new_instance = MaterialInstance {
+            master: instance_initial.master.clone(),
+            overrides,
+        };
+        let path_clone = instance_abs.clone();
+        let asset_path = current_path.to_string();
+        cmds.push(move |world: &mut World| {
+            // Write new file. Pretty-print so hand edits remain
+            // diff-friendly. On write failure, log and bail —
+            // entity stays bound to the in-memory state of the
+            // previous file.
+            let json = match serde_json::to_string_pretty(&new_instance) {
+                Ok(s) => s,
+                Err(e) => {
+                    bevy::log::warn!(
+                        "[material_inspector] couldn't serialize override change: {}",
+                        e
+                    );
+                    return;
+                }
+            };
+            if let Err(e) = std::fs::write(&path_clone, json) {
+                bevy::log::warn!(
+                    "[material_inspector] couldn't write {}: {}",
+                    path_clone.display(),
+                    e
+                );
+                return;
+            }
+            // Force the resolver to re-read the file by invalidating
+            // the cached compiled handle for this asset path AND
+            // clearing each bound entity's `MaterialResolved` so they
+            // show up in the resolver's "needs work" query next frame.
+            // Without the cache invalidation, the resolver would
+            // re-bind the same stale handle.
+            if let Some(mut cache) = world
+                .get_resource_mut::<renzora_shader::material::resolver::MaterialCache>()
+            {
+                cache.invalidate(&asset_path);
+            }
+            // Walk every entity referencing this material instance and
+            // remove their MaterialResolved so the resolver picks them
+            // up next frame. Editing one entity's overrides should
+            // update every entity bound to the same file.
+            let mut to_invalidate: Vec<Entity> = Vec::new();
+            let mut q = world.query::<(Entity, &MaterialRef)>();
+            for (e, mr) in q.iter(world) {
+                if mr.0 == asset_path {
+                    to_invalidate.push(e);
+                }
+            }
+            for e in to_invalidate {
+                world.entity_mut(e).remove::<renzora_shader::material::resolver::MaterialResolved>();
+            }
+            // Defensively also clear on the entity that triggered
+            // the change in case its MaterialRef was stale.
+            world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+        });
+    }
+}
+
+/// Render a value-edit widget for one master parameter. Returns
+/// `Some(new_value)` if the widget reports a change this frame, else
+/// `None`. The widget kind matches the parameter's kind.
+fn render_param_widget(
+    ui: &mut egui::Ui,
+    kind: renzora_shader::material::codegen::ParamKind,
+    current: &renzora_shader::material::material_ref::ParamValue,
+) -> Option<renzora_shader::material::material_ref::ParamValue> {
+    use renzora_shader::material::codegen::ParamKind;
+    use renzora_shader::material::material_ref::ParamValue;
+    match (kind, current) {
+        (ParamKind::Float, ParamValue::Float(f)) => {
+            let mut v = *f;
+            if ui
+                .add(egui::DragValue::new(&mut v).speed(0.01))
+                .changed()
+            {
+                Some(ParamValue::Float(v))
+            } else {
+                None
+            }
+        }
+        (ParamKind::Color, ParamValue::Color(c)) => {
+            let mut rgba = *c;
+            if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
+                Some(ParamValue::Color(rgba))
+            } else {
+                None
+            }
+        }
+        (ParamKind::Bool, ParamValue::Bool(b)) => {
+            let mut v = *b;
+            if ui.checkbox(&mut v, "").changed() {
+                Some(ParamValue::Bool(v))
+            } else {
+                None
+            }
+        }
+        (ParamKind::Vec2, ParamValue::Vec2(xy)) => {
+            let mut a = *xy;
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                    changed = true;
+                }
+            });
+            if changed { Some(ParamValue::Vec2(a)) } else { None }
+        }
+        (ParamKind::Vec3, ParamValue::Vec3(xyz)) => {
+            let mut a = *xyz;
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:")).changed() {
+                    changed = true;
+                }
+            });
+            if changed { Some(ParamValue::Vec3(a)) } else { None }
+        }
+        (ParamKind::Vec4, ParamValue::Vec4(xyzw)) => {
+            let mut a = *xyzw;
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:")).changed() {
+                    changed = true;
+                }
+                if ui.add(egui::DragValue::new(&mut a[3]).speed(0.01).prefix("w:")).changed() {
+                    changed = true;
+                }
+            });
+            if changed { Some(ParamValue::Vec4(a)) } else { None }
+        }
+        // Mismatched (e.g. master is Float but stored override is Color
+        // — happens after a master parameter renames + the instance
+        // file is stale). Show a "type mismatch" hint and don't render
+        // an editor; revert button still works to clean it up.
+        _ => {
+            ui.colored_label(
+                egui::Color32::from_rgb(220, 140, 80),
+                format!("type mismatch ({:?})", current),
+            );
+            None
+        }
+    }
+}
+
+/// Convert a [`PinValue`] (master default) into a [`ParamValue`]
+/// (override-storage) when the kinds happen to align. Returns `None`
+/// for `PinValue` variants that don't appear in `ParamValue` (string,
+/// texture path, none) — those are filtered upstream because their
+/// `ParamKind` isn't a known kind.
+fn pin_to_param(
+    pin: &renzora_shader::material::graph::PinValue,
+) -> Option<renzora_shader::material::material_ref::ParamValue> {
+    use renzora_shader::material::graph::PinValue;
+    use renzora_shader::material::material_ref::ParamValue;
+    Some(match pin {
+        PinValue::Float(f) => ParamValue::Float(*f),
+        PinValue::Vec2(v) => ParamValue::Vec2(*v),
+        PinValue::Vec3(v) => ParamValue::Vec3(*v),
+        PinValue::Vec4(v) => ParamValue::Vec4(*v),
+        PinValue::Color(c) => ParamValue::Color(*c),
+        PinValue::Int(i) => ParamValue::Int(*i),
+        PinValue::Bool(b) => ParamValue::Bool(*b),
+        PinValue::TexturePath(_) | PinValue::String(_) | PinValue::None => return None,
+    })
+}
+
+/// Fallback param value used when the master's authored default isn't
+/// representable as a [`ParamValue`] (string, texture path, etc.) —
+/// exotic cases that show up only when a graph is mid-edit. The
+/// inspector renders zero-equivalents so the widget has something to
+/// show; the override map stays untouched until the user actually
+/// edits the value.
+fn default_param_value(
+    kind: renzora_shader::material::codegen::ParamKind,
+) -> renzora_shader::material::material_ref::ParamValue {
+    use renzora_shader::material::codegen::ParamKind;
+    use renzora_shader::material::material_ref::ParamValue;
+    match kind {
+        ParamKind::Float => ParamValue::Float(0.0),
+        ParamKind::Color => ParamValue::Color([1.0, 1.0, 1.0, 1.0]),
+        ParamKind::Vec2 => ParamValue::Vec2([0.0, 0.0]),
+        ParamKind::Vec3 => ParamValue::Vec3([0.0, 0.0, 0.0]),
+        ParamKind::Vec4 => ParamValue::Vec4([0.0, 0.0, 0.0, 0.0]),
+        ParamKind::Bool => ParamValue::Bool(false),
+    }
+}
+
+/// Approximate equality check for [`ParamValue`] used to suppress
+/// no-op writes (e.g. when a `DragValue` reports `.changed()` because
+/// it gained focus, even if no digit was actually edited). Floats use
+/// strict `==` on the bit pattern — we only want to skip *literal*
+/// no-ops, not anything within an epsilon, since the user may
+/// deliberately set a value to a float just barely different from
+/// the master default.
+fn param_value_eq(
+    a: &renzora_shader::material::material_ref::ParamValue,
+    b: &renzora_shader::material::material_ref::ParamValue,
+) -> bool {
+    use renzora_shader::material::material_ref::ParamValue;
+    match (a, b) {
+        (ParamValue::Float(x), ParamValue::Float(y)) => x == y,
+        (ParamValue::Vec2(x), ParamValue::Vec2(y)) => x == y,
+        (ParamValue::Vec3(x), ParamValue::Vec3(y)) => x == y,
+        (ParamValue::Vec4(x), ParamValue::Vec4(y)) => x == y,
+        (ParamValue::Color(x), ParamValue::Color(y)) => x == y,
+        (ParamValue::Int(x), ParamValue::Int(y)) => x == y,
+        (ParamValue::Bool(x), ParamValue::Bool(y)) => x == y,
+        _ => false,
+    }
 }
 
 /// Walk the project root for `.material` files and return their
